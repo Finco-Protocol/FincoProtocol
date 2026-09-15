@@ -17,6 +17,7 @@ from typing import Mapping
 
 STAGING_ROOT = Path("/opt/finco_staging")
 STAGING_PORT = "8100"
+STAGING_HOST = "staging.finco.one"
 PRODUCTION_ROOT = Path("/opt/finco_protocol")
 PLACEHOLDER_MARKERS = ("changeme", "replace_with", "example", "placeholder")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -82,6 +83,7 @@ def validate_staging_env(
         "FINCO_DEMO_RESET_ALLOWED",
         "FINCO_STAGING_ROOT",
         "FINCO_STAGING_PORT",
+        "FINCO_STAGING_HOST",
         "FINCO_DEPLOY_SHA",
     }
     missing = sorted(required - set(env))
@@ -102,9 +104,14 @@ def validate_staging_env(
         raise StagingPreflightError(f"FINCO_STAGING_ROOT must be {STAGING_ROOT}")
     if env["FINCO_STAGING_PORT"] != STAGING_PORT:
         raise StagingPreflightError(f"FINCO_STAGING_PORT must be {STAGING_PORT}")
+    if env["FINCO_STAGING_HOST"].lower() != STAGING_HOST:
+        raise StagingPreflightError(f"FINCO_STAGING_HOST must be {STAGING_HOST}")
 
+    admin_user = env["FINCO_ADMIN_USER"].strip()
     secret = env["FINCO_SECRET_KEY"]
     password = env["FINCO_ADMIN_PASSWORD"]
+    if not admin_user or _is_placeholder(admin_user):
+        raise StagingPreflightError("FINCO_ADMIN_USER must be a non-placeholder staging account")
     if len(secret) < 64 or _is_placeholder(secret):
         raise StagingPreflightError("FINCO_SECRET_KEY must be a non-placeholder staging secret >=64 chars")
     if len(password) < 16 or _is_placeholder(password):
