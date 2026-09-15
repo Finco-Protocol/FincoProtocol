@@ -1,0 +1,134 @@
+{# ── P2-FIX-8 PR3: My Projects table ─────────────────────────────────
+   Table view: name, technology (from record — never run state),
+   country, size MW, last edited, last run, status, actions.
+   Technology is resolved server-side from ProjectRecord fields so
+   "Unknown" never appears. Factory templates, baselines and parity
+   fixtures remain hidden (presentation filter — reachable via Browse).
+#}
+
+{# ── P1-CLEANUP-SPRINT-2 TASK C: Home section cards ─────────────── #}
+{# Low-risk navigation aids above My Projects table. These are
+   additive links to existing flows — no routing or redirect logic
+   introduced. If no projects exist, "Continue Modelling" and the
+   section-tab cards show a friendly hint instead of a dead link. #}
+{% set _has_projects = home_user_projects and (home_user_projects|length > 0) %}
+{% set _continue_project = home_user_projects[0] if _has_projects else None %}
+<div class="ph-quick-actions" data-p1sprint2-component="quick-actions">
+  <a href="/projects/new" class="ph-quick-card ph-quick-card--primary"
+     data-p1sprint2-link="new-project">
+    <span class="ph-quick-icon">+</span>
+    <span class="ph-quick-label">New Project</span>
+    <span class="ph-quick-desc">Start a fresh project from a template or blank</span>
+  </a>
+  <a href="/library" class="ph-quick-card"
+     data-p1sprint2-link="open-reference">
+    <span class="ph-quick-icon">⟐</span>
+    <span class="ph-quick-label">Open Reference Projects</span>
+    <span class="ph-quick-desc">Browse reference models (Generic Wind Reference and Generic Solar Reference)</span>
+  </a>
+  {% if _continue_project %}
+  <a href="{{ _continue_project.workbook_url }}"
+     class="ph-quick-card ph-quick-card--accent"
+     data-p1sprint2-link="continue">
+    <span class="ph-quick-icon">▶</span>
+    <span class="ph-quick-label">Continue Modelling</span>
+    <span class="ph-quick-desc">Open your most recent project: {{ _continue_project.name }}</span>
+  </a>
+  {% endif %}
+</div>
+
+{# Section shortcuts — link to flows inside the active project.
+   These open the most-recent project (if any) at the relevant
+   sheet/tab. They do NOT mutate routing. #}
+<div class="ph-section-tabs" data-p1sprint2-component="section-tabs">
+  <div class="ph-section-tabs-label">Sections (open your most recent project)</div>
+  <div class="ph-section-tabs-grid">
+    {% set _disabled = not _has_projects %}
+    {% if not _disabled %}
+      {% set _tab_urls = {
+        "inputs":    _continue_project.workbook_url_inputs,
+        "capex":     _continue_project.workbook_url_capex,
+        "opex":      _continue_project.workbook_url_opex,
+        "results":   _continue_project.workbook_url_results,
+        "scenarios": _continue_project.workbook_url_scenarios,
+      } %}
+    {% endif %}
+    {% for tab in [("Inputs","inputs"),("CAPEX","capex"),("OPEX","opex"),("Results","results"),("Scenarios","scenarios")] %}
+    {% set _label, _key = tab %}
+    {% if _disabled %}
+    <span class="ph-section-tab ph-section-tab--disabled"
+          data-p1sprint2-tab="{{ _key }}"
+          aria-disabled="true"
+          title="Create a project to enable this section">
+      {{ _label }}
+    </span>
+    {% else %}
+    <a class="ph-section-tab"
+       href="{{ _tab_urls[_key] }}"
+       data-p1sprint2-tab="{{ _key }}">
+      {{ _label }}
+    </a>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{% if home_user_projects %}
+<div class="ph-section">
+  <div class="ph-section-label">My projects</div>
+  <div class="ph-table-wrap">
+    <table class="ph-table" role="grid" aria-label="My projects">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Technology</th>
+          <th scope="col">Country</th>
+          <th scope="col">Size (MW)</th>
+          <th scope="col">Last edited</th>
+          <th scope="col">Last run</th>
+          <th scope="col">Status</th>
+          <th scope="col">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in home_user_projects %}
+        <tr class="ph-table-row" data-project-code="{{ item.project_code }}">
+          <td class="ph-table-name">
+            <a href="{{ item.workbook_url }}" class="ph-table-link">{{ item.name }}</a>
+          </td>
+          <td>
+            {# WF-4: technology badge pill #}
+            {% if item.technology %}
+            <span class="ph-tech-badge ph-tech-badge--{{ item.technology | lower }}">{{ item.technology }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ item.country }}</td>
+          <td>{{ item.capacity_mw }}</td>
+          <td class="ph-table-date">{{ item.last_edited }}</td>
+          <td class="ph-table-date">{{ item.last_run }}</td>
+          <td>
+            <span class="ph-status ph-status--{{ item.status | lower | replace(' ', '-') }}">
+              {{ item.status }}
+            </span>
+          </td>
+          <td class="ph-table-actions">
+            <a href="{{ item.workbook_url }}" class="ph-action-link">Open</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="ph-empty">
+  <div class="ph-empty-title">No projects yet</div>
+  <div class="ph-empty-desc">Create your first project to get started.</div>
+</div>
+{% endif %}
+
+<div class="ph-actions">
+  <a class="btn btn-primary ph-cta" href="/projects/new">+ Create New Project</a>
+</div>
+
+<div id="new-project-result"></div>

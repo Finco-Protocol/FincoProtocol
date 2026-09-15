@@ -1,0 +1,23 @@
+{# M3: Matrix cell inline edit form #}
+<td class="matrix-cell {{ cell_class }} matrix-cell-editing"
+    data-m2-cell="{{ col_key }}"
+    data-m3-editing="true">
+  <form hx-post="/matrix/scenario/{{ scenario_id }}/set-field"
+        hx-target="this"
+        hx-swap="outerHTML"
+        hx-include="this"
+        class="matrix-cell-edit-form">
+    <input type="hidden" name="field" value="{{ field }}">
+    <input type="text" name="value" value="{{ raw_value }}"
+           class="matrix-cell-input"
+           data-m3-input="true"
+           autofocus
+           autocomplete="off">
+    <button type="submit" class="matrix-cell-save-btn" title="Save">✓</button>
+    <button type="button" class="matrix-cell-cancel-btn"
+            hx-get="/matrix/scenario/{{ scenario_id }}/cell-view?field={{ field }}&col={{ col_key }}"
+            hx-target="closest td"
+            hx-swap="outerHTML"
+            title="Cancel">✕</button>
+  </form>
+</td>

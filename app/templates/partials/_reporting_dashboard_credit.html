@@ -1,0 +1,30 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — REPORTING DASHBOARD WRAPPER — CREDIT PACK  ·  UI-6
+  -----------------------------------------------------------------------
+  Renders the V4-5 Part C `credit_pack.html` inside the institutional
+  reporting dashboard chrome. No engine / report calculation change.
+  =======================================================================
+-->
+<section class="fo-reporting-dashboard" data-fo-reporting-pack="credit">
+  <header class="fo-reporting-dashboard__header">
+    <div>
+      <h1 class="fo-reporting-dashboard__title">Credit Committee Pack</h1>
+      <p class="fo-reporting-dashboard__subtitle">Credit-facing pack — debt metrics, covenants, security.</p>
+    </div>
+    <div class="fo-statements-toolbar">
+      <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+        <button type="button" class="fo-statements-toolbar__btn"
+                onclick="window.print()"
+                aria-label="Print credit pack">🖶 Print</button>
+        <button type="button" class="fo-statements-toolbar__btn"
+                data-fo-pack-export
+                aria-label="Export credit pack">⬇ Export</button>
+      </div>
+    </div>
+  </header>
+
+  <article class="fo-reporting-dashboard__card" style="grid-column: 1 / -1;">
+    {% include "partials/credit_pack.html" %}
+  </article>
+</section>

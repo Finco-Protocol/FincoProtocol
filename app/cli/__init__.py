@@ -1,0 +1,1 @@
+"""FINCO Model CLI — power-user command-line interface."""

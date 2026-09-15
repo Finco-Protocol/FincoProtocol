@@ -1,0 +1,199 @@
+{# ── V4-3 — Sensitivity & Tornado Analysis Workspace ─────────────────── #}
+{# Read-only. Re-runs canonical engine per shock. No formula changes.     #}
+{# Parts A (shocks), B (KPI table), C (tornado SVG), D (export links).    #}
+<div class="sens-workspace" data-testid="sensitivity-workspace">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Sensitivity</span>
+    <span class="scm-multi-heading-label">Sensitivity & Tornado Analysis</span>
+  </div>
+
+  {% if sensitivity_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Results unavailable</div>
+        <div class="ps-history-meta">Run the model from the Scenarios tab to generate sensitivity results.</div>
+      </div>
+    </div>
+
+  {% elif sensitivity_result %}
+    {% set base_kpis = sensitivity_result['base_kpis'] %}
+    {% set rows = sensitivity_result['rows'] %}
+    {% set kpi_defs = sensitivity_result['kpi_defs'] %}
+
+    {# ── Part A: run config banner ── #}
+    <div class="scm-multi-banner" role="note">
+      Canonical engine results. {{ rows|length }} scenarios across
+      {{ sensitivity_shock_types|length }} shock types at levels
+      {{ sensitivity_levels|join(', ') }}%.
+      Base: <strong>{{ sensitivity_scenario_name }}</strong>.
+    </div>
+
+    {# ── Part C: Tornado Chart (SVG) ── #}
+    {% if tornado_data and tornado_data|length > 0 %}
+    <div class="sens-tornado" data-testid="tornado-chart">
+      <div class="scm-diff-section-label">
+        Tornado — Impact on {{ tornado_kpi_label }} (delta vs Base)
+      </div>
+      {% set max_abs = namespace(val=0.0) %}
+      {% for t in tornado_data %}
+        {% if t['abs_range'] > max_abs.val %}{% set max_abs.val = t['abs_range'] %}{% endif %}
+      {% endfor %}
+      {% set bar_w = 220 %}
+      {% set row_h = 24 %}
+      {% set label_w = 120 %}
+      {% set mid = label_w + bar_w %}
+      {% set chart_w = label_w + bar_w * 2 + 60 %}
+      {% set chart_h = (tornado_data|length) * row_h + 30 %}
+
+      <svg viewBox="0 0 {{ chart_w }} {{ chart_h }}"
+           width="100%" style="max-width:{{ chart_w }}px;display:block;overflow:visible;"
+           aria-label="Tornado chart — sensitivity impact on {{ tornado_kpi_label }}"
+           role="img">
+
+        {# Gridlines #}
+        <line x1="{{ mid }}" y1="0" x2="{{ mid }}" y2="{{ chart_h }}"
+              stroke="#d1d5db" stroke-width="1"/>
+
+        {# Axis labels #}
+        {% if max_abs.val > 0 %}
+        <text x="{{ mid - bar_w * 0.5 }}" y="{{ chart_h - 4 }}"
+              font-size="9" fill="#6b7280" text-anchor="middle">
+          {{ "−{:.2%}".format(max_abs.val * 0.5) if tornado_kpi_is_pct else "−{:,.1f}".format(max_abs.val * 0.5) }}
+        </text>
+        <text x="{{ mid + bar_w * 0.5 }}" y="{{ chart_h - 4 }}"
+              font-size="9" fill="#6b7280" text-anchor="middle">
+          {{ "+{:.2%}".format(max_abs.val * 0.5) if tornado_kpi_is_pct else "+{:,.1f}".format(max_abs.val * 0.5) }}
+        </text>
+        {% endif %}
+
+        {# Bars #}
+        {% for t in tornado_data %}
+          {% set y = loop.index0 * row_h + 4 %}
+          {% set scale = bar_w / max_abs.val if max_abs.val > 0 else 0 %}
+
+          {# Negative bar (goes left from centre) #}
+          {% if t['min_delta'] < 0 %}
+            {% set neg_w = [(-t['min_delta']) * scale, bar_w]|min %}
+            <rect x="{{ mid - neg_w }}" y="{{ y + 2 }}"
+                  width="{{ neg_w }}" height="{{ row_h - 6 }}"
+                  fill="#ef4444" fill-opacity="0.75" rx="2"/>
+          {% endif %}
+
+          {# Positive bar (goes right from centre) #}
+          {% if t['max_delta'] > 0 %}
+            {% set pos_w = [(t['max_delta']) * scale, bar_w]|min %}
+            <rect x="{{ mid }}" y="{{ y + 2 }}"
+                  width="{{ pos_w }}" height="{{ row_h - 6 }}"
+                  fill="#22c55e" fill-opacity="0.75" rx="2"/>
+          {% endif %}
+
+          {# Label #}
+          <text x="{{ label_w - 6 }}" y="{{ y + row_h / 2 }}"
+                font-size="10" fill="#374151" text-anchor="end"
+                dominant-baseline="middle">{{ t['label'] }}</text>
+
+          {# Value annotations #}
+          {% if t['min_delta'] is not none and t['min_delta'] != 0 %}
+            <text x="{{ mid - [(-t['min_delta']) * scale, bar_w]|min - 2 }}"
+                  y="{{ y + row_h / 2 }}"
+                  font-size="8" fill="#b91c1c" text-anchor="end"
+                  dominant-baseline="middle">
+              {% if tornado_kpi_is_pct %}{{ "{:+.2%}".format(t['min_delta']) }}
+              {% else %}{{ "{:+,.1f}".format(t['min_delta']) }}{% endif %}
+            </text>
+          {% endif %}
+          {% if t['max_delta'] is not none and t['max_delta'] != 0 %}
+            <text x="{{ mid + [t['max_delta'] * scale, bar_w]|min + 2 }}"
+                  y="{{ y + row_h / 2 }}"
+                  font-size="8" fill="#15803d" text-anchor="start"
+                  dominant-baseline="middle">
+              {% if tornado_kpi_is_pct %}{{ "{:+.2%}".format(t['max_delta']) }}
+              {% else %}{{ "{:+,.1f}".format(t['max_delta']) }}{% endif %}
+            </text>
+          {% endif %}
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+
+    {# ── Part B: KPI Impact Table ── #}
+    <div class="sens-table-wrap" data-testid="sensitivity-table">
+      <div class="scm-diff-section-label">KPI Impact Table</div>
+      <div style="overflow-x:auto;">
+        <table class="sens-table">
+          <thead>
+            <tr>
+              <th>Shock</th>
+              <th>Level</th>
+              {% for _, lbl, _ in kpi_defs %}
+                <th>{{ lbl }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {# Base row #}
+            <tr class="sens-row sens-row--base">
+              <td>Base</td>
+              <td>—</td>
+              {% for k, _, fmt in kpi_defs %}
+                <td>{{ _fmt_kpi(base_kpis.get(k), fmt) }}</td>
+              {% endfor %}
+            </tr>
+            {# Sensitivity rows #}
+            {% for row in rows %}
+              <tr class="sens-row {% if row['error'] %}sens-row--error{% endif %}">
+                <td class="sens-cell-shock">{{ row['shock_label'] }}</td>
+                <td class="sens-cell-level">
+                  {{ "{:+.0f}".format(row['level_pct']) }}%
+                </td>
+                {% if row['error'] %}
+                  <td colspan="{{ kpi_defs|length }}" class="sens-cell-err">{{ row['error'] }}</td>
+                {% else %}
+                  {% for k, _, fmt in kpi_defs %}
+                    {% set delta = row['deltas'].get(k) %}
+                    {% set d_class = '' %}
+                    {% if delta is not none %}
+                      {% if delta > 0 %}{% set d_class = 'scm-delta--good' %}
+                      {% elif delta < 0 %}{% set d_class = 'scm-delta--bad' %}
+                      {% endif %}
+                    {% endif %}
+                    <td class="{{ d_class }}" title="Δ {{ _fmt_delta(delta, fmt) }}">
+                      {{ _fmt_kpi(row['kpis'].get(k), fmt) }}
+                    </td>
+                  {% endfor %}
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {# ── Part D: Export links ── #}
+    <div class="sens-export-row" data-testid="sensitivity-export">
+      <div class="scm-diff-section-label">Export</div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <a href="{{ sensitivity_export_csv_url }}"
+           class="sens-export-btn" download="sensitivity.csv">
+          CSV
+        </a>
+        <a href="{{ sensitivity_export_xlsx_url }}"
+           class="sens-export-btn sens-export-btn--xl" download="sensitivity.xlsx">
+          Excel
+        </a>
+      </div>
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No model results available</div>
+        <div class="ps-history-meta">
+          Run the model to generate results for this workspace.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

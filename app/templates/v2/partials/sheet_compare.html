@@ -1,0 +1,191 @@
+{#
+  UI-3B — Workbook V2 Compare sheet partial.
+
+  Displays a KPI comparison matrix across 2–3 scenarios.
+  All displayed values are sourced exclusively from authoritative RuntimeResult
+  kpis dicts persisted against each scenario.  Deltas are presentation
+  arithmetic between already-authoritative scalars.
+
+  Context variables:
+    project_code       str
+    all_scenarios      list[ScenarioRecord]
+    selected_scenarios list[ScenarioRecord]
+    selected_ids       list[str]
+    projections        list[ScenarioProjection]
+    compare_rows       list[ScenarioKpiRow]
+    request            Request
+#}
+<div id="v2-sheet-compare" class="v2-compare" data-sheet="compare">
+
+  <div class="v2-overview-section-title" style="padding:1rem 1.5rem 0.5rem">
+    Scenario Compare
+  </div>
+
+  {# ── Scenario picker ─────────────────────────────────────────────────────
+     Each checkbox carries its own s1/s2/s3 slot.  JS manages mutual-exclusive
+     slot assignment: first checked = s1, second = s2, third = s3.
+     The form posts to GET /v2/workbook/scenarios/compare?project=X&s1=..&s2=..
+  #}
+  <form id="v2-compare-picker-form"
+        class="v2-compare-picker"
+        hx-get="/v2/workbook/scenarios/compare"
+        hx-target="#v2-sheet-compare"
+        hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" id="v2-cmp-s1" name="s1" value="{{ selected_ids[0] if selected_ids | length > 0 else '' }}">
+    <input type="hidden" id="v2-cmp-s2" name="s2" value="{{ selected_ids[1] if selected_ids | length > 1 else '' }}">
+    <input type="hidden" id="v2-cmp-s3" name="s3" value="{{ selected_ids[2] if selected_ids | length > 2 else '' }}">
+
+    <div class="v2-compare-picker-label">
+      Select 2–3 scenarios to compare
+      <span class="v2-compare-picker-hint">(click to select/deselect in order)</span>
+    </div>
+
+    <div class="v2-compare-scenario-chips" id="v2-compare-chips">
+      {% for sc in all_scenarios %}
+      <button type="button"
+              class="v2-compare-chip {% if sc.scenario_id in selected_ids %}v2-compare-chip--selected{% endif %}"
+              data-sc-id="{{ sc.scenario_id }}"
+              data-sc-slot="{{ selected_ids.index(sc.scenario_id) + 1 if sc.scenario_id in selected_ids else 0 }}"
+              onclick="v2CompareToggle('{{ sc.scenario_id }}')">
+        {% if sc.is_base_case %}<span class="v2-scenario-base-badge">Base</span>{% endif %}
+        {{ sc.scenario_name }}
+        {% if sc.scenario_id in selected_ids %}
+          <span class="v2-compare-chip-slot">S{{ selected_ids.index(sc.scenario_id) + 1 }}</span>
+        {% endif %}
+      </button>
+      {% endfor %}
+    </div>
+
+    <button class="v2-scenario-create-btn" type="submit" id="v2-compare-submit-btn"
+            {% if selected_ids | length < 2 %}disabled{% endif %}>
+      Compare
+    </button>
+  </form>
+
+  <script>
+  (function() {
+    // Simple slot manager: tracks which scenario IDs are in s1/s2/s3.
+    var _slots = [
+      document.getElementById('v2-cmp-s1').value,
+      document.getElementById('v2-cmp-s2').value,
+      document.getElementById('v2-cmp-s3').value,
+    ].filter(Boolean);
+
+    function _save() {
+      document.getElementById('v2-cmp-s1').value = _slots[0] || '';
+      document.getElementById('v2-cmp-s2').value = _slots[1] || '';
+      document.getElementById('v2-cmp-s3').value = _slots[2] || '';
+      var btn = document.getElementById('v2-compare-submit-btn');
+      if (btn) btn.disabled = (_slots.filter(Boolean).length < 2);
+      _updateChips();
+    }
+
+    function _updateChips() {
+      document.querySelectorAll('.v2-compare-chip').forEach(function(el) {
+        var id = el.getAttribute('data-sc-id');
+        var idx = _slots.indexOf(id);
+        el.classList.toggle('v2-compare-chip--selected', idx >= 0);
+        var slotEl = el.querySelector('.v2-compare-chip-slot');
+        if (idx >= 0) {
+          if (!slotEl) { slotEl = document.createElement('span'); slotEl.className = 'v2-compare-chip-slot'; el.appendChild(slotEl); }
+          slotEl.textContent = 'S' + (idx + 1);
+        } else {
+          if (slotEl) slotEl.remove();
+        }
+      });
+    }
+
+    window.v2CompareToggle = function(scId) {
+      var idx = _slots.indexOf(scId);
+      if (idx >= 0) {
+        _slots.splice(idx, 1);  // deselect
+      } else if (_slots.length < 3) {
+        _slots.push(scId);      // select into next slot
+      } else {
+        // Replace last slot
+        _slots[2] = scId;
+      }
+      _save();
+    };
+
+    _updateChips();
+  })();
+  </script>
+
+  {% if not selected_scenarios %}
+  <div class="v2-compare-empty">
+    Select 2 or 3 scenarios above and click Compare to see the KPI matrix.
+  </div>
+  {% elif selected_scenarios | length < 2 %}
+  <div class="v2-compare-empty">
+    Please select at least 2 scenarios to compare.
+  </div>
+  {% else %}
+
+  {# ── KPI matrix ────────────────────────────────────────────────────────── #}
+  <div class="v2-compare-table-wrap">
+    <table class="v2-compare-table">
+      <thead>
+        <tr>
+          <th class="v2-compare-kpi-col">Metric</th>
+          {% for proj in projections %}
+          <th class="v2-compare-sc-col {% if loop.index == 1 %}v2-compare-base-col{% endif %}">
+            <div class="v2-compare-sc-name">{{ proj.scenario_name }}</div>
+            <div class="v2-compare-sc-state
+                        {% if proj.state == 'CLEAN' %}v2-compare-state-clean
+                        {% elif proj.state == 'STALE' %}v2-compare-state-stale
+                        {% else %}v2-compare-state-notrun{% endif %}">
+              {% if proj.state == 'CLEAN' %}Current
+              {% elif proj.state == 'STALE' %}Stale
+              {% else %}Not Run{% endif %}
+            </div>
+            {% if proj.ran_at %}
+            <div class="v2-compare-sc-ts">{{ proj.ran_at }}</div>
+            {% endif %}
+          </th>
+          {% endfor %}
+          {% if projections | length >= 2 %}
+          <th class="v2-compare-delta-col"
+              title="Delta of last column vs first (base) scenario">
+            Δ vs {{ projections[0].scenario_name }}
+          </th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in compare_rows %}
+        <tr class="v2-compare-kpi-row">
+          <td class="v2-compare-kpi-label">{{ row.label }}</td>
+          {% for val in row.values %}
+          <td class="v2-compare-kpi-val {% if loop.index == 1 %}v2-compare-base-val{% endif %}
+                     {% if val == '—' %}v2-kpi-value--na{% endif %}"
+              data-testid="cmp-{{ row.key }}-s{{ loop.index }}">
+            {{ val }}
+          </td>
+          {% endfor %}
+          {# Delta column shows the last non-base scenario vs first #}
+          {% if row.deltas | length >= 2 %}
+          {% set last_delta = row.deltas[-1] %}
+          <td class="v2-compare-kpi-delta v2-delta-neutral"
+              data-testid="cmp-{{ row.key }}-delta">
+            {{ last_delta }}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="v2-compare-footer">
+    <span class="v2-compare-authority-note">
+      All values are authoritative engine outputs sourced from each scenario's
+      persisted RuntimeResult.  Δ = display arithmetic between already-authoritative scalars.
+      No financial recomputation.
+    </span>
+  </div>
+
+  {% endif %}{# selected_scenarios #}
+
+</div>{# v2-sheet-compare #}

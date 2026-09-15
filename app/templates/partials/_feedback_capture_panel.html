@@ -1,0 +1,72 @@
+{# ── Phase 25C-3: Pilot Feedback Capture Panel ───────────────────────────
+   Renders a 6-field feedback template for the
+   Generic Solar / Wind exploratory pilot.
+
+   Render conditions:
+   - Renders NOTHING if `feedback_template` is
+     missing from the context.
+   - Renders the panel with the pre-built field
+     list and short summary template when present.
+
+   Behavior:
+   - Pure read-side. No backend calls. No mutation
+     of project state, scenarios, or inputs.
+   - No autosave. No fake ticket IDs. No DB writes.
+   - The feedback template is structured so the
+     user can copy it into an email, chat, or
+     feedback form.
+   - The exploratory disclaimer mentions that the
+     channel is read by humans; it is not
+     automatically processed.
+   - No JS, no Tailwind, no Alpine, no inline
+     script.
+   - No new HTMX endpoints. #}
+{% if feedback_template is defined and feedback_template %}
+  {% set _tpl = feedback_template %}
+  <aside class="fc-panel"
+         role="region"
+         aria-label="Pilot feedback capture"
+         data-field-count="{{ _tpl.field_count() }}">
+    <header class="fc-panel__header">
+      <h3 class="fc-panel__title">Report issue / feedback</h3>
+      <span class="fc-panel__subtitle">
+        Exploratory pilot — {{ _tpl.field_count() }} fields
+      </span>
+    </header>
+
+    <div class="fc-panel__disclaimer" role="note"
+         aria-label="Exploratory disclaimer">
+      {{ _tpl.exploratory_disclaimer }}
+    </div>
+
+    <ol class="fc-panel__fields">
+      {% for field in _tpl.fields %}
+        <li class="fc-panel__field"
+            data-field-key="{{ field.key }}"
+            data-field-order="{{ field.order }}">
+          <span class="fc-panel__field-marker"
+                aria-hidden="true">{{ field.order }}</span>
+          <div class="fc-panel__field-body">
+            <span class="fc-panel__field-label">
+              {{ field.label }}
+            </span>
+            <span class="fc-panel__field-help">
+              {{ field.help }}
+            </span>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+
+    <details class="fc-panel__short">
+      <summary class="fc-panel__short-title">
+        Short summary template
+      </summary>
+      <pre class="fc-panel__short-body" aria-label="Short summary template">
+{%- for line in _tpl.short_lines -%}
+{{ line }} 
+{%- endfor -%}
+      </pre>
+    </details>
+  </aside>
+{% endif %}

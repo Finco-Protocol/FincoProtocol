@@ -1,0 +1,335 @@
+{#
+  Workbook V2 — Senior Debt worksheet partial.
+
+  Registry-driven.  Editable fields render via the render_field macro
+  (hx_target="#v2-sheet-senior-debt", sheet_id="debt").
+
+  Sections
+  --------
+  A. Debt Assumptions       — 4 BOUND registry fields + future placeholders
+  B. Runtime Debt Summary   — KPI tiles from RuntimeResult
+  C. Debt Schedule table    — operational periods only
+  D. Runtime state badge    — Run Required / Last Run
+
+  Context variables (from app/v2/router.py):
+    debt_fields          list[dict]  — debt sheet fields from registry
+    debt_schedule        dict|None   — rr.debt_schedule (thawed)
+    runtime_summary      dict|None   — rr.runtime_summary (thawed)
+    project_code         str
+    workbook_version     str
+    content_hash         str
+    project_editable     bool
+    ws_dirty             bool
+    has_runtime          bool
+    field_error          str
+    senior_pricing_mode  str  — FLAT | CALIBRATED | UNRESOLVED
+    senior_dscr_mode     str  — FLAT_SCALAR | FLAT_SCHEDULE | CALIBRATED | UNRESOLVED
+  Authority display rules (R8/N02):
+    FLAT / FLAT_SCALAR / FLAT_SCHEDULE  — flat authority classification; current
+      editability is determined separately by project protection state and authority mode.
+    CALIBRATED  — source-calibrated authority; corresponding scalar control is
+      locked in an editable working copy.
+    UNRESOLVED  — authority unavailable; corresponding scalar control is
+      fail-closed / locked regardless of protection state.
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{% macro placeholder_row(label) %}
+<div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value"><span class="v2-future-tag">Future input</span></span>
+</div>
+{% endmacro %}
+
+{#
+  authority_badge(mode, label)
+  Renders a small inline badge communicating R8 authority state.
+
+  AUTHORITY text (Correction A — semantic copy):
+    FLAT / FLAT_SCALAR → "Flat scalar"
+    FLAT_SCHEDULE      → "Flat schedule"
+    CALIBRATED         → "Calibrated schedule"
+    UNRESOLVED         → "Authority unavailable"
+
+  Colour/icon supplements text; text is the primary signal.
+#}
+{% macro authority_badge(mode, label) %}
+  {% if mode == "CALIBRATED" %}
+    <span class="v2-authority-badge v2-authority-calibrated"
+          title="This {{ label }} is driven by a source-calibrated schedule and cannot be edited."
+          data-testid="authority-badge-calibrated-{{ label | lower | replace(' ', '-') }}">
+      &#128274; Calibrated schedule
+    </span>
+  {% elif mode == "UNRESOLVED" or mode == "UNAVAILABLE_UNRESOLVED" %}
+    <span class="v2-authority-badge v2-authority-unresolved"
+          title="Senior authority could not be resolved. This field is locked fail-closed."
+          data-testid="authority-badge-unresolved-{{ label | lower | replace(' ', '-') }}">
+      &#9888; Authority unavailable
+    </span>
+  {% elif mode == "FLAT" or mode == "FLAT_SCALAR" %}
+    <span class="v2-authority-badge v2-authority-flat"
+          title="Flat scalar — a single value applies for all periods."
+          data-testid="authority-badge-flat-{{ label | lower | replace(' ', '-') }}">
+      Flat scalar
+    </span>
+  {% elif mode == "FLAT_SCHEDULE" %}
+    <span class="v2-authority-badge v2-authority-flat"
+          title="Flat schedule — the same value applies uniformly across all periods."
+          data-testid="authority-badge-flat-schedule-{{ label | lower | replace(' ', '-') }}">
+      Flat schedule
+    </span>
+  {% endif %}
+{% endmacro %}
+
+{#
+  editability_badge(project_editable, pricing_mode, dscr_mode, authority_mode)
+  Renders the editability status row for a given field authority mode.
+  AUTHORITY and EDITABILITY are separate concepts:
+    - AUTHORITY: FLAT_SCALAR / FLAT_SCHEDULE / CALIBRATED / UNRESOLVED
+    - EDITABILITY: depends on project_editable AND authority mode
+  A FLAT-authority reference project is still read-only (project_editable=False).
+#}
+{% macro editability_row(project_editable, authority_mode) %}
+  {% if not project_editable %}
+    <span class="v2-editability-badge v2-editability-reference"
+          data-testid="editability-badge-reference">
+      Reference project — create a working copy to edit
+    </span>
+  {% elif authority_mode == "CALIBRATED" %}
+    <span class="v2-editability-badge v2-editability-locked"
+          data-testid="editability-badge-locked-calibrated">
+      &#128274; Locked — calibrated schedule
+    </span>
+  {% elif authority_mode == "UNRESOLVED" or authority_mode == "UNAVAILABLE_UNRESOLVED" %}
+    <span class="v2-editability-badge v2-editability-locked"
+          data-testid="editability-badge-locked-unresolved">
+      &#128274; Locked — authority unresolved
+    </span>
+  {% else %}
+    <span class="v2-editability-badge v2-editability-editable"
+          data-testid="editability-badge-editable">
+      Editable in this working copy
+    </span>
+  {% endif %}
+{% endmacro %}
+
+<div id="v2-sheet-senior-debt" data-sheet="debt"
+     data-fc-grid="senior_debt" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── D. Runtime state badge ────────────────────────────────────────── #}
+  <div id="debt-runtime-bar" class="v2-section-label" data-testid="debt-runtime-bar">
+    {% include "partials/_debt_runtime_bar.html" %}
+  </div>
+
+  {# ── A. Debt Assumptions ───────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-debt-assumptions">
+      A. Debt Assumptions
+    </summary>
+    <div class="v2-section-fields">
+
+      {#
+        R8 Authority Panel — communicates senior rate and DSCR authority state
+        truthfully before the fields are rendered.  This is a read-only
+        informational strip; it does not change any debt economics.
+      #}
+      <div class="v2-authority-panel" data-testid="debt-authority-panel">
+        {# AUTHORITY rows — what type of schedule governs each field #}
+        <div class="v2-authority-row">
+          <span class="v2-authority-label">Interest Rate Authority</span>
+          <span class="v2-authority-value" data-testid="interest-rate-authority-value">
+            {{ authority_badge(senior_pricing_mode, "interest rate") }}
+          </span>
+        </div>
+        <div class="v2-authority-row">
+          <span class="v2-authority-label">Interest Rate Editability</span>
+          <span class="v2-authority-value" data-testid="interest-rate-editability-value">
+            {{ editability_row(project_editable, senior_pricing_mode) }}
+          </span>
+        </div>
+        <div class="v2-authority-row">
+          <span class="v2-authority-label">DSCR Authority</span>
+          <span class="v2-authority-value" data-testid="dscr-authority-value">
+            {{ authority_badge(senior_dscr_mode, "DSCR") }}
+          </span>
+        </div>
+        <div class="v2-authority-row">
+          <span class="v2-authority-label">DSCR Editability</span>
+          <span class="v2-authority-value" data-testid="dscr-editability-value">
+            {{ editability_row(project_editable, senior_dscr_mode) }}
+          </span>
+        </div>
+      </div>
+
+      {% for f in debt_fields %}
+        {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                        hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
+      {% endfor %}
+
+    </div>
+  </details>
+
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary" id="nav-debt-additional">
+      Additional assumptions <span class="v2-future-tag" style="margin-left:.4rem">Planned inputs</span>
+    </summary>
+    <div class="v2-section-fields">
+      {{ placeholder_row("Base Rate") }}
+      {{ placeholder_row("Grace Period") }}
+      {{ placeholder_row("Repayment Profile") }}
+      {{ placeholder_row("DSRA (months)") }}
+    </div>
+  </details>
+
+  {# ── B. Runtime Debt Summary ───────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-debt-summary">
+      B. Senior Debt Summary
+    </summary>
+    <div class="v2-section-fields">
+
+      {% if debt_schedule is not none and runtime_summary is not none %}
+        <div class="v2-kpi-grid" data-testid="debt-kpi-bar"
+             style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;padding:.5rem 0;">
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-total-ds">
+            <span class="v2-kpi-label">Total Debt Service</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.total_senior_ds_keur is not none %}
+                {{ "%.0f"|format(runtime_summary.total_senior_ds_keur) }} kEUR
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-avg-dscr">
+            <span class="v2-kpi-label">Avg DSCR</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.avg_dscr is not none %}
+                {{ "%.2f"|format(runtime_summary.avg_dscr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-min-dscr">
+            <span class="v2-kpi-label">Min DSCR</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.min_dscr is not none %}
+                {{ "%.2f"|format(runtime_summary.min_dscr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-min-llcr">
+            <span class="v2-kpi-label">Min LLCR</span>
+            <span class="v2-kpi-value">
+              {% if debt_schedule.summary and debt_schedule.summary.min_llcr is not none %}
+                {{ "%.2f"|format(debt_schedule.summary.min_llcr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-lockup">
+            <span class="v2-kpi-label">Periods in Lock-up</span>
+            <span class="v2-kpi-value">
+              {% if debt_schedule.summary and debt_schedule.summary.periods_in_lockup is not none %}
+                {{ debt_schedule.summary.periods_in_lockup }}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="debt-pre-run-notice">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Run the model to generate the debt schedule.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── C. Debt Schedule table ────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary" id="nav-debt-schedule">
+      C. Debt Schedule
+    </summary>
+
+    {#
+      debt_operational_periods is prepared server-side in _build_debt_ctx().
+      Construction periods (is_operation=False) are excluded before this
+      template receives the list.  None means no runtime exists yet.
+    #}
+    {% if debt_operational_periods is not none %}
+      {% if debt_operational_periods %}
+        <div class="v2-schedule-scroll" data-testid="debt-schedule-table-wrapper">
+          <table class="v2-schedule-table" data-testid="debt-schedule-table">
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>Date</th>
+                <th class="v2-num">Balance (kEUR)</th>
+                <th class="v2-num">Principal (kEUR)</th>
+                <th class="v2-num">Interest (kEUR)</th>
+                <th class="v2-num">Debt Service (kEUR)</th>
+                <th class="v2-num">DSCR</th>
+                <th class="v2-num">DSRA Balance (kEUR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in debt_operational_periods %}
+              <tr data-testid="debt-schedule-row-{{ p.period }}">
+                <td>{{ p.period }}</td>
+                <td>{{ p.date }}</td>
+                <td class="v2-num">
+                  {% if p.senior_balance_keur is not none %}{{ "%.0f"|format(p.senior_balance_keur) }}{% else %}—{% endif %}
+                </td>
+                <td class="v2-num">
+                  {% if p.senior_principal_keur is not none %}{{ "%.0f"|format(p.senior_principal_keur) }}{% else %}—{% endif %}
+                </td>
+                <td class="v2-num">
+                  {% if p.senior_interest_keur is not none %}{{ "%.0f"|format(p.senior_interest_keur) }}{% else %}—{% endif %}
+                </td>
+                <td class="v2-num">
+                  {% if p.senior_ds_keur is not none %}{{ "%.0f"|format(p.senior_ds_keur) }}{% else %}—{% endif %}
+                </td>
+                <td class="v2-num">
+                  {% if p.dscr is not none %}{{ "%.2f"|format(p.dscr) }}{% else %}—{% endif %}
+                </td>
+                <td class="v2-num">
+                  {% if p.dsra_balance_keur is not none %}{{ "%.0f"|format(p.dsra_balance_keur) }}{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="debt-schedule-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">No operational periods in debt schedule.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="debt-schedule-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the debt schedule.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+</div>{# v2-sheet-senior-debt #}

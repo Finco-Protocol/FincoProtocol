@@ -1,0 +1,245 @@
+<!-- Project Browser: user-created projects followed by protected synthetic reference models. -->
+
+<div class="project-browser" id="project-browser">
+
+  <div class="pb-header">
+    <div class="pb-title">Projects</div>
+    <div class="pb-desc">Open a project to view, run, and export results.</div>
+    <button type="button" class="btn btn-ghost pb-close" onclick="closeProjectBrowser()">✕ Close</button>
+  </div>
+
+  <div class="pb-section active" id="pb-my-projects">
+    <div class="pb-section-title">My Projects</div>
+    {% if my_project_cards %}
+    <div class="pb-grid">
+      {% for item in my_project_cards %}
+      <div class="pb-card pb-card--mine {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--{% if item.project_type == 'Wind' %}wind{% elif item.project_type == 'Solar' %}solar{% else %}project{% endif %}">
+          {{ item.project_type or 'Project' }}
+        </div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.name }}</div>
+          <div class="pb-card-meta">
+            {{ item.project_type }}{% if item.country %} · {{ item.country }}{% endif %}{% if item.capacity_mw %} · {{ item.capacity_mw }} MW{% endif %}
+          </div>
+          <div class="pb-card-saved">Last saved {{ item.last_saved }}</div>
+        </div>
+        <div class="pb-card-badges">
+          <span class="pb-validation-badge pb-validation-badge--{{ item.validation.tone }}">{{ item.validation.label }}</span>
+          {% if active_project_code == item.project_code %}
+          <div class="pb-card-active-badge">● Active</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pb-empty">No projects yet. Create a new project to get started.</div>
+    {% endif %}
+  </div>
+
+  <div class="pb-section active" id="pb-example-projects">
+    <div class="pb-section-title">Example Projects</div>
+    <div class="pb-section-subtitle">Reference projects you can open, explore, and copy. Always available.</div>
+    {% if example_project_cards %}
+    <div class="pb-grid">
+      {% for item in example_project_cards %}
+      <div class="pb-card pb-card--example {% if active_project_code == item.project_code %}pb-card--active{% endif %}"
+           onclick="switchToProject('{{ item.project_code }}')"
+           role="button"
+           tabindex="0"
+           onkeydown="if(event.key==='Enter'||event.key===' ') switchToProject('{{ item.project_code }}')">
+        <div class="pb-card-icon pb-card-icon--{% if item.project_type == 'Wind' %}wind{% elif item.project_type == 'Solar' %}solar{% else %}project{% endif %}">
+          {{ item.project_type or 'Project' }}
+        </div>
+        <div class="pb-card-info">
+          <div class="pb-card-name">{{ item.name }}</div>
+          <div class="pb-card-meta">
+            {{ item.project_type }}{% if item.country %} · {{ item.country }}{% endif %}{% if item.capacity_mw %} · {{ item.capacity_mw }} MW{% endif %}
+          </div>
+        </div>
+        <div class="pb-card-badges">
+          <span class="pb-validation-badge pb-validation-badge--{{ item.validation.tone }}">{{ item.validation.label }}</span>
+          {% if active_project_code == item.project_code %}
+          <div class="pb-card-active-badge">● Active</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="pb-empty">No example projects available.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+<style>
+/* ── Project Browser container (shown/hidden via JS) ───────────────────── */
+#project-browser-container {
+  width: 100%;
+}
+
+/* ── Main browser panel ─────────────────────────────────────────────────── */
+.project-browser {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.pb-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.pb-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+.pb-desc {
+  font-size: 0.78rem;
+  color: var(--muted);
+  flex: 1;
+}
+.pb-close {
+  margin-left: auto;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+.pb-section { margin-bottom: 1.5rem; }
+.pb-section:last-child { margin-bottom: 0; }
+.pb-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.25rem;
+}
+.pb-section-subtitle {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+/* ── Project grid ───────────────────────────────────────────────────────── */
+.pb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* ── Project card ───────────────────────────────────────────────────────── */
+.pb-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  position: relative;
+}
+.pb-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(26,86,219,0.08);
+  background: var(--surface-3);
+}
+.pb-card--active {
+  border-color: var(--primary);
+  background: rgba(26,86,219,0.06);
+}
+.pb-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.pb-card-icon--wind  { background: rgba(0,112,200,0.15); color: #5fa8ff; }
+.pb-card-icon--solar { background: rgba(255,183,0,0.15); color: #ffd060; }
+.pb-card-icon--project { background: rgba(0,180,120,0.12); color: #40cc88; }
+
+.pb-card-info { flex: 1; min-width: 0; }
+.pb-card-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-card-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.15rem;
+}
+.pb-card-saved {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.pb-card-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.pb-validation-badge {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pb-validation-badge--pass { background: rgba(0,180,120,0.15); color: #2eb87c; }
+.pb-validation-badge--warn { background: rgba(255,183,0,0.15); color: #cf9b1f; }
+.pb-validation-badge--fail { background: rgba(220,60,60,0.15); color: #d6473f; }
+
+.pb-card-active-badge {
+  font-size: 0.68rem;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.pb-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+}
+</style>
+
+<script>
+  function closeProjectBrowser() {
+    var el = document.getElementById('project-browser-container');
+    if (el) el.innerHTML = '';
+  }
+
+  function switchToProject(projectCode) {
+    window.location.href = '/?project=' + projectCode;
+  }
+</script>

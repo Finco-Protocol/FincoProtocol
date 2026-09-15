@@ -1,0 +1,6 @@
+"""Offline construction templates."""
+
+from domain.construction.templates.generic_solar_reference import build_generic_solar_reference_construction_config
+from domain.construction.templates.generic_wind_reference import build_generic_wind_reference_construction_config
+
+__all__ = ["build_generic_solar_reference_construction_config", "build_generic_wind_reference_construction_config"]

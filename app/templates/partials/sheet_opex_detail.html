@@ -1,0 +1,789 @@
+<!-- Sheet: OPEX Detail — {{ project_ctx.name }} -->
+<!-- Phase 21 v3: UX polish — year range selector, sticky cols, collapse/expand, summary strip -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">📊 OPEX Detail</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+{# ── Readonly notice ───────────────────────────────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--opex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Protected original — read only</strong>
+    <p>This is a protected original. Use <strong>Duplicate / Save As</strong> to create
+    your own copy, then edit OPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      Values shown are for reference; line editing is deferred.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Preview-only governance note (originally C2-PR18; copy simplified by
+   Product Gap PR4 for Save/Preview consistency clarity) ──────────────────
+   Plain-language note: clarifies that OPEX line edits update the totals
+   on this sheet and the live preview immediately, but Save and Run use
+   the saved model inputs, not these on-screen edits. Appears ONLY on
+   this sheet (OPEX detail), not on CAPEX/Revenue/Overview. See
+   docs/C2_PR18_OPEX_PREVIEW_ONLY_GOVERNANCE.md and
+   docs/PRODUCT_GAP_PR2_OPEX_EXCEL_EDITING.md. #}
+<div class="opex-preview-only-note" id="opex-preview-only-note" role="note">
+  <span class="opex-preview-only-note__icon" aria-hidden="true">ℹ️</span>
+  <span class="opex-preview-only-note__text">
+    OPEX line edits are preview-only for now: they update the totals on this
+    sheet and the live preview right away, but are not saved yet.
+    Run uses the saved model inputs.
+  </span>
+</div>
+
+{# ── Summary strip ───────────────────────────────────────────────────────────── #}
+<div class="opex-summary-strip" id="opex-summary-strip">
+  <div class="opex-summary-card">
+    <div class="opex-summary-card__label">Total OPEX Y1</div>
+    <div class="opex-summary-card__value">{{ "%.1f"|format(project_ctx.opex_y1_total_keur or 0) }}</div>
+    <div class="opex-summary-card__unit">kEUR</div>
+  </div>
+  {% set final_y = project_ctx.horizon_years if project_ctx.horizon_years else 25 %}
+  <div class="opex-summary-card">
+    <div class="opex-summary-card__label">Total OPEX Y{{ final_y }}</div>
+    {# Note: Y{{ final_y }} total rendered via JS from rendered cells #}
+    <div class="opex-summary-card__value" id="opex-summary-final">—</div>
+    <div class="opex-summary-card__unit">kEUR</div>
+  </div>
+  <div class="opex-summary-card">
+    <div class="opex-summary-card__label">Contingency</div>
+    <div class="opex-summary-card__value">{{ project_ctx.opex_contingency_pct|default(0)|int }}%</div>
+    <div class="opex-summary-card__unit">{{ project_ctx.opex_contingency_method|default("none") }}</div>
+  </div>
+  <div class="opex-summary-card">
+    <div class="opex-summary-card__label">Categories</div>
+    <div class="opex-summary-card__value">{{ project_ctx.opex_detail_items|length }}</div>
+    <div class="opex-summary-card__unit">B.01–B.13</div>
+  </div>
+</div>
+
+{# ── Grid toolbar: year range + display mode + collapse controls ─────────────── #}
+<div class="opex-grid-toolbar">
+  <div class="opex-year-range" role="group" aria-label="Year range">
+    <span class="opex-toolbar-label">Years:</span>
+    <button class="opex-yr-btn" data-yrange="1-8" onclick="opexSetYearRange('1-8')">Y1–Y8</button>
+    <button class="opex-yr-btn" data-yrange="9-16" onclick="opexSetYearRange('9-16')">Y9–Y16</button>
+    <button class="opex-yr-btn" data-yrange="17-24" onclick="opexSetYearRange('17-24')">Y17–Y24</button>
+    {% set max_y = project_ctx.horizon_years|default(25) %}
+    <button class="opex-yr-btn" data-yrange="{{ max_y - 5 }}-{{ max_y }}" onclick="opexSetYearRange('{{ max_y - 5 }}-{{ max_y }}')">Y{{ max_y - 5 }}–Y{{ max_y }}</button>
+    <button class="opex-yr-btn" data-yrange="all" onclick="opexSetYearRange('all')">All</button>
+  </div>
+
+  <div class="opex-display-mode" role="group" aria-label="Display mode">
+    <span class="opex-toolbar-label">Show:</span>
+    <button class="opex-mode-btn active" data-mode="values" onclick="opexSetDisplayMode('values')">Values</button>
+    <button class="opex-mode-btn" data-mode="flags" onclick="opexSetDisplayMode('flags')">Active flags</button>
+  </div>
+
+  <div class="opex-collapse-controls">
+    <button class="opex-collapse-btn" onclick="opexCollapseAll()">Collapse all</button>
+    <button class="opex-collapse-btn" onclick="opexExpandAll()">Expand all</button>
+  </div>
+</div>
+
+{# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
+<div class="fc-opex-grid-wrapper sheet-card">
+
+  <div class="section-header">
+    OPEX Schedule — kEUR (Y1–Y{{ project_ctx.horizon_years|default(25) }}) — Display Reference
+  </div>
+
+  {# ── Grid ──────────────────────────────────────────────────────────────────── #}
+  <div class="fc-grid-scroll-wrapper" id="opex-grid-scroll"
+       data-fc-grid="opex" data-fc-scroll-container="true">
+    <table class="fc-grid fc-opex-detail-grid" id="opex-detail-grid"
+           data-yrange="1-8" data-display="values">
+
+      {# ── Sticky Header ────────────────────────────────────────────────────── #}
+      <thead>
+        {# Row 1: category headers with year spans #}
+        <tr class="fc-grid-header">
+          <th class="fc-th fc-grid-col-label fc-th--sticky" data-col="1" rowspan="2">Line Item</th>
+          <th class="fc-th fc-th--code fc-th--sticky" data-col="2" rowspan="2">Code</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="3" rowspan="2">Budget<br/>kEUR</th>
+          <th class="fc-th fc-th--pct" data-col="4" rowspan="2">Infl.<br/>%</th>
+          <th class="fc-th fc-th--pct" data-col="5" rowspan="2">WHT<br/>%</th>
+          {# Year columns — data-yr marks which range they belong to #}
+          {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+            {% if y <= 8 %} {% set yr_class = "yr-early" %}
+            {% elif y <= 16 %} {% set yr_class = "yr-mid" %}
+            {% elif y <= 24 %} {% set yr_class = "yr-late" %}
+            {% else %} {% set yr_class = "yr-end" %}
+            {% endif %}
+            <th class="fc-th fc-th--year fc-th--sticky {{ yr_class }}"
+                data-col="{{ 5 + y }}"
+                data-yr="{{ y }}"
+                data-yrange-1-8="{{ 'true' if y <= 8 else 'false' }}"
+                data-yrange-9-16="{{ 'true' if y >= 9 and y <= 16 else 'false' }}"
+                data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
+                data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
+                data-yrange-all="true">Y{{ y }}</th>
+          {% endfor %}
+          <th class="fc-th fc-th--notes" data-col="{{ 6 + project_ctx.horizon_years|default(25) }}" rowspan="2">Notes</th>
+        </tr>
+        {# Row 2: year number sub-headers #}
+        <tr class="fc-grid-header fc-grid-header--sub">
+          {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+            {% if y <= 8 %} {% set yr_class = "yr-early" %}
+            {% elif y <= 16 %} {% set yr_class = "yr-mid" %}
+            {% elif y <= 24 %} {% set yr_class = "yr-late" %}
+            {% else %} {% set yr_class = "yr-end" %}
+            {% endif %}
+            <th class="fc-th fc-th--year-num {{ yr_class }}"
+                data-yr="{{ y }}"
+                data-yrange-1-8="{{ 'true' if y <= 8 else 'false' }}"
+                data-yrange-9-16="{{ 'true' if y >= 9 and y <= 16 else 'false' }}"
+                data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
+                data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
+                data-yrange-all="true">#{{ y }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+
+{# ═══════════════════════════════════════════════════════════════════════════════
+   CATEGORY + CHILD ROWS
+   ═══════════════════════════════════════════════════════════════════════════════ #}
+
+{% for cat in project_ctx.opex_detail_items %}
+  {#
+    Category total row — clickable for collapse/expand.
+    data-cat-index tracks which category this is (0-based).
+  #}
+  <tbody class="fc-cat-tbody" id="fc-cat-{{ loop.index0 }}" data-cat-index="{{ loop.index0 }}">
+    <tr class="fc-section-band fc-cat-row"
+        data-cat="{{ loop.index0 }}"
+        data-fc-row="true"
+        onclick="opexToggleCategory({{ loop.index0 }})"
+        title="Click to collapse/expand">
+      <td class="fc-section-band__label" colspan="5">
+        <span class="fc-cat-toggle-icon" id="fc-cat-icon-{{ loop.index0 }}">
+          {# Expanded: ▼ ; Collapsed: ▶ #}
+          {% if loop.index0 >= 2 %}▶{% else %}▼{% endif %}
+        </span>
+        <span class="fc-section-band__code">{{ cat.code }}</span>
+        <span class="fc-cat-name">{{ cat.name }}</span>
+        {% if cat.is_contingency %}
+          <span class="badge badge-contingency">derived: {{ (cat.contingency_pct or 0)|int }}% × non-contingency OPEX</span>
+        {% endif %}
+      </td>
+      {# Year totals — always visible, filtered by year range #}
+      {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+        {% if y <= 8 %} {% set yr_class = "yr-early" %}
+        {% elif y <= 16 %} {% set yr_class = "yr-mid" %}
+        {% elif y <= 24 %} {% set yr_class = "yr-late" %}
+        {% else %} {% set yr_class = "yr-end" %}
+        {% endif %}
+        {% set y_val = (cat.yearly_totals[y-1] if cat.yearly_totals else 0) or 0 %}
+        <td class="fc-cell fc-cell--amount fc-cell--cat-total {{ yr_class }}
+                   {% if cat.is_contingency %}fc-cell--contingency{% endif %}
+                   {% if y <= 8 %}yr-show{% else %}yr-hide{% endif %}"
+            data-yr="{{ y }}"
+            data-yrange-1-8="{{ 'true' if y <= 8 else 'false' }}"
+            data-yrange-9-16="{{ 'true' if y >= 9 and y <= 16 else 'false' }}"
+            data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
+            data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
+            data-yrange-all="true"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ cat.code }}.Y{{ y }}.subtotal"
+            data-fc-kind="subtotal"
+            data-fc-editable="false"
+            data-fc-raw="{{ y_val }}"
+            {% if y == 1 %}data-opex-row="cat-subtotal-{{ cat.code }}" data-opex-contingency="{{ 'true' if cat.is_contingency else 'false' }}"{% endif %}>
+          {{ "{:,.2f}".format(y_val) }}
+        </td>
+      {% endfor %}
+      <td class="fc-cell fc-cell--notes">
+        {% if cat.is_contingency %}
+          <span class="fc-cell--muted">formula: {{ (cat.contingency_pct or 0)|int }}% × sum(non-contingency Y1)</span>
+        {% else %}
+          <span class="fc-cell--muted">sum of child lines</span>
+        {% endif %}
+      </td>
+    </tr>
+
+    {# ── Child rows (only visible when category is expanded) ── #}
+    {% set cat_index = loop.index0 %}
+    {% for child in cat.children %}
+      <tr class="fc-data-row fc-data-row--child fc-cat-child"
+          data-cat="{{ cat_index }}"
+          data-child-index="{{ loop.index }}"
+          data-fc-row="true">
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--indented fc-th--sticky" data-col="1">
+          <span class="fc-child-indicator"></span>
+          {{ child.name }}
+        </td>
+        <td class="fc-cell fc-cell--code fc-th--sticky" data-col="2">{{ child.code }}</td>
+
+        {# Budget — C2-PR17: editable for non-contingency rows on
+           user projects, mirroring sheet_capex.html's editability
+           convention exactly. Preview-only: there is no wired-up
+           server-side save path for per-line OPEX budget values
+           yet (see docs/C2_PR17_OPEX_LINE_EDITABILITY_BRIDGE.md),
+           so the input deliberately carries no `name=` attribute
+           and is not submitted by the Save form. #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky {% if is_user_project and not cat.is_contingency %}fc-cell-input{% endif %}" data-col="3"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.budget"
+            data-fc-kind="amount"
+            data-fc-editable="{{ 'true' if (is_user_project and not cat.is_contingency) else 'false' }}"
+            data-fc-raw="{{ child.budget_y1_keur or 0 }}"
+            data-opex-cat="{{ cat.code }}">
+          {% if is_user_project and not cat.is_contingency %}
+            <input type="number" step="any" min="0"
+                   value="{{ "%.2f"|format(child.budget_y1_keur or 0) }}"
+                   class="fc-input-native"
+                   aria-label="OPEX budget for {{ child.name }}" />
+          {% else %}
+            <span class="fc-cell-runtime">{{ "{:,.2f}".format(child.budget_y1_keur or 0) }}</span>
+          {% endif %}
+        </td>
+
+        {# Inflation % #}
+        <td class="fc-cell fc-cell--pct" data-col="4"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.inflation"
+            data-fc-kind="amount"
+            data-fc-editable="false"
+            data-fc-raw="{{ child.inflation_pct or 0 }}">
+          {% if not child.inflation_pct %}
+            <span class="fc-cell--muted">flat</span>
+          {% else %}
+            <span class="fc-cell-runtime">{{ "%.1f"|format(child.inflation_pct) }}%</span>
+          {% endif %}
+        </td>
+
+        {# WHT % #}
+        <td class="fc-cell fc-cell--pct" data-col="5"
+            data-fc-cell="true"
+            data-fc-addr="opex!{{ child.code }}.wht"
+            data-fc-kind="amount"
+            data-fc-editable="false"
+            data-fc-raw="{{ child.wth_rate or 0 }}">
+          {% if child.wth_rate and child.wth_rate > 0 %}
+            <span class="fc-cell-runtime">{{ "%.1f"|format(child.wth_rate) }}%</span>
+          {% else %}
+            <span class="fc-cell--muted">0%</span>
+          {% endif %}
+        </td>
+
+        {# Year columns — show value or flag based on display mode #}
+        {% for y in range(1, project_ctx.horizon_years|default(25) + 1) %}
+          {% if y <= 8 %} {% set yr_class = "yr-early" %}
+          {% elif y <= 16 %} {% set yr_class = "yr-mid" %}
+          {% elif y <= 24 %} {% set yr_class = "yr-late" %}
+          {% else %} {% set yr_class = "yr-end" %}
+          {% endif %}
+          {% set active = child.active_flags[y-1] if child.active_flags else 1 %}
+          {% set y_val = (child.yearly_values[y-1] if child.yearly_values else 0) or 0 %}
+          <td class="fc-cell fc-cell--year {{ yr_class }}
+                     fc-cell--val {% if y <= 8 %}yr-show{% else %}yr-hide{% endif %}"
+              data-yr="{{ y }}"
+              data-yrange-1-8="{{ 'true' if y <= 8 else 'false' }}"
+              data-yrange-9-16="{{ 'true' if y >= 9 and y <= 16 else 'false' }}"
+              data-yrange-17-24="{{ 'true' if y >= 17 and y <= 24 else 'false' }}"
+              data-yrange-{{ max_y - 5 }}-{{ max_y }}="{{ 'true' if y >= max_y - 5 else 'false' }}"
+              data-yrange-all="true"
+              data-active="{{ active }}"
+          data-cat="{{ cat_index }}"
+              data-fc-cell="true"
+              data-fc-addr="opex!{{ child.code }}.Y{{ y }}"
+              data-fc-kind="amount"
+              data-fc-editable="false"
+              data-fc-raw="{{ y_val }}"
+              title="{{ 'Active' if active else 'Inactive' }}{% if active and y_val > 0 %} — {{ "%.2f"|format(y_val) }} kEUR{% endif %}">
+            <span class="fc-val">{{ "{:,.2f}".format(y_val) }}</span>
+            <span class="fc-flag" style="display:none">{{ 1 if active else 0 }}</span>
+          </td>
+        {% endfor %}
+
+        {# Notes #}
+        <td class="fc-cell fc-cell--notes">
+          {% if child.notes %}
+            <span class="fc-cell--muted">{{ child.notes }}</span>
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+{% endfor %}
+
+{# ═══════════════════════════════════════════════════════════════════════════════
+   OPERATING SUBTOTAL + TOTAL OPEX (Y1) — mirrors sheet_capex.html's
+   hard-capex-total / grand-total rows. Operating Subtotal = sum of
+   non-contingency category subtotals (Y1). Total OPEX = Operating
+   Subtotal + contingency category subtotal(s) (Y1), where the
+   contingency figure is always the backend-computed, read-only value
+   already rendered for that category — never recomputed client-side.
+   See docs/PRODUCT_GAP_PR2_OPEX_EXCEL_EDITING.md for the exact rule.
+   ═══════════════════════════════════════════════════════════════════════════════ #}
+{% if project_ctx.opex_detail_items %}
+  {% set ns = namespace(operating_subtotal=0, contingency_total=0) %}
+  {% for cat in project_ctx.opex_detail_items %}
+    {% set y1 = cat.yearly_totals[0] if cat.yearly_totals else 0 %}
+    {% if cat.is_contingency %}
+      {% set ns.contingency_total = ns.contingency_total + y1 %}
+    {% else %}
+      {% set ns.operating_subtotal = ns.operating_subtotal + y1 %}
+    {% endif %}
+  {% endfor %}
+  <tbody>
+    <tr class="fc-section-band fc-opex-total-row" data-fc-row="true">
+      <td class="fc-section-band__label" colspan="5">Operating Subtotal (Y1, non-contingency)</td>
+      <td class="fc-cell fc-cell--amount fc-cell--cat-total"
+          data-fc-cell="true"
+          data-fc-addr="opex!operating-subtotal.Y1"
+          data-fc-kind="subtotal"
+          data-fc-editable="false"
+          data-fc-raw="{{ ns.operating_subtotal }}"
+          data-opex-row="operating-subtotal">
+        {{ "{:,.2f}".format(ns.operating_subtotal) }}
+      </td>
+      <td class="fc-cell fc-cell--notes"><span class="fc-cell--muted">sum of non-contingency category subtotals</span></td>
+    </tr>
+    <tr class="fc-section-band fc-opex-total-row fc-grand-total" data-fc-row="true">
+      <td class="fc-section-band__label" colspan="5">Total OPEX (Y1)</td>
+      <td class="fc-cell fc-cell--amount fc-cell--cat-total"
+          data-fc-cell="true"
+          data-fc-addr="opex!grand-total.Y1"
+          data-fc-kind="subtotal"
+          data-fc-editable="false"
+          data-fc-raw="{{ ns.operating_subtotal + ns.contingency_total }}"
+          data-opex-row="grand-total">
+        {{ "{:,.2f}".format(ns.operating_subtotal + ns.contingency_total) }}
+      </td>
+      <td class="fc-cell fc-cell--notes"><span class="fc-cell--muted">Operating Subtotal + contingency (backend-computed, frozen)</span></td>
+    </tr>
+  </tbody>
+{% endif %}
+
+{# ── No detail items ──────────────────────────────────────────────────────────── #}
+{% if not project_ctx.opex_detail_items %}
+  <tbody>
+    <tr>
+      <td colspan="{{ 7 + (project_ctx.horizon_years|default(25)) }}" class="fc-cell fc-cell--notes">
+        <span class="fc-cell--muted">No detailed OPEX items available for this project.</span>
+      </td>
+    </tr>
+  </tbody>
+{% endif %}
+
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Legend ─────────────────────────────────────────────────────────────────── #}
+  <div class="fc-opex-legend">
+    <span class="badge badge-contingency">contingency</span> formula-derived
+    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> cost line
+    <span class="fc-opex-legend__note">Click a category to collapse / expand.</span>
+  </div>
+
+  {# ── OPEX Summary (from flat view — for reference) ──────────────────────────────── #}
+  {% if project_ctx.opex_items|default(None) %}
+  {% with %}
+  {% set opex_summary_items = project_ctx.opex_items %}
+  <details class="opex-legacy-summary">
+    <summary class="opex-legacy-summary__toggle">
+      📋 OPEX Summary (legacy flat view — {{ opex_summary_items|length }} lines)
+    </summary>
+    <div class="fc-grid-wrapper" style="margin-top:1rem;">
+      <table class="fc-grid">
+        <thead>
+          <tr class="fc-grid-header">
+            <th class="fc-th">Line Item</th>
+            <th class="fc-th fc-th--code">Code</th>
+            <th class="fc-th fc-th--amount">Y1 (kEUR)</th>
+            <th class="fc-th">Unit</th>
+            <th class="fc-th">Fixed / Variable</th>
+            <th class="fc-th">Recurring / One-off</th>
+            <th class="fc-th fc-th--amount">Escal. %</th>
+            <th class="fc-th fc-th--num">Start</th>
+            <th class="fc-th fc-th--num">End</th>
+            <th class="fc-th">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in opex_summary_items %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.2f"|format(item.y1_keur or 0) }}</td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.fixed_variable }}</td>
+            <td class="fc-cell">{{ item.recurring_oneoff }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="fc-grand-total">
+            <td class="fc-cell fc-cell--label fc-grand-total__label" colspan="2">Total OPEX (Y1)</td>
+            <td class="fc-total-cell fc-total-value">{{ "%.2f"|format(project_ctx.opex_y1_total_keur|default(0)) }}</td>
+            <td colspan="8"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endwith %}
+  {% endif %}
+
+</div>
+
+<style>
+  /* ── Preview-only governance note ──────────────────────────────────────── */
+  .opex-preview-only-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    background: #fff8e6;
+    border: 1px solid #f0d999;
+    border-radius: var(--radius-md);
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.82rem;
+    color: #6b5100;
+  }
+  .opex-preview-only-note__icon { flex: 0 0 auto; }
+  .opex-preview-only-note__text { flex: 1 1 auto; line-height: 1.4; }
+
+  /* ── Summary strip ─────────────────────────────────────────────────────── */
+  .opex-summary-strip {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .opex-summary-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    min-width: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .opex-summary-card__label {
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .opex-summary-card__value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .opex-summary-card__unit {
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  /* ── Toolbar ────────────────────────────────────────────────────────────── */
+  .opex-grid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .opex-toolbar-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .opex-year-range,
+  .opex-display-mode,
+  .opex-collapse-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .opex-yr-btn,
+  .opex-mode-btn,
+  .opex-collapse-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .opex-yr-btn:hover,
+  .opex-mode-btn:hover,
+  .opex-collapse-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .opex-yr-btn.active,
+  .opex-mode-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  /* ── Grid wrapper ───────────────────────────────────────────────────────── */
+  .fc-opex-grid-wrapper { margin-bottom: 1rem; }
+  .fc-grid-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    position: relative;
+  }
+
+  /* ── Table ──────────────────────────────────────────────────────────────── */
+  .fc-opex-detail-grid {
+    table-layout: fixed;
+    /* Year columns bumped to 72px for spreadsheet readability */
+    min-width: calc(180px + 70px + 90px + 55px + 55px + {{ project_ctx.horizon_years|default(25) }} * 72px + 150px);
+  }
+  .fc-opex-detail-grid .fc-grid-col-label { width: 180px; min-width: 180px; }
+  .fc-opex-detail-grid .fc-th--code { width: 70px; min-width: 70px; }
+  .fc-opex-detail-grid .fc-th--amount { width: 90px; min-width: 90px; }
+  .fc-opex-detail-grid .fc-th--pct { width: 55px; min-width: 55px; }
+  /* Year columns: 72px — enough for 5-digit kEUR values + decimals */
+  .fc-opex-detail-grid .fc-th--year { width: 72px; min-width: 72px; font-size: 0.72rem; }
+  .fc-opex-detail-grid .fc-th--year-num { font-size: 0.65rem; color: #888; }
+  .fc-opex-detail-grid .fc-th--notes { min-width: 150px; }
+  .fc-opex-detail-grid .fc-th { text-align: center; }
+
+  /* ── Sticky columns (header cells) ──────────────────────────────────────── */
+  .fc-th--sticky {
+    position: sticky;
+    z-index: 20;
+    background: var(--surface);
+  }
+  .fc-th--sticky[data-col="1"] { left: 0; z-index: 22; }
+  .fc-th--sticky[data-col="2"] { left: 180px; z-index: 21; }
+  .fc-th--sticky[data-col="3"] { left: 250px; z-index: 21; }
+
+  /* ── Sticky body cells (data-col on td) — explicit left required ─────────── */
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="1"] {
+    position: sticky;
+    left: 0;
+    z-index: 12;
+    background: var(--surface);
+  }
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="2"] {
+    position: sticky;
+    left: 180px;
+    z-index: 11;
+    background: var(--surface);
+  }
+  .fc-opex-detail-grid td.fc-th--sticky[data-col="3"] {
+    position: sticky;
+    left: 250px;
+    z-index: 11;
+    background: var(--surface);
+  }
+
+  /* ── Sticky category header row (td in tbody) must not overlap year cells ─── */
+
+
+  /* ── Category rows ──────────────────────────────────────────────────────── */
+  .fc-cat-row { cursor: pointer; user-select: none; background: var(--surface-2); }
+  .fc-cat-row:hover { background: rgba(26,86,219,0.08); }
+  .fc-cat-toggle-icon { margin-right: 0.4rem; font-size: 0.75rem; color: var(--primary); }
+  .fc-cat-row .fc-section-band__label { font-weight: 700; }
+  .fc-cat-row .fc-cat-name { text-transform: uppercase; letter-spacing: 0.03em; }
+  .fc-cat-row td.fc-cell--cat-total { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+
+  /* ── Spreadsheet feel: zebra striping on child rows ───────────────────────── */
+  .fc-cat-child:nth-of-type(even) { background: var(--surface-2); }
+  .fc-cat-child:nth-of-type(even) td.fc-th--sticky { background: var(--surface-2); }
+
+  /* ── Year-group banding — distinguishes Y1-8 / Y9-16 / Y17-24 / tail ─────── */
+  th.yr-early, td.yr-early { background-color: rgba(26,86,219,0.03); }
+  th.yr-mid, td.yr-mid { background-color: rgba(26,86,219,0.00); }
+  th.yr-late, td.yr-late { background-color: rgba(26,86,219,0.03); }
+  th.yr-end, td.yr-end { background-color: rgba(184,92,0,0.04); }
+  th.fc-th--year:first-of-type, td.fc-cell--year:first-of-type { border-left: 1px solid var(--border); }
+
+  /* ── Category collapse ──────────────────────────────────────────────────── */
+  .fc-cat-tbody--collapsed .fc-cat-child { display: none; }
+  .fc-cat-tbody--collapsed .fc-cat-row { opacity: 0.8; }
+
+  /* ── Year range filter ──────────────────────────────────────────────────── */
+  .yr-hide { display: none; }
+  .yr-show { display: table-cell; }
+
+  /* ── Display mode toggle ────────────────────────────────────────────────── */
+  .fc-opex-detail-grid[data-display="flags"] .fc-cell--val { display: none; }
+  .fc-opex-detail-grid[data-display="flags"] .fc-cell--year { text-align: center; }
+  .fc-opex-detail-grid[data-display="flags"] .fc-flag { display: inline; }
+  .fc-opex-detail-grid[data-display="values"] .fc-cell--val { display: inline; }
+  .fc-opex-detail-grid[data-display="values"] .fc-flag { display: none; }
+
+  /* ── Cell styles ─────────────────────────────────────────────────────────── */
+  /* Base numeric cell — right-aligned, tabular, no overflow */
+  .fc-cell--amount,
+  .fc-cell--year,
+  .fc-cell--num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 6px;
+  }
+  /* Category total row — same numeric treatment */
+  .fc-cell--cat-total {
+    text-align: right;
+    font-weight: 600;
+    background: #f8f9fa;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 6px;
+  }
+  .fc-cell--contingency { color: #b85c00; font-style: italic; }
+  .fc-cell--inactive-year { color: #ccc; }
+  .fc-cell--year {
+    font-size: 0.78rem;
+    /* inherits .fc-cell--year from base numeric above */
+  }
+  /* Percentage cells — center-aligned, tabular, compact */
+  .fc-cell--pct {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    padding-right: 4px;
+  }
+  .fc-data-row--child .fc-grid-col-label { padding-left: 2.2rem; }
+  .fc-child-indicator::before { content: "└ "; color: #bbb; font-size: 0.85em; }
+  .fc-cell--indented { padding-left: 2.2rem; }
+  .fc-cell--muted { color: #999; font-style: italic; }
+
+  /* ── Legend / legacy ────────────────────────────────────────────────────── */
+  .fc-opex-legend {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: #666;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-top: 1px solid #eee;
+  }
+  .fc-opex-legend__note { color: #999; margin-left: 0.25rem; }
+  .opex-legacy-summary { margin-top: 1rem; border-top: 1px dashed #ccc; padding-top: 0.5rem; }
+  .opex-legacy-summary__toggle { cursor: pointer; font-size: 0.85rem; color: #666; padding: 0.25rem 0; }
+  .opex-legacy-summary__toggle:hover { color: #333; }
+  .badge-factory { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-contingency { background: #fff3cd; color: #856404; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; margin-left: 0.5rem; }
+  .badge-preview { background: #d1e7dd; color: #0f5132; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
+</style>
+
+<script>
+  /* ── Year range selector ───────────────────────────────────────────────── */
+  function opexSetYearRange(range) {
+    var grid = document.getElementById('opex-detail-grid');
+    if (!grid) return;
+    var allCells = grid.querySelectorAll('[data-yr]');
+    allCells.forEach(function(cell) {
+      var show = false;
+      if (range === 'all') {
+        show = cell.getAttribute('data-yrange-all') === 'true';
+      } else {
+        show = cell.getAttribute('data-yrange-' + range) === 'true';
+      }
+      if (show) {
+        cell.classList.remove('yr-hide');
+        cell.classList.add('yr-show');
+      } else {
+        cell.classList.add('yr-hide');
+        cell.classList.remove('yr-show');
+      }
+    });
+    // Update active button
+    grid.setAttribute('data-yrange', range);
+    document.querySelectorAll('.opex-yr-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-yrange') === range);
+    });
+  }
+
+  /* ── Display mode toggle ───────────────────────────────────────────────── */
+  function opexSetDisplayMode(mode) {
+    var grid = document.getElementById('opex-detail-grid');
+    if (!grid) return;
+    grid.setAttribute('data-display', mode);
+    document.querySelectorAll('.opex-mode-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+    });
+  }
+
+  /* ── Category collapse/expand ──────────────────────────────────────────── */
+  function opexToggleCategory(catIndex) {
+    var tbody = document.getElementById('fc-cat-' + catIndex);
+    if (!tbody) return;
+    var icon = document.getElementById('fc-cat-icon-' + catIndex);
+    var isCollapsed = tbody.classList.contains('fc-cat-tbody--collapsed');
+    if (isCollapsed) {
+      tbody.classList.remove('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▼';
+    } else {
+      tbody.classList.add('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▶';
+    }
+  }
+
+  function opexExpandAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.remove('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▼';
+    });
+  }
+
+  function opexCollapseAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.add('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▶';
+    });
+  }
+
+  /* ── Init: set default range Y1-Y8, collapse all except first 2 ─────────── */
+  document.addEventListener('DOMContentLoaded', function() {
+    opexSetYearRange('1-8');
+    // First 2 categories start expanded (rows visible)
+    // Others already collapsed via CSS class on tbodies + icon state
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb, i) {
+      if (i >= 2) {
+        tb.classList.add('fc-cat-tbody--collapsed');
+        var ic = document.getElementById('fc-cat-icon-' + i);
+        if (ic) ic.textContent = '▶';
+      }
+    });
+  });
+</script>

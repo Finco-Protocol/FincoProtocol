@@ -1,0 +1,17 @@
+<div class="scenario-message">
+  {{ message or ("Loaded " ~ record.scenario_name ~ ". The form has been refreshed with the saved snapshot.") }}
+</div>
+<script>
+  (function() {
+    var snapshot = {{ record.snapshot | tojson }};
+    if (window.applyScenarioSnapshot) {
+      window.applyScenarioSnapshot(snapshot, "{{ record.scenario_id }}");
+    }
+    if (window.applyWorkspaceStateMeta) {
+      window.applyWorkspaceStateMeta({{ workspace_state_meta | tojson }});
+    }
+    if (window.refreshScenarioWorkspace) {
+      window.refreshScenarioWorkspace("{{ project_code or record.project_code }}");
+    }
+  })();
+</script>

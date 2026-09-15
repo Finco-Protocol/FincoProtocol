@@ -1,0 +1,24 @@
+{
+  "project_type": "Solar",
+  "project_name": "Synthetic Solar Example",
+  "capacity_mw": 60,
+  "scenario": "Base",
+  "revenue": {
+    "tariff_eur_mwh": 62.0,
+    "p50_hours": 1525,
+    "degradation_pct": 0.45
+  },
+  "capex": {
+    "total_capex_keur": 36000
+  },
+  "opex": {
+    "opex_y1_keur": 900,
+    "inflation_pct": 2.0
+  },
+  "debt": {
+    "gearing_pct": 70,
+    "interest_rate_pct": 5.25,
+    "tenor_years": 15,
+    "target_dscr": 1.25
+  }
+}

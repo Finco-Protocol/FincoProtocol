@@ -1,0 +1,100 @@
+<div class="save-result {% if success %}save-result-ok{% else %}save-result-err{% endif %}">
+  {% if success %}
+  <div class="save-result-icon">✅</div>
+  <div class="save-result-body">
+    <div class="save-result-title">Run saved from current form state</div>
+    <div class="save-result-meta">
+      <span class="save-badge">{{ project_type }}</span>
+      <span class="save-scenario">{{ scenario }}</span>
+      &mdash; {{ created_at[:16] }}
+    </div>
+    <div class="save-result-note">Model re-run using current form inputs before saving.</div>
+    <div class="save-result-id">ID: {{ run_id }}</div>
+  </div>
+  {% else %}
+  <div class="save-result-icon">⚠️</div>
+  <div class="save-result-body">
+    <div class="save-result-title">Save failed</div>
+    <div class="save-result-msg">{{ error }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+.save-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin: 0.5rem 0;
+  animation: fadeIn 0.25s ease;
+}
+
+.save-result-ok {
+  background: color-mix(in srgb, var(--success, #059669) 8%, transparent);
+  border-color: color-mix(in srgb, var(--success, #059669) 25%, transparent);
+}
+
+.save-result-err {
+  background: color-mix(in srgb, var(--error, #dc2626) 8%, transparent);
+  border-color: color-mix(in srgb, var(--error, #dc2626) 25%, transparent);
+}
+
+.save-result-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.1rem; }
+
+.save-result-body { min-width: 0; }
+
+.save-result-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.save-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.save-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: var(--primary);
+  color: white;
+  text-transform: uppercase;
+}
+
+.save-scenario { font-weight: 600; }
+
+.save-result-id {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-family: monospace;
+  margin-top: 0.2rem;
+}
+
+.save-result-note {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  margin-top: 0.2rem;
+}
+
+.save-result-msg {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  margin-top: 0.2rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>

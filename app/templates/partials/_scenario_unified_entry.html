@@ -1,0 +1,80 @@
+{# ── U4 / PR-856: Scenario KPI outputs — top-of-tab summary card ───────── #}
+{# Read-only. Reuses matrix_rows built by build_matrix_context().          #}
+{# Shows KPI rows only (is_kpi=True). No duplicate DOM ids with Dashboard. #}
+
+{% set _has_matrix = matrix_rows is defined and matrix_rows %}
+
+<div class="card scenario-unified-entry" id="scenario-unified-entry" data-u4-unified-entry="true">
+  <div class="sc-section-banner sc-section-banner--outputs">
+    <span class="sc-section-banner-label">Scenario Outputs</span>
+    <span class="sc-section-banner-note">Headline model results — read-only. Run the model to refresh.</span>
+  </div>
+
+  {% if _has_matrix %}
+  <div class="scenario-unified-entry-table-wrapper" data-fc-grid="scenario-summary" data-fc-scroll-container="true">
+    <table class="scenario-unified-entry-table" data-u4-kpi-summary="true">
+      <thead>
+        <tr>
+          <th class="sc-kpi-th sc-kpi-th--label">KPI</th>
+          <th class="sc-kpi-th sc-kpi-th--base" data-u4-column="Base">
+            <div class="sc-kpi-col-name">Base Case</div>
+            <div class="sc-kpi-col-sub">Live project values</div>
+          </th>
+          <th class="sc-kpi-th" data-u4-column="Downside">
+            <div class="sc-kpi-col-name">Downside</div>
+            <div class="sc-kpi-col-sub">Scenario 1</div>
+          </th>
+          <th class="sc-kpi-th" data-u4-column="Upside">
+            <div class="sc-kpi-col-name">Upside</div>
+            <div class="sc-kpi-col-sub">Scenario 2</div>
+          </th>
+          <th class="sc-kpi-th" data-u4-column="Custom">
+            <div class="sc-kpi-col-name">Custom</div>
+            <div class="sc-kpi-col-sub">Scenario 3</div>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in matrix_rows %}
+          {% if entry.is_kpi %}
+          <tr data-u4-kpi-row="{{ entry.row.attr }}" data-fc-row="true">
+            <td class="scenario-unified-entry-label">
+              {{ entry.row.label }}
+              {% if entry.row.unit %}<span class="sc-kpi-unit">{{ entry.row.unit }}</span>{% endif %}
+            </td>
+            <td class="sc-kpi-td sc-kpi-td--base"
+                data-fc-cell="true" data-fc-addr="scenario-summary!base.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.base }}">
+              {{ entry.base if entry.base else '—' }}
+            </td>
+            <td class="sc-kpi-td{% if not entry.downside %} sc-kpi-td--empty{% endif %}"
+                data-fc-cell="true" data-fc-addr="scenario-summary!downside.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.downside }}">
+              {{ entry.downside if entry.downside else '—' }}
+            </td>
+            <td class="sc-kpi-td{% if not entry.upside %} sc-kpi-td--empty{% endif %}"
+                data-fc-cell="true" data-fc-addr="scenario-summary!upside.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.upside }}">
+              {{ entry.upside if entry.upside else '—' }}
+            </td>
+            <td class="sc-kpi-td{% if not entry.custom %} sc-kpi-td--empty{% endif %}"
+                data-fc-cell="true" data-fc-addr="scenario-summary!custom.{{ entry.row.attr }}"
+                data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ entry.custom }}">
+              {{ entry.custom if entry.custom else '—' }}
+            </td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="scenario-unified-entry-empty">
+    No model results yet. Run the model on the Base Case to populate outputs.
+  </div>
+  {% endif %}
+
+  <div class="scenario-unified-entry-links">
+    <a class="scenario-unified-entry-link" href="#compare" onclick="switchTab('compare')">Full side-by-side comparison &rarr;</a>
+  </div>
+</div>

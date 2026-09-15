@@ -1,0 +1,123 @@
+{# ── V4-4 Part B — Covenant Dashboard ────────────────────────────────────── #}
+{# Period-level DSCR/LLCR/PLCR table with traffic-light RAG status.          #}
+{# All data sourced from canonical WaterfallResult — no recalculation.        #}
+<div class="cv-dashboard" data-testid="covenant-dashboard">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Covenants</span>
+    <span class="scm-multi-heading-label">Covenant Dashboard</span>
+  </div>
+
+  {% if covenant_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Results unavailable</div>
+        <div class="ps-history-meta">Run the model to populate the covenant dashboard.</div>
+      </div>
+    </div>
+
+  {% elif covenant_periods %}
+    {% set periods = covenant_periods %}
+
+    {# Summary stats #}
+    {% set breach_count = periods | selectattr('rag', 'eq', 'breach') | list | length %}
+    {% set warning_count = periods | selectattr('rag', 'in', ['warning', 'caution']) | list | length %}
+    {% set lockup_count = periods | selectattr('lockup', 'eq', true) | list | length %}
+    {% set dist_blocked = periods | selectattr('distribution_keur', 'le', 0) | list | length %}
+
+    <div class="cv-summary-chips">
+      <span class="cv-chip cv-chip--{{ 'breach' if breach_count > 0 else 'ok' }}">
+        {{ breach_count }} Breach{{ 'es' if breach_count != 1 else '' }}
+      </span>
+      <span class="cv-chip cv-chip--{{ 'warn' if warning_count > 0 else 'ok' }}">
+        {{ warning_count }} Warning Period{{ 's' if warning_count != 1 else '' }}
+      </span>
+      <span class="cv-chip cv-chip--info">
+        {{ lockup_count }} Lock-up Period{{ 's' if lockup_count != 1 else '' }}
+      </span>
+      <span class="cv-chip cv-chip--info">
+        {{ dist_blocked }} Distribution Blocked
+      </span>
+    </div>
+
+    {# Threshold legend #}
+    <div class="cv-legend">
+      <span class="cv-legend-item cv-rag--breach">&#9679; Breach (&lt;{{ "%.2f"|format(covenant_thresholds['event_of_default']) }}x)</span>
+      <span class="cv-legend-item cv-rag--warning">&#9679; Lock-up risk (&lt;{{ "%.2f"|format(covenant_thresholds['lockup']) }}x)</span>
+      <span class="cv-legend-item cv-rag--caution">&#9679; Dist. restricted (&lt;{{ "%.2f"|format(covenant_thresholds['distribution']) }}x)</span>
+      <span class="cv-legend-item cv-rag--ok">&#9679; Within covenants</span>
+    </div>
+
+    {# Period table #}
+    <div style="overflow-x:auto;">
+      <table class="cv-table" data-testid="covenant-table">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Date</th>
+            <th>DSCR</th>
+            <th>LLCR</th>
+            <th>PLCR</th>
+            <th>Senior Bal. (kEUR)</th>
+            <th>Senior DS (kEUR)</th>
+            <th>Lockup</th>
+            <th>Distribution (kEUR)</th>
+            <th>Cash Sweep (kEUR)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in periods %}
+            <tr class="cv-row cv-rag--{{ p['rag'] }}">
+              <td>{{ p['period'] }}</td>
+              <td>{{ p['date'][:7] if p['date'] else '—' }}</td>
+              <td class="cv-cell-num {% if p['dscr'] and p['dscr'] < covenant_thresholds['lockup'] %}cv-cell--breach{% endif %}">
+                {{ "%.4f"|format(p['dscr']) if p['dscr'] is not none else '—' }}x
+              </td>
+              <td class="cv-cell-num">
+                {{ "%.4f"|format(p['llcr']) if p['llcr'] is not none else '—' }}{% if p['llcr'] is not none %}x{% endif %}
+              </td>
+              <td class="cv-cell-num">
+                {{ "%.4f"|format(p['plcr']) if p['plcr'] is not none and p['plcr'] > 0 else '—' }}{% if p['plcr'] is not none and p['plcr'] > 0 %}x{% endif %}
+              </td>
+              <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_balance_keur']) }}</td>
+              <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_ds_keur']) }}</td>
+              <td class="cv-cell-center">
+                {% if p['lockup'] %}<span class="cv-lockup-badge">LOCKED</span>{% else %}—{% endif %}
+              </td>
+              <td class="cv-cell-num">
+                {% if p['distribution_keur'] > 0 %}
+                  {{ "{:,.1f}".format(p['distribution_keur']) }}
+                {% else %}
+                  <span style="color:var(--text-muted,#6b7280)">—</span>
+                {% endif %}
+              </td>
+              <td class="cv-cell-num">
+                {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}".format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
+              </td>
+              <td class="cv-cell-center">
+                <span class="cv-rag-badge cv-rag-badge--{{ p['rag'] }}">
+                  {% if p['rag'] == 'breach' %}BREACH
+                  {% elif p['rag'] == 'warning' %}WARN
+                  {% elif p['rag'] == 'caution' %}CAUTION
+                  {% else %}OK{% endif %}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Covenant Data Loaded</div>
+        <div class="ps-history-meta">
+          Navigate to /scenarios/covenant?project=... to load covenant data.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

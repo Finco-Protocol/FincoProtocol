@@ -1,0 +1,36 @@
+<!-- Sheet: Inputs — {{ project_ctx.name }} -->
+<!-- Primary input surface — mirrors Excel Inputs sheet top-to-bottom -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">📋 Inputs</span>
+  <span class="sheet-banner-badge">
+    <span class="badge {% if is_user_project %}badge-pass{% else %}badge-muted{% endif %}">
+      {% if is_user_project %}User Project — editable{% else %}Protected — read-only{% endif %}
+    </span>
+  </span>
+</div>
+
+{# ── Phase 20D: 8-section Inputs surface ─────────────────────────────── #}
+{% if is_user_project %}
+<div class="inp-sheet-wrapper" data-fc-grid="inputs" data-fc-scroll-container="true">
+  {% include "partials/inputs_section.html" %}
+</div>
+{% else %}
+{# ── Read-only baseline: still show 8 sections with clear guidance ─────── #}
+<div class="inp-readonly-shell">
+  <div class="inp-readonly-banner">
+    <span class="badge badge-muted">Read-only</span>
+    <span>This is a protected original. Use <strong>Duplicate</strong> in the sidebar to create an editable copy before modifying any values.</span>
+  </div>
+  <div class="inp-sheet-wrapper" data-fc-grid="inputs" data-fc-scroll-container="true">
+    {% include "partials/inputs_section.html" %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+function markInputDirty(el) {
+  var indicator = document.getElementById('dirty-indicator');
+  if (indicator) indicator.style.display = 'flex';
+}
+</script>

@@ -1,0 +1,81 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — CAPEX CONTEXT  ·  UI-5
+  -----------------------------------------------------------------------
+  Right-side context panel for the CAPEX sheet. Reads from
+  `project_ctx` only — never invents new calculations.
+  =======================================================================
+-->
+{% set _capex_hard = project_ctx.hard_capex_total_keur %}
+{% set _capex_total = project_ctx.total_capex_keur|default(_capex_hard) %}
+{% set _idc = project_ctx.idc_total_keur|default(0) %}
+{% set _construction = project_ctx.capex_construction_months|default(project_ctx.construction_months|default(0)) %}
+{% set _contingency = project_ctx.capex_contingency_pct|default(0) * 100 %}
+{% set _capacity = project_ctx.capacity_mw %}
+
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="CAPEX context" data-fo-context-sheet="capex">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
+  <dl class="fo-modelling-workspace__context-list">
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Total CAPEX</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_capex_total or 0) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Hard CAPEX + IDC + financing
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Hard CAPEX</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_capex_hard or 0) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Sums C.01..C.18 categories
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">IDC</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_idc or 0) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Interest during construction
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Construction</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_construction or 0) }} months
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        {{ "{:,.1f}".format((_construction or 0) / 12) }} years
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Contingency</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.1f}".format(_contingency or 0) }}%
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Held against hard CAPEX
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Unit CAPEX</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {% if _capacity and _capacity > 0 %}
+          {{ "{:,.0f}".format((_capex_total or 0) * 1000 / (_capacity * 1000)) }} kEUR/MW
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Total CAPEX ÷ installed capacity
+      </p>
+    </div>
+  </dl>
+</aside>

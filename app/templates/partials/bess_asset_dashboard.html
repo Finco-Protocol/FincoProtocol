@@ -1,0 +1,110 @@
+{# ── V4-7 Part D — Battery Asset Dashboard ────────────────────────────────── #}
+<div class="rp-bess-asset" data-testid="bess-asset-dashboard">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">BESS</span>
+    <span class="scm-multi-heading-label">Battery Asset Dashboard</span>
+  </div>
+
+  {% if bess_asset_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Battery Dashboard Unavailable</div>
+        <div class="ps-history-meta">{{ bess_asset_error }}</div>
+      </div>
+    </div>
+  {% elif bess_asset %}
+    {% set ba = bess_asset %}
+    {% set ps = ba['params_summary'] %}
+    {% set eol = ba['end_of_life'] %}
+
+    {# Header chips #}
+    <div class="cv-summary-chips" style="margin-bottom:0.75rem;">
+      <span class="cv-chip cv-chip--ok">{{ ps['rated_power_mw'] }} MW / {{ ps['rated_energy_mwh'] }} MWh</span>
+      <span class="cv-chip cv-chip--ok">Cycle Life {{ ps['cycle_life'] }}</span>
+      <span class="cv-chip cv-chip--ok">DoD {{ ps['depth_of_discharge_pct'] }}%</span>
+      <span class="cv-chip cv-chip--{{ 'warn' if eol['final_soh_pct'] < 70 else 'ok' }}">
+        End SoH {{ eol['final_soh_pct'] }}%
+      </span>
+      {% if ps['replacement_year'] > 0 %}
+      <span class="cv-chip cv-chip--warn">Replacement Y{{ ps['replacement_year'] }}</span>
+      {% endif %}
+    </div>
+
+    {# Parameters section #}
+    <div class="rp-section" id="bess-asset-params">
+      <div class="rp-section-title">Technical Parameters</div>
+      <div class="rp-kpi-table">
+        {% for label, val in [
+          ('Rated Power', ps['rated_power_mw']|string + ' MW'),
+          ('Rated Energy', ps['rated_energy_mwh']|string + ' MWh'),
+          ('Cycle Life', ps['cycle_life']|string),
+          ('Annual Degradation', ps['annual_degradation_pct']|string + '%'),
+          ('Depth of Discharge', ps['depth_of_discharge_pct']|string + '%'),
+          ('End-of-Life Energy', eol['final_energy_mwh']|string + ' MWh'),
+          ('End-of-Life SoH', eol['final_soh_pct']|string + '%'),
+        ] %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ label }}</span>
+            <span class="rp-kpi-tval">{{ val }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Augmentation events #}
+    {% if ba['augmentation_events'] %}
+    <div class="rp-section" id="bess-augmentation">
+      <div class="rp-section-title">Augmentation / Replacement Events</div>
+      <div class="rp-kpi-table">
+        {% for ev in ba['augmentation_events'] %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ ev['label'] }}</span>
+            <span class="rp-kpi-tval">{{ "{:,.0f}".format(ev['capex_keur']) }} kEUR</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# SoH degradation table #}
+    {% if ba['soh_curve'] %}
+    <div class="rp-section" id="bess-soh">
+      <div class="rp-section-title">State of Health Curve</div>
+      <div style="overflow-x:auto;">
+        <table class="cv-table" data-testid="bess-soh-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>SoH (%)</th>
+              <th>Effective Energy (MWh)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in range(ba['soh_curve']|length) %}
+              {% set soh_row = ba['soh_curve'][i] %}
+              {% set cap_row = ba['capacity_curve'][i] %}
+              <tr class="{{ 'cv-rag--warning' if soh_row['soh_pct'] < 80 else '' }}">
+                <td>{{ soh_row['year'] }}</td>
+                <td class="cv-cell-num">{{ "%.1f"|format(soh_row['soh_pct']) }}%</td>
+                <td class="cv-cell-num">{{ "%.1f"|format(cap_row['energy_mwh']) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Battery Asset Data</div>
+        <div class="ps-history-meta">
+          This project does not have BESS enabled or no BESS parameters are configured.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

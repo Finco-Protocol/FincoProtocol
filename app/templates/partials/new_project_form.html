@@ -1,0 +1,234 @@
+<div class="scenario-message">
+  <strong>New Project</strong> — fill in the basics. Full inputs will be available in the sidebar after creation.
+</div>
+
+{% if validation_errors %}
+<div class="scenario-message">
+  {% for error in validation_errors %}
+  <div>{{ error }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+  <button type="button" class="btn btn-ghost" onclick="closeNewProjectPanel()">✕ Close</button>
+</div>
+
+{# ── Phase 25B-1: Generic defaults prefill (preliminary review model) ───── #}
+{# Generic Solar / Generic Wind templates are preliminary review model
+   only and not reference-validated. The prefill button
+   populates the form with round-number defaults from the existing
+   generic factories (create_default_solar_project /
+   create_default_wind_project). No new financial formulas. The
+   user is expected to review, adjust, and save; the disclosure
+   notice is visible at all times. #}
+<div class="inp-exploratory-notice" id="np-exploratory-notice" role="note" aria-live="polite">
+  <span class="badge badge-warn">Preliminary review model</span>
+  <div>
+    <strong>Generic Solar / Wind templates are for preliminary model review only.</strong>
+    They are <strong>not reference-validated</strong> and
+    <strong>not lender / bank / external-audit ready</strong>.
+    Defaults are round numbers for sketching only — review every
+    field before saving. Use the <em>“Use generic defaults”</em>
+    button to prefill round numbers, or enter your own values.
+  </div>
+</div>
+
+<form hx-post="/projects/create"
+      hx-target="#new-project-result"
+      hx-swap="innerHTML"
+      hx-on:after-request="if(event.detail.successful) location.reload()"
+      class="ps-compare-form"
+      id="new-project-form"
+      data-prefill-url="/projects/new/defaults">
+  <label class="ps-compare-label">
+    Project name
+    <input type="text" name="project_name" id="np-project_name" value="{{ submitted.project_name or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Project type
+    <select name="project_type" id="np-project_type" required>
+      {% for item in project_types %}
+      <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="ps-compare-label">
+    Template source
+    <select name="template_source" id="np-template_source" onchange="window.__npPrefillClear && window.__npPrefillClear()">
+      {% for option in template_options %}
+      <option value="{{ option.value }}" {% if submitted.template_source == option.value %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {# Phase 25B-1: "Use generic defaults" button (only for generic_solar / generic_wind) #}
+  <div class="np-prefill-row" id="np-prefill-row" data-state="{{ 'visible' if submitted.template_source in ('generic_solar', 'generic_wind') else 'hidden' }}">
+    <button type="button"
+            class="btn btn-secondary"
+            id="np-prefill-btn"
+            data-template-source="{{ submitted.template_source or 'generic_solar' }}"
+            onclick="window.__npPrefillApply &amp;&amp; window.__npPrefillApply(this.dataset.templateSource)">
+      ⚙ Use generic defaults
+    </button>
+    <span class="np-prefill-hint" id="np-prefill-hint">
+      Prefills round-number exploratory defaults from the generic
+      Solar / Wind templates. Review every field before saving.
+    </span>
+  </div>
+  <label class="ps-compare-label">
+    Country or market
+    <input type="text" name="country_market" id="np-country_market" value="{{ submitted.country_market or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Capacity (MW)
+    <input type="number" name="capacity_mw" id="np-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    COD date
+    <input type="date" name="cod_date" id="np-cod_date" value="{{ submitted.cod_date or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Construction months
+    <input type="number" name="construction_months" id="np-construction_months" step="1" min="1" value="{{ submitted.construction_months or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Horizon years
+    <input type="number" name="horizon_years" id="np-horizon_years" step="1" min="1" value="{{ submitted.horizon_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Tariff (EUR/MWh)
+    <input type="number" name="tariff_eur_mwh" id="np-tariff_eur_mwh" step="any" min="0" value="{{ submitted.tariff_eur_mwh or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    PPA term years
+    <input type="number" name="ppa_term_years" id="np-ppa_term_years" step="1" min="1" value="{{ submitted.ppa_term_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    P50 hours
+    <input type="number" name="p50_hours" id="np-p50_hours" step="any" min="0" value="{{ submitted.p50_hours or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    OPEX Y1 (kEUR)
+    <input type="number" name="opex_y1_keur" id="np-opex_y1_keur" step="any" min="0" value="{{ submitted.opex_y1_keur or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Total CAPEX (kEUR)
+    <input type="number" name="total_capex_keur" id="np-total_capex_keur" step="any" min="0" value="{{ submitted.total_capex_keur or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Gearing (%, indicative)
+    <input type="number" name="gearing_pct" id="np-gearing_pct" step="any" min="0" max="100" value="{{ submitted.gearing_pct or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Interest rate (%)
+    <input type="number" name="interest_rate_pct" id="np-interest_rate_pct" step="any" min="0" value="{{ submitted.interest_rate_pct or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Tenor years
+    <input type="number" name="tenor_years" id="np-tenor_years" step="1" min="1" value="{{ submitted.tenor_years or '' }}" required />
+  </label>
+  <label class="ps-compare-label">
+    Target DSCR
+    <input type="number" name="target_dscr" id="np-target_dscr" step="any" min="0" value="{{ submitted.target_dscr or '' }}" required />
+  </label>
+  <div id="new-project-result"></div>
+  <button class="ps-mini-btn" type="submit">Create Project</button>
+</form>
+
+{# ── Phase 25B-1: Inline prefill shim ───────────────────────────────── #}
+{# This is a small, dependency-free vanilla-JS shim that:
+   1. Shows / hides the "Use generic defaults" button based on
+      template_source (only for generic_solar / generic_wind).
+   2. Fetches /projects/new/defaults?template_source=... and
+      fills the form fields. The endpoint is read-only.
+   3. Marks the project_name field as auto-prefilled so the
+      user can review before saving.
+   No jQuery, no Tailwind, no Alpine — vanilla JS only.        #}
+<script>
+(function () {
+  'use strict';
+  var FORM_ID = 'new-project-form';
+  var TS = document.getElementById('np-template_source');
+  var ROW = document.getElementById('np-prefill-row');
+  var BTN = document.getElementById('np-prefill-btn');
+  var PNAME = document.getElementById('np-project_name');
+  if (!TS || !ROW || !BTN) { return; }
+
+  // Allowed prefill template sources (only the two generic paths).
+  var ALLOWED = { 'generic_solar': 1, 'generic_wind': 1 };
+
+  // ── Visibility: button only when template_source is generic_* ─────
+  function refreshVisibility() {
+    var v = TS.value;
+    if (ALLOWED[v]) {
+      ROW.dataset.state = 'visible';
+      BTN.dataset.templateSource = v;
+    } else {
+      ROW.dataset.state = 'hidden';
+    }
+  }
+
+  // ── Field map: matches the form field names ────────────────────────
+  var FIELDS = [
+    'project_name', 'project_type', 'template_source', 'country_market',
+    'capacity_mw', 'cod_date', 'construction_months', 'horizon_years',
+    'tariff_eur_mwh', 'ppa_term_years', 'p50_hours',
+    'opex_y1_keur', 'total_capex_keur',
+    'gearing_pct', 'interest_rate_pct', 'tenor_years', 'target_dscr',
+  ];
+
+  // ── Apply: fetch defaults and fill form ─────────────────────────────
+  window.__npPrefillApply = function (templateSource) {
+    if (!ALLOWED[templateSource]) { return; }
+    var form = document.getElementById(FORM_ID);
+    if (!form) { return; }
+    var url = (form.dataset.prefillUrl || '/projects/new/defaults')
+              + '?template_source=' + encodeURIComponent(templateSource);
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) {
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.values) { return; }
+        var v = data.values;
+        FIELDS.forEach(function (name) {
+          if (!(name in v)) { return; }
+          var el = form.elements[name] || document.getElementById('np-' + name);
+          if (!el) { return; }
+          // Only fill if blank OR user clicked the button explicitly
+          // (button click = explicit user action; we always fill).
+          el.value = v[name];
+        });
+        // Mark project_name as auto-prefilled for review.
+        if (PNAME) {
+          PNAME.dataset.autoprefill = '1';
+        }
+        // Show a brief visual confirmation (no toast library).
+        if (BTN) {
+          var original = BTN.textContent;
+          BTN.textContent = '✓ Prefilled — review fields above';
+          setTimeout(function () { BTN.textContent = original; }, 2500);
+        }
+      })
+      .catch(function (err) {
+        if (BTN) { BTN.textContent = '⚠ Prefill failed (' + err.message + ')'; }
+      });
+  };
+
+  // ── Clear: when user changes template_source, clear auto-prefill ───
+  window.__npPrefillClear = function () {
+    var v = TS.value;
+    refreshVisibility();
+    // Don't wipe values if the user is still on a generic template,
+    // only when switching to factory. This keeps the form friendly.
+    if (!ALLOWED[v] && PNAME) {
+      // Switching to factory — clear autoprefill marker.
+      delete PNAME.dataset.autoprefill;
+    }
+  };
+
+  // Initial render.
+  refreshVisibility();
+})();
+</script>

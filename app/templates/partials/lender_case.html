@@ -1,0 +1,90 @@
+{# ── V4-4 Part A — Lender Case Generator ─────────────────────────────────── #}
+{# Read-only engine run under lender-stress adjustments. No persistence.     #}
+<div class="lc-workspace" data-testid="lender-case">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Lender</span>
+    <span class="scm-multi-heading-label">Lender Case Generator</span>
+  </div>
+
+  {% if lender_case_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Results unavailable</div>
+        <div class="ps-history-meta">Run the model from the Scenarios tab to generate the lender case.</div>
+      </div>
+    </div>
+  {% elif lender_case_result %}
+    {% set kpis = lender_case_result['kpis'] %}
+    {% set adj = lender_case_result['adjustment_summary'] %}
+    {% set base = lender_base_kpis %}
+
+    <div class="scm-multi-banner" role="note">
+      Lender case run from canonical engine under conservative assumptions.
+      Base: <strong>{{ lender_scenario_name }}</strong>.
+    </div>
+
+    {# Adjustment summary chips #}
+    {% if adj %}
+    <div class="lc-adj-chips">
+      {% for a in adj %}
+        <span class="lc-adj-chip">{{ a['label'] }}: <strong>{{ a['display'] }}</strong></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# KPI comparison table — Base vs Lender Case #}
+    <div class="scm-multi-table lc-kpi-table" data-testid="lender-kpi-table">
+      <div class="scm-multi-row scm-multi-row--head">
+        <span>KPI</span>
+        <span class="scm-col-base">Base</span>
+        <span>Lender Case</span>
+        <span>Delta</span>
+      </div>
+
+      {% set kpi_rows = [
+        ('Equity IRR', 'equity_irr', 'pct'),
+        ('Project IRR', 'project_irr', 'pct'),
+        ('Avg DSCR', 'actual_avg_dscr', 'x'),
+        ('Min DSCR', 'min_dscr', 'x'),
+        ('Min LLCR', 'min_llcr', 'x'),
+        ('Distributions (kEUR)', 'total_distribution_keur', 'keur'),
+        ('Revenue (kEUR)', 'total_revenue_keur', 'keur'),
+        ('EBITDA (kEUR)', 'total_ebitda_keur', 'keur'),
+        ('Equity NPV (kEUR)', 'equity_npv', 'keur'),
+      ] %}
+
+      {% for label, key, fmt in kpi_rows %}
+        {% set bv = base.get(key) if base else none %}
+        {% set lv = kpis.get(key) %}
+        {% set delta = (lv - bv) if (lv is not none and bv is not none) else none %}
+        {% set d_class = '' %}
+        {% if delta is not none %}
+          {% set good_keys = ['equity_irr','project_irr','actual_avg_dscr','min_dscr','min_llcr','total_distribution_keur','total_revenue_keur','total_ebitda_keur','equity_npv'] %}
+          {% if key in good_keys %}
+            {% set d_class = 'scm-delta--good' if delta > 0 else ('scm-delta--bad' if delta < 0 else '') %}
+          {% else %}
+            {% set d_class = 'scm-delta--bad' if delta > 0 else ('scm-delta--good' if delta < 0 else '') %}
+          {% endif %}
+        {% endif %}
+        <div class="scm-multi-row">
+          <span class="scm-multi-metric">{{ label }}</span>
+          <span class="scm-multi-value scm-col-base">{{ _fmt_kpi(bv, fmt) }}</span>
+          <span class="scm-multi-value {{ d_class }}">{{ _fmt_kpi(lv, fmt) }}</span>
+          <span class="{{ d_class }} scm-delta-token">{{ _fmt_delta(delta, fmt) }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No model results available</div>
+        <div class="ps-history-meta">
+          Run the model to generate results for this workspace.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

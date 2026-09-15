@@ -1,0 +1,185 @@
+﻿<div class="export-registry-panel" data-testid="export-registry"
+     data-export-registry-phase24g3="true">
+  {% set _project_record = project_record|default(None) %}
+  {% set _project_ctx = project_ctx|default(None) %}
+  {# ── Phase 24-H: Exploratory warning (user_created + generic) ──────── #}
+  {% if is_exploratory_project|default(false) %}
+  <div class="export-explorer-warning"
+       role="note"
+       aria-label="Exploratory project / not reference-validated"
+       data-exploratory-warning="true"
+       data-exploration-source="export-registry">
+    <span class="badge badge-warn">EXPLORATORY</span>
+    <span>
+      <strong>Exploratory / not reference-validated.</strong>
+      This export registry is for an exploratory Generic
+      project. Artefacts generated for exploratory projects are
+      <em>not</em> lender-ready, audit-ready, or bank-approved.
+      They are for preliminary review before lender reliance.
+    </span>
+  </div>
+  {% endif %}
+  <div class="card-header">
+    <div>
+      <div class="card-title">Export Registry</div>
+      <div class="panel-desc">Institutional review artifacts grouped by category and governance status.</div>
+    </div>
+    <span class="badge badge-convention">Runtime binding</span>
+  </div>
+
+  {# ── Phase 24-G-3: Empty / disabled export state ──────────────────
+     Renders when the available export list is empty. The export
+     registry is intentionally read-only at this layer; this
+     notice explains why and points to the run / save action. #}
+  {% if not export_cards %}
+  <div class="export-empty-state" data-export-empty-state="true"
+       role="status" aria-label="No exports available">
+    <div class="export-empty-state__icon" aria-hidden="true">📦</div>
+    <div class="export-empty-state__title">No exports available yet</div>
+    <p class="export-empty-state__desc" data-export-empty-desc="true">
+      Exports are generated from the most recent clean backend
+      run. If you have just edited the draft, click
+      <strong>Run Model</strong> to produce the artefacts listed
+      in this registry. Until a run completes, this panel shows
+      no download cards.
+    </p>
+    <p class="export-empty-state__hint" data-export-empty-hint="true">
+      Some exports are blocked by governance gates (for example G20)
+      until the underlying review pack is approved. The blocked state
+      is intentional and is not removed by re-running the model.
+    </p>
+  </div>
+  {% else %}
+
+  <p class="export-registry-lead" data-export-registry-lead="true">
+    <strong>What is in each export:</strong> this registry lists the
+    audit / institutional artefacts that the app can produce from
+    the current project. Disabled cards are blocked by governance
+    gates; enabled cards download the artefact described below.
+  </p>
+
+  <div class="export-card-grid">
+    <div class="export-card export-card--disabled" data-artifact="Phase 10 institutional workbook skeleton"
+       data-export-card-enabled="false"
+       data-export-card-category="workbook"
+       data-export-card-lineage="runtime + audit + signoff"
+       aria-disabled="true"
+       title="Blocked — G20 governance gate not yet cleared">
+      <div class="export-card-top">
+        <span class="export-category-badge">workbook</span>
+        <span class="badge badge-blocked">G20 BLOCKED</span>
+      </div>
+      <div class="export-card-name">Institutional Workbook</div>
+      <div class="export-card-desc">Institutional runtime workbook foundation with reviewer-friendly structure, standardized metadata, and populated Inputs, OPEX, CAPEX, Revenue, Senior Debt, SHL, Tax, P&amp;L, Cash Flow, Balance Sheet, Audit, and Gap Register sections.</div>
+      <div class="export-card-lineage" data-export-card-lineage-text="true">
+        <strong>Lineage:</strong> runtime snapshot, audit register, signoff matrix.
+      </div>
+      <div class="export-card-meta">runtime &middot; XLSX &middot; lender / IC / audit ready structure</div>
+    </div>
+
+    <div class="export-card export-card--disabled" data-artifact="reconciliation-pack"
+         data-export-card-enabled="false"
+         data-export-card-category="audit"
+         aria-disabled="true"
+         title="Unavailable in current reporting package">
+      <div class="export-card-top">
+        <span class="export-category-badge">audit</span>
+        <span class="badge badge-muted">Unavailable</span>
+      </div>
+      <div class="export-card-name">Reconciliation Pack</div>
+      <div class="export-card-desc">Executive, lender, and audit review pack with polished navigation, signoff flow, governance framing, and source-backed reconciliation actions.</div>
+      <div class="export-card-meta">review &middot; XLSX &middot; outside current package</div>
+    </div>
+
+    <div class="export-card export-card--disabled" data-artifact="Phase 10 runtime summary export"
+       data-export-card-enabled="false"
+       data-export-card-category="runtime"
+       data-export-card-lineage="runtime snapshot + governance labels"
+       aria-disabled="true"
+       title="Blocked — G20 governance gate not yet cleared">
+      <div class="export-card-top">
+        <span class="export-category-badge">runtime</span>
+        <span class="badge badge-blocked">G20 BLOCKED</span>
+      </div>
+      <div class="export-card-name">Runtime Summary CSV</div>
+      <div class="export-card-desc">Project IRR, equity IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL, and governance labels.</div>
+      <div class="export-card-lineage" data-export-card-lineage-text="true">
+        <strong>Lineage:</strong> Last clean run snapshot.
+      </div>
+      <div class="export-card-meta">runtime &middot; CSV &middot; current project</div>
+    </div>
+
+    <a href="/exports/runtime-summary.csv?project={{ _project_record.project_code if _project_record else _project_ctx.id if _project_ctx else '' }}" class="export-card" data-artifact="Phase 10 runtime summary export"
+       data-export-card-enabled="true"
+       data-export-card-category="runtime"
+       data-export-card-lineage="runtime snapshot + governance labels">
+      <div class="export-card-top">
+        <span class="export-category-badge">runtime</span>
+        <span class="badge badge-notapproved">R99/R102 NOT APPROVED</span>
+      </div>
+      <div class="export-card-name">Runtime Summary CSV</div>
+      <div class="export-card-desc">Runtime summary including project IRR, equity IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL, and governance labels for this project.</div>
+      <div class="export-card-lineage" data-export-card-lineage-text="true">
+        <strong>Lineage:</strong> Last clean backend run for this project.
+      </div>
+      <div class="export-card-meta">runtime &middot; CSV &middot; this project</div>
+    </a>
+
+    <div class="export-card export-card--disabled" data-artifact="generic_wind_reference-horizontal-review-workbook"
+         data-export-card-enabled="false"
+         data-export-card-category="reference"
+         aria-disabled="true"
+         title="Unavailable in current reporting package">
+      <div class="export-card-top">
+        <span class="export-category-badge">reference</span>
+        <span class="badge badge-muted">Unavailable</span>
+      </div>
+      <div class="export-card-name">Reference Model Review Workbook</div>
+      <div class="export-card-desc">Line-item reference evidence and source-map review workbook.</div>
+      <div class="export-card-meta">review &middot; XLSX &middot; outside current package</div>
+    </div>
+
+    <div class="export-card export-card--disabled" data-artifact="gap-analysis"
+         data-export-card-enabled="false"
+         data-export-card-category="audit"
+         aria-disabled="true"
+         title="Unavailable in current reporting package">
+      <div class="export-card-top">
+        <span class="export-category-badge">audit</span>
+        <span class="badge badge-muted">Unavailable</span>
+      </div>
+      <div class="export-card-name">Gap Analysis</div>
+      <div class="export-card-desc">Reviewer-facing gap register with PASS/WARN/MISSING_EVIDENCE/BLOCKER classifications.</div>
+      <div class="export-card-meta">review &middot; CSV &middot; outside current package</div>
+    </div>
+
+    <div class="export-card export-card--disabled" data-artifact="source-map"
+         data-export-card-enabled="false"
+         data-export-card-category="source_map"
+         aria-disabled="true"
+         title="Unavailable in current reporting package">
+      <div class="export-card-top">
+        <span class="export-category-badge">lineage map</span>
+        <span class="badge badge-muted">Unavailable</span>
+      </div>
+      <div class="export-card-name">Lineage Map</div>
+      <div class="export-card-desc">Column-by-column provenance for available evidence and exact missing-source reasons.</div>
+      <div class="export-card-meta">review &middot; CSV &middot; outside current package</div>
+    </div>
+
+    <div class="export-card export-card--disabled" data-artifact="final-closeout-registers"
+         data-export-card-enabled="false"
+         data-export-card-category="governance"
+         aria-disabled="true"
+         title="Unavailable in current reporting package">
+      <div class="export-card-top">
+        <span class="export-category-badge">governance</span>
+        <span class="badge badge-muted">Unavailable</span>
+      </div>
+      <div class="export-card-name">Final Closeout Registers</div>
+      <div class="export-card-desc">G20 gate checklist, accepted conventions, and stakeholder decision registers.</div>
+      <div class="export-card-meta">review &middot; CSV &middot; outside current package</div>
+    </div>
+  </div>
+  {% endif %}
+</div>

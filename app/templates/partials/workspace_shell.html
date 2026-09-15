@@ -1,0 +1,1113 @@
+<!-- Workspace Shell - Tab Panels - Phase 9.5 -->
+<!-- Project Browser - rendered here by /projects/browse (htmx) -->
+<div id="project-browser-container"></div>
+
+{# ── UI-2.4: Factory lock indicator (renders nothing if no factory signal) ──────────── #}
+{% set _factory_form_data = form_data|default({}) %}
+{% with
+  template_source=_factory_form_data.get('template_source', ''),
+  project_origin=_factory_form_data.get('project_origin', ''),
+  is_factory_template=_factory_form_data.get('is_factory_template', '')
+%}
+  {% include "partials/_factory_lock_indicator.html" %}
+{% endwith %}
+
+<!-- Hidden persistence form - mirrors legacy sidebar_input block -->
+<!-- Used by app.js for save/run/discard and inputs draft persistence -->
+<form id="main-form" style="display:none;" aria-hidden="true">
+  <input type="hidden" name="active_project" value="{{ form_data.get('active_project', '') }}" />
+  <input type="hidden" name="project_name" value="{{ form_data.get('project_name', '') }}" />
+  <input type="hidden" name="project_type" value="{{ form_data.get('project_type', '') }}" />
+  <input type="hidden" name="project_origin" value="{{ form_data.get('project_origin', '') }}" />
+  <input type="hidden" name="template_source" value="{{ form_data.get('template_source', '') }}" />
+  <input type="hidden" name="country_market" value="{{ form_data.get('country_market', '') }}" />
+  <input type="hidden" name="scenario" value="{{ form_data.get('scenario', '') }}" />
+  <input type="hidden" name="capacity_mw" value="{{ form_data.get('capacity_mw', '') }}" />
+  <input type="hidden" name="tariff_eur_mwh" value="{{ form_data.get('tariff_eur_mwh', '') }}" />
+  <input type="hidden" name="p50_hours" value="{{ form_data.get('p50_hours', '') }}" />
+  <input type="hidden" name="total_capex_keur" value="{{ form_data.get('total_capex_keur', '') }}" />
+  <input type="hidden" name="opex_y1_keur" value="{{ form_data.get('opex_y1_keur', '') }}" />
+  <input type="hidden" name="gearing_pct" value="{{ form_data.get('gearing_pct', '') }}" />
+  <input type="hidden" name="target_dscr" value="{{ form_data.get('target_dscr', '') }}" />
+  <input type="hidden" name="interest_rate_pct" value="{{ form_data.get('interest_rate_pct', '') }}" />
+  <input type="hidden" name="tenor_years" value="{{ form_data.get('tenor_years', '') }}" />
+  <input type="hidden" name="cod_date" value="{{ form_data.get('cod_date', '') }}" />
+  <input type="hidden" name="construction_months" value="{{ form_data.get('construction_months', '') }}" />
+  <input type="hidden" name="horizon_years" value="{{ form_data.get('horizon_years', '') }}" />
+  <input type="hidden" name="capacity_factor" value="{{ form_data.get('capacity_factor', '') }}" />
+  <input type="hidden" name="ppa_term_years" value="{{ form_data.get('ppa_term_years', '') }}" />
+  {# STAB-6: currency added so saved_snapshot["currency"] = "EUR" matches collected form snapshot. #}
+  <input type="hidden" name="currency" value="{{ form_data.get('currency', 'EUR') }}" />
+  <input type="hidden" name="capex_epc_contract_keur" value="{{ form_data.get('capex_epc_contract_keur', '') }}" />
+  <input type="hidden" name="capex_production_units_keur" value="{{ form_data.get('capex_production_units_keur', '') }}" />
+  <input type="hidden" name="capex_epc_other_keur" value="{{ form_data.get('capex_epc_other_keur', '') }}" />
+  <input type="hidden" name="capex_grid_connection_keur" value="{{ form_data.get('capex_grid_connection_keur', '') }}" />
+  <input type="hidden" name="capex_ops_prep_keur" value="{{ form_data.get('capex_ops_prep_keur', '') }}" />
+  <input type="hidden" name="capex_insurances_keur" value="{{ form_data.get('capex_insurances_keur', '') }}" />
+  <input type="hidden" name="capex_lease_tax_keur" value="{{ form_data.get('capex_lease_tax_keur', '') }}" />
+  <input type="hidden" name="capex_construction_mgmt_a_keur" value="{{ form_data.get('capex_construction_mgmt_a_keur', '') }}" />
+  <input type="hidden" name="capex_commissioning_keur" value="{{ form_data.get('capex_commissioning_keur', '') }}" />
+  <input type="hidden" name="capex_audit_legal_keur" value="{{ form_data.get('capex_audit_legal_keur', '') }}" />
+  <input type="hidden" name="capex_construction_mgmt_b_keur" value="{{ form_data.get('capex_construction_mgmt_b_keur', '') }}" />
+  <input type="hidden" name="capex_contingencies_keur" value="{{ form_data.get('capex_contingencies_keur', '') }}" />
+  <input type="hidden" name="capex_taxes_keur" value="{{ form_data.get('capex_taxes_keur', '') }}" />
+  <input type="hidden" name="capex_project_acquisition_keur" value="{{ form_data.get('capex_project_acquisition_keur', '') }}" />
+  <input type="hidden" name="capex_project_rights_keur" value="{{ form_data.get('capex_project_rights_keur', '') }}" />
+  <input type="hidden" name="capex_idc_keur" value="{{ form_data.get('capex_idc_keur', '') }}" />
+  <input type="hidden" name="capex_bank_fees_keur" value="{{ form_data.get('capex_bank_fees_keur', '') }}" />
+  <input type="hidden" name="capex_commitment_fees_keur" value="{{ form_data.get('capex_commitment_fees_keur', '') }}" />
+  <input type="hidden" name="capex_other_financial_keur" value="{{ form_data.get('capex_other_financial_keur', '') }}" />
+  <input type="hidden" name="capex_vat_costs_keur" value="{{ form_data.get('capex_vat_costs_keur', '') }}" />
+  <input type="hidden" name="capex_reserve_accounts_keur" value="{{ form_data.get('capex_reserve_accounts_keur', '') }}" />
+  <input type="hidden" name="opex_technical_management_y1_keur" value="{{ form_data.get('opex_technical_management_y1_keur', '') }}" />
+  <input type="hidden" name="opex_o_and_m_preventive_and_corrective_y1_keur" value="{{ form_data.get('opex_o_and_m_preventive_and_corrective_y1_keur', '') }}" />
+  <input type="hidden" name="opex_maintain_site_y1_keur" value="{{ form_data.get('opex_maintain_site_y1_keur', '') }}" />
+  <input type="hidden" name="opex_clean_material_y1_keur" value="{{ form_data.get('opex_clean_material_y1_keur', '') }}" />
+  <input type="hidden" name="opex_security_y1_keur" value="{{ form_data.get('opex_security_y1_keur', '') }}" />
+  <input type="hidden" name="opex_insurance_y1_keur" value="{{ form_data.get('opex_insurance_y1_keur', '') }}" />
+  <input type="hidden" name="opex_lease_and_property_tax_y1_keur" value="{{ form_data.get('opex_lease_and_property_tax_y1_keur', '') }}" />
+  <input type="hidden" name="opex_power_expenses_y1_keur" value="{{ form_data.get('opex_power_expenses_y1_keur', '') }}" />
+  <input type="hidden" name="opex_audit_and_accounting_and_legal_y1_keur" value="{{ form_data.get('opex_audit_and_accounting_and_legal_y1_keur', '') }}" />
+  <input type="hidden" name="opex_bank_fees_opex_y1_keur" value="{{ form_data.get('opex_bank_fees_opex_y1_keur', '') }}" />
+  <input type="hidden" name="opex_environmental_and_social_management_y1_keur" value="{{ form_data.get('opex_environmental_and_social_management_y1_keur', '') }}" />
+  <input type="hidden" name="opex_contingencies_y1_keur" value="{{ form_data.get('opex_contingencies_y1_keur', '') }}" />
+  <input type="hidden" name="rev_ppa_base_tariff" value="{{ form_data.get('rev_ppa_base_tariff', '') }}" />
+  <input type="hidden" name="rev_ppa_index" value="{{ form_data.get('rev_ppa_index', '') }}" />
+  <input type="hidden" name="rev_ppa_term_years" value="{{ form_data.get('rev_ppa_term_years', '') }}" />
+  <input type="hidden" name="rev_ppa_production_share" value="{{ form_data.get('rev_ppa_production_share', '') }}" />
+  <input type="hidden" name="rev_balancing_cost" value="{{ form_data.get('rev_balancing_cost', '') }}" />
+  <input type="hidden" name="rev_co2_enabled" value="{{ form_data.get('rev_co2_enabled', '') }}" />
+  <input type="hidden" name="rev_co2_price" value="{{ form_data.get('rev_co2_price', '') }}" />
+  <input type="hidden" name="construction_months" value="{{ form_data.get('construction_months', '') }}" />
+  <input type="hidden" name="idc_keur" value="{{ form_data.get('idc_keur', '') }}" />
+  {# UX-2: active tab tracking so POST /run can OOB-refresh the visible result sheet. #}
+  <input type="hidden" name="active_tab" id="hidden-active-tab" value="overview" />
+</form>
+
+<div class="workspace-content" id="workspace-content" hx-history="false">
+
+  <!-- New Project Setup — loaded on demand via HTMX (btn-new-project) -->
+  <div class="tab-panel" id="panel-new-project" style="display:none;"></div>
+
+  <div class="workspace-state-banner{% if not workspace_state or not workspace_state.dirty %} is-hidden{% endif %}" id="workspace-unsaved-banner" role="status" aria-live="polite" aria-atomic="true">
+    <div class="workspace-state-banner__main">
+      <span class="badge badge-warn">Unsaved changes</span>
+      <div class="workspace-state-banner__text">
+        Draft edits are active. Save to create a new scenario snapshot, or revert to restore the last saved boundary before running. Runtime cards stay tied to the last clean snapshot until a new clean run is executed.
+      </div>
+    </div>
+    <div class="workspace-state-banner__meta">
+      <span class="workspace-state-meta-chip" id="workspace-banner-active-scenario">
+        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Workspace Base" }}
+      </span>
+      <span class="workspace-state-meta-chip" id="workspace-banner-runtime-origin">
+        {{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}
+      </span>
+    </div>
+
+    <div class="export-lineage-history export-lineage-history--compact">
+      <div class="export-lineage-history__title">Recent Export Records <span style="font-weight:400;color:var(--muted);font-size:0.75rem;">(full history in Downloads tab)</span></div>
+      {% if not export_lineage_ui.recent_exports %}
+      <div class="ps-mini-empty">No exports yet.</div>
+      {% else %}
+      <div class="ps-export-list ps-export-list--compact">
+        {% for item in export_lineage_ui.recent_exports[:3] %}
+        <div class="ps-export-item ps-export-item--compact">
+          <div class="ps-export-title">{{ item.artifact_name }}</div>
+          <div class="ps-export-meta">{{ item.export_type }} - {{ item.scenario_name }} - {{ item.created_at }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="workspace-state-strip" aria-label="Editable workspace state summary" aria-describedby="workspace-state-guidance">
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Scenario</span>
+      <span class="workspace-state-strip__value badge badge-info" id="workspace-strip-active-scenario">
+        {{ workspace_state.active_scenario_name if workspace_state and workspace_state.active_scenario_name else "Base" }}
+      </span>
+    </div>
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">State</span>
+      <span class="workspace-state-strip__value badge {% if workspace_state and workspace_state.dirty %}badge-warn{% else %}badge-pass{% endif %}" id="workspace-strip-dirty">
+        {{ workspace_state_meta.dirty_label if workspace_state_meta else "Saved" }}
+      </span>
+    </div>
+    <div class="workspace-state-strip__item">
+      <span class="workspace-state-strip__label">Runtime</span>
+      <span class="workspace-state-strip__value badge badge-muted" id="workspace-strip-runtime-origin">
+        {{ workspace_state.last_runtime_snapshot_id[:12] if workspace_state and workspace_state.last_runtime_snapshot_id else "No runtime" }}
+      </span>
+    </div>
+  </div>
+
+  {# ── Phase P2-FIX-2: Reviewer note + Lifecycle panel + Export
+     Lineage panel + Governance Status + Reference Parity card
+     are now RELOCATED to the audit / reviewer surface.
+     See: partials/_audit_governance_relocated.html
+     Normal-mode users do NOT see this content here. #}
+  {% if audit_mode %}
+  <div class="workspace-reviewer-note" id="workspace-state-guidance" role="note" aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
+    Review boundary: the draft workspace may differ from the saved scenario, and the saved scenario may differ from the last runtime snapshot. Runtime cards and exported outputs reflect the last clean backend run, not browser-side draft edits.
+  </div>
+
+  {% set _lifecycle_project_label = "User-created project" if is_user_project else "Example project" %}
+  {% set _lifecycle_project_note = "Example projects are read-only. Duplicate or Save As before editing controlled assumptions." if not is_user_project else "Saved project inputs remain editable here. Runtime outputs still stay tied to the last completed run until you save and run again." %}
+  {% set _lifecycle_runtime_project = runtime_summary.project_name if runtime_summary and runtime_summary.project_name else export_lineage_ui.current_context.project_label %}
+  {% set _lifecycle_runtime_scenario = runtime_summary.active_scenario_name if runtime_summary and runtime_summary.active_scenario_name else export_lineage_ui.current_context.active_scenario_name %}
+  <div class="workspace-lifecycle-panel" id="workspace-lifecycle-panel" aria-label="Model lifecycle clarity">
+    <div class="workspace-lifecycle-panel__header">
+      <div>
+        <div class="workspace-lifecycle-panel__title">Lifecycle Clarity</div>
+        <div class="workspace-lifecycle-panel__desc">
+          Follow the modelling boundary in order: edit inputs, save the project or scenario, run the model, review runtime outputs, then export reviewer-facing workbooks.
+        </div>
+      </div>
+    </div>
+    <div class="workspace-lifecycle-grid">
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Project state</div>
+        <div class="workspace-lifecycle-card__value">{{ _lifecycle_project_label }}</div>
+        <div class="workspace-lifecycle-card__meta">{{ _lifecycle_project_note }}</div>
+        <div class="workspace-lifecycle-card__meta">
+          {% if workspace_state and workspace_state.dirty %}
+          Unsaved changes may require Save/Run before outputs are current.
+          {% else %}
+          Current draft is aligned with the saved project boundary shown in this workspace.
+          {% endif %}
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Runtime state</div>
+        <div class="workspace-lifecycle-card__value">Last completed run</div>
+        <div class="workspace-lifecycle-card__meta">Runtime summary reflects the last completed run.</div>
+        <div class="workspace-lifecycle-card__meta">Project: {{ _lifecycle_runtime_project }}</div>
+        <div class="workspace-lifecycle-card__meta">Scenario: {{ _lifecycle_runtime_scenario }}</div>
+        <div class="workspace-lifecycle-card__meta">{{ workspace_state_meta.last_runtime_origin_label if workspace_state_meta else "No runtime bound yet" }}</div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Export state</div>
+        <div class="workspace-lifecycle-card__value">Backend-authored audit output</div>
+        <div class="workspace-lifecycle-card__meta">Export workbook is generated from backend-authoritative saved/run state.</div>
+        <div class="workspace-lifecycle-card__meta">Export is an audit output, not a free-form Excel model.</div>
+        <div class="workspace-lifecycle-card__meta">{{ export_lineage_ui.current_context.action_note }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Phase P2-FIX-2: Export Lineage panel also relocated ─ #}
+  {% if audit_mode %}
+  <div class="export-lineage-panel" id="export-lineage-panel" aria-label="Export lineage summary">
+    <div class="export-lineage-panel__header">
+      <div>
+        <div class="export-lineage-panel__title">Export Lineage</div>
+        <div class="export-lineage-panel__desc">
+          Reviewer-facing lineage only. Exports remain descriptive and do not become the calculation authority.
+        </div>
+      </div>
+      <span class="workspace-state-meta-chip" id="export-lineage-dirty-chip">
+        {{ export_lineage_ui.current_context.dirty_label if export_lineage_ui else "Clean saved state" }}
+      </span>
+    </div>
+    <div class="export-lineage-grid">
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Active project</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.project_label }}</div>
+        <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.project_code }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Saved scenario boundary</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
+        <div class="export-lineage-card__meta">Scenario ID {{ export_lineage_ui.current_context.active_scenario_id }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Scenario revision</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.scenario_revision }}</div>
+        <div class="export-lineage-card__meta">Saved boundary timestamp</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Last runtime snapshot</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
+        <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.runtime_origin_label }}</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Runtime generated at</div>
+        <div class="export-lineage-card__value">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
+        <div class="export-lineage-card__meta">Last clean backend run</div>
+      </div>
+      <div class="export-lineage-card">
+        <div class="export-lineage-card__label">Governance posture</div>
+        <div class="export-lineage-card__value">G20 BLOCKED</div>
+        <div class="export-lineage-card__meta">R99/R102 NOT APPROVED</div>
+      </div>
+    </div>
+    <div class="export-lineage-note" id="export-lineage-guidance" role="note">
+      {{ export_lineage_ui.current_context.action_note }}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ----------------------------------------------- OVERVIEW -- -->
+  <div class="tab-panel active" id="panel-overview">
+    <div class="panel-header">
+      <div class="panel-title">Overview</div>
+      <div class="panel-desc">Key performance indicators and governance status for the active project.</div>
+    </div>
+
+    {# UI-4: Modern project dashboard mounted at the top of the
+       Overview panel. Reads existing context only (project_ctx,
+       dashboard_kpis, validation_summary, current_context). The
+       legacy inner content (C2 preview indicators, M1 scenario
+       matrix, governance cards, dashboard v1) remains below. #}
+    {% include "partials/_overview_workspace.html" %}
+
+    {# Phase P2-min-2: single clear status line per screen
+       (Generic disclosure rule). Renders nothing when the
+       project is not exploratory. #}
+    {% include "partials/_generic_status_line.html" %}
+
+    {# Phase P2-FIX-5C: legacy KPI grid (8 dash-only placeholders) #}
+    {# removed. The single source of truth is the Phase P2-min-3 #}
+    {# Dashboard v1 below, which uses runtime values and has its #}
+    {# own "Run model" CTA. Showing two KPI grids side-by-side #}
+    {# confused pilots. Hidden != deleted: the original markup #}
+    {# lived at this position; removing it does not change the #}
+    {# data model or the runtime. #}
+
+    {# Phase 56B: Compact contextual Help pointer replaces the full inline Help block.
+       The full Help content (workflow guide + onboarding) now lives in the dedicated
+       `#panel-help` tab added at the end of this workspace_shell.html. The link
+       uses href="#help" which routes through the existing hashchange -> switchTab
+       handler in static/app.js — no new JS required. #}
+    <div class="help-pointer" id="overview-help-pointer" role="note" aria-label="Pointer to dedicated Help section">
+      <span class="help-pointer__label">Help</span>
+      <span class="help-pointer__text">Need a tour? Open the <a href="#help" class="help-pointer__link">Help</a> tab for model guidance, workflow steps, and pilot limitations.</span>
+    </div>
+
+    {# C2-PR8: First End-to-End Incremental Runtime Slice. A small,
+       always-rendered, NON-FINANCIAL runtime status indicator. It is
+       patched client-side (static/modelling/runtime-renderer.js) after
+       a real POST /model/preview round trip following a C1 cell edit.
+       This text starts as a static placeholder and is the ONLY DOM
+       element this whole runtime path is allowed to touch — it is
+       deliberately a plain status string, never an IRR/DSCR/revenue/
+       tax/other real KPI value, so this slice can never be mistaken for
+       a real recalculation having occurred. See
+       docs/C2_PR8_FIRST_RUNTIME_SLICE.md.
+
+       C2-PR11: the single fixed "Idle"/"Preview executed" binary is
+       replaced by an explicit 5-state machine (Idle, Preview updating…,
+       Preview ready, Preview unavailable, Preview failed) — see
+       docs/C2_PR11_PREVIEW_UX_POLISH.md. `aria-busy` reflects whether a
+       preview request is currently in flight, and a visually-hidden
+       `#overview-runtime-status-sr` span gives screen readers an
+       explicit "Runtime preview status: <state>" announcement distinct
+       from the plain visible label. #}
+    <div class="runtime-status-indicator" id="overview-runtime-status" role="status" aria-live="polite" aria-label="Live runtime preview status" aria-busy="false">
+      <span class="runtime-status-indicator__label">Runtime preview:</span>
+      <span class="runtime-status-indicator__value" id="overview-runtime-status-value" data-c2pr8-runtime-status="idle" data-c2pr11-runtime-state="idle">Idle</span>
+      <span class="sr-only" id="overview-runtime-status-sr">Runtime preview status: Idle</span>
+    </div>
+
+    {# C2-PR21: Operating Preview Panel. Consolidates the five existing,
+       previously-separate preview indicators (C2-PR10 CAPEX, C2-PR13
+       Revenue, C2-PR14 OPEX, C2-PR15 EBITDA, C2-PR16 Operating Cash
+       Flow) into one cohesive, clearly-labeled panel container on the
+       Overview tab. This is a pure markup/grouping change: every
+       element ID, region ID, sr-only label element, and
+       role/aria-live/aria-busy attribute below is preserved byte-for-
+       byte from its pre-PR21 markup (see docs/C2_PR10_*.md through
+       docs/C2_PR16_*.md for each indicator's own history) — only the
+       wrapping `<div class="operating-preview-panel">` container, its
+       heading, and its explanatory copy are new. No calculation logic,
+       request/response shape, or JS state-machine code was touched.
+       See docs/C2_PR21_OPERATING_PREVIEW_PANEL.md. #}
+    <div class="operating-preview-panel" id="operating-preview-panel">
+      <div class="operating-preview-panel__header">
+        <div class="operating-preview-panel__title">Operating preview (unsaved)</div>
+        <div class="operating-preview-panel__desc">These values are live previews only. Save/Run and exports use the saved model.</div>
+      </div>
+
+    {# C2-PR10: CAPEX Total Preview. A small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after a CAPEX-grid edit's
+       POST /model/preview round trip resolves. It is deliberately
+       placed next to (not inside/replacing) the C2-PR8 runtime status
+       indicator above, and is visually/textually distinct from any
+       saved/Run-derived CAPEX KPI (e.g. the Total CAPEX figure shown
+       on the CAPEX sheet itself, which always reflects SAVED data).
+       This element starts blank ("—") and is only ever populated from
+       a live, unsaved in-browser sum of the CAPEX grid's editable
+       cells — never from persistence, never from a real financial
+       engine call. See docs/C2_PR10_CAPEX_TOTAL_PREVIEW.md.
+
+       C2-PR11: the value pill now also carries a `badge`/`badge-*`
+       class (the same convention already used by
+       #workspace-strip-dirty's badge-warn/badge-pass pair, and by the
+       pre-existing `badge-preview-only`/`badge-dirty`/`badge-saved`
+       rules in static/styles.css) so the preview value is visually
+       distinguishable from the page's saved/persisted figures, without
+       inventing any new CSS. It starts `badge-preview-only` (an
+       existing class already meaning "unsaved preview, not the
+       persisted figure" elsewhere in this codebase) and is never
+       cleared back to a "saved" style by this preview path, since this
+       element NEVER shows a saved value. #}
+    <div class="runtime-status-indicator capex-total-preview-indicator" id="capex-total-preview" role="status" aria-live="polite" aria-label="Unsaved CAPEX total preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">CAPEX total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="capex-total-preview-value" data-c2pr10-capex-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="capex-total-preview-sr">CAPEX preview status: Idle</span>
+    </div>
+
+    {# C2-PR13: Revenue Total Preview. Follows the C2-PR10 CAPEX total
+       preview pattern exactly — a small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after a Revenue-grid
+       edit's POST /model/preview round trip resolves. Placed next to
+       (not inside/replacing) the C2-PR8/PR10 indicators above, and is
+       visually/textually distinct from any saved/Run-derived Revenue
+       figure shown on the Revenue sheet itself (e.g. "Est. Total Y1
+       Revenue", which always reflects SAVED data). This element starts
+       blank ("—") and is only ever populated from a live, unsaved
+       in-browser sum of the Revenue grid's editable line-item cells —
+       never from persistence, never from a real financial engine call.
+       Reuses the same `badge`/`badge-preview-only` classes as the
+       CAPEX preview — no new CSS/design invented. See
+       docs/C2_PR13_REVENUE_PREVIEW.md. #}
+    <div class="runtime-status-indicator revenue-total-preview-indicator" id="revenue-total-preview" role="status" aria-live="polite" aria-label="Unsaved Revenue total preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">Revenue total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="revenue-total-preview-value" data-c2pr13-revenue-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="revenue-total-preview-sr">Revenue preview status: Idle</span>
+    </div>
+
+    {# C2-PR14: OPEX Total Preview. Follows the C2-PR10 CAPEX total
+       preview pattern exactly — a small, always-rendered,
+       explicitly-a-PREVIEW element, patched client-side
+       (static/modelling/runtime-renderer.js) after an OPEX-grid edit's
+       POST /model/preview round trip resolves. Placed next to (not
+       inside/replacing) the C2-PR8/PR10/PR13 indicators above, and is
+       visually/textually distinct from any saved/Run-derived OPEX
+       figure shown on the OPEX sheet itself (e.g. "Total OPEX (Y1)",
+       which always reflects SAVED data). This element starts blank
+       ("—") and is only ever populated from a live, unsaved in-browser
+       sum of the OPEX grid's editable Budget cells — never from
+       persistence, never from a real financial engine call. Reuses the
+       same `badge`/`badge-preview-only` classes — no new CSS/design
+       invented. See docs/C2_PR14_OPEX_PREVIEW.md. #}
+    <div class="runtime-status-indicator opex-total-preview-indicator" id="opex-total-preview" role="status" aria-live="polite" aria-label="Unsaved OPEX total preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">OPEX total preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="opex-total-preview-value" data-c2pr14-opex-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="opex-total-preview-sr">OPEX preview status: Idle</span>
+    </div>
+
+    {# C2-PR15: EBITDA Preview = Revenue Preview − OPEX Preview, computed
+       PURELY client-side from the two preview values above in the same
+       flush (never re-read from DOM, never from Overview KPIs, never
+       from any engine). Null/blank ("—") whenever either input preview
+       is unavailable — never a fabricated partial value. See
+       docs/C2_PR15_EBITDA_PREVIEW.md. #}
+    <div class="runtime-status-indicator ebitda-preview-indicator" id="ebitda-preview" role="status" aria-live="polite" aria-label="Unsaved EBITDA preview, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">EBITDA preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="ebitda-preview-value" data-c2pr15-ebitda-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="ebitda-preview-sr">EBITDA preview status: Idle</span>
+    </div>
+
+    {# C2-PR16: Operating Cash Flow Preview = EBITDA Preview, verbatim.
+       *** NOT AUTHORITATIVE OPERATING CASH FLOW *** — no debt service,
+       tax, depreciation/amortization, working capital, or financing
+       adjustment is applied. This is a deliberately, explicitly
+       oversimplified placeholder that exists ONLY to prove the preview
+       pipeline can chain a preview of a preview of previews. See
+       docs/C2_PR16_OPERATING_CF_PREVIEW.md. #}
+    <div class="runtime-status-indicator operating-cf-preview-indicator" id="operating-cf-preview" role="status" aria-live="polite" aria-label="Unsaved, non-authoritative operating cash flow preview placeholder" aria-busy="false">
+      <span class="runtime-status-indicator__label">Operating cash flow preview (unsaved):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="operating-cf-preview-value" data-c2pr16-ocf-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="sr-only" id="operating-cf-preview-sr">Operating cash flow preview status: Idle</span>
+    </div>
+
+    {# C2-PR24: Debt Preview. The FIRST BACKEND-COMPUTED preview field
+       in this panel — unlike the five indicators above (all pure
+       client-side arithmetic, server only validates/echoes), this
+       value is computed server-side in
+       app/services/model_preview.py's compute_debt_preview() from the
+       SAVED project's total_capex_keur/gearing_pct (never from any
+       unsaved frontend payload field). Deliberately NOT real debt
+       sculpting/DSCR sizing/amortization/an interest schedule — a
+       single placeholder multiplication
+       (saved_capex_total * saved_gearing_pct / 100). This element
+       starts blank ("—") and stays blank whenever the saved inputs are
+       unavailable/invalid — never fabricated. See
+       docs/C2_PR24_BACKEND_DEBT_PREVIEW_STUB.md. #}
+    <div class="runtime-status-indicator debt-preview-indicator" id="debt-preview" role="status" aria-live="polite" aria-label="Unsaved debt preview computed from saved inputs only, not the saved total" aria-busy="false">
+      <span class="runtime-status-indicator__label">Debt preview (saved inputs only):</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="debt-preview-value" data-c2pr24-debt-preview="idle" data-c2pr11-runtime-state="idle">&mdash;</span>
+      <span class="debt-preview-basis" id="debt-preview-basis"
+            data-c2pr25-debt-basis="idle"
+            title="Uses saved CAPEX and saved gearing only. Not sculpted. Run remains authoritative.">
+        <span class="debt-preview-basis-row"><span class="debt-preview-basis-label">Saved CAPEX used:</span> <span class="debt-preview-basis-value" id="debt-preview-saved-capex">&mdash;</span></span>
+        <span class="debt-preview-basis-row"><span class="debt-preview-basis-label">Saved gearing used:</span> <span class="debt-preview-basis-value" id="debt-preview-saved-gearing">&mdash;</span></span>
+      </span>
+      <span class="sr-only" id="debt-preview-sr">Debt preview status: Idle</span>
+    </div>
+    {#
+     C2-PR30: Tax preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing five-indicator pattern. #}
+    <div class="runtime-status-indicator tax-preview-indicator" id="tax-preview" role="status" aria-live="polite" aria-label="Tax estimate" aria-busy="false">
+      <span class="runtime-status-indicator__label">Tax preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="tax-preview-value" data-c2pr30-tax-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="tax-preview-sr">Tax preview status: Idle</span>
+    </div>
+    {#
+     C2-PR31: IRR preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing six-indicator pattern.
+    #}
+    <div class="runtime-status-indicator irr-preview-indicator" id="irr-preview" role="status" aria-live="polite" aria-label="IRR estimate" aria-busy="false">
+      <span class="runtime-status-indicator__label">IRR preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="irr-preview-value" data-c2pr31-irr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="irr-preview-sr">IRR preview status: Idle</span>
+    </div>
+    {#
+     C2-PR32: DSCR preview row. Backend-only stub — the value is
+     ALWAYS "—" today (the backend always reports
+     preview-unavailable). The tooltip explicitly tells the user this
+     is a future boundary and Run remains authoritative. The label
+     matches the existing seven-indicator pattern.
+    #}
+    <div class="runtime-status-indicator dscr-preview-indicator" id="dscr-preview" role="status" aria-live="polite" aria-label="DSCR estimate" aria-busy="false">
+      <span class="runtime-status-indicator__label">DSCR preview:</span>
+      <span class="runtime-status-indicator__value badge badge-preview-only" id="dscr-preview-value" data-c2pr32-dscr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
+      <span class="sr-only" id="dscr-preview-sr">DSCR preview status: Idle</span>
+    </div>
+    </div>{# /operating-preview-panel #}
+
+    <!-- Runtime summary HTMX swap target -->
+    <div id="model-output-area"></div>
+
+    <!-- Governance Cards Row (relocated to audit in P2-FIX-2) -->
+    {% if audit_mode %}
+    <div class="audit-panel" style="margin:1.25rem 0;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Governance Status</div>
+          <span class="badge badge-blocked">Blocked</span>
+        </div>
+        <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
+            <span class="badge badge-blocked">BLOCKED</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">R99/R102 Promotion</span>
+            <span class="badge badge-notapproved">NOT APPROVED</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Equity IRR Gap</span>
+            <span style="font-weight:600; color:var(--text);">0.29pp <span class="badge badge-pass">Within Tolerance</span></span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+            <span style="color:var(--text-2); font-weight:500;">Generic Wind Reference Parity</span>
+            <span class="badge badge-convention">Audit-Only</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Generic Wind Reference Validation</div>
+          <span class="badge badge-convention">DA-Wired Audit</span>
+        </div>
+        <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+            <span class="badge badge-pass">PASS</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
+            <span class="badge badge-pass">PASS</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+            <span class="badge badge-convention">ACCEPTED CONV</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+            <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
+            <span class="badge badge-warn">WARN / 0.29pp</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; padding:0.4rem 0;">
+            <span style="color:var(--text-2); font-weight:500;">Tax/CFADS</span>
+            <span class="badge badge-missing">MISSING_EVIDENCE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Phase P2-min-3: Dashboard v1 (presentation only) ─────────────── #}
+    {# The Dashboard v1 partial renders 8 KPI cards + 3 inline-SVG    #}
+    {# charts. Server-rendered. NO Chart.js / Plotly / D3 / JS calc.   #}
+    {# The existing Overview KPI grid + Governance Status panel +     #}
+    {# Generic Wind Reference Parity panel remain above this section (hidden != deleted). #}
+    {% if dashboard_enabled|default(false) %}
+      {% include "partials/_dashboard.html" %}
+    {% endif %}
+
+    {# ── Phase M1/M2: Scenario Matrix (UI only) ─────────────────────────── #}
+    {# Renders a 4-column Base | Downside | Upside | Custom matrix with   #}
+    {# input rows + KPI rows. Base is live (reads project_ctx). Downside/  #}
+    {# Upside/Custom show live data from saved scenario snapshots and     #}
+    {# last_run_summary once scenarios exist (see build_matrix_context in #}
+    {# app/ui/scenario_matrix.py); columns with no scenario assigned show #}
+    {# an "inherits Base" / "Future override" placeholder, not fake data. #}
+    {# Product Gap PR10: comment corrected -- this was previously         #}
+    {# inaccurate (it claimed all three non-Base columns were always      #}
+    {# placeholders, which stopped being true once scenario persistence   #}
+    {# was wired in Phase M2/M3/M4). No template/route behavior changed.  #}
+    {% include "partials/scenario_matrix.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- INPUTS -- -->
+  <div class="tab-panel" id="panel-inputs">
+    {# UI-4: Sticky section navigator + collapsible section surface.
+       The wrapper includes sheet_inputs.html unchanged; an inline
+       script at the bottom of _inputs_workspace.html promotes each
+       .inp-card to a <details> collapsible at runtime. The legacy
+       sheet_inputs.html still owns every field + binding. #}
+    {% include "partials/_inputs_workspace.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- SCENARIO -- -->
+  <div class="tab-panel" id="panel-scenario">
+    {% include "partials/_scenario_unified_entry.html" %}
+    {% include "partials/scenario_tab.html" %}
+  </div>
+
+  {# ── STAB-4: Results sub-nav wrapper — visible whenever any results sheet is active.
+     Moved out of panel-capex so it persists across all 13 result sheets. #}
+  <div id="results-subnav-wrapper" class="results-subnav-wrapper results-subnav-wrapper--hidden">
+    {% include "partials/_results_subnav.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- CONSTRUCTION -- -->
+  <div class="tab-panel" id="panel-construction">
+    {% include "partials/sheet_construction.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- PRODUCTION -- -->
+  <div class="tab-panel" id="panel-production">
+    {% include "partials/sheet_production.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- REVENUE -- -->
+  <div class="tab-panel" id="panel-revenue">
+    <section class="fo-modelling-workspace" data-fo-mod-kind="revenue">
+      {% set _title = "Revenue" %}
+      {% set _description = "Tariff structure, merchant exposure, CO2 / certificates, and Y1 revenue summary." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
+        {% set _kind = "revenue" %}
+        {% set _nav_title = "Revenue" %}
+        {% set _nav_items = [
+          {"label":"Production"},
+          {"label":"PPA / Tariff"},
+          {"label":"Market / Merchant"},
+          {"label":"CO2 / Certificates"},
+          {"label":"Revenue Summary"},
+        ] %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_revenue.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_revenue.html" %}
+      </div>
+    </section>
+  </div>
+
+  <!-- ----------------------------------------------- OPEX -- -->
+  <div class="tab-panel" id="panel-opex">
+    <section class="fo-modelling-workspace" data-fo-mod-kind="opex">
+      {% set _title = "OPEX" %}
+      {% set _description = "Operating expenditure schedule, inflation, escalation, and unit OPEX." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
+        {% set _kind = "opex" %}
+        {% set _nav_title = "OPEX" %}
+        {% set _nav_items = [
+          {"label":"Fixed OPEX"},
+          {"label":"Variable OPEX"},
+          {"label":"Maintenance"},
+          {"label":"Insurance"},
+          {"label":"Management Fees"},
+          {"label":"Other Costs"},
+        ] %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_opex_grid.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_opex.html" %}
+      </div>
+    </section>
+  </div>
+
+  <!-- ----------------------------------------------- CAPEX -- -->
+  <!--
+    Phase 57A-3: single CAPEX input sheet. The previous
+    competing `sheet_capex_detail.html` (Excel vs App audit
+    view) is no longer included here. It is kept on disk as
+    a deprecated alias; the file can still be reached via
+    direct path but is not surfaced in the primary CAPEX
+    tab.
+  -->
+  <div class="tab-panel" id="panel-capex">
+    <section class="fo-modelling-workspace" data-fo-mod-kind="capex">
+      {% set _title = "CAPEX" %}
+      {% set _description = "Capital expenditure categories C.01–C.18 with sub-lines, construction, IDC, and contingency." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
+        {% set _kind = "capex" %}
+        {% set _nav_title = "CAPEX" %}
+        {% set _nav_items = [
+          {"label":"Pre-construction"},
+          {"label":"Construction"},
+          {"label":"Equipment"},
+          {"label":"Installation"},
+          {"label":"Contingency"},
+          {"label":"IDC"},
+        ] %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_capex_grid.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_capex.html" %}
+      </div>
+    </section>
+  </div>
+
+  <!-- ----------------------------------------------- SENIOR DEBT -- -->
+  <div class="tab-panel" id="panel-senior-debt">
+    <section class="fo-modelling-workspace" data-fo-mod-kind="senior-debt">
+      {% set _title = "Senior Debt" %}
+      {% set _description = "Debt sizing mode, target DSCR, tenor, margin, and realized gearing." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
+        {% set _kind = "senior-debt" %}
+        {% set _nav_title = "Senior Debt" %}
+        {% set _nav_items = [
+          {"label":"Senior Debt Sizing"},
+          {"label":"Pricing"},
+          {"label":"Repayment"},
+          {"label":"Reserves"},
+          {"label":"Fees"},
+        ] %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/shared_runtime_block.html" %}
+          {% include "partials/sheet_senior_debt.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_debt.html" %}
+      </div>
+    </section>
+  </div>
+
+  <!-- ----------------------------------------------- SHL -- -->
+  <div class="tab-panel" id="panel-shl">
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/sheet_shl.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- TAX -- -->
+  <div class="tab-panel" id="panel-tax">
+    <section class="fo-modelling-workspace" data-fo-mod-kind="tax">
+      {% set _title = "Tax" %}
+      {% set _description = "Tax regime, CIT rate, loss carryforward, depreciation, and country template." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
+        {% set _kind = "tax" %}
+        {% set _nav_title = "Tax" %}
+        {% set _nav_items = [
+          {"label":"CIT Rate"},
+          {"label":"Loss Carryforward"},
+          {"label":"WHT"},
+          {"label":"Depreciation"},
+          {"label":"Country Template"},
+        ] %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/shared_runtime_block.html" %}
+          {% include "partials/sheet_tax.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_tax.html" %}
+      </div>
+    </section>
+  </div>
+
+  <!-- ----------------------------------------------- P&L -- -->
+  {# UI-6 — Institutional Financial Statements wrapper (PART A + PART C).
+     The selector + toolbar + notes panel wrap the existing
+     `sheet_financials.html` (canonical content — no engine change). #}
+  <div class="tab-panel" id="panel-pl">
+    {% set _title = "Income Statement" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "pl" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "pl" %}
+    {% set _nav_items = [{"label":"Revenue"},{"label":"Operating Costs"},{"label":"EBITDA"},{"label":"Depreciation"},{"label":"EBIT"},{"label":"Interest"},{"label":"Tax"},{"label":"Net Income"}] %}
+    {% set _context_items = [
+      {"label":"Revenue", "value":"{:,.0f}".format(project_ctx.ppa_tariff_eur_mwh or 0) ~ " EUR/MWh", "hint":"PPA tariff (Y1)"},
+      {"label":"Capacity", "value":"{:,.0f}".format(project_ctx.capacity_mw or 0) ~ " MW", "hint":"Installed capacity"},
+      {"label":"Lifetime", "value":"{:,.0f}".format(project_ctx.horizon_years or 0) ~ " years", "hint":"Project horizon"},
+      {"label":"CIT rate", "value":"{:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%", "hint":"Corporate income tax"},
+    ] %}
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-pl" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- CASH FLOW -- -->
+  <div class="tab-panel" id="panel-cashflow">
+    {% set _title = "Cash Flow Statement" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "cf" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "cf" %}
+    {% set _nav_items = [{"label":"Operating Activities"},{"label":"Investing Activities"},{"label":"Financing Activities"},{"label":"Net Change in Cash"},{"label":"Opening Balance"},{"label":"Closing Balance"}] %}
+    {% set _context_items = [
+      {"label":"Senior Debt", "value":"{:,.0f}".format(project_ctx.senior_debt_keur or 0) ~ " kEUR", "hint":"Senior debt outstanding"},
+      {"label":"Tenor", "value":"{:,.0f}".format(project_ctx.senior_tenor_years or 0) ~ " years", "hint":"Repayment period"},
+      {"label":"CAPEX", "value":"{:,.0f}".format(project_ctx.total_capex_keur or project_ctx.hard_capex_total_keur or 0) ~ " kEUR", "hint":"Total CAPEX"},
+      {"label":"OPEX Y1", "value":"{:,.0f}".format(project_ctx.opex_y1_total_keur or 0) ~ " kEUR", "hint":"Year-1 OPEX"},
+    ] %}
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-cf" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- BALANCE SHEET -- -->
+  <div class="tab-panel" id="panel-balance">
+    {% set _title = "Balance Sheet" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "bs" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "bs" %}
+    {% set _nav_items = [{"label":"Assets"},{"label":"Liabilities"},{"label":"Equity"},{"label":"Total Assets"},{"label":"Total Liab + Equity"},{"label":"Balance Check"}] %}
+    {% set _context_items = [
+      {"label":"CIT", "value":"{:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%", "hint":"Corporate income tax rate"},
+      {"label":"Loss CF", "value":"{:,.0f}".format(project_ctx.loss_carryforward_years or 0) ~ " years", "hint":"Loss carry-forward"},
+      {"label":"Country", "value":project_ctx.country_iso|default("—"), "hint":"ISO country code"},
+      {"label":"Currency", "value":project_ctx.currency|default("EUR"), "hint":"Reporting currency"},
+    ] %}
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-bs" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- DISTRIBUTIONS -- -->
+  <!-- Product Gap PR7: initial full-page render of this tab now includes
+       the same partial used for the post-Run OOB refresh
+       (_sheet_distributions_partial.html), so the two paths cannot
+       drift apart and both show the same honest unavailable-state
+       panel until real distribution-account Run output exists. -->
+  <div class="tab-panel" id="panel-distributions">
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/_sheet_distributions_partial.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- SPONSOR / EQUITY -- -->
+  <!-- Product Gap PR7: initial full-page render of this tab now includes
+       the same partial used for the post-Run OOB refresh
+       (_sheet_sponsor_partial.html), so the two paths cannot drift
+       apart and both show the same honest unavailable-state panel
+       until real sponsor/waterfall Run output exists. -->
+  <div class="tab-panel" id="panel-sponsor">
+    {% include "partials/shared_runtime_block.html" %}
+    {% include "partials/_sheet_sponsor_partial.html" %}
+  </div>
+
+  <!-- ----------------------------------------------- AUDIT / PARITY -- -->
+  <div class="tab-panel" id="panel-audit">
+    <div class="panel-header">
+      <div class="panel-title">Audit / Reference</div>
+      <div class="panel-desc">Reviewer-facing governance, lineage, runtime-source and reference evidence. Normal-mode users do not see this content in the overview; it lives here.</div>
+    </div>
+
+    {# P2-FIX-8 PR2: Governance / lineage / review-boundary content
+       rendered only in reviewer/audit mode. Normal mode does not
+       ship forbidden terms (G20, R99/R102, Lifecycle Clarity, etc.)
+       to the client at all — not even in hidden tab panels. #}
+    {% if audit_mode %}
+    {% include "partials/_audit_governance_relocated.html" %}
+    {% endif %}
+
+    <div class="sheet-card">
+      <div class="card-header">
+        <div class="card-title">Generic Wind Reference Reference - Audit-Only Status</div>
+        <span class="badge badge-convention">Audit-Only</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">SHL Opening Balance</span>
+          <span class="badge badge-pass">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+          <span class="badge badge-convention">ACCEPTED CONV</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR</span>
+          <span class="badge badge-warn">WARN / 0.29pp</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);">
+          <span style="color:var(--text-2); font-weight:500;">Tax / CFADS</span>
+          <span class="badge badge-missing">MISSING_EVIDENCE</span>
+        </div>
+      </div>
+    </div>
+
+    {% if audit_mode %}
+    <!-- Governance status cards (audit/reviewer mode only) -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:1rem;">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">G20 Gate</div>
+          <span class="badge badge-blocked">BLOCKED</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); line-height:1.5;">
+          Equity IRR residual is within +/-1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">R99 / R102 Promotion</div>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); line-height:1.5;">
+          R99/R102 runtime flags are not approved for production promotion. Sponsor waterfall defaults remain in factory mode.
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:1rem;">
+      <span class="btn btn-outline" style="width:auto; display:inline-flex; opacity:0.5; cursor:not-allowed;"
+            title="Reference export not yet available">
+        Reference Export
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ----------------------------------------------- DOWNLOADS -- -->
+  <div class="tab-panel" id="panel-downloads">
+    <div class="panel-header">
+      <div class="panel-title">Downloads &amp; Audit Artefacts</div>
+      <div class="panel-desc">Export model outputs and reviewer-readable runtime lineage artefacts.</div>
+    </div>
+
+    {# Phase 25A: Pilot limitations notice in Downloads tab #}
+    {% include "partials/pilot_limitations_notice.html" %}
+
+    <div class="export-lineage-history" data-fc-grid="export" data-fc-scroll-container="true">
+      <div class="export-lineage-history__title">Current Export Context</div>
+      <div class="export-lineage-history__desc" id="export-lineage-guidance">
+        {{ export_lineage_ui.current_context.action_note }}
+      </div>
+      <div class="export-lineage-history__desc">
+        Export workbook is generated from backend-authoritative saved/run state. It remains a reviewer-facing audit output, not a free-form Excel model.
+      </div>
+      <div class="export-lineage-history__desc">
+        Protected reference models use synthetic assumptions. User-created projects require independent review.
+      </div>
+      <div class="export-lineage-grid">
+        <div class="export-lineage-card" data-fc-row="true">
+          <div class="export-lineage-card__label">Active project</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.project" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.project_label }}">{{ export_lineage_ui.current_context.project_label }}</div>
+          <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.project_code }}</div>
+        </div>
+        <div class="export-lineage-card" data-fc-row="true">
+          <div class="export-lineage-card__label">Saved scenario</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.scenario" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.active_scenario_name }}">{{ export_lineage_ui.current_context.active_scenario_name }}</div>
+          <div class="export-lineage-card__meta">Scenario ID {{ export_lineage_ui.current_context.active_scenario_id }}</div>
+        </div>
+        <div class="export-lineage-card" data-fc-row="true">
+          <div class="export-lineage-card__label">Scenario revision</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.scenario_revision" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.scenario_revision }}">{{ export_lineage_ui.current_context.scenario_revision }}</div>
+          <div class="export-lineage-card__meta">Saved boundary timestamp</div>
+        </div>
+        <div class="export-lineage-card" data-fc-row="true">
+          <div class="export-lineage-card__label">Last runtime snapshot</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.runtime_snapshot_id" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_snapshot_id }}">{{ export_lineage_ui.current_context.runtime_snapshot_id }}</div>
+          <div class="export-lineage-card__meta">{{ export_lineage_ui.current_context.runtime_origin_label }}</div>
+        </div>
+        <div class="export-lineage-card" data-fc-row="true">
+          <div class="export-lineage-card__label">Runtime generated at</div>
+          <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="export!current_context.runtime_generated_at" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_generated_at }}">{{ export_lineage_ui.current_context.runtime_generated_at }}</div>
+          <div class="export-lineage-card__meta">Last clean backend run</div>
+        </div>
+        {# P2-FIX-2: Governance posture card (G20 BLOCKED /
+           R99/R102 NOT APPROVED) relocated to the audit tab.
+           Hidden != deleted: the relocated card lives in
+           partials/_audit_governance_relocated.html. #}
+      </div>
+    </div>
+
+    <div class="downloads-grid">
+      <a href="/download" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.values_only" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/download">
+        <div class="download-icon">Download</div>
+        <div class="download-info">
+          <div class="download-name">Values-only Excel Export (.xlsx)</div>
+          <div class="download-desc">Spreadsheet copy of submitted values with provenance notes for reviewer handoff.</div>
+          <div class="download-lineage-meta">Backend-authored and descriptive only. This does not promote dirty draft values into runtime truth.</div>
+        </div>
+      </a>
+      <a href="/exports/runtime-summary.csv?project={{ project_record.project_code }}" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.runtime_summary_csv" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/exports/runtime-summary.csv?project={{ project_record.project_code }}">
+        <div class="download-icon">CSV</div>
+        <div class="download-info">
+          <div class="download-name">Runtime Summary CSV</div>
+          <div class="download-desc">Compact machine-readable snapshot of the last clean backend run, with reviewer notes included.</div>
+          <div class="download-lineage-meta">Uses the last clean backend runtime context. Save and run again before sharing if the current draft should be reflected.</div>
+        </div>
+      </a>
+      <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}" class="download-item" data-fc-row="true" data-fc-cell="true" data-fc-addr="export!workbook_download.institutional_workbook" data-fc-kind="text" data-fc-editable="false" data-fc-raw="/exports/institutional-workbook.xlsx?project={{ project_record.project_code }}">
+        <div class="download-icon">Workbook</div>
+        <div class="download-info">
+          <div class="download-name">Institutional Workbook</div>
+          <div class="download-desc">Reviewer-facing workbook with runtime summary, provenance, cover notes, and governance context.</div>
+          <div class="download-lineage-meta">Descriptive only. Numeric sheets remain tied to backend runtime/export behavior, not browser-side calculations.</div>
+        </div>
+      </a>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Audit</div>
+        <div class="download-info">
+          <div class="download-name">Audit Workbook <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
+          <div class="download-desc">Reviewer-facing workbook generated from the current deterministic model state.</div>
+        </div>
+      </div>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Review</div>
+        <div class="download-info">
+          <div class="download-name">Gap Register <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
+          <div class="download-desc">Open gaps, pending items, and out-of-scope rows that still need reviewer judgement.</div>
+        </div>
+      </div>
+      <div class="download-item download-item--disabled"
+           aria-disabled="true"
+           title="Not yet available — coming in a future release">
+        <div class="download-icon" style="opacity:0.4;">Source</div>
+        <div class="download-info">
+          <div class="download-name">Lineage Map <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
+          <div class="download-desc">Field-level lineage map for reviewed model outputs.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------- COMPARE -- -->
+  <div class="tab-panel" id="panel-compare">
+    {# UX-2G-COMPARE-FIX: #panel-compare-mount is the htmx swap target for
+       the "Compare with X" shortcut (see scenario_workflow_indicators.html)
+       and is re-rendered in place without ever leaving the workspace. #}
+    <div id="panel-compare-mount">
+      {% set compare_panel = True %}
+      {% include "partials/scenario_compare.html" %}
+    </div>
+  </div>
+
+  <!-- ----------------------------------------------- HELP (Phase 56B) -- -->
+  {# Full Help content lives here as a dedicated section, not inline in Overview.
+     Preserves the same partials that used to render inline, so all current
+     disclaimers, references, and limitations remain reachable. #}
+  <div class="tab-panel" id="panel-help" role="region" aria-label="Help, onboarding, and model guidance">
+    <div class="panel-header">
+      <div class="panel-title">Help &amp; Model Guidance</div>
+      <div class="panel-desc">Model workflow, onboarding, validation scope and reviewer guidance.</div>
+    </div>
+
+    {% include "partials/pilot_workflow_guide.html" %}
+    {% include "partials/pilot_help_onboarding.html" %}
+  </div>
+
+</div><!-- .workspace-content -->
+
+{# ── UI-5: Progressive-enhancement wrapper that turns each
+   `.fc-section-band` group inside the modelling sheets into a
+   `<section id="fo-mod-section-{kind}-{n}">` block. Wires the
+   section-navigator scrollspy. No new static JS file. Fails
+   silently if the script cannot run (legacy markup still renders). #}
+{% include "partials/_modelling_workspace_init.html" %}
+
+{# ── UI-7: Power User Workflow — Command Palette (⌘K/Ctrl+K),
+   Keyboard Shortcuts overlay (?), Jump-To floating action, and
+   Recently Edited panel. Fails silently if the script cannot
+   run — the page still works without any of this. No new
+   static JS file. #}
+{% include "partials/_power_user_palette.html" %}
+{% include "partials/_power_user_shortcuts.html" %}
+{% include "partials/_power_user_jump.html" %}
+{% include "partials/_power_user_recent.html" %}
+{% include "partials/_power_user_init.html" %}
+
+{# UI-8B: Context panel collapse/expand toggle — default collapsed for all 5 modelling sheets.
+   Persistence: one localStorage key per sheet ("fo-ctx-<sheet>": "0"|"1"). #}
+<script>
+(function() {
+  var COLLAPSED_CLASS = 'fo-modelling-workspace__context--collapsed';
+  var LAYOUT_CLASS    = 'fo-modelling-workspace__layout--context-collapsed';
+  var KEY_PREFIX      = 'fo-ctx-';
+
+  function applyState(aside, layout, collapsed) {
+    if (collapsed) {
+      aside.classList.add(COLLAPSED_CLASS);
+      layout.classList.add(LAYOUT_CLASS);
+      aside.querySelector('.fo-modelling-workspace__context-toggle').textContent = '›';
+    } else {
+      aside.classList.remove(COLLAPSED_CLASS);
+      layout.classList.remove(LAYOUT_CLASS);
+      aside.querySelector('.fo-modelling-workspace__context-toggle').textContent = '‹';
+    }
+  }
+
+  function initPanel(aside) {
+    var sheet   = aside.getAttribute('data-fo-context-sheet');
+    var layout  = aside.closest('.fo-modelling-workspace__layout');
+    if (!layout || !sheet) return;
+    var stored  = localStorage.getItem(KEY_PREFIX + sheet);
+    // Default: collapsed (stored === null → treat as collapsed)
+    var collapsed = stored === null ? true : stored === '1';
+    applyState(aside, layout, collapsed);
+
+    aside.querySelector('.fo-modelling-workspace__context-toggle').addEventListener('click', function() {
+      var isCollapsed = aside.classList.contains(COLLAPSED_CLASS);
+      applyState(aside, layout, !isCollapsed);
+      localStorage.setItem(KEY_PREFIX + sheet, !isCollapsed ? '1' : '0');
+    });
+  }
+
+  function init() {
+    document.querySelectorAll('.fo-modelling-workspace__context[data-fo-context-sheet]').forEach(initPanel);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

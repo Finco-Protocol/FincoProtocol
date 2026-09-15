@@ -1,0 +1,77 @@
+{# ── V4-2 Part B — Input Difference Viewer ─────────────────────────────── #}
+{# Read-only. Shows field-level differences between two saved scenarios.    #}
+{# Grouped by section; changed rows highlighted with an indigo dot.         #}
+<div class="scm-input-diff" data-testid="scenario-input-diff">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Diff</span>
+    <span class="scm-multi-heading-label">Input Difference Viewer</span>
+  </div>
+
+  {% if input_diff_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Input Diff Unavailable</div>
+        <div class="ps-history-meta">{{ input_diff_error }}</div>
+      </div>
+    </div>
+  {% elif input_diff_result %}
+    {% set base = input_diff_result['base'] %}
+    {% set other = input_diff_result['other'] %}
+    {% set rows = input_diff_result['rows'] %}
+    {% set changed_count = input_diff_result['changed_count'] %}
+
+    <div class="scm-multi-chips">
+      <span class="scm-chip scm-chip--base">
+        <span class="badge badge-runtime">Base</span>
+        <span class="scm-chip-name">{{ base.scenario_name }}</span>
+      </span>
+      <span class="scm-chip-vs">vs</span>
+      <span class="scm-chip">
+        <span class="scm-chip-name">{{ other.scenario_name }}</span>
+      </span>
+    </div>
+
+    <div class="scm-input-diff__summary">
+      {{ changed_count }} of {{ rows|length }} inputs changed
+    </div>
+
+    {# Group rows by section #}
+    {% set ns = namespace(current_section="") %}
+    <div class="scm-multi-table" data-testid="input-diff-table">
+      <div class="scm-diff-row scm-diff-row--head">
+        <span>Field</span>
+        <span>Section</span>
+        <span>{{ base.scenario_name }}</span>
+        <span>{{ other.scenario_name }}</span>
+        <span>Delta</span>
+      </div>
+      {% for row in rows %}
+        {% if row['section'] != ns.current_section %}
+          {% set ns.current_section = row['section'] %}
+          <div class="scm-diff-section-label">{{ row['section'] }}</div>
+        {% endif %}
+        <div class="scm-diff-row {% if row['changed'] %}scm-diff-row--changed{% endif %}"
+             data-changed="{{ row['changed']|lower }}">
+          <span class="scm-diff-field">
+            {% if row['changed'] %}<span class="scm-diff-changed-badge" aria-hidden="true"></span>{% endif %}
+            {{ row['field'] }}
+          </span>
+          <span></span>
+          <span class="scm-multi-value scm-col-base">{{ row['base_val'] }}</span>
+          <span class="scm-multi-value {% if row['changed'] %}scm-cell--changed{% endif %}">{{ row['other_val'] }}</span>
+          <span class="scm-diff-delta">{{ row['delta_str'] or '' }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Input Diff Loaded</div>
+        <div class="ps-history-meta">Select two saved scenarios to view input differences.</div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

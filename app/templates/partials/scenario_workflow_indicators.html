@@ -1,0 +1,92 @@
+{# ──────────────────────────────────────────────────────────────────────────
+   Phase 25B-5 — Scenario workflow polish partial (read-only)
+
+   Renders five UI surfaces from the ``scenario_workflow_ui`` payload:
+
+   1. sw-label              — Base / Downside / Upside / Custom label chip
+   2. sw-quick-summary      — mini KPI card (IRR / Project IRR / DSCR)
+   3. sw-compare-link       — "Compare with X" shortcut link
+   4. sw-empty-notice       — empty / one / two / many scenario notice
+   5. sw-active-highlight   — wrapper class for the active card (CSS-only)
+
+   All classes are prefixed with ``sw-`` (scenario workflow) to avoid
+   collisions with existing ``.svh-*``, ``.scm-*`` and other classes.
+   No JavaScript. No inline <script>. No Tailwind. No Alpine.
+   ────────────────────────────────────────────────────────────────────────── #}
+
+{# ── 1. Scenario label chip ───────────────────────────────────────────── #}
+{%- macro scenario_label(label) -%}
+{% if label and label.kind %}
+<span class="sw-label {{ label.css_class }}" title="Scenario kind: {{ label.kind }}">
+  <span class="sw-label__icon" aria-hidden="true">{{ label.icon }}</span>
+  <span class="sw-label__text">{{ label.display_name }}</span>
+</span>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 2. Quick summary card (mini KPIs) ────────────────────────────────── #}
+{%- macro quick_summary_card(summary) -%}
+{% if summary %}
+<div class="sw-quick-summary">
+  <div class="sw-quick-summary__row">
+    <span class="sw-quick-summary__label">IRR</span>
+    <span class="sw-quick-summary__value sw-state--{{ summary.irr_state }}">
+      {{ summary.equity_irr_pct }}
+    </span>
+  </div>
+  <div class="sw-quick-summary__row">
+    <span class="sw-quick-summary__label">Project IRR</span>
+    <span class="sw-quick-summary__value sw-state--{{ summary.irr_state }}">
+      {{ summary.project_irr_pct }}
+    </span>
+  </div>
+  <div class="sw-quick-summary__row">
+    <span class="sw-quick-summary__label">Avg DSCR</span>
+    <span class="sw-quick-summary__value sw-state--{{ summary.dscr_state }}">
+      {{ summary.avg_dscr_x }}
+    </span>
+  </div>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 3. Compare-with shortcut link ────────────────────────────────────── #}
+{# UX-2G-COMPARE-FIX: this used to be a plain <a href="/scenarios/compare?...">
+   which navigated the whole browser away from the SPA to an unstyled
+   standalone page. It now issues an htmx GET against the fragment-only
+   ``/scenarios/compare-panel`` endpoint and swaps the result into the
+   Compare tab's mount point -- the workspace shell is never left.
+
+   UX-2I-PILOT-POLISH-FOLLOWUP: tab activation used to rely on
+   ``hx-on::after-request="switchTab('compare')"`` on this link, which
+   could fire before the target swap had actually landed (or be skipped
+   if the link's own request lifecycle hiccuped), leaving the table
+   loaded but the Compare tab not visibly activated. Activation is now
+   driven by a single document-level ``htmx:afterSwap`` listener
+   (static/app.js) that fires only once the swap into
+   ``#panel-compare-mount`` has actually completed. #}
+{%- macro compare_link(link) -%}
+{% if link %}
+<a class="sw-compare-link {{ link.css_class }}"
+   href="{{ link.href }}"
+   hx-get="{{ link.href|replace('/scenarios/compare?', '/scenarios/compare-panel?') }}"
+   hx-target="#panel-compare-mount"
+   hx-swap="innerHTML"
+   title="Compare active scenario with {{ link.right_scenario_name }}">
+  <span class="sw-compare-link__arrow" aria-hidden="true">⇄</span>
+  <span class="sw-compare-link__label">{{ link.label }}</span>
+</a>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 4. Empty / one / two / many notice ────────────────────────────────── #}
+{%- macro workflow_state_notice(state) -%}
+{% if state %}
+<div class="sw-empty-notice {{ state.css_class }}" role="status" aria-live="polite">
+  <span class="sw-empty-notice__icon" aria-hidden="true">
+    {% if state.state == "empty" %}○{% elif state.state == "one" %}1{% elif state.state == "two" %}⇄{% else %}…{% endif %}
+  </span>
+  <span class="sw-empty-notice__text">{{ state.message }}</span>
+</div>
+{% endif %}
+{%- endmacro -%}

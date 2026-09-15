@@ -1,0 +1,125 @@
+{# ── Phase P2-min-3: Dashboard v1 (presentation only) ───────────────
+   The Dashboard v1 view is rendered from the
+   runtime result + project record. The KPI
+   cards and the inline-SVG charts are
+   server-rendered. NO Chart.js / Plotly / D3.
+   NO JS calc.
+
+   Hidden != deleted: the existing Overview
+   KPI grid + Governance Status panel +
+   Generic Wind Reference Parity panel remain in the Overview
+   tab. The Dashboard v1 view is a new
+   presentation layer in the workspace. #}
+
+<section class="dashboard" id="dashboard-v1" data-p2min3-dashboard="v1">
+
+  {# ── Phase P2-FIX-4: Run CTA (presentation only) ───────────
+     If the runtime has not produced a snapshot
+     yet, the dashboard shows a 'Run model' CTA
+     so the user has a clear next step. #}
+  {% if not runtime_summary or not runtime_summary.last_runtime_snapshot_id %}
+    <div class="dashboard-run-cta"
+         id="dashboard-run-cta"
+         data-p2fix4-cta="run-model"
+         role="region"
+         aria-label="Run model call to action">
+      <div class="dashboard-run-cta-title">No run yet</div>
+      <div class="dashboard-run-cta-desc">
+        Run the model to populate the dashboard with
+        Project IRR, Equity IRR, Min / Avg DSCR,
+        Senior debt balance, Revenue, and EBITDA.
+      </div>
+      <a href="/run" class="btn btn-primary dashboard-run-cta-btn"
+         data-p2fix4-cta-action="run"
+         hx-post="/run"
+         hx-target="#model-output-area"
+         hx-swap="innerHTML">Run model</a>
+    </div>
+  {% endif %}
+
+  {# Run status (Phase P2-FIX-4): if the runtime has
+     produced a snapshot, show a small status chip
+     with the last-run origin label. #}
+  {% if runtime_summary and runtime_summary.last_runtime_snapshot_id %}
+    <div class="dashboard-run-status"
+         id="dashboard-run-status"
+         data-p2fix4-cta="run-status"
+         role="status"
+         aria-label="Last run status">
+      <span class="badge badge-pass">Last run completed</span>
+      <span class="dashboard-run-status-label">
+        {{ runtime_summary.last_runtime_origin_label or "Backend runtime" }}
+      </span>
+    </div>
+  {% endif %}
+
+  {# KPI cards row (8 cards) #}
+  <div class="dashboard-kpi-grid" data-p2min3-kpi-grid="true">
+    {% for key, kpi in dashboard_kpis.items() %}
+      <div class="dashboard-kpi-card dashboard-kpi-{{ key }}"
+           data-p2min3-kpi-key="{{ key }}">
+        <div class="dashboard-kpi-label">{{ kpi.label }}</div>
+        <div class="dashboard-kpi-value"
+             data-p2min3-kpi-status="{{ kpi.status }}">
+          {{ kpi.value }}
+        </div>
+        {% if kpi.tooltip %}
+          <div class="dashboard-kpi-tooltip"
+               title="{{ kpi.tooltip }}">ⓘ</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  {# ── Phase P1-UX-FIX-1: Empty-state hint when all KPI cards are missing ──
+     Different from the P2-FIX-4 "No run yet" CTA above (which
+     fires when there is no runtime snapshot at all). This hint
+     fires when a runtime snapshot EXISTS but the dashboard KPIs
+     cannot be populated (e.g. after a scenario select cleared
+     runtime evidence, or for a fresh user-created project where
+     the most-recent run pre-dates the dashboard enhancement).
+     Both branches may render briefly during a save+run cycle. #}
+  {% if runtime_summary and runtime_summary.last_runtime_snapshot_id %}
+    {% set _all_missing = true %}
+    {% for key, kpi in dashboard_kpis.items() %}
+      {% if kpi.status not in ('missing',) %}
+        {% set _all_missing = false %}
+      {% endif %}
+    {% endfor %}
+    {% if _all_missing %}
+      <div class="dashboard-empty-hint"
+           id="dashboard-empty-hint"
+           data-p1uxfix1-component="empty-hint"
+           role="status"
+           aria-label="Dashboard empty state hint">
+        <span class="badge badge-muted">No KPIs</span>
+        <span>
+          Run the model to see KPIs here.
+          {% if active_scenario_id %}
+            Scenario <code>{{ active_scenario_id[:8] }}</code> is selected but has not been run yet.
+          {% endif %}
+        </span>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {# Inline SVG charts (3 charts) #}
+  <div class="dashboard-charts" data-p2min3-charts="true">
+    <div class="dashboard-chart-card"
+         data-p2min3-chart="revenue-ebitda">
+      <div class="dashboard-chart-title">Revenue &amp; EBITDA over time</div>
+      {{ dashboard_chart_revenue_ebitda_svg|safe }}
+    </div>
+    <div class="dashboard-chart-card"
+         data-p2min3-chart="dscr">
+      <div class="dashboard-chart-title">DSCR over time (with target line)</div>
+      {{ dashboard_chart_dscr_svg|safe }}
+    </div>
+    <div class="dashboard-chart-card"
+         data-p2min3-chart="debt">
+      <div class="dashboard-chart-title">Senior debt balance over time</div>
+      {{ dashboard_chart_debt_svg|safe }}
+    </div>
+  </div>
+
+</section>

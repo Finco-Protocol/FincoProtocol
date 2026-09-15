@@ -1,0 +1,24 @@
+{# ── Phase 24-G-2: Empty state — no project selected ──────────────────
+   UI-only. Renders nothing if `project_record` has a project_code
+   (i.e. a real project is selected). Otherwise, renders a
+   consistent empty-state notice that explains how to select a
+   project.
+
+   No business logic. Wording improvement only.
+
+   Backward-compat: existing empty_state macros
+   (no_scenario_selected, no_run_yet, etc.) in
+   empty_states_notice.html continue to work — this is a NEW
+   partial, not a modification of those. #}
+{% set _has_project = (project_record is defined and project_record and project_record.project_code|default('')|length > 0) %}
+{% if not _has_project %}
+<div class="empty-state-notice empty-state-notice--info empty-state-notice--no-project"
+     role="status" aria-label="No project selected">
+  <div class="esn-icon esn-icon--no-project" aria-hidden="true">📁</div>
+  <div class="esn-title">No project selected</div>
+  <div class="esn-desc">
+    Choose a project from the project selector in the sidebar to
+    view its baseline, scenarios, and model outputs.
+  </div>
+</div>
+{% endif %}

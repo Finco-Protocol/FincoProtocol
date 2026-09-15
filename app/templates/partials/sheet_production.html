@@ -1,0 +1,75 @@
+<!-- Sheet: Production — {{ project_ctx.name }} -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">⚡ Production</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+<!-- Capacity & Yield -->
+<div class="sheet-card">
+  <div class="section-header">Capacity &amp; Yield Assumptions</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Installed Capacity</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">P50 Annual Yield</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.operating_hours_p50 * project_ctx.capacity_mw) }} MWh/yr</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">P50 Hours</span>
+      <span class="metric-value">{{ "{:,d}".format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Capacity Factor (P50)</span>
+      <span class="metric-value">~{{ "%.1f"|format(project_ctx.operating_hours_p50 / 8760 * 100) }}%</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Plant Availability</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.plant_availability * 100) }}%</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Grid Availability</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.grid_availability * 100) }}%</span>
+    </div>
+    {% if project_ctx.pv_degradation is not none %}
+    <div class="assumption-item">
+      <span class="metric-label">Degradation</span>
+      <span class="metric-value">{{ "%.1f"|format(project_ctx.pv_degradation * 100) }}%/yr (solar)</span>
+    </div>
+    {% else %}
+    <div class="assumption-item">
+      <span class="metric-label">Degradation</span>
+      <span class="metric-value">0% (wind)</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Technology note -->
+<div class="sheet-card">
+  <div class="section-header">Technology</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">Type</span>
+      <span class="metric-value">{{ project_ctx.technology }}</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Country</span>
+      <span class="metric-value">{{ project_ctx.country_iso }}</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Yield Scenario</span>
+      <span class="metric-value">{{ project_ctx.yield_scenario }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+</div>

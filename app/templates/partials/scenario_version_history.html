@@ -1,0 +1,163 @@
+<!-- Scenario Version History - Phase 33
+     Lightweight UI to expose existing versioning capabilities.
+     Draft/saved/runtime semantics and stale-runtime warning included.
+     No financial logic - purely informational.
+
+     Phase 25B-5 — adds the scenario workflow polish surfaces:
+       - per-scenario label (Base / Downside / Upside / custom)
+       - quick summary card (mini IRR / Project IRR / Avg DSCR)
+       - "Compare with X" shortcut links on the active card
+       - empty / one / two / many state notice at the top
+       - sw-* macros from partials/scenario_workflow_indicators.html
+-->
+{% if scenario_workflow_ui %}
+  {% from "partials/scenario_workflow_indicators.html" import
+       scenario_label, quick_summary_card, compare_link, workflow_state_notice %}
+{% endif %}
+
+<div class="svh-container">
+
+  <!-- Heading -->
+  <div class="svh-header">
+    <span class="svh-title">Saved Versions</span>
+    <span class="svh-subtitle">- preserve input snapshots</span>
+  </div>
+
+  {# Phase 25B-5 — workflow state notice (empty / one / two / many) #}
+  {% if scenario_workflow_ui and scenario_workflow_ui.state %}
+    {{ workflow_state_notice(scenario_workflow_ui.state) }}
+  {% endif %}
+
+  <!-- Version list -->
+  {% if scenario_summary_cards and scenario_summary_cards|length > 0 %}
+  <div class="svh-list">
+
+    {% for card in scenario_summary_cards %}
+    <div class="svh-card{% if card.scenario_id == workspace_state.active_scenario_id %} svh-card--active{% endif %}">
+
+      <!-- Scenario name + active badge + workflow label -->
+      <div class="svh-card-title">
+        {# Phase 25B-5 — workflow label (Base / Downside / Upside / custom) #}
+        {% if scenario_workflow_ui and scenario_workflow_ui.by_scenario.get(card.scenario_id) %}
+          {{ scenario_label(scenario_workflow_ui.by_scenario[card.scenario_id].label) }}
+        {% else %}
+          {{ card.scenario_name }}
+        {% endif %}
+        {% if card.scenario_id == workspace_state.active_scenario_id %}
+          <span class="badge badge-pass svh-badge">Active</span>
+        {% endif %}
+        {# Phase 25B-4 — per-scenario dirty dot (active + workspace dirty) #}
+        {% if dirty_state_ui and dirty_state_ui.scenario_dots %}
+          {% for dot in dirty_state_ui.scenario_dots %}
+            {% if dot.scenario_id == card.scenario_id and dot.is_dirty %}
+              <span class="{{ dot.css_class }}" title="{{ dot.title }}" aria-label="{{ dot.title }}"></span>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      {# Phase 25B-5 — quick summary card (mini IRR / Project IRR / Avg DSCR) #}
+      {% if scenario_workflow_ui and scenario_workflow_ui.by_scenario.get(card.scenario_id) %}
+        {{ quick_summary_card(scenario_workflow_ui.by_scenario[card.scenario_id].quick_summary) }}
+      {% endif %}
+
+      {# Phase 25B-5 — "Compare with X" shortcut links (only on active card) #}
+      {% if card.scenario_id == workspace_state.active_scenario_id
+            and scenario_workflow_ui and scenario_workflow_ui.compare_links %}
+        <div class="svh-compare-shortcuts">
+          {% for link in scenario_workflow_ui.compare_links %}
+            {{ compare_link(link) }}
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <!-- Metadata row -->
+      <div class="svh-card-meta">
+        {% if card.updated_at %}
+          <span class="svh-meta-item">
+            Updated {{ card.updated_at.strftime("%d %b %H:%M") }}
+          </span>
+        {% endif %}
+        {% if card.project_code %}
+          <span class="svh-meta-item">{{ card.project_code }}</span>
+        {% endif %}
+        {% if card.equity_irr is not none %}
+          <span class="svh-meta-item">IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "-" }}%</span>
+        {% endif %}
+      </div>
+
+      <!-- U7-ERROR-WARNING-CLEANUP: governance codes (G20/R99/R102) are
+           a reviewer/audit-only concept and must never reach the normal
+           user path -- only render in audit_mode. -->
+      {% if audit_mode and card.governance_state %}
+        <div class="svh-card-gov">
+          {% if card.governance_state.get('g20_status') %}
+            <span class="badge badge-{{ 'pass' if card.governance_state.g20_status == 'APPROVED' else 'warn' }}">
+              G20 {{ card.governance_state.g20_status }}
+            </span>
+          {% endif %}
+          {% if card.governance_state.get('r99_r102_status') %}
+            <span class="badge badge-{{ 'pass' if card.governance_state.r99_r102_status == 'APPROVED' else 'warn' }}">
+              R99/R102 {{ card.governance_state.r99_r102_status }}
+            </span>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Phase 25B-3 — What changed since previous run? panel
+           Gated on user_created projects (generic exploratory path).
+           Hidden for factory projects (Generic Wind Reference/Generic Solar Reference) and for cards with
+           no previous run summary recorded yet.
+
+           Note: Jinja2 `include` does NOT scope local variables from the
+           surrounding `for` loop, so we must pass the per-card context
+           to the partial explicitly. -->
+      {% if card.is_user_project %}
+        {% with
+            panel_rows=card.panel_rows or [],
+            has_previous_run=card.has_previous_run or false,
+            project_origin=card.is_user_project and "user_created" or "factory_template",
+            template_source=card.template_source or "",
+            scenario_name=card.scenario_name
+        %}
+          {% include "partials/what_changed_panel.html" %}
+        {% endwith %}
+      {% endif %}
+
+    </div>
+    {% endfor %}
+
+  </div>
+  {% else %}
+  <div class="svh-empty">
+    No saved versions yet. Use Save to create a version.
+  </div>
+  {% endif %}
+
+  <!-- Draft / Saved / Runtime explanation -->
+  <div class="svh-explainer">
+    <div class="svh-explainer-title">How versions work</div>
+    <ul class="svh-explainer-list">
+      <li>
+        <strong>Draft edits</strong> are separate from saved versions.
+        Unsaved changes do not affect Run output.
+      </li>
+      <li>
+        <strong>Saved versions</strong> preserve your input snapshot at a point in time.
+        Each Save creates a new immutable version.
+      </li>
+      <li>
+        <strong>Runtime output</strong> reflects the last run, not necessarily the latest draft.
+        Run again after edits before relying on exports.
+      </li>
+    </ul>
+  </div>
+
+  <!-- Stale runtime warning -->
+  {% if workspace_state and workspace_state.dirty %}
+  <div class="svh-warning">
+    [Warning] Unsaved draft - runtime output may be stale. Save and re-run to update.
+  </div>
+  {% endif %}
+
+</div>

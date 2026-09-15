@@ -1,0 +1,14 @@
+[
+  {
+    "project_type": "Solar",
+    "scenario": "Base"
+  },
+  {
+    "project_type": "Wind",
+    "scenario": "Base"
+  },
+  {
+    "project_type": "Solar",
+    "scenario": "Downside"
+  }
+]

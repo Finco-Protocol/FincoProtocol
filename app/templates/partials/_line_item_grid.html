@@ -1,0 +1,251 @@
+{# ──────────────────────────────────────────────────────────────────────
+   LineItemGrid partial / macro (Phase 57A / UI-3.1 pilot)
+
+   Renders a compact financial table with a label column, an
+   optional code column, and one or more value columns
+   (typically a single amount column, or a period × year
+   grid in a future migration).
+
+   This is the FIRST shared grid pattern. It is currently
+   consumed only by `partials/sheet_capex.html` (the CAPEX
+   Detail grid). OPEX / Revenue / Debt / SHL / Audit / Compare /
+   Scenario grids are EXPLICITLY OUT OF SCOPE for 57A and
+   must NOT be migrated in this PR.
+
+   Contract
+   --------
+   Caller passes:
+
+     - table_label   : str  (a11y / caption / aria-label)
+     - columns       : list of dicts with keys
+                       {key, label, kind, classes?}
+                       kind ∈ {"label", "code", "amount", "period"}
+     - rows          : list of dicts with keys
+                       {type, cells, classes?, attrs?}
+                       type ∈ {"data", "data_financing",
+                               "subtotal", "total",
+                               "section_band", "delta_warning"}
+                       cells is a list aligned to `columns`.
+                       Each cell is EITHER a plain string
+                       (auto-escaped) for section_band cells,
+                       OR a dict with keys
+                       {value, kind, [classes], [attrs],
+                        [safe_html]}
+                       kind ∈ {"label", "code", "amount",
+                               "delta_value"}
+     - editable      : bool (default False). When True, rows of
+                       type "data" render a native <input> in
+                       the amount cell. When False, the amount
+                       cell is read-only. Rows of type
+                       "subtotal", "total", "delta_warning",
+                       and "data_financing" are ALWAYS
+                       read-only regardless of `editable`.
+     - input_field_template : str | None
+                       Optional Jinja2 template for the input name,
+                       e.g. "capex_{code}_keur". The macro
+                       substitutes `{code}` with the cell value
+                       in the code column. If None, no input is
+                       rendered even when editable=True.
+
+   The partial renders:
+     - A <div class="lig-wrapper lig-{table_label_slug}"> wrapper
+       (used by tests as a stable marker).
+     - A <table class="lig-table" aria-label="..."> inside.
+     - <thead> with one <th> per column.
+     - <tbody> with one <tr> per row, with row-type CSS classes.
+
+   Backward compatibility
+   ----------------------
+   The original `sheet_capex.html` used the `fc-grid` /
+   `fc-grid-col-label` / `fc-cell` / `fc-cell--code` /
+   `fc-cell--amount` / `fc-cell-runtime` / `fc-total-row` /
+   `fc-subtotal-row` / `fc-section-band` / `fc-grand-total` /
+   `fc-hard-capex-total` / `fc-delta-row` / `fc-delta-warning`
+   / `fc-input-native` / `fc-cell-input` / `fc-cell-warning`
+   / `fc-cell--code` / `fc-th--code` / `fc-th--amount` /
+   `fc-capex-grid-wrapper` class set. The 57A migration
+   preserves all of these class names on the rendered HTML
+   so the existing CAPEX styling (in `static/styles.css`)
+   continues to apply without modification.
+
+   Why this approach
+   -----------------
+   The first runtime grid migration is intentionally
+   conservative: it preserves every CSS class on every
+   element so the visual look is byte-for-byte identical to
+   the old hand-written table. The benefit is the data
+   model: the rows are now structured data, so the next
+   migration (e.g. sheet_opex.html in UI-3.2) can reuse
+   the same macro with a different rows list.
+
+   Stable test marker
+   ------------------
+   The wrapper always has class `lig-wrapper` and a
+   per-table class `lig-capex-pilot` (currently
+   hard-coded for the 57A CAPEX pilot; future
+   migrations that reuse this macro should either
+   update the class or wrap the call with their own
+   div). The 57A test asserts both classes are
+   present on the rendered HTML.
+
+   Read-only row types
+   --------------------
+   Some row types are ALWAYS read-only, regardless of
+   the `editable` arg:
+
+     - subtotal       (subtotal rows)
+     - total          (grand total rows)
+     - delta_warning  (delta-vs-summary rows)
+     - data_financing (financing-cost rows; these are
+                       backend-computed values like IDC,
+                       bank fees, etc. and must not be
+                       user-editable)
+
+   Ordinary `data` rows are editable when `editable=True`
+   and `input_field_template` is provided.
+─#}
+{%- macro lig_render(table_label, columns, rows, editable=False, input_field_template=None, table_id=None) -%}
+<div class="lig-wrapper lig-capex-pilot"
+     data-line-item-grid="capex-pilot"
+     data-lig-version="1">
+  <table class="lig-table fc-grid"
+         aria-label="{{ table_label }}"
+         {% if table_id %}id="{{ table_id }}"{% endif %}>
+    <thead>
+      <tr class="lig-header fc-grid-header">
+        {%- for col in columns -%}
+          <th class="lig-th{% if col.classes %} {{ col.classes }}{% endif %}"
+              data-col-key="{{ col.key }}">
+            {{ col.label }}
+          </th>
+        {%- endfor -%}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in rows -%}
+        {# row type determines CSS class set #}
+        {%- set row_classes = [] -%}
+        {%- if row.type == "section_band" -%}
+          {%- set _ = row_classes.append("lig-row--band") -%}
+          {%- set _ = row_classes.append("fc-section-band") -%}
+        {%- elif row.type == "subtotal" -%}
+          {%- set _ = row_classes.append("lig-row--subtotal") -%}
+          {%- set _ = row_classes.append("fc-total-row") -%}
+          {%- set _ = row_classes.append("fc-subtotal-row") -%}
+        {%- elif row.type == "total" -%}
+          {%- set _ = row_classes.append("lig-row--total") -%}
+          {%- set _ = row_classes.append("fc-total-row") -%}
+          {%- if row.classes -%}
+            {%- for c in row.classes -%}
+              {%- set _ = row_classes.append(c) -%}
+            {%- endfor -%}
+          {%- endif -%}
+        {%- elif row.type == "delta_warning" -%}
+          {%- set _ = row_classes.append("lig-row--delta") -%}
+          {%- set _ = row_classes.append("fc-delta-row") -%}
+        {%- elif row.type == "data_financing" -%}
+          {%- set _ = row_classes.append("lig-row--data") -%}
+          {%- set _ = row_classes.append("lig-row--data-financing") -%}
+          {%- if row.attrs and row.attrs.get("data-capex-code") -%}
+            {%- set _ = row_classes.append("lig-row--data-capex") -%}
+          {%- endif -%}
+        {%- else -%}
+          {%- set _ = row_classes.append("lig-row--data") -%}
+          {%- if row.attrs and row.attrs.get("data-capex-code") -%}
+            {%- set _ = row_classes.append("lig-row--data-capex") -%}
+          {%- endif -%}
+        {%- endif -%}
+        <tr class="{{ row_classes | join(' ') }}"
+            {%- for k, v in (row.attrs or {}).items() %} {{ k }}="{{ v }}"{% endfor -%}>
+          {%- for cell in row.cells -%}
+            {# cell may be a string (already-rendered HTML) or a dict #}
+            {%- if cell is mapping and cell.kind == "section_band_label" -%}
+              <td class="lig-cell fc-section-band__label{% if cell.classes %} {{ cell.classes | join(' ') }}{% endif %}" colspan="3">
+                {%- if cell["safe_html"] -%}
+                  {{ cell.value | safe }}
+                {%- else -%}
+                  {{ cell.value }}
+                {%- endif -%}
+              </td>
+            {%- elif cell is mapping -%}
+              {%- set cell_classes = ["lig-cell"] -%}
+              {%- if cell.kind == "label" -%}
+                {%- set _ = cell_classes.append("fc-grid-col-label") -%}
+                {%- set _ = cell_classes.append("fc-cell") -%}
+              {%- elif cell.kind == "code" -%}
+                {%- set _ = cell_classes.append("fc-cell") -%}
+                {%- set _ = cell_classes.append("fc-cell--code") -%}
+              {%- elif cell.kind == "amount" -%}
+                {%- set _ = cell_classes.append("fc-cell") -%}
+                {%- set _ = cell_classes.append("fc-cell--amount") -%}
+                {%- if editable -%}
+                  {%- set _ = cell_classes.append("fc-cell-input") -%}
+                {%- else -%}
+                  {%- set _ = cell_classes.append("fc-cell-runtime") -%}
+                {%- endif -%}
+              {%- elif cell.kind == "delta_value" -%}
+                {%- set _ = cell_classes.append("fc-cell") -%}
+                {%- set _ = cell_classes.append("fc-cell--amount") -%}
+                {%- set _ = cell_classes.append("fc-cell-warning") -%}
+              {%- endif -%}
+              {%- if cell.classes -%}
+                {%- for c in cell.classes -%}
+                  {%- set _ = cell_classes.append(c) -%}
+                {%- endfor -%}
+              {%- endif -%}
+              <td class="{{ cell_classes | join(' ') }}"
+                  {%- if cell.kind == "amount" and not editable %} aria-readonly="true"{% endif -%}
+                  {%- if cell.kind == "amount" and (row.type == "subtotal" or row.type == "total" or row.type == "delta_warning" or row.type == "data_financing") %} aria-readonly="true"{% endif -%}
+                  {%- if cell.attrs %}{% for k, v in cell.attrs.items() %} {{ k }}="{{ v }}"{% endfor %}{% endif -%}>
+                {%- if cell.kind == "amount" and editable and input_field_template and row.type == "data" and row.type != "data_financing" -%}
+                  {%- set code_value = "" -%}
+                  {%- if row.attrs is defined and row.attrs -%}
+                    {%- if row.attrs.get("data-capex-code") -%}
+                      {%- set code_value = row.attrs["data-capex-code"] -%}
+                    {%- endif -%}
+                  {%- endif -%}
+                  {%- set name_attr = "" -%}
+                  {%- set display_name = "" -%}
+                  {%- if code_value -%}
+                    {%- set name_attr = input_field_template.replace("{code}", code_value) -%}
+                    {%- set display_name = code_value -%}
+                  {%- endif -%}
+                  {%- if row.attrs is defined and row.attrs and row.attrs.get("data-capex-name") -%}
+                    {%- set display_name = row.attrs["data-capex-name"] -%}
+                  {%- endif -%}
+                  <input type="number" step="any" min="0"
+                         name="{{ name_attr }}"
+                         value="{{ cell.value }}"
+                         class="lig-input fc-input-native"
+                         data-capex-code="{{ code_value }}"
+                         aria-label="CAPEX amount for {{ display_name }}" />
+                {%- elif cell.kind == "amount" -%}
+                  {# read-only amount (subtotal, total, or non-editable) #}
+                  {{ cell.value | safe }}
+                {%- elif cell.kind == "delta_value" -%}
+                  {# delta_value: HTML allowed (the badge / icon) #}
+                  {{ cell.value | safe }}
+                {%- elif cell["safe_html"] -%}
+                  {# Caller explicitly marked the value as safe HTML #}
+                  {{ cell.value | safe }}
+                {%- else -%}
+                  {# Default: autoescape plain text #}
+                  {{ cell.value }}
+                {%- endif -%}
+              </td>
+            {%- else -%}
+              {# cell is a plain-text string (e.g. for a section
+                 band label). Auto-escape by default so callers
+                 can't accidentally inject HTML. If a caller
+                 truly needs HTML, they should pass a dict
+                 cell with kind="section_band_label" and
+                 safe_html=True (future extension). #}
+              <td class="lig-cell fc-section-band__label" colspan="3">{{ cell }}</td>
+            {%- endif -%}
+          {%- endfor -%}
+        </tr>
+      {%- endfor -%}
+    </tbody>
+  </table>
+</div>
+{%- endmacro -%}

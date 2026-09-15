@@ -1,0 +1,214 @@
+<div class="run-history">
+  <div class="run-history-header">
+    <span class="run-history-title">Recent Runs</span>
+    <span class="run-history-count">{{ runs|length }} saved</span>
+  </div>
+
+  {% if not runs %}
+  <div class="run-history-empty">
+    <div class="run-history-empty-icon">📂</div>
+    <div class="run-history-empty-title">No saved runs yet</div>
+    <div class="run-history-empty-desc">Fill the form and click <strong>Save Run</strong></div>
+  </div>
+  {% else %}
+  <div class="run-list">
+    {% for run in runs %}
+    <div class="run-item"
+         hx-get="/run/{{ run.run_id }}/detail"
+         hx-target="#results-area"
+         hx-swap="innerHTML"
+         title="Click to view run details">
+      <div class="run-item-meta">
+        <span class="run-type-badge">{{ run.project_type }}</span>
+        <span class="run-scenario-badge scenario-{{ run.scenario|lower }}">{{ run.scenario }}</span>
+      </div>
+      <div class="run-item-time">{{ run.created_at[:16] }}</div>
+      <div class="run-item-kpis">
+        {% if run.kpis.project_irr is defined %}
+        <span class="run-kpi">IRR {{ "%.2f"|format(run.kpis.project_irr * 100) }}%</span>
+        {% endif %}
+        {% if run.kpis.equity_irr is defined %}
+        <span class="run-kpi">Eq IRR {{ "%.2f"|format(run.kpis.equity_irr * 100) }}%</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<style>
+.run-history {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 1rem;
+}
+
+.run-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.run-history-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.run-history-count {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* Empty state */
+.run-history-empty {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.run-history-empty-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+  opacity: 0.35;
+  /* CSS-only folder shape using pseudo-elements */
+  display: inline-block;
+  position: relative;
+  width: 48px;
+  height: 36px;
+  background: var(--border-strong);
+  border-radius: 4px 4px 4px 4px;
+  margin: 0.25rem 0;
+}
+
+.run-history-empty-icon::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 2px;
+  width: 18px;
+  height: 8px;
+  background: var(--border-strong);
+  border-radius: 3px 3px 0 0;
+}
+
+.run-history-empty-icon::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 4px;
+  width: 12px;
+  height: 8px;
+  background: var(--border);
+  border-radius: 3px 3px 0 0;
+}
+
+.run-history-empty-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.run-history-empty-desc {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Run list */
+.run-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.run-list::-webkit-scrollbar { width: 4px; }
+.run-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.run-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0.15rem 0.5rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease, transform 0.08s ease;
+  text-decoration: none;
+  color: inherit;
+}
+
+.run-item:last-child { border-bottom: none; }
+
+.run-item:hover {
+  background: var(--bg);
+  box-shadow: inset 3px 0 0 var(--primary);
+  padding-left: calc(1rem - 3px);
+}
+
+.run-item:active {
+  transform: scale(0.995);
+}
+
+.run-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.run-type-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: var(--primary);
+  color: white;
+  text-transform: uppercase;
+}
+
+.run-scenario-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  color: white;
+}
+
+.run-scenario-badge.scenario-base      { background: var(--primary); }
+.run-scenario-badge.scenario-downside { background: var(--danger); }
+.run-scenario-badge.scenario-upside   { background: var(--accent); }
+
+.run-item-time {
+  font-size: 0.7rem;
+  color: var(--muted);
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
+  align-self: start;
+  margin-top: 0.1rem;
+}
+
+.run-item-kpis {
+  display: flex;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.run-kpi {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+</style>

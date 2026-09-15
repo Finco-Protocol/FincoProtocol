@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="brand-logo">F</div>
+      <div class="brand-text">
+        <span class="brand-name">FINCO Protocol</span>
+        <span class="brand-sub">Financial Intelligence Infrastructure</span>
+      </div>
+    </div>
+
+    <h1 class="login-title">Sign in</h1>
+
+    {% if error %}
+    <div class="alert alert-error login-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login" class="login-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="username" autofocus />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" />
+      </div>
+      <button type="submit" class="btn btn-primary login-btn">Sign in</button>
+    </form>
+  </div>
+
+  <div class="login-footer">
+    FINCO Protocol — Financial Intelligence Infrastructure — Model module preview
+  </div>
+</div>
+
+<style>
+  .login-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    padding: 2rem;
+  }
+
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem 2.25rem;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow-md);
+  }
+
+  .login-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.75rem;
+  }
+
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+    background: var(--primary);
+    color: white;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .brand-name {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  .brand-sub {
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.2;
+  }
+
+  .login-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 1.25rem;
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .login-btn {
+    margin-top: 0.5rem;
+    width: 100%;
+  }
+
+  .login-error {
+    margin-bottom: 1rem;
+  }
+
+  .login-footer {
+    margin-top: 2rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+
+</body>
+</html>

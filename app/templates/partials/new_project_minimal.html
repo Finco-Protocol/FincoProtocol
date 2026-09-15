@@ -1,0 +1,65 @@
+{# ── UX-2E: Minimal New Project form ───────────────────────────────
+   Required: Project name, Technology, Country, Capacity (MW).
+   Optional: Currency. Everything else is entered later in Inputs.
+#}
+
+<div class="create-form-header">
+  <h2 class="create-form-title">New project</h2>
+  <p class="create-form-desc">Just the basics for now — you'll fill in the rest on the Inputs sheet.</p>
+</div>
+
+{% if validation_errors %}
+<div class="create-form-errors">
+  {% for error in validation_errors %}
+  <div class="create-form-error-item">{{ error }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form hx-post="/projects/create"
+      hx-target="#new-project-result"
+      hx-swap="innerHTML"
+      hx-on:after-request=""
+      class="create-form"
+      id="new-project-minimal-form">
+  <label class="create-form-label">
+    Project name
+    <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="e.g. Dalmatia Solar 1" />
+  </label>
+  <label class="create-form-label">
+    Technology
+    <select class="create-form-select" name="project_type" id="npm-project_type" required>
+      {% for item in project_types %}
+      <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="create-form-label">
+    Country or market
+    <input class="create-form-input" type="text" name="country_market" id="npm-country_market" value="{{ submitted.country_market or '' }}" required placeholder="e.g. Generic Market A" />
+  </label>
+  <label class="create-form-label">
+    Capacity (MW)
+    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required placeholder="e.g. 50" />
+  </label>
+  <label class="create-form-label">
+    Currency <span class="create-form-optional">(optional)</span>
+    <select class="create-form-select" name="currency" id="npm-currency">
+      <option value="EUR" {% if not submitted.currency or submitted.currency == 'EUR' %}selected{% endif %}>EUR</option>
+      <option value="USD" {% if submitted.currency == 'USD' %}selected{% endif %}>USD</option>
+      <option value="HRK" {% if submitted.currency == 'HRK' %}selected{% endif %}>HRK</option>
+    </select>
+  </label>
+  {# Hidden: template source is intentionally left blank here. The
+     server derives the correct generic template (Solar/Wind) from the
+     Technology field above via _normalize_template_source(), so a
+     hardcoded value here would silently mismatch whenever the user
+     picks a technology other than the hardcoded default and fail
+     validation ("X templates require project type X"). #}
+  <input type="hidden" name="template_source" id="npm-template_source" value="" />
+  <div id="new-project-result"></div>
+  <div class="create-form-actions">
+    <button class="btn btn-primary" type="submit">Create project</button>
+    <a class="btn btn-ghost" href="/library">Cancel</a>
+  </div>
+</form>

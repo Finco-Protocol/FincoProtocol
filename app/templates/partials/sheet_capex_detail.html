@@ -1,0 +1,935 @@
+<!-- Sheet: CAPEX Detail — {{ project_ctx.name }} -->
+<!-- Phase 21 v3: CAPEX detail grid — mirrors OPEX detail UX with monthly payment schedule columns -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏗️ CAPEX Detail</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+{# ── Readonly notice ───────────────────────────────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Protected original — read only</strong>
+    <p>This is a protected original. Use <strong>Duplicate / Save As</strong> to create
+    your own copy, then edit CAPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      <strong>Note:</strong> Monthly payment schedules and app amounts are for display reference only.
+      Line editing deferred to a future phase.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Summary strip ───────────────────────────────────────────────────────────── #}
+{% set cats = project_ctx.capex_detail_items if project_ctx.capex_detail_items else () %}
+<div class="capex-summary-strip" id="capex-summary-strip">
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Hard CAPEX</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format(project_ctx.capex_y1_total_keur|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Financing Costs</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format((project_ctx.idc_keur + project_ctx.bank_fees_keur)|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR (IDC + bank fees)</div>
+  </div>
+  <div class="capex-summary-card capex-summary-card--total">
+    <div class="capex-summary-card__label">Grand Total</div>
+    <div class="capex-summary-card__value">{{ "%.1f"|format(project_ctx.total_capex_keur|default(0)) }}</div>
+    <div class="capex-summary-card__unit">kEUR</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Construction</div>
+    <div class="capex-summary-card__value">{{ project_ctx.capex_construction_months|default(12) }}</div>
+    <div class="capex-summary-card__unit">months</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Categories</div>
+    <div class="capex-summary-card__value">{{ cats|length }}</div>
+    <div class="capex-summary-card__unit">C.01–C.18</div>
+  </div>
+</div>
+
+{# ── Phase 21B: Authority summary strip ─────────────────────────────────────── #}
+{% set auth = project_ctx.capex_detail_items[0].authority_summary if cats and cats[0].authority_summary else {} %}
+{% if auth %}
+<div class="capex-auth-strip" id="capex-auth-strip">
+  <div class="capex-auth-label">Authority:</div>
+  <div class="capex-auth-card capex-auth-card--backend">
+    <span class="capex-auth-count">{{ auth.get('backend_authoritative', 0) }}</span>
+    <span class="capex-auth-name">Backend auth.</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--app">
+    <span class="capex-auth-count">{{ auth.get('app_mapped', 0) }}</span>
+    <span class="capex-auth-name">App mapped</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--excel">
+    <span class="capex-auth-count">{{ auth.get('excel_reference_only', 0) }}</span>
+    <span class="capex-auth-name">Reference only</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--missing">
+    <span class="capex-auth-count">{{ auth.get('missing_runtime_source', 0) }}</span>
+    <span class="capex-auth-name">Missing src</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--mismatch">
+    <span class="capex-auth-count">{{ auth.get('mismatch', 0) }}</span>
+    <span class="capex-auth-name">Mismatch</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--scope-mismatch">
+    <span class="capex-auth-count">{{ auth.get('scope_mismatch', 0) }}</span>
+    <span class="capex-auth-name">Scope diff</span>
+  </div>
+  <div class="capex-auth-card capex-auth-card--deferred">
+    <span class="capex-auth-count">{{ auth.get('deferred', 0) }}</span>
+    <span class="capex-auth-name">Deferred</span>
+  </div>
+  <div class="capex-auth-total">
+    <span class="capex-auth-total__label">Total C rows:</span>
+    <span class="capex-auth-total__count">{{ auth.get('_total_child_rows', 0) }}</span>
+  </div>
+</div>
+{% endif %}
+
+{# ── Phase 22B: Display-only audit banner ─────────────────────────────────── #}
+<div class="capex-display-only-banner">
+  <span class="banner-icon">⚠</span>
+  <strong>CAPEX detail grid is an audit/display view.</strong>
+  Rows marked <span class="badge badge-rt badge-rt-display-only">Display only</span>,
+  <span class="badge badge-rt badge-rt-reference-only">Reference only</span>,
+  <span class="badge badge-rt badge-rt-pending-treatment">Pending treatment</span>, or
+  <span class="badge badge-rt badge-rt-not-comparable">Not comparable</span>
+  do not affect runtime calculations today.
+  <br>
+  <span class="banner-sub">
+    C.16 Project Rights is not runtime-effective.
+    M1–M18 schedule is timing-only (not summed into CAPEX total, not wired to IDC).
+    Treatment options are design-only until explicitly wired.
+  </span>
+</div>
+
+{# ── Grid toolbar: monthly range + display mode + collapse controls ─────────────── #}
+{% set n_months = project_ctx.capex_construction_months|default(12) %}
+<div class="capex-grid-toolbar">
+  <div class="capex-month-range" role="group" aria-label="Month range">
+    <span class="capex-toolbar-label">Months:</span>
+    <button class="capex-m-btn" data-mrange="1-6"   onclick="capexSetMonthRange('1-6')">M1–M6</button>
+    <button class="capex-m-btn" data-mrange="7-12A" onclick="capexSetMonthRange('7-12A')">M7–M12</button>
+    {% if n_months > 12 %}
+    <button class="capex-m-btn" data-mrange="13-18" onclick="capexSetMonthRange('13-18')">M13–M18</button>
+    {% endif %}
+    <button class="capex-m-btn active" data-mrange="all" onclick="capexSetMonthRange('all')">All</button>
+  </div>
+
+  <div class="capex-display-mode" role="group" aria-label="Display mode">
+    <span class="capex-toolbar-label">Show:</span>
+    <button class="capex-mode-btn active" data-mode="values"   onclick="capexSetDisplayMode('values')">Values</button>
+    <button class="capex-mode-btn" data-mode="schedule" onclick="capexSetDisplayMode('schedule')">Schedule</button>
+    <button class="capex-mode-btn" data-mode="flags"    onclick="capexSetDisplayMode('flags')">Flags</button>
+  </div>
+
+  <div class="capex-collapse-controls">
+    <button class="capex-collapse-btn" onclick="capexCollapseAll()">Collapse all</button>
+    <button class="capex-collapse-btn" onclick="capexExpandAll()">Expand all</button>
+  </div>
+</div>
+
+{# ── Detail Grid ─────────────────────────────────────────────────────────────── #}
+
+<div class="fc-capex-grid-wrapper sheet-card">
+
+  <div class="section-header">
+    CAPEX Detail — kEUR — Display Reference
+  </div>
+
+  {# ── Grid ──────────────────────────────────────────────────────────────────── #}
+  <div class="fc-grid-scroll-wrapper" id="capex-grid-scroll">
+    <table class="fc-grid fc-capex-detail-grid" id="capex-detail-grid"
+           data-mrange="all" data-display="values">
+
+      {# ── Sticky Header ────────────────────────────────────────────────────── #}
+      <thead>
+        {# Row 0: Phase 57A-10G column group headers (visual / semantic only) #}
+        <tr class="fc-grid-header fc-grid-header--groups"
+            data-capex-column-groups="true">
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="core" colspan="5"
+              scope="colgroup">Core</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="costing" colspan="2"
+              scope="colgroup">Costing</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="tax" colspan="2"
+              scope="colgroup">Tax</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="meta" colspan="1"
+              scope="colgroup">Status</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="schedule" colspan="18"
+              scope="colgroup">Schedule</th>
+          <th class="fc-th fc-capex-group-header"
+              data-capex-group="meta" colspan="1"
+              scope="colgroup">Notes</th>
+        </tr>
+        {# Row 1: top-level column headers #}
+        <tr class="fc-grid-header">
+          <th class="fc-th fc-grid-col-label fc-th--sticky" data-col="1" rowspan="2">Line Item</th>
+          <th class="fc-th fc-th--code fc-th--sticky" data-col="2" rowspan="2">Code</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="3" rowspan="2">Excel<br/>kEUR</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="4" rowspan="2">App<br/>kEUR</th>
+          <th class="fc-th fc-th--amount fc-th--sticky" data-col="5" rowspan="2">Delta<br/>kEUR</th>
+          <th class="fc-th fc-th--pct" data-col="6" rowspan="2">Cont.<br/>%<br/><span class="badge badge-metadata-only" data-capex-status="contingency">Metadata-only</span></th>
+          <th class="fc-th fc-th--pct" data-col="7" rowspan="2">VAT<br/>%<br/><span class="badge badge-metadata-only" data-capex-status="VAT">Metadata-only</span></th>
+          <th class="fc-th fc-th--pct" data-col="8" rowspan="2">WHT<br/>%<br/><span class="badge badge-metadata-only" data-capex-status="WHT">Metadata-only</span></th>
+          <th class="fc-th fc-th--num" data-col="9" rowspan="2">Per<br/>MW</th>
+          <th class="fc-th fc-th--status" data-col="10" rowspan="2">Status</th>
+          {# Monthly payment columns M1–M18 #}
+          {% for m in range(1, 19) %}
+            {% if m <= 6 %} {% set m_class = "m-early" %}
+            {% elif m <= 12 %} {% set m_class = "m-mid" %}
+            {% else %} {% set m_class = "m-late" %}
+            {% endif %}
+            <th class="fc-th fc-th--month fc-th--sticky {{ m_class }}"
+                data-col="{{ 10 + m }}"
+                data-m="{{ m }}"
+                data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+                data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+                data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+                data-mrange-all="true">M{{ m }}</th>
+          {% endfor %}
+          <th class="fc-th fc-th--notes" data-col="29" rowspan="2">Notes</th>
+        </tr>
+        {# Row 2: month number sub-headers #}
+        <tr class="fc-grid-header fc-grid-header--sub">
+          {% for m in range(1, 19) %}
+            {% if m <= 6 %} {% set m_class = "m-early" %}
+            {% elif m <= 12 %} {% set m_class = "m-mid" %}
+            {% else %} {% set m_class = "m-late" %}
+            {% endif %}
+            <th class="fc-th fc-th--month-num {{ m_class }}"
+                data-m="{{ m }}"
+                data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+                data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+                data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+                data-mrange-all="true">#{{ m }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+
+{# ═══════════════════════════════════════════════════════════════════════════════
+   CATEGORY + CHILD ROWS
+   ═══════════════════════════════════════════════════════════════════════════════ #}
+
+{% for cat in cats %}
+  <tbody class="fc-cat-tbody"
+         id="fc-capex-cat-{{ loop.index0 }}"
+         data-cat-index="{{ loop.index0 }}">
+
+    {# ── Category total row (clickable to collapse/expand children) ─────────── #}
+    <tr class="fc-section-band fc-capex-cat-row"
+        data-cat="{{ loop.index0 }}"
+        onclick="capexToggleCategory({{ loop.index0 }})"
+        title="Click to collapse/expand">
+      <td class="fc-section-band__label" colspan="10">
+        <span class="fc-cat-toggle-icon" id="fc-capex-cat-icon-{{ loop.index0 }}">
+          {% if cat.is_backend_calculated %}▶{% else %}▼{% endif %}
+        </span>
+        <span class="fc-section-band__code">{{ cat.code }}</span>
+        {{ cat.name }}
+        {% if cat.is_backend_calculated %}
+          <span class="badge badge-backend">backend calc</span>
+        {% endif %}
+      </td>
+      {# Monthly column totals (summed across children) — always visible, filtered by range #}
+      {% for m in range(1, 19) %}
+        {% if m <= 6 %} {% set m_class = "m-early" %}
+        {% elif m <= 12 %} {% set m_class = "m-mid" %}
+        {% else %} {% set m_class = "m-late" %}
+        {% endif %}
+        {% set m_val = 0 %}
+        {% for child in cat.children %}
+          {% if child.monthly_schedule and m <= child.monthly_schedule|length %}
+            {% set frac = child.monthly_schedule[m-1] %}
+            {% set m_val = m_val + (child.amount_keur * frac) %}
+          {% endif %}
+        {% endfor %}
+        <td class="fc-cell fc-cell--amount fc-cell--cat-total {{ m_class }}
+                   {% if cat.is_backend_calculated %}fc-cell--backend{% endif %}
+                   {% if m <= 6 %}m-show{% else %}m-hide{% endif %}"
+            data-m="{{ m }}"
+            data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+            data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+            data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+            data-mrange-all="true">
+          {{ "%.2f"|format(m_val) }}
+        </td>
+      {% endfor %}
+      <td class="fc-cell fc-cell--notes">
+        <span class="fc-cell--muted">sum of child lines</span>
+      </td>
+    </tr>
+
+    {# ── Child rows (only visible when category is expanded) ────────────────── #}
+    {% set cat_index = loop.index0 %}
+    {% for child in cat.children %}
+      <tr class="fc-data-row fc-data-row--child fc-capex-child"
+          data-cat="{{ cat_index }}"
+          data-child-index="{{ loop.index }}">
+
+        {# Line Item name #}
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-cell--col-label fc-th--sticky" data-col="1">
+          <span class="fc-child-indicator"></span>
+          {{ child.name }}
+        </td>
+
+        {# Code #}
+        <td class="fc-cell fc-cell--code fc-th--sticky" data-col="2">{{ child.code }}</td>
+
+        {# Reference kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="3">
+          {{ "%.2f"|format(child.amount_keur|default(0)) }}
+        </td>
+
+        {# App kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="4">
+          {% if child.app_amount_keur is not none %}
+            {{ "%.2f"|format(child.app_amount_keur) }}
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# Delta kEUR #}
+        <td class="fc-cell fc-cell--amount fc-th--sticky" data-col="5">
+          {% if child.delta_keur is not none and child.delta_keur != 0 %}
+            {% set d = child.delta_keur %}
+            <span class="fc-cell-runtime {% if d > 0 %}fc-cell--positive{% elif d < 0 %}fc-cell--negative{% endif %}">
+              {{ "+%.2f"|format(d) if d > 0 else "%.2f"|format(d) }}
+            </span>
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# Contingency % #}
+        <td class="fc-cell fc-cell--pct" data-col="6">
+          {% if child.contingency_pct and child.contingency_pct > 0 %}
+            {{ "%.1f"|format(child.contingency_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        {# VAT % #}
+        <td class="fc-cell fc-cell--pct" data-col="7">
+          {% if child.vat_rate_pct and child.vat_rate_pct > 0 %}
+            {{ "%.1f"|format(child.vat_rate_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">0%</span>
+          {% endif %}
+        </td>
+
+        {# WHT % #}
+        <td class="fc-cell fc-cell--pct" data-col="8">
+          {% if child.wth_rate_pct and child.wth_rate_pct > 0 %}
+            {{ "%.1f"|format(child.wth_rate_pct) }}%
+          {% else %}
+            <span class="fc-cell--muted">0%</span>
+          {% endif %}
+        </td>
+
+        {# Per MW #}
+        <td class="fc-cell fc-cell--num" data-col="9">
+          {% if child.per_mw is not none and child.per_mw > 0 %}
+            {{ "%.2f"|format(child.per_mw) }}
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+
+        <td class="fc-cell fc-cell--status" data-col="10">
+        {# ── UI-2.2: Runtime Impact chip (uses new partial) ───────────── #}
+        {% set rt = child.runtime_impact|default('') %}
+        {% with runtime_impact=rt, sub_reason='' %}
+          {% include "partials/_runtime_impact_chip.html" %}
+        {% endwith %}
+        {# Scope badge (secondary) #}
+        {% set scopeval = child.scope|default('') %}
+        {% if scopeval == 'aggregate_total' %}
+          <span class="badge badge-scope-aggregate" title="Aggregate total scope">agg✓</span>
+        {% elif scopeval == 'payment_batch' %}
+          <span class="badge badge-scope-payment-batch" title="Payment batch reference scope">pymt</span>
+        {% elif scopeval == 'fee_only' %}
+          <span class="badge badge-scope-fee-only" title="Fee-only scope (prerequisite/administrative)">fee</span>
+        {% elif scopeval == 'project_rights' %}
+          <span class="badge badge-scope-project-rights" title="Project rights scope — deferred wiring">rights</span>
+        {% elif scopeval == 'timing_only' %}
+          <span class="badge badge-scope-timing-only" title="Timing-only row">tim</span>
+        {% endif %}
+        {# Phase 21B authority badge (tertiary) #}
+        {% set astatus = child.authority_status|default('missing') %}
+        {% if astatus == 'backend_authoritative' %}
+          <span class="badge badge-auth-backend" title="Backend authoritative: {{ child.runtime_source_field|default('') }}">auth✓</span>
+        {% elif astatus == 'app_mapped' %}
+          <span class="badge badge-auth-app" title="App-mapped field: {{ child.runtime_source_field|default('') }}">app</span>
+        {% elif astatus == 'excel_reference_only' %}
+          <span class="badge badge-auth-excel" title="reference evidence only — no app mapping">reference</span>
+        {% elif astatus == 'missing_runtime_source' %}
+          <span class="badge badge-auth-missing" title="Missing runtime source">?src</span>
+        {% elif astatus == 'mismatch' %}
+          <span class="badge badge-auth-mismatch" title="{{ child.mapping_note|default('') }}">≠</span>
+        {% elif astatus == 'scope_mismatch' %}
+          <span class="badge badge-auth-scope-mismatch" title="{{ child.mapping_note|default('') }}">≠scp</span>
+        {% elif astatus == 'deferred' %}
+          <span class="badge badge-auth-deferred" title="Deferred mapping">defer</span>
+        {% elif astatus == 'not_applicable' %}
+          <span class="badge badge-auth-na">N/A</span>
+        {% else %}
+          <span class="badge badge-auth-missing">?unk</span>
+        {% endif %}
+        {# Source type label #}
+        {% set stype = child.source_type|default('missing') %}
+        <span class="fc-auth-src" title="Source: {{ stype }}">{{ stype[:4] }}</span>
+        {# Runtime impact dot #}
+        {% if child.affects_runtime %}
+          <span class="fc-rt-dot" title="Affects runtime"></span>
+        {% endif %}
+        </td>
+
+        {# Monthly payment columns M1–M18 #}
+        {% for m in range(1, 19) %}
+          {% if m <= 6 %} {% set m_class = "m-early" %}
+          {% elif m <= 12 %} {% set m_class = "m-mid" %}
+          {% else %} {% set m_class = "m-late" %}
+          {% endif %}
+          {% set sched = child.monthly_schedule %}
+          {% set has_sched = sched is not none and sched|length >= m %}
+          {% set frac = sched[m-1] if has_sched else 0 %}
+          {% set cell_val = (child.amount_keur|default(0) * frac) if has_sched else 0 %}
+          <td class="fc-cell fc-cell--month {{ m_class }}
+                     fc-cell--val {% if m <= 6 %}m-show{% else %}m-hide{% endif %}"
+              data-m="{{ m }}"
+              data-mrange-1-6="{{ 'true' if m <= 6 else 'false' }}"
+              data-mrange-7-12A="{{ 'true' if m >= 7 and m <= 12 else 'false' }}"
+              data-mrange-13-18="{{ 'true' if m >= 13 else 'false' }}"
+              data-mrange-all="true"
+              data-sched="{{ '%.4f'|format(frac) if has_sched else '0' }}"
+              data-cat="{{ cat_index }}"
+              title="{% if has_sched %}{{ '%.1f'|format(frac * 100) }}% of {{ '%.2f'|format(child.amount_keur|default(0)) }} kEUR{% endif %}">
+            <span class="fc-val">{{ "%.2f"|format(cell_val) }}</span>
+            <span class="fc-sched" style="display:none">{{ "%.4f"|format(frac) }}</span>
+            <span class="fc-flag" style="display:none">{{ 1 if has_sched and frac > 0 else 0 }}</span>
+          </td>
+        {% endfor %}
+
+        {# Notes #}
+        <td class="fc-cell fc-cell--notes" data-col="29">
+          {% if child.comments %}
+            <span class="fc-cell--muted">{{ child.comments }}</span>
+          {% else %}
+            <span class="fc-cell--muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+{% endfor %}
+
+{# ── No detail items ────────────────────────────────────────────────────────── #}
+{% if not cats %}
+  <tbody>
+    <tr>
+      <td colspan="29" class="fc-cell fc-cell--notes">
+        <span class="fc-cell--muted">No detailed CAPEX items available for this project.</span>
+      </td>
+    </tr>
+  </tbody>
+{% endif %}
+
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Legend ──────────────────────────────────────────────────────────────── #}
+  <div class="fc-capex-legend">
+    <span class="badge badge-mapped">mapped</span> matches app CapexStructure field
+    <span class="badge badge-partial">partial</span> app value exists but is partial
+    <span class="badge badge-mismatch">≠ model</span> app/model mismatch (>5% diff)
+    <span class="badge badge-backend">backend</span> backend-calculated (not editable)
+    <span class="badge badge-unmapped">unmapped</span> no app mapping found
+    <span class="badge badge-factory">template</span> template default value
+    <span class="fc-child-indicator" style="display:inline-block;width:1rem;"></span> child row
+    | <strong>Note:</strong> Monthly amount = Reference kEUR × payment fraction per month.
+    | <strong>Click category</strong> row to collapse/expand children.
+    <br>
+    <strong>Runtime Impact (Phase 22B):</strong>
+    <span class="badge badge-rt badge-rt-drives-model">Drives model</span> drives model
+    <span class="badge badge-rt badge-rt-display-only">Display only</span> display only
+    <span class="badge badge-rt badge-rt-reference-only">Reference only</span> reference only
+    <span class="badge badge-rt badge-rt-pending-treatment">Pending treatment</span> pending treatment
+    <span class="badge badge-rt badge-rt-pending-runtime-source">Pending runtime source</span> pending runtime source
+    <span class="badge badge-rt badge-rt-not-comparable">Not comparable</span> not comparable
+    <span class="badge badge-rt badge-rt-needs-review">Needs review</span> needs review
+    <span class="badge badge-rt badge-rt-timing-only">Timing only</span> timing only
+    <span class="badge badge-rt badge-rt-not-applicable">Not applicable</span> not applicable
+    <br>
+    <strong>Authority (Phase 21B):</strong>
+    <span class="badge badge-auth-backend">auth✓</span> backend_authoritative
+    <span class="badge badge-auth-app">app</span> app_mapped
+    <span class="badge badge-auth-excel">reference</span> excel_reference_only
+    <span class="badge badge-auth-missing">?src</span> missing_runtime_source
+    <span class="badge badge-auth-mismatch">≠</span> mismatch
+    <span class="badge badge-auth-scope-mismatch">≠scp</span> scope_mismatch
+    <span class="badge badge-auth-deferred">defer</span> deferred
+    <span class="fc-rt-dot" style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#16a34a;vertical-align:middle;"></span>
+    = affects runtime (CFADS / debt sizing)
+    <br>
+    <strong>Scope (Phase 21E):</strong>
+    <span class="badge badge-scope-aggregate">agg✓</span> aggregate_total (full-period total)
+    <span class="badge badge-scope-payment-batch">pymt</span> payment_batch (per-batch reference)
+    <span class="badge badge-scope-fee-only">fee</span> fee_only (prerequisite/administrative)
+    <span class="badge badge-scope-project-rights">rights</span> project_rights (deferred wiring)
+    <span class="badge badge-scope-timing-only">tim</span> timing_only (M1-M18 draw schedule)
+  </div>
+
+</div>
+
+<style>
+  /* ── Summary strip ─────────────────────────────────────────────────────── */
+  .capex-summary-strip {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .capex-summary-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.6rem 1rem;
+    min-width: 110px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .capex-summary-card--total {
+    border-color: var(--primary);
+    background: rgba(26,86,219,0.04);
+  }
+  .capex-summary-card__label {
+    font-size: 0.68rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .capex-summary-card__value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .capex-summary-card__unit {
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  /* ── Toolbar ────────────────────────────────────────────────────────────── */
+  .capex-grid-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .capex-toolbar-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .capex-month-range,
+  .capex-display-mode,
+  .capex-collapse-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .capex-m-btn,
+  .capex-mode-btn,
+  .capex-collapse-btn {
+    padding: 0.3rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-2);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .capex-m-btn:hover,
+  .capex-mode-btn:hover,
+  .capex-collapse-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+  .capex-m-btn.active,
+  .capex-mode-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  /* ── Grid wrapper ───────────────────────────────────────────────────────── */
+  .fc-capex-grid-wrapper { margin-bottom: 1rem; }
+  .fc-grid-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    position: relative;
+  }
+
+  /* ── Table dimensions ───────────────────────────────────────────────────── */
+  .fc-capex-detail-grid {
+    table-layout: fixed;
+    min-width: calc(200px + 72px + 80px + 80px + 80px + 50px + 50px + 50px + 55px + 82px
+                     + 18 * 54px + 160px);
+  }
+  .fc-capex-detail-grid .fc-grid-col-label   { width: 200px; min-width: 200px; }
+  .fc-capex-detail-grid .fc-th--code        { width: 72px;  min-width: 72px; }
+  .fc-capex-detail-grid .fc-th--amount      { width: 80px;  min-width: 80px; }
+  .fc-capex-detail-grid .fc-th--pct         { width: 50px;  min-width: 50px; }
+  .fc-capex-detail-grid .fc-th--num         { width: 55px;  min-width: 55px; }
+  .fc-capex-detail-grid .fc-th--status      { width: 96px;  min-width: 96px; }
+  .fc-capex-detail-grid .fc-th--month       { width: 54px;  min-width: 54px; font-size: 0.72rem; }
+  .fc-capex-detail-grid .fc-th--month-num   { font-size: 0.65rem; color: #888; }
+  .fc-capex-detail-grid .fc-th--notes       { min-width: 160px; }
+  .fc-capex-detail-grid .fc-th             { text-align: center; }
+
+  /* ── Sticky columns ─────────────────────────────────────────────────────── */
+  .fc-th--sticky {
+    position: sticky;
+    z-index: 20;
+    background: var(--surface);
+  }
+  .fc-th--sticky[data-col="1"]  { left: 0;     z-index: 22; }
+  .fc-th--sticky[data-col="2"]  { left: 200px; z-index: 21; }
+  .fc-th--sticky[data-col="3"]  { left: 272px; z-index: 21; }
+  .fc-th--sticky[data-col="4"]  { left: 352px; z-index: 21; }
+  .fc-th--sticky[data-col="5"]  { left: 432px; z-index: 21; }
+
+  /* ── Category rows ──────────────────────────────────────────────────────── */
+  .fc-capex-cat-row    { cursor: pointer; user-select: none; }
+  .fc-capex-cat-row:hover { background: rgba(26,86,219,0.04); }
+  .fc-cat-toggle-icon { margin-right: 0.4rem; font-size: 0.75rem; color: var(--primary); }
+  .fc-section-band__code { margin-right: 0.5rem; color: var(--muted); font-size: 0.8em; }
+
+  /* ── Category collapse ──────────────────────────────────────────────────── */
+  .fc-cat-tbody--collapsed .fc-capex-child  { display: none; }
+  .fc-cat-tbody--collapsed .fc-capex-cat-row { opacity: 0.8; }
+
+  /* ── Month range filter ──────────────────────────────────────────────────── */
+  .m-hide { display: none; }
+  .m-show { display: table-cell; }
+
+  /* ── Display mode toggle ────────────────────────────────────────────────── */
+  .fc-capex-detail-grid[data-display="schedule"] .fc-cell--val   { display: none; }
+  .fc-capex-detail-grid[data-display="schedule"] .fc-sched      { display: inline; }
+  .fc-capex-detail-grid[data-display="schedule"] .fc-cell--month { text-align: center; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-cell--val     { display: none; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-flag         { display: inline; }
+  .fc-capex-detail-grid[data-display="flags"] .fc-sched       { display: none; }
+  .fc-capex-detail-grid[data-display="values"] .fc-cell--val    { display: inline; }
+  .fc-capex-detail-grid[data-display="values"] .fc-sched      { display: none; }
+  .fc-capex-detail-grid[data-display="values"] .fc-flag       { display: none; }
+
+  /* ── Cell styles ─────────────────────────────────────────────────────────── */
+  .m-early { color: #333; }
+  .m-mid   { color: #555; }
+  .m-late  { color: #777; }
+  .fc-cell--cat-total {
+    text-align: right;
+    font-weight: 600;
+    background: #f0f2f5;
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .fc-cell--backend   { color: #888; font-style: italic; }
+  .fc-cell--positive  { color: #166534; }
+  .fc-cell--negative  { color: #dc2626; }
+  .fc-cell--month {
+    text-align: right;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .fc-data-row--child .fc-grid-col-label { padding-left: 2.2rem; }
+  .fc-child-indicator::before { content: "└ "; color: #bbb; font-size: 0.85em; }
+  .fc-cell--col-label { padding-left: 2.2rem; }
+  .fc-cell--muted { color: #999; font-style: italic; }
+  .fc-cell--status { text-align: center; }
+
+  /* ── Status badges ──────────────────────────────────────────────────────── */
+  .badge-mapped    { background: #d1e7dd; color: #0f5132; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-partial   { background: #cfe2ff; color: #084298; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-mismatch { background: #f8d7da; color: #842029; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-backend   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-unmapped  { background: #fff3cd; color: #856404; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+  .badge-factory   { background: #e9ecef; color: #495057; border-radius: 3px; padding: 1px 5px; font-size: 0.7rem; }
+
+  /* ── Phase 21B: Authority badges ────────────────────────────────────────── */
+  .badge-auth-backend  { background: #166534; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 700; }
+  .badge-auth-app      { background: #1d4ed8; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-excel    { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+  .badge-auth-missing  { background: #dc2626; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-mismatch { background: #d97706; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-deferred { background: #9ca3af; color: #374151; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+  .badge-auth-scope-mismatch { background: #ca8a04; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; font-weight: 600; }
+  .badge-auth-na       { background: #e5e7eb; color: #6b7280; border-radius: 3px; padding: 1px 4px; font-size: 0.65rem; }
+
+  /* ── Phase 21E: Scope badges ───────────────────────────────────────────── */
+  .badge-scope-aggregate      { background: #1d4ed8; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 700; }
+  .badge-scope-payment-batch  { background: #7c3aed; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 700; }
+  .badge-scope-fee-only       { background: #6b7280; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
+  .badge-scope-project-rights { background: #c2410c; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; font-weight: 600; }
+  .badge-scope-timing-only   { background: #0f766e; color: #fff; border-radius: 3px; padding: 1px 4px; font-size: 0.6rem; }
+
+  /* ── Phase 22B: Display-only audit banner ─────────────────────────────────── */
+  .capex-display-only-banner {
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 0.75rem;
+    color: #92400e;
+    line-height: 1.5;
+  }
+  .capex-display-only-banner .banner-icon { font-size: 1rem; margin-right: 4px; }
+  .capex-display-only-banner .banner-sub { font-size: 0.7rem; color: #b45309; margin-top: 2px; }
+
+  /* ── Phase 22B: Runtime Impact badges ───────────────────────────────────── */
+  .badge-rt { font-size: 0.65rem; font-weight: 700; border-radius: 10px; padding: 2px 6px; display: inline-block; margin: 1px; }
+  .badge-rt-drives-model         { background: #15803d; color: #fff; }
+  .badge-rt-display-only        { background: #6b7280; color: #fff; }
+  .badge-rt-reference-only      { background: #7c3aed; color: #fff; }
+  .badge-rt-pending-treatment   { background: #c2410c; color: #fff; }
+  .badge-rt-pending-runtime-source { background: #b45309; color: #fff; }
+  .badge-rt-not-comparable      { background: #ca8a04; color: #fff; }
+  .badge-rt-needs-review        { background: #dc2626; color: #fff; }
+  .badge-rt-not-applicable      { background: #e5e7eb; color: #6b7280; }
+  .badge-rt-deferred            { background: #475569; color: #fff; }
+  .badge-rt-timing-only         { background: #0f766e; color: #fff; }
+  .badge-rt-unknown             { background: #9ca3af; color: #fff; }
+
+  /* Source type label */
+  .fc-auth-src { display: block; font-size: 0.6rem; color: #9ca3af; margin-top: 1px; }
+
+  /* Runtime impact dot */
+  .fc-rt-dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: #16a34a;
+    margin-left: 2px;
+    vertical-align: middle;
+  }
+
+  /* ── Phase 21B: Authority summary strip ─────────────────────────────────── */
+  .capex-auth-strip {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .capex-auth-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.25rem;
+  }
+  .capex-auth-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 52px;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    gap: 0.1rem;
+  }
+  .capex-auth-card--backend  { background: rgba(22,101,52,0.12); border: 1px solid #166534; }
+  .capex-auth-card--app      { background: rgba(29,78,216,0.12); border: 1px solid #1d4ed8; }
+  .capex-auth-card--excel    { background: rgba(107,114,128,0.12); border: 1px solid #6b7280; }
+  .capex-auth-card--missing  { background: rgba(220,38,38,0.12); border: 1px solid #dc2626; }
+  .capex-auth-card--mismatch { background: rgba(217,119,6,0.12); border: 1px solid #d97706; }
+  .capex-auth-card--scope-mismatch { background: rgba(202,138,4,0.12); border: 1px solid #ca8a04; }
+  .capex-auth-card--deferred { background: rgba(156,163,175,0.2); border: 1px solid #9ca3af; }
+  .capex-auth-count {
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .capex-auth-card--backend  .capex-auth-count { color: #166534; }
+  .capex-auth-card--app      .capex-auth-count { color: #1d4ed8; }
+  .capex-auth-card--excel    .capex-auth-count { color: #6b7280; }
+  .capex-auth-card--missing  .capex-auth-count { color: #dc2626; }
+  .capex-auth-card--mismatch .capex-auth-count { color: #d97706; }
+  .capex-auth-card--scope-mismatch .capex-auth-count { color: #ca8a04; }
+  .capex-auth-card--scope-mismatch .capex-auth-name { color: #ca8a04; }
+  .capex-auth-card--deferred .capex-auth-count { color: #6b7280; }
+  .capex-auth-name {
+    font-size: 0.6rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .capex-auth-total {
+    margin-left: auto;
+    font-size: 0.72rem;
+    color: var(--muted);
+    display: flex;
+    gap: 0.3rem;
+    align-items: center;
+  }
+  .capex-auth-total__count {
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  /* ── Legend ────────────────────────────────────────────────────────────── */
+  .fc-capex-legend {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: #666;
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-top: 1px solid #eee;
+  }
+  .inp-readonly-notice__hint { margin-top: 0.5rem; font-size: 0.8rem; color: #666; }
+
+  /* ── Phase 57A-10H: Column group header strip (softened colours) ────── */
+  .fc-grid-header--groups .fc-capex-group-header {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  /* Softened palette: lighter backgrounds, darker text for legibility */
+  .fc-capex-group-header[data-capex-group="core"] {
+    background: #e6eff7; color: #1f4d7a;
+  }
+  .fc-capex-group-header[data-capex-group="costing"] {
+    background: #ece4f4; color: #5a3a8a;
+  }
+  .fc-capex-group-header[data-capex-group="tax"] {
+    background: #f5e7da; color: #8a4a1f;
+  }
+  .fc-capex-group-header[data-capex-group="meta"] {
+    background: #e4ede6; color: #2a6a3a;
+  }
+  .fc-capex-group-header[data-capex-group="schedule"] {
+    background: #f4eed4; color: #7a6a1f;
+  }
+</style>
+
+<script>
+  /* ── Month range selector ───────────────────────────────────────────────── */
+  function capexSetMonthRange(range) {
+    var grid = document.getElementById('capex-detail-grid');
+    if (!grid) return;
+    grid.setAttribute('data-mrange', range);
+    var allCells = grid.querySelectorAll('[data-m]');
+    allCells.forEach(function(cell) {
+      var show = cell.getAttribute('data-mrange-' + range) === 'true';
+      if (show) {
+        cell.classList.remove('m-hide');
+        cell.classList.add('m-show');
+      } else {
+        cell.classList.add('m-hide');
+        cell.classList.remove('m-show');
+      }
+    });
+    document.querySelectorAll('.capex-m-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mrange') === range);
+    });
+  }
+
+  /* ── Display mode toggle ───────────────────────────────────────────────── */
+  function capexSetDisplayMode(mode) {
+    var grid = document.getElementById('capex-detail-grid');
+    if (!grid) return;
+    grid.setAttribute('data-display', mode);
+    document.querySelectorAll('.capex-mode-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+    });
+  }
+
+  /* ── Category collapse/expand ──────────────────────────────────────────── */
+  function capexToggleCategory(catIndex) {
+    var tbody = document.getElementById('fc-capex-cat-' + catIndex);
+    if (!tbody) return;
+    var icon = document.getElementById('fc-capex-cat-icon-' + catIndex);
+    var isCollapsed = tbody.classList.contains('fc-cat-tbody--collapsed');
+    if (isCollapsed) {
+      tbody.classList.remove('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▼';
+    } else {
+      tbody.classList.add('fc-cat-tbody--collapsed');
+      if (icon) icon.textContent = '▶';
+    }
+  }
+
+  function capexExpandAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.remove('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▼';
+    });
+  }
+
+  function capexCollapseAll() {
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      tb.classList.add('fc-cat-tbody--collapsed');
+    });
+    document.querySelectorAll('.fc-cat-toggle-icon').forEach(function(ic) {
+      ic.textContent = '▶';
+    });
+  }
+
+  /* ── Init: default range = all ──────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', function() {
+    capexSetMonthRange('all');
+    // Backend-calculated categories start collapsed
+    document.querySelectorAll('.fc-cat-tbody').forEach(function(tb) {
+      var catRow = tb.querySelector('.fc-capex-cat-row');
+      if (catRow && catRow.classList.contains('fc-capex-cat-row')) {
+        var icon = tb.querySelector('.fc-cat-toggle-icon');
+        if (icon && icon.textContent === '▶') {
+          tb.classList.add('fc-cat-tbody--collapsed');
+        }
+      }
+    });
+  });
+</script>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Open a project - FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="standalone-page standalone-page--project-browse"
+      data-p2fix5a-page="project-browse">
+
+  {% include "partials/_standalone_header.html" %}
+
+  <main class="standalone-main" id="standalone-main">
+    <div class="page-shell page-shell--project-browse"
+         id="page-shell-project-browse">
+      <div class="page-shell-header">
+        <h1 class="page-shell-title">Open a project</h1>
+        <p class="page-shell-desc">
+          Open a project to view, run, and export results.
+        </p>
+      </div>
+      {% include "partials/project_browser.html" %}
+    </div>
+  </main>
+
+  {% include "partials/_app_footer.html" %}
+
+</body>
+</html>

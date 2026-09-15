@@ -1,0 +1,293 @@
+{#
+  UI-4A — Workbook V2 Overview sheet partial (Pilot-Ready).
+
+  Displays a decision-grade financial summary sourced exclusively from the
+  authoritative RuntimeResult via OverviewProjection.
+
+  State machine:
+    NOT_RUN     → empty state with run prompt
+    UNAVAILABLE → same as NOT_RUN (debt schedule not produced)
+    STALE       → prior results visible + stale warning strip
+    CLEAN       → current results
+
+  Rules:
+    - "NOT_AVAILABLE" sentinel must never reach the template — always render "—"
+    - No financial arithmetic, no JS-side computation
+    - All KPI values pre-formatted by builder
+
+  Context variables (from app/v2/router.py):
+    overview        OverviewProjection
+    project_code    str
+    project_name    str
+    project_type    str
+    ws_dirty        bool
+    has_runtime     bool
+#}
+
+{#
+  KPI display: use ov.output_metrics[key].display_value directly.
+  OutputMetricProjection guarantees display_value is never "NOT_AVAILABLE".
+  Template-level sentinel repair is not needed (OUTPUT_METRIC_CONTRACT_ACTUALLY_WIRED).
+#}
+{% macro kpi_metric(key) %}{{ ov.output_metrics[key].display_value if key in ov.output_metrics else "—" }}{% endmacro %}
+
+<div id="v2-sheet-overview" class="v2-overview" data-sheet="overview">
+
+{% set ov = overview %}
+{% set is_no_run = ov.state.value in ("NOT_RUN", "UNAVAILABLE") %}
+{% set is_stale  = ov.state.value == "STALE" %}
+{% set is_clean  = ov.state.value == "CLEAN" %}
+
+{# ── Model state strip ───────────────────────────────────────────────── #}
+<div class="v2-overview-state-strip
+  {% if is_clean %}v2-state-strip--current
+  {% elif is_stale %}v2-state-strip--stale
+  {% else %}v2-state-strip--notrun{% endif %}"
+  role="status" data-testid="overview-state-strip">
+  {% if is_clean %}
+    <span class="v2-state-strip-dot" aria-hidden="true">●</span>
+    <span class="v2-state-strip-label">CURRENT</span>
+    <span class="v2-state-strip-detail">
+      Outputs reflect the current inputs.
+      {% if ov.run_timestamp_display %} Last run {{ ov.run_timestamp_display }}.{% endif %}
+    </span>
+  {% elif is_stale %}
+    <span class="v2-state-strip-dot" aria-hidden="true">●</span>
+    <span class="v2-state-strip-label">STALE</span>
+    <span class="v2-state-strip-detail">
+      Inputs changed since the last run — prior results shown below.
+      Run Model to refresh.
+    </span>
+  {% else %}
+    <span class="v2-state-strip-dot" aria-hidden="true">●</span>
+    <span class="v2-state-strip-label">NOT RUN</span>
+    <span class="v2-state-strip-detail">
+      Run the model to generate financial outputs.
+    </span>
+  {% endif %}
+</div>
+
+{# ── NO_RUN empty state ───────────────────────────────────────────────── #}
+{% if is_no_run %}
+<div class="v2-overview-no-run" data-testid="overview-no-run-state">
+  <div class="v2-overview-no-run-inner">
+    <p class="v2-overview-no-run-title">No model results yet</p>
+    <p class="v2-overview-no-run-sub">
+      Use the <strong>Run</strong> button above to generate the project finance summary.
+    </p>
+    <p class="v2-overview-no-run-hint">
+      The Overview displays Project IRR, Equity IRR, DSCR, LLCR, CAPEX, and senior
+      debt capacity once the model has been run.
+    </p>
+  </div>
+</div>
+
+{# ── KPI strip + charts (shown when any runtime result exists) ─────────── #}
+{% else %}
+
+  {# ── KPI strip ─────────────────────────────────────────────────────── #}
+  <section class="v2-overview-section" aria-label="Key metrics">
+    <div class="v2-overview-section-title">Key Metrics
+      {% if is_stale %}
+        <span class="v2-overview-stale-badge" title="Inputs changed since last run">Prior run</span>
+      {% endif %}
+    </div>
+    <div class="v2-kpi-grid v2-overview-kpi-grid">
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-project-irr">
+        <span class="v2-kpi-label">Project IRR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("project_irr") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-equity-irr">
+        <span class="v2-kpi-label">Equity IRR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("equity_irr") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-min-dscr">
+        <span class="v2-kpi-label">Min DSCR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("min_dscr") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-avg-dscr">
+        <span class="v2-kpi-label">Avg DSCR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("avg_dscr") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-min-llcr">
+        <span class="v2-kpi-label">Min LLCR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("min_llcr") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-senior-debt">
+        <span class="v2-kpi-label">Senior Debt</span>
+        <span class="v2-kpi-value">{{ kpi_metric("senior_debt_keur") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-total-capex">
+        <span class="v2-kpi-label">Total CAPEX</span>
+        <span class="v2-kpi-value">{{ kpi_metric("total_capex_keur") }}</span>
+      </div>
+
+      <div class="v2-kpi-tile v2-kpi-tile--unavail"
+           data-testid="kpi-equity-npv"
+           title="Equity NPV not available in current schema version">
+        <span class="v2-kpi-label">Equity NPV</span>
+        <span class="v2-kpi-value v2-kpi-value--na">—</span>
+        <span class="v2-kpi-unit v2-kpi-unit--na">not available</span>
+      </div>
+
+    </div>
+  </section>
+
+  {# ── Two-column body: project summary + decision status ───────────── #}
+  <div class="v2-overview-body">
+
+    {# Left: Project summary block ─────────────────────────────────────── #}
+    <section class="v2-overview-section v2-overview-summary-block" aria-label="Project context">
+      <div class="v2-overview-section-title">Project</div>
+      <table class="v2-overview-summary-table">
+        <tbody>
+          <tr><td class="v2-ov-sum-label">Name</td>
+              <td class="v2-ov-sum-value" data-testid="summary-project-name">{{ ov.project_name or project_name or "—" }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Technology</td>
+              <td class="v2-ov-sum-value" data-testid="summary-technology">
+                {{ (ov.project_type or project_type or "—") | replace("generic_", "") | replace("_", " ") | title }}
+              </td></tr>
+          <tr><td class="v2-ov-sum-label">Country</td>
+              <td class="v2-ov-sum-value" data-testid="summary-country">{{ ov.country_iso or "—" }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Capacity</td>
+              <td class="v2-ov-sum-value" data-testid="summary-capacity">{{ ov.capacity_mw | replace("NOT_AVAILABLE", "—") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">COD</td>
+              <td class="v2-ov-sum-value" data-testid="summary-cod">{{ ov.cod_year | replace("NOT_AVAILABLE", "—") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Horizon</td>
+              <td class="v2-ov-sum-value" data-testid="summary-horizon">{{ ov.horizon_years | replace("NOT_AVAILABLE", "—") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Gearing</td>
+              <td class="v2-ov-sum-value" data-testid="summary-gearing">{{ ov.gearing_pct | replace("NOT_AVAILABLE", "—") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Debt Tenor</td>
+              <td class="v2-ov-sum-value" data-testid="summary-tenor">{{ ov.senior_tenor_years | replace("NOT_AVAILABLE", "—") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Total CAPEX</td>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_capex_keur") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Total Revenue</td>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_revenue_keur") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Total EBITDA</td>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_ebitda_keur") }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    {# Right: Decision status ─────────────────────────────────────────── #}
+    <section class="v2-overview-section v2-overview-status-block" aria-label="Decision status">
+      <div class="v2-overview-section-title">Run Status</div>
+
+      <table class="v2-overview-summary-table">
+        <tbody>
+          <tr><td class="v2-ov-sum-label">Scenario</td>
+              <td class="v2-ov-sum-value" data-testid="overview-active-scenario">
+                {{ ov.active_scenario_name or "Base Case" }}
+              </td></tr>
+          <tr><td class="v2-ov-sum-label">Last Run</td>
+              <td class="v2-ov-sum-value v2-ov-timestamp" data-testid="overview-run-at">
+                {{ ov.run_timestamp_display or "—" }}
+              </td></tr>
+          <tr><td class="v2-ov-sum-label">Snapshot</td>
+              <td class="v2-ov-sum-value v2-ov-mono" data-testid="overview-snapshot-id">{{ ov.snapshot_id or "—" }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Status</td>
+              <td class="v2-ov-sum-value">
+                {% if is_clean %}
+                  <span class="v2-status-pill v2-status-pill--current" data-testid="overview-status-current">CURRENT</span>
+                {% elif is_stale %}
+                  <span class="v2-status-pill v2-status-pill--stale" data-testid="overview-status-stale">STALE</span>
+                {% else %}
+                  <span class="v2-status-pill v2-status-pill--notrun" data-testid="overview-status-notrun">NOT RUN</span>
+                {% endif %}
+              </td></tr>
+        </tbody>
+      </table>
+
+      <div class="v2-overview-section-title" style="margin-top:1rem">Covenant Coverage</div>
+      <table class="v2-overview-summary-table">
+        <tbody>
+          <tr><td class="v2-ov-sum-label">Min DSCR</td>
+              <td class="v2-ov-sum-value" data-testid="cov-min-dscr">{{ kpi_metric("min_dscr") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Target DSCR</td>
+              <td class="v2-ov-sum-value" data-testid="cov-target-dscr">{{ kpi_metric("target_dscr") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Min LLCR</td>
+              <td class="v2-ov-sum-value" data-testid="cov-min-llcr">{{ kpi_metric("min_llcr") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Avg DSCR</td>
+              <td class="v2-ov-sum-value">{{ kpi_metric("avg_dscr") }}</td></tr>
+          <tr><td class="v2-ov-sum-label">Periods in Lockup</td>
+              <td class="v2-ov-sum-value">{{ ov.periods_in_lockup | replace("NOT_AVAILABLE", "—") }}</td></tr>
+        </tbody>
+      </table>
+
+      <div class="v2-overview-nav-links" style="margin-top:0.75rem">
+        <a class="v2-overview-nav-link" href="#" data-goto-tab="debt"
+           aria-label="Go to Senior Debt sheet">Senior Debt →</a>
+        <a class="v2-overview-nav-link" href="#" data-goto-tab="tax"
+           aria-label="Go to Tax sheet">Tax →</a>
+        <a class="v2-overview-nav-link" href="#" data-goto-tab="fs"
+           aria-label="Go to Financial Statements sheet">Financials →</a>
+      </div>
+    </section>
+
+  </div>{# v2-overview-body #}
+
+  {# ── Charts ──────────────────────────────────────────────────────────── #}
+  {% if ov.chart_debt_periods %}
+  {%   set periods_json = ov.chart_debt_periods | tojson %}
+  <div class="v2-overview-charts">
+
+    <section class="v2-overview-section v2-overview-chart-section" aria-label="Senior Debt Balance and Debt Service">
+      <div class="v2-overview-section-title">
+        Senior Debt — Balance &amp; Service
+        <a class="v2-overview-nav-link v2-overview-section-link" href="#" data-goto-tab="debt">Debt →</a>
+      </div>
+      <div class="v2-overview-chart"
+           id="chart-debt-balance"
+           data-testid="chart-debt-balance"
+           data-chart-type="debt-balance"
+           data-periods='{{ periods_json }}'
+           aria-label="Senior debt balance and annual debt service chart"></div>
+    </section>
+
+    <section class="v2-overview-section v2-overview-chart-section" aria-label="DSCR Profile">
+      <div class="v2-overview-section-title">
+        DSCR Profile
+        <a class="v2-overview-nav-link v2-overview-section-link" href="#" data-goto-tab="debt">Debt →</a>
+      </div>
+      <div class="v2-overview-chart"
+           id="chart-dscr-profile"
+           data-testid="chart-dscr-profile"
+           data-chart-type="dscr"
+           data-periods='{{ periods_json }}'
+           {% if ov.output_metrics.get("target_dscr") and ov.output_metrics["target_dscr"].raw_value is not none %}
+           data-target="{{ ov.output_metrics['target_dscr'].raw_value }}"
+           {% endif %}
+           aria-label="DSCR profile over debt tenor"></div>
+    </section>
+
+  </div>{# v2-overview-charts #}
+  {% endif %}
+
+  {# ── Run timestamp footer ─────────────────────────────────────────────── #}
+  <div class="v2-overview-footer">
+    <span class="v2-overview-footer-label">Last model run:</span>
+    <span class="v2-overview-footer-value" data-testid="overview-footer-timestamp">
+      {{ ov.run_timestamp_display or "—" }}
+    </span>
+    {% if is_stale %}
+      <span class="v2-overview-footer-stale"> · Prior run — inputs changed since then</span>
+    {% endif %}
+  </div>
+
+{% endif %}{# not is_no_run #}
+
+</div>{# v2-sheet-overview #}

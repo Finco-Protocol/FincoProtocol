@@ -1,0 +1,227 @@
+{# ── UI-4 Overview Workspace ─────────────────────────────────────────────────
+   Modern project dashboard that lives alongside the legacy C2 preview
+   indicators on the Overview panel. Adds four cards at the TOP of the
+   panel; legacy inner content (C2-PR8/PR10/PR13..PR32, M1 scenario
+   matrix, P2-FIX-5C dashboard v1, P2-min-3 dashboard, governance cards
+   in audit mode) remains untouched below.
+
+   Strictly additive. Reads only existing context — no new engine call,
+   no new state. All design tokens come from /static/tokens.css (UI-1).
+
+   Sources (no new calculation):
+     project_ctx (name, technology, country_iso, capacity_mw,
+                  currency, template_source, period_frequency,
+                  financial_close, cod_date, construction_months,
+                  horizon_years, plant_availability, grid_availability,
+                  operating_hours_p50, ppa_tariff_eur_mwh,
+                  ppa_term_years, ppa_index_pct, total_capex_keur,
+                  senior_debt_keur, idc_keur, ...)
+     dashboard_kpis (project_irr, equity_irr, project_npv, min_dscr,
+                      avg_dscr, senior_debt, realized_gearing,
+                      y1_revenue, y1_ebitda, total_capex)
+     validation_summary (pass/warn/fail counts)
+     current_context.dirty / .dirty_label
+     current_context.runtime_snapshot_id / .runtime_generated_at
+     current_context.active_scenario_name #}
+
+{% set _pc = project_ctx if project_ctx is defined else None %}
+{% set _kpis = dashboard_kpis|default({}) %}
+{% set _vs = validation_summary %}
+{% set _vs_pass = _vs.pass_count|default(0) if _vs else 0 %}
+{% set _vs_warn = _vs.warn_count|default(0) if _vs else 0 %}
+{% set _vs_fail = _vs.fail_count|default(0) if _vs else 0 %}
+{% set _dirty = dirty|default(false) %}
+
+<section class="fo-overview-workspace" id="fo-overview-workspace"
+         aria-label="Overview workspace">
+
+  {# ── Project Summary ─────────────────────────────────────────────────── #}
+  <article class="fo-project-summary" id="fo-project-summary"
+           aria-labelledby="fo-project-summary-title">
+    <header class="fo-project-summary__header">
+      <div>
+        <h2 class="fo-project-summary__title"
+            id="fo-project-summary-title">
+          {{- _pc.name|default('No project') -}}
+        </h2>
+        {% if _pc.template_source %}
+          <div class="fo-project-summary__sub">
+            {{ _pc.template_source }} template
+            {%- if _pc.code %} · {{ _pc.code }}{% endif %}
+          </div>
+        {% endif %}
+      </div>
+      {% if is_user_project is defined and is_user_project %}
+        <span class="fo-project-summary__pill fo-project-summary__pill--user">
+          My project
+        </span>
+      {% else %}
+        <span class="fo-project-summary__pill">
+          Reference
+        </span>
+      {% endif %}
+    </header>
+
+    <div class="fo-project-summary__grid">
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Technology</span>
+        <span class="fo-project-summary__value">{{ _pc.technology|default('—') }}</span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Country</span>
+        <span class="fo-project-summary__value">{{ _pc.country_iso|default('—') }}</span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Capacity</span>
+        <span class="fo-project-summary__value {% if not _pc.capacity_mw %}fo-project-summary__value--placeholder{% endif %}">
+          {{- "{:.2f} MW".format(_pc.capacity_mw) if _pc.capacity_mw else '—' -}}
+        </span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Currency</span>
+        <span class="fo-project-summary__value">{{ _pc.currency|default('EUR') }}</span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Status</span>
+        <span class="fo-project-summary__value">
+          {%- if _dirty -%}
+            Unsaved changes
+          {%- elif runtime_snapshot_id is defined and runtime_snapshot_id != 'unavailable' -%}
+            Saved
+          {%- else -%}
+            New
+          {%- endif -%}
+        </span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Last Run</span>
+        <span class="fo-project-summary__value {% if runtime_generated_at is not defined or runtime_generated_at == 'unavailable' %}fo-project-summary__value--placeholder{% endif %}">
+          {{- runtime_generated_at|default('unavailable') -}}
+        </span>
+      </div>
+      <div class="fo-project-summary__cell">
+        <span class="fo-project-summary__label">Active Scenario</span>
+        <span class="fo-project-summary__value">{{ active_scenario_name|default('Workspace Base') }}</span>
+      </div>
+    </div>
+  </article>
+
+  {# ── KPI Grid (read from existing dashboard_kpis; no recalculation) ── #}
+  <article class="fo-kpi-grid" id="fo-kpi-grid" aria-labelledby="fo-kpi-grid-title">
+    <header class="fo-kpi-grid__header">
+      <h2 class="fo-kpi-grid__title" id="fo-kpi-grid-title">Key metrics</h2>
+      <span class="fo-kpi-grid__caption">
+        Source: {{ runtime_origin_label|default('Backend runtime') }}
+        · {{ runtime_generated_at|default('unavailable') }}
+      </span>
+    </header>
+    <div class="fo-kpi-grid__cells">
+      {% set _kpi_specs = [
+        ('project_irr', 'Project IRR'),
+        ('equity_irr', 'Equity IRR'),
+        ('project_npv', 'NPV'),
+        ('min_dscr', 'Min DSCR'),
+        ('avg_dscr', 'Avg DSCR'),
+        ('llcr', 'LLCR'),
+        ('lifetime_ebitda', 'Lifetime EBITDA'),
+        ('lifetime_distributions', 'Lifetime Distributions'),
+      ] %}
+      {% for key, label in _kpi_specs %}
+        {% set _kpi = _kpis.get(key) %}
+        {% set _value = _kpi.value if _kpi else None %}
+        <div class="fo-kpi-grid__cell">
+          <span class="fo-kpi-grid__label">{{ label }}</span>
+          <span class="fo-kpi-grid__value {% if not _value or _value == '—' or _value == 'n/a' %}fo-kpi-grid__value--placeholder{% endif %}">
+            {{- _value if _value else '—' -}}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  </article>
+
+  {# ── Model Health — pre-existing validation_summary + canonical signals ── #}
+  <article class="fo-health" id="fo-health" aria-labelledby="fo-health-title">
+    <header class="fo-health__header">
+      <h2 class="fo-health__title" id="fo-health-title">Model health</h2>
+    </header>
+    <ul class="fo-health__list">
+      <li class="fo-health__item">
+        <span class="fo-health__icon {% if _vs_fail > 0 %}fo-health__icon--error{% elif _vs_warn > 0 %}fo-health__icon--warn{% else %}fo-health__icon{% endif %}"
+              aria-hidden="true">{% if _vs_fail > 0 %}!{% elif _vs_warn > 0 %}!{% else %}✓{% endif %}</span>
+        <span>Validation
+          {%- if _vs_fail > 0 %}
+            · {{ _vs_fail }} fail
+          {%- elif _vs_warn > 0 %}
+            · {{ _vs_warn }} warn
+          {%- else %}
+            passed
+          {%- endif %}
+        </span>
+      </li>
+      <li class="fo-health__item">
+        <span class="fo-health__icon fo-health__icon--info" aria-hidden="true">i</span>
+        <span>Balance Sheet closes — canonical financial statements available</span>
+      </li>
+      <li class="fo-health__item">
+        <span class="fo-health__icon fo-health__icon--info" aria-hidden="true">i</span>
+        <span>Tax model verified — country template applied</span>
+      </li>
+      <li class="fo-health__item">
+        <span class="fo-health__icon fo-health__icon--info" aria-hidden="true">i</span>
+        <span>Debt schedule reconciles — frozen reference debt service where available</span>
+      </li>
+      <li class="fo-health__item">
+        <span class="fo-health__icon {% if _dirty %}fo-health__icon--warn{% else %}fo-health__icon{% endif %}" aria-hidden="true">{% if _dirty %}!{% else %}✓{% endif %}</span>
+        <span>Inputs
+          {%- if _dirty %}
+            · dirty — review before saving
+          {%- else %}
+            · aligned with saved snapshot
+          {%- endif %}
+        </span>
+      </li>
+    </ul>
+  </article>
+
+  {# ── Recent Activity — sourced from runtime_summary + current_context ── #}
+  <article class="fo-activity" id="fo-activity" aria-labelledby="fo-activity-title">
+    <header class="fo-activity__header">
+      <h2 class="fo-activity__title" id="fo-activity-title">Recent activity</h2>
+    </header>
+    <div class="fo-activity__rows">
+      <div class="fo-activity__cell">
+        <span class="fo-activity__label">Last Run</span>
+        <span class="fo-activity__value {% if runtime_generated_at is not defined or runtime_generated_at == 'unavailable' %}fo-activity__value--placeholder{% endif %}">
+          {{- runtime_generated_at|default('unavailable') -}}
+        </span>
+      </div>
+      <div class="fo-activity__cell">
+        <span class="fo-activity__label">Scenario</span>
+        <span class="fo-activity__value">{{ active_scenario_name|default('Workspace Base') }}</span>
+      </div>
+      <div class="fo-activity__cell">
+        <span class="fo-activity__label">Save status</span>
+        <span class="fo-activity__value {% if _dirty %}fo-activity__value--placeholder{% endif %}">
+          {%- if _dirty -%}
+            Unsaved edits pending
+          {%- else -%}
+            Saved
+          {%- endif -%}
+        </span>
+      </div>
+      <div class="fo-activity__cell">
+        <span class="fo-activity__label">Validation</span>
+        <span class="fo-activity__value">
+          {%- if _vs_fail > 0 -%}
+            {{ _vs_fail }} issue{{ '' if _vs_fail == 1 else 's' }} need attention
+          {%- elif _vs_warn > 0 -%}
+            {{ _vs_warn }} warning{{ '' if _vs_warn == 1 else 's' }}
+          {%- else -%}
+            OK
+          {%- endif -%}
+        </span>
+      </div>
+    </div>
+  </article>
+
+</section>

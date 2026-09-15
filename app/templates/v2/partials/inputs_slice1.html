@@ -1,0 +1,41 @@
+{#
+  Canonical Inputs Slice 1 grid.
+
+  Context:
+    inputs_slice1_sections list[dict]
+    project_code, workbook_version, content_hash, project_editable
+#}
+<div id="v2-sheet-inputs" data-sheet="inputs" data-inputs-slice="1"
+     data-fc-grid="inputs" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project - create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  <div class="v2-inputs-slice1-header">
+    <div>
+      <h2>Inputs</h2>
+      <p>Project, Schedule, Technical and supported Production inputs.</p>
+    </div>
+    <span class="v2-inputs-slice1-pill">Canonical Slice 1</span>
+  </div>
+
+  <div class="v2-inputs-slice1-note" role="note">
+    Values save through the canonical ProjectInputSet pipeline. Outputs are not rerun automatically.
+  </div>
+
+  {% for section in inputs_slice1_sections %}
+    {% include "partials/inputs_slice1_section.html" %}
+  {% endfor %}
+
+  <div class="v2-inputs-slice1-footer" role="note">
+    P50 is shown only as the current FINCO Protocol operating-hours field. Excel P50/yield semantics remain unresolved.
+  </div>
+</div>

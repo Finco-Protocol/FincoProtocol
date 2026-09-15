@@ -1,0 +1,96 @@
+{# ── V4-2 Part D — Financial Statements Compare ────────────────────────── #}
+{# Read-only. Runs canonical engine per scenario and shows FS side-by-side. #}
+{# Uses assemble_financial_statements() — same engine as institutional WB.   #}
+<div class="scm-fs-compare" data-testid="scenario-fs-compare">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">FS</span>
+    <span class="scm-multi-heading-label">Financial Statements Compare</span>
+  </div>
+
+  {% if fs_compare_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">FS Compare Unavailable</div>
+        <div class="ps-history-meta">{{ fs_compare_error }}</div>
+      </div>
+    </div>
+  {% elif fs_compare_result %}
+    {% set scenarios = fs_compare_result['scenarios'] %}
+    {% set statements = fs_compare_result['statements'] %}
+    {% set sheet_names = fs_compare_result['sheet_names'] %}
+
+    <div class="scm-multi-banner" role="note">
+      Financial statements re-computed from saved scenario snapshots using
+      the canonical engine. Same formulas as the institutional workbook.
+      Values in kEUR unless noted.
+    </div>
+
+    <div class="scm-multi-chips">
+      {% for sc in scenarios %}
+        <span class="scm-chip {% if loop.first %}scm-chip--base{% endif %}">
+          {% if loop.first %}<span class="badge badge-runtime">Base</span>{% endif %}
+          <span class="scm-chip-name">{{ sc.scenario_name }}</span>
+        </span>
+        {% if not loop.last %}<span class="scm-chip-vs">vs</span>{% endif %}
+      {% endfor %}
+    </div>
+
+    {% for sheet_name in sheet_names %}
+      {% if statements[sheet_name] is defined %}
+      <div style="margin-top:0.75rem;">
+        <div class="scm-diff-section-label">{{ sheet_name }}</div>
+        <div class="scm-fs-compare__table">
+          {% set sheet_data = statements[sheet_name] %}
+          {% set col_count = 2 + scenarios|length %}
+          <div class="scm-fs-row scm-fs-row--head"
+               style="grid-template-columns: 12rem repeat({{ scenarios|length }}, 1fr) 5rem;">
+            <span>Line Item</span>
+            {% for sc in scenarios %}
+              <span class="{% if loop.first %}scm-fs-col-base{% endif %}">
+                {% if loop.first %}Base · {% endif %}{{ sc.scenario_name }}
+              </span>
+            {% endfor %}
+            <span>Delta</span>
+          </div>
+          {% for row in sheet_data %}
+            {% if row.get('is_section') %}
+              <div class="scm-fs-row scm-fs-row--section"
+                   style="grid-template-columns: 12rem repeat({{ scenarios|length }}, 1fr) 5rem;">
+                <span colspan="{{ col_count }}"><strong>{{ row['label'] }}</strong></span>
+              </div>
+            {% else %}
+              {% set vals = row.get('values', []) %}
+              {% set changed = vals|length > 1 and vals[0] != vals[1] %}
+              <div class="scm-fs-row {% if changed %}scm-fs-cell--changed{% endif %}"
+                   style="grid-template-columns: 12rem repeat({{ scenarios|length }}, 1fr) 5rem;">
+                <span class="scm-fs-col-label">{{ row['label'] }}</span>
+                {% for v in vals %}
+                  <span class="{% if loop.first %}scm-fs-col-base{% endif %}">
+                    {% if v is number %}{{ "{:,.1f}".format(v|float) }}{% else %}{{ v or "—" }}{% endif %}
+                  </span>
+                {% endfor %}
+                <span class="scm-diff-delta">
+                  {% if vals|length >= 2 and vals[0] is number and vals[1] is number %}
+                    {% set delta = (vals[1]|float) - (vals[0]|float) %}
+                    {% if delta != 0 %}{{ "{:+,.1f}".format(delta) }}{% endif %}
+                  {% endif %}
+                </span>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    {% endfor %}
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No FS Compare Loaded</div>
+        <div class="ps-history-meta">Select 2 saved scenarios to compare financial statements.</div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

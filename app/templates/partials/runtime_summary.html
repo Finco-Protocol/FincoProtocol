@@ -1,0 +1,451 @@
+<!-- Runtime Summary - partial for HTMX swap into #model-output-area -->
+<!-- Phase 20M - Financial Statements + Runtime Polish -->
+<div class="runtime-summary" id="runtime-summary">
+
+  <div class="run-banner">
+    <div class="rs-provenance-banner run-banner" id="rs-provenance-banner">
+      <div class="rs-provenance-left">
+        <span class="rs-provenance-icon">Run</span>
+        <div class="rs-provenance-info">
+          <span class="rs-provenance-label">Runtime Summary</span>
+          <span class="rs-provenance-project">{{ runtime_summary.project_name }}</span>
+        </div>
+      </div>
+      <div class="rs-provenance-right">
+        {% if runtime_summary.active_scenario_name %}
+        <span class="badge badge-runtime" title="Active scenario used for this run">
+          Scenario: {{ runtime_summary.active_scenario_name }}
+        </span>
+        {% endif %}
+        {% if runtime_summary.data_source_label %}
+        <span class="badge badge-info" title="Project origin">
+          {{ runtime_summary.data_source_label }}
+        </span>
+        {% endif %}
+        <span class="rs-provenance-time">{{ runtime_summary.ran_at }}</span>
+        {% if runtime_summary.status == "ok" %}
+        <span class="badge badge-pass">OK</span>
+        {% else %}
+        <span class="badge badge-blocked">ERROR</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rs-lifecycle-note" role="note" aria-label="Runtime summary lifecycle guidance">
+      <strong>Runtime summary reflects the last completed run.</strong>
+      Only backend-authoritative runtime results are shown here for the project and scenario named above.
+      {% if workspace_state is defined and workspace_state and workspace_state.dirty %}
+      Unsaved changes may require Save/Run before outputs are current.
+      {% else %}
+      Saved.
+      {% endif %}
+    </div>
+
+    <details class="rs-kpi-detail" data-runtime-kpi-detail="true">
+      <summary class="rs-kpi-detail-summary">KPI breakdown &amp; audit trail</summary>
+    <div class="kpi-grid"><div class="rs-kpi-grid kpi-grid" id="kpi-grid">
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Project IRR</div>
+        <div class="rs-kpi-value {% if runtime_summary.project_irr == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-project-irr">{{ runtime_summary.project_irr }}</div>
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Equity IRR</div>
+        <div class="rs-kpi-value {% if runtime_summary.equity_irr == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-equity-irr">{{ runtime_summary.equity_irr }}</div>
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Avg DSCR</div>
+        <div class="rs-kpi-value {% if runtime_summary.avg_dscr == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-avg-dscr">{{ runtime_summary.avg_dscr }}</div>
+        {% if runtime_summary.dscr_derivation %}
+        <details class="rs-derivation" id="kpi-avg-dscr-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">DSCR</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.dscr_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.dscr_derivation.display_value }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.dscr_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.dscr_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Supporting totals (not the displayed average formula): CFADS</dt>
+                <dd>{{ runtime_summary.dscr_derivation.total_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Supporting totals (not the displayed average formula): Senior Debt Service</dt>
+                <dd>{{ runtime_summary.dscr_derivation.total_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example CFADS</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Senior Debt Service</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example DSCR</dt>
+                <dd>{{ runtime_summary.dscr_derivation.sample_dscr }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.dscr_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">CFADS (Total)</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_cfads_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-total-cfads">{{ runtime_summary.total_cfads_keur }}</div>
+        {% if runtime_summary.cfads_derivation %}
+        <details class="rs-derivation" id="kpi-cfads-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">CFADS</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.cfads_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.cfads_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.cfads_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.cfads_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Selected supporting EBITDA</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_ebitda_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Selected supporting Tax</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_tax_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example CFADS</dt>
+                <dd>{{ runtime_summary.cfads_derivation.sample_cfads_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.cfads_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Senior Debt</div>
+        <div class="rs-kpi-value {% if runtime_summary.senior_debt_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-senior-debt">{{ runtime_summary.senior_debt_keur }}</div>
+        {% if runtime_summary.senior_debt_derivation %}
+        <details class="rs-derivation" id="kpi-senior-debt-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">Senior Debt</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example operating period</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example interest</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_interest_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example principal repayment</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_principal_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example debt service</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.sample_senior_debt_service_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Only backend-authoritative senior debt evidence is displayed.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Limitation</dt>
+                <dd>Debt sizing methodology, sculpting logic, and lender assumptions are not exposed in this runtime view yet.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.senior_debt_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Total CAPEX</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_capex_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-capex">{{ runtime_summary.total_capex_keur }}</div>
+        {% if runtime_summary.capex_derivation %}
+        <details class="rs-derivation" id="kpi-capex-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">CAPEX Total</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.capex_derivation.authoritative_source }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.capex_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.capex_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Category count</dt>
+                <dd>{{ runtime_summary.capex_derivation.category_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Hierarchy source</dt>
+                <dd>{{ runtime_summary.capex_derivation.hierarchy_source }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Only backend-authoritative CAPEX audit evidence is displayed.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Limitation</dt>
+                <dd>User-added sub-line count and CAPEX-specific scenario override count are not exposed in this runtime view yet.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.capex_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Total Revenue</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_revenue_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-revenue">{{ runtime_summary.total_revenue_keur }}</div>
+        {% if runtime_summary.revenue_derivation %}
+        <details class="rs-derivation" id="kpi-revenue-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">Revenue</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.revenue_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.revenue_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.revenue_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.revenue_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.revenue_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Selected supporting Generation</dt>
+                <dd>{{ runtime_summary.revenue_derivation.sample_generation_mwh }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Revenue</dt>
+                <dd>{{ runtime_summary.revenue_derivation.sample_revenue_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Only backend-authoritative runtime evidence is displayed.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.revenue_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">EBITDA</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_ebitda_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-ebitda">{{ runtime_summary.total_ebitda_keur }}</div>
+        {% if runtime_summary.ebitda_derivation %}
+        <details class="rs-derivation" id="kpi-ebitda-derivation">
+          <summary class="rs-derivation-summary">How is this calculated?</summary>
+          <div class="rs-derivation-body">
+            <div class="rs-derivation-title">EBITDA</div>
+            <div class="rs-derivation-formula">{{ runtime_summary.ebitda_derivation.period_formula }}</div>
+            <dl class="rs-derivation-list">
+              <div class="rs-derivation-row">
+                <dt>Displayed metric</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.display_value_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Calculation method</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.summary_method }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Operating periods</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.period_count }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example period</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_period_label }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example Revenue</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_revenue_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example OPEX</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_opex_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Example EBITDA</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.sample_ebitda_keur }}</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Source note</dt>
+                <dd>Backend-authoritative runtime result.</dd>
+              </div>
+              <div class="rs-derivation-row">
+                <dt>Audit source</dt>
+                <dd>{{ runtime_summary.ebitda_derivation.audit_source }}</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+        {% endif %}
+      </div>
+        <div class="rs-kpi-card">
+          <div class="rs-kpi-label">Total OPEX</div>
+          <div class="rs-kpi-value {% if runtime_summary.total_opex_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+               id="kpi-opex">{{ runtime_summary.total_opex_keur }}</div>
+          {% if runtime_summary.opex_derivation %}
+          <details class="rs-derivation" id="kpi-opex-derivation">
+            <summary class="rs-derivation-summary">How is this calculated?</summary>
+            <div class="rs-derivation-body">
+              <div class="rs-derivation-title">OPEX</div>
+              <div class="rs-derivation-formula">{{ runtime_summary.opex_derivation.period_formula }}</div>
+              <dl class="rs-derivation-list">
+                <div class="rs-derivation-row">
+                  <dt>Displayed metric</dt>
+                  <dd>{{ runtime_summary.opex_derivation.display_value_keur }}</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Calculation method</dt>
+                  <dd>{{ runtime_summary.opex_derivation.summary_method }}</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Operating periods</dt>
+                  <dd>{{ runtime_summary.opex_derivation.period_count }}</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Example period</dt>
+                  <dd>{{ runtime_summary.opex_derivation.sample_period_label }}</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Example OPEX</dt>
+                  <dd>{{ runtime_summary.opex_derivation.sample_opex_keur }}</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Source note</dt>
+                  <dd>Only backend-authoritative runtime OPEX evidence is displayed.</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Limitation</dt>
+                  <dd>Line-item OPEX breakdown is not exposed in this runtime view yet.</dd>
+                </div>
+                <div class="rs-derivation-row">
+                  <dt>Audit source</dt>
+                  <dd>{{ runtime_summary.opex_derivation.audit_source }}</dd>
+                </div>
+              </dl>
+            </div>
+          </details>
+          {% endif %}
+        </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Distributions</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_distributions_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-distributions">{{ runtime_summary.total_distributions_keur }}</div>
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Total Tax</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_tax_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-total-tax">{{ runtime_summary.total_tax_keur }}</div>
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Effective Tax Rate</div>
+        <div class="rs-kpi-value {% if runtime_summary.effective_tax_rate_pct == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-effective-tax-rate">{{ runtime_summary.effective_tax_rate_pct }}</div>
+      </div>
+    </div></div>
+    </details>
+
+    <div class="rs-notice">
+      <span class="badge badge-runtime">Runtime</span>
+      <span class="rs-notice-text">
+        <strong>Current workspace draft vs last completed run:</strong> Backend-authored result for the run above.
+        Unsaved draft edits won't change this until you save and re-run.
+        Exports reflect the last clean backend run, not unsaved draft edits.
+      </span>
+    </div>
+
+    {% if messages %}
+    <div class="rs-messages">
+      {% for msg in messages %}
+      <div class="rs-message">{{ msg }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if runtime_summary.error_message %}
+    <div class="rs-error">
+      <span class="badge badge-blocked">Error</span>
+      <span>{{ runtime_summary.error_message }}</span>
+    </div>
+    {% endif %}
+
+  </div>
+</div>

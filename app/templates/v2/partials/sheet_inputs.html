@@ -1,0 +1,36 @@
+{#
+  Workbook V2 — Inputs Control Tower sheet partial.
+
+  Registry-driven.  Each editable section renders live forms via the
+  render_field macro (hx_target="#v2-sheet-inputs", sheet_id="inputs").
+  Summary rows that lack registry fields show "Future input" tags.
+
+  Context variables (from app/v2/router.py):
+    technical_fields   list[dict]  — project_setup sheet fields
+    revenue_fields     list[dict]  — revenue sheet fields
+    capex_fields       list[dict]  — capex sheet fields
+    opex_fields        list[dict]  — opex sheet fields
+    debt_fields        list[dict]  — debt sheet fields
+    inputs_summary     dict        — computed CAPEX/OPEX summary numbers
+    project_code       str
+    workbook_version   str
+    content_hash       str
+    project_editable   bool
+    ws_dirty           bool
+    has_runtime        bool
+    field_error        str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{% if inputs_slice1_enabled|default(false) %}
+  {% include "partials/inputs_slice1.html" %}
+{% else %}
+<div id="v2-sheet-inputs" class="v2-slice1-config-state" role="status"
+     data-fc-grid="inputs" data-fc-scroll-container>
+  <p class="v2-slice1-disabled-notice">
+    Canonical Inputs are disabled by configuration.
+    Set <code>FINCO_INPUTS_SLICE1_ENABLED=1</code> or remove the explicit false value
+    to restore the canonical Inputs surface.
+  </p>
+</div>
+{% endif %}

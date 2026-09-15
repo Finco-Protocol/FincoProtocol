@@ -1,0 +1,14 @@
+{# M3: Matrix cell updated response fragment #}
+<td class="matrix-cell {{ cell_class }} matrix-cell-saved"
+    data-m2-cell="{{ col_key }}"
+    data-m3-editable="true"
+    data-m3-scenario-id="{{ scenario_id }}"
+    data-m3-field="{{ field }}"
+    hx-get="/matrix/scenario/{{ scenario_id }}/cell-edit?field={{ field }}&col={{ col_key }}"
+    hx-target="this"
+    hx-swap="outerHTML"
+    hx-trigger="click[!editing]"
+    title="Click to edit">
+  <span class="matrix-cell-value">{{ display_value }}</span>
+  <span class="matrix-cell-edit-hint">✎</span>
+</td>

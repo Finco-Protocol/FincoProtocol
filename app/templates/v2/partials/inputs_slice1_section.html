@@ -1,0 +1,80 @@
+<section class="v2-inputs-slice1-section"
+         id="inputs-slice1-section-{{ section.section_id }}"
+         aria-labelledby="slice1-{{ section.section_id }}">
+  <h3 id="slice1-{{ section.section_id }}">{{ section.label }}</h3>
+  <div class="v2-inputs-slice1-grid" role="table" aria-label="{{ section.label }} inputs">
+    <div class="v2-inputs-slice1-row v2-inputs-slice1-head" role="row">
+      <span role="columnheader">Input</span>
+      <span role="columnheader">Value</span>
+      <span role="columnheader">Unit</span>
+      <span role="columnheader">Status</span>
+    </div>
+    {% for row in section.rows %}
+      <div class="v2-inputs-slice1-row v2-inputs-slice1-status-{{ row.status|lower|replace('_', '-') }}"
+           role="row"
+           data-field-id="{{ row.field_id }}"
+           data-slice1-status="{{ row.status }}"
+           title="{{ row.note }}">
+        <span class="v2-inputs-slice1-label" role="cell">{{ row.label }}</span>
+        <span class="v2-inputs-slice1-value" role="cell">
+          {% if row.editable %}
+            <form method="post"
+                  action="/v2/workbook/inputs-slice1/update"
+                  class="v2-inputs-slice1-form"
+                  autocomplete="off"
+                  hx-post="/v2/workbook/inputs-slice1/update"
+                  hx-target="#v2-sheet-inputs"
+                  hx-swap="outerHTML">
+              <input type="hidden" name="field_id" value="{{ row.field_id }}">
+              <input type="hidden" name="project" value="{{ project_code }}">
+              <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+              <input type="hidden" name="content_hash" value="{{ content_hash }}">
+              {% if row.field_type == 'date' %}
+                <input type="date"
+                       name="value"
+                       value="{{ row.input_value }}"
+                       class="v2-inputs-slice1-input"
+                       aria-label="{{ row.label }}"
+                       {% if row.required %}required{% endif %}
+                       {% if row.help_text %}title="{{ row.help_text }}"{% endif %}>
+              {% elif row.field_type in ('months', 'years', 'int', 'float', 'mw', 'mwh', 'keur', 'pct', 'bps') %}
+                <input type="number"
+                       name="value"
+                       value="{{ row.input_value }}"
+                       step="{{ row.step }}"
+                       {% if row.min_value is not none %}min="{{ row.min_value }}"{% endif %}
+                       {% if row.max_value is not none %}max="{{ row.max_value }}"{% endif %}
+                       class="v2-inputs-slice1-input"
+                       aria-label="{{ row.label }}"
+                       {% if row.required %}required{% endif %}
+                       {% if row.help_text %}title="{{ row.help_text }}"{% endif %}>
+              {% else %}
+                <input type="text"
+                       name="value"
+                       value="{{ row.input_value }}"
+                       class="v2-inputs-slice1-input"
+                       aria-label="{{ row.label }}"
+                       {% if row.required %}required{% endif %}
+                       {% if row.help_text %}title="{{ row.help_text }}"{% endif %}>
+              {% endif %}
+              <button type="submit" class="v2-inputs-slice1-save">Save</button>
+              {% if row.field_error %}
+                <span class="v2-inputs-slice1-error" role="alert">{{ row.field_error }}</span>
+              {% endif %}
+            </form>
+          {% else %}
+            {% if row.display_value %}
+              {{ row.display_value }}
+            {% else %}
+              <span class="v2-field-empty">-</span>
+            {% endif %}
+          {% endif %}
+        </span>
+        <span class="v2-inputs-slice1-unit" role="cell">{{ row.unit }}</span>
+        <span class="v2-inputs-slice1-state" role="cell">
+          <span class="v2-inputs-slice1-badge">{{ row.status_label }}</span>
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+</section>

@@ -1,0 +1,20 @@
+{#
+  Financial Statements runtime state bar fragment.
+  Included inside #fs-runtime-bar in sheet_financial_statements.html.
+  Also rendered standalone for OOB HTMX updates from other sheets.
+
+  Context: fs_state  (str)
+    NOT_RUN         — no RuntimeResult at all
+    CLEAN           — rr + fs payload + workspace clean
+    STALE           — rr + fs payload + workspace dirty
+    FS_UNAVAILABLE  — run completed but no fs payload persisted
+#}
+{% if fs_state == "NOT_RUN" %}
+  <span class="v2-field-empty" data-testid="fs-runtime-state-a">Not run</span>
+{% elif fs_state == "CLEAN" %}
+  <span class="v2-runtime-clean" data-testid="fs-runtime-state-b">Outputs current</span>
+{% elif fs_state == "STALE" %}
+  <span class="v2-runtime-dirty" data-testid="fs-runtime-state-c">Run required</span>
+{% elif fs_state == "FS_UNAVAILABLE" %}
+  <span class="v2-runtime-mono" data-testid="fs-runtime-state-d">Output unavailable</span>
+{% endif %}

@@ -1,0 +1,272 @@
+<!-- Inputs Section Fragment — 8-section primary input surface -->
+<!-- Used by sheet_inputs.html (main inputs tab) -->
+
+{# ── Helper: field row ─────────────────────────────────────────────────── #}
+{# UX-1B: the per-row "badge" is now reserved for compact caveat icons
+   (Calculated / Timing driver / DSCR sculpt driver / Indicative) that
+   carry modelling caveats a finance user needs to interpret the field.
+   Provenance/admin metadata (Saved, Template, Internal, Model default,
+   Protected) is no longer shown per row -- editable vs read-only is
+   conveyed purely by the input-vs-value cell style, and the one-time
+   "Read-only protected" notice at the bottom of the sheet covers the
+   protected-original case. Callers pass caveat_icon/caveat_title for the
+   kept caveats; badge/badge_class/badge_title remain for non-cosmetic
+   uses (status values like G20/R99 BLOCKED, EXPLORATORY) that are not
+   part of the noisy-badge set. #}
+{%- macro field_row(label, value, badge=None, badge_class="badge-muted", editable=False, field_name="", badge_title=None, caveat_icon=None, caveat_title=None, calculated=False, section=None, field_key=None, raw=None, input_type="text", unit="", step="", min_val="", max_val="") -%}
+{%- set _fc_addr = "inputs!" ~ section ~ "." ~ field_key if (section and field_key) else None -%}
+{%- set _num_val = raw if (raw is not none) else '' -%}
+<div class="inp-row" {% if _fc_addr %}data-fc-row="true"{% endif %}>
+  <span class="inp-label">{{ label }}</span>
+  <span class="inp-cell"
+        {% if _fc_addr %}
+        data-fc-cell="true"
+        data-fc-addr="{{ _fc_addr }}"
+        data-fc-kind="{{ input_type }}"
+        data-fc-editable="{{ 'true' if editable else 'false' }}"
+        {% if raw is not none %}data-fc-raw="{{ raw }}"{% endif %}
+        {% endif %}>
+    {% if editable %}
+      {% if input_type == "number" %}
+      <span class="inp-input-group">
+        <input type="number"
+               name="{{ field_name }}"
+               value="{{ _num_val }}"
+               class="inp-input inp-input--number"
+               {% if step %}step="{{ step }}"{% endif %}
+               {% if min_val != "" %}min="{{ min_val }}"{% endif %}
+               {% if max_val != "" %}max="{{ max_val }}"{% endif %}
+               data-original-value="{{ _num_val }}"
+               onchange="var v=this.value; var f=document.getElementById('main-form'); if(f&&f.elements['{{ field_name }}']){ f.elements['{{ field_name }}'].value=v; } var ind=document.getElementById('dirty-indicator'); if(ind) ind.style.display='flex'; markInputDirty&&markInputDirty(this);" />
+        {% if unit %}<span class="inp-unit">{{ unit }}</span>{% endif %}
+      </span>
+      {% else %}
+      <input type="text"
+             name="{{ field_name }}"
+             value="{{ value }}"
+             class="inp-input"
+             data-original-value="{{ value }}"
+             onchange="var v=this.value; var f=document.getElementById('main-form'); if(f&&f.elements['{{ field_name }}']){ f.elements['{{ field_name }}'].value=v; } var ind=document.getElementById('dirty-indicator'); if(ind) ind.style.display='flex'; markInputDirty&&markInputDirty(this);" />
+      {% endif %}
+    {% else %}
+    <span class="inp-value{% if calculated %} inp-value-calculated inp-value-formula-cell{% endif %}">{{ value }}</span>
+    {% endif %}
+  </span>
+  <span class="inp-badge">
+    {% if caveat_icon %}
+    <span class="inp-caveat-icon"
+          title="{{ caveat_title or '' }}"
+          aria-label="{{ caveat_title or '' }}"
+          data-field-name="{{ field_name }}">{{ caveat_icon }}</span>
+    {% elif badge %}
+    <span class="badge {{ badge_class }}"
+          {% if badge_title %}title="{{ badge_title }}"{% endif %}
+          data-driver-status="{{ badge }}"
+          data-field-name="{{ field_name }}">
+      {{ badge }}
+    </span>
+    {% endif %}
+  </span>
+</div>
+{%- endmacro -%}
+
+{# ── Helper: section card ──────────────────────────────────────────────── #}
+{%- macro section_card(title, rows, section_note=None) -%}
+<div class="inp-card">
+  <div class="inp-section-header">{{ title }}</div>
+  <div class="inp-rows">
+    {{ rows }}
+  </div>
+  {% if section_note %}
+  <div class="inp-section-note">{{ section_note }}</div>
+  {% endif %}
+</div>
+{%- endmacro -%}
+
+{# ── UX-1B: compact top-of-sheet legend ──────────────────────────────── #}
+<div class="inp-legend" role="note" aria-label="Inputs legend">
+  Editable assumptions are shown as input cells. Calculated fields are
+  read-only. Hover over warning icons (<span class="inp-caveat-icon" aria-hidden="true">⚠</span>)
+  for modelling caveats.
+</div>
+
+{# ── Read-only protected-original notice (P2-FIX-2 relabel; UX-1B:
+     moved to the top of the sheet so the protected/reference state is
+     stated once, up front, instead of repeated per row) ──── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice">
+  <span class="badge badge-muted">Read-only</span>
+  <span>Protected original — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy before modifying.</span>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   IDENTITY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set identity_rows %}
+  {{ field_row("Project Name", project_ctx.name, editable=is_user_project, field_name="project_name", section="identity", field_key="project_name", raw=project_ctx.name) }}
+  {{ field_row("Type", project_ctx.technology, section="identity", field_key="technology", raw=project_ctx.technology) }}
+  {{ field_row("Country", project_ctx.country_iso, section="identity", field_key="country_iso", raw=project_ctx.country_iso) }}
+  {{ field_row("Capacity", "~{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="identity", field_key="capacity_summary", raw=project_ctx.capacity_mw) }}
+  {# Phase P2-FIX-7 / UX-1B: project-type-aware Template Origin
+     label. No forbidden terms (Unknown / factory / baseline /
+     calibration / golden / parity) are emitted. UX-1B: the
+     per-row Protected/Internal badge is removed -- the
+     protected-original state is shown once, at the bottom of
+     the sheet, rather than repeated on every identity row. #}
+  {% if project_ctx.template_source %}
+    {{ field_row("Template Origin", project_ctx.template_source, section="identity", field_key="template_origin", raw=project_ctx.template_source) }}
+  {% elif "generic_wind_reference" in project_ctx.code|lower %}
+    {{ field_row("Template Origin", "Generic Wind Reference", section="identity", field_key="template_origin", raw="Generic Wind Reference") }}
+  {% elif "generic_solar_reference" in project_ctx.code|lower %}
+    {{ field_row("Template Origin", "Generic Solar Reference", section="identity", field_key="template_origin", raw="Generic Solar Reference") }}
+  {% else %}
+    {{ field_row("Template Origin", "Generic", section="identity", field_key="template_origin", raw="Generic") }}
+  {% endif %}
+{% endset %}
+{{ section_card("Identity", identity_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   SCHEDULE
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set schedule_rows %}
+  {{ field_row("Financial Close", project_ctx.financial_close or "—", section="schedule", field_key="financial_close", raw=project_ctx.financial_close) }}
+  {{ field_row("COD Date", project_ctx.cod_date or "—", editable=is_user_project, field_name="cod_date", section="schedule", field_key="cod_date", raw=project_ctx.cod_date) }}
+  {{ field_row("Construction Period", "{} months".format(project_ctx.construction_months) if project_ctx.construction_months else "—", editable=is_user_project, field_name="construction_months", input_type="number", unit="months", step="1", min_val="0", caveat_icon="⚠", caveat_title="Timing driver — affects the construction-period timeline and can move equity IRR via the financial_close timing, but does NOT change revenue, EBITDA, senior debt, or DSCR in the current Generic runtime.", section="schedule", field_key="construction_months", raw=project_ctx.construction_months) }}
+  {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", editable=is_user_project, field_name="horizon_years", input_type="number", unit="years", step="1", min_val="1", section="schedule", field_key="horizon_years", raw=project_ctx.horizon_years) }}
+  {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", section="schedule", field_key="period_frequency", raw=project_ctx.period_frequency) }}
+{% endset %}
+{{ section_card("Schedule", schedule_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   TECHNICAL
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set technical_rows %}
+  {# ── Editable assumptions ──────────────────────────────────────────── #}
+  {{ field_row("Installed Capacity", "{:.2f} MW".format(project_ctx.capacity_mw) if project_ctx.capacity_mw else "—", editable=is_user_project, field_name="capacity_mw", input_type="number", unit="MW", step="0.01", min_val="0", calculated=(not is_user_project), caveat_icon=(None if is_user_project else "ƒ"), caveat_title=(None if is_user_project else "Calculated — derived from other inputs, not entered directly."), section="technical", field_key="capacity_mw", raw=project_ctx.capacity_mw) }}
+  {{ field_row("P50 Operating Hours", "{:,d} hrs/yr".format(project_ctx.operating_hours_p50|int) if project_ctx.operating_hours_p50 else "—", editable=is_user_project, field_name="p50_hours", input_type="number", unit="hrs/yr", step="1", min_val="0", section="technical", field_key="p50_hours", raw=project_ctx.operating_hours_p50) }}
+  {# ── Derived (calculated from editable assumptions) ────────────────── #}
+  {{ field_row("P50 Annual Yield", "{:,.0f} MWh/yr".format(project_ctx.operating_hours_p50 * project_ctx.capacity_mw) if (project_ctx.operating_hours_p50 and project_ctx.capacity_mw) else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — P50 Hours × Installed Capacity.", section="technical", field_key="p50_annual_yield", raw=None) }}
+  {{ field_row("Capacity Factor (P50)", "~{:.1f}%".format(project_ctx.operating_hours_p50 / 8760 * 100) if project_ctx.operating_hours_p50 else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — P50 Hours ÷ 8,760 hrs/yr.", section="technical", field_key="capacity_factor", raw=project_ctx.operating_hours_p50) }}
+  {# ── Template defaults (read-only, sourced from project template) ───── #}
+  {{ field_row("Plant Availability", "{:.0f}%".format(project_ctx.plant_availability * 100) if project_ctx.plant_availability else "—", badge="Template", badge_class="badge-muted", badge_title="Set by the project template. Not currently editable via the workspace form.", section="technical", field_key="plant_availability", raw=project_ctx.plant_availability) }}
+  {{ field_row("Grid Availability", "{:.0f}%".format(project_ctx.grid_availability * 100) if project_ctx.grid_availability else "—", badge="Template", badge_class="badge-muted", badge_title="Set by the project template. Not currently editable via the workspace form.", section="technical", field_key="grid_availability", raw=project_ctx.grid_availability) }}
+  {{ field_row("Annual Degradation", "{:.1f}%/yr".format(project_ctx.pv_degradation * 100) if project_ctx.pv_degradation else "0% (wind — no degradation)", badge="Template", badge_class="badge-muted", badge_title="Set by the project template. Solar projects use the PV degradation rate; wind projects assume no degradation.", section="technical", field_key="degradation", raw=project_ctx.pv_degradation) }}
+{% endset %}
+{{ section_card("Technical", technical_rows, section_note="Plant availability, grid availability and degradation are sourced from the project template and applied across all periods. P90 sensitivity is available in the Sensitivity analysis tab.") }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   REVENUE / PPA SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set revenue_rows %}
+  {{ field_row("Base Tariff", "{:.2f} EUR/MWh".format(project_ctx.ppa_tariff_eur_mwh) if project_ctx.ppa_tariff_eur_mwh else "—", editable=is_user_project, field_name="tariff_eur_mwh", input_type="number", unit="EUR/MWh", step="0.01", min_val="0", section="revenue", field_key="price", raw=project_ctx.ppa_tariff_eur_mwh) }}
+  {{ field_row("PPA Term", "{} years".format(project_ctx.ppa_term_years) if project_ctx.ppa_term_years else "—", editable=is_user_project, field_name="ppa_term_years", input_type="number", unit="years", step="1", min_val="0", caveat_icon="⚠", caveat_title="Affects total revenue and EBITDA via the PPA tariff duration.", section="revenue", field_key="ppa_term_years", raw=project_ctx.ppa_term_years) }}
+  {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", section="revenue", field_key="ppa_index_pct", raw=project_ctx.ppa_index_pct) }}
+  {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", section="revenue", field_key="co2_revenue", raw=project_ctx.co2_price_eur_mwh) }}
+{% endset %}
+{{ section_card("Revenue / PPA Summary", revenue_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   CAPEX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set capex_rows %}
+  {# PR E: use capex_vm breakdown when available; fall back to project_ctx scalar #}
+  {% if capex_vm %}
+    {{ field_row("Hard CAPEX (C.01–C.16)", "{:,.0f} kEUR".format(capex_vm.hard_capex_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — sum of C.01–C.16 from CAPEX detail grid.", section="capex", field_key="hard_capex_keur", raw=capex_vm.hard_capex_keur) }}
+    {% if capex_vm.financing_keur %}
+      {{ field_row("Financing Costs (C.17)", "{:,.0f} kEUR".format(capex_vm.financing_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — backend computed (IDC + bank fees). Detail in CAPEX tab.", section="capex", field_key="financing_keur", raw=capex_vm.financing_keur) }}
+    {% endif %}
+    {% if capex_vm.reserve_keur %}
+      {{ field_row("Reserve Accounts (C.18)", "{:,.0f} kEUR".format(capex_vm.reserve_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — backend computed reserve. Detail in CAPEX tab.", section="capex", field_key="reserve_keur", raw=capex_vm.reserve_keur) }}
+    {% endif %}
+    {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(capex_vm.total_capex_keur), editable=is_user_project, field_name="total_capex_keur", input_type="number", unit="kEUR", step="1", min_val="0", calculated=(not is_user_project), caveat_icon=(None if is_user_project else "ƒ"), caveat_title=(None if is_user_project else "Calculated — Hard CAPEX + Financing Costs + Reserve."), section="capex", field_key="total_capex_keur", raw=capex_vm.total_capex_keur) }}
+    {{ field_row("CAPEX / MW", "{:,.1f} kEUR/MW".format(capex_vm.total_per_mw) if capex_vm.capacity_mw else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total CAPEX ÷ Installed Capacity.", section="capex", field_key="capex_per_mw", raw=capex_vm.total_per_mw) }}
+  {% else %}
+    {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(project_ctx.total_capex_keur) if project_ctx.total_capex_keur else "—", editable=is_user_project, field_name="total_capex_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="capex", field_key="total_capex_keur", raw=project_ctx.total_capex_keur) }}
+  {% endif %}
+  {{ field_row("IDC", "{:,.0f} kEUR".format(project_ctx.idc_keur) if project_ctx.idc_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="idc", raw=project_ctx.idc_keur) }}
+  {{ field_row("Bank Fees", "{:,.0f} kEUR".format(project_ctx.bank_fees_keur) if project_ctx.bank_fees_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="bank_fees", raw=project_ctx.bank_fees_keur) }}
+{% endset %}
+{{ section_card("CAPEX Summary", capex_rows, section_note="CAPEX detail breakdown (C.01–C.18) available in CAPEX tab.") }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   OPEX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set opex_rows %}
+  {# PR E: use opex_vm when available for richer breakdown #}
+  {% if opex_vm %}
+    {{ field_row("Total OPEX Y1", "{:,.0f} kEUR".format(opex_vm.y1_total_opex), editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=opex_vm.y1_total_opex) }}
+    {{ field_row("Contingency Rate", "{:.1f}%".format(opex_vm.contingency_rate), section="opex", field_key="contingency_pct", raw=opex_vm.contingency_rate) }}
+    {{ field_row("Contingency Y1", "{:,.0f} kEUR".format(opex_vm.contingency_by_year[0]) if opex_vm.contingency_by_year else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — contingency rate × total OPEX excl. contingency.", section="opex", field_key="contingency_y1", raw=(opex_vm.contingency_by_year[0] if opex_vm.contingency_by_year else None)) }}
+    {% if opex_vm.opex_per_mw_y1 is not none %}
+      {{ field_row("OPEX / MW (Y1)", "{:,.1f} kEUR/MW".format(opex_vm.opex_per_mw_y1), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total OPEX Y1 ÷ Installed Capacity.", section="opex", field_key="opex_per_mw_y1", raw=opex_vm.opex_per_mw_y1) }}
+    {% endif %}
+    {% if opex_vm.opex_per_mwh_y1 is not none %}
+      {{ field_row("OPEX / MWh (Y1)", "{:.2f} EUR/MWh".format(opex_vm.opex_per_mwh_y1), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total OPEX Y1 × 1,000 ÷ P50 Annual Yield.", section="opex", field_key="opex_per_mwh_y1", raw=opex_vm.opex_per_mwh_y1) }}
+    {% endif %}
+  {% else %}
+    {{ field_row("Y1 OPEX Total", "{:,.0f} kEUR".format(project_ctx.opex_y1_total_keur) if project_ctx.opex_y1_total_keur else "—", editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=project_ctx.opex_y1_total_keur) }}
+    {{ field_row("Contingency", "{:.1f}%".format(project_ctx.opex_contingency_pct * 100) if project_ctx.opex_contingency_pct else "—", section="opex", field_key="contingency_pct", raw=project_ctx.opex_contingency_pct) }}
+  {% endif %}
+{% endset %}
+{{ section_card("OPEX Summary", opex_rows, section_note="OPEX detail breakdown (B.01–B.13, Y1–Y30) available in OPEX tab.") }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   FINANCING SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set financing_rows %}
+  {{ field_row("Indicative Gearing", "{:.1f}%".format(project_ctx.gearing_pct * 100) if project_ctx.gearing_pct else "—", editable=is_user_project, field_name="gearing_pct", input_type="number", unit="%", step="0.1", min_val="0", max_val="100", caveat_icon="ⓘ", caveat_title="Indicative gearing assumption, not a binding senior debt sizing driver. The realized gearing (senior debt / total CAPEX) is shown as a derived output; under DSCR sculpt sizing, senior debt is sized to hit Target DSCR instead.", section="debt", field_key="gearing_pct", raw=((project_ctx.gearing_pct * 100)|round(1)) if project_ctx.gearing_pct else '') }}
+  {{ field_row("Target DSCR", "{:.2f}x".format(project_ctx.target_dscr) if project_ctx.target_dscr else "—", editable=is_user_project, field_name="target_dscr", input_type="number", unit="x", step="0.01", min_val="1", caveat_icon="⚠", caveat_title="DSCR sculpt driver — affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.", section="debt", field_key="target_dscr", raw=project_ctx.target_dscr) }}
+  {{ field_row("Interest Rate", "{:.2f}%".format(project_ctx.interest_rate_pct * 100) if project_ctx.interest_rate_pct else "—", editable=is_user_project, field_name="interest_rate_pct", input_type="number", unit="%", step="0.01", min_val="0", caveat_icon="⚠", caveat_title="DSCR sculpt driver — affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.", section="debt", field_key="interest_rate_pct", raw=((project_ctx.interest_rate_pct * 100)|round(2)) if project_ctx.interest_rate_pct else '') }}
+  {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", editable=is_user_project, field_name="tenor_years", input_type="number", unit="years", step="1", min_val="0", caveat_icon="⚠", caveat_title="DSCR sculpt driver — affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.", section="debt", field_key="tenor_years", raw=project_ctx.senior_tenor_years) }}
+  {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="debt", field_key="shl_amount", raw=project_ctx.shl_amount_keur) }}
+{% endset %}
+{{ section_card("Debt Summary", financing_rows) }}
+
+{# ══════════════════════════════════════════════════════════════════════
+   TAX SUMMARY
+   ══════════════════════════════════════════════════════════════════════ #}
+{% set tax_rows %}
+  {{ field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", section="tax", field_key="cit_rate", raw=project_ctx.cit_rate_pct) }}
+  {{ field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", section="tax", field_key="loss_carryforward", raw=project_ctx.loss_carryforward_years) }}
+  {{ field_row("G20 Status", project_ctx.g20_status or "BLOCKED", badge=project_ctx.g20_status or "BLOCKED", badge_class="badge-warn", section="tax", field_key="g20_status", raw=project_ctx.g20_status) }}
+  {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn", section="tax", field_key="r99_r102_status", raw=project_ctx.r99_r102_status) }}
+{% endset %}
+{% if audit_mode|default(false) %}
+  {{ section_card("Tax Summary", tax_rows, section_note="Tax template override uses country-specific defaults unless overridden.") }}
+{% else %}
+  {# P2-FIX-2: G20 / R99/R102 governance posture is the
+     reviewer surface. In normal mode we expose only a
+     neutral Tax summary without the G20 / R99/R102
+     governance posture rows. #}
+  {% set tax_rows_normal = [
+      field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", section="tax", field_key="cit_rate", raw=project_ctx.cit_rate_pct),
+      field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", section="tax", field_key="loss_carryforward", raw=project_ctx.loss_carryforward_years),
+  ] %}
+  {{ section_card("Tax Summary", tax_rows_normal, section_note="Tax template override uses country-specific defaults unless overridden. See the Audit / Reference tab for the reviewer notes.") }}
+{% endif %}
+
+{# ── Dirty-state indicator ─────────────────────────────────────────────── #}
+<div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
+  <span class="badge badge-warn">⚠ Unsaved edits</span>
+  <span style="font-size:0.75rem;color:var(--muted);">Save to persist · Run does not auto-save</span>
+</div>
+
+{# ── Phase 24-H: Exploratory warning (user_created + generic) ────────── #}
+{% if is_exploratory_project|default(false) %}
+<div class="inp-exploratory-notice"
+     role="note"
+     aria-label="Exploratory / not reference-validated"
+     data-exploratory-warning="true"
+     data-exploration-source="inputs-section">
+  <span class="badge badge-warn">EXPLORATORY</span>
+  <span>
+    <strong>Exploratory / not reference-validated.</strong>
+    This Generic {{ project_ctx.technology or 'project' }} is editable for
+    sketching scenarios, but the runtime output has not been validated
+    against an reference evidence. Outputs are <em>not</em>
+    lender-ready, audit-ready, or bank-approved. Use only for
+    exploratory analysis.
+  </span>
+</div>
+{% endif %}

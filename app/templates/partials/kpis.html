@@ -1,0 +1,39 @@
+<div class="card" style="margin-top:1.5rem;">
+  <div class="card-header">
+    <div class="card-title">📈 Model Run Results — {{ run_data.project_type }} / {{ run_data.scenario }}</div>
+    <span class="badge badge-pass">Ready</span>
+  </div>
+
+  {% if integration_status != 'full' %}
+  <div class="alert alert-warning" style="margin-bottom:1rem;">
+    ⚠️ Integration status: {{ integration_status }}{% if integration_note %}: {{ integration_note }}{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="kpi-grid">
+    {% for kpi in kpis %}
+    <div class="kpi-card">
+      <div class="kpi-label">{{ kpi.label }}</div>
+      <div class="kpi-value
+        {%- if kpi.key in ('project_irr', 'equity_irr') -%}
+          {%- if kpi.value != '—' -%}
+            {%- set v = kpi.value|replace('%','')|float -%}
+            {%- if v > 0.10 -%} positive
+            {%- elif v < 0.05 -%} warning
+            {%- endif -%}
+          {%- endif -%}
+        {%- endif -%}">
+        {{ kpi.value }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if messages %}
+  <div style="margin-top:0.85rem;">
+    {% for msg in messages %}
+    <div class="alert alert-info">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

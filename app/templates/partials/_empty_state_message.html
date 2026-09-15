@@ -1,0 +1,43 @@
+{# ── Phase 25C-2: User-Facing Empty / Error State Message ─────────────────
+   Renders a single user-facing empty-state or
+   error-state message for one of the 7 canonical
+   conditions.
+
+   Render conditions:
+   - Renders NOTHING if `empty_state_message` is
+     missing or empty.
+   - Otherwise renders the message with severity-
+     appropriate styling and the next-action route.
+
+   Behavior:
+   - Pure read-side. No backend calls. No mutation
+     of project state, scenarios, or inputs.
+   - No autosave. No fake run IDs. No fake
+     validation claims.
+   - The message text does NOT contain stack
+     traces, UndefinedError, AttributeError, or
+     internal error codes.
+   - No JS, no Tailwind, no Alpine, no inline
+     script. #}
+{% if empty_state_message is defined and empty_state_message %}
+  {% set _msg = empty_state_message %}
+  {% set _severity = _msg.severity %}
+  <aside class="esm"
+         role="status"
+         aria-live="polite"
+         data-condition="{{ _msg.condition }}"
+         data-severity="{{ _severity }}"
+         {% if _msg.is_exploratory_note %}data-exploratory="1"{% endif %}>
+    <div class="esm__severity esm__severity--{{ _severity }}">
+      {{ _severity|upper }}
+    </div>
+    <div class="esm__body">
+      <h4 class="esm__title">{{ _msg.title }}</h4>
+      <p class="esm__text">{{ _msg.body }}</p>
+      <a class="esm__action"
+         href="{{ _msg.next_action_route }}">
+        {{ _msg.next_action }} →
+      </a>
+    </div>
+  </aside>
+{% endif %}

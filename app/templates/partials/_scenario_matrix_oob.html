@@ -1,0 +1,8 @@
+{# STAB-1: OOB scenario matrix card refresh — appended to POST /run response.
+   Sets matrix_oob=true so scenario_matrix.html adds hx-swap-oob="true" to the
+   card div, causing HTMX 1.x to find id="scenario-matrix-prototype" in the DOM
+   and replace it with the freshly-rendered card (including updated Base KPI rows).
+#}
+{% with matrix_oob=true %}
+  {% include "partials/scenario_matrix.html" %}
+{% endwith %}

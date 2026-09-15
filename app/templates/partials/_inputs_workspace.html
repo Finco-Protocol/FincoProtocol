@@ -1,0 +1,159 @@
+{# ── UI-4 Inputs Workspace ───────────────────────────────────────────────────
+   Sticky section navigator + collapsible section surface for the Inputs
+   panel. Wraps the legacy `inputs_section.html` partial — the wrapper
+   itself does NOT modify inputs_section.html. A small inline script
+   (no new static JS file) wraps each `.inp-card` element on the panel
+   in a `<details>` collapsible with sticky heading.
+
+   Strictly additive. No new field, no new binding, no data change.
+   The legacy inputs_section.html still owns every .inp-row / .inp-card
+   structure — UI-4 only adds surrounding collapsibility and a
+   section navigator. #}
+
+{% set _sections = [
+  ('identity',     'Identity',                 None),
+  ('schedule',     'Schedule',                 None),
+  ('technical',    'Technical',                None),
+  ('revenue',      'Revenue / PPA',            'Detail breakdown available on the Revenue sheet.'),
+  ('capex',        'CAPEX Summary',            'Detail breakdown available on the CAPEX sheet.'),
+  ('opex',         'OPEX Summary',             'Detail breakdown available on the OPEX sheet.'),
+  ('debt',         'Debt Summary',             'Sizing detail on the Debt sheet.'),
+  ('tax',          'Tax Summary',              'Country-specific defaults apply unless overridden.'),
+] %}
+
+<section class="fo-inputs-workspace" id="fo-inputs-workspace"
+         aria-label="Inputs workspace">
+
+  {# ── Section navigator (PART D) ──────────────────────────────────────── #}
+  <aside class="fo-inputs-workspace__nav" id="fo-inputs-nav"
+         aria-label="Inputs section navigator">
+    <div class="fo-inputs-workspace__nav-title">Sections</div>
+    <ul class="fo-inputs-workspace__nav-list">
+      {% for section_id, section_label, _note in _sections %}
+        <li>
+          <a href="#fo-inputs-section-{{ section_id }}"
+             class="fo-inputs-workspace__nav-link"
+             data-fo-nav-section="{{ section_id }}">
+            <span class="fo-inputs-workspace__nav-dot" aria-hidden="true"></span>
+            <span class="fo-inputs-workspace__nav-label">{{ section_label }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  {# ── Content column ──────────────────────────────────────────────────── #}
+  <div class="fo-inputs-workspace__content">
+
+    <div class="fo-inputs-workspace__kbd-hint" role="note" aria-label="Keyboard hints">
+      Use <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> to move between
+      fields. <kbd>Enter</kbd> commits a field edit. Numeric fields
+      accept either plain or formatted input.
+    </div>
+
+    {# Legacy inputs_section.html renders the actual .inp-card
+       elements. We include it unchanged; the inline script below
+       promotes each .inp-card to a collapsible details element at
+       runtime and wires the section-navigator scrollspy. #}
+    {% include "partials/inputs_section.html" %}
+
+  </div>
+
+</section>
+
+{# ── Inline collapser + scrollspy ────────────────────────────────────────
+   Runs once on DOMContentLoaded. Wraps each `.inp-card` element on
+   the panel-inputs workspace inside a `<details>` element so the
+   section becomes collapsible with a sticky heading. Also wires the
+   sticky section navigator to highlight the active section as the
+   user scrolls. Pure progressive enhancement: if the script fails,
+   the legacy .inp-card surfaces still render and behave as before. #}
+<script>
+(function() {
+  var _workspace = document.getElementById('fo-inputs-workspace');
+  if (!_workspace) return;
+
+  // Section titles are read from the legacy `.inp-section-header`
+  // element that each .inp-card renders. We map them to our section
+  // ids via the canonical order declared above.
+  var _sectionTitles = [
+    ['identity',  'Identity'],
+    ['schedule',  'Schedule'],
+    ['technical', 'Technical'],
+    ['revenue',   'Revenue / PPA Summary'],
+    ['capex',     'CAPEX Summary'],
+    ['opex',      'OPEX Summary'],
+    ['debt',      'Debt Summary'],
+    ['tax',       'Tax Summary']
+  ];
+
+  function _wrapOne(cardEl, idx) {
+    if (!cardEl || cardEl.dataset.foWrapped === '1') return null;
+    var titlePair = _sectionTitles[idx];
+    if (!titlePair) return null;
+    var sectionId = titlePair[0];
+    var expectedTitle = titlePair[1];
+    // Confirm the card's own header text matches the expected title;
+    // if not, skip — UI-4 promises not to touch inputs_section.html,
+    // so a future rename there would simply deactivate this wrapper
+    // for that section (the legacy .inp-card still renders).
+    var header = cardEl.querySelector('.inp-section-header');
+    if (!header) return null;
+    var headerText = (header.textContent || '').trim();
+    if (headerText !== expectedTitle) return null;
+
+    var details = document.createElement('details');
+    details.className = 'fo-inputs-workspace__details';
+    details.id = 'fo-inputs-section-' + sectionId;
+    details.open = (sectionId === 'identity' || sectionId === 'schedule');
+
+    var summary = document.createElement('summary');
+    summary.textContent = headerText;
+    details.appendChild(summary);
+
+    var body = document.createElement('div');
+    body.className = 'fo-inputs-workspace__details-body';
+
+    // Move every child of cardEl except the original header into body.
+    while (cardEl.firstChild) {
+      body.appendChild(cardEl.firstChild);
+    }
+    cardEl.appendChild(details);
+    details.appendChild(body);
+    cardEl.dataset.foWrapped = '1';
+    return details;
+  }
+
+  var _cards = _workspace.querySelectorAll('.inp-card');
+  _cards.forEach(function(card, idx) { _wrapOne(card, idx); });
+
+  // Scrollspy: highlight the active section in the navigator as the
+  // user scrolls. Use IntersectionObserver with a top margin that
+  // matches the chrome height.
+  var _navLinks = _workspace.querySelectorAll('.fo-inputs-workspace__nav-link');
+  function _setActive(activeId) {
+    _navLinks.forEach(function(a) {
+      if (a.dataset.foNavSection === activeId) {
+        a.classList.add('is-active');
+      } else {
+        a.classList.remove('is-active');
+      }
+    });
+  }
+
+  if ('IntersectionObserver' in window) {
+    var _observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.id.replace(/^fo-inputs-section-/, '');
+          _setActive(id);
+        }
+      });
+    }, { rootMargin: '-180px 0px -60% 0px', threshold: 0.01 });
+
+    _workspace.querySelectorAll('.fo-inputs-workspace__details').forEach(function(d) {
+      _observer.observe(d);
+    });
+  }
+})();
+</script>

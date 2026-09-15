@@ -1,0 +1,122 @@
+<!-- FINCO Protocol onboarding. Financial calculations are backend-authored. -->
+<div class="pilot-help-onboarding" id="pilot-help-onboarding" role="complementary" aria-label="FINCO Model help and onboarding">
+  <div class="pho-header">
+    <span class="badge badge-info">Help</span>
+    <button class="pho-toggle" onclick="document.getElementById('pilot-help-onboarding').classList.toggle('is-collapsed')" aria-expanded="true" aria-label="Toggle help panel">
+      <span class="pho-toggle-icon">v</span>
+    </button>
+  </div>
+  <div class="pho-body">
+    <div class="pho-section">
+      <div class="pho-section-title">FINCO Protocol</div>
+      <div class="pho-item">FINCO Protocol is financial intelligence infrastructure. FINCO Model is the deterministic modelling workspace for real-asset and infrastructure analysis.</div>
+    </div>
+    <div class="pho-section">
+      <div class="pho-section-title">Reference models</div>
+      <div class="pho-item">[Protected] <strong>Generic Solar Reference</strong> — synthetic solar reference model.</div>
+      <div class="pho-item">[Protected] <strong>Generic Wind Reference</strong> — synthetic wind reference model.</div>
+      <div class="pho-item">[Protected] <strong>Generic Storage Reference</strong> — synthetic storage reference model; storage runtime coverage remains narrower than Solar/Wind.</div>
+      <div class="pho-item pho-item--warn">Create a working copy before editing a protected reference model.</div>
+    </div>
+    <div class="pho-section">
+      <div class="pho-section-title">Workflow</div>
+      <div class="pho-item"><strong>1. Select a model</strong> — open a protected reference or create a working model.</div>
+      <div class="pho-item"><strong>2. Review assumptions</strong> — inspect project, revenue, CAPEX, OPEX, financing and tax inputs.</div>
+      <div class="pho-item"><strong>3. Save a scenario</strong> — preserve a named input state before making material changes.</div>
+      <div class="pho-item"><strong>4. Run model</strong> — the backend engine calculates financial outputs.</div>
+      <div class="pho-item"><strong>5. Review results</strong> — inspect returns, coverage, cash flows and statements.</div>
+      <div class="pho-item"><strong>6. Export</strong> — exports reflect the last completed backend run.</div>
+    </div>
+    <div class="pho-section">
+      <div class="pho-section-title">Important boundaries</div>
+      <div class="pho-item">Reference models use synthetic assumptions and are not representations of any real project, company, client or jurisdiction.</div>
+      <div class="pho-item">Outputs are financial modelling estimates and do not constitute legal, tax, accounting, credit or investment advice.</div>
+      <div class="pho-item">Browser-side JavaScript is presentation-only; financial calculations remain backend-authored.</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.pilot-help-onboarding {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  font-size: 0.82rem;
+  background: var(--surface-secondary, #f9fafb);
+}
+
+.pho-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: var(--muted-bg, #f3f4f6);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pho-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--text-2, #6b7280);
+  padding: 0.2rem;
+}
+
+.pho-toggle-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.pilot-help-onboarding.is-collapsed .pho-body {
+  display: none;
+}
+
+.pilot-help-onboarding.is-collapsed .pho-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.pho-body {
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pho-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pho-section-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.15rem;
+}
+
+.pho-item {
+  color: var(--text, #111827);
+  line-height: 1.55;
+}
+
+.pho-item--warn {
+  color: var(--warn-color, #92400e);
+  background: var(--warn-bg, #fef9c3);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  border-left: 3px solid var(--warn-border, #fde047);
+}
+
+.pho-item--err {
+  color: var(--err-color, #991b1b);
+  background: var(--err-bg, #fef2f2);
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  border-left: 3px solid var(--err-border, #fecaca);
+}
+</style>

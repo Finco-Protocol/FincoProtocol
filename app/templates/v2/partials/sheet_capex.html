@@ -1,0 +1,340 @@
+{#
+  Workbook V2 — CAPEX worksheet partial.
+
+  Registry-driven + CapexViewModel-driven.
+
+  Row types
+  ---------
+  1. Group header    — C.01…C.18 code + name + subtotal (from CapexViewModel)
+  2. Standard edit   — render_field() for BOUND registry field for that group
+  3. Derived         — read-only row for DISPLAY_ONLY groups (C.13, C.18)
+  4. Engine          — read-only with ENGINE badge for C.17 (Financing)
+  5. Sub-line detail — individual CapexLineVM rows (read-only context)
+  6. Custom row      — user-added lines with HTMX edit/deactivate forms
+  7. Add Row         — per-group form to create a new custom row
+
+  Context variables (from app/v2/router.py)
+    capex_vm             CapexViewModel  — group structure + totals
+    capex_group_to_field dict            — group code → registry field dict (or None)
+    capex_section_fields dict            — section_id → list of field dicts
+    capex_alias_groups   dict            — group code → {owner, field} for shared-field groups
+    project_code         str
+    workbook_version     str
+    content_hash         str
+    project_editable     bool
+    ws_dirty             bool
+    has_runtime          bool
+    field_error          str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{# Macro: Calculated / read-only row (engine-computed or derived value) #}
+{% macro engine_row(label, value, badge="ENGINE", unit="kEUR") %}
+<div class="v2-field-row v2-field-readonly v2-capex-engine-row"
+     data-binding="{{ badge | lower }}">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value">
+    {%- if value is not none and value != "" -%}
+      <span class="v2-capex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+    {%- else -%}
+      <span class="v2-field-empty">—</span>
+    {%- endif -%}
+    <span class="v2-binding-badge v2-capex-badge-calc">Calculated</span>
+  </span>
+  {%- if unit %}<span class="v2-unit">{{ unit }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{# Macro: read-only row for groups sharing a registry field with another group #}
+{% macro shared_field_row(label, value, owner_group_code) %}
+<div class="v2-field-row v2-field-readonly v2-capex-shared-row"
+     data-shared-field="true"
+     data-owner-group="{{ owner_group_code }}">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value">
+    {%- if value is not none and value != "" -%}
+      <span class="v2-capex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+    {%- else -%}
+      <span class="v2-field-empty">—</span>
+    {%- endif -%}
+    <span class="v2-binding-badge v2-capex-badge-inherited">Inherited</span>
+  </span>
+  <span class="v2-unit">kEUR</span>
+</div>
+{% endmacro %}
+
+{# Macro: sub-line detail row #}
+{% macro subline_row(line) %}
+<div class="v2-capex-subline{% if not line.is_active %} v2-capex-inactive{% endif %}">
+  <span class="v2-capex-subline-code">{{ line.code }}</span>
+  <span class="v2-capex-subline-name">{{ line.name }}</span>
+  <span class="v2-capex-subline-amount">{{ "%.0f"|format(line.amount_keur) }}</span>
+  <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
+  {# Calibration/development notes suppressed in standard product view. #}
+</div>
+{% endmacro %}
+
+{# Macro: user-added custom row with edit/deactivate controls #}
+{% macro custom_row(line, project_code, workbook_version, project_editable) %}
+<div class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
+     data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
+     data-fc-row>
+  {% if project_editable %}
+  <form class="v2-field-form v2-capex-custom-form"
+        hx-post="/v2/capex/line/update"
+        hx-target="#v2-sheet-capex"
+        hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+    <input type="hidden" name="row_version" value="{{ line.row_version }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <span class="v2-capex-custom-code">{{ line.code }}</span>
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
+          data-fc-editable="true" data-fc-kind="text">
+      <input class="v2-field-input v2-capex-custom-label"
+             type="text" name="label" value="{{ line.name }}"
+             placeholder="Description" aria-label="Custom row description">
+    </span>
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.amount"
+          data-fc-editable="true" data-fc-kind="amount">
+      <input class="v2-field-input v2-capex-custom-amount"
+             type="number" name="amount_keur"
+             value="{{ "%.0f"|format(line.amount_keur) }}"
+             step="1" aria-label="Amount kEUR">
+    </span>
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.notes"
+          data-fc-editable="true" data-fc-kind="text">
+      <input class="v2-field-input v2-capex-custom-notes"
+             type="text" name="notes" value="{{ line.notes }}"
+             placeholder="Notes" aria-label="Notes">
+    </span>
+    <button type="submit" class="v2-field-save" aria-label="Save {{ line.code }}">Save</button>
+  </form>
+  <form class="v2-capex-deactivate-form"
+        hx-post="/v2/capex/line/deactivate"
+        hx-target="#v2-sheet-capex"
+        hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+    <input type="hidden" name="row_version" value="{{ line.row_version }}">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <button type="submit" class="v2-capex-deactivate-btn"
+            aria-label="Deactivate {{ line.code }}"
+            data-testid="deactivate-{{ line.code }}">×</button>
+  </form>
+  <span class="v2-binding-badge v2-capex-badge-custom">CUSTOM</span>
+  {% else %}
+  <span class="v2-capex-custom-code">{{ line.code }}</span>
+  <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
+  <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ "%.0f"|format(line.amount_keur) }}</span>
+  <span class="v2-binding-badge v2-capex-badge-custom">CUSTOM</span>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Macro: Add Row form for eligible groups #}
+{% macro add_row_form(group_code, project_code, workbook_version, content_hash) %}
+<form class="v2-capex-add-row-form"
+      hx-post="/v2/capex/line/add"
+      hx-target="#v2-sheet-capex"
+      hx-swap="outerHTML"
+      data-testid="add-row-form-{{ group_code }}">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="parent_category_code" value="{{ group_code }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <input class="v2-field-input v2-capex-add-label"
+         type="text" name="label" placeholder="Row description"
+         required aria-label="New row description for {{ group_code }}">
+  <input class="v2-field-input v2-capex-add-amount"
+         type="number" name="amount_keur" value="0" step="1"
+         aria-label="Amount kEUR">
+  <button type="submit" class="v2-capex-add-btn"
+          data-testid="add-row-btn-{{ group_code }}">+ Add Row</button>
+</form>
+{% endmacro %}
+
+<div id="v2-sheet-capex" data-sheet="capex"
+     data-fc-grid="capex" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {% if capex_scenario_error %}
+    <div class="v2-capex-scenario-error" role="alert" data-testid="capex-scenario-error">
+      ⚠ Scenario CAPEX unavailable — {{ capex_scenario_error }}
+      Amounts shown are Base economics.
+    </div>
+  {% endif %}
+
+  {# ── Summary totals bar ──────────────────────────────────────────── #}
+  <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
+    <div class="v2-capex-total-item">
+      <span class="v2-capex-total-label">Hard CAPEX</span>
+      <span class="v2-capex-total-value" data-testid="hard-capex-keur">
+        {{ "%.0f"|format(capex_vm.hard_capex_keur) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-capex-total-item">
+      <span class="v2-capex-total-label">Financing</span>
+      <span class="v2-capex-total-value" data-testid="financing-keur">
+        {{ "%.0f"|format(capex_vm.financing_keur) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-capex-total-item">
+      <span class="v2-capex-total-label">Reserve</span>
+      <span class="v2-capex-total-value" data-testid="reserve-keur">
+        {{ "%.0f"|format(capex_vm.reserve_keur) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-capex-total-item v2-capex-grand-total">
+      <span class="v2-capex-total-label">Total CAPEX</span>
+      <span class="v2-capex-total-value" data-testid="total-capex-keur">
+        {{ "%.0f"|format(capex_vm.total_capex_keur) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+      <span class="v2-capex-total-permw" data-testid="total-capex-permw">
+        ({{ "%.1f"|format(capex_vm.total_per_mw) }} kEUR/MW)
+      </span>
+    </div>
+  </div>
+
+  {# ── Column header ───────────────────────────────────────────────── #}
+  <div class="v2-capex-col-header" aria-hidden="true">
+    <span class="v2-capex-col-code">Code</span>
+    <span class="v2-capex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
+    <span class="v2-capex-col-amount">kEUR<span class="fc-col-resize-handle" data-col="amount"></span></span>
+    <span class="v2-capex-col-permw">kEUR/MW</span>
+    <span class="v2-capex-col-status">Status</span>
+  </div>
+
+  {# ── C.01–C.18 groups ────────────────────────────────────────────── #}
+  {% for group in capex_vm.groups %}
+    {% set gf = capex_group_to_field.get(group.code) %}
+    {% set alias = capex_alias_groups.get(group.code) %}
+    {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency and (not group.is_alias or group.alias_allows_custom_rows) %}
+    <details class="v2-capex-group{% if group.is_readonly %} v2-capex-group-engine{% endif %}{% if alias %} v2-capex-group-alias{% endif %}"
+             open
+             data-group-code="{{ group.code }}">
+
+      <summary class="v2-capex-group-header">
+        <span class="v2-capex-col-code">{{ group.code }}</span>
+        <span class="v2-capex-col-desc">{{ group.name }}</span>
+        <span class="v2-capex-col-amount v2-capex-subtotal"
+              data-testid="subtotal-{{ group.code }}">
+          {{ "%.0f"|format(group.subtotal_keur) }}
+        </span>
+        <span class="v2-capex-col-permw">
+          {{ "%.1f"|format(group.subtotal_per_mw) }}
+        </span>
+        <span class="v2-capex-col-status">
+          {%- if group.is_readonly -%}
+            <span class="v2-binding-badge v2-capex-badge-calc v2-capex-badge-engine" data-binding="engine">Calculated</span>
+          {%- elif group.is_contingency -%}
+            <span class="v2-binding-badge v2-capex-badge-calc v2-binding-display-only" data-binding="derived">Calculated</span>
+          {%- elif alias -%}
+            <span class="v2-binding-badge v2-capex-badge-shared" data-binding="shared">Shared</span>
+          {%- elif gf and gf.binding_label == "bound" -%}
+            <span class="v2-binding-badge v2-capex-badge-edit" data-binding="bound">Editable</span>
+          {%- endif -%}
+        </span>
+      </summary>
+
+      <div class="v2-capex-group-body">
+
+        {# Alias group (e.g. C.11 shares capex.D.audit_legal with C.08):
+           render a read-only SHARED FIELD row; the editable form lives in the owner group. #}
+        {% if alias %}
+          {{ shared_field_row(alias.field.label if alias.field else group.name,
+                              alias.field.value if alias.field else none,
+                              alias.owner) }}
+
+        {# C.17 — Financing Costs: iterate section F registry fields #}
+        {% elif group.is_financing %}
+          {% for f in capex_section_fields.get("F", []) %}
+            {{ engine_row(f.label, f.value) }}
+          {% endfor %}
+
+        {# C.18 — Reserve Accounts: section R registry fields #}
+        {% elif group.is_reserve %}
+          {% for f in capex_section_fields.get("R", []) %}
+            {{ engine_row(f.label, f.value, badge="ENGINE") }}
+          {% endfor %}
+
+        {# C.13 — Contingencies: derived, read-only #}
+        {% elif group.is_contingency %}
+          {% if gf %}
+            {{ engine_row(gf.label, gf.value, badge="DERIVED") }}
+          {% endif %}
+
+        {# Standard groups: single registry field (BOUND or DISPLAY_ONLY) #}
+        {% elif gf %}
+          {% if gf.binding_label == "bound" %}
+            {{ render_field(gf, project_code, workbook_version, content_hash, project_editable,
+                            hx_target="#v2-sheet-capex", sheet_id="capex") }}
+          {% else %}
+            {{ engine_row(gf.label, gf.value, badge=gf.binding_label | upper) }}
+          {% endif %}
+        {% endif %}
+
+        {# Split lines: read-only reference evidence rows vs user-added custom rows #}
+        {% set ref_lines = group.lines | selectattr("is_custom", "equalto", false) | list %}
+        {% set custom_lines = group.lines | selectattr("is_custom", "equalto", true) | list %}
+
+        {% if ref_lines %}
+          <div class="v2-capex-sublines-container">
+            {% for line in ref_lines %}
+              {{ subline_row(line) }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if custom_lines %}
+          <div class="v2-capex-custom-rows-container" data-group="{{ group.code }}"
+               data-testid="custom-rows-{{ group.code }}">
+            {% for line in custom_lines %}
+              {{ custom_row(line, project_code, workbook_version, project_editable) }}
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {# Add Row control — eligible groups only, no controls on protected references #}
+        {% if is_eligible %}
+          <div class="v2-capex-add-row-container">
+            {{ add_row_form(group.code, project_code, workbook_version, content_hash) }}
+          </div>
+        {% endif %}
+
+      </div>
+    </details>
+  {% endfor %}
+
+  {# ── Grand total row ─────────────────────────────────────────────── #}
+  <div class="v2-capex-grand-total-row" data-testid="grand-total-row">
+    <span class="v2-capex-col-code"></span>
+    <span class="v2-capex-col-desc v2-capex-total-label-cell">Total CAPEX</span>
+    <span class="v2-capex-col-amount v2-capex-grand-total-amount"
+          data-testid="grand-total-keur">
+      {{ "%.0f"|format(capex_vm.total_capex_keur) }}
+    </span>
+    <span class="v2-capex-col-permw" data-testid="grand-total-permw">
+      {{ "%.1f"|format(capex_vm.total_per_mw) }}
+    </span>
+    <span class="v2-capex-col-status"></span>
+  </div>
+
+</div>{# v2-sheet-capex #}

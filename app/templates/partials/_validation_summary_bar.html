@@ -1,0 +1,86 @@
+{# ── UI-2.3: Validation Summary Bar Partial ─────────────────────────────
+   Renders a compact summary of internal validation checks at the top of
+   the audit/reconciliation tab.
+
+   Uses safe language: "validation checks", "review status", "needs review",
+   "model evidence", "internal review", "no blocking checks shown".
+
+   If validation_summary context is missing (Phase 54F-J: not yet exposed
+   by backend), renders a compact neutral bar with a safe internal-review
+   message — does NOT compute financial logic in the template.
+
+   Tone variants: pass | warn | fail | info
+#}
+
+{% set _vs = validation_summary|default('') %}
+
+{% if _vs %}
+  {% set _pass = _vs.pass_count|default(0) %}
+  {% set _warn = _vs.warn_count|default(0) %}
+  {% set _fail = _vs.fail_count|default(0) %}
+  {% set _actual = _vs.actual_issue_count|default(_fail) %}
+  {% set _last = _vs.last_validated_at|default('') %}
+
+  {% if _fail and _fail > 0 %}
+    {% set _tone = 'fail' %}
+    {% set _label = 'Validation checks need review' %}
+    {% set _desc = _actual ~ ' current run/input item(s) need review before relying on this run.' %}
+  {% elif _warn and _warn > 0 %}
+    {% set _tone = 'warn' %}
+    {% set _label = 'Items needing review' %}
+    {% set _desc = _warn ~ ' current run/input item(s) flagged for internal review.' %}
+  {% else %}
+    {% set _tone = 'pass' %}
+    {% set _label = 'No blocking checks shown' %}
+    {% set _desc = 'Internal validation checks did not flag current run issues. Platform guards stay visible below.' %}
+  {% endif %}
+{% else %}
+  {# Fallback when validation_summary context is missing. Use safe neutral copy. #}
+  {% set _tone = 'info' %}
+  {% set _label = 'Internal validation checks' %}
+  {% set _desc = 'Review status is shown per item below. Platform guards are shown separately from current-run validation issues.' %}
+{% endif %}
+
+<div class="validation-summary-bar validation-summary-{{ _tone }}" role="status" aria-label="{{ _label }}">
+  <span class="validation-summary-icon" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </span>
+  <div class="validation-summary-body">
+    <span class="validation-summary-title">{{ _label }}</span>
+    <span class="validation-summary-desc">{{ _desc }}</span>
+  </div>
+  {% if _vs and _last %}
+    <span class="validation-summary-meta">Last checked: {{ _last }}</span>
+  {% endif %}
+</div>
+
+{% set _gs = governance_guard_summary|default({}) %}
+{% set _gs_items = _gs.get('items', []) if _gs else [] %}
+{% if _gs and _gs_items %}
+  <div class="audit-disclaimer">
+    <span class="badge badge-info">{{ _gs.label|default('Governance / Feature Guards') }}</span>
+    <span class="audit-disclaimer-text">
+      {{ _gs.note|default('These are platform-level limitations and review boundaries, not current-run validation errors.') }}
+    </span>
+  </div>
+  <div class="audit-section">
+    <div class="audit-section-header">
+      <span class="audit-section-title">{{ _gs.label|default('Governance / Feature Guards') }}</span>
+      <span class="badge badge-warn">Platform-level</span>
+    </div>
+    <div class="audit-section-body">
+      {% for item in _gs_items %}
+      <div class="audit-row">
+        <span class="audit-row-label">{{ item.title }}</span>
+        <span class="audit-row-status">
+          <span class="badge {{ item.badge_class|default('badge-warn') }}">{{ item.status }}</span>
+          {{ item.detail }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

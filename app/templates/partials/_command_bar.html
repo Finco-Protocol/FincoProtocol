@@ -1,0 +1,158 @@
+{# ── UI-2 Command Bar ───────────────────────────────────────────────────────
+   44 px sticky command row: Run / Save / Export / Undo / Redo +
+   meta (last-run timestamp, engine version) + status pills
+   (dirty / validation / run status).
+
+   Strictly additive. The Run button mirrors the existing /run
+   workflow (htmx POST → /run) so the existing execution path is
+   unchanged. The Save button mirrors /scenarios/save. The Export
+   button is a placeholder that links to /download (the existing
+   export entry point). Undo / Redo are intentional placeholders,
+   marked visually so reviewers see they have no behaviour yet. #}
+
+<div class="fo-command-bar" role="toolbar" aria-label="Workspace commands">
+
+  <div class="fo-command-bar__group">
+
+    {# Primary action — Run (F9). Real htmx POST to /run, no engine change. #}
+    <button type="button"
+            class="fo-btn fo-btn--primary"
+            id="fo-btn-run"
+            hx-post="/run"
+            hx-include="#main-form"
+            hx-target="#model-output-area"
+            hx-swap="innerHTML"
+            hx-indicator="#fo-run-spinner">
+      <span aria-hidden="true">▶</span>
+      <span>Run</span>
+      <span class="fo-btn__kbd">F9</span>
+      <span id="fo-run-spinner" class="htmx-indicator" aria-hidden="true">…</span>
+    </button>
+
+    {# Save (⌘S / Ctrl+S). Mirrors the existing /scenarios/save. #}
+    <button type="button"
+            class="fo-btn fo-btn--ghost"
+            id="fo-btn-save"
+            hx-post="/scenarios/save"
+            hx-include="#main-form"
+            hx-target="#saved-scenario-panel"
+            hx-swap="outerHTML"
+            hx-indicator="#fo-save-spinner">
+      <span aria-hidden="true">💾</span>
+      <span>Save</span>
+      <span class="fo-btn__kbd">⌘S</span>
+      <span id="fo-save-spinner" class="htmx-indicator" aria-hidden="true">…</span>
+    </button>
+
+    {# Export — links to the existing /download route. #}
+    <a href="/download"
+       class="fo-btn fo-btn--ghost"
+       id="fo-btn-export"
+       role="button">
+      <span aria-hidden="true">⇩</span>
+      <span>Export</span>
+    </a>
+
+  </div>
+
+  <span class="fo-command-bar__divider" aria-hidden="true"></span>
+
+  {# Undo / Redo placeholders. Marked visually so the affordance is
+     honest. #}
+  <div class="fo-command-bar__group">
+    <button type="button"
+            class="fo-btn fo-btn--ghost fo-btn--placeholder"
+            disabled
+            aria-label="Undo"
+            title="Undo (not yet available)">
+      <span aria-hidden="true">↶</span>
+      <span>Undo</span>
+    </button>
+    <button type="button"
+            class="fo-btn fo-btn--ghost fo-btn--placeholder"
+            disabled
+            aria-label="Redo"
+            title="Redo (not yet available)">
+      <span aria-hidden="true">↷</span>
+      <span>Redo</span>
+    </button>
+  </div>
+
+  <span class="fo-command-bar__spacer"></span>
+
+  {# Meta — Last-run timestamp + engine version.
+     runtime_generated_at comes from current_context; engine version is
+     hard-coded as the placeholder until an explicit version field exists. #}
+  <span class="fo-meta">
+    <span class="fo-meta__label">Last run</span>
+    <span class="fo-meta__value" id="fo-last-run-at">
+      {{- (runtime_generated_at|default('unavailable'))|string -}}
+    </span>
+  </span>
+
+  <span class="fo-command-bar__divider" aria-hidden="true"></span>
+
+  <span class="fo-meta">
+    <span class="fo-meta__label">Engine</span>
+    <span class="fo-meta__value" id="fo-engine-version">engine-stable</span>
+  </span>
+
+  <span class="fo-command-bar__divider" aria-hidden="true"></span>
+
+  {# Status pills. dirty drives Fresh/Stale; validation_summary drives
+     pass/warn/fail; run status comes from runtime_origin availability
+     (anything non-"unavailable" is treated as fresh by the engine; the
+     pill is conservatively accurate). #}
+  {% set _dirty = dirty|default(false) %}
+  {% set _has_runtime = (runtime_snapshot_id|default('unavailable')) != 'unavailable' %}
+  {% if _dirty %}
+    <span class="fo-pill fo-pill--stale" id="fo-pill-dirty" role="status">
+      <span class="fo-pill__dot" aria-hidden="true"></span>
+      Stale
+    </span>
+  {% else %}
+    <span class="fo-pill fo-pill--fresh" id="fo-pill-dirty" role="status">
+      <span class="fo-pill__dot" aria-hidden="true"></span>
+      Fresh
+    </span>
+  {% endif %}
+
+  {% set _vs = validation_summary %}
+  {% if _vs %}
+    {% if _vs.fail_count|default(0) > 0 %}
+      <span class="fo-pill fo-pill--error fo-pill--validation-fail" role="status">
+        <span class="fo-pill__dot" aria-hidden="true"></span>
+        Validation · {{ _vs.fail_count|default(0) }} fail
+      </span>
+    {% elif _vs.warn_count|default(0) > 0 %}
+      <span class="fo-pill fo-pill--stale fo-pill--validation-warn" role="status">
+        <span class="fo-pill__dot" aria-hidden="true"></span>
+        Validation · {{ _vs.warn_count|default(0) }} warn
+      </span>
+    {% else %}
+      <span class="fo-pill fo-pill--fresh fo-pill--validation-pass" role="status">
+        <span class="fo-pill__dot" aria-hidden="true"></span>
+        Validation · OK
+      </span>
+    {% endif %}
+  {% else %}
+    <span class="fo-pill" role="status">
+      <span class="fo-pill__dot" aria-hidden="true"></span>
+      Validation · n/a
+    </span>
+  {% endif %}
+
+  {% set _run_origin = runtime_origin|default(runtime_origin_label|default('unavailable')) %}
+  {% if _run_origin and _run_origin != 'unavailable' %}
+    <span class="fo-pill fo-pill--running" role="status">
+      <span class="fo-pill__dot" aria-hidden="true"></span>
+      Run · ready
+    </span>
+  {% else %}
+    <span class="fo-pill" role="status">
+      <span class="fo-pill__dot" aria-hidden="true"></span>
+      Run · no snapshot
+    </span>
+  {% endif %}
+
+</div>

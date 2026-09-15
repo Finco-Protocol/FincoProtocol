@@ -1,0 +1,155 @@
+{#
+  Reusable V2 field editor macro.
+
+  render_field(f, project_code, workbook_version, content_hash,
+               project_editable=True,
+               hx_target="#v2-sheet-project-setup",
+               sheet_id="project_setup")
+
+  BOUND + project_editable  → <form> posting to /v2/workbook/update via HTMX,
+                               type-appropriate input with registry HTML5 attrs
+                               (min, max, step, required, title).
+  All other cases           → read-only span + binding badge.
+
+  f dict keys (from _build_sheet_fields):
+    field_id, label, unit, field_type, binding_label, options, value,
+    required, min_value, max_value, step, help_text.
+
+  Caller supplies project_code, workbook_version, content_hash, project_editable
+  from template context.  hx_target and sheet_id default to project_setup sheet;
+  override for other sheets so HTMX swaps the correct container.
+#}
+{% macro render_field(f, project_code, workbook_version, content_hash, project_editable=True, hx_target="#v2-sheet-project-setup", sheet_id="project_setup") %}
+{# UI-2A: derive C1 kind from field_type #}
+{%- set fc_kind = 'amount' -%}
+{%- if f.field_type == 'date' -%}{%- set fc_kind = 'date' -%}
+{%- elif f.field_type == 'select' -%}{%- set fc_kind = 'select' -%}
+{%- elif f.field_type == 'bool' -%}{%- set fc_kind = 'bool' -%}
+{%- elif f.field_type in ('text', 'str', 'string') -%}{%- set fc_kind = 'text' -%}
+{%- endif -%}
+<div class="v2-field-row {% if f.binding_label == 'bound' and project_editable %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
+     data-field-id="{{ f.field_id }}"
+     data-binding="{{ f.binding_label }}"
+     data-field-type="{{ f.field_type }}"
+     data-fc-row>
+  <span class="v2-field-label"
+        data-fc-cell
+        data-fc-addr="{{ sheet_id }}.{{ f.field_id }}.label"
+        data-fc-editable="false"
+        data-fc-kind="label"
+        tabindex="-1">
+    {{ f.label }}{% if f.unit %}&thinsp;<span class="v2-unit">{{ f.unit }}</span>{% endif %}
+  </span>
+  <div class="v2-fc-value-cell"
+       data-fc-cell
+       data-fc-addr="{{ sheet_id }}.{{ f.field_id }}.value"
+       data-fc-editable="{{ 'true' if (f.binding_label == 'bound' and project_editable) else 'false' }}"
+       data-fc-kind="{{ fc_kind }}"
+       tabindex="-1">
+  {% if f.binding_label == 'bound' and project_editable %}
+    <form method="post" action="/v2/workbook/update" class="v2-field-form"
+          autocomplete="off"
+          hx-post="/v2/workbook/update"
+          hx-target="{{ hx_target }}"
+          hx-swap="outerHTML">
+      <input type="hidden" name="sheet_id"         value="{{ sheet_id }}">
+      <input type="hidden" name="field_id"          value="{{ f.field_id }}">
+      <input type="hidden" name="project"           value="{{ project_code }}">
+      <input type="hidden" name="workbook_version"  value="{{ workbook_version }}">
+      <input type="hidden" name="content_hash"      value="{{ content_hash }}">
+      {% if f.field_type == 'date' %}
+        <input type="date"   name="value"
+               value="{{ f.value | string if f.value is not none else '' }}"
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value | string if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
+      {% elif f.field_type in ('months', 'years', 'int') %}
+        <input type="number" name="value"
+               value="{{ f.value if f.value is not none else '' }}"
+               step="{{ f.step }}"
+               {% if f.min_value is not none %}min="{{ f.min_value }}"{% endif %}
+               {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
+      {% elif f.field_type in ('float', 'mw', 'mwh', 'keur', 'pct', 'bps') %}
+        <input type="number" name="value"
+               value="{{ f.value if f.value is not none else '' }}"
+               step="{{ f.step }}"
+               {% if f.min_value is not none %}min="{{ f.min_value }}"{% endif %}
+               {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
+      {% elif f.field_type == 'select' %}
+        <select name="value" class="v2-field-input" aria-label="{{ f.label }}"
+                onchange="this.form.requestSubmit()"
+                {% if f.required %}required{% endif %}>
+          {% if f.value not in f.options %}<option value="">—</option>{% endif %}
+          {% for opt in f.options %}
+            <option value="{{ opt }}"{% if f.value == opt %} selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      {% elif f.field_type == 'bool' %}
+        <select name="value" class="v2-field-input" aria-label="{{ f.label }}"
+                onchange="this.form.requestSubmit()">
+          <option value="true" {% if f.value %}selected{% endif %}>Yes</option>
+          <option value="false"{% if not f.value %}selected{% endif %}>No</option>
+        </select>
+      {% else %}
+        <input type="text" name="value"
+               value="{{ f.value if f.value is not none else '' }}"
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
+      {% endif %}
+      <button type="submit" class="v2-field-save"
+              aria-label="Save {{ f.label }}">&#10003;</button>
+    </form>
+  {% else %}
+    <span class="v2-field-value">
+      {%- if f.value is none or f.value == '' -%}
+        <span class="v2-field-empty">—</span>
+      {%- elif f.field_type == 'bool' -%}
+        {{ 'Yes' if f.value else 'No' }}
+      {%- else -%}
+        {{ f.value }}
+      {%- endif -%}
+    </span>
+    {%- if f.binding_label not in ('bound',) -%}
+    <span class="v2-binding-badge v2-binding-{{ f.binding_label }}"
+          title="{% if f.binding_label == 'template_locked' %}This field is locked by the template{% else %}This field is calculated automatically{% endif %}">
+      {%- if f.binding_label in ('display_only', 'computed') -%}Calculated
+      {%- elif f.binding_label == 'template_locked' -%}Locked
+      {%- elif f.binding_label == 'partial' -%}Calculated
+      {%- else -%}Calculated{%- endif -%}
+    </span>
+    {%- endif -%}
+  {% endif %}
+  </div>{# /v2-fc-value-cell [data-fc-cell] #}
+</div>
+{% endmacro %}

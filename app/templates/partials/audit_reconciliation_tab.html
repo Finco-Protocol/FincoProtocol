@@ -1,0 +1,35 @@
+<!-- FINCO Model lineage and validation tab -->
+<div class="audit-reconciliation-tab" id="audit-reconciliation-tab">
+  {% include "partials/_validation_summary_bar.html" %}
+  <div class="audit-disclaimer">
+    <span class="badge badge-warn">Scope notice</span>
+    <span class="audit-disclaimer-text">This tab summarises runtime lineage and model-validation status. It is not an external audit, lender approval, credit decision or certification.</span>
+  </div>
+  <div class="audit-group">
+    <div class="audit-group-header"><span class="audit-group-title">Synthetic reference coverage</span><span class="badge badge-pass">Solar / Wind regression ring</span></div>
+    <div class="audit-group-desc">Protected reference models use synthetic assumptions. Solar and Wind are covered by the public regression ring; Storage currently has narrower runtime coverage.</div>
+    <div class="audit-section">
+      <div class="audit-section-header"><span class="audit-section-title">Revenue, CAPEX &amp; OPEX</span><span class="badge badge-pass">Backend</span></div>
+      <div class="audit-section-body">
+        <div class="audit-row"><span class="audit-row-label">Assumption authority</span><span class="audit-row-status">Typed canonical project inputs</span></div>
+        <div class="audit-row"><span class="audit-row-label">Runtime impact</span><span class="audit-row-status">Drives deterministic model outputs</span></div>
+      </div>
+    </div>
+    <div class="audit-section">
+      <div class="audit-section-header"><span class="audit-section-title">Financing &amp; coverage</span><span class="badge badge-pass">Backend</span></div>
+      <div class="audit-section-body">
+        <div class="audit-row"><span class="audit-row-label">Senior debt</span><span class="audit-row-status">Active typed financing policy and runtime schedule</span></div>
+        <div class="audit-row"><span class="audit-row-label">DSCR</span><span class="audit-row-status">Calculated from the active backend cash-flow and debt-service state</span></div>
+        <div class="audit-row"><span class="audit-row-label">Shareholder loan / distributions</span><span class="audit-row-status">Calculated through the canonical backend waterfall</span></div>
+      </div>
+    </div>
+    <div class="audit-section">
+      <div class="audit-section-header"><span class="audit-section-title">Runtime &amp; export lineage</span><span class="badge badge-info">Traceable</span></div>
+      <div class="audit-section-body">
+        <div class="audit-row"><span class="audit-row-label">Runtime state</span><span class="audit-row-status">Last completed backend run</span></div>
+        <div class="audit-row"><span class="audit-row-label">Export state</span><span class="audit-row-status">Generated from saved/run backend state</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+

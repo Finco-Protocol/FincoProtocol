@@ -1,0 +1,269 @@
+<!-- Sheet: OPEX — {{ project_ctx.name }}
+     Sprint 10 PR-4: Dynamic group loop, collapsible sections, unit column, clean hierarchy. -->
+
+{# ── Readonly notice for baselines ─────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--opex">
+  <span class="badge badge-muted">Read-only</span>
+  <span>Protected original — use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy.</span>
+</div>
+{% endif %}
+
+{# ── Dirty indicator ────────────────────────────────────────────── #}
+{% if is_user_project %}
+<div class="inp-dirty-indicator" id="opex-dirty-indicator" style="display:none;">
+  <span class="badge badge-warn">⚠ Unsaved OPEX edits</span>
+</div>
+{% endif %}
+
+{# ── Summary strip ─────────────────────────────────────────────── #}
+<div class="opex-ws-summary-strip">
+  <div class="opex-ws-summary-card">
+    <div class="opex-ws-summary-card__label">Total OPEX Y1</div>
+    <div class="opex-ws-summary-card__value">{{ "{:,.1f}".format(project_ctx.opex_y1_total_keur or 0) }}</div>
+    <div class="opex-ws-summary-card__unit">kEUR</div>
+  </div>
+  <div class="opex-ws-summary-card">
+    <div class="opex-ws-summary-card__label">Line Items</div>
+    <div class="opex-ws-summary-card__value">{{ project_ctx.opex_items|length }}</div>
+    <div class="opex-ws-summary-card__unit">budget lines</div>
+  </div>
+  <div class="opex-ws-summary-card">
+    <div class="opex-ws-summary-card__label">Escalation</div>
+    {% set default_esc = 2.0 if not project_ctx.opex_items else (project_ctx.opex_items[0].escalation_pct or 2.0) %}
+    <div class="opex-ws-summary-card__value">{{ "%.1f"|format(default_esc) }}%</div>
+    <div class="opex-ws-summary-card__unit">per annum</div>
+  </div>
+  {% if project_ctx.opex_contingency_method %}
+  <div class="opex-ws-summary-card">
+    <div class="opex-ws-summary-card__label">Contingency</div>
+    <div class="opex-ws-summary-card__value">{{ project_ctx.opex_contingency_pct|default(0)|int }}%</div>
+    <div class="opex-ws-summary-card__unit">{{ project_ctx.opex_contingency_method }}</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Collapse controls ─────────────────────────────────────────── #}
+<div class="opex-ws-toolbar">
+  <button class="btn-sm btn-muted" onclick="opexWsExpandAll()">Expand all</button>
+  <button class="btn-sm btn-muted" onclick="opexWsCollapseAll()">Collapse all</button>
+</div>
+
+{# ── OPEX Grid — dynamic groups ────────────────────────────────── #}
+<div class="sheet-card opex-ws-card">
+  <div class="section-header">OPEX Budget — Year 1 (kEUR)</div>
+
+  {% if project_ctx.opex_items %}
+
+  {# Collect unique groups in order #}
+  {% set seen_groups = [] %}
+  {% for item in project_ctx.opex_items %}
+    {% if item.group not in seen_groups %}
+      {% set _ = seen_groups.append(item.group) %}
+    {% endif %}
+  {% endfor %}
+
+  <table class="fc-grid opex-ws-grid" id="opex-ws-grid">
+    <thead>
+      <tr class="fc-grid-header">
+        <th class="fc-th fc-grid-col-label">Line Item</th>
+        <th class="fc-th fc-th--code">Code</th>
+        <th class="fc-th fc-th--amount">Y1 kEUR</th>
+        <th class="fc-th fc-th--unit">Unit</th>
+        <th class="fc-th fc-th--amount">Escal. %</th>
+        <th class="fc-th fc-th--num">Start</th>
+        <th class="fc-th fc-th--num">End</th>
+        <th class="fc-th fc-th--pct-label">Fixed/Var</th>
+        <th class="fc-th fc-cell--notes">Notes</th>
+      </tr>
+    </thead>
+
+    {% for group_name in seen_groups %}
+      {# Compute group subtotal #}
+      {% set ns = namespace(subtotal=0.0) %}
+      {% for item in project_ctx.opex_items %}
+        {% if item.group == group_name %}
+          {% set ns.subtotal = ns.subtotal + (item.y1_keur or 0) %}
+        {% endif %}
+      {% endfor %}
+
+      {# Section header row — clickable to collapse/expand #}
+      <tbody class="opex-ws-group" id="opex-ws-group-{{ loop.index0 }}" data-group-index="{{ loop.index0 }}">
+        <tr class="fc-section-band opex-ws-section-band"
+            onclick="opexWsToggleGroup({{ loop.index0 }})"
+            title="Click to collapse/expand">
+          <td class="fc-section-band__label" colspan="2">
+            <span class="opex-ws-toggle-icon" id="opex-ws-icon-{{ loop.index0 }}">▼</span>
+            {{ group_name }}
+          </td>
+          <td class="fc-cell fc-cell--amount fc-cell--group-total">{{ "{:,.2f}".format(ns.subtotal) }}</td>
+          <td class="fc-cell" colspan="6"><span class="fc-cell--muted">subtotal</span></td>
+        </tr>
+
+        {# Child rows #}
+        {% for item in project_ctx.opex_items %}
+          {% if item.group == group_name %}
+          <tr class="fc-data-row opex-ws-child-row" data-group="{{ loop.index0 }}">
+            <td class="fc-cell fc-cell--label fc-grid-col-label opex-ws-child-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur or 0) }}"
+                     data-opex-item="{{ item.code }}"
+                     data-opex-group="{{ loop.index0 }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "{:,.2f}".format(item.y1_keur or 0) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell fc-th--unit">{{ item.unit }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
+            <td class="fc-cell fc-th--pct-label">
+              {% if item.fixed_variable %}
+                <span class="badge badge-muted">{{ item.fixed_variable }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell fc-cell--notes">{{ item.notes or "—" }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# Group subtotal row #}
+        <tr class="fc-subtotal-row opex-ws-group-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">{{ group_name }} Subtotal</td>
+          <td class="fc-total-cell opex-ws-subtotal-value" data-group-subtotal="{{ loop.index0 }}">{{ "{:,.2f}".format(ns.subtotal) }}</td>
+          <td colspan="6"></td>
+        </tr>
+      </tbody>
+    {% endfor %}
+
+    {# Grand total row #}
+    <tbody>
+      <tr class="fc-grand-total">
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Total OPEX (Y1)</td>
+        <td class="fc-total-cell fc-total-value fc-grand-total__value">
+          {{ "{:,.2f}".format(project_ctx.opex_y1_total_keur or 0) }}
+        </td>
+        <td colspan="6"></td>
+      </tr>
+
+      {# Delta warning — grid sum vs model summary #}
+      {% set grid_ns = namespace(total=0.0) %}
+      {% for item in project_ctx.opex_items %}
+        {% set grid_ns.total = grid_ns.total + (item.y1_keur or 0) %}
+      {% endfor %}
+      {% set delta = (grid_ns.total - (project_ctx.opex_y1_total_keur or 0)) | abs %}
+      {% if delta > 0.5 %}
+      <tr class="fc-delta-row">
+        <td class="fc-cell fc-delta-label" colspan="2">⚠ Delta vs model</td>
+        <td class="fc-delta-warning">{{ "%.2f"|format(delta) }} kEUR</td>
+        <td class="fc-cell fc-cell--notes" colspan="6">Model OPEX summary is authoritative.</td>
+      </tr>
+      {% endif %}
+    </tbody>
+
+  </table>
+
+  {% else %}
+  <div class="inp-empty-state">
+    <div class="inp-empty-state__icon">📋</div>
+    <div class="inp-empty-state__title">No OPEX items</div>
+    <div class="inp-empty-state__desc">OPEX line items are defined by the project template. Run the model to see values.</div>
+  </div>
+  {% endif %}
+
+</div>{# /sheet-card #}
+
+<style>
+  /* ── Summary strip ─────────────────────────────────────────────── */
+  .opex-ws-summary-strip {
+    display: flex; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;
+  }
+  .opex-ws-summary-card {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-md); padding: 0.6rem 1rem;
+    min-width: 100px; display: flex; flex-direction: column; gap: 0.15rem;
+  }
+  .opex-ws-summary-card__label {
+    font-size: 0.68rem; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.06em; font-weight: 600;
+  }
+  .opex-ws-summary-card__value {
+    font-size: 1.1rem; font-weight: 700; color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .opex-ws-summary-card__unit { font-size: 0.65rem; color: var(--muted); }
+
+  /* ── Toolbar ────────────────────────────────────────────────────── */
+  .opex-ws-toolbar {
+    display: flex; gap: 0.5rem; margin-bottom: 0.5rem;
+  }
+
+  /* ── Grid ───────────────────────────────────────────────────────── */
+  .opex-ws-grid { width: 100%; }
+  .opex-ws-grid .fc-grid-col-label { min-width: 200px; }
+  .opex-ws-grid .fc-th--code { width: 80px; }
+  .opex-ws-grid .fc-th--amount { width: 100px; text-align: right; }
+  .opex-ws-grid .fc-th--unit { width: 80px; }
+  .opex-ws-grid .fc-th--num { width: 55px; text-align: center; }
+  .opex-ws-grid .fc-th--pct-label { width: 80px; }
+
+  /* ── Section band ───────────────────────────────────────────────── */
+  .opex-ws-section-band { cursor: pointer; user-select: none; }
+  .opex-ws-section-band:hover { background: rgba(26,86,219,0.06); }
+  .opex-ws-toggle-icon {
+    margin-right: 0.4rem; font-size: 0.72rem; color: var(--primary);
+  }
+  .fc-cell--group-total {
+    font-weight: 600; font-variant-numeric: tabular-nums;
+    text-align: right; color: var(--text-2);
+  }
+
+  /* ── Child rows ─────────────────────────────────────────────────── */
+  .opex-ws-child-label { padding-left: 1.8rem !important; }
+  .opex-ws-child-row td { font-size: 0.82rem; }
+  .opex-ws-child-row:nth-of-type(even) { background: var(--surface-2); }
+  .opex-ws-group-subtotal-row td { border-top: 1px solid var(--border); }
+
+  /* ── Collapsed ──────────────────────────────────────────────────── */
+  .opex-ws-group--collapsed .opex-ws-child-row { display: none; }
+  .opex-ws-group--collapsed .opex-ws-group-subtotal-row { display: none; }
+
+  /* ── Empty state ─────────────────────────────────────────────────── */
+  .inp-empty-state {
+    padding: 2rem; text-align: center; color: var(--muted);
+  }
+  .inp-empty-state__icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .inp-empty-state__title { font-weight: 600; margin-bottom: 0.25rem; }
+  .inp-empty-state__desc { font-size: 0.82rem; }
+</style>
+
+<script>
+  function opexWsToggleGroup(idx) {
+    var tb = document.getElementById('opex-ws-group-' + idx);
+    var ic = document.getElementById('opex-ws-icon-' + idx);
+    if (!tb) return;
+    var collapsed = tb.classList.contains('opex-ws-group--collapsed');
+    tb.classList.toggle('opex-ws-group--collapsed', !collapsed);
+    if (ic) ic.textContent = collapsed ? '▼' : '▶';
+  }
+  function opexWsExpandAll() {
+    document.querySelectorAll('.opex-ws-group').forEach(function(tb, i) {
+      tb.classList.remove('opex-ws-group--collapsed');
+      var ic = document.getElementById('opex-ws-icon-' + i);
+      if (ic) ic.textContent = '▼';
+    });
+  }
+  function opexWsCollapseAll() {
+    document.querySelectorAll('.opex-ws-group').forEach(function(tb, i) {
+      tb.classList.add('opex-ws-group--collapsed');
+      var ic = document.getElementById('opex-ws-icon-' + i);
+      if (ic) ic.textContent = '▶';
+    });
+  }
+</script>

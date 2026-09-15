@@ -1,0 +1,499 @@
+<!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
+     Phase 20M — Financial Statements Polish
+     Product Gap PR6 — Financial Statements Reality Check
+     PR #857 — output honesty: scoped querySelector fixes triple-DOM bug
+     fc-grid design system applied to statement tables
+
+     PR6 finding: the Income Statement, Cash Flow, and Balance Sheet
+     tables previously rendered below were 100% hardcoded "Generic Wind Reference
+     factory snapshot" example figures (see git history /
+     PRODUCT_GAP_PR6 doc for the before/after). Sprint 12 binds this
+     sheet to canonical runtime Financial Statements output when the
+     run response provides it, with the existing sessionStorage payload
+     retained as a same-run HTMX refresh fallback. No statement values
+     are calculated in this template.
+
+     PR #857 fix: this template is included three times in workspace_shell.html
+     (once per FS outer tab panel). document.getElementById() only hits the
+     first DOM instance, so the JS now scopes all queries to the enclosing
+     [data-fs-panel] container captured at script-execution time via
+     document.currentScript. All three panels independently populate their
+     own tables without cross-panel interference.
+-->
+{# UI-8E: banner removed — the statement selector is the page identity. #}
+
+{# PR #857: panel identity — _active_statement is set by workspace_shell.html
+   before each include ("pl", "cf", "bs"). Defaults to "pl" for safety. #}
+{% set _fs_panel_id = _active_statement|default("pl") %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   LIVE RUNTIME BLOCK (sessionStorage — shown after model run)
+   ══════════════════════════════════════════════════════════════════════ #}
+<div data-fs-panel="{{ _fs_panel_id }}" id="fs-panel-{{ _fs_panel_id }}">
+
+<div id="fs-runtime-block-{{ _fs_panel_id }}">
+  <div class="fs-runtime-block" id="shared-runtime-block-{{ _fs_panel_id }}" style="display:none;">
+    <div class="fs-runtime-header">
+      <div class="fs-runtime-header-left">
+        <span class="badge badge-runtime">Runtime</span>
+        <span class="fs-runtime-title">Live Model Output</span>
+        <span class="fs-runtime-project" id="runtime-block-project-{{ _fs_panel_id }}"></span>
+      </div>
+      <div class="fs-runtime-header-right">
+        <span class="fs-runtime-time" id="runtime-block-time-{{ _fs_panel_id }}"></span>
+        {% if runtime_summary is defined and runtime_summary.active_scenario_name %}
+        <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="fs-runtime-kpis" id="runtime-block-kpis-{{ _fs_panel_id }}"></div>
+  </div>
+
+  {# Secondary runtime metrics for financial statements #}
+  <div class="fs-secondary-metrics" id="fs-secondary-metrics-{{ _fs_panel_id }}" style="display:none;">
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total Distributions</span>
+      <span class="fs-metric-value" id="fs-total-dist-{{ _fs_panel_id }}"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">SHL Opening</span>
+      <span class="fs-metric-value" id="fs-shl-opening-{{ _fs_panel_id }}"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total Revenue</span>
+      <span class="fs-metric-value" id="fs-total-rev-{{ _fs_panel_id }}"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">EBITDA</span>
+      <span class="fs-metric-value" id="fs-ebitda-{{ _fs_panel_id }}"></span>
+    </div>
+    <div class="fs-metric">
+      <span class="fs-metric-label">Total OPEX</span>
+      <span class="fs-metric-value" id="fs-opex-{{ _fs_panel_id }}"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+{% set _fs = financial_statements|default(None) %}
+{% set _fs_has_runtime = _fs and _fs.pnl and _fs.pnl.periods and _fs.balance_sheet and _fs.balance_sheet.periods and _fs.pf_cash_waterfall and _fs.pf_cash_waterfall.periods %}
+
+{% macro _fs_num(v) -%}
+  {%- if v is number -%}{{ "%.0f"|format(v) }}{%- else -%}-{%- endif -%}
+{%- endmacro %}
+
+{% macro _fs_header(periods) -%}
+  <th class="fc-header-cell fc-label-cell">Line Item</th>
+  {%- for p in periods %}
+    <th class="fc-header-cell fc-period-cell">{{ p.date[:7] if p.date else "P" ~ loop.index0 }}</th>
+  {%- endfor %}
+{%- endmacro %}
+
+{% macro _fs_body(row_defs, periods) -%}
+  {%- for row in row_defs %}
+    <tr{% if row.bold|default(false) %} class="fc-row-subtotal"{% endif %}>
+      <td class="fc-cell fc-label-cell">{{ row.label }}{% if row.note|default("") %} ({{ row.note }}){% endif %}</td>
+      {%- for p in periods %}
+        <td class="fc-cell fc-value-cell" data-readonly="true">{{ _fs_num(p.get(row["key"])) }}</td>
+      {%- endfor %}
+    </tr>
+  {%- endfor %}
+{%- endmacro %}
+
+{% set _pnl_rows = [
+  {"label": "Revenue", "key": "revenues_keur"},
+  {"label": "Operating Expenses", "key": "operating_expenses_keur"},
+  {"label": "Depreciation", "key": "depreciation_keur"},
+  {"label": "EBIT", "key": "ebit_keur", "bold": true},
+  {"label": "Senior Interest Expense", "key": "senior_interest_expense_keur"},
+  {"label": "SHL Interest Expense", "key": "shl_interest_expense_keur"},
+  {"label": "Earnings Before Tax", "key": "earnings_before_tax_keur", "bold": true},
+  {"label": "CIT Accrual", "key": "cit_accrual_keur"},
+  {"label": "Net Income", "key": "net_income_keur", "bold": true},
+  {"label": "Retained Earnings", "key": "retained_earnings_keur"},
+  {"label": "Net Dividends", "key": "net_dividends_keur"},
+] %}
+{% set _bs_rows = [
+  {"label": "Net Fixed Assets", "key": "net_fixed_assets_keur"},
+  {"label": "DSRA Balance", "key": "dsra_balance_keur"},
+  {"label": "Cash", "key": "cash_keur"},
+  {"label": "Total Assets", "key": "total_assets_keur", "bold": true},
+  {"label": "Share Capital", "key": "share_capital_keur"},
+  {"label": "Retained Earnings", "key": "retained_earnings_keur"},
+  {"label": "SHL Balance", "key": "shl_balance_keur"},
+  {"label": "Senior Debt Balance", "key": "senior_balance_keur"},
+  {"label": "Total Liabilities+Equity", "key": "total_liabilities_equity_keur", "bold": true},
+  {"label": "Balance Check", "key": "balance_check_keur", "note": "Should be ~0"},
+] %}
+{% set _pf_rows = [
+  {"label": "Revenue (Cash)", "key": "revenue_cash_keur"},
+  {"label": "OPEX (Cash)", "key": "opex_cash_keur"},
+  {"label": "EBITDA (Cash)", "key": "ebitda_cash_keur", "bold": true},
+  {"label": "Cash Tax", "key": "cash_tax_keur"},
+  {"label": "FCF for Banks", "key": "fcf_banks_keur", "bold": true},
+  {"label": "Senior Debt Service", "key": "senior_total_ds_keur"},
+  {"label": "DSRA Funding", "key": "dsra_funding_keur"},
+  {"label": "DSRA Release", "key": "dsra_release_keur"},
+  {"label": "FCF for Junior", "key": "fcf_junior_keur", "bold": true},
+  {"label": "FCF for Distribution", "key": "fcf_for_distribution_keur", "bold": true},
+  {"label": "Net Dividends", "key": "net_dividends_keur"},
+] %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   UNAVAILABLE STATE — shown only when no Run has been executed yet
+   (pre-Run state: no server financial_statements context and no
+   lastFinancialStatements fallback in sessionStorage).
+   When a Run has been executed, the financial statement tables below
+   replace this panel. No financial values are invented here.
+   ══════════════════════════════════════════════════════════════════════ #}
+{# UI-8E: default visible — JS hides this when runtime exists.
+   Removed style="display:none;" to avoid FOUC (flash of empty page). #}
+<div class="fo-fs-empty-state"
+     id="fs-unavailable-panel-{{ _fs_panel_id }}"
+     {% if _fs_has_runtime %}style="display:none;"{% endif %}
+     role="status" aria-label="Financial statements outside current runtime view">
+  <div class="fo-fs-empty-state__icon" aria-hidden="true">⬜</div>
+  <div class="fo-fs-empty-state__title">No model results available.</div>
+  <div class="fo-fs-empty-state__body">Run the model to generate financial statements.</div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   FINANCIAL STATEMENTS — populated from canonical runtime output
+   after Run. Server-provided context is authoritative; sessionStorage
+   is retained only as a same-run refresh fallback. No financial
+   calculations are performed here.
+   ══════════════════════════════════════════════════════════════════════ #}
+<div id="fs-statements-block-{{ _fs_panel_id }}"{% if not _fs_has_runtime %} style="display:none;"{% endif %} data-fs-source="{{ 'canonical-runtime-financial-statements' if _fs_has_runtime else 'session-storage-runtime-fallback' }}">
+
+  {# ── Income Statement (P&L) ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">Income Statement (P&amp;L)</span>
+    <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-pnl-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-pnl-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-pnl-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.pnl.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-pnl-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_pnl_rows, _fs.pnl.periods) }}{% endif %}</tbody>
+    </table>
+  </div>
+
+  <div class="section-divider"></div>
+
+  {# ── Balance Sheet ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">Balance Sheet</span>
+    <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-bs-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-bs-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-bs-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.balance_sheet.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-bs-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_bs_rows, _fs.balance_sheet.periods) }}{% endif %}</tbody>
+    </table>
+  </div>
+
+  <div class="section-divider"></div>
+
+  {# ── PF Cash Waterfall ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">PF Cash Waterfall</span>
+    <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-pf-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-pf-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-pf-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.pf_cash_waterfall.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-pf-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_pf_rows, _fs.pf_cash_waterfall.periods) }}{% endif %}</tbody>
+    </table>
+  </div>
+
+  <div class="fs-statements-footer">
+    <span class="fs-footer-note">
+      Values in kEUR. Results from the latest model run. Read-only.
+    </span>
+  </div>
+
+  {# ── Accounting Conventions (V4-1: explicit transparency) ── #}
+  <div class="fs-conventions-block">
+    <div class="fs-conventions-title">Accounting Conventions</div>
+    <div class="fs-conventions-list">
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">Opening Deficit Reconstruction</span>
+        <span class="fs-convention-desc">
+          The period-0 equity deficit is solved algebraically from Assets − Debt − SHL
+          so the Balance Sheet closes exactly at COD. This avoids understating the opening
+          equity shortfall for projects with pre-funded DSRA / MRA cash at COD (e.g. Generic Solar Reference).
+        </span>
+      </div>
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">Tax Payable Timing</span>
+        <span class="fs-convention-desc">
+          CIT is accrued in P&amp;L on an accrual basis (annual) but collected as cash tax in
+          H2 of each operating year (bridge convention). The timing difference accumulates
+          as a tax payable balance embedded in Retained Earnings until settled.
+        </span>
+      </div>
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">SHL Principal — Notional Adjustment</span>
+        <span class="fs-convention-desc">
+          SHL principal repayments reduce the SHL balance in liabilities without a
+          corresponding cash outflow (equity-contribution mechanics). The offsetting credit
+          is carried through Retained Earnings as an equity value accretion, keeping the
+          Balance Sheet closed.
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   SESSION STORAGE RUNTIME BINDING — PR #857: scoped to this panel only.
+   document.currentScript is captured immediately so the IIFE's helper
+   functions scope all DOM queries to this panel's [data-fs-panel]
+   container, preventing getElementById cross-talk when the template is
+   included three times in the same page.
+   Script MUST remain inside the [data-fs-panel] div so that
+   document.currentScript.closest('[data-fs-panel]') resolves correctly.
+   ══════════════════════════════════════════════════════════════════════ #}
+<script>
+(function() {
+  "use strict";
+
+  // Capture this script's enclosing panel at execution time.
+  // _container scopes all DOM queries to this panel instance only.
+  var _scriptEl = document.currentScript;
+  var _container = _scriptEl ? _scriptEl.closest('[data-fs-panel]') : null;
+
+  function _q(id) {
+    return _container ? _container.querySelector('#' + id) : document.getElementById(id);
+  }
+
+  // Panel suffix used for per-panel element IDs (matches Jinja _fs_panel_id).
+  var _panelId = _container ? (_container.dataset.fsPanel || 'pl') : 'pl';
+
+  // ── P&L row definitions (label, field key) ───────────────────────────────
+  var PNL_ROWS = [
+    { label: "Revenue",                  key: "revenues_keur" },
+    { label: "Operating Expenses",       key: "operating_expenses_keur" },
+    { label: "Depreciation",             key: "depreciation_keur" },
+    { label: "EBIT",                     key: "ebit_keur",               bold: true },
+    { label: "Senior Interest Expense",  key: "senior_interest_expense_keur" },
+    { label: "SHL Interest Expense",     key: "shl_interest_expense_keur" },
+    { label: "Earnings Before Tax",      key: "earnings_before_tax_keur", bold: true },
+    { label: "CIT Accrual",              key: "cit_accrual_keur" },
+    { label: "Net Income",               key: "net_income_keur",          bold: true },
+    { label: "Retained Earnings",        key: "retained_earnings_keur" },
+    { label: "Net Dividends",            key: "net_dividends_keur" },
+  ];
+
+  // ── Balance Sheet row definitions ────────────────────────────────────────
+  var BS_ROWS = [
+    { label: "Net Fixed Assets",         key: "net_fixed_assets_keur" },
+    { label: "DSRA Balance",             key: "dsra_balance_keur" },
+    { label: "Cash",                     key: "cash_keur" },
+    { label: "Total Assets",             key: "total_assets_keur",        bold: true },
+    { label: "Share Capital",            key: "share_capital_keur" },
+    { label: "Retained Earnings",        key: "retained_earnings_keur" },
+    { label: "SHL Balance",              key: "shl_balance_keur" },
+    { label: "Senior Debt Balance",      key: "senior_balance_keur" },
+    { label: "Total Liabilities+Equity", key: "total_liabilities_equity_keur", bold: true },
+    { label: "Balance Check",            key: "balance_check_keur",       note: "Should be ~0" },
+  ];
+
+  // ── PF Cash Waterfall row definitions ────────────────────────────────────
+  var PF_ROWS = [
+    { label: "Revenue (Cash)",           key: "revenue_cash_keur" },
+    { label: "OPEX (Cash)",              key: "opex_cash_keur" },
+    { label: "EBITDA (Cash)",            key: "ebitda_cash_keur",          bold: true },
+    { label: "Cash Tax",                 key: "cash_tax_keur" },
+    { label: "FCF for Banks",            key: "fcf_banks_keur",            bold: true },
+    { label: "Senior Debt Service",      key: "senior_total_ds_keur" },
+    { label: "DSRA Funding",             key: "dsra_funding_keur" },
+    { label: "DSRA Release",             key: "dsra_release_keur" },
+    { label: "FCF for Junior",           key: "fcf_junior_keur",           bold: true },
+    { label: "FCF for Distribution",     key: "fcf_for_distribution_keur", bold: true },
+    { label: "Net Dividends",            key: "net_dividends_keur" },
+  ];
+
+  function _fmt(v) {
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  // Build column headers from periods (Y1-H1, Y1-H2, …)
+  function _buildHeader(headRow, periods) {
+    headRow.innerHTML = "";
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  // Build table body rows from row definitions + periods
+  function _buildBody(tbody, rowDefs, periods) {
+    tbody.innerHTML = "";
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label + (def.note ? " (" + def.note + ")" : "");
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmt(periods[i][def.key]);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderStatements(fs) {
+    // P&L — scoped via _q() to this panel only
+    var pnlHead = _q("fs-pnl-header-" + _panelId);
+    var pnlBody = _q("fs-pnl-body-" + _panelId);
+    if (pnlHead && pnlBody && fs.pnl && fs.pnl.periods) {
+      _buildHeader(pnlHead, fs.pnl.periods);
+      _buildBody(pnlBody, PNL_ROWS, fs.pnl.periods);
+    }
+
+    // Balance Sheet
+    var bsHead = _q("fs-bs-header-" + _panelId);
+    var bsBody = _q("fs-bs-body-" + _panelId);
+    if (bsHead && bsBody && fs.balance_sheet && fs.balance_sheet.periods) {
+      _buildHeader(bsHead, fs.balance_sheet.periods);
+      _buildBody(bsBody, BS_ROWS, fs.balance_sheet.periods);
+    }
+
+    // PF Cash Waterfall
+    var pfHead = _q("fs-pf-header-" + _panelId);
+    var pfBody = _q("fs-pf-body-" + _panelId);
+    if (pfHead && pfBody && fs.pf_cash_waterfall && fs.pf_cash_waterfall.periods) {
+      _buildHeader(pfHead, fs.pf_cash_waterfall.periods);
+      _buildBody(pfBody, PF_ROWS, fs.pf_cash_waterfall.periods);
+    }
+
+    // Show statements block, hide unavailable panel, mark workspace as runtime-ready
+    var stmtBlock = _q("fs-statements-block-" + _panelId);
+    if (stmtBlock) stmtBlock.style.display = "";
+    var unavail = _q("fs-unavailable-panel-" + _panelId);
+    if (unavail) unavail.style.display = "none";
+    // UI-8E: mark workspace so toolbar is enabled
+    var ws = _container ? _container.querySelector(".fo-statements-workspace") : null;
+    if (!ws) ws = document.querySelector(".fo-statements-workspace");
+    if (ws) ws.setAttribute("data-fo-fs-state", "runtime");
+  }
+
+  function _populateFSStatements() {
+    var rawFs = sessionStorage.getItem("lastFinancialStatements");
+    if (rawFs) {
+      try {
+        var fs = JSON.parse(rawFs);
+        _renderStatements(fs);
+      } catch(e) {
+        // Malformed FS data: show unavailable panel
+        var unavail = _q("fs-unavailable-panel-" + _panelId);
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel
+      var unavail2 = _q("fs-unavailable-panel-" + _panelId);
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
+
+  function _populateFSRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    // Show runtime block (panel-scoped)
+    var block = _q("shared-runtime-block-" + _panelId);
+    if (block) block.style.display = "";
+
+    var proj = _q("runtime-block-project-" + _panelId);
+    if (proj) proj.textContent = data.project_name || "";
+
+    var time = _q("runtime-block-time-" + _panelId);
+    if (time) time.textContent = data.ran_at || "";
+
+    // Primary KPIs
+    var kpiGrid = _q("runtime-block-kpis-" + _panelId);
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR",    key: "project_irr" },
+        { label: "Equity IRR",      key: "equity_irr" },
+        { label: "Avg DSCR",        key: "avg_dscr" },
+        { label: "Total Revenue",  key: "total_revenue_keur" },
+        { label: "EBITDA",         key: "total_ebitda_keur" },
+        { label: "Total OPEX",     key: "total_opex_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "—";
+        var cls = (val === "NOT_AVAILABLE" || val === "—") ? "rs-kpi-missing" : "rs-kpi-value";
+        html += '<div class="rs-kpi-card"><div class="rs-kpi-label">' + kv.label + '</div><div class="' + cls + '">' + val + '</div></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    // Secondary: distributions, SHL opening, revenue, EBITDA, opex
+    var secBlock = _q("fs-secondary-metrics-" + _panelId);
+    if (secBlock) {
+      var distEl = _q("fs-total-dist-" + _panelId);
+      if (distEl) distEl.textContent = data.total_distributions_keur || "—";
+      var shlEl = _q("fs-shl-opening-" + _panelId);
+      if (shlEl) shlEl.textContent = data.shl_opening_keur || "—";
+      var revEl = _q("fs-total-rev-" + _panelId);
+      if (revEl) revEl.textContent = data.total_revenue_keur || "—";
+      var ebitdaEl = _q("fs-ebitda-" + _panelId);
+      if (ebitdaEl) ebitdaEl.textContent = data.total_ebitda_keur || "—";
+      var opexEl = _q("fs-opex-" + _panelId);
+      if (opexEl) opexEl.textContent = data.total_opex_keur || "—";
+      secBlock.style.display = "";
+    }
+  }
+
+  function _populateAll() {
+    _populateFSRuntimeBlock();
+    _populateFSStatements();
+  }
+
+  window._populateFSRuntimeBlock = _populateFSRuntimeBlock;
+  window._populateFSStatements = _populateFSStatements;
+
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (
+      e.target.id === "model-output-area" ||
+      e.target.closest("#panel-pl") ||
+      e.target.closest("#panel-cashflow") ||
+      e.target.closest("#panel-balance")
+    )) {
+      _populateAll();
+    }
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateAll);
+  } else {
+    _populateAll();
+  }
+})();
+</script>
+
+</div>{# /data-fs-panel wrapper — MUST close after </script> so that
+        document.currentScript.closest('[data-fs-panel]') resolves correctly
+        for all three panel instances included by workspace_shell.html. #}

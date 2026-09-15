@@ -1,0 +1,106 @@
+{#
+  UI-4A — Workbook V2 Sensitivity sheet partial (Pilot-Ready).
+
+  The sensitivity runner: user picks a driver and the 5-point range is
+  executed via the canonical engine (run_project() for each point).
+  Results are returned in sheet_sensitivity_results.html.
+
+  Supported drivers (4 canonical):
+    tariff        — Tariff / Energy Price (±20%)
+    generation    — Generation / P50 annual yield (±10%)
+    interest_rate — Senior Interest Rate (±200 bps)
+    gearing       — Gearing ratio (±10 pp)
+
+  Context variables:
+    project_code   str
+    scenarios      list[ScenarioRecord]
+    active_scenario_id str | None
+#}
+<div id="v2-sheet-sensitivity" class="v2-sensitivity" data-sheet="sensitivity">
+
+  <div class="v2-sheet-section-header">
+    <div class="v2-overview-section-title">Sensitivity Analysis</div>
+    <div class="v2-sensitivity-desc">
+      Each point is a full canonical engine run — no approximation or interpolation.
+      Results are analytical only and not saved as scenarios.
+    </div>
+  </div>
+
+  {# ── Driver descriptions ──────────────────────────────────────────── #}
+  <div class="v2-sensitivity-driver-guide" aria-label="Driver guide">
+    <table class="v2-sensitivity-driver-table">
+      <thead>
+        <tr>
+          <th>Driver</th>
+          <th>Sweep</th>
+          <th>Points</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Tariff / Energy Price</td><td>−20% → Base → +20%</td><td>5 steps of 10%</td></tr>
+        <tr><td>Generation / P50</td>    <td>−10% → Base → +10%</td><td>5 steps of 5%</td></tr>
+        <tr><td>Senior Interest Rate</td><td>−200 bps → Base → +200 bps</td><td>5 steps of 100 bps</td></tr>
+        <tr><td>Gearing</td>             <td>−10 pp → Base → +10 pp</td><td>5 steps of 5 pp</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Run form ──────────────────────────────────────────────────────── #}
+  <form class="v2-sensitivity-form"
+        hx-post="/v2/workbook/scenarios/sensitivity/run"
+        hx-target="#v2-sensitivity-results"
+        hx-swap="innerHTML"
+        hx-indicator="#v2-sensitivity-spinner">
+    <input type="hidden" name="project" value="{{ project_code }}">
+
+    <div class="v2-sensitivity-row">
+      <label class="v2-sensitivity-label" for="v2-sens-driver">Driver</label>
+      <select class="v2-sensitivity-select" id="v2-sens-driver" name="driver" required>
+        <option value="">— select driver —</option>
+        <option value="tariff">Tariff / Energy Price (±20%)</option>
+        <option value="generation">Generation / P50 (±10%)</option>
+        <option value="interest_rate">Senior Interest Rate (±200 bps)</option>
+        <option value="gearing">Gearing (±10 pp)</option>
+      </select>
+    </div>
+
+    <div class="v2-sensitivity-row">
+      <label class="v2-sensitivity-label" for="v2-sens-scenario">Base scenario</label>
+      <select class="v2-sensitivity-select" id="v2-sens-scenario" name="scenario_id">
+        <option value="">Base Case (default)</option>
+        {% for sc in scenarios %}
+        {% if not sc.is_base_case %}
+        <option value="{{ sc.scenario_id }}"
+                {% if sc.scenario_id == active_scenario_id %}selected{% endif %}>
+          {{ sc.scenario_name }}
+        </option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="v2-sensitivity-actions">
+      <button class="v2-run-btn" type="submit"
+              data-testid="sensitivity-run-btn">
+        <span class="v2-run-label">Run Sensitivity (5 points)</span>
+        <span class="v2-run-loading" aria-hidden="true">Running…</span>
+      </button>
+    </div>
+
+    {# Loading state — shown while HTMX request is in flight #}
+    <div id="v2-sensitivity-spinner"
+         class="v2-sensitivity-loading htmx-indicator"
+         role="status" aria-live="polite">
+      <span class="v2-sens-loading-dots" aria-hidden="true">⋯</span>
+      Running 5 engine passes — this takes 5–30 seconds depending on model complexity.
+    </div>
+  </form>
+
+  {# ── Results placeholder ───────────────────────────────────────────── #}
+  <div id="v2-sensitivity-results" class="v2-sensitivity-results">
+    <div class="v2-sensitivity-empty" data-testid="sensitivity-empty-state">
+      Select a driver above and click <strong>Run Sensitivity</strong> to see the 5-point table.
+    </div>
+  </div>
+
+</div>{# v2-sheet-sensitivity #}

@@ -1,0 +1,24 @@
+{
+  "project_type": "Wind",
+  "project_name": "Synthetic Wind Example",
+  "capacity_mw": 45,
+  "scenario": "Base",
+  "revenue": {
+    "tariff_eur_mwh": 68.0,
+    "p50_hours": 2950,
+    "degradation_pct": 0.0
+  },
+  "capex": {
+    "total_capex_keur": 50000
+  },
+  "opex": {
+    "opex_y1_keur": 1100,
+    "inflation_pct": 2.0
+  },
+  "debt": {
+    "gearing_pct": 68,
+    "interest_rate_pct": 5.5,
+    "tenor_years": 15,
+    "target_dscr": 1.25
+  }
+}

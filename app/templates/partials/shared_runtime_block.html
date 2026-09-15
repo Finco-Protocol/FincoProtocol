@@ -1,0 +1,242 @@
+<!-- Shared Runtime Block — rendered inside every output tab after a Run.
+     Phase 9.5 — Output Tabs Runtime Summary Binding
+
+     Usage:
+       INCLUDE partial (via sessionStorage, not Jinja include)
+       (no context variables needed — reads from JS sessionStorage)
+
+     If sessionStorage key 'lastRuntimeSummary' is absent or empty,
+     the block is silently hidden (display:none) so it never shows
+     stale/blank data when no run has happened yet.
+-->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+
+  <!-- Primary KPIs grid (mirrors overview KPI card set) -->
+  <div class="runtime-block-kpis" id="runtime-block-kpis">
+    <!-- Populated by JS from sessionStorage -->
+  </div>
+
+  <!-- Secondary KPIs (select metrics per tab) -->
+  <div class="runtime-block-secondary" id="runtime-block-secondary">
+  </div>
+</div>
+
+<style>
+.runtime-block {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+  background: var(--bg-secondary, #fafbff);
+}
+.runtime-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  background: #f0f4ff;
+  border-bottom: 1px solid var(--border, #ddd);
+  font-size: 0.78rem;
+}
+.runtime-block-title {
+  font-weight: 600;
+  color: var(--text, #333);
+}
+.runtime-block-project {
+  font-weight: 700;
+  color: var(--accent, #2563eb);
+  margin-left: auto;
+}
+.runtime-block-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+}
+.runtime-block-secondary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  padding: 0 0.85rem 0.75rem;
+}
+
+/* Individual metric rows inside secondary */
+.rb-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.rb-metric-label {
+  font-size: 0.68rem;
+  color: var(--text-2, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rb-metric-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text, #111);
+}
+.rb-metric-value.rb-missing {
+  color: var(--muted, #999);
+  font-style: italic;
+  font-weight: 400;
+}
+.rb-metric-value.rb-pass { color: #166534; }
+.rb-metric-value.rb-warn { color: #854d0e; }
+.rb-metric-value.rb-blocked { color: #991b1b; }
+
+/* Preview notice used inside each output tab */
+.preview-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #fefce8;
+  border: 1px solid #eab308;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #854d0e;
+  margin-bottom: 1rem;
+}
+</style>
+
+<script>
+(function() {
+  "use strict";
+
+  // Read last runtime summary from sessionStorage and populate the block.
+  // UX-2: scope to the nearest ancestor block so all panels update correctly
+  // (there are multiple #shared-runtime-block instances on the page, one per
+  // result sheet; getElementById only reaches the first, so we scope by script).
+  function _populateRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return; // no run yet — stay hidden
+
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    // Scope to the container that owns this script instance.
+    var scriptEl = document.currentScript || (function() {
+      var scripts = document.querySelectorAll('script');
+      return scripts[scripts.length - 1];
+    })();
+    var block = scriptEl
+      ? scriptEl.closest('.runtime-block') || document.getElementById("shared-runtime-block")
+      : document.getElementById("shared-runtime-block");
+    if (!block) return;
+
+    // Show the block
+    block.style.display = "";
+
+    // Project name
+    var proj = block.querySelector("#runtime-block-project");
+    if (proj) proj.textContent = data.project_name ? data.project_name : "";
+
+    // KPI grid
+    var kpiGrid = block.querySelector("#runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR",      key: "project_irr",         suffix: "" },
+        { label: "Equity IRR",      key: "equity_irr",          suffix: "" },
+        { label: "Avg DSCR",         key: "avg_dscr",            suffix: "" },
+        { label: "Min DSCR",         key: "min_dscr",             suffix: "" },
+        { label: "Senior Debt",      key: "senior_debt_keur",     suffix: "" },
+        { label: "Total Revenue",    key: "total_revenue_keur",   suffix: "" },
+        { label: "EBITDA",          key: "total_ebitda_keur",   suffix: "" },
+        { label: "Total OPEX",      key: "total_opex_keur",     suffix: "" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric">' +
+                  '<span class="rb-metric-label">' + kv.label + '</span>' +
+                  '<span class="' + cls + '">' + val + '</span>' +
+                '</div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+  }
+
+  // Expose globally so the run response script can call it after each run.
+  // UX-2: _populateAllRuntimeBlocks updates every runtime block in the DOM
+  // so all result-sheet panels refresh from sessionStorage after a Run.
+  if (!window._populateRuntimeBlock) {
+    window._populateRuntimeBlock = function() {
+      // UX-2I-PILOT-POLISH-FOLLOWUP: the "No run performed yet" notice
+      // (partials/_empty_no_run.html) is rendered once on the initial
+      // full-page load and is never re-rendered by any later htmx swap
+      // (Run/Save only swap #model-output-area), so it used to stay
+      // visible even after a real run completed. Hide it here -- the
+      // same place that already reacts to a fresh lastRuntimeSummary
+      // after Run/Save -- once a real, non-error run result exists.
+      // No runtime/calculation data is read or changed; this only
+      // toggles the notice's visibility.
+      var _rawForNoRun = sessionStorage.getItem("lastRuntimeSummary");
+      if (_rawForNoRun) {
+        try {
+          var _dataForNoRun = JSON.parse(_rawForNoRun);
+          if (_dataForNoRun && !_dataForNoRun.error_message) {
+            document.querySelectorAll('.empty-state-notice--no-run').forEach(function(notice) {
+              notice.style.display = "none";
+            });
+          }
+        } catch (e) { /* malformed/absent -- leave the notice as-is */ }
+      }
+
+      document.querySelectorAll('.runtime-block').forEach(function(block) {
+        var raw = sessionStorage.getItem("lastRuntimeSummary");
+        if (!raw) return;
+        var data;
+        try { data = JSON.parse(raw); } catch(e) { return; }
+        block.style.display = "";
+        var proj = block.querySelector("#runtime-block-project");
+        if (proj) proj.textContent = data.project_name || "";
+        var kpiGrid = block.querySelector("#runtime-block-kpis");
+        if (kpiGrid) {
+          var kpis = [
+            { label: "Project IRR",   key: "project_irr" },
+            { label: "Equity IRR",    key: "equity_irr" },
+            { label: "Avg DSCR",      key: "avg_dscr" },
+            { label: "Min DSCR",      key: "min_dscr" },
+            { label: "Senior Debt",   key: "senior_debt_keur" },
+            { label: "Total Revenue", key: "total_revenue_keur" },
+            { label: "EBITDA",        key: "total_ebitda_keur" },
+            { label: "Total OPEX",    key: "total_opex_keur" },
+          ];
+          var html = "";
+          for (var i = 0; i < kpis.length; i++) {
+            var kv = kpis[i];
+            var val = data[kv.key] || "NOT_AVAILABLE";
+            var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+            html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label +
+                    '</span><span class="' + cls + '">' + val + '</span></div>';
+          }
+          kpiGrid.innerHTML = html;
+        }
+      });
+    };
+  }
+
+  // Auto-populate whenever HTMX swaps #model-output-area (POST /run response)
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && e.target.id === "model-output-area") {
+      window._populateRuntimeBlock();
+    }
+  });
+
+  // Populate on DOM ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateRuntimeBlock);
+  } else {
+    _populateRuntimeBlock();
+  }
+})();
+</script>

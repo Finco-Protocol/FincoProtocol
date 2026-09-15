@@ -1,0 +1,134 @@
+<!-- Sheet: SHL — {{ project_ctx.name }}
+     Phase 9.5 — Output Tabs Runtime Summary Binding -->
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🔒 Subordinated Holdco Loan (SHL)</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+<!-- Live Runtime Summary -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  <div class="runtime-block-secondary" id="shl-secondary-metrics">
+    <div class="rb-metric">
+      <span class="rb-metric-label">SHL Opening</span>
+      <span class="rb-metric-value" id="shl-opening"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Total Distributions</span>
+      <span class="rb-metric-value" id="shl-total-dist"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- SHL Facility Summary -->
+<div class="sheet-card">
+  <div class="section-header">SHL Facility Summary</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">SHL Amount</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur) }} kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Opening Balance</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_amount_keur + project_ctx.shl_idc_keur) }} kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">SHL Rate</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.shl_rate_pct * 100) }}% p.a.</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">IDC (capitalised)</span>
+      <span class="metric-value">{{ "{:,.0f}".format(project_ctx.shl_idc_keur) }} kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">WHT on SHL Interest</span>
+      <span class="metric-value">0%</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- SHL Schedule Output: no Run-backed SHL repayment schedule exists
+     in last_runtime_summary — replaced with an honest unavailable-state
+     panel (PR6/PR7/PR8/PR9 pattern), reusing the empty-state-notice /
+     empty-state-notice--warn classes already defined in static/styles.css.
+     No SHL schedule data is invented or recomputed here. -->
+<div class="sheet-card">
+  <div class="section-header">SHL Schedule Output</div>
+  <div class="empty-state-notice empty-state-notice--warn shl-unavailable-panel"
+       role="status" aria-label="SHL schedule output outside current runtime view">
+    <div class="esn-icon" aria-hidden="true">📋</div>
+    <div class="esn-title">SHL schedule output is not available yet</div>
+    <div class="esn-desc">
+      Run-backed SHL repayment, interest, and distribution results
+      will be shown here once this section is connected to the model
+      engine.
+    </div>
+  </div>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+</div>
+
+<script>
+(function() {
+  "use strict";
+  function _populateSHLRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Total Revenue", key: "total_revenue_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    var shlOpEl = document.getElementById("shl-opening");
+    if (shlOpEl) shlOpEl.textContent = data.shl_opening_keur || "NOT_AVAILABLE";
+    var distEl = document.getElementById("shl-total-dist");
+    if (distEl) distEl.textContent = data.total_distributions_keur || "NOT_AVAILABLE";
+  }
+  window._populateSHLRuntimeBlock = _populateSHLRuntimeBlock;
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-shl"))) {
+      _populateSHLRuntimeBlock();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateSHLRuntimeBlock);
+  } else {
+    _populateSHLRuntimeBlock();
+  }
+})();
+</script>

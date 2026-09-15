@@ -1,0 +1,174 @@
+<div class="ps-compare-results" data-testid="scenario-compare-results">
+{# ─── BASE vs ACTIVE MODE (Compare workspace tab) ─────────────────────────────── #}
+{% set is_base_vs_active = compare_panel and compare_result and compare_result.base %}
+
+{% if is_base_vs_active and not compare_result.get("active") and compare_result.get("empty_state") %}
+{# ── Partial state: Base exists, no Active selected ── #}
+  <div class="ps-compare-heading">
+    {{ compare_result.base.scenario_name }} — Base Case
+  </div>
+  <div class="ps-mini-empty" data-testid="compare-empty-state">
+    <div class="ps-history-item">
+      <div class="ps-history-title">No Active Scenario</div>
+      <div class="ps-history-meta">Select a saved scenario to compare against Base Case.</div>
+    </div>
+    {% if compare_result.base.last_run_summary %}
+    <div class="ps-compare-provenance-card">
+      <div class="ps-compare-provenance-label">Base Case Runtime Summary</div>
+      <div class="ps-compare-provenance-grid">
+        <span class="ps-compare-provenance-label">Project IRR</span><span>{{ "%.2f"|format(compare_result.base.last_run_summary.project_irr) if compare_result.base.last_run_summary.project_irr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Equity IRR</span><span>{{ "%.2f"|format(compare_result.base.last_run_summary.equity_irr) if compare_result.base.last_run_summary.equity_irr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Avg DSCR</span><span>{{ "%.3f"|format(compare_result.base.last_run_summary.avg_dscr) if compare_result.base.last_run_summary.avg_dscr is not none else "—" }}</span>
+        <span class="ps-compare-provenance-label">Min DSCR</span><span>{{ "%.3f"|format(compare_result.base.last_run_summary.min_dscr) if compare_result.base.last_run_summary.min_dscr is not none else "—" }}</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+{% elif is_base_vs_active and compare_result.base and compare_result.get("active") %}
+{# ── Full compare: Base vs Active ── #}
+  {% set base = compare_result.base %}
+  {% set active = compare_result.get("active") %}
+  {% set base_replay = base.replay_metadata or {} %}
+  {% set active_replay = active.replay_metadata or {} %}
+
+  <div class="ps-compare-heading">
+    <span class="badge badge-runtime">Base</span>
+    <span class="ps-compare-heading-label">{{ base.scenario_name }}</span>
+    <span class="ps-compare-heading-vs">vs</span>
+    <span class="badge badge-runtime">{{ active.scenario_name }}</span>
+  </div>
+
+  {# Provenance cards #}
+  <div class="ps-compare-provenance-card">
+    <div class="ps-compare-provenance-header"><span class="badge badge-runtime">Base</span></div>
+    <div class="ps-compare-provenance-grid">
+      <span class="ps-compare-provenance-key">Scenario</span><span>{{ base.scenario_name }}</span>
+      <span class="ps-compare-provenance-key">Runtime origin</span><span>{{ base_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-key">Runtime at</span><span>{{ base_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-key">Run ID</span><span>{{ base_replay.get("run_id", "—") }}</span>
+    </div>
+  </div>
+  <div class="ps-compare-provenance-card">
+    <div class="ps-compare-provenance-header"><span class="badge badge-runtime">Active</span></div>
+    <div class="ps-compare-provenance-grid">
+      <span class="ps-compare-provenance-key">Scenario</span><span>{{ active.scenario_name }}</span>
+      <span class="ps-compare-provenance-key">Runtime origin</span><span>{{ active_replay.get("runtime_origin", "—") }}</span>
+      <span class="ps-compare-provenance-key">Runtime at</span><span>{{ active_replay.get("runtime_timestamp", "—") }}</span>
+      <span class="ps-compare-provenance-key">Run ID</span><span>{{ active_replay.get("run_id", "—") }}</span>
+    </div>
+  </div>
+
+  {# Metrics table with delta column #}
+  <div class="ps-compare-table" data-fc-grid="scenario-compare" data-fc-scroll-container="true">
+    <div class="ps-compare-row ps-compare-row--head">
+      <span>Metric</span>
+      <span>Base</span>
+      <span>Active</span>
+      <span>Delta</span>
+    </div>
+    {% for row in compare_result.metrics %}
+    <div class="ps-compare-row" data-fc-row="true">
+      <span>{{ row.key }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.left"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.base_value if row.base_value is not none else '' }}">{{ "%.2f"|format(row.base_value) if row.base_value is not none else "—" }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.right"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.active_value if row.active_value is not none else '' }}">{{ "%.2f"|format(row.active_value) if row.active_value is not none else "—" }}</span>
+      <span class="{{ row.sign_class }}" data-fc-cell="true" data-fc-addr="scenario-compare!{{ row.key }}.delta"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ row.delta if row.delta is not none else '' }}">{{ "%+.3f"|format(row.delta) if row.delta is not none else "—" }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+{% elif compare_result and compare_result.left and compare_result.right %}
+{# ── Legacy pair-compare mode (left vs right) ── #}
+  <div class="ps-compare-heading">
+    <span class="badge badge-runtime">{{ compare_result.left.scenario_name }}</span>
+    <span class="ps-compare-heading-vs">vs</span>
+    <span class="badge badge-runtime">{{ compare_result.right.scenario_name }}</span>
+  </div>
+  <div class="ps-compare-banner" role="note" aria-label="Scenario compare source clarity">
+    Scenario compare is descriptive only. It compares saved scenario snapshots and saved runtime summaries, not unsaved browser draft values.
+  </div>
+  <div class="ps-compare-note">
+    Compare generated at {{ compare_result.compare_generated_at }}. {{ compare_result.dirty_note }}
+  </div>
+  <div class="ps-compare-note">
+    {{ compare_result.missing_metric_note }} Runtime metrics and reviewer notes are shown together so reviewers can see numeric drift and review-state differences without confusing pending values for zero.
+  </div>
+
+  <div class="ps-compare-context-grid">
+    <div class="ps-compare-context-card">
+      <div class="ps-compare-context-title">Left Source</div>
+      <div class="ps-compare-context-meta">{{ compare_result.left_context.source_label }}</div>
+      <div class="ps-compare-context-meta">Saved snapshot timestamp: {{ compare_result.left_context.scenario_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime timestamp: {{ compare_result.left_context.runtime_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime snapshot ID: {{ compare_result.left_context.runtime_snapshot_id }}</div>
+      <div class="ps-compare-context-meta">Runtime origin: {{ compare_result.left_context.runtime_origin }}</div>
+    </div>
+    <div class="ps-compare-context-card">
+      <div class="ps-compare-context-title">Right Source</div>
+      <div class="ps-compare-context-meta">{{ compare_result.right_context.source_label }}</div>
+      <div class="ps-compare-context-meta">Saved snapshot timestamp: {{ compare_result.right_context.scenario_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime timestamp: {{ compare_result.right_context.runtime_timestamp }}</div>
+      <div class="ps-compare-context-meta">Runtime snapshot ID: {{ compare_result.right_context.runtime_snapshot_id }}</div>
+      <div class="ps-compare-context-meta">Runtime origin: {{ compare_result.right_context.runtime_origin }}</div>
+    </div>
+  </div>
+
+  <div class="ps-compare-banner ps-compare-banner--subtle">
+    Workspace runtime boundary: {{ compare_result.workspace_runtime_origin_label }}. Compare does not auto-save and does not auto-run.
+  </div>
+
+  <div class="ps-compare-table" data-fc-grid="scenario-compare" data-fc-scroll-container="true">
+    <div class="ps-compare-row ps-compare-row--head">
+      <span>Metric</span>
+      <span>Left</span>
+      <span>Right</span>
+      <span>Delta</span>
+    </div>
+    {% for row in compare_result.metrics %}
+    {% set _slug = row.metric|lower|replace(" ", "_")|replace("/", "_") %}
+    <div class="ps-compare-row" data-fc-row="true">
+      <span>{{ row.metric }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.left"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.left_value }}">{{ row.left_value }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.right"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.right_value }}">{{ row.right_value }}</span>
+      <span data-fc-cell="true" data-fc-addr="scenario-compare!{{ _slug }}.delta"
+            data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ row.delta }}">{{ row.delta }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# U7-ERROR-WARNING-CLEANUP: governance codes (G20/R99/R102) are a
+     reviewer/audit-only concept and must never reach the normal user
+     path -- only render in audit_mode. #}
+  {% if audit_mode %}
+  <div class="ps-compare-banner ps-compare-banner--subtle">
+    {{ compare_result.governance_summary }}
+  </div>
+
+  <div class="ps-compare-governance">
+    {% for row in compare_result.governance_rows %}
+    <div class="ps-history-item">
+      <div class="ps-history-title">{{ row.label }}</div>
+      <div class="ps-history-meta">{{ row.left_value }} → {{ row.right_value }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% else %}
+{# ── Truly empty state ── #}
+  <div class="ps-mini-empty" data-testid="compare-empty-state">
+    <div class="ps-history-item">
+      <div class="ps-history-title">No scenarios to compare</div>
+      <div class="ps-history-meta">Run at least one scenario to enable comparison.</div>
+    </div>
+  </div>
+{% endif %}
+</div>

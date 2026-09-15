@@ -1,0 +1,512 @@
+/* ============================================================================
+   FINCO PROTOCOL — APPLICATION CHROME  ·  static/chrome.css
+   ----------------------------------------------------------------------------
+   Brand bar + Command bar + Sticky KPI strip.
+   Layered ABOVE existing .top-header chrome. No edits to existing legacy
+   styles; all new chrome consumes --fo-* design tokens.
+
+   Layout (descending rows):
+     .fo-brand-bar      28 px   row 1: logo / project / scenario / search / settings
+     .fo-command-bar    44 px   row 2: actions (Run/Save/Export/Undo/Redo),
+                                    last-run timestamp, engine version,
+                                    dirty/validation/run-status badges
+     .fo-kpi-strip      56 px   row 3: Project IRR / Equity IRR / NPV /
+                                    Min DSCR / Avg DSCR / LLCR (when available),
+                                    with explicit Fresh / Stale / Running / Error
+     .fo-sheet-tab-reserve 36 px  row 4: reserved for the future sheet-tab strip
+
+   All four rows are sticky to the viewport top; the rest of the page
+   scrolls underneath. The legacy .top-header remains visible below the
+   new chrome; it is NOT removed or re-skinned by this PR.
+   ========================================================================== */
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Root wrapper — only declares sticky positioning; layout, sizing, colours
+    all live on the row components.                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--fo-paper);
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  /* Hairline at the bottom separates chrome from rest of viewport. */
+  border-bottom: 1px solid var(--fo-line);
+}
+
+/* ============================================================================
+   1.  BRAND BAR  (28 px)  ── row 1
+   ========================================================================== */
+.fo-brand-bar {
+  height: var(--fo-chrome-brand-h);
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s3);
+  padding: 0 var(--fo-s4);
+  border-bottom: 1px solid var(--fo-line);
+  background: var(--fo-surface);
+}
+
+.fo-brand-bar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  /* Reserve space — keeps alignment with future logo. */
+  min-width: 168px;
+}
+
+.fo-brand-bar__logo {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--fo-r-sm);
+  background: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  line-height: 1;
+}
+
+.fo-brand-bar__wordmark {
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  letter-spacing: -0.01em;
+}
+
+.fo-brand-bar__divider {
+  width: 1px;
+  height: 16px;
+  background: var(--fo-line);
+}
+
+.fo-brand-bar__select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  min-width: 0;
+  font-size: var(--fo-text-md);
+  color: var(--fo-ink);
+}
+
+.fo-brand-bar__select-label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-soft);
+}
+
+.fo-brand-bar__select-value {
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fo-brand-bar__spacer {
+  flex: 1;
+}
+
+.fo-brand-bar__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  padding: 0 var(--fo-s2);
+  height: 22px;
+  border-radius: var(--fo-r-sm);
+  background: transparent;
+  color: var(--fo-ink-soft);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-medium);
+  border: 1px solid var(--fo-line);
+  cursor: pointer;
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease),
+              border-color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-brand-bar__action:hover {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+  border-color: var(--fo-line-strong);
+}
+
+.fo-brand-bar__action:focus-visible {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+  border-color: var(--fo-line-strong);
+  outline: 2px solid var(--fo-focus);
+  outline-offset: 2px;
+}
+
+.fo-brand-bar__kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 10px;
+  color: var(--fo-ink-faint);
+  border: 1px solid var(--fo-line);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+}
+
+/* Theme toggle pill — placeholder, no behaviour this PR. */
+.fo-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--fo-s2);
+  height: 22px;
+  border-radius: 11px;
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink-soft);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-medium);
+}
+
+/* ============================================================================
+   2.  COMMAND BAR  (44 px)  ── row 2
+   ========================================================================== */
+.fo-command-bar {
+  height: var(--fo-chrome-cmd-h);
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s3);
+  padding: 0 var(--fo-s4);
+  border-bottom: 1px solid var(--fo-line);
+  background: var(--fo-paper);
+}
+
+.fo-command-bar__group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-command-bar__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--fo-line);
+}
+
+.fo-command-bar__spacer {
+  flex: 1;
+}
+
+/* Primary action — Run */
+.fo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  height: 28px;
+  padding: 0 var(--fo-s3);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-medium);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: var(--fo-ink);
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              border-color var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-btn:focus-visible {
+  outline: 2px solid var(--fo-focus);
+  outline-offset: 1px;
+}
+
+.fo-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fo-btn--primary {
+  background: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  border-color: var(--fo-brand-700);
+}
+
+.fo-btn--primary:hover,
+.fo-btn--primary:focus-visible {
+  background: var(--fo-brand-700);
+}
+
+.fo-btn--ghost {
+  background: transparent;
+  color: var(--fo-ink);
+  border-color: var(--fo-line);
+}
+
+.fo-btn--ghost:hover,
+.fo-btn--ghost:focus-visible {
+  background: var(--fo-surface-alt);
+  border-color: var(--fo-line-strong);
+}
+
+.fo-btn__kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 10px;
+  font-weight: var(--fo-weight-regular);
+  background: var(--fo-surface-alt);
+  border: 1px solid var(--fo-line);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+  margin-left: var(--fo-s1);
+}
+
+/* On the primary (filled) button the kbd chip needs to read against the
+   brand fill. We give it a darkened inner panel using a more saturated
+   token variant so it never relies on raw rgba(). */
+.fo-btn--primary .fo-btn__kbd {
+  background: var(--fo-brand-700);
+  border-color: var(--fo-brand-800);
+  color: var(--fo-slate-0);
+}
+
+.fo-btn--ghost .fo-btn__kbd {
+  background: transparent;
+  border-color: var(--fo-line);
+  color: var(--fo-ink-soft);
+}
+
+/* Undo / Redo placeholders */
+.fo-btn--placeholder {
+  cursor: default;
+  color: var(--fo-ink-faint);
+}
+
+.fo-btn--placeholder:hover,
+.fo-btn--placeholder:focus-visible {
+  background: transparent;
+  border-color: var(--fo-line);
+  color: var(--fo-ink-faint);
+}
+
+/* Status pills inside the command bar */
+.fo-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 var(--fo-s2);
+  border-radius: 11px;
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-medium);
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink-soft);
+  border: 1px solid var(--fo-line);
+}
+
+.fo-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fo-rag-neutral);
+}
+
+.fo-pill--fresh   .fo-pill__dot { background: var(--fo-rag-green); }
+.fo-pill--stale   .fo-pill__dot { background: var(--fo-rag-amber); }
+.fo-pill--running .fo-pill__dot { background: var(--fo-brand-500); }
+.fo-pill--error   .fo-pill__dot { background: var(--fo-rag-red); }
+
+.fo-pill--fresh   { color: var(--fo-rag-green); border-color: var(--fo-rag-green-bg); background: var(--fo-rag-green-bg); }
+.fo-pill--stale   { color: var(--fo-rag-amber); border-color: var(--fo-rag-amber-bg); background: var(--fo-rag-amber-bg); }
+.fo-pill--running { color: var(--fo-brand-700); border-color: var(--fo-brand-100); background: var(--fo-brand-50); }
+.fo-pill--error   { color: var(--fo-rag-red); border-color: var(--fo-rag-red-bg); background: var(--fo-rag-red-bg); }
+
+.fo-pill--validation-pass { color: var(--fo-rag-green); }
+.fo-pill--validation-warn { color: var(--fo-rag-amber); }
+.fo-pill--validation-fail { color: var(--fo-rag-red); }
+
+/* Command-bar meta label/value pairs (last-run, engine version) */
+.fo-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-soft);
+}
+
+.fo-meta__label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-meta__value {
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+}
+
+/* The legacy `#run-spinner` / `#save-spinner` are htmx indicators
+   mounted next to existing sidebar buttons. We re-style them inside
+   the command bar to keep the visual rhythm consistent — but only the
+   command-bar context, never the legacy chrome. */
+.fo-command-bar .htmx-indicator {
+  color: var(--fo-ink-faint);
+}
+
+/* ============================================================================
+   3.  STICKY KPI STRIP  (56 px)  ── row 3
+   ========================================================================== */
+.fo-kpi-strip {
+  height: 56px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 var(--fo-s4);
+  border-bottom: 1px solid var(--fo-line);
+  background: var(--fo-surface);
+  overflow-x: auto;
+}
+
+.fo-kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  min-width: 132px;
+  padding: 6px var(--fo-s3) 6px 0;
+  border-right: 1px solid var(--fo-line);
+}
+
+.fo-kpi:last-child {
+  border-right: none;
+}
+
+.fo-kpi__label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+  margin-bottom: 2px;
+}
+
+.fo-kpi__value {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.fo-kpi__value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+  font-weight: var(--fo-weight-regular);
+}
+
+/* "Run model" sub-label shown below the "—" when no runtime exists */
+.fo-kpi__hint {
+  font-size: 0.62rem;
+  color: var(--fo-ink-faint);
+  font-style: normal;
+  font-weight: var(--fo-weight-regular);
+  margin-top: 1px;
+  line-height: 1;
+}
+
+/* When the strip is in stale state — visual mirror of the dirty pill.
+   Exclude placeholder values (e.g. LLCR showing "—") from amber tint. */
+.fo-kpi-strip--stale .fo-kpi__value:not(.fo-kpi__value--placeholder) {
+  color: var(--fo-rag-amber);
+}
+.fo-kpi-strip--stale .fo-kpi__label::after {
+  content: " · stale";
+  color: var(--fo-rag-amber);
+}
+
+/* UI-8A: no-runtime state — single centred message instead of silent dashes */
+.fo-kpi--no-run {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  border-right: none;
+}
+
+/* UI-8A: tab-load indicator — thin progress bar at bottom of chrome */
+.fo-tab-indicator {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--fo-brand);
+  animation: fo-tab-progress 1.2s ease-in-out infinite;
+  z-index: 10;
+}
+.fo-tab-indicator.htmx-request {
+  display: block;
+}
+@keyframes fo-tab-progress {
+  0%   { transform: scaleX(0);    transform-origin: left; }
+  50%  { transform: scaleX(0.7);  transform-origin: left; }
+  100% { transform: scaleX(1);    transform-origin: left; opacity: 0; }
+}
+
+/* ============================================================================
+   4.  SHEET-TAB RESERVE  (36 px)  ── row 4  (placeholder only)
+   ========================================================================== */
+.fo-sheet-tab-reserve {
+  height: var(--fo-chrome-tabs-h);
+  border-bottom: 1px solid var(--fo-line);
+  background: var(--fo-paper);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--fo-s4);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  /* Reserved for future sheet-tab strip — visible label is hidden until
+     a future PR wires actual sheet tabs. */
+}
+
+.fo-sheet-tab-reserve__placeholder {
+  font-style: italic;
+}
+
+/* ============================================================================
+   5.  RESPONSIVE  ── collapse chrome at narrow widths
+   ========================================================================== */
+@media (max-width: 900px) {
+  .fo-brand-bar {
+    gap: var(--fo-s2);
+  }
+  .fo-brand-bar__brand {
+    min-width: 0;
+  }
+  .fo-brand-bar__wordmark {
+    display: none;
+  }
+  .fo-command-bar {
+    gap: var(--fo-s2);
+    overflow-x: auto;
+  }
+  .fo-kpi-strip {
+    overflow-x: auto;
+  }
+  .fo-kpi {
+    min-width: 110px;
+  }
+}
+
+/* ============================================================================
+   6.  PRINT  ── hide chrome on paper
+   ========================================================================== */
+@media print {
+  .fo-chrome {
+    display: none;
+  }
+}

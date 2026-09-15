@@ -1,0 +1,46 @@
+{# ── Phase P2-FIX-5A: shared standalone-page header.
+   Used by project_home_page.html, project_new_page.html,
+   project_browse_page.html. Mirrors the top-header
+   markup from base.html but does NOT depend on
+   base.html's workspace-only context (workspace_state,
+   scenario_workspace partial, nav-compression).
+
+   Hidden != deleted: the original top-header in
+   base.html is unchanged. This is a parallel
+   include for standalone pages only.
+
+   Phase P2-FIX-7A: removed the temporary inline
+   <style> block that P2-FIX-7 added as a fallback
+   while ``static/styles.css`` was unparseable due
+   to a pre-existing CSS syntax error. The CSS
+   parser bugs (introduced in commit 8c85168
+   Phase 25B-5 and commit 554599e Phase 25B-6) are
+   now fixed in styles.css, so the standalone page
+   rules load from the external stylesheet. The
+   inline <style> would otherwise be dead weight
+   in every standalone page render. #}
+<header class="top-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <div class="brand-logo">F</div>
+      <div class="brand-text">
+        <span class="brand-name">FINCO Protocol</span>
+        <span class="brand-sub">Project Finance Model</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="env-badge">PRIVATE PREVIEW</span>
+      <span class="version-badge">v1.7 Pilot</span>
+      <a class="header-help-link" href="/help" title="Help">?</a>
+      {# U6: Known Limitations page, reachable from the Help menu area #}
+      <a class="header-known-limitations-link" href="/known-limitations" title="Known Limitations">Known Limitations</a>
+      {# EXTERNAL-FRIENDLY-PILOT-PREP-A: Pilot Guide, reachable from the Help menu area #}
+      <a class="header-pilot-guide-link" href="/pilot-guide" title="Pilot Guide">Pilot Guide</a>
+      {% if user %}
+      <form method="POST" action="/logout" style="display:inline;">
+        <button type="submit" class="logout-btn">Sign out</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</header>

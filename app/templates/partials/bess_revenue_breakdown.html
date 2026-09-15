@@ -1,0 +1,127 @@
+{# ── V4-7 Part C — BESS Revenue Breakdown Panel ─────────────────────────── #}
+<div class="rp-bess" data-testid="bess-revenue-breakdown">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">BESS</span>
+    <span class="scm-multi-heading-label">Battery Revenue Breakdown</span>
+  </div>
+
+  {% if bess_revenue_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Results unavailable</div>
+        <div class="ps-history-meta">Run the model with a BESS asset configured to generate battery revenue results.</div>
+      </div>
+    </div>
+  {% elif bess_revenue %}
+    {% set br = bess_revenue %}
+    {% set lt = br['lifetime'] %}
+    {% set pm = br['params'] %}
+
+    {# Parameters strip #}
+    <div class="rp-section" id="bess-params">
+      <div class="rp-section-title">Battery Parameters</div>
+      <div class="rp-two-col">
+        <div>
+          {% for label, val in [
+            ('Rated Power', pm['power_mw']|string + ' MW'),
+            ('Rated Energy', pm['energy_mwh']|string + ' MWh'),
+            ('Cycles / Year', pm['cycles_per_year']|string),
+            ('Round-Trip Eff.', pm['round_trip_efficiency_pct']|string + '%'),
+            ('Availability', pm['availability_pct']|string + '%'),
+            ('Annual Degradation', pm['annual_degradation_pct']|string + '%'),
+          ] %}
+            <div class="rp-kv-row"><span class="rp-kv-label">{{ label }}</span><span class="rp-kv-val">{{ val }}</span></div>
+          {% endfor %}
+        </div>
+        <div>
+          {% for label, val in [
+            ('Arbitrage Spread', pm['arbitrage_spread_eur_mwh']|string + ' EUR/MWh'),
+            ('Ancillary Services', pm['ancillary_revenue_eur_mw_year']|string + ' EUR/MW/yr'),
+            ('Capacity Revenue', pm['capacity_revenue_eur_mw_year']|string + ' EUR/MW/yr'),
+            ('Freq. Regulation', pm['frequency_regulation_eur_mw_year']|string + ' EUR/MW/yr'),
+            ('Reserve Market', pm['reserve_market_eur_mw_year']|string + ' EUR/MW/yr'),
+            ('Fixed Contracted', pm['fixed_contracted_eur_mw_year']|string + ' EUR/MW/yr'),
+          ] %}
+            <div class="rp-kv-row"><span class="rp-kv-label">{{ label }}</span><span class="rp-kv-val">{{ val }}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# Lifetime summary chips #}
+    <div class="rp-section" id="bess-lifetime">
+      <div class="rp-section-title">Lifetime Revenue Summary</div>
+      <div class="cv-summary-chips" style="margin-bottom:0.75rem;">
+        <span class="cv-chip cv-chip--ok">Net Revenue {{ "{:,.0f}".format(lt['net_revenue_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Arbitrage {{ "{:,.0f}".format(lt['arbitrage_keur']) }} kEUR</span>
+        {% if lt['ancillary_keur'] > 0 %}
+        <span class="cv-chip cv-chip--ok">Ancillary {{ "{:,.0f}".format(lt['ancillary_keur']) }} kEUR</span>
+        {% endif %}
+        {% if lt['capacity_keur'] > 0 %}
+        <span class="cv-chip cv-chip--ok">Capacity {{ "{:,.0f}".format(lt['capacity_keur']) }} kEUR</span>
+        {% endif %}
+        {% if lt['freq_reg_keur'] > 0 %}
+        <span class="cv-chip cv-chip--ok">Freq Reg {{ "{:,.0f}".format(lt['freq_reg_keur']) }} kEUR</span>
+        {% endif %}
+        {% if lt['reserve_keur'] > 0 %}
+        <span class="cv-chip cv-chip--ok">Reserve {{ "{:,.0f}".format(lt['reserve_keur']) }} kEUR</span>
+        {% endif %}
+        {% if lt['fixed_contracted_keur'] > 0 %}
+        <span class="cv-chip cv-chip--ok">Fixed {{ "{:,.0f}".format(lt['fixed_contracted_keur']) }} kEUR</span>
+        {% endif %}
+        <span class="cv-chip cv-chip--ok">Discharged {{ "{:,.0f}".format(lt['discharged_mwh']) }} MWh</span>
+      </div>
+    </div>
+
+    {# Annual breakdown table #}
+    {% if br['annual'] %}
+    <div class="rp-section" id="bess-annual">
+      <div class="rp-section-title">Annual Revenue Breakdown</div>
+      <div style="overflow-x:auto;">
+        <table class="cv-table" data-testid="bess-annual-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Arbitrage (kEUR)</th>
+              <th>Capacity (kEUR)</th>
+              <th>Ancillary (kEUR)</th>
+              <th>Freq Reg (kEUR)</th>
+              <th>Reserve (kEUR)</th>
+              <th>Fixed (kEUR)</th>
+              <th>Net Rev (kEUR)</th>
+              <th>SoH (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in br['annual'] %}
+              <tr>
+                <td>{{ row['year'] }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['arbitrage_keur']) }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['capacity_keur']) if row['capacity_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['ancillary_keur']) if row['ancillary_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['freq_reg_keur']) if row['freq_reg_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['reserve_keur']) if row['reserve_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['fixed_contracted_keur']) if row['fixed_contracted_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num"><strong>{{ "{:,.1f}".format(row['net_revenue_keur']) }}</strong></td>
+                <td class="cv-cell-num">{{ "%.1f"|format(row['state_of_health_pct']) }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No model results available</div>
+        <div class="ps-history-meta">
+          Run the model with a BESS asset configured to generate battery revenue results.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

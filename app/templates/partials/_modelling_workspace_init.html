@@ -1,0 +1,131 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE INITIALIZER  ·  UI-5
+  -----------------------------------------------------------------------
+  Progressive-enhancement helper that wraps each existing
+  `.fc-section-band` row group inside a Modelling sheet in a
+  `<section class="fo-modelling-workspace__section" id="fo-mod-section-{kind}-{id}">`
+  block. The wrapper is invisible if JS fails — the legacy markup still
+  renders and behaves as before.
+
+  It also hooks an IntersectionObserver to drive the section navigator
+  scrollspy, setting `.is-active` on whichever link's anchor is
+  currently in view.
+
+  Consumes only --fo-* tokens. No new static JS file.
+  =======================================================================
+-->
+<script>
+(function () {
+  "use strict";
+  function initModellingWorkspace(kind) {
+    var root = document.querySelector('[data-fo-mod-kind="' + kind + '"]');
+    if (!root) return;
+    var body = root.querySelector('.fo-modelling-workspace__content');
+    if (!body) return;
+
+    // Find all section bands inside the content body and wrap each
+    // group of rows (from this band to the next band, or end of tbody)
+    // inside a <section class="fo-modelling-workspace__section">.
+    var sectionLabels = root.__fo_sectionLabels || {};
+    var bands = body.querySelectorAll('.fc-section-band');
+    if (bands.length === 0) return;
+
+    var groups = [];
+    var group = null;
+    var walker = body.querySelectorAll('.fc-grid tr, .sheet-card > div, .section-header, .fc-grid-wrapper, .fc-section-band');
+    // Walk all direct children in order; collect everything between
+    // bands into a group.
+    var allRows = [];
+    var queue = Array.prototype.slice.call(body.children);
+    while (queue.length) {
+      var n = queue.shift();
+      if (n.nodeType !== 1) continue;
+      allRows.push(n);
+      // Don't descend into tables — bands inside tables are handled
+      // separately by the band walker below.
+      if (n.tagName === 'TABLE' || n.tagName === 'TBODY' ||
+          n.tagName === 'THEAD' || n.tagName === 'TFOOT') {
+        continue;
+      }
+      Array.prototype.push.apply(allRows, n.querySelectorAll(':scope > *'));
+    }
+    // Deduplicate while preserving order.
+    var seen = new Set();
+    var ordered = [];
+    allRows.forEach(function (el) { if (!seen.has(el)) { seen.add(el); ordered.push(el); } });
+
+    // Identify bands across all tables and direct children.
+    var allBands = body.querySelectorAll('.fc-section-band');
+    var allGroups = [];
+    var current = null;
+    Array.prototype.slice.call(body.querySelectorAll('*')).forEach(function (el) {
+      if (el.classList && el.classList.contains('fc-section-band')) {
+        if (current) allGroups.push(current);
+        var label = (el.textContent || '').trim();
+        current = { label: label, nodes: [el] };
+        return;
+      }
+      if (current && body.contains(el)) {
+        // Only collect nodes within the body but stop at sheet-banner.
+        if (el.closest && el.closest('.sheet-banner')) {
+          allGroups.push(current);
+          current = null;
+          return;
+        }
+        current.nodes.push(el);
+      }
+    });
+    if (current) allGroups.push(current);
+
+    // Wrap each group in a <section> and assign id from the section
+    // label map.
+    allGroups.forEach(function (g, idx) {
+      var id = 'fo-mod-section-' + kind + '-' + (idx + 1);
+      var sec = document.createElement('section');
+      sec.className = 'fo-modelling-workspace__section';
+      sec.id = id;
+      // Insert sec before the first node of the group.
+      g.nodes[0].parentNode.insertBefore(sec, g.nodes[0]);
+      g.nodes.forEach(function (n) { sec.appendChild(n); });
+    });
+
+    // Scrollspy.
+    var nav = root.querySelector('.fo-modelling-workspace__nav');
+    if (!nav) return;
+    var links = nav.querySelectorAll('.fo-modelling-workspace__nav-link');
+    var sections = root.querySelectorAll('.fo-modelling-workspace__section');
+    if (!sections.length || !links.length) return;
+
+    var linkMap = {};
+    links.forEach(function (a) {
+      var href = a.getAttribute('href') || '';
+      if (href.charAt(0) === '#') linkMap[href.slice(1)] = a;
+    });
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var link = linkMap[entry.target.id];
+        if (!link) return;
+        if (entry.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('is-active'); });
+          link.classList.add('is-active');
+        }
+      });
+    }, { rootMargin: '-200px 0px -60% 0px', threshold: 0.01 });
+    sections.forEach(function (s) { io.observe(s); });
+  }
+
+  function boot() {
+    ['revenue', 'opex', 'capex', 'senior-debt', 'tax'].forEach(function (k) {
+      try { initModellingWorkspace(k); } catch (e) { /* progressive enhancement: fail silently */ }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>

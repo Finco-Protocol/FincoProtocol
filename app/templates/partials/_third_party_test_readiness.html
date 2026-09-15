@@ -1,0 +1,108 @@
+{# ── Phase 25C Closure: Third-Party Test Readiness Gate ──────────────────
+   Renders the third-party test readiness report
+   for the Generic Solar / Wind exploratory pilot.
+
+   Render conditions:
+   - Renders NOTHING if `third_party_test_readiness`
+     is missing from the context.
+   - Renders the panel with the per-workflow scores,
+     overall score, Go/No-Go, checklist, blockers,
+     and tester instructions when present.
+
+   Behavior:
+   - Pure read-side. No backend calls. No mutation
+     of project state, scenarios, or inputs.
+   - No autosave. No fake run IDs. No fake
+     validation claims.
+   - The report is a snapshot; the helper is
+     deterministic and re-runnable.
+   - No JS, no Tailwind, no Alpine, no inline
+     script.
+   - No new HTMX endpoints. #}
+{% if third_party_test_readiness is defined and third_party_test_readiness %}
+  {% set _rpt = third_party_test_readiness %}
+  <aside class="tptr-panel"
+         role="region"
+         aria-label="Third-party test readiness"
+         data-bucket="{{ _rpt.bucket }}"
+         data-overall-score="{{ _rpt.overall_score }}">
+    <header class="tptr-panel__header">
+      <h3 class="tptr-panel__title">Third-Party Test Readiness</h3>
+      <span class="tptr-panel__subtitle">
+        Generic Solar / Wind exploratory pilot
+      </span>
+    </header>
+
+    <div class="tptr-panel__verdict"
+         data-bucket="{{ _rpt.bucket }}"
+         aria-label="Go / No-Go verdict">
+      <span class="tptr-panel__bucket">
+        {{ _rpt.bucket|upper }}
+      </span>
+      <span class="tptr-panel__score">
+        Score: {{ _rpt.overall_score }} / 100
+      </span>
+      <span class="tptr-panel__go-no-go">
+        {% if _rpt.is_go %}GO{% else %}NO-GO{% endif %}
+      </span>
+      <p class="tptr-panel__reason">{{ _rpt.go_no_go_reason }}</p>
+    </div>
+
+    <h4 class="tptr-panel__section">Per-workflow scores</h4>
+    <ol class="tptr-panel__workflows">
+      {% for s in _rpt.per_workflow %}
+        <li class="tptr-panel__workflow"
+            data-workflow="{{ s.workflow }}"
+            data-score="{{ s.score }}">
+          <span class="tptr-panel__workflow-label">
+            {{ s.label }}
+          </span>
+          <span class="tptr-panel__workflow-score">
+            {{ s.score }} / 100
+          </span>
+          <span class="tptr-panel__workflow-phase">
+            {{ s.phase_link }}
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+
+    <h4 class="tptr-panel__section">Pilot test checklist</h4>
+    <ol class="tptr-panel__checklist">
+      {% for item in _rpt.pilot_test_checklist %}
+        <li class="tptr-panel__checklist-item"
+            data-workflow="{{ item.workflow }}">
+          <span class="tptr-panel__checklist-label">
+            {{ item.label }}
+          </span>
+          <span class="tptr-panel__checklist-step">
+            {{ item.step }}
+          </span>
+          <span class="tptr-panel__checklist-expected">
+            Expected: {{ item.expected_outcome }}
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+
+    {% if _rpt.remaining_blockers %}
+      <h4 class="tptr-panel__section">Remaining blockers</h4>
+      <ul class="tptr-panel__blockers">
+        {% for blocker in _rpt.remaining_blockers %}
+          <li class="tptr-panel__blocker">{{ blocker }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <h4 class="tptr-panel__section">Tester instructions</h4>
+    <pre class="tptr-panel__instructions"
+         aria-label="Suggested tester instructions">{{ _rpt.suggested_tester_instructions|join('\n') }}</pre>
+
+    <h4 class="tptr-panel__section">Phase 25C summary</h4>
+    <ul class="tptr-panel__phase-summary">
+      {% for line in _rpt.phase_25c_summary %}
+        <li class="tptr-panel__phase-line">{{ line }}</li>
+      {% endfor %}
+    </ul>
+  </aside>
+{% endif %}

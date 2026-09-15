@@ -1,0 +1,111 @@
+{# ── V4-4 Part D — Covenant Timeline ──────────────────────────────────────── #}
+{# SVG traffic-light timeline: one cell per operating period, colour = RAG.   #}
+<div class="ct-timeline" data-testid="covenant-timeline">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Timeline</span>
+    <span class="scm-multi-heading-label">Covenant Timeline</span>
+  </div>
+
+  {% if covenant_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Results unavailable</div>
+        <div class="ps-history-meta">Run the model to populate the covenant timeline.</div>
+      </div>
+    </div>
+
+  {% elif covenant_periods %}
+    {% set periods = covenant_periods %}
+    {% set n = periods | length %}
+
+    {# SVG dimensions #}
+    {% set cell_w = 14 %}
+    {% set cell_h = 28 %}
+    {% set label_h = 18 %}
+    {% set pad = 4 %}
+    {% set svg_w = n * (cell_w + 1) + pad * 2 %}
+    {% set svg_h = cell_h + label_h + pad * 3 %}
+
+    <div class="ct-legend">
+      <span class="ct-legend-item ct-rag--ok">&#9646; OK (&ge;{{ "%.2f"|format(covenant_thresholds['distribution']) }}x DSCR)</span>
+      <span class="ct-legend-item ct-rag--caution">&#9646; Caution (&ge;{{ "%.2f"|format(covenant_thresholds['lockup']) }}x)</span>
+      <span class="ct-legend-item ct-rag--warning">&#9646; Lock-up risk (&ge;{{ "%.2f"|format(covenant_thresholds['event_of_default']) }}x)</span>
+      <span class="ct-legend-item ct-rag--breach">&#9646; Breach (&lt;{{ "%.2f"|format(covenant_thresholds['event_of_default']) }}x)</span>
+      <span class="ct-legend-item ct-rag--lockup">&#9646; Locked</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+      <svg viewBox="0 0 {{ svg_w }} {{ svg_h }}"
+           width="{{ [svg_w, 900]|min }}"
+           style="max-width:100%;display:block;"
+           aria-label="Covenant traffic-light timeline"
+           role="img"
+           data-testid="covenant-timeline-svg">
+
+        {% for p in periods %}
+          {% set x = pad + loop.index0 * (cell_w + 1) %}
+          {% set y = pad %}
+
+          {# Cell colour by RAG #}
+          {% if p['lockup'] %}
+            {% set fill = '#f59e0b' %}
+          {% elif p['rag'] == 'breach' %}
+            {% set fill = '#ef4444' %}
+          {% elif p['rag'] == 'warning' %}
+            {% set fill = '#f97316' %}
+          {% elif p['rag'] == 'caution' %}
+            {% set fill = '#facc15' %}
+          {% else %}
+            {% set fill = '#22c55e' %}
+          {% endif %}
+
+          <rect x="{{ x }}" y="{{ y }}"
+                width="{{ cell_w }}" height="{{ cell_h }}"
+                fill="{{ fill }}" rx="2"
+                data-period="{{ p['period'] }}"
+                data-dscr="{{ '%.4f'|format(p['dscr']) if p['dscr'] is not none else '' }}"
+                data-rag="{{ p['rag'] }}">
+            <title>Period {{ p['period'] }} ({{ p['date'][:7] if p['date'] else '—' }})
+DSCR: {{ '%.4f'|format(p['dscr']) if p['dscr'] is not none else '—' }}x
+LLCR: {{ '%.4f'|format(p['llcr']) if p['llcr'] is not none else '—' }}x
+Status: {{ p['rag'].upper() }}{% if p['lockup'] %} / LOCKED{% endif %}
+Distribution: {{ '{:,.1f}'|format(p['distribution_keur']) if p['distribution_keur'] > 0 else '—' }} kEUR</title>
+          </rect>
+
+          {# Year label every ~4 periods or first/last #}
+          {% if loop.index0 == 0 or loop.index % 4 == 0 or loop.last %}
+            <text x="{{ x + cell_w / 2 }}" y="{{ pad + cell_h + label_h - 2 }}"
+                  font-size="7" fill="#6b7280" text-anchor="middle">
+              {{ p['date'][:4] if p['date'] else p['period'] }}
+            </text>
+          {% endif %}
+        {% endfor %}
+
+      </svg>
+    </div>
+
+    <div class="ct-summary-row">
+      {% set breach_periods = periods | selectattr('rag', 'eq', 'breach') | list %}
+      {% set locked_periods = periods | selectattr('lockup', 'eq', true) | list %}
+      <span class="ct-stat {% if breach_periods %}ct-stat--bad{% endif %}">
+        {{ breach_periods | length }} breach period{{ 's' if breach_periods | length != 1 else '' }}
+      </span>
+      <span class="ct-stat {% if locked_periods %}ct-stat--warn{% endif %}">
+        {{ locked_periods | length }} lock-up period{{ 's' if locked_periods | length != 1 else '' }}
+      </span>
+      <span class="ct-stat">{{ n }} total periods</span>
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Timeline Data</div>
+        <div class="ps-history-meta">
+          Navigate to /scenarios/covenant?project=... to generate the covenant timeline.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

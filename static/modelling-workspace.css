@@ -1,0 +1,623 @@
+/* ============================================================================
+   FINCO PROTOCOL — MODELLING WORKSPACE  ·  static/modelling-workspace.css
+   ----------------------------------------------------------------------------
+   UI-5: Unified workspace chrome applied to the five core modelling sheets
+   (Revenue, OPEX, CAPEX, Senior Debt, Tax). Established by UI-4 (Overview
+   + Inputs) and now extended across the Modelling group.
+
+   This stylesheet:
+     1. Wraps each modelling sheet in `.fo-modelling-workspace` (a 3-column
+        layout: section nav + main + context panel).
+     2. Re-uses the same `.fo-*` token system introduced by UI-1 — no raw
+        hex, no rgba, no legacy var() references.
+     3. Improves the existing `.fc-grid` tables: numeric alignment via
+        `tabular-nums`, sticky table headers, row hover, focus ring.
+     4. Communicates editable / calculated / derived / read-only state
+        through existing data attributes (`data-fc-editable`,
+        `data-fc-kind`) — no new metadata invented.
+     5. Surfaces validation warnings inside their section, not via popup.
+     6. Collapses the layout below 1024 px (sticky nav stacks above the
+        content; context panel drops below).
+
+   NOT a competitor to the existing stylesheets — additive only.
+   ============================================================================ */
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Token contract                                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace {
+  /* UI-8C: nav rail removed; only context width token needed */
+  --fo-mod-context-w: 160px;
+  --fo-mod-gap: var(--fo-s3);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s3);
+  padding: var(--fo-s3) 0;
+  font-family: var(--fo-font-ui);
+  color: var(--fo-ink);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Header                                                                   */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s1);
+  padding-bottom: var(--fo-s2);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-modelling-workspace__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--fo-s3);
+}
+
+.fo-modelling-workspace__title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);   /* UI-8B: reduced from xl — saves vertical row space */
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--fo-ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.fo-modelling-workspace__status {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  flex-wrap: wrap;
+}
+
+.fo-modelling-workspace__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-medium);
+  line-height: 1;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: var(--fo-rag-neutral-bg);
+  color: var(--fo-ink);
+  border: 1px solid var(--fo-line);
+  white-space: nowrap;
+}
+
+.fo-modelling-workspace__pill--dirty {
+  background: var(--fo-rag-amber-bg);
+  color: var(--fo-ink);
+  border-color: var(--fo-rag-amber);
+}
+
+.fo-modelling-workspace__pill--saved {
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-ink);
+  border-color: var(--fo-rag-green);
+}
+
+.fo-modelling-workspace__pill--ok {
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-ink);
+  border-color: var(--fo-rag-green);
+}
+
+.fo-modelling-workspace__pill--warn {
+  background: var(--fo-rag-amber-bg);
+  color: var(--fo-ink);
+  border-color: var(--fo-rag-amber);
+}
+
+.fo-modelling-workspace__pill--fail {
+  background: var(--fo-rag-red-bg);
+  color: var(--fo-ink);
+  border-color: var(--fo-rag-red);
+}
+
+.fo-modelling-workspace__pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+.fo-modelling-workspace__pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--fo-paper);
+  font-weight: var(--fo-weight-bold);
+  line-height: 1;
+}
+
+.fo-modelling-workspace__description {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);   /* UI-8B: reduced from sm — it's metadata, not content */
+  color: var(--fo-ink-faint);
+  margin: 0;
+  line-height: 1.3;
+  max-width: 760px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Three-column layout                                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__layout {
+  display: grid;
+  /* UI-8C: nav rail removed — worksheet tabs are primary navigation.
+     Two columns: content + context (context collapses to 24px strip via modifier). */
+  grid-template-columns: minmax(0, 1fr) var(--fo-mod-context-w);
+  gap: var(--fo-mod-gap);
+  align-items: start;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Section navigator (PART D)                                               */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__nav {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-s3));
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s2);   /* UI-8B: reduced from s3 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s1);       /* UI-8B: reduced from s2 */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.fo-modelling-workspace__nav-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+  margin: 0;
+}
+
+.fo-modelling-workspace__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fo-modelling-workspace__nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  padding: 4px var(--fo-s2);   /* UI-8B: reduced vertical from 6px to 4px */
+  border-radius: var(--fo-r-md);
+  text-decoration: none;
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-regular);
+  line-height: 1.3;
+  border-left: 3px solid transparent;
+  transition:
+    background var(--fo-t-fast) var(--fo-ease),
+    border-color var(--fo-t-fast) var(--fo-ease),
+    color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-modelling-workspace__nav-link:hover {
+  background: var(--fo-rag-neutral-bg);
+  border-radius: var(--fo-r-lg);
+}
+
+.fo-modelling-workspace__nav-link.is-active {
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-700);
+  border-left-color: var(--fo-brand-600);
+  font-weight: var(--fo-weight-medium);
+}
+
+.fo-modelling-workspace__nav-link:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 2px;
+}
+
+.fo-modelling-workspace__nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fo-rag-neutral);
+  flex: 0 0 auto;
+  transition: background var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-modelling-workspace__nav-link.is-active .fo-modelling-workspace__nav-dot {
+  background: var(--fo-brand-600);
+}
+
+.fo-modelling-workspace__nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Main content column                                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s2);   /* UI-8D: reduced from s3 (12px) to s2 (8px) — tighter between sections */
+}
+
+.fo-modelling-workspace__content > * {
+  min-width: 0;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Context panel collapse toggle button                                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  background: transparent;
+  color: var(--fo-ink-soft);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease);
+}
+.fo-modelling-workspace__context-toggle:hover {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+}
+.fo-modelling-workspace__context-toggle:focus-visible {
+  outline: 2px solid var(--fo-focus);
+  outline-offset: 1px;
+}
+
+/* Header row that holds the title + toggle side by side */
+.fo-modelling-workspace__context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fo-s2);
+  min-height: 20px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Context panel — collapsed state                                          */
+/*  The layout grid drops its third column; the aside becomes a 24px strip  */
+/*  showing only the toggle arrow.                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__layout--context-collapsed {
+  grid-template-columns: minmax(0, 1fr) 24px;
+}
+
+.fo-modelling-workspace__context--collapsed {
+  padding: var(--fo-s2) 2px;
+  gap: var(--fo-s2);
+  overflow: hidden;
+}
+
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-header {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-title,
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-list {
+  display: none;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Context panel (PART A right side)                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__context {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-s3));
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s2) var(--fo-s3);   /* UI-8B: reduced from s4 (16px) to s2/s3 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s2);                    /* UI-8B: reduced from s3 (12px) to s2 (8px) */
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+}
+
+.fo-modelling-workspace__context-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+  margin: 0;
+}
+
+.fo-modelling-workspace__context-list {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s3);
+}
+
+.fo-modelling-workspace__context-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;   /* UI-8B: tighter — was var(--fo-s2) = 8px */
+  border-bottom: 1px dashed var(--fo-line);
+}
+
+.fo-modelling-workspace__context-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.fo-modelling-workspace__context-label {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  font-weight: var(--fo-weight-medium);
+}
+
+.fo-modelling-workspace__context-value {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);   /* UI-8B: reduced from md to sm — compact KPI strip */
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  line-height: 1.3;
+}
+
+.fo-modelling-workspace__context-value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+  font-weight: var(--fo-weight-regular);
+}
+
+.fo-modelling-workspace__context-hint {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin: 2px 0 0;
+  line-height: 1.3;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Section anchors (consumed by scrollspy + nav)                            */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__section {
+  scroll-margin-top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-s3));
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s1);   /* UI-8B: tightened from s2 */
+}
+
+.fo-modelling-workspace__section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);   /* UI-8D: reduced from md — headers must not dominate the grid */
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink-soft);      /* UI-8D: softer colour — grid rows are the focus */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  line-height: 1.2;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-modelling-workspace__section-header-num {
+  font-family: var(--fo-font-mono);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-regular);
+  color: var(--fo-ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.fo-modelling-workspace__section-warnings {
+  background: var(--fo-rag-amber-bg);
+  border: 1px solid var(--fo-rag-amber);
+  border-radius: var(--fo-r-sm);
+  padding: var(--fo-s2) var(--fo-s3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink);
+}
+
+.fo-modelling-workspace__section-warnings-title {
+  font-weight: var(--fo-weight-semibold);
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s1);
+}
+
+.fo-modelling-workspace__section-warnings-list {
+  list-style: disc;
+  padding-left: var(--fo-s4);
+  margin: 0;
+  color: var(--fo-ink-soft);
+}
+
+.fo-modelling-workspace__section-warnings-list li {
+  line-height: 1.4;
+  margin-bottom: 2px;
+}
+
+.fo-modelling-workspace__section-warnings--error {
+  background: var(--fo-rag-red-bg);
+  border-color: var(--fo-rag-red);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  UI-8D: Compact density — scoped to modelling content only               */
+/*  Override global cell tokens for tighter row height within these sheets. */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__content {
+  --cell-pad-v: 0.2rem;    /* was 0.4rem — saves ~4px per cell top+bottom */
+  --cell-h:     1.6rem;    /* was 2rem  — input cell min-height ~26px */
+  --font-cell:  0.80rem;   /* was 0.82rem — marginal but consistent */
+  --font-label: 0.76rem;   /* was 0.78rem */
+}
+
+/* Header cells: tighter vertical padding, slightly smaller text */
+.fo-modelling-workspace__content .fc-th {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;   /* was 0.5rem */
+  font-size: 0.70rem;        /* was 0.72rem */
+}
+
+/* Input cells: match compacted --cell-h */
+.fo-modelling-workspace__content .fc-cell-input {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;   /* was 0.3rem */
+  min-height: var(--cell-h);
+}
+
+/* Runtime/calculated cells: match */
+.fo-modelling-workspace__content .fc-cell-runtime {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;   /* was 0.3rem */
+}
+
+/* Native number inputs inside cells */
+.fo-modelling-workspace__content input.fc-input-native,
+.fo-modelling-workspace__content input.fc-cell-input {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  min-height: var(--cell-h);
+}
+
+/* Total/subtotal rows: less generous bottom margin */
+.fo-modelling-workspace__content .fc-total-row .fc-cell,
+.fo-modelling-workspace__content .fc-subtotal-row .fc-cell {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Legacy `.fc-grid` table improvements (consume existing markup)           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__content .fc-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fo-modelling-workspace__content .fc-grid thead .fc-th {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-chrome-tabs-h, 36px));
+  background: var(--fo-paper);
+  z-index: 2;
+}
+
+.fo-modelling-workspace__content .fc-grid .fc-data-row {
+  transition: background var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-modelling-workspace__content .fc-grid .fc-data-row:hover {
+  background: var(--fo-rag-neutral-bg);
+}
+
+.fo-modelling-workspace__content .fc-grid .fc-cell--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fo-modelling-workspace__content .fc-grid input.fc-input-native {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fo-modelling-workspace__content .fc-grid input.fc-input-native:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 1px;
+}
+
+/* Editable vs read-only visual distinction — uses existing data-fc-editable
+   attribute (no new metadata invented). */
+.fo-modelling-workspace__content .fc-grid [data-fc-editable="false"] .fc-cell-runtime,
+.fo-modelling-workspace__content .fc-grid [data-fc-editable="false"] .fc-total-cell {
+  color: var(--fo-ink-soft);
+}
+
+.fo-modelling-workspace__content .fc-grid [data-fc-editable="true"] .fc-input-native {
+  color: var(--fo-ink);
+  font-weight: var(--fo-weight-medium);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Responsive                                                               */
+/* ────────────────────────────────────────────────────────────────────────── */
+/* UI-8C: two-column layout collapses context below 800px */
+@media (max-width: 800px) {
+  .fo-modelling-workspace__layout,
+  .fo-modelling-workspace__layout--context-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fo-modelling-workspace__context {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .fo-modelling-workspace {
+    --fo-mod-gap: var(--fo-s3);
+    padding: var(--fo-s3) 0;
+  }
+  .fo-modelling-workspace__title {
+    font-size: var(--fo-text-lg);
+  }
+}
+
+@media print {
+  .fo-modelling-workspace__nav,
+  .fo-modelling-workspace__context {
+    display: none;
+  }
+  .fo-modelling-workspace__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

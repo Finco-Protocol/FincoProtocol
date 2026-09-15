@@ -1,0 +1,95 @@
+<!-- Phase 25B-3 — "What changed since previous run?" delta panel
+     Read-only. Renders a compact panel showing deltas between the
+     current run summary and the previous run summary (when available).
+
+     Required context:
+       panel_rows: list of dicts from app.ui.what_changed.compute_what_changed()
+                   Each row: key, label, format, current_display, previous_display,
+                             delta_display, percent_display, state
+       has_previous_run: bool — True if previous_run_summary is non-empty
+       project_origin: "user_created" | "factory_template" | other
+       template_source: e.g. "generic_solar" | "generic_wind" | "generic_wind_reference" | "generic_solar_reference" | "test" | other
+       scenario_name: str (display only)
+
+     The panel is hidden by default (display:none on the section). The
+     host page (e.g. runtime_summary.html) decides when to show it.
+-->
+{% set has_previous = has_previous_run %}
+{% set show_exploratory_banner = template_source in ("generic_solar", "generic_wind") %}
+<section
+  class="wc-panel"
+  data-testid="what-changed-panel"
+  data-state="{{ 'with-previous' if has_previous else 'no-previous' }}"
+  aria-labelledby="wc-panel-heading"
+>
+  <header class="wc-header">
+    <h3 class="wc-title" id="wc-panel-heading">What changed since previous run?</h3>
+    <span class="wc-subtitle">
+      Scenario: <strong>{{ scenario_name or "(active scenario)" }}</strong>
+    </span>
+  </header>
+
+  {% if show_exploratory_banner %}
+  <div class="wc-banner wc-banner--exploratory" data-testid="what-changed-exploratory-banner">
+    <span class="wc-banner-badge">EXPLORATORY</span>
+    <span class="wc-banner-text">
+      Generic project. Deltas are exploratory / not reference-validated.
+    </span>
+  </div>
+  {% else %}
+  <div class="wc-banner wc-banner--descriptive" data-testid="what-changed-descriptive-banner">
+    <span class="wc-banner-text">
+      Multi-scenario is descriptive only. Deltas compare this run to the
+      previous run of the same scenario.
+    </span>
+  </div>
+  {% endif %}
+
+  {% if not has_previous %}
+  <div class="wc-empty" data-testid="what-changed-empty-state">
+    <span class="wc-empty-icon" aria-hidden="true">∅</span>
+    <span class="wc-empty-text">
+      No previous run available. Re-run the scenario after editing to
+      see deltas against the previous run.
+    </span>
+  </div>
+  {% else %}
+  <table class="wc-table" data-testid="what-changed-table">
+    <thead>
+      <tr>
+        <th scope="col" class="wc-th-metric">Metric</th>
+        <th scope="col" class="wc-th-current">Current</th>
+        <th scope="col" class="wc-th-previous">Previous</th>
+        <th scope="col" class="wc-th-delta">Δ</th>
+        <th scope="col" class="wc-th-percent">%</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in panel_rows %}
+      <tr
+        class="wc-row wc-row--{{ row.state }}"
+        data-testid="what-changed-row"
+        data-metric="{{ row.key }}"
+        data-state="{{ row.state }}"
+      >
+        <td class="wc-td-label">{{ row.label }}</td>
+        <td class="wc-td-current">{{ row.current_display }}</td>
+        <td class="wc-td-previous">{{ row.previous_display }}</td>
+        <td class="wc-td-delta wc-td-delta--{{ row.state }}">
+          {{ row.delta_display }}
+        </td>
+        <td class="wc-td-percent">
+          {{ row.percent_display if row.percent_display else "—" }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <footer class="wc-footer">
+    <span class="wc-footer-note">
+      Deltas are read-only and reflect the values returned by the model.
+      No finance formulas are computed by this panel.
+    </span>
+  </footer>
+  {% endif %}
+</section>

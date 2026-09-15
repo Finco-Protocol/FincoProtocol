@@ -1,0 +1,108 @@
+<!-- UX-2: Sponsor/Equity panel body (shared_runtime_block is prepended separately by OOB assembly).
+
+     Phase H2/H3 wiring: SponsorCashflowRunner + SponsorIrrRunner + SponsorMoicRunner are
+     called from project_runner.run_project() after the waterfall completes. Results are
+     serialized to sessionStorage["lastSponsorSchedule"] by run_service.py.
+
+     This template reads lastSponsorSchedule and renders a read-only table.
+     Zero JS arithmetic — all values come from the backend engine output.
+
+     Pre-Run state: the unavailable panel is shown until a run has been completed
+     and lastSponsorSchedule is populated. -->
+<div class="panel-header">
+  <div class="panel-title">Sponsor / Equity</div>
+  <div class="panel-desc">Equity contribution schedule, return metrics (IRR, MoM), and sponsor waterfall.</div>
+</div>
+
+<!-- Pre-Run unavailable panel (hidden once data is available) -->
+<div id="sponsor-unavailable-panel"
+     class="empty-state-notice empty-state-notice--warn sponsor-unavailable-panel"
+     role="status" aria-label="Sponsor economics not yet available">
+  <div class="esn-icon" aria-hidden="true">🤝</div>
+  <div class="esn-title">Sponsor economics not yet available</div>
+  <div class="esn-desc">
+    Run the model to see sponsor cashflows, IRR, MOIC, and per-period equity schedule.
+    Data is sourced from <code>SponsorCashflowRunner</code> and <code>SponsorIrrRunner</code>
+    after each project run.
+  </div>
+</div>
+
+<!-- Sponsor schedule block (shown after a run populates lastSponsorSchedule) -->
+<div id="sponsor-schedule-block" style="display:none;">
+  <div class="sponsor-summary-bar" id="sponsor-summary-bar">
+    <!-- Populated by JS from lastSponsorSchedule.summary -->
+  </div>
+  <div class="schedule-table-wrapper">
+    <table class="schedule-table" id="sponsor-cashflow-table">
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Equity Injected (kEUR)</th>
+          <th>Distribution Received (kEUR)</th>
+          <th>WHT (kEUR)</th>
+          <th>Net Cashflow (kEUR)</th>
+          <th>Capital Account Balance (kEUR)</th>
+        </tr>
+      </thead>
+      <tbody id="sponsor-cashflow-tbody">
+        <!-- Populated by JS -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Phase H3: read lastSponsorSchedule from sessionStorage and render read-only table.
+  // Zero JS arithmetic — all values sourced from backend engine output.
+  var raw = sessionStorage.getItem("lastSponsorSchedule");
+  if (!raw) return;
+
+  var data;
+  try { data = JSON.parse(raw); } catch(e) { return; }
+  if (!data || !data.periods || !data.summary) return;
+
+  // Hide unavailable panel, show schedule block
+  var unavailPanel = document.getElementById("sponsor-unavailable-panel");
+  var scheduleBlock = document.getElementById("sponsor-schedule-block");
+  if (unavailPanel) unavailPanel.style.display = "none";
+  if (scheduleBlock) scheduleBlock.style.display = "";
+
+  // Populate summary bar
+  var summaryBar = document.getElementById("sponsor-summary-bar");
+  if (summaryBar) {
+    var s = data.summary;
+    var irrPct = (s.gross_sponsor_irr !== null && s.gross_sponsor_irr !== undefined)
+      ? (s.gross_sponsor_irr * 100).toFixed(2) + "%" : "N/A";
+    var moicVal = (s.gross_sponsor_moic !== null && s.gross_sponsor_moic !== undefined)
+      ? s.gross_sponsor_moic.toFixed(2) + "x" : "N/A";
+    summaryBar.innerHTML =
+      "<span class='kpi-chip'>Gross IRR: <strong>" + irrPct + "</strong></span>" +
+      "<span class='kpi-chip'>Gross MOIC: <strong>" + moicVal + "</strong></span>" +
+      "<span class='kpi-chip'>Total Equity Injected: <strong>" +
+        (s.total_equity_injected_keur !== null ? s.total_equity_injected_keur + " kEUR" : "N/A") +
+      "</strong></span>" +
+      "<span class='kpi-chip'>Total Distributions: <strong>" +
+        (s.total_distributions_received_keur !== null ? s.total_distributions_received_keur + " kEUR" : "N/A") +
+      "</strong></span>";
+  }
+
+  // Populate cashflow table
+  var tbody = document.getElementById("sponsor-cashflow-tbody");
+  if (tbody) {
+    var rows = "";
+    for (var i = 0; i < data.periods.length; i++) {
+      var p = data.periods[i];
+      rows += "<tr>" +
+        "<td>" + p.period_index + "</td>" +
+        "<td>" + (p.equity_injected_keur !== null ? p.equity_injected_keur : "-") + "</td>" +
+        "<td>" + (p.distribution_received_keur !== null ? p.distribution_received_keur : "-") + "</td>" +
+        "<td>" + (p.wht_on_distribution_keur !== null ? p.wht_on_distribution_keur : "-") + "</td>" +
+        "<td>" + (p.net_cashflow_keur !== null ? p.net_cashflow_keur : "-") + "</td>" +
+        "<td>" + (p.capital_account_balance_keur !== null ? p.capital_account_balance_keur : "-") + "</td>" +
+        "</tr>";
+    }
+    tbody.innerHTML = rows;
+  }
+})();
+</script>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}FINCO Protocol - Financial Intelligence Infrastructure{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  {# UI-1: Design tokens — load BEFORE styles.css so fo-* variables
+     are available to legacy classes (fc-, ps-, scm-, ...). No class
+     renames; additive only. #}
+  <link rel="stylesheet" href="/static/tokens.css?v={{ asset_version }}" />
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  {# UI-2: Application chrome (brand bar + command bar + KPI strip) —
+     layered ABOVE the legacy chrome. Uses only --fo-* tokens. No
+     edits to existing styles; chrome.css adds an isolated namespace
+     (.fo-*) that does not collide with any legacy selector. #}
+  <link rel="stylesheet" href="/static/chrome.css?v={{ asset_version }}" />
+  {# UI-3: spreadsheet-style worksheet navigation — replaces the UI-2
+     sheet-tab reserve row. Same isolated .fo-sheets / .fo-sheet
+     namespace; consumes only --fo-* tokens. #}
+  <link rel="stylesheet" href="/static/sheet-tabs.css?v={{ asset_version }}" />
+  {# UI-4: Workspace redesign for Overview + Inputs. Same isolated
+     .fo-* namespace; only --fo-* tokens; no edits to existing
+     stylesheets. #}
+  <link rel="stylesheet" href="/static/workspace.css?v={{ asset_version }}" />
+  {# UI-5: Unified modelling workspace — applies the same workspace
+     pattern (header + section nav + content + context panel) across
+     Revenue, OPEX, CAPEX, Senior Debt, Tax sheets. Same isolated
+     .fo-modelling-workspace* namespace; only --fo-* tokens; no
+     edits to existing stylesheets. #}
+  <link rel="stylesheet" href="/static/modelling-workspace.css?v={{ asset_version }}" />
+  {# UI-6: Institutional Financial Statements + Reporting — statement
+     selector, sticky-header tables, compare layout, reporting
+     dashboard chrome, print headers/footers, screen-reader-friendly
+     table semantics. Same isolated .fo-statements-* namespace; only
+     --fo-* tokens; no edits to existing stylesheets. #}
+  <link rel="stylesheet" href="/static/statements-reporting.css?v={{ asset_version }}" />
+  {# UI-7: Power User Workflow — command palette overlay, keyboard
+     shortcuts overlay, floating jump-to button, recently-edited
+     strip, skeleton loaders, refreshed empty states. Same isolated
+     .fo-power-* namespace; only --fo-* tokens; no edits to existing
+     stylesheets. No new static JS file. #}
+  <link rel="stylesheet" href="/static/power-user.css?v={{ asset_version }}" />
+  {# UI-8G: Final consistency audit — spacing, focus rings, tabular numerals,
+     disabled states, empty-state polish, copy cleanup. Additive only. #}
+  <link rel="stylesheet" href="/static/ui8g-consistency.css?v={{ asset_version }}" />
+  {# UI-1A: Single application shell — brand bar utilities + sidebar
+     Level-1 workflow nav. Additive only; no legacy selector edits. #}
+  <link rel="stylesheet" href="/static/ui1a-shell.css?v={{ asset_version }}" />
+  <script src="/static/vendor/htmx.min.js"></script>
+  {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
+     bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}
+  <script src="/static/interaction/grid-registry.js" defer></script>
+  <script src="/static/interaction/engine.js" defer></script>
+  {# C1-PR2: Active Cell foundation — single active-cell tracking
+     only, no keyboard/selection/clipboard. See
+     docs/C1_PR2_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/active-cell.js" defer></script>
+  {# C1-PR3: Focus & Scroll Preservation — restores the active cell
+     and registered grid scroll positions across htmx swaps. See
+     docs/C1_PR3_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/swap-lifecycle.js" defer></script>
+  {# C1-PR4: DOM Focus Management — browser focus follows the active
+     cell and survives compatible htmx swaps; no keyboard navigation.
+     See docs/C1_PR4_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/focus-manager.js" defer></script>
+  {# C1-PR5: Keyboard Navigation Foundation — moves the active cell
+     with Arrow/Enter/Tab/Home/End/Ctrl+Arrow, only when focus is on
+     a registered grid cell; no selection/clipboard/undo. See
+     docs/C1_PR5_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/keyboard-router.js" defer></script>
+  {# C1-PR6: Selection Model Foundation — single-cell + rectangular
+     range selection anchored to the active cell, rendered with one
+     CSS class; no clipboard/fill/undo. See
+     docs/C1_PR6_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/selection-manager.js" defer></script>
+  {# Shared cell read/write IO, used by Clipboard/Undo/Fill instead of
+     each duplicating value-read/value-write logic.
+     See docs/CAPEX_C1_MIGRATION_NOTE.md #}
+  <script src="/static/interaction/cell-io.js" defer></script>
+  {# C1-PR7: Clipboard Foundation — reference-compatible TSV copy/paste
+     operating on the current Selection Model; no undo/fill/formula.
+     See docs/C1_PR7_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/clipboard-controller.js" defer></script>
+  {# C1-PR8: Undo/Redo Foundation — interaction-layer undo/redo stack
+     for cell edits and paste transactions; no fill/formula/recalc.
+     See docs/C1_PR8_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/undo-manager.js" defer></script>
+  {# C1-PR9: Fill Down / Fill Right Foundation — fills the current
+     selection's top row/leftmost column into the rest of the range;
+     no drag-fill, formula, or recalc. See
+     docs/C1_PR9_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/interaction/fill-controller.js" defer></script>
+  {# C2-PR4: Dependency Graph Foundation — maps dirty C1 cells/sheets
+     to coarse-grained model output groups (registry/resolution API
+     only); no financial recalculation, no dependency execution.
+     Loaded before live-model.js so window.FcDependencyGraph is
+     already defined by the time any flush happens. See
+     docs/C2_PR4_DEPENDENCY_GRAPH_FOUNDATION_NOTE.md #}
+  {# Product Gap PR1: CAPEX Real Excel Editing + Live Totals — CAPEX-
+     sheet-specific direct-typing + live in-sheet subtotal/total
+     rendering. Scoped entirely to the "capex" grid; does not modify
+     the generic C1 layer above or the C2 preview pipeline below, and
+     adds no new /model/preview payload fields. See
+     docs/PRODUCT_GAP_PR1_CAPEX_EXCEL_EDITING.md #}
+  <script src="/static/modelling/capex-sheet-live-totals.js" defer></script>
+  {# Product Gap PR2/PR3/PR4: OPEX Real Excel Editing + Live Operating
+     Totals — OPEX-sheet-specific direct-typing + live in-sheet
+     Category Subtotal / Operating Subtotal / Total OPEX rendering
+     (Y1 column only — see the module's own doc comment for why).
+     Scoped entirely to the "opex" grid; does not modify the generic
+     C1 layer above or the C2 preview pipeline below, and adds no new
+     /model/preview payload fields. See
+     docs/PRODUCT_GAP_PR2_OPEX_EXCEL_EDITING.md #}
+  <script src="/static/modelling/opex-sheet-live-totals.js" defer></script>
+  <script src="/static/modelling/dependency-graph.js" defer></script>
+  {# C2-PR6: Incremental Recalculation Preview Boundary — builds a
+     deterministic preview-request payload from a recalc snapshot +
+     execution result, for a FUTURE backend preview/recalc endpoint
+     that does not exist yet; never calls it, never makes any network
+     request. Loaded before recalc-executor.js so window.FcRecalcPreview
+     is already defined by the time FcRecalcExecutor.execute() calls
+     into it. See
+     docs/C2_PR6_INCREMENTAL_RECALC_PREVIEW_BOUNDARY_NOTE.md #}
+  <script src="/static/modelling/recalc-preview.js" defer></script>
+  {# C2-PR8: First End-to-End Incremental Runtime Slice — a tiny,
+     stateless response renderer that patches exactly ONE existing,
+     non-financial Overview status DOM element after a real
+     POST /model/preview round trip made from live-model.js's
+     flushScheduledRecalc(). Loaded after recalc-preview.js (and before
+     live-model.js, which is the caller) so window.FcRuntimeRenderer is
+     already defined by the time any flush's fetch response resolves.
+     See docs/C2_PR8_FIRST_RUNTIME_SLICE.md #}
+  <script src="/static/modelling/runtime-renderer.js" defer></script>
+  {# C2-PR5: Incremental Recalculation Execution Stub — a deterministic
+     no-op execution boundary consuming a flushed recalc snapshot
+     (already annotated with affectedGroups); no financial
+     recalculation, no backend Run call. Loaded before live-model.js
+     so window.FcRecalcExecutor is already defined by the time any
+     flush happens. See
+     docs/C2_PR5_INCREMENTAL_RECALC_EXECUTION_STUB_NOTE.md #}
+  <script src="/static/modelling/recalc-executor.js" defer></script>
+  {# C2-PR1: Live Modelling Foundation — dirty-state tracking, change
+     batching, live edit session state, and a stub recalculation
+     scheduler/event pipeline; no financial recalculation, no
+     Save/Run integration. See docs/C2_PR1_IMPLEMENTATION_NOTE.md #}
+  <script src="/static/modelling/live-model.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+
+{# UI-2: Application chrome (brand bar + command bar + KPI strip +
+   sheet-tab reserve). Mounted at the very top of the body. The
+   legacy <header class="top-header"> is preserved below it; no
+   existing markup is moved, renamed, or re-skinned. #}
+{% include "partials/_app_chrome.html" %}
+
+{# UI-1A: legacy top-header removed — actions relocated to brand bar. #}
+
+<div class="app-layout">
+  {# UI-1A: nav_compression superseded by sidebar Level-1 workflow nav below. #}
+  {% include "partials/workspace_tabs.html" %}
+
+  <nav class="project-sidebar" id="project-sidebar">
+    <div class="ps-brand">
+      <div class="ps-brand-name">FINCO Protocol</div>
+      <div class="ps-brand-sub">Project Finance Model</div>
+    </div>
+
+    {% include "partials/project_selector.html" %}
+
+    {# UI-1A: Level-1 project workflow navigation ─────────────────────────
+       Level 1: Overview / Inputs / Outputs / Scenarios / Export–Audit
+       Level 2: expandable sub-items for Inputs and Outputs.
+       Wires to existing switchTab() and URL routes — no new panels created. #}
+    <nav class="ps-workflow-nav" aria-label="Project workflow">
+      <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+              data-workflow-area="overview"
+              onclick="switchTab('overview'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active');">
+        Overview
+      </button>
+
+      <div class="ps-workflow-group" data-workflow-area="inputs">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="inputs"
+                onclick="switchTab('inputs'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Inputs
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('inputs');">General</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('revenue');">Revenue</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('opex');">OPEX</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('capex');">CAPEX</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('senior-debt');">Financing</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('tax');">Tax</button>
+        </div>
+      </div>
+
+      <div class="ps-workflow-group" data-workflow-area="outputs">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="outputs"
+                onclick="switchTab('pl'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Outputs
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('overview');">Summary</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('cashflow');">Cash Flow</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('senior-debt');">Debt</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('sponsor');">Returns</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('pl');">Financial Statements</button>
+        </div>
+      </div>
+
+      {# Correction A: Scenarios stays inside the canonical workspace
+         via switchTab('scenario') — does not leave the project workspace.
+         The /scenarios route remains available as a legacy deep-link. #}
+      <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+              data-workflow-area="scenarios"
+              onclick="switchTab('scenario'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active');">
+        Scenarios
+      </button>
+
+      {# Correction A: Export / Audit is a collapsible group targeting existing
+         workspace panels — does NOT use href="/download" (an action endpoint). #}
+      <div class="ps-workflow-group" data-workflow-area="export-audit">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="export-audit"
+                onclick="switchTab('downloads'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Export / Audit
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('downloads');">Downloads</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('audit');">Audit / Reference</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="ps-section">
+      <div class="ps-section-label">Actions</div>
+      <div class="ps-actions">
+        <button class="ps-action-btn ps-action-btn--primary" id="btn-run-model-sidebar" type="button"
+                hx-post="/run"
+                hx-include="#main-form"
+                hx-target="#model-output-area"
+                hx-swap="innerHTML"
+                hx-indicator="#run-spinner">
+          <span class="ps-action-icon">▶</span> Run
+          <span id="run-spinner" class="htmx-indicator run-spinner">…</span>
+        </button>
+        <button class="ps-action-btn"
+                id="btn-save"
+                type="button"
+                hx-post="/scenarios/save"
+                hx-include="#main-form"
+                hx-target="#saved-scenario-panel"
+                hx-swap="outerHTML"
+                hx-indicator="#save-spinner"
+                hx-disabled-elt="this">
+          <span class="ps-action-icon">💾</span> Save
+          <span id="save-spinner" class="htmx-indicator save-spinner">…</span>
+        </button>
+      </div>
+    </div>
+
+    {# ── Compact active-scenario status (project-level, no scenario management) ── #}
+    <div id="saved-scenario-panel">
+      {% include "partials/scenario_workspace.html" %}
+    </div>
+
+    {# ── Phase P2-FIX-2: Governance / R99/R102 / G20 panel is
+       the reviewer surface. Hidden in normal mode. #}
+    {% if audit_mode %}
+    <div class="ps-section">
+      <div class="ps-section-label">Governance</div>
+      <div class="ps-gov-list">
+        <div class="ps-gov-item ps-gov-item--blocked">
+          <div class="ps-gov-label">G20 Gate</div>
+          <span class="badge badge-blocked">BLOCKED</span>
+        </div>
+        <div class="ps-gov-item">
+          <div class="ps-gov-label">R99/R102 Promotion</div>
+          <span class="badge badge-notapproved">NOT APPROVED</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="ps-section">
+      <div class="ps-section-label">Downloads</div>
+      <div class="ps-downloads">
+        <a href="/download" class="ps-download-item">
+          <span>Export</span> Model Export
+        </a>
+        <a href="/exports/runtime-summary.csv?project={{ project_record.project_code if project_record else project_ctx.id }}" class="ps-download-item">
+          <span>CSV</span> Runtime Summary
+        </a>
+        <a href="/exports/institutional-workbook.xlsx?project={{ project_record.project_code if project_record else project_ctx.id }}" class="ps-download-item">
+          <span>XLSX</span> Workbook
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <aside class="sidebar-input" id="sidebar-input">
+    {% block sidebar_input %}{% endblock %}
+  </aside>
+
+  <main class="content" id="main-canvas">
+    {% block body %}{% endblock %}
+  </main>
+</div>
+
+{% include "partials/_app_footer.html" %}
+
+<script>
+  function activateNav(el) {
+    document.querySelectorAll('.sidebar-nav-link').forEach(function(link) {
+      link.classList.remove('active');
+    });
+    if (el) el.classList.add('active');
+  }
+
+  document.body.addEventListener('htmx:beforeRequest', function(e) {
+    if (e.detail.target) e.detail.target.classList.add('htmx-loading');
+  });
+  document.body.addEventListener('htmx:afterRequest', function(e) {
+    if (e.detail.target) e.detail.target.classList.remove('htmx-loading');
+  });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.input-group-summary').forEach(function(summary) {
+      summary.addEventListener('click', function() {
+        var group = summary.parentElement;
+        if (group.hasAttribute('open')) {
+          group.removeAttribute('open');
+        } else {
+          group.setAttribute('open', '');
+        }
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

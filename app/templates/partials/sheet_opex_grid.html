@@ -1,0 +1,545 @@
+{#
+  sheet_opex_grid.html — spreadsheet-style OPEX grid
+
+  Consumes: opex_vm (OpexViewModel from app/ui/opex_view_model.py)
+            is_user_project (bool, passed by workspace_shell.html context)
+
+  CSS namespace: .ox-* (isolated, does not touch global styles.css)
+
+  Excel column structure:
+    Code (sticky) | Line Item (sticky) | Budget kEUR (Y1) | Infl % | WHT | Y1 | Y2 … YN
+
+  Sticky contract:
+    .ox-grid-wrapper is the ONLY scroll container (overflow-x: auto; overflow-y: auto).
+    No ancestor may have overflow: hidden.
+    Sticky columns (Code, Label) are relative to the wrapper, not the viewport.
+
+  Editability:
+    Sub-lines with is_editable=True render an <input type="number"> for Y1 Budget.
+    B.13 Contingency lines and non-user projects render read-only spans.
+    Year columns Y2–YN are always derived — never editable.
+
+  PR D scope:
+    No Inputs control tower. No CSS outside .ox-* namespace.
+    No engine, persistence, or route changes beyond adding opex_vm to context.
+#}
+
+{% if not opex_vm %}
+{# Fallback — view model not injected (should not happen in production) #}
+<div class="ox-unavailable">
+  OPEX grid unavailable — view model not loaded.
+</div>
+{% else %}
+
+<style>
+/* ── .ox-* namespace — OPEX grid only ─────────────────────────────── */
+.ox-grid-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 72vh;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+}
+
+.ox-grid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 900px;
+  table-layout: auto;
+  font-size: 0.82rem;
+}
+
+/* ── Sticky header ──────────────────────────────────────────────────── */
+.ox-grid thead tr {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2, #f3f4f6);
+}
+
+.ox-grid thead th {
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  border-bottom: 2px solid var(--border, #d1d5db);
+  white-space: nowrap;
+  color: var(--text-muted, #6b7280);
+}
+
+.ox-grid thead th.ox-col-year,
+.ox-grid thead th.ox-col-budget,
+.ox-grid thead th.ox-col-infl,
+.ox-grid thead th.ox-col-wht {
+  text-align: right;
+}
+
+/* ── Sticky first two columns ───────────────────────────────────────── */
+.ox-sticky-col {
+  position: sticky;
+  background: var(--surface, #fff);
+  z-index: 2;
+}
+
+.ox-grid thead .ox-sticky-col {
+  background: var(--surface-2, #f3f4f6);
+  z-index: 4;
+}
+
+.ox-col-code {
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+}
+
+.ox-col-code.ox-sticky-col  { left: 0; }
+.ox-col-label.ox-sticky-col { left: 72px; min-width: 200px; }
+
+/* ── Cell base ──────────────────────────────────────────────────────── */
+.ox-grid td {
+  padding: 0.28rem 0.55rem;
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
+  vertical-align: middle;
+}
+
+/* ── Group header rows ──────────────────────────────────────────────── */
+.ox-group-row td {
+  background: var(--surface-2, #f3f4f6);
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.ox-group-row--contingency td {
+  font-style: italic;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── Sub-line rows ──────────────────────────────────────────────────── */
+.ox-line-row:hover td {
+  background: var(--hover, #f9fafb);
+}
+
+.ox-line-indent {
+  padding-left: 1.4rem !important;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.77rem;
+}
+
+.ox-line-row td.ox-sticky-col {
+  background: var(--surface, #fff);
+}
+
+.ox-line-row:hover td.ox-sticky-col {
+  background: var(--hover, #f9fafb);
+}
+
+/* ── Year + numeric columns ─────────────────────────────────────────── */
+.ox-col-year,
+.ox-col-budget,
+.ox-col-infl,
+.ox-col-wht {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ox-col-year {
+  min-width: 68px;
+}
+
+.ox-col-budget {
+  min-width: 80px;
+}
+
+.ox-col-infl,
+.ox-col-wht {
+  min-width: 52px;
+}
+
+/* ── Y1 column (same width as budget — they're the same value) ──────── */
+.ox-col-y1 {
+  min-width: 72px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text, #111827);
+}
+
+/* ── Value display ──────────────────────────────────────────────────── */
+.ox-value--readonly {
+  color: var(--text-muted, #6b7280);
+}
+
+.ox-value--derived {
+  color: var(--text-muted, #6b7280);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+
+.ox-value--muted {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.76rem;
+}
+
+.ox-group-subtotal {
+  font-weight: 600;
+}
+
+/* ── Editable input ─────────────────────────────────────────────────── */
+.ox-input {
+  width: 78px;
+  text-align: right;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 3px;
+  padding: 0.18rem 0.3rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  background: var(--input-bg, #fff);
+  color: var(--text, #111827);
+}
+
+.ox-input:focus {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 0;
+}
+
+/* ── Total rows ─────────────────────────────────────────────────────── */
+.ox-total-row td {
+  border-top: 2px solid var(--border, #d1d5db);
+  font-weight: 700;
+  font-size: 0.83rem;
+  background: var(--surface-2, #f3f4f6);
+}
+
+.ox-total-row--grand td {
+  border-top: 3px double var(--border, #d1d5db);
+  background: var(--surface-2, #f3f4f6);
+}
+
+.ox-amount-total {
+  font-weight: 700;
+}
+
+.ox-amount-total--grand {
+  color: var(--primary, #2563eb);
+}
+
+/* ── Contingency rows ───────────────────────────────────────────────── */
+.ox-contingency-row td {
+  border-top: 1px dashed var(--border, #d1d5db);
+  font-style: italic;
+  color: var(--text-muted, #6b7280);
+  background: var(--surface-2, #f3f4f6);
+}
+
+/* ── Readonly notice ────────────────────────────────────────────────── */
+.ox-readonly-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── KPI strip ──────────────────────────────────────────────────────── */
+.ox-kpi-strip {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.ox-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ox-kpi-card__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6b7280);
+  text-transform: uppercase;
+}
+
+.ox-kpi-card__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
+}
+
+.ox-kpi-card__unit {
+  font-size: 0.72rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── Unavailable fallback ───────────────────────────────────────────── */
+.ox-unavailable {
+  padding: 1rem;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border, #d1d5db);
+  border-radius: 4px;
+}
+
+/* ── Year header band (Y2–YN muted to signal derived) ──────────────── */
+.ox-grid thead th.ox-col-year--derived {
+  color: var(--text-muted, #9ca3af);
+  font-weight: 400;
+}
+
+/* ── Dark theme overrides ───────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .ox-grid-wrapper    { border-color: var(--border, #374151); }
+  .ox-grid thead tr   { background: var(--surface-2, #1f2937); }
+  .ox-grid thead th   { border-color: var(--border, #374151); color: var(--text-muted, #9ca3af); }
+  .ox-sticky-col      { background: var(--surface, #111827); }
+  .ox-grid thead .ox-sticky-col { background: var(--surface-2, #1f2937); }
+  .ox-group-row td    { background: var(--surface-2, #1f2937); }
+  .ox-line-row:hover td         { background: var(--hover, #1f2937); }
+  .ox-line-row:hover td.ox-sticky-col { background: var(--hover, #1f2937); }
+  .ox-total-row td    { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .ox-total-row--grand td { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .ox-contingency-row td { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .ox-readonly-notice { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .ox-input           { background: var(--input-bg, #1f2937); color: var(--text, #f9fafb); border-color: var(--border, #374151); }
+  .ox-line-row td.ox-sticky-col { background: var(--surface, #111827); }
+}
+
+:root[data-theme="dark"] .ox-grid-wrapper    { border-color: var(--border, #374151); }
+:root[data-theme="dark"] .ox-grid thead tr   { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .ox-grid thead th   { border-color: var(--border, #374151); color: var(--text-muted, #9ca3af); }
+:root[data-theme="dark"] .ox-sticky-col      { background: var(--surface, #111827); }
+:root[data-theme="dark"] .ox-grid thead .ox-sticky-col { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .ox-group-row td    { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .ox-line-row:hover td         { background: var(--hover, #1f2937); }
+:root[data-theme="dark"] .ox-line-row:hover td.ox-sticky-col { background: var(--hover, #1f2937); }
+:root[data-theme="dark"] .ox-total-row td    { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .ox-total-row--grand td { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .ox-contingency-row td { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .ox-input           { background: var(--input-bg, #1f2937); color: var(--text, #f9fafb); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .ox-line-row td.ox-sticky-col { background: var(--surface, #111827); }
+
+:root[data-theme="light"] .ox-sticky-col     { background: var(--surface, #fff); }
+:root[data-theme="light"] .ox-grid thead .ox-sticky-col { background: var(--surface-2, #f3f4f6); }
+:root[data-theme="light"] .ox-line-row td.ox-sticky-col { background: var(--surface, #fff); }
+</style>
+
+{# ── Readonly notice ─────────────────────────────────────────────────────── #}
+{% if not opex_vm.is_user_project %}
+<div class="ox-readonly-notice">
+  <span>🔒</span>
+  <span>
+    <strong>Protected original — read only.</strong>
+    Duplicate or Save As to create an editable copy.
+  </span>
+</div>
+{% endif %}
+
+{# ── KPI strip ───────────────────────────────────────────────────────────── #}
+<div class="ox-kpi-strip">
+  <div class="ox-kpi-card">
+    <div class="ox-kpi-card__label">Total OPEX Y1</div>
+    <div class="ox-kpi-card__value">{{ "%.1f"|format(opex_vm.y1_total_opex) }}</div>
+    <div class="ox-kpi-card__unit">kEUR</div>
+  </div>
+  <div class="ox-kpi-card">
+    <div class="ox-kpi-card__label">Year {{ opex_vm.display_years }} Total</div>
+    <div class="ox-kpi-card__value">{{ "%.1f"|format(opex_vm.final_year_total_opex) }}</div>
+    <div class="ox-kpi-card__unit">kEUR (incl. contingency)</div>
+  </div>
+  {% if opex_vm.opex_per_mw_y1 is not none %}
+  <div class="ox-kpi-card">
+    <div class="ox-kpi-card__label">OPEX / MW (Y1)</div>
+    <div class="ox-kpi-card__value">{{ "%.1f"|format(opex_vm.opex_per_mw_y1) }}</div>
+    <div class="ox-kpi-card__unit">kEUR/MW</div>
+  </div>
+  {% endif %}
+  {% if opex_vm.opex_per_mwh_y1 is not none %}
+  <div class="ox-kpi-card">
+    <div class="ox-kpi-card__label">OPEX / MWh (Y1)</div>
+    <div class="ox-kpi-card__value">{{ "%.2f"|format(opex_vm.opex_per_mwh_y1) }}</div>
+    <div class="ox-kpi-card__unit">EUR/MWh</div>
+  </div>
+  {% endif %}
+  <div class="ox-kpi-card">
+    <div class="ox-kpi-card__label">Contingency</div>
+    <div class="ox-kpi-card__value">{{ "%.1f"|format(opex_vm.contingency_rate) }}%</div>
+    <div class="ox-kpi-card__unit">of total excl. contingency</div>
+  </div>
+</div>
+
+{# ── Build year header list once ─────────────────────────────────────────── #}
+{% set display_years = opex_vm.display_years %}
+
+{# ── Grid ────────────────────────────────────────────────────────────────── #}
+<div class="ox-grid-wrapper">
+  <table class="ox-grid" aria-label="OPEX breakdown — {{ opex_vm.project_name }}">
+    <thead>
+      <tr>
+        <th class="ox-col-code ox-sticky-col" scope="col">Code</th>
+        <th class="ox-col-label ox-sticky-col" scope="col">Line Item</th>
+        <th class="ox-col-budget" scope="col">Budget kEUR</th>
+        <th class="ox-col-infl" scope="col">Infl %</th>
+        <th class="ox-col-wht" scope="col">WHT</th>
+        {# Y1 is the first data column (same as Budget for most lines) #}
+        <th class="ox-col-y1" scope="col">Y1</th>
+        {# Y2–YN: all derived, visually muted #}
+        {% for yr in range(2, display_years + 1) %}
+        <th class="ox-col-year ox-col-year--derived" scope="col">Y{{ yr }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for group in opex_vm.groups %}
+
+        {# ── Group header row ──────────────────────────────────────────── #}
+        {% set grow_class = "ox-group-row" %}
+        {% if group.is_contingency %}{% set grow_class = grow_class ~ " ox-group-row--contingency" %}{% endif %}
+        <tr class="{{ grow_class }}">
+          <td class="ox-col-code ox-sticky-col">{{ group.code }}</td>
+          <td class="ox-col-label ox-sticky-col">
+            {{ group.name }}
+            {% if group.is_contingency and group.contingency_pct %}
+              <span class="ox-value--muted">({{ "%.0f"|format(group.contingency_pct) }}%)</span>
+            {% endif %}
+          </td>
+          <td class="ox-col-budget ox-group-subtotal">
+            {# For non-contingency groups show Y1 subtotal; contingency group shows derived note #}
+            {% if group.is_contingency %}
+              <span class="ox-value--derived">derived</span>
+            {% elif group.subtotal_per_year and group.subtotal_per_year[0] != 0 %}
+              {{ "%.2f"|format(group.subtotal_per_year[0]) }}
+            {% else %}
+              <span class="ox-value--muted">—</span>
+            {% endif %}
+          </td>
+          <td class="ox-col-infl">
+            {% if not group.is_contingency %}
+              <span class="ox-value--muted">{{ "%.1f"|format(group.inflation_pct) }}%</span>
+            {% endif %}
+          </td>
+          <td class="ox-col-wht"></td>
+          {# Year subtotals for group #}
+          {% for yr in range(display_years) %}
+          <td class="ox-col-{% if yr == 0 %}y1{% else %}year{% endif %} ox-group-subtotal">
+            {% if group.is_contingency %}
+              {# contingency amounts are in opex_vm.contingency_by_year, not group subtotals #}
+              {% if yr < opex_vm.contingency_by_year|length %}
+                <span class="ox-value--derived">{{ "%.2f"|format(opex_vm.contingency_by_year[yr]) }}</span>
+              {% endif %}
+            {% else %}
+              {% if yr < group.subtotal_per_year|length and group.subtotal_per_year[yr] != 0 %}
+                {{ "%.2f"|format(group.subtotal_per_year[yr]) }}
+              {% else %}
+                <span class="ox-value--muted">—</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+
+        {# ── Sub-line rows ─────────────────────────────────────────────── #}
+        {% for line in group.lines if line.is_active %}
+        <tr class="ox-line-row" id="{{ line.row_id | replace(':', '-') }}">
+          <td class="ox-col-code ox-sticky-col ox-line-indent">{{ line.code }}</td>
+          <td class="ox-col-label ox-sticky-col">{{ line.name }}</td>
+          <td class="ox-col-budget">
+            {% if line.is_editable %}
+              <input
+                type="number"
+                name="opex_{{ line.code }}_y1_keur"
+                value="{{ "%.2f"|format(line.y1_keur) }}"
+                step="0.01"
+                min="0"
+                class="ox-input"
+                aria-label="{{ line.name }} Y1 budget in kEUR"
+              />
+            {% elif line.is_derived %}
+              <span class="ox-value--derived">{{ "%.2f"|format(line.y1_keur) }}</span>
+            {% else %}
+              <span class="ox-value--readonly">{{ "%.2f"|format(line.y1_keur) }}</span>
+            {% endif %}
+          </td>
+          <td class="ox-col-infl ox-value--muted">{{ "%.1f"|format(line.inflation_pct) }}%</td>
+          <td class="ox-col-wht ox-value--muted">
+            {% if line.wht_flag %}✓{% endif %}
+          </td>
+          {# Year values Y1–YN #}
+          {% for yr in range(display_years) %}
+          <td class="ox-col-{% if yr == 0 %}y1{% else %}year ox-value--derived{% endif %}">
+            {% if yr < line.year_values|length %}
+              {% if line.year_values[yr] != 0 %}
+                {{ "%.2f"|format(line.year_values[yr]) }}
+              {% else %}
+                <span class="ox-value--muted">—</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+
+      {% endfor %}
+
+      {# ── Total excl. contingency ─────────────────────────────────────── #}
+      <tr class="ox-total-row">
+        <td class="ox-col-code ox-sticky-col"></td>
+        <td class="ox-col-label ox-sticky-col">Total OPEX excl. Contingency</td>
+        <td class="ox-col-budget ox-amount-total">{{ "%.2f"|format(opex_vm.total_excl_contingency[0] if opex_vm.total_excl_contingency else 0) }}</td>
+        <td class="ox-col-infl"></td>
+        <td class="ox-col-wht"></td>
+        {% for yr in range(display_years) %}
+        <td class="ox-col-{% if yr == 0 %}y1{% else %}year{% endif %} ox-amount-total">
+          {% if yr < opex_vm.total_excl_contingency|length %}
+            {{ "%.2f"|format(opex_vm.total_excl_contingency[yr]) }}
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      {# ── Contingency row ─────────────────────────────────────────────── #}
+      <tr class="ox-contingency-row">
+        <td class="ox-col-code ox-sticky-col"></td>
+        <td class="ox-col-label ox-sticky-col">Contingency ({{ "%.0f"|format(opex_vm.contingency_rate) }}%)</td>
+        <td class="ox-col-budget ox-value--derived">{{ "%.2f"|format(opex_vm.contingency_by_year[0] if opex_vm.contingency_by_year else 0) }}</td>
+        <td class="ox-col-infl"></td>
+        <td class="ox-col-wht"></td>
+        {% for yr in range(display_years) %}
+        <td class="ox-col-{% if yr == 0 %}y1{% else %}year{% endif %} ox-value--derived">
+          {% if yr < opex_vm.contingency_by_year|length %}
+            {{ "%.2f"|format(opex_vm.contingency_by_year[yr]) }}
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      {# ── Grand total ─────────────────────────────────────────────────── #}
+      <tr class="ox-total-row ox-total-row--grand">
+        <td class="ox-col-code ox-sticky-col"></td>
+        <td class="ox-col-label ox-sticky-col">Total OPEX</td>
+        <td class="ox-col-budget ox-amount-total ox-amount-total--grand">{{ "%.2f"|format(opex_vm.y1_total_opex) }}</td>
+        <td class="ox-col-infl"></td>
+        <td class="ox-col-wht"></td>
+        {% for yr in range(display_years) %}
+        <td class="ox-col-{% if yr == 0 %}y1{% else %}year{% endif %} ox-amount-total{% if yr == 0 %} ox-amount-total--grand{% endif %}">
+          {% if yr < opex_vm.total_incl_contingency|length %}
+            {{ "%.2f"|format(opex_vm.total_incl_contingency[yr]) }}
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% endif %}{# end opex_vm guard #}

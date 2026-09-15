@@ -1,0 +1,45 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — REPORTING DASHBOARD WRAPPER — FS COMPARE  ·  UI-6
+  -----------------------------------------------------------------------
+  Renders the V4-2 Part D `scenario_fs_compare.html` inside the
+  institutional reporting dashboard chrome, with the new compare
+  selector / toolbar (PART F).
+  =======================================================================
+-->
+<section class="fo-reporting-dashboard" data-fo-reporting-pack="fs-compare">
+  <header class="fo-reporting-dashboard__header">
+    <div>
+      <h1 class="fo-reporting-dashboard__title">Financial Statement Compare</h1>
+      <p class="fo-reporting-dashboard__subtitle">Side-by-side comparison of two scenarios.</p>
+    </div>
+    <div class="fo-statements-toolbar">
+      <div class="fo-statements-toolbar__group">
+        <span class="fo-statements-toolbar__label">Scenario A</span>
+        <select class="fo-statements-toolbar__select"
+                aria-label="Scenario A">
+          <option selected>{{ active_scenario_name|default("Active scenario") }}</option>
+        </select>
+      </div>
+      <div class="fo-statements-toolbar__group">
+        <span class="fo-statements-toolbar__label">Scenario B</span>
+        <select class="fo-statements-toolbar__select"
+                aria-label="Scenario B">
+          <option selected>Select scenario</option>
+        </select>
+      </div>
+      <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+        <button type="button" class="fo-statements-toolbar__btn"
+                onclick="window.print()"
+                aria-label="Print compare">🖶 Print</button>
+        <button type="button" class="fo-statements-toolbar__btn"
+                data-fo-pack-export
+                aria-label="Export compare">⬇ Export</button>
+      </div>
+    </div>
+  </header>
+
+  <article class="fo-reporting-dashboard__card" style="grid-column: 1 / -1;">
+    {% include "partials/scenario_fs_compare.html" %}
+  </article>
+</section>

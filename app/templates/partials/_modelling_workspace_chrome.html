@@ -1,0 +1,141 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE CHROME  ·  UI-5
+  -----------------------------------------------------------------------
+  Generic workspace shell used by Revenue, OPEX, CAPEX, Senior Debt, and
+  Tax panels. Established by UI-4 (Overview + Inputs) and now applied
+  across the remaining Modelling sheet group.
+
+  This partial:
+    1. Renders the section navigator (PART D) — sticky on desktop, wraps
+       to a horizontal pill row below 1024 px.
+    2. Renders the right-side context panel (PART A) — pre-computed
+       facts already present in `project_ctx` / `current_context` /
+       `runtime_summary`. Never invents new calculations.
+    3. Renders a status / dirty / validation summary in the header.
+    4. Wraps the inner sheet (provided as `body` block) inside a
+       `<div class="fo-modelling-workspace__body">` container.
+
+  Consumes only --fo-* tokens from tokens.css (UI-1) and is layered
+  ABOVE legacy chrome + sheet content — no edit to existing
+  stylesheets, no engine / route / calculation / persistence change.
+
+  Each panel invokes this partial with:
+    {% with kind="revenue" sections=[...] context_items=[...] %}
+      {% include "partials/_modelling_workspace_chrome.html" %}
+    {% endwith %}
+  where `body` is the rendered sheet HTML string.
+
+  Sections / context items declared per sheet (UI-5 brief):
+    revenue  : Production, PPA / Tariff, Market / Merchant,
+               CO2 / Certificates, Revenue Summary
+               context: PPA tariff, Merchant exposure, Curtailment,
+                        Price assumptions
+    opex     : Fixed OPEX, Variable OPEX, Maintenance, Insurance,
+               Management Fees, Other Costs
+               context: Total OPEX, Largest categories, Inflation,
+                        Escalation
+    capex    : Pre-construction, Construction, Equipment, Installation,
+               Contingency, IDC
+               context: Total CAPEX, Construction summary, IDC summary
+    debt     : Senior Debt Sizing, Pricing, Repayment, Reserves, Fees
+               context: Debt sizing mode, Target DSCR, Tenor, Margin
+    tax      : CIT Rate, Loss Carryforward, WHT, Depreciation,
+               Country Template
+               context: Tax regime, Carry-forward, Depreciation,
+                        Country template
+  =======================================================================
+-->
+<section class="fo-modelling-workspace" data-fo-mod-kind="{{ kind }}">
+
+  <header class="fo-modelling-workspace__header">
+    <div class="fo-modelling-workspace__title-row">
+      <h1 class="fo-modelling-workspace__title">{{ title }}</h1>
+      <div class="fo-modelling-workspace__status">
+        {% if current_context and current_context.dirty %}
+          <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--dirty">
+            <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
+            Unsaved
+          </span>
+        {% else %}
+          <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--saved">
+            <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
+            Saved
+          </span>
+        {% endif %}
+        {% if validation_summary %}
+          {% set _pc = validation_summary.get("pass_count", 0) %}
+          {% set _wc = validation_summary.get("warn_count", 0) %}
+          {% set _fc = validation_summary.get("fail_count", 0) %}
+          {% if _fc > 0 %}
+            <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--fail">
+              <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">✕</span>
+              {{ _fc }} {{ _fc == 1 and "issue" or "issues" }}
+            </span>
+          {% elif _wc > 0 %}
+            <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--warn">
+              <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">!</span>
+              {{ _wc }} {{ _wc == 1 and "warning" or "warnings" }}
+            </span>
+          {% elif _pc > 0 %}
+            <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--ok">
+              <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">✓</span>
+              {{ _pc }} checks
+            </span>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% if description %}
+    <p class="fo-modelling-workspace__description">{{ description }}</p>
+    {% endif %}
+  </header>
+
+  <div class="fo-modelling-workspace__layout">
+
+    {# ── Section navigator (PART D) ────────────────────────────── #}
+    {% if sections and sections|length > 0 %}
+    <aside class="fo-modelling-workspace__nav" aria-label="{{ title }} sections">
+      <h2 class="fo-modelling-workspace__nav-title">Sections</h2>
+      <ul class="fo-modelling-workspace__nav-list">
+        {% for section in sections %}
+        <li>
+          <a class="fo-modelling-workspace__nav-link"
+             href="#fo-mod-section-{{ kind }}-{{ section.id }}">
+            <span class="fo-modelling-workspace__nav-dot" aria-hidden="true"></span>
+            <span class="fo-modelling-workspace__nav-label">{{ section.label }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+    {% endif %}
+
+    {# ── Main content column ───────────────────────────────────── #}
+    <div class="fo-modelling-workspace__content">
+      {{ body|safe }}
+    </div>
+
+    {# ── Context panel (PART A right side) ────────────────────── #}
+    {% if context_items and context_items|length > 0 %}
+    <aside class="fo-modelling-workspace__context" aria-label="{{ title }} context">
+      <h2 class="fo-modelling-workspace__context-title">Context</h2>
+      <dl class="fo-modelling-workspace__context-list">
+        {% for item in context_items %}
+        <div class="fo-modelling-workspace__context-row">
+          <dt class="fo-modelling-workspace__context-label">{{ item.label }}</dt>
+          <dd class="fo-modelling-workspace__context-value{% if item.placeholder %} fo-modelling-workspace__context-value--placeholder{% endif %}">
+            {{ item.value }}
+          </dd>
+          {% if item.hint %}
+          <p class="fo-modelling-workspace__context-hint">{{ item.hint }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </dl>
+    </aside>
+    {% endif %}
+
+  </div>
+
+</section>

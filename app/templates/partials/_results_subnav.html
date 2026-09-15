@@ -1,0 +1,144 @@
+{# ── WF-5: Results sub-navigation — 6 grouped clusters ────────────
+   Presentation only. All existing switchTab calls, panel IDs and
+   routes are preserved. Group labels added; buttons unchanged.
+   No route deletion. No panel deletion. Hidden != deleted. #}
+<nav class="results-subnav"
+     id="results-subnav"
+     data-wf5-subnav="results-grouped"
+     aria-label="Results sub-navigation">
+
+  {# ── Group 1: Production ──────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-production">
+    <div class="results-subnav-group-label">Production</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-revenue"
+            data-target-tab="revenue"
+            data-wf5-results-area="revenue"
+            aria-controls="panel-revenue"
+            onclick="switchTab('revenue')">
+      Revenue
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-production"
+            data-target-tab="production"
+            data-wf5-results-area="production"
+            aria-controls="panel-production"
+            onclick="switchTab('production')">
+      Production
+    </button>
+  </div>
+
+  {# ── Group 2: Costs ───────────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-costs">
+    <div class="results-subnav-group-label">Costs</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-opex"
+            data-target-tab="opex"
+            data-wf5-results-area="opex"
+            aria-controls="panel-opex"
+            onclick="switchTab('opex')">
+      OPEX
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-capex"
+            data-target-tab="capex"
+            data-wf5-results-area="capex"
+            aria-controls="panel-capex"
+            onclick="switchTab('capex')">
+      CAPEX
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-construction"
+            data-target-tab="construction"
+            data-wf5-results-area="construction"
+            aria-controls="panel-construction"
+            onclick="switchTab('construction')">
+      Construction
+    </button>
+  </div>
+
+  {# ── Group 3: Financing ───────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-financing">
+    <div class="results-subnav-group-label">Financing</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-senior-debt"
+            data-target-tab="senior-debt"
+            data-wf5-results-area="senior-debt"
+            aria-controls="panel-senior-debt"
+            onclick="switchTab('senior-debt')">
+      Senior Debt
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-shl"
+            data-target-tab="shl"
+            data-wf5-results-area="shl"
+            aria-controls="panel-shl"
+            onclick="switchTab('shl')">
+      SHL
+    </button>
+  </div>
+
+  {# ── Group 4: Tax ─────────────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-tax">
+    <div class="results-subnav-group-label">Tax</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-tax"
+            data-target-tab="tax"
+            data-wf5-results-area="tax"
+            aria-controls="panel-tax"
+            onclick="switchTab('tax')">
+      Tax
+    </button>
+  </div>
+
+  {# ── Group 5: P&L / Cash ──────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-pl-cash">
+    <div class="results-subnav-group-label">P&amp;L / Cash</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-pl"
+            data-target-tab="pl"
+            data-wf5-results-area="pl"
+            aria-controls="panel-pl"
+            onclick="switchTab('pl')">
+      P&amp;L
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-cashflow"
+            data-target-tab="cashflow"
+            data-wf5-results-area="cashflow"
+            aria-controls="panel-cashflow"
+            onclick="switchTab('cashflow')">
+      Cash Flow
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-balance"
+            data-target-tab="balance"
+            data-wf5-results-area="balance"
+            aria-controls="panel-balance"
+            onclick="switchTab('balance')">
+      Balance Sheet
+    </button>
+  </div>
+
+  {# ── Group 6: Returns ─────────────────────────────────────────── #}
+  <div class="results-subnav-group" id="results-group-returns">
+    <div class="results-subnav-group-label">Returns</div>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-distributions"
+            data-target-tab="distributions"
+            data-wf5-results-area="distributions"
+            aria-controls="panel-distributions"
+            onclick="switchTab('distributions')">
+      Distributions
+    </button>
+    <button class="results-subnav-tab"
+            id="results-subnav-tab-sponsor"
+            data-target-tab="sponsor"
+            data-wf5-results-area="sponsor"
+            aria-controls="panel-sponsor"
+            onclick="switchTab('sponsor')">
+      Sponsor
+    </button>
+  </div>
+
+</nav>

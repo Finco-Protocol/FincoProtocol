@@ -1,0 +1,175 @@
+{# ── Phase 25B-2.1 — Multi-Compare Picker (selection entry point) ── #}
+{# Read-only selection UI. Lets the user pick 2-4 saved scenarios and   #}
+{# open the existing /scenarios/compare-multi?project=...&scenario_ids= #}
+{# ... endpoint. No new backend route, no new financial logic, no DB   #}
+{# writes. The Compare button is a real <a> with an href so it works   #}
+{# even with JavaScript disabled (form GET fallback). Inline <script>  #}
+{# only updates the href and enforces 2-4 selection.                   #}
+{# Hard contract:                                                        #}
+{#   - This partial is shown only when is_user_project is True          #}
+{#     (factory projects — Generic Wind Reference / Generic Solar Reference — get the existing 2-way flow #}
+{#     unchanged).                                                        #}
+{#   - The list of scenarios is the same scenario_summary_cards already #}
+{#     used by the existing Saved Versions list.                        #}
+{#   - Selection limit is 2-4 (matches MULTI_COMPARE_MIN_SCENARIOS=2   #}
+{#     and MULTI_COMPARE_MAX_SCENARIOS=4 in                             #}
+{#     app/persistence/exports_repository.py).                          #}
+{#   - The Compare button is disabled when fewer than 2 are selected.   #}
+{#   - The Compare button shows a count badge: "Compare 2 of 2-4".      #}
+{# ────────────────────────────────────────────────────────────────────── #}
+
+{% set picker_project_code = project_record.project_code if project_record else '' %}
+{% set picker_cards = scenario_summary_cards or [] %}
+{% set picker_count = picker_cards|length %}
+
+<div class="scm-pick" data-testid="multi-compare-picker"
+     data-min-scenarios="2" data-max-scenarios="4"
+     data-project-code="{{ picker_project_code }}">
+
+  <div class="scm-pick-header">
+    <span class="scm-pick-title">Multi-Compare</span>
+    <span class="scm-pick-subtitle">pick 2-4 saved scenarios</span>
+  </div>
+
+  {% if is_exploratory_project %}
+  <div class="scm-pick-exploratory-banner" role="note" aria-label="Exploratory multi-compare warning">
+    <span class="badge badge-warn">EXPLORATORY</span>
+    Generic project. Multi-compare is exploratory / not reference-validated.
+  </div>
+  {% else %}
+  <div class="scm-pick-banner" role="note" aria-label="Multi-compare info">
+    Multi-compare is descriptive only. The first scenario you pick is the Base reference for deltas.
+  </div>
+  {% endif %}
+
+  {% if picker_count == 0 %}
+    <div class="scm-pick-empty" data-testid="multi-compare-picker-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No saved scenarios</div>
+        <div class="ps-history-meta">Save at least 2 scenarios to enable multi-compare.</div>
+      </div>
+    </div>
+  {% elif picker_count == 1 %}
+    <div class="scm-pick-empty" data-testid="multi-compare-picker-one">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Only 1 saved scenario</div>
+        <div class="ps-history-meta">Save at least 1 more scenario to enable multi-compare.</div>
+      </div>
+      {# Still render the existing one as a disabled (checked) row so the
+         UI is consistent — but the Compare button stays disabled. #}
+      {% for card in picker_cards %}
+      <label class="scm-pick-row scm-pick-row--disabled" data-testid="multi-compare-picker-row">
+        <input type="checkbox" class="scm-pick-cb" checked disabled
+               data-scenario-id="{{ card.scenario_id }}"
+               aria-label="Scenario {{ card.scenario_name }} (only scenario, locked)">
+        <span class="scm-pick-row-name">{{ card.scenario_name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  {% else %}
+    <form class="scm-pick-form" method="get" action="/scenarios/compare-multi"
+          data-testid="multi-compare-picker-form">
+      <input type="hidden" name="project" value="{{ picker_project_code }}">
+
+      <div class="scm-pick-list" data-testid="multi-compare-picker-list">
+        {% for card in picker_cards %}
+        <label class="scm-pick-row" data-testid="multi-compare-picker-row">
+          <input type="checkbox" class="scm-pick-cb" name="scenario_id"
+                 value="{{ card.scenario_id }}"
+                 data-scenario-id="{{ card.scenario_id }}"
+                 data-scenario-name="{{ card.scenario_name }}"
+                 aria-label="Pick scenario {{ card.scenario_name }}">
+          <span class="scm-pick-row-name">{{ card.scenario_name }}</span>
+          {% if card.scenario_id == workspace_state.active_scenario_id %}
+            <span class="badge badge-pass scm-pick-row-active">Active</span>
+          {% endif %}
+          {% if card.equity_irr is not none %}
+            <span class="scm-pick-row-meta">
+              IRR {{ "%.1f"|format(card.equity_irr * 100) if card.equity_irr else "-" }}%
+            </span>
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="scm-pick-actions">
+        <span class="scm-pick-count" data-testid="multi-compare-picker-count"
+              id="scm-pick-count">0 of 2-4 selected</span>
+        <a href="#" class="scm-pick-compare-btn" id="scm-pick-compare-btn"
+           data-testid="multi-compare-picker-submit"
+           role="button" aria-disabled="true"
+           aria-label="Compare selected scenarios (open the multi-compare table)">
+          Compare selected scenarios
+        </a>
+        <noscript>
+          <button type="submit" class="scm-pick-compare-btn-fallback"
+                  data-testid="multi-compare-picker-submit-noscript">
+            Compare selected scenarios (no-JS fallback)
+          </button>
+        </noscript>
+      </div>
+    </form>
+  {% endif %}
+
+</div>
+
+{% if picker_count >= 2 %}
+{# Inline JS — minimal, vanilla, no dependencies. Updates the Compare
+   button href whenever the user toggles a checkbox. Enforces the
+   2-4 selection cap that matches MULTI_COMPARE_MIN/MAX_SCENARIOS. #}
+<script>
+(function () {
+  var root = document.querySelector('[data-testid="multi-compare-picker"]');
+  if (!root) return;
+  var minN = parseInt(root.getAttribute('data-min-scenarios') || '2', 10);
+  var maxN = parseInt(root.getAttribute('data-max-scenarios') || '4', 10);
+  var cbs = root.querySelectorAll('.scm-pick-cb');
+  var btn = root.querySelector('#scm-pick-compare-btn');
+  var countEl = root.querySelector('#scm-pick-count');
+  if (!btn || !countEl) return;
+
+  function update() {
+    var checked = [];
+    root.querySelectorAll('.scm-pick-cb:checked').forEach(function (cb) {
+      checked.push(cb.getAttribute('data-scenario-id'));
+    });
+    var n = checked.length;
+    countEl.textContent = n + ' of ' + minN + '-' + maxN + ' selected';
+
+    if (n < minN) {
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('scm-pick-compare-btn--disabled');
+      btn.removeAttribute('href');
+      return;
+    }
+    if (n > maxN) {
+      // Should not happen because we disable extra checkboxes, but defend.
+      btn.setAttribute('aria-disabled', 'true');
+      btn.classList.add('scm-pick-compare-btn--disabled');
+      btn.removeAttribute('href');
+      return;
+    }
+    var href = '/scenarios/compare-multi?project='
+      + encodeURIComponent(root.getAttribute('data-project-code') || '')
+      + '&scenario_ids=' + encodeURIComponent(checked.join(','));
+    btn.setAttribute('href', href);
+    btn.setAttribute('aria-disabled', 'false');
+    btn.classList.remove('scm-pick-compare-btn--disabled');
+  }
+
+  cbs.forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      // Enforce max
+      var checkedCount = root.querySelectorAll('.scm-pick-cb:checked').length;
+      if (cb.checked && checkedCount > maxN) {
+        cb.checked = false;
+      }
+      update();
+    });
+  });
+
+  // Initial state
+  update();
+})();
+</script>
+{% endif %}

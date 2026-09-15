@@ -1,0 +1,139 @@
+{# ── Phase 25B-2 — Multi-scenario compare (2-4 scenarios) ───────────── #}
+{# Read-only. Soft-error semantics: when multi_compare_error is set,    #}
+{# show a clear message instead of a 500. Otherwise show the multi-     #}
+{# scenario compare table (Base + N variants) with deltas vs Base.      #}
+{# Note: use bracket access (row['values']) to avoid Jinja2 confusion  #}
+{# with the built-in dict.values() method on `row` itself.              #}
+{# ────────────────────────────────────────────────────────────────────── #}
+<div class="scm-multi-compare" data-testid="multi-scenario-compare">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Multi</span>
+    <span class="scm-multi-heading-label">Multi-Scenario Compare</span>
+  </div>
+
+  {% if multi_compare_error %}
+    <div class="scm-multi-empty" data-testid="multi-compare-empty-state">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Multi-Compare Unavailable</div>
+        <div class="ps-history-meta">{{ multi_compare_error }}</div>
+      </div>
+    </div>
+  {% elif multi_compare_result and multi_compare_result['scenarios'] %}
+    {% set scenarios = multi_compare_result['scenarios'] %}
+    {% set base = scenarios[0] %}
+
+    {# ── EXPLORATORY banner (25B-2 safety) ── #}
+    {% if is_exploratory_project %}
+    <div class="scm-multi-exploratory-banner" role="note" aria-label="Exploratory multi-compare warning">
+      <span class="badge badge-warn">EXPLORATORY</span>
+      Multi-scenario compare is exploratory / not reference-validated.
+      Numbers are illustrative; do not use for lender / bank / external audit
+      decisions. The first scenario in the list is the Base reference.
+    </div>
+    {% else %}
+    <div class="scm-multi-banner" role="note" aria-label="Multi-compare source clarity">
+      Multi-scenario compare is descriptive only. It compares saved scenario
+      snapshots and saved runtime summaries, not unsaved browser draft values.
+      The first scenario in the list is the Base reference for deltas.
+    </div>
+    {% endif %}
+
+    {# ── Scenario chips (Base + N variants) ── #}
+    <div class="scm-multi-chips">
+      {% for sc in scenarios %}
+        {% if loop.first %}
+          <span class="scm-chip scm-chip--base" data-testid="scm-chip-base">
+            <span class="badge badge-runtime">Base</span>
+            <span class="scm-chip-name">{{ sc.scenario_name }}</span>
+          </span>
+        {% else %}
+          <span class="scm-chip" data-testid="scm-chip-variant">
+            <span class="scm-chip-name">{{ sc.scenario_name }}</span>
+          </span>
+        {% endif %}
+        {% if not loop.last %}<span class="scm-chip-vs">vs</span>{% endif %}
+      {% endfor %}
+    </div>
+
+    {# ── Compare table ── #}
+    <div class="scm-multi-table" data-testid="scm-multi-table">
+      <div class="scm-multi-row scm-multi-row--head">
+        <span>Metric</span>
+        {% for sc in scenarios %}
+          <span class="{% if loop.first %}scm-col-base{% endif %}">
+            {% if loop.first %}Base · {% endif %}{{ sc.scenario_name }}
+          </span>
+        {% endfor %}
+        {% if scenarios|length > 1 %}
+          <span>Deltas vs Base</span>
+        {% endif %}
+      </div>
+
+      {% for row in multi_compare_result['metrics'] %}
+        {% set rv = row['values'] %}
+        {% set rd = row['deltas'] %}
+        {% set rsc = row['sign_classes'] %}
+        <div class="scm-multi-row">
+          <span class="scm-multi-metric">{{ row['label'] }}</span>
+          {% for v in rv %}
+            {% set is_changed = (not loop.first) and rd[loop.index0] is not none and rd[loop.index0] != 0 %}
+            <span class="scm-multi-value {% if loop.first %}scm-col-base{% endif %} {% if is_changed %}scm-cell--changed{% endif %}">
+              {% if v is number %}
+                {{ "{:,.2f}".format(v|float) }}
+              {% elif v is string and v %}
+                {{ v }}
+              {% else %}
+                —
+              {% endif %}
+            </span>
+          {% endfor %}
+          {% if scenarios|length > 1 %}
+            <span class="scm-multi-deltas">
+              {% for d in rd %}
+                {% if not loop.first %}
+                  {% set sc_class = rsc[loop.index0] %}
+                  <span class="{{ sc_class }} scm-delta-token">
+                    {% if d is not none %}
+                      {{ "{:+.4g}".format(d|float) }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </span>
+                  {% if not loop.last %} · {% endif %}
+                {% endif %}
+              {% endfor %}
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      {# U7-ERROR-WARNING-CLEANUP: governance rows (G20 + R99/R102) are a
+         reviewer/audit-only concept and must never reach the normal user
+         path -- only render in audit_mode. #}
+      {% if audit_mode %}
+      {% for gov in multi_compare_result['governance_rows'] %}
+        {% set gv = gov['values'] %}
+        <div class="scm-multi-row scm-multi-row--gov">
+          <span class="scm-multi-metric">{{ gov['label'] }}</span>
+          {% for v in gv %}
+            <span class="scm-multi-value {% if loop.first %}scm-col-base{% endif %}">{{ v }}</span>
+          {% endfor %}
+          {% if scenarios|length > 1 %}
+            <span class="scm-multi-deltas">—</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty" data-testid="multi-compare-empty-state">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Multi-Compare Loaded</div>
+        <div class="ps-history-meta">Select 2-4 saved scenarios to start a multi-compare.</div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

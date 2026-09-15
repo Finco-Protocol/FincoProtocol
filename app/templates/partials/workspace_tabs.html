@@ -1,0 +1,34 @@
+<!-- Workspace Tabs — spreadsheet-like tab ribbon — Phase 9.5 -->
+{# P2-FIX-8 PR2: Old 20-tab ribbon not rendered in normal mode.
+   Five-area nav (workspace_shell ph-nav) is the normal-mode nav.
+   In reviewer/audit mode the legacy ribbon is available for reference. #}
+{% if audit_mode %}
+<div class="top-tabs-bar" id="top-tabs-bar">
+  <div class="top-tabs-inner">
+    <div class="tab-ribbon" id="tab-ribbon">
+
+      <button class="ws-tab active" id="tab-overview" data-tab="overview">Overview</button>
+      <button class="ws-tab" id="tab-inputs" data-tab="inputs">Inputs</button>
+      <button class="ws-tab" id="tab-scenario" data-tab="scenario">Scenarios</button>
+      <button class="ws-tab" id="tab-construction" data-tab="construction">Construction</button>
+      <button class="ws-tab" id="tab-production" data-tab="production">Production</button>
+      <button class="ws-tab" id="tab-revenue" data-tab="revenue">Revenue</button>
+      <button class="ws-tab" id="tab-opex" data-tab="opex">OPEX</button>
+      <button class="ws-tab" id="tab-capex" data-tab="capex">CAPEX</button>
+      <button class="ws-tab" id="tab-senior-debt" data-tab="senior-debt">Senior Debt</button>
+      <button class="ws-tab" id="tab-shl" data-tab="shl">SHL</button>
+      <button class="ws-tab" id="tab-tax" data-tab="tax">Tax</button>
+      <button class="ws-tab" id="tab-pl" data-tab="pl">P&amp;L</button>
+      <button class="ws-tab" id="tab-cashflow" data-tab="cashflow">Cash Flow</button>
+      <button class="ws-tab" id="tab-balance" data-tab="balance">Balance Sheet</button>
+      <button class="ws-tab" id="tab-distributions" data-tab="distributions">Distributions</button>
+      <button class="ws-tab" id="tab-sponsor" data-tab="sponsor">Sponsor / Equity</button>
+      <button class="ws-tab" id="tab-audit" data-tab="audit">Audit / Reference</button>
+      <button class="ws-tab" id="tab-downloads" data-tab="downloads">Downloads</button>
+      <button class="ws-tab" id="tab-compare" data-tab="compare">Compare</button>
+      <button class="ws-tab" id="tab-help" data-tab="help">Help</button>
+
+    </div>
+  </div>
+</div>
+{% endif %}

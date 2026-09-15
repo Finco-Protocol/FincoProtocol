@@ -1,0 +1,70 @@
+{#
+  UI-3B — Sensitivity results partial (returned by POST /v2/workbook/scenarios/sensitivity/run).
+
+  Injected into #v2-sensitivity-results via HTMX.
+
+  Context variables:
+    project_code    str
+    driver          str
+    driver_label    str
+    scenario_display str
+    results         list[dict]   — [{label, status, kpis, error?}]
+    kpi_catalog     list[dict]   — [{key, label, fmt}]
+#}
+<div class="v2-sens-results-header">
+  <span class="v2-sens-driver-label">{{ driver_label }}</span>
+  <span class="v2-sens-scenario-label">on {{ scenario_display }}</span>
+</div>
+
+{% set ok_results = results | selectattr("status", "equalto", "OK") | list %}
+
+{% if not ok_results %}
+<div class="v2-sensitivity-empty v2-sensitivity-error">
+  All sensitivity points failed. Check project configuration and try again.
+</div>
+{% else %}
+
+<div class="v2-compare-table-wrap">
+  <table class="v2-compare-table v2-sens-table">
+    <thead>
+      <tr>
+        <th class="v2-sens-step-col">Case</th>
+        {% for item in kpi_catalog %}
+        <th class="v2-compare-kpi-col">{{ item.label }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr class="v2-compare-kpi-row {% if r.label == 'Base' %}v2-compare-base-val{% endif %}">
+        <td class="v2-sens-step-label">
+          {{ r.label }}
+          {% if r.status == "FAILED" %}
+            <span class="v2-sens-fail-badge" title="{{ r.get('error', '') }}">FAILED</span>
+          {% endif %}
+        </td>
+        {% if r.status == "OK" %}
+          {% for item in kpi_catalog %}
+          <td class="v2-compare-kpi-val {% if r.kpis.get(item.key, '—') == '—' %}v2-kpi-value--na{% endif %}">
+            {{ r.kpis.get(item.key, '—') }}
+          </td>
+          {% endfor %}
+        {% else %}
+          <td class="v2-compare-kpi-val v2-kpi-value--na" colspan="{{ kpi_catalog | length }}">
+            {{ r.get('error', 'Engine error') }}
+          </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="v2-compare-footer">
+  <span class="v2-compare-authority-note">
+    Each row is a full authoritative engine run (run_project()).
+    No approximation or interpolation. Results are analytical only.
+  </span>
+</div>
+
+{% endif %}

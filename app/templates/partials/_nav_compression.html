@@ -1,0 +1,88 @@
+{# ── Phase P2-FIX-4: Five-Area Navigation (presentation only) ───
+   5 top-level tabs (Dashboard / Inputs / Results /
+   Scenarios / Export & Audit) + Help. All underlying
+   ws-tab buttons + panel panels + routes are
+   preserved. The compressed view is a
+   presentation-only shortcut that calls the existing
+   switchTab JS function. No route deletion. No
+   backend deletion. No panel deletion. No ws-tab
+   button deletion. The compressed view is a
+   presentation-only navigation bar.
+
+   5 top-level visible areas:
+     1. Dashboard (default view; existing overview)
+     2. Inputs (existing inputs)
+     3. Results (existing construction + production +
+        revenue + opex + capex + senior-debt + shl +
+        tax + pl + cashflow + balance + distributions
+        + sponsor)
+     4. Scenarios (existing scenarios)
+     5. Export & Audit (existing audit + downloads)
+   + Help (kept as a 6th secondary link, not part of
+     the 5 main areas).
+
+   The default active tab is "overview" (Dashboard).
+   This is unchanged from P2-FIX-1 / P2-min-4.
+
+   The compressed view is enabled for ALL projects
+   (factory_template, user_created, saved_baseline).
+   The previous P2-min-4 gate
+   (``nav_compression_enabled = project_origin ==
+   user_created``) was removed in P2-FIX-4 because the
+   five-area navigation is the new normal for every
+   project, including protected references. #}
+<div class="nav-compression nav-compression--five-area" id="nav-compression"
+     data-p2fix4-nav="five-area">
+  <button class="nav-compression-tab active"
+          id="nav-compression-tab-dashboard"
+          data-target-tab="overview"
+          data-p2fix4-area="dashboard"
+          aria-controls="panel-overview"
+          onclick="switchTab('overview')">
+    Dashboard
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-inputs"
+          data-target-tab="inputs"
+          data-p2fix4-area="inputs"
+          aria-controls="panel-inputs"
+          onclick="switchTab('inputs')">
+    Inputs
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-results"
+          data-target-tab="revenue"
+          data-p2fix4-area="results"
+          aria-controls="panel-revenue"
+          onclick="switchTab('revenue')">
+    Results
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-scenarios"
+          data-target-tab="scenario"
+          data-p2fix4-area="scenarios"
+          data-wf6-scenario-count="{{ non_base_scenarios|length if non_base_scenarios is defined else 0 }}"
+          aria-controls="panel-scenario"
+          onclick="switchTab('scenario')">
+    Scenarios
+    {% if non_base_scenarios is defined and non_base_scenarios %}
+      <span class="nav-scenario-count-badge" data-wf6-count-badge="{{ non_base_scenarios|length }}">{{ non_base_scenarios|length }}</span>
+    {% endif %}
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-export-audit"
+          data-target-tab="downloads"
+          data-p2fix4-area="export-audit"
+          aria-controls="panel-downloads"
+          onclick="switchTab('downloads')">
+    Export &amp; Audit
+  </button>
+  <button class="nav-compression-tab"
+          id="nav-compression-tab-help"
+          data-target-tab="help"
+          data-p2fix4-area="help"
+          aria-controls="panel-help"
+          onclick="switchTab('help')">
+    Help
+  </button>
+</div>

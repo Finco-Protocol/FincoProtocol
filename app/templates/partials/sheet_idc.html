@@ -1,0 +1,169 @@
+<!-- Sheet: IDC — {{ project_ctx.name }} -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">📊 IDC</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+{# ── Readonly notice for baselines ─────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--idc">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Protected original — read only</strong>
+    <p>IDC values are computed by the construction engine. Runtime model remains authoritative.</p>
+  </div>
+</div>
+{% endif %}
+
+{# ── IDC Summary Grid ────────────────────────────────────────── #}
+<div class="fc-idc-grid-wrapper sheet-card">
+
+  <div class="section-header">IDC Summary</div>
+
+  <div class="fc-grid-wrapper">
+    <table class="fc-grid" id="idc-grid">
+
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Line Item</th>
+          <th class="fc-th fc-th--code">Code</th>
+          <th class="fc-th fc-th--amount">Value</th>
+          <th class="fc-th">Unit</th>
+          <th class="fc-th">Group</th>
+          <th class="fc-th">Note</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {# ── Senior Debt Section ─────────────────────────────────── #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="6">Senior Debt</td>
+        </tr>
+
+        {% for item in project_ctx.idc_items %}
+          {% if item.group == 'Senior Debt' %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.group }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# ── SHL Section ────────────────────────────────────────── #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="6">SHL (Shareholder Loan)</td>
+        </tr>
+
+        {% for item in project_ctx.idc_items %}
+          {% if item.group == 'SHL' %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.group }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# ── IDC Summary Section ─────────────────────────────────── #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="6">IDC Summary</td>
+        </tr>
+
+        {% for item in project_ctx.idc_items %}
+          {% if item.group == 'IDC Summary' %}
+          <tr class="fc-data-row">
+            <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount"><span class="fc-cell-runtime">{{ (item.value if item.value is string else "{:,.2f}".format(item.value)) }}</span></td>
+            <td class="fc-cell">{{ item.unit }}</td>
+            <td class="fc-cell">{{ item.group }}</td>
+            <td class="fc-cell fc-cell--notes">{{ item.hint }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {# ── Grand Total ─────────────────────────────────────────── #}
+        {% set total_idc = 0.0 %}
+        {% for item in project_ctx.idc_items %}
+          {% if item.code == 'total_idc' %}
+            {% set total_idc = item.value %}
+          {% endif %}
+        {% endfor %}
+        <tr class="fc-grand-total">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Total IDC (kEUR)</td>
+          <td class="fc-total-cell fc-total-value fc-grand-total__value">{{ (total_idc if total_idc is string else "{:,.2f}".format(total_idc)) }}</td>
+          <td colspan="3"></td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>{# /fc-grid-wrapper #}
+
+</div>{# /sheet-card #}
+
+{# ── Monthly IDC Detail (Audit Only) ─────────────────────────── #}
+{% set monthly_idc_rows = [] %}
+{% for item in project_ctx.idc_items %}
+  {% if item.type == 'monthly_idc' %}
+    {% set _ = monthly_idc_rows.append(item) %}
+  {% endif %}
+{% endfor %}
+
+{% if monthly_idc_rows %}
+<div class="fc-idc-monthly-wrapper sheet-card" style="margin-top:0.75rem;">
+
+  <div class="section-header">
+    Monthly IDC Detail
+    <span class="badge badge-preview" style="margin-left:0.5rem;">Audit / Preview</span>
+    <span class="table-note__text" style="font-size:0.72rem;color:var(--muted);margin-left:0.5rem;">
+      Monthly IDC is computed by the offline construction engine. Runtime model remains authoritative.
+    </span>
+  </div>
+
+  <div class="fc-grid-wrapper fc-grid-wrapper--scroll-x">
+    <table class="fc-grid" id="idc-monthly-grid">
+
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Period</th>
+          <th class="fc-th fc-th--code">Unit</th>
+          <th class="fc-th fc-th--amount">Senior IDC (Month)</th>
+          <th class="fc-th fc-th--amount">Cumul. Senior IDC</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for entry in monthly_idc_rows %}
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">{{ entry.label }}</td>
+          <td class="fc-cell">{{ entry.unit }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (entry.senior_idc_keur if entry.senior_idc_keur is string else "{:,.2f}".format(entry.senior_idc_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (entry.cumulative_senior_idc_keur if entry.cumulative_senior_idc_keur is string else "{:,.2f}".format(entry.cumulative_senior_idc_keur)) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>{# /fc-grid-wrapper #}
+
+</div>
+{% endif %}
+
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+  <span class="table-note__text">
+    All IDC values are computed by the offline construction engine and are audit/preview only.
+    The runtime financial model is the authoritative source.
+  </span>
+</div>
