@@ -20,6 +20,7 @@ from .contracts import (
     GapComputationError,
     GapStatus,
     ReferenceSide,
+    r1_boundary,
 )
 
 
@@ -82,10 +83,15 @@ def build_bound_reference_price(
             GapStatus.REFERENCE_BINDING_FAILED,
         )
 
-    row_symbol = normalize_symbol(
-        str(validated_price_row.get("tokenSymbol") or ""),
-        field_name="reference tokenSymbol",
-    )
+    # D2: a malformed tokenSymbol is malformed reference content, not a binding mismatch.
+    with r1_boundary(
+        "bound reference row tokenSymbol is malformed",
+        GapStatus.REFERENCE_INVALID,
+    ):
+        row_symbol = normalize_symbol(
+            str(validated_price_row.get("tokenSymbol") or ""),
+            field_name="reference tokenSymbol",
+        )
     if row_symbol != binding.reference_symbol:
         raise GapComputationError(
             "bound reference row symbol changed after R1 validation",

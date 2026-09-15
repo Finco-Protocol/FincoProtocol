@@ -116,19 +116,19 @@ jobs:
           if sc.get("sellDirectionalGapDeltaBps") is None:
               raise SystemExit("R2_BLOCKED: sizeComparison sellDirectionalGapDeltaBps missing")
 
-          # D2: R0 size-impact must be populated (not null)
-          r0_buy = sc.get("r0BuySizeImpactBps")
-          r0_sell = sc.get("r0SellSizeImpactBps")
-          if r0_buy is None:
-              raise SystemExit("R2_BLOCKED: r0BuySizeImpactBps is null — D2 not applied")
-          if r0_sell is None:
-              raise SystemExit("R2_BLOCKED: r0SellSizeImpactBps is null — D2 not applied")
-          if not Decimal(str(r0_buy)).is_finite():
-              raise SystemExit("R2_BLOCKED: r0BuySizeImpactBps is not finite")
-          if not Decimal(str(r0_sell)).is_finite():
-              raise SystemExit("R2_BLOCKED: r0SellSizeImpactBps is not finite")
+          # D1 (sign): side-specific interpretation must be present
+          buy_interp = sc.get("buyDeltaInterpretation") or ""
+          sell_interp = sc.get("sellDeltaInterpretation") or ""
+          if not buy_interp.startswith("positive = larger size is worse"):
+              raise SystemExit("R2_BLOCKED: BUY delta interpretation is not side-specific")
+          if not sell_interp.startswith("positive = larger size is better"):
+              raise SystemExit("R2_BLOCKED: SELL delta interpretation is not side-specific")
+          if buy_interp == sell_interp:
+              raise SystemExit("R2_BLOCKED: BUY and SELL delta interpretations must differ")
+          if "worse for that execution side" in (sc.get("semantics") or ""):
+              raise SystemExit("R2_BLOCKED: generic 'positive = worse' claim reappeared")
 
-          # D1: coherence policy skew must not exceed declared maximum
+          # D1 (skew): coherence policy skew must not exceed declared maximum
           actual_skew_str = policy.get("actualMaxSkewSeconds")
           max_skew_str = policy.get("maxEvidenceSkewSeconds")
           if actual_skew_str is None:
@@ -141,6 +141,27 @@ jobs:
                   f"maxEvidenceSkewSeconds {max_skew_str}"
               )
 
+          # D4: R0 size-impact placeholders must not be emitted by R2
+          for removed in ("r0BuySizeImpactBps", "r0SellSizeImpactBps"):
+              if removed in sc:
+                  raise SystemExit(f"R2_BLOCKED: R2 re-emitted R0 placeholder {removed}")
+          if "NOT_EMITTED_BY_R2" not in (sc.get("r0SizeImpactAuthority") or ""):
+              raise SystemExit("R2_BLOCKED: R0 size-impact authority statement missing")
+
+          # D3: PASS artifact must preserve the candidate audit trail
+          audit = data.get("candidateAttempts")
+          if not isinstance(audit, dict):
+              raise SystemExit("R2_BLOCKED: candidateAttempts audit block missing from PASS")
+          if not isinstance(audit.get("skippedCandidates"), list):
+              raise SystemExit("R2_BLOCKED: candidateAttempts.skippedCandidates must be a list")
+          if audit.get("skippedCandidateCount") != len(audit["skippedCandidates"]):
+              raise SystemExit("R2_BLOCKED: candidateAttempts count does not match list length")
+          if audit.get("selectedSymbol") != data["asset"]["symbol"]:
+              raise SystemExit("R2_BLOCKED: candidateAttempts selectedSymbol disagrees with asset")
+          # Acceptance is unchanged: observations are never stitched across candidates.
+          if len(observations) != 4:
+              raise SystemExit("R2_BLOCKED: selected candidate must supply all four observations")
+
           # C7: multiplier semantics
           ref_block = data.get("reference", {})
           if not ref_block.get("multiplierFormula"):
@@ -151,7 +172,7 @@ jobs:
           print(
               f"R2_FINCO_GAP_PASS key={key} observations={len(observations)} "
               f"skew={policy['actualMaxSkewSeconds']}s policy={policy['maxEvidenceSkewSeconds']}s "
-              f"r0BuyImpact={r0_buy}bps r0SellImpact={r0_sell}bps"
+              f"selected={audit['selectedSymbol']} skippedCandidates={audit['skippedCandidateCount']}"
           )
           PY
       - name: Run R1 canonical registry regression

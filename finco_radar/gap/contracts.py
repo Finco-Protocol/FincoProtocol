@@ -1,13 +1,21 @@
 """Typed contracts for FINCO Radar R2 directional gap observations."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
-from finco_radar.assets.contracts import AssetKey, normalize_asset_uid, normalize_symbol
+from finco_radar.assets.contracts import (
+    AssetKey,
+    RegistryConflictError,
+    RegistryLookupError,
+    RegistrySourceError,
+    normalize_asset_uid,
+    normalize_symbol,
+)
 from finco_radar.quotes.contracts import QuoteSide
 
 
@@ -36,6 +44,26 @@ class GapComputationError(ValueError):
     def __init__(self, message: str, status: GapStatus = GapStatus.NON_FINITE_ECONOMICS) -> None:
         super().__init__(message)
         self.status = status
+
+
+# D2: R1 normalization helpers raise their own exception family. Those types are not part
+# of the R2 typed error contract, so without conversion a malformed symbol or UID escapes
+# as a raw RegistrySourceError and bypasses GapStatus entirely. Every R2 boundary that
+# calls into R1 validation must therefore convert them. R1 itself is never modified.
+R1_VALIDATION_ERRORS = (RegistrySourceError, RegistryConflictError, RegistryLookupError)
+
+
+@contextmanager
+def r1_boundary(message: str, status: GapStatus) -> Iterator[None]:
+    """Convert R1 validation/source exceptions into typed R2 gap errors.
+
+    GapComputationError is not a member of R1_VALIDATION_ERRORS, so a typed error
+    raised inside the block passes through unchanged rather than being relabelled.
+    """
+    try:
+        yield
+    except R1_VALIDATION_ERRORS as exc:
+        raise GapComputationError(f"{message}: {exc}", status) from exc
 
 
 class ReferenceSide(str, Enum):
@@ -100,8 +128,13 @@ class BoundReferencePrice:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
-        object.__setattr__(self, "symbol", normalize_symbol(self.symbol))
+        # D2: malformed/broken binding identity must surface as a typed R2 failure.
+        with r1_boundary(
+            "bound reference identity is not valid R1 canonical identity",
+            GapStatus.REFERENCE_BINDING_FAILED,
+        ):
+            object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
+            object.__setattr__(self, "symbol", normalize_symbol(self.symbol))
         object.__setattr__(self, "currency", self.currency.strip().upper())
         if self.currency != "USD":
             raise GapComputationError(
@@ -186,7 +219,12 @@ class DirectionalGapObservation:
     reference_state_authority: str = "R4_NOT_YET_APPLIED"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
+        # D2: malformed/broken binding identity must surface as a typed R2 failure.
+        with r1_boundary(
+            "observation asset_uid is not valid R1 canonical identity",
+            GapStatus.REFERENCE_BINDING_FAILED,
+        ):
+            object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
         _positive_finite(self.requested_notional_usd, "requested_notional_usd")
         _positive_finite(self.token_amount, "token_amount")
         _positive_finite(self.settlement_amount_usd, "settlement_amount_usd")
