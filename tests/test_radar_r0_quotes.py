@@ -89,6 +89,22 @@ def test_decimal_normalization_is_exact_and_rounds_down() -> None:
     assert from_raw_amount(1_234_567, 6) == Decimal("1.234567")
 
 
+def test_asset_ref_rejects_non_hex_address() -> None:
+    with pytest.raises(ValueError, match="20-byte EVM hex address"):
+        AssetRef(4663, "0x11111111111111111111111111111111111111zz", decimals=18)
+
+
+def test_quote_request_rejects_non_hex_taker_address() -> None:
+    with pytest.raises(ValueError, match="20-byte EVM hex address"):
+        QuoteRequest(
+            token=TOKEN,
+            settlement=SETTLEMENT,
+            side=QuoteSide.BUY,
+            requested_notional_usd=Decimal("100"),
+            taker_address="0x33333333333333333333333333333333333333zz",
+        )
+
+
 def test_buy_direction_uses_settlement_as_input_and_explicit_settlement_reference() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         params = dict(req.url.params)

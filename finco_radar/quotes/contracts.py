@@ -1,11 +1,22 @@
 """Typed, fail-closed execution quote contracts for FINCO Radar R0."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Mapping, Sequence
+
+
+_EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def _normalize_evm_address(value: str, *, field_name: str) -> str:
+    address = value.strip()
+    if not _EVM_ADDRESS_RE.fullmatch(address):
+        raise ValueError(f"{field_name} must be a 20-byte EVM hex address")
+    return address.lower()
 
 
 class QuoteSide(str, Enum):
@@ -44,10 +55,11 @@ class AssetRef:
     def __post_init__(self) -> None:
         if self.chain_id <= 0:
             raise ValueError("chain_id must be positive")
-        address = self.contract_address.strip()
-        if not address.startswith("0x") or len(address) != 42:
-            raise ValueError("contract_address must be a 20-byte EVM address")
-        object.__setattr__(self, "contract_address", address.lower())
+        object.__setattr__(
+            self,
+            "contract_address",
+            _normalize_evm_address(self.contract_address, field_name="contract_address"),
+        )
         if self.decimals is not None and not 0 <= self.decimals <= 255:
             raise ValueError("decimals must be in [0, 255]")
 
@@ -93,10 +105,11 @@ class QuoteRequest:
         if self.side is QuoteSide.SELL:
             if self.token_sizing_reference_usd is None or self.token_sizing_reference_usd <= 0:
                 raise ValueError("SELL requires a positive token sizing reference")
-        taker = self.taker_address.strip()
-        if not taker.startswith("0x") or len(taker) != 42:
-            raise ValueError("taker_address must be a 20-byte EVM address")
-        object.__setattr__(self, "taker_address", taker.lower())
+        object.__setattr__(
+            self,
+            "taker_address",
+            _normalize_evm_address(self.taker_address, field_name="taker_address"),
+        )
         if self.max_quote_age_seconds <= 0:
             raise ValueError("max_quote_age_seconds must be positive")
 

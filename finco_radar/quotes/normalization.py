@@ -1,4 +1,4 @@
-"""Deterministic quote normalization and size-impact metrics."""
+"""Deterministic quote normalization and router-level size-aware rate metrics."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -25,7 +25,13 @@ def from_raw_amount(raw_amount: int, decimals: int) -> Decimal:
 
 
 def quote_size_impact_bps(small: ExecutionQuote, large: ExecutionQuote) -> Decimal:
-    """Return positive bps when the larger exact-input quote has a worse rate."""
+    """Return the signed router-level quote-rate delta for a larger exact-input quote.
+
+    Positive means the larger quote has a worse output/input rate; negative means
+    it has a better rate. Because an execution router may select a different route
+    at the larger size, this metric can include route switching. It is not realized
+    slippage and must not be interpreted as same-pool AMM depth.
+    """
     if small.status is not QuoteStatus.QUOTE_OK or large.status is not QuoteStatus.QUOTE_OK:
         raise ValueError("size impact requires two QUOTE_OK observations")
     if small.side is not large.side:

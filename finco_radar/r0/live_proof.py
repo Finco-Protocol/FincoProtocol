@@ -30,8 +30,12 @@ CHAIN_ID = 4663
 ROBINHOOD_API = "https://api.robinhood.com/rhj"
 LIFI_API = "https://li.quest/v1"
 PUBLIC_RPC = "https://rpc.mainnet.chain.robinhood.com"
-DEFAULT_SYMBOLS = ("AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "GOOGL")
+# Ordered fallback candidates. R0 exits on the first asset with all four QUOTE_OK
+# observations; acceptance requires one representative asset, not breadth coverage.
+CANDIDATE_SYMBOLS = ("AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "GOOGL")
 TAKER = "0x1111111111111111111111111111111111111111"
+# Canonical Robinhood Mainnet USDG contract published by Paxos:
+# https://docs.paxos.com/guides/stablecoin/usdg/mainnet
 USDG_ADDRESS = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 
 
@@ -169,7 +173,27 @@ def _attach_observed_block(client: httpx.Client, quote: Any) -> Any:
     return replace(quote, evidence=evidence)
 
 
-def run(symbols: Iterable[str] = DEFAULT_SYMBOLS) -> dict[str, Any]:
+def _route_tools(quote: Any) -> list[str]:
+    if quote.evidence is None:
+        return []
+    tools = [leg.tool for leg in quote.evidence.route if leg.tool]
+    if tools:
+        return tools
+    top_level = quote.evidence.response_fields.get("tool")
+    return [str(top_level)] if top_level else []
+
+
+def _route_comparison(small: Any, large: Any) -> dict[str, Any]:
+    small_tools = _route_tools(small)
+    large_tools = _route_tools(large)
+    return {
+        "small": small_tools,
+        "large": large_tools,
+        "changed": small_tools != large_tools,
+    }
+
+
+def run(symbols: Iterable[str] = CANDIDATE_SYMBOLS) -> dict[str, Any]:
     timeout = httpx.Timeout(25.0)
     with httpx.Client(timeout=timeout, headers={"accept": "application/json"}) as client:
         _, settlement_reference = _discover_settlement(client)
@@ -225,7 +249,15 @@ def run(symbols: Iterable[str] = DEFAULT_SYMBOLS) -> dict[str, Any]:
                             "BUY": str(quote_size_impact_bps(buy_small, buy_large)),
                             "SELL": str(quote_size_impact_bps(sell_small, sell_large)),
                         },
-                        "proofSemantics": "size impact is quote deterioration, not realized slippage",
+                        "routeComparison": {
+                            "BUY": _route_comparison(buy_small, buy_large),
+                            "SELL": _route_comparison(sell_small, sell_large),
+                        },
+                        "proofSemantics": (
+                            "signed router-level quote-rate delta; may include route switching; "
+                            "positive=deterioration, negative=improvement; not realized slippage "
+                            "or same-pool depth"
+                        ),
                     }
                 except Exception as exc:
                     failures.append({"symbol": symbol, "reason": f"{type(exc).__name__}:{exc}"})
@@ -236,7 +268,7 @@ def run(symbols: Iterable[str] = DEFAULT_SYMBOLS) -> dict[str, Any]:
 
 def main() -> int:
     configured = os.getenv("RADAR_R0_SYMBOLS")
-    symbols = tuple(s.strip().upper() for s in configured.split(",") if s.strip()) if configured else DEFAULT_SYMBOLS
+    symbols = tuple(s.strip().upper() for s in configured.split(",") if s.strip()) if configured else CANDIDATE_SYMBOLS
     result = run(symbols)
     path = Path(os.getenv("RADAR_R0_EVIDENCE_PATH", "artifacts/radar_r0_live_quote_evidence.json"))
     path.parent.mkdir(parents=True, exist_ok=True)

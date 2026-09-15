@@ -26,13 +26,16 @@ The quote is marked `SOURCE_UNBOUND` / `OBSERVED_IMMEDIATELY_AFTER_QUOTE_SOURCE_
 
 - BUY $N: $N is converted through an explicit settlement-asset USD reference, then quoted as exact input settlement asset -> Stock Token.
 - SELL $N: official Stock Token reference data is used only to size the token input representing approximately $N; the executable economics come exclusively from the route quote.
-- $100 versus $1,000 differences are called `size impact` or `quote deterioration`, never realized slippage.
+- $100 versus $1,000 differences are a signed router-level quote-rate delta. Positive means the larger quote has a worse rate; negative means it has a better rate.
+- The delta may include route switching when the router selects a different venue/path at the larger size. It is not realized slippage and is not evidence of same-pool AMM depth.
 
 ## Settlement policy
 
 Stablecoins are not assumed to equal one USD. A quote request carries `SettlementReference` with an explicit state, source, observation time, and USD-per-asset value. Missing/unusable settlement reference fails closed as `SETTLEMENT_REFERENCE_UNAVAILABLE` before an execution quote request is made.
 
-The R0 live proof uses the quote provider's token metadata USD value only as an explicit settlement reference input. This is sufficient to prevent an implicit 1:1 assumption but is not yet an independent settlement oracle; later reference-state work should replace/cross-check it with a dedicated authoritative source.
+The R0 live proof uses the quote provider's token metadata USD value only as an explicit settlement reference input. This is sufficient to prevent an implicit 1:1 assumption but is not yet an independent settlement oracle. Because LI.FI supplies both this metadata reference and the execution quote, R0 has a common-source dependency: an incorrect or stale `priceUSD` can shift the requested notional calibration even though the route quote itself remains amount-specific. Later reference-state work should replace/cross-check this input with a dedicated independent authoritative source.
+
+The Robinhood Mainnet USDG contract used by the live proof is the Paxos-published canonical address for chain ID 4663: `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` (Paxos USDG mainnet documentation: https://docs.paxos.com/guides/stablecoin/usdg/mainnet).
 
 ## Typed failure states
 
@@ -65,15 +68,19 @@ Each successful quote can retain:
 - settlement reference state and raw evidence;
 - official Stock Token sizing reference evidence for SELL notional construction.
 
+The live proof additionally records whether the $100 and $1,000 quotes used different route/tool sequences for each direction.
+
 No secrets are persisted.
 
 ## Live acceptance proof
 
-`python -m finco_radar.r0.live_proof` probes representative active Stock Tokens and requires all four observations for one asset:
+`python -m finco_radar.r0.live_proof` probes ordered fallback candidate Stock Tokens and requires all four observations for one representative asset:
 
 - BUY $100
 - BUY $1,000
 - SELL $100
 - SELL $1,000
 
-The proof writes `artifacts/radar_r0_live_quote_evidence.json` and exits non-zero unless all four are `QUOTE_OK`. The dedicated GitHub Action uploads the raw evidence artifact. R0 is not considered passed merely because deterministic mock tests pass.
+All four observations must be `QUOTE_OK`. The dedicated size-aware gate then requires at least one of BUY or SELL to show a non-zero $100-versus-$1,000 router-level quote-rate delta. Therefore the gate intentionally blocks only when `BUY == 0 and SELL == 0`; requiring both directions to be non-zero would be stricter than the R0 acceptance criterion.
+
+The proof writes `artifacts/radar_r0_live_quote_evidence.json` and the dedicated GitHub Action uploads the raw evidence artifact. R0 is not considered passed merely because deterministic mock tests pass.
