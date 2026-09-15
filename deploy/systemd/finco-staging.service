@@ -9,6 +9,7 @@ User=finco-staging
 Group=finco-staging
 WorkingDirectory=/opt/finco_staging
 Environment="PATH=/opt/finco_staging/.venv/bin"
+Environment="PYTHONDONTWRITEBYTECODE=1"
 EnvironmentFile=/opt/finco_staging/.env.staging
 
 # Fail closed before startup if the staging identity, paths, secrets, or
@@ -28,12 +29,12 @@ RestartSec=5
 TimeoutStopSec=45
 KillSignal=SIGINT
 
-# Service hardening. Only the staging tree/storage are writable by the app.
+# Runtime hardening: source/venv are read-only; only staging storage is writable.
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/finco_staging
+ReadWritePaths=/opt/finco_staging/storage
 
 [Install]
 WantedBy=multi-user.target
