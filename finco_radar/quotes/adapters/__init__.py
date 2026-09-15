@@ -1,0 +1,1 @@
+"""Execution quote source adapters."""
