@@ -11,7 +11,7 @@ from finco_radar.assets.contracts import (
     ReferenceBinding,
     normalize_symbol,
 )
-from finco_radar.quotes.contracts import ExecutionQuote, QuoteSide, QuoteStatus
+from finco_radar.quotes.contracts import AssetRef, ExecutionQuote, QuoteSide, QuoteStatus
 
 from .contracts import (
     BoundReferencePrice,
@@ -110,6 +110,17 @@ def _same_asset(key: AssetKey, *, chain_id: int, address: str) -> bool:
         return False
 
 
+def _same_asset_ref(left: AssetRef, right: AssetRef) -> bool:
+    """Compare asset identity by chain + contract only, never ticker metadata."""
+    try:
+        return AssetKey(left.chain_id, left.contract_address) == AssetKey(
+            right.chain_id,
+            right.contract_address,
+        )
+    except ValueError:
+        return False
+
+
 def _positive_amount(value: Decimal | None, field_name: str) -> Decimal:
     if value is None or not value.is_finite() or value <= 0:
         raise GapComputationError(f"{field_name} must be positive and finite")
@@ -137,6 +148,8 @@ def compute_directional_gap(
         raise GapComputationError("execution quote token identity does not match canonical reference key")
     if not quote.settlement_reference.usable or quote.settlement_reference.usd_per_asset is None:
         raise GapComputationError("execution quote settlement reference is not usable")
+    if quote.settlement_reference.asset.chain_id != quote.chain_id:
+        raise GapComputationError("settlement reference chain does not match execution quote chain")
     settlement_usd_per_asset = _positive_amount(
         quote.settlement_reference.usd_per_asset,
         "settlement usd_per_asset",
@@ -149,8 +162,8 @@ def compute_directional_gap(
             address=quote.output_asset.contract_address,
         ):
             raise GapComputationError("BUY quote output is not the canonical token")
-        if quote.input_asset.contract_address != quote.settlement_reference.asset.contract_address:
-            raise GapComputationError("BUY quote input is not the settlement asset")
+        if not _same_asset_ref(quote.input_asset, quote.settlement_reference.asset):
+            raise GapComputationError("BUY quote input is not the canonical settlement asset")
         settlement_amount = _positive_amount(quote.normalized_amount_in, "BUY settlement input")
         token_amount = _positive_amount(quote.normalized_amount_out, "BUY token output")
         settlement_amount_usd = settlement_amount * settlement_usd_per_asset
@@ -164,8 +177,8 @@ def compute_directional_gap(
             address=quote.input_asset.contract_address,
         ):
             raise GapComputationError("SELL quote input is not the canonical token")
-        if quote.output_asset.contract_address != quote.settlement_reference.asset.contract_address:
-            raise GapComputationError("SELL quote output is not the settlement asset")
+        if not _same_asset_ref(quote.output_asset, quote.settlement_reference.asset):
+            raise GapComputationError("SELL quote output is not the canonical settlement asset")
         token_amount = _positive_amount(quote.normalized_amount_in, "SELL token input")
         settlement_amount = _positive_amount(quote.normalized_amount_out, "SELL settlement output")
         settlement_amount_usd = settlement_amount * settlement_usd_per_asset

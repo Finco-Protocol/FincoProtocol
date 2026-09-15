@@ -68,9 +68,9 @@ def reference(multiplier: str = "1", **row_overrides: object):
     return build_bound_reference_price(asset(multiplier), binding(), price_row(**row_overrides))
 
 
-def settlement(usable: bool = True) -> SettlementReference:
+def settlement(usable: bool = True, *, chain_id: int = 4663) -> SettlementReference:
     return SettlementReference(
-        asset=AssetRef(4663, SETTLEMENT, symbol="USDG", decimals=18),
+        asset=AssetRef(chain_id, SETTLEMENT, symbol="USDG", decimals=18),
         state=(
             SettlementReferenceState.REFERENCE_CURRENT
             if usable
@@ -92,8 +92,9 @@ def quote(
     fee: str | None = None,
     gas: str | None = None,
     usable_settlement: bool = True,
+    settlement_chain_id: int = 4663,
 ) -> ExecutionQuote:
-    settlement_ref = settlement(usable_settlement)
+    settlement_ref = settlement(usable_settlement, chain_id=settlement_chain_id)
     token_ref = AssetRef(4663, token_address, symbol="AAA", decimals=18)
     if side is QuoteSide.BUY:
         input_asset, output_asset = settlement_ref.asset, token_ref
@@ -174,6 +175,15 @@ def test_fees_and_gas_are_preserved_but_not_added_to_gap_price() -> None:
 def test_quote_identity_mismatch_fails_closed() -> None:
     with pytest.raises(GapComputationError, match="identity"):
         compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN))
+
+
+@pytest.mark.parametrize("side", [QuoteSide.BUY, QuoteSide.SELL])
+def test_settlement_chain_identity_mismatch_fails_closed(side: QuoteSide) -> None:
+    with pytest.raises(GapComputationError, match="settlement reference chain"):
+        compute_directional_gap(
+            reference(),
+            quote(side, settlement_chain_id=1),
+        )
 
 
 def test_non_ok_quote_fails_closed_without_numeric_gap() -> None:
