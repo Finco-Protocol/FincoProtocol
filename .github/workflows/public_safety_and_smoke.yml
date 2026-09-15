@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   safety-and-smoke:
     runs-on: ubuntu-latest
@@ -17,9 +20,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Verify installed dependencies
+        run: python -m pip check
       - name: Public repository safety scan
         run: python tools/public_safety_scan.py
       - name: Compile
         run: python -m compileall -q .
-      - name: Synthetic reference smoke tests
-        run: pytest -q
+      - name: Synthetic reference and regression tests
+        run: |
+          mkdir -p artifacts
+          pytest -q --junitxml=artifacts/public-test-results.xml
+      - name: Upload public verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-verification-results
+          path: artifacts/public-test-results.xml
+          if-no-files-found: warn
