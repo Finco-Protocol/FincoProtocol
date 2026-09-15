@@ -4,16 +4,31 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import httpx
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
-from finco_radar.assets.contracts import RegistryAssetStatus
-from finco_radar.assets.registry import validate_reference_price_payload
+from finco_radar.assets.contracts import AssetKey, RegistryAssetStatus
 
 CHAIN_ID = 4663
 ROBINHOOD_API = "https://api.robinhood.com/rhj"
+
+
+def _deployment_keys(row: Mapping[str, Any]) -> tuple[AssetKey, ...]:
+    deployments = row.get("deployments")
+    if not isinstance(deployments, list):
+        raise RuntimeError("validated reference row lost deployment evidence")
+    keys = tuple(
+        AssetKey(
+            chain_id=int(deployment["chainId"]),
+            contract_address=str(deployment["contractAddress"]),
+        )
+        for deployment in deployments
+    )
+    if len(set(keys)) != len(keys):
+        raise RuntimeError("validated reference row contains duplicate deployment keys")
+    return keys
 
 
 def run() -> dict[str, Any]:
@@ -44,9 +59,13 @@ def run() -> dict[str, Any]:
             )[0]
             key = selected.deployment_for_chain(CHAIN_ID)
             assert key is not None
-            binding = snapshot.reference_binding(key)
-            price_payload = adapter.fetch_reference_price_payload(binding.reference_symbol)
-            price_row = validate_reference_price_payload(binding, price_payload)
+            binding, price_row = adapter.fetch_bound_reference(snapshot, key)
+            reference_keys = _deployment_keys(price_row)
+            matching_keys = [candidate for candidate in reference_keys if candidate == binding.asset_key]
+            if len(matching_keys) != 1:
+                raise RuntimeError("bound reference did not retain exactly one canonical deployment")
+            matched_key = matching_keys[0]
+
             symbol_collision_count = sum(
                 1
                 for symbol in {asset.token_symbol for asset in snapshot.assets}
@@ -87,15 +106,16 @@ def run() -> dict[str, Any]:
                 "referenceBinding": {
                     "assetUid": binding.asset_uid,
                     "canonicalKey": binding.asset_key.canonical_id,
+                    "matchedCanonicalKey": matched_key.canonical_id,
+                    "referenceDeploymentKeys": [item.canonical_id for item in reference_keys],
                     "referenceSymbol": binding.reference_symbol,
                     "pricePath": binding.price_path,
-                    "exactDeploymentValidated": True,
                     "referenceGeneratedAt": price_row.get("generatedAt"),
                     "referenceTradingHalt": price_row.get("isTradingHalt"),
                 },
                 "identitySemantics": (
-                    "chain_id + contract_address is canonical; asset uid binds deployments across chains; "
-                    "ticker is discovery/reference metadata only"
+                    "chain_id + contract_address is canonical; official asset uid binds deployments "
+                    "across chains; ticker is discovery/reference metadata only"
                 ),
             }
     except Exception as exc:

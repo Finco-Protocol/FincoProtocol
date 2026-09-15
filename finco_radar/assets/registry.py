@@ -1,4 +1,4 @@
-"""Fail-closed canonical asset registry and external reference binding."""
+"""Fail-closed canonical asset registry and official reference binding."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,17 +13,28 @@ from .contracts import (
     RegistryLookupError,
     RegistrySourceError,
     normalize_asset_uid,
+    normalize_symbol,
 )
 
 
 @dataclass(frozen=True)
 class RegistrySnapshot:
+    """Immutable registry view; intentionally unhashable because it owns indexed mappings."""
+
+    __hash__ = None
+
     source: str
     observed_at: datetime
     assets: tuple[CanonicalAssetRecord, ...]
-    _by_key: Mapping[AssetKey, CanonicalAssetRecord] = field(init=False, repr=False)
-    _by_uid: Mapping[str, CanonicalAssetRecord] = field(init=False, repr=False)
-    _by_symbol: Mapping[str, tuple[CanonicalAssetRecord, ...]] = field(init=False, repr=False)
+    _by_key: Mapping[AssetKey, CanonicalAssetRecord] = field(
+        init=False, repr=False, compare=False
+    )
+    _by_uid: Mapping[str, CanonicalAssetRecord] = field(
+        init=False, repr=False, compare=False
+    )
+    _by_symbol: Mapping[str, tuple[CanonicalAssetRecord, ...]] = field(
+        init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not self.source.strip():
@@ -74,7 +85,7 @@ class RegistrySnapshot:
 
     def find_by_symbol(self, symbol: str) -> tuple[CanonicalAssetRecord, ...]:
         """Discovery only. A symbol is never a canonical identity."""
-        return self._by_symbol.get(symbol.strip().upper(), ())
+        return self._by_symbol.get(normalize_symbol(symbol), ())
 
     def require_unique_symbol(self, symbol: str) -> CanonicalAssetRecord:
         matches = self.find_by_symbol(symbol)
@@ -92,25 +103,25 @@ class RegistrySnapshot:
             reference_symbol=asset.token_symbol,
         )
 
-    def resolve_external_identity(
+    def resolve_official_identity(
         self,
         *,
         asset_uid: str,
         deployments: tuple[AssetKey, ...],
     ) -> CanonicalAssetRecord:
-        """Resolve external rows by stable UID plus at least one exact deployment key."""
+        """Re-validate an official-registry UID against exact canonical deployments."""
         uid = normalize_asset_uid(asset_uid)
         asset = self._by_uid.get(uid)
         if asset is None:
-            raise RegistryLookupError(f"external uid is absent from registry: {uid}")
-        external_keys = set(deployments)
-        if not external_keys.intersection(asset.deployments):
-            raise RegistryLookupError("external row uid does not match any canonical deployment")
-        for key in external_keys:
+            raise RegistryLookupError(f"official uid is absent from registry: {uid}")
+        official_keys = set(deployments)
+        if not official_keys.intersection(asset.deployments):
+            raise RegistryLookupError("official row uid does not match any canonical deployment")
+        for key in official_keys:
             owner = self._by_key.get(key)
             if owner is not None and owner.asset_uid != uid:
                 raise RegistryConflictError(
-                    f"external row mixes uid {uid} with deployment owned by {owner.asset_uid}"
+                    f"official row mixes uid {uid} with deployment owned by {owner.asset_uid}"
                 )
         return asset
 
@@ -141,10 +152,16 @@ def validate_reference_price_payload(
                         contract_address=str(deployment["contractAddress"]),
                     )
                 )
+            except RegistrySourceError:
+                raise
             except (KeyError, TypeError, ValueError) as exc:
                 raise RegistrySourceError("invalid deployment in reference payload") from exc
+        if len(set(row_keys)) != len(row_keys):
+            raise RegistrySourceError("reference quote contains duplicate deployment keys")
         if binding.asset_key in row_keys:
-            symbol = str(row.get("tokenSymbol") or "").strip().upper()
+            symbol = normalize_symbol(
+                str(row.get("tokenSymbol") or ""), field_name="reference tokenSymbol"
+            )
             if symbol != binding.reference_symbol:
                 raise RegistrySourceError(
                     "reference deployment matches canonical key but symbol metadata conflicts"

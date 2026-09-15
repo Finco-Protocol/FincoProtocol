@@ -10,10 +10,12 @@ import httpx
 from ..contracts import (
     AssetKey,
     CanonicalAssetRecord,
+    ReferenceBinding,
     RegistryAssetStatus,
     RegistrySourceError,
+    normalize_symbol,
 )
-from ..registry import RegistrySnapshot
+from ..registry import RegistrySnapshot, validate_reference_price_payload
 
 
 class RobinhoodAssetRegistryAdapter:
@@ -52,10 +54,18 @@ class RobinhoodAssetRegistryAdapter:
             raise RegistrySourceError("asset registry returned invalid JSON") from exc
         return self.parse_snapshot(payload)
 
-    def fetch_reference_price_payload(self, symbol: str) -> Mapping[str, Any]:
-        symbol = symbol.strip().upper()
-        if not symbol:
-            raise RegistrySourceError("reference symbol must be non-empty")
+    def fetch_bound_reference(
+        self,
+        snapshot: RegistrySnapshot,
+        key: AssetKey,
+    ) -> tuple[ReferenceBinding, Mapping[str, Any]]:
+        """Fetch and validate a symbol-addressed reference against one canonical key."""
+        binding = snapshot.reference_binding(key)
+        payload = self._fetch_reference_price_payload(binding.reference_symbol)
+        return binding, validate_reference_price_payload(binding, payload)
+
+    def _fetch_reference_price_payload(self, symbol: str) -> Mapping[str, Any]:
+        symbol = normalize_symbol(symbol, field_name="reference symbol")
         response = self.client.get(f"/prices/{symbol}")
         response.raise_for_status()
         try:
@@ -103,6 +113,8 @@ class RobinhoodAssetRegistryAdapter:
                         contract_address=str(deployment["contractAddress"]),
                     )
                 )
+            except RegistrySourceError:
+                raise
             except (KeyError, TypeError, ValueError) as exc:
                 raise RegistrySourceError("invalid asset deployment") from exc
 
@@ -152,6 +164,8 @@ class RobinhoodAssetRegistryAdapter:
 
 
 def _positive_decimal(value: Any, field_name: str) -> Decimal:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise RegistrySourceError(f"{field_name} is required")
     try:
         parsed = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError) as exc:

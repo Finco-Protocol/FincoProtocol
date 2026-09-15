@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 _EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _ASSET_UID_RE = re.compile(r"^0x[0-9a-fA-F]{64}$")
+_SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
 
 
 class RegistryConflictError(ValueError):
@@ -36,6 +37,16 @@ def normalize_asset_uid(value: str) -> str:
     if not _ASSET_UID_RE.fullmatch(uid):
         raise RegistrySourceError("asset_uid must be a 32-byte 0x-prefixed hex value")
     return uid.lower()
+
+
+def normalize_symbol(value: str, *, field_name: str = "symbol") -> str:
+    """Normalize a provider symbol while keeping it safe as one URL path segment."""
+    symbol = value.strip().upper()
+    if not _SYMBOL_RE.fullmatch(symbol):
+        raise RegistrySourceError(
+            f"{field_name} must be 1-32 chars using only A-Z, 0-9, '.', '_' or '-'"
+        )
+    return symbol
 
 
 class RegistryAssetStatus(str, Enum):
@@ -75,10 +86,11 @@ class ReferenceBinding:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
-        symbol = self.reference_symbol.strip().upper()
-        if not symbol:
-            raise RegistrySourceError("reference_symbol must be non-empty")
-        object.__setattr__(self, "reference_symbol", symbol)
+        object.__setattr__(
+            self,
+            "reference_symbol",
+            normalize_symbol(self.reference_symbol, field_name="reference_symbol"),
+        )
 
     @property
     def price_path(self) -> str:
@@ -100,10 +112,11 @@ class CanonicalAssetRecord:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "asset_uid", normalize_asset_uid(self.asset_uid))
-        symbol = self.token_symbol.strip().upper()
-        if not symbol:
-            raise RegistrySourceError("token_symbol must be non-empty")
-        object.__setattr__(self, "token_symbol", symbol)
+        object.__setattr__(
+            self,
+            "token_symbol",
+            normalize_symbol(self.token_symbol, field_name="token_symbol"),
+        )
         if not self.token_name.strip():
             raise RegistrySourceError("token_name must be non-empty")
         if not self.deployments:
@@ -113,14 +126,21 @@ class CanonicalAssetRecord:
         chain_ids = [deployment.chain_id for deployment in self.deployments]
         if len(set(chain_ids)) != len(chain_ids):
             raise RegistryConflictError("asset has more than one deployment on the same chain")
-        if self.current_multiplier <= 0:
-            raise RegistrySourceError("current_multiplier must be positive")
-        if self.pending_multiplier is not None and self.pending_multiplier <= 0:
-            raise RegistrySourceError("pending_multiplier must be positive when present")
+        if not self.current_multiplier.is_finite() or self.current_multiplier <= 0:
+            raise RegistrySourceError("current_multiplier must be positive and finite")
+        if self.pending_multiplier is not None and (
+            not self.pending_multiplier.is_finite() or self.pending_multiplier <= 0
+        ):
+            raise RegistrySourceError("pending_multiplier must be positive and finite when present")
         if self.pending_multiplier is None and self.pending_multiplier_effective_at is not None:
             raise RegistrySourceError("pending multiplier effective time exists without pending multiplier")
         if self.pending_multiplier is not None and self.pending_multiplier_effective_at is None:
             raise RegistrySourceError("pending multiplier requires an effective time")
+        if (
+            self.pending_multiplier_effective_at is not None
+            and self.pending_multiplier_effective_at.tzinfo is None
+        ):
+            raise RegistrySourceError("pending multiplier effective time must be timezone-aware")
 
     def deployment_for_chain(self, chain_id: int) -> AssetKey | None:
         return next((item for item in self.deployments if item.chain_id == chain_id), None)
