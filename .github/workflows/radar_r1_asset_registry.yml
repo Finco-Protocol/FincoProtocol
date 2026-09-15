@@ -1,0 +1,60 @@
+name: Radar R1 Canonical Asset Registry
+
+on:
+  push:
+    branches: [radar/r1-canonical-asset-registry]
+    paths:
+      - "finco_radar/**"
+      - "tests/test_radar_r1_registry.py"
+      - "docs/radar/r1_canonical_asset_registry.md"
+      - ".github/workflows/radar_r1_asset_registry.yml"
+  workflow_dispatch:
+
+jobs:
+  canonical-asset-registry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Radar runtime dependencies
+        run: python -m pip install "httpx>=0.27,<1"
+      - name: Run R1 canonical registry live proof
+        run: python -m finco_radar.r1.live_proof
+      - name: Require canonical identity invariants
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r1_canonical_asset_registry.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R1_BLOCKED: live proof not PASS")
+          if data["assetCount"] != data["assetUidCount"]:
+              raise SystemExit("R1_BLOCKED: asset uid uniqueness failed")
+          if data["deploymentCount"] != data["canonicalKeyCount"]:
+              raise SystemExit("R1_BLOCKED: canonical deployment uniqueness failed")
+          if not data["referenceBinding"]["exactDeploymentValidated"]:
+              raise SystemExit("R1_BLOCKED: reference binding not exact")
+          if not str(data["selected"]["canonicalKey"]).startswith("4663:0x"):
+              raise SystemExit("R1_BLOCKED: selected asset lacks Robinhood Chain canonical key")
+          print(
+              "R1_CANONICAL_REGISTRY_PASS "
+              f"assets={data['assetCount']} keys={data['canonicalKeyCount']} "
+              f"selected={data['selected']['canonicalKey']}"
+          )
+          PY
+      - name: Run R0 execution quote regression alongside R1
+        env:
+          RADAR_R0_EVIDENCE_PATH: artifacts/radar_r0_regression_on_r1.json
+        run: python -m finco_radar.r0.live_proof
+      - name: Upload R1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r1-canonical-asset-registry-evidence
+          path: |
+            artifacts/radar_r1_canonical_asset_registry.json
+            artifacts/radar_r0_regression_on_r1.json
+          if-no-files-found: error
