@@ -43,9 +43,9 @@ Potential premium surfaces include advanced scenario and portfolio analysis, exp
 
 ## Verification and CI
 
-FINCO exposes reproducible public verification rather than relying on repository claims alone.
+FINCO is structured to expose reproducible verification rather than relying on repository claims alone.
 
-The main public CI gate currently performs:
+The main release CI gate currently performs:
 - public-repository safety scanning,
 - Python compilation checks,
 - dependency consistency checks,
@@ -71,7 +71,7 @@ No client project, company, workbook, saved project, production database, projec
 
 ## Repository provenance
 
-The corporate repository is a clean-room public codebase derived from a private development lineage. Historical branches, commits, client datasets, calibration evidence, screenshots, exports, working databases, and source materials are intentionally not imported.
+The corporate repository is a clean-room sanitized codebase derived from a private development lineage and prepared for controlled public release. Historical branches, commits, client datasets, calibration evidence, screenshots, exports, working databases, and source materials are intentionally not imported.
 
 The migration policy is fail-closed: source enters this repository only after sanitization and public-safety checks.
 
@@ -102,4 +102,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Public corporate codebase under active development. Synthetic reference validation and CI are active. Public deployment, session isolation, load testing, and the final public-readiness review remain in progress. Protocol/token utility remains roadmap functionality until separately specified and implemented.
+Sanitized corporate codebase under active development and prepared for controlled public release. Synthetic reference validation and CI are active. Public deployment, session isolation, load testing, and the final public-readiness review remain in progress. Protocol/token utility remains roadmap functionality until separately specified and implemented.
