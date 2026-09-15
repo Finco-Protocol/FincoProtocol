@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "finco_protocol"
 version = "0.1.0"
-description = "FINCO Protocol financial modelling application"
+description = "Deterministic financial intelligence infrastructure for modelling, market evidence, and verification"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
@@ -28,7 +28,7 @@ py-modules = ["main_web", "main_api"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "domain*", "financial_engine*", "finco_core*", "finco_radar*", "static*", "utils*"]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "finco_radar*", "finco_protocol*", "static*", "utils*"]
 exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
 
 [tool.setuptools.package-data]
