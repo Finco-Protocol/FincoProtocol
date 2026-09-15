@@ -10,13 +10,11 @@ Security fixes target the current `main` branch and active release/deployment ca
 
 Do not publish exploit details, secrets, private data, credentials, wallet material, or a working proof of compromise in a public issue.
 
-For a potentially sensitive vulnerability:
+The repository is currently private/staged for controlled public release. Before public release, maintainers must enable a canonical private vulnerability-reporting route, with GitHub Private Vulnerability Reporting / Security Advisories as the preferred mechanism. This document must not be interpreted as advertising a private fallback channel that has not been configured and verified.
 
-1. use GitHub's private vulnerability reporting / Security Advisory flow for this repository when available;
-2. otherwise contact the repository maintainers privately before disclosing technical details publicly;
-3. include the affected commit, component, reproduction conditions, impact, and the smallest safe proof needed to validate the issue.
+Once private vulnerability reporting is enabled, a sensitive report should include the affected commit, component, reproduction conditions, impact, and the smallest safe proof needed to validate the issue.
 
-Non-sensitive hardening suggestions may be opened as normal GitHub issues.
+Until a private reporting route is explicitly available, do not place sensitive technical details in a public issue. Non-sensitive hardening suggestions may be opened as normal GitHub issues.
 
 ## High-priority classes
 
@@ -33,11 +31,11 @@ Reports are especially useful when they involve:
 - dependency or supply-chain compromise;
 - future wallet, signing, custody, token, or smart-contract surfaces when those components exist.
 
-## Public repository boundary
+## Public-release repository boundary
 
-The repository is intentionally sanitized. Client data, project-specific workbooks, production databases, private calibration evidence, credentials, keys, and proprietary source artifacts must not be committed.
+The repository is intentionally sanitized for controlled public release. Client data, project-specific workbooks, production databases, private calibration evidence, credentials, keys, and proprietary source artifacts must not be committed.
 
-The public CI gate includes a repository safety scan. A passing scan is one control, not a guarantee that every security issue has been eliminated.
+The release CI gate includes a configured repository safety scan. A passing scan is one automated control, not a guarantee that every security, confidentiality, provenance, or sanitization issue has been eliminated.
 
 ## Scope note
 
