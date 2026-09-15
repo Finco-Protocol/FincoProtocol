@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,7 @@ import httpx
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import RegistryAssetStatus
+from finco_radar.gap.contracts import GapComparisonPolicy
 from finco_radar.gap.engine import build_bound_reference_price, compute_directional_gap
 from finco_radar.quotes.adapters.lifi import LifiExecutionQuoteAdapter
 from finco_radar.quotes.contracts import (
@@ -31,6 +33,11 @@ USDG_ADDRESS = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 TAKER = "0x1111111111111111111111111111111111111111"
 CANDIDATE_SYMBOLS = ("AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "GOOGL")
 NOTIONALS = (Decimal("100"), Decimal("1000"))
+
+# C1: Explicit, caller-supplied comparison-time coherence policy.
+# R4 is not yet applied; this is the only temporal gate R2 owns.
+MAX_EVIDENCE_SKEW_SECONDS = int(os.getenv("RADAR_R2_MAX_SKEW_SECONDS", "120"))
+_POLICY = GapComparisonPolicy(max_evidence_skew_seconds=MAX_EVIDENCE_SKEW_SECONDS)
 
 
 def _get_json(client: httpx.Client, url: str, **kwargs: Any) -> dict[str, Any]:
@@ -92,6 +99,19 @@ def _discover_settlement(client: httpx.Client) -> tuple[AssetRef, SettlementRefe
     return asset, reference
 
 
+def _git_head() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "UNKNOWN"
+    except Exception:
+        return "UNKNOWN"
+
+
 def _route_tools(quote: Any) -> list[str]:
     if quote.evidence is None:
         return []
@@ -102,29 +122,162 @@ def _route_tools(quote: Any) -> list[str]:
     return [str(tool)] if tool else []
 
 
-def _observation_dict(observation: Any, quote: Any) -> dict[str, Any]:
+def _settlement_evidence_dict(settlement_ref: SettlementReference) -> dict[str, Any]:
+    """C2: Full settlement conversion authority, reconstructible without other artifacts."""
+    return {
+        "chainId": settlement_ref.asset.chain_id,
+        "contractAddress": settlement_ref.asset.contract_address,
+        "symbol": settlement_ref.asset.symbol,
+        "decimals": settlement_ref.asset.decimals,
+        "usdPerAsset": str(settlement_ref.usd_per_asset) if settlement_ref.usd_per_asset is not None else None,
+        "source": settlement_ref.source,
+        "state": settlement_ref.state.value,
+        "observedAt": settlement_ref.observed_at.isoformat() if settlement_ref.observed_at is not None else None,
+        "canonicalIdentity": (
+            f"{settlement_ref.asset.chain_id}:{settlement_ref.asset.contract_address}"
+        ),
+        "rawEvidence": dict(settlement_ref.raw_evidence),
+    }
+
+
+def _observation_dict(
+    observation: Any,
+    quote: Any,
+    settlement_ref: SettlementReference,
+) -> dict[str, Any]:
     return {
         "side": observation.side.value,
         "requestedNotionalUsd": str(observation.requested_notional_usd),
         "tokenAmount": str(observation.token_amount),
         "settlementAmountUsd": str(observation.settlement_amount_usd),
         "executionPriceUsdPerToken": str(observation.execution_price_usd_per_token),
+        # Primary directional GAP metrics (C3)
         "referenceSide": observation.reference_side.value,
         "referencePriceUsdPerToken": str(observation.reference_price_usd_per_token),
         "gapBps": str(observation.gap_bps),
+        # Neutral midpoint comparison (C3 — secondary analytic)
+        "gapToMidBps": str(observation.gap_to_mid_bps),
         "quoteSource": observation.quote_source,
         "quotedAt": observation.quoted_at.isoformat(),
         "referenceGeneratedAt": observation.reference_generated_at.isoformat(),
+        "settlementObservedAt": (
+            observation.settlement_observed_at.isoformat()
+            if observation.settlement_observed_at is not None
+            else None
+        ),
         "referenceIsTradingHalt": observation.reference_is_trading_halt,
         "feeCostUsd": str(observation.fee_cost_usd) if observation.fee_cost_usd is not None else None,
         "gasCostUsd": str(observation.gas_cost_usd) if observation.gas_cost_usd is not None else None,
         "costScope": observation.cost_scope,
         "referenceStateAuthority": observation.reference_state_authority,
         "routeTools": _route_tools(quote),
+        # C2: Full settlement conversion evidence
+        "settlementEvidence": _settlement_evidence_dict(settlement_ref),
     }
 
 
+def _compute_actual_skew(observations: list[dict[str, Any]]) -> Decimal | None:
+    """C1: Compute max observed skew across all four observations."""
+    try:
+        max_skew = Decimal("0")
+        for obs in observations:
+            ref_ts = datetime.fromisoformat(obs["referenceGeneratedAt"])
+            sett_ts = datetime.fromisoformat(obs["settlementObservedAt"])
+            quote_ts = datetime.fromisoformat(obs["quotedAt"])
+            timestamps = [ref_ts, sett_ts, quote_ts]
+            skew = Decimal(str((max(timestamps) - min(timestamps)).total_seconds()))
+            if skew > max_skew:
+                max_skew = skew
+        return max_skew
+    except Exception:
+        return None
+
+
+def _midpoint_analytics(
+    buy_obs_100: dict[str, Any],
+    sell_obs_100: dict[str, Any],
+    buy_obs_1000: dict[str, Any],
+    sell_obs_1000: dict[str, Any],
+    ref_mid: Decimal,
+) -> dict[str, Any]:
+    """C3: Neutral midpoint analytics when both sides are available."""
+    p_buy_100 = Decimal(buy_obs_100["executionPriceUsdPerToken"])
+    p_sell_100 = Decimal(sell_obs_100["executionPriceUsdPerToken"])
+    p_buy_1000 = Decimal(buy_obs_1000["executionPriceUsdPerToken"])
+    p_sell_1000 = Decimal(sell_obs_1000["executionPriceUsdPerToken"])
+
+    p_exec_mid_100 = (p_buy_100 + p_sell_100) / Decimal("2")
+    p_exec_mid_1000 = (p_buy_1000 + p_sell_1000) / Decimal("2")
+
+    mid_gap_bps_100 = ((p_exec_mid_100 / ref_mid) - Decimal("1")) * Decimal("10000")
+    mid_gap_bps_1000 = ((p_exec_mid_1000 / ref_mid) - Decimal("1")) * Decimal("10000")
+
+    spread_bps_100 = ((p_buy_100 - p_sell_100) / p_exec_mid_100) * Decimal("10000")
+    spread_bps_1000 = ((p_buy_1000 - p_sell_1000) / p_exec_mid_1000) * Decimal("10000")
+
+    return {
+        "refMidUsdPerToken": str(ref_mid),
+        "usd100": {
+            "executionMidUsdPerToken": str(p_exec_mid_100),
+            "midGapBps": str(mid_gap_bps_100),
+            "quoteSpreadBps": str(spread_bps_100),
+        },
+        "usd1000": {
+            "executionMidUsdPerToken": str(p_exec_mid_1000),
+            "midGapBps": str(mid_gap_bps_1000),
+            "quoteSpreadBps": str(spread_bps_1000),
+        },
+        "semantics": (
+            "Neutral midpoint analytics only; not the primary FINCO GAP metric. "
+            "P_ref_mid = (token_bid + token_ask) / 2. "
+            "Quote spread is not realized slippage. "
+            "R3 owns generalized liquidity/all-in-cost scoring."
+        ),
+    }
+
+
+def _size_comparison(
+    buy_obs_100: dict[str, Any],
+    sell_obs_100: dict[str, Any],
+    buy_obs_1000: dict[str, Any],
+    sell_obs_1000: dict[str, Any],
+    r0_buy_impact: Decimal | None,
+    r0_sell_impact: Decimal | None,
+) -> dict[str, Any]:
+    """C4: Deterministic size comparison of directional GAP across notionals."""
+    buy_gap_100 = Decimal(buy_obs_100["gapBps"])
+    sell_gap_100 = Decimal(sell_obs_100["gapBps"])
+    buy_gap_1000 = Decimal(buy_obs_1000["gapBps"])
+    sell_gap_1000 = Decimal(sell_obs_1000["gapBps"])
+
+    buy_directional_gap_delta_bps = buy_gap_1000 - buy_gap_100
+    sell_directional_gap_delta_bps = sell_gap_1000 - sell_gap_100
+
+    result: dict[str, Any] = {
+        "smallNotionalUsd": "100",
+        "largeNotionalUsd": "1000",
+        "buyGapBpsAt100": str(buy_gap_100),
+        "buyGapBpsAt1000": str(buy_gap_1000),
+        "sellGapBpsAt100": str(sell_gap_100),
+        "sellGapBpsAt1000": str(sell_gap_1000),
+        # C4: directional gap delta (positive = larger size is worse for that side)
+        "buyDirectionalGapDeltaBps": str(buy_directional_gap_delta_bps),
+        "sellDirectionalGapDeltaBps": str(sell_directional_gap_delta_bps),
+        # C4: R0 size-impact preserved separately — not renamed or conflated with GAP delta
+        "r0BuySizeImpactBps": str(r0_buy_impact) if r0_buy_impact is not None else None,
+        "r0SellSizeImpactBps": str(r0_sell_impact) if r0_sell_impact is not None else None,
+        "semantics": (
+            "buyDirectionalGapDeltaBps = $1000 BUY directional GAP - $100 BUY directional GAP. "
+            "r0BuySizeImpactBps is the original R0 metric, preserved separately. "
+            "Delta positive = larger notional is worse for that execution side."
+        ),
+    }
+    return result
+
+
 def _run(symbols: Iterable[str]) -> dict[str, Any]:
+    produced_at = datetime.now(timezone.utc)
+    git_head = _git_head()
     timeout = httpx.Timeout(25.0)
     failures: list[dict[str, str]] = []
     with httpx.Client(timeout=timeout, headers={"accept": "application/json"}) as client:
@@ -166,7 +319,9 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             symbol=asset.token_symbol,
                             decimals=token_decimals,
                         )
-                        observations: list[dict[str, Any]] = []
+
+                        # Obtain all four observations: BUY×2 + SELL×2
+                        quote_map: dict[tuple[QuoteSide, Decimal], Any] = {}
                         for side in (QuoteSide.BUY, QuoteSide.SELL):
                             for notional in NOTIONALS:
                                 request = QuoteRequest(
@@ -186,39 +341,109 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                                         else None
                                     ),
                                 )
-                                quote = quote_adapter.quote(request)
-                                if quote.status is not QuoteStatus.QUOTE_OK:
-                                    raise RuntimeError(
-                                        f"{side.value}-{notional} quote status {quote.status.value}"
-                                    )
-                                observation = compute_directional_gap(reference, quote)
-                                observations.append(_observation_dict(observation, quote))
+                                quote_map[(side, notional)] = quote_adapter.quote(request)
+
+                        # Validate all quotes OK before computing any GAP
+                        for (side, notional), q in quote_map.items():
+                            if q.status is not QuoteStatus.QUOTE_OK:
+                                raise RuntimeError(
+                                    f"{side.value}-{notional} quote status {q.status.value}"
+                                )
+
+                        # Compute directional GAP with explicit coherence policy (C1)
+                        obs_map: dict[tuple[QuoteSide, Decimal], dict[str, Any]] = {}
+                        for (side, notional), q in quote_map.items():
+                            observation = compute_directional_gap(
+                                reference, q, policy=_POLICY
+                            )
+                            obs_map[(side, notional)] = _observation_dict(
+                                observation, q, settlement_reference
+                            )
+
+                        buy_100 = obs_map[(QuoteSide.BUY, Decimal("100"))]
+                        sell_100 = obs_map[(QuoteSide.SELL, Decimal("100"))]
+                        buy_1000 = obs_map[(QuoteSide.BUY, Decimal("1000"))]
+                        sell_1000 = obs_map[(QuoteSide.SELL, Decimal("1000"))]
+
+                        observations = [buy_100, sell_100, buy_1000, sell_1000]
+
+                        # C1: Compute actual evidence skew
+                        actual_skew = _compute_actual_skew(observations)
+
+                        # C3: Neutral midpoint analytics (secondary)
+                        midpoint_analytics = _midpoint_analytics(
+                            buy_100, sell_100, buy_1000, sell_1000,
+                            reference.token_midpoint_usd_per_token,
+                        )
+
+                        # C4: Deterministic size comparison
+                        size_cmp = _size_comparison(
+                            buy_100, sell_100, buy_1000, sell_1000,
+                            r0_buy_impact=None,  # R0 size-impact requires R0 normalization
+                            r0_sell_impact=None,
+                        )
 
                         return {
                             "status": "PASS",
+                            # C6: provenance
+                            "gitHead": git_head,
+                            "producedAt": produced_at.isoformat(),
                             "chainId": CHAIN_ID,
+                            # C6: canonical R1 asset identity
                             "asset": {
                                 "assetUid": asset.asset_uid,
                                 "canonicalKey": key.canonical_id,
                                 "symbol": asset.token_symbol,
                                 "currentMultiplier": str(asset.current_multiplier),
                             },
+                            # C6+C7: multiplier-adjusted reference with provenance
                             "reference": {
                                 "source": reference.source,
                                 "currency": reference.currency,
+                                "generatedAt": reference.generated_at.isoformat(),
+                                "isTradingHalt": reference.is_trading_halt,
+                                # C7: raw equity prices (BID/ASK from official /prices endpoint)
                                 "rawBidUsdPerShare": str(reference.raw_bid_usd_per_share),
                                 "rawAskUsdPerShare": str(reference.raw_ask_usd_per_share),
+                                # C7: token-equivalent prices (raw × currentMultiplier)
                                 "tokenBidUsdPerToken": str(reference.token_bid_usd_per_token),
                                 "tokenAskUsdPerToken": str(reference.token_ask_usd_per_token),
                                 "tokenMidpointUsdPerToken": str(reference.token_midpoint_usd_per_token),
-                                "generatedAt": reference.generated_at.isoformat(),
-                                "isTradingHalt": reference.is_trading_halt,
+                                # C7: multiplier semantics formula
+                                "currentMultiplier": str(reference.current_multiplier),
+                                "multiplierFormula": reference.multiplier_formula,
+                                "multiplierSemantics": (
+                                    "currentMultiplier from official Robinhood asset registry "
+                                    "maps on-chain token denomination to economic exposure per token unit. "
+                                    "raw_equity_price × currentMultiplier = token_equivalent_price. "
+                                    "Multiplier applied exactly once to BID and ASK separately."
+                                ),
                             },
+                            # C1: explicit coherence policy and observed skew
+                            "coherencePolicy": {
+                                "maxEvidenceSkewSeconds": MAX_EVIDENCE_SKEW_SECONDS,
+                                "actualMaxSkewSeconds": str(actual_skew) if actual_skew is not None else None,
+                                "authority": "R2_COMPARISON_TIME_COHERENCE_ONLY",
+                                "r4Boundary": (
+                                    "R4 not yet applied. R4 will own market-open/closed semantics, "
+                                    "expected-static reference classification, stale/paused/halted/"
+                                    "corporate-action state, and reference-state authorization."
+                                ),
+                            },
+                            # C2: settlement conversion evidence (at artifact level)
+                            "settlementConversionEvidence": _settlement_evidence_dict(settlement_reference),
+                            # All four observations with embedded settlement evidence
                             "observations": observations,
+                            # C3: neutral midpoint analytics (secondary — not the primary FINCO GAP metric)
+                            "midpointAnalytics": midpoint_analytics,
+                            # C4: deterministic size comparison
+                            "sizeComparison": size_cmp,
                             "gapSemantics": (
-                                "gap_bps=(quote_implied_token_price/reference_side_price-1)*10000; "
+                                "PRIMARY: gap_bps=(quote_implied_token_price/reference_side_price-1)*10000; "
                                 "BUY compares with official multiplier-adjusted ASK; SELL with BID; "
-                                "positive=onchain price above reference, negative=below"
+                                "positive=onchain price above reference, negative=below. "
+                                "SECONDARY: gapToMidBps uses P_ref_mid=(token_bid+token_ask)/2. "
+                                "None of these are trading signals."
                             ),
                             "costSemantics": (
                                 "R2 uses normalized route input/output amounts only; separately reported "
@@ -231,7 +456,13 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             {"symbol": requested_symbol, "reason": f"{type(exc).__name__}:{exc}"}
                         )
                         continue
-    return {"status": "BLOCKED", "chainId": CHAIN_ID, "attempts": failures}
+    return {
+        "status": "BLOCKED",
+        "chainId": CHAIN_ID,
+        "gitHead": git_head,
+        "producedAt": produced_at.isoformat(),
+        "attempts": failures,
+    }
 
 
 def run(symbols: Iterable[str] = CANDIDATE_SYMBOLS) -> dict[str, Any]:

@@ -22,11 +22,11 @@ jobs:
           python-version: "3.12"
       - name: Install Radar test/runtime dependencies
         run: python -m pip install "httpx>=0.27,<1" "pytest>=8,<10" "pytest-asyncio>=0.21,<2"
-      - name: Run focused R2 tests
+      - name: Run focused R2 tests (offline, deterministic)
         run: pytest -q tests/test_radar_r2_gap.py
       - name: Run R2 live FINCO GAP proof
         run: python -m finco_radar.r2.live_proof
-      - name: Require directional gap invariants
+      - name: Require directional gap invariants (Correction C)
         run: |
           python - <<'PY'
           import json
@@ -34,7 +34,7 @@ jobs:
           from pathlib import Path
           data = json.loads(Path("artifacts/radar_r2_finco_gap_evidence.json").read_text())
           if data["status"] != "PASS":
-              raise SystemExit("R2_BLOCKED: live proof not PASS")
+              raise SystemExit(f"R2_BLOCKED: live proof not PASS: {data}")
           key = str(data["asset"]["canonicalKey"])
           if not key.startswith("4663:0x"):
               raise SystemExit("R2_BLOCKED: selected asset is not a canonical Robinhood Chain key")
@@ -42,6 +42,29 @@ jobs:
               raise SystemExit("R2_BLOCKED: non-USD reference reached FINCO GAP")
           if data["referenceStateAuthority"] != "R4_NOT_YET_APPLIED":
               raise SystemExit("R2_BLOCKED: R2 falsely claimed reference-state authority")
+
+          # C1: coherence policy fields present
+          policy = data.get("coherencePolicy", {})
+          if policy.get("maxEvidenceSkewSeconds") is None:
+              raise SystemExit("R2_BLOCKED: coherence policy missing")
+          if policy.get("actualMaxSkewSeconds") is None:
+              raise SystemExit("R2_BLOCKED: actual skew not recorded")
+
+          # C2: settlement conversion evidence at artifact level
+          sett = data.get("settlementConversionEvidence", {})
+          if not sett.get("contractAddress"):
+              raise SystemExit("R2_BLOCKED: settlement contract address missing")
+          if sett.get("usdPerAsset") is None:
+              raise SystemExit("R2_BLOCKED: settlement usdPerAsset missing")
+          if sett.get("observedAt") is None:
+              raise SystemExit("R2_BLOCKED: settlement observedAt missing")
+
+          # C6: git HEAD and producedAt
+          if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
+              raise SystemExit("R2_BLOCKED: git HEAD not recorded")
+          if not data.get("producedAt"):
+              raise SystemExit("R2_BLOCKED: producedAt missing")
+
           observations = data["observations"]
           if len(observations) != 4:
               raise SystemExit("R2_BLOCKED: expected four size/side observations")
@@ -58,16 +81,52 @@ jobs:
                   raise SystemExit("R2_BLOCKED: cost scope changed")
               if item["referenceStateAuthority"] != "R4_NOT_YET_APPLIED":
                   raise SystemExit("R2_BLOCKED: observation claimed R4 authority")
+              # C1: per-observation timestamps
+              if not item.get("settlementObservedAt"):
+                  raise SystemExit("R2_BLOCKED: settlementObservedAt missing from observation")
+              # C2: per-observation settlement evidence
+              sett_ev = item.get("settlementEvidence", {})
+              if not sett_ev.get("contractAddress"):
+                  raise SystemExit("R2_BLOCKED: observation missing settlementEvidence.contractAddress")
+              if sett_ev.get("usdPerAsset") is None:
+                  raise SystemExit("R2_BLOCKED: observation missing settlementEvidence.usdPerAsset")
+              # C3: neutral midpoint present
+              if item.get("gapToMidBps") is None:
+                  raise SystemExit("R2_BLOCKED: gapToMidBps missing")
               values = [
                   Decimal(item["executionPriceUsdPerToken"]),
                   Decimal(item["referencePriceUsdPerToken"]),
                   Decimal(item["gapBps"]),
+                  Decimal(item["gapToMidBps"]),
               ]
-              if not all(value.is_finite() for value in values):
+              if not all(v.is_finite() for v in values):
                   raise SystemExit("R2_BLOCKED: non-finite numeric observation")
               if values[0] <= 0 or values[1] <= 0:
                   raise SystemExit("R2_BLOCKED: non-positive execution/reference price")
-          print(f"R2_FINCO_GAP_PASS key={key} observations={len(observations)}")
+
+          # C3: midpoint analytics block
+          mid = data.get("midpointAnalytics", {})
+          if not mid.get("refMidUsdPerToken"):
+              raise SystemExit("R2_BLOCKED: midpointAnalytics missing")
+
+          # C4: size comparison block
+          sc = data.get("sizeComparison", {})
+          if sc.get("buyDirectionalGapDeltaBps") is None:
+              raise SystemExit("R2_BLOCKED: sizeComparison buyDirectionalGapDeltaBps missing")
+          if sc.get("sellDirectionalGapDeltaBps") is None:
+              raise SystemExit("R2_BLOCKED: sizeComparison sellDirectionalGapDeltaBps missing")
+
+          # C7: multiplier semantics
+          ref_block = data.get("reference", {})
+          if not ref_block.get("multiplierFormula"):
+              raise SystemExit("R2_BLOCKED: multiplierFormula missing from reference block")
+          if not ref_block.get("rawBidUsdPerShare"):
+              raise SystemExit("R2_BLOCKED: rawBidUsdPerShare missing")
+
+          print(
+              f"R2_FINCO_GAP_PASS key={key} observations={len(observations)} "
+              f"skew={policy['actualMaxSkewSeconds']}s policy={policy['maxEvidenceSkewSeconds']}s"
+          )
           PY
       - name: Run R1 canonical registry regression
         env:
