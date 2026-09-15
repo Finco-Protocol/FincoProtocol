@@ -5,11 +5,89 @@ Backend remains source of truth.
 
 Secret redaction: FINCO_SECRET_KEY and FINCO_ADMIN_PASSWORD values
 are never exposed in diagnostics output.
+
+Structured event logging: log_http_error, log_run_started,
+log_run_completed, log_run_failed, log_capacity_busy, log_sqlite_lock.
+These helpers emit structured JSON-compatible log records.
+They never log tokens, secrets, passwords, payloads, or user data
+beyond a truncated user_id prefix.
 """
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+_obs_logger = logging.getLogger("finco.observability")
+
+
+def log_http_error(status_code: int, path: str, method: str = "GET") -> None:
+    """Log an HTTP error response. Never logs request body or auth headers."""
+    _obs_logger.warning(
+        "http_error",
+        extra={
+            "event": "http_error",
+            "status_code": status_code,
+            "path": path,
+            "method": method,
+        },
+    )
+
+
+def log_run_started(user_id: str) -> None:
+    """Log a model run start. Only the first 12 chars of user_id are recorded."""
+    _obs_logger.info(
+        "run_started",
+        extra={
+            "event": "run_started",
+            "user_id_prefix": (user_id or "")[:12],
+        },
+    )
+
+
+def log_run_completed(duration_ms: float, status: str = "ok") -> None:
+    """Log a model run completion with wall-clock duration."""
+    _obs_logger.info(
+        "run_completed",
+        extra={
+            "event": "run_completed",
+            "duration_ms": round(duration_ms, 1),
+            "status": status,
+        },
+    )
+
+
+def log_run_failed(error_type: str) -> None:
+    """Log a model run failure. Only the exception type name is recorded."""
+    _obs_logger.error(
+        "run_failed",
+        extra={
+            "event": "run_failed",
+            "error_type": error_type,
+        },
+    )
+
+
+def log_capacity_busy(max_slots: int) -> None:
+    """Log a capacity-limit 503 (all run slots full)."""
+    _obs_logger.warning(
+        "capacity_busy",
+        extra={
+            "event": "capacity_busy",
+            "max_slots": max_slots,
+        },
+    )
+
+
+def log_sqlite_lock(table: str = "") -> None:
+    """Log a SQLite busy/locked event."""
+    _obs_logger.warning(
+        "sqlite_lock",
+        extra={
+            "event": "sqlite_lock",
+            "table": table,
+        },
+    )
 
 # Sensitive environment variable names — never expose raw values
 _SENSITIVE_ENVS = frozenset([

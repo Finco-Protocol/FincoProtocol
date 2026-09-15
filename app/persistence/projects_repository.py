@@ -324,16 +324,19 @@ def list_projects_paged(
         + "))"
         " AND archived=0"
     )
-    # Parameter order:
-    #   1) requesting user_id (their-own branch)
-    #   2) canonical owner (REFERENCE_USER_ID) for the canonical branch
-    #   3) canonical template #1
-    #   4) canonical template #2
+    # Parameter order matches the SQL predicate produced by _canonical_reference_predicate():
+    #   1) requesting user_id (their-own branch — user_id=? in outer clause)
+    #   2) canonical owner (REFERENCE_USER_ID) — user_id=? in inner predicate
+    #   3) canonical template #1 (Solar)      — IN (?, ?, ?) slot 1
+    #   4) canonical template #2 (Wind)       — IN (?, ?, ?) slot 2
+    #   5) canonical template #3 (Storage)    — IN (?, ?, ?) slot 3
+    # All three canonical templates must be bound; omitting Storage (XC) was a bug.
     params: list[Any] = [
         user_id,
         REFERENCE_USER_ID,
         CANONICAL_REFERENCE_TEMPLATES[0],
         CANONICAL_REFERENCE_TEMPLATES[1],
+        CANONICAL_REFERENCE_TEMPLATES[2],
     ]
 
     if role_filter and role_filter in ("reference", "working_copy", "user_project"):

@@ -1,23 +1,19 @@
-"""Security headers middleware — adds X-Frame-Options, X-Content-Type-Options, Referrer-Policy, CSP."""
-import typing
+"""Security headers middleware — adds HSTS, X-Frame-Options, X-Content-Type-Options,
+Referrer-Policy, Permissions-Policy, and CSP to every HTTP response.
+
+P6.11: Added HSTS, Permissions-Policy. CSP retains unsafe-inline pending the
+phase16-csp-clean-apply follow-up (inline workspace init scripts must be
+migrated to data-attribute reads first).
+"""
+import os
 
 
 class SecurityHeadersMiddleware:
     """Adds security headers to every HTTP response."""
 
-    # PILOT_HOTFIX: 'unsafe-inline' needed for workspace init scripts.
-    # Root cause: index.html inline scripts (workspace_state_meta init, applyScenarioSnapshot)
-    # are blocked by CSP with script-src 'self' + no hash allowlist.
-    # This is a confirmed production browser blocker for the pilot.
-    #
-    # The inline scripts call applyWorkspaceStateMeta / applyScenarioSnapshot from
-    # static/app.js — they do NOT contain financial calculations.
-    #
-    # Follow-up: move these initializations to static/app.js reading from DOM
-    # data attributes (no inline script needed). Target: phase16-csp-clean-apply.
-    #
-    # References:
-    #   docs/phase16_csp_inline_script_fix.md
+    # CSP: unsafe-inline retained pending phase16-csp-clean-apply.
+    # Inline scripts (workspace_state_meta init, applyScenarioSnapshot) block
+    # CSP enforcement. Follow-up: move to data-attribute reads in static/app.js.
     CSP = (
         "default-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
@@ -28,11 +24,26 @@ class SecurityHeadersMiddleware:
         "frame-ancestors 'none';"
     )
 
+    # HSTS: only set on HTTPS deployments to avoid locking out HTTP dev servers.
+    # Staging and production must set FINCO_COOKIE_SECURE=true (the default).
+    _HSTS_ENABLED = os.getenv("FINCO_COOKIE_SECURE", "true").lower() in ("true", "1", "yes")
+    _HSTS_VALUE = "max-age=31536000; includeSubDomains"
+
     HEADERS = {
         "X-Frame-Options": "DENY",
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "same-origin",
         "Content-Security-Policy": CSP,
+        # Deny access to sensitive browser APIs — no geolocation, camera, mic,
+        # payment, USB, or cross-origin access needed by the modelling engine.
+        "Permissions-Policy": (
+            "geolocation=(), "
+            "camera=(), "
+            "microphone=(), "
+            "payment=(), "
+            "usb=(), "
+            "interest-cohort=()"
+        ),
     }
 
     def __init__(self, app):
@@ -54,6 +65,9 @@ class SecurityHeadersMiddleware:
                 # Add security headers
                 for name, value in self.HEADERS.items():
                     headers.append([name.encode(), value.encode()])
+                # HSTS only on HTTPS deployments
+                if self._HSTS_ENABLED:
+                    headers.append([b"strict-transport-security", self._HSTS_VALUE.encode()])
                 # HTML responses must not be cached — static assets use ?v= for cache busting
                 content_type = next(
                     (v.decode() for k, v in headers if k.decode().lower() == "content-type"),
