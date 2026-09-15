@@ -1,18 +1,20 @@
 # FINCO Protocol
 
+[![Public Safety and Model Smoke](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/public_safety_and_smoke.yml/badge.svg?branch=main)](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/public_safety_and_smoke.yml)
+
 **Financial Intelligence Infrastructure**
 
-FINCO Protocol is a financial-intelligence platform for modelling, monitoring, comparing, and eventually verifying real-world and tokenized assets.
+FINCO Protocol is financial-intelligence infrastructure for modelling, monitoring, comparing, and eventually verifying traditional, real-world, and tokenized assets.
 
 > **AI explains. FINCO calculates.**
 
-The protocol is built around deterministic financial engines, typed evidence, reproducible calculations, and explicit model-state authority. Financial modelling is one capability of the protocol — not the identity of the whole product.
+The protocol is built around deterministic financial engines, typed evidence, reproducible calculations, and explicit model-state authority. Financial modelling is one product surface of the protocol — not the identity of the whole product.
 
 ## Product surfaces
 
-### FINCO Model
+### FINCO Model — SaaS financial modelling
 
-Deterministic financial modelling and scenario intelligence for infrastructure and real assets.
+FINCO Model is the current SaaS application surface for deterministic financial modelling, scenario analysis, and decision support across infrastructure and real assets.
 
 Current capabilities include:
 - revenue and operating assumptions,
@@ -25,11 +27,33 @@ Current capabilities include:
 - scenario workflows,
 - financial statements and controlled exports.
 
-### FINCO Radar
+### FINCO Radar — crypto and tokenized-asset intelligence
 
-Reference-aware market intelligence for tokenized assets.
+FINCO Radar is the crypto and tokenized-asset intelligence surface of FINCO Protocol.
 
-Radar is architecturally separate from the classic project-finance engine. Its roadmap includes execution-aware gap analysis, size-aware liquidity, reference-state semantics, deterministic signals, and evidence-backed market observations.
+Radar is architecturally separate from the classic project-finance engine. Its roadmap and active development cover execution-aware gap analysis, size-aware liquidity, reference-state semantics, deterministic signals, asset identity, and evidence-backed market observations.
+
+### FINCO Protocol layer — roadmap
+
+The protocol layer is intended to connect FINCO Model and FINCO Radar with verification, provenance, access utility, and later on-chain functions.
+
+A future FINCO token is planned as an access and utility layer rather than a substitute for deterministic financial calculations. Planned utility may include holding-based access to selected FINCO Model and FINCO Radar tiers, premium feature unlocks, higher usage limits, verification services, and future protocol-level functionality.
+
+Potential premium surfaces include advanced scenario and portfolio analysis, expanded modelling limits, institutional exports, advanced Radar analytics, API/data access, and model or valuation verification. Exact token economics, access thresholds, network deployment, and smart-contract design are not final and should not be inferred from the current codebase.
+
+## Verification and CI
+
+FINCO exposes reproducible public verification rather than relying on repository claims alone.
+
+The main public CI gate currently performs:
+- public-repository safety scanning,
+- Python compilation checks,
+- dependency consistency checks,
+- synthetic reference and regression tests.
+
+Radar components also use dedicated evidence-oriented workflows for component-specific runtime and deterministic gates.
+
+See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification model, local reproduction commands, evidence boundaries, and known limitations.
 
 ## Public reference models
 
@@ -60,14 +84,15 @@ pip install -r requirements.txt
 uvicorn main_web:app --reload
 ```
 
-The current application surface is the **FINCO Model** module within FINCO Protocol.
+The current application surface is **FINCO Model**. FINCO Radar is under active development. The protocol/token layer described above is roadmap functionality and is not represented as a live token deployment in this repository.
 
 ## Safety boundaries
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- no wallet signing, custody, swaps, approvals, or private keys are required by the modelling module;
-- token-market functionality belongs to the separate Radar product surface.
+- FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
+- Radar and future protocol functionality remain architecturally separate from the classic financial engine;
+- planned token utility does not imply that a token contract, token sale, staking system, or token-gated production service is currently live.
 
 ## Long-term direction
 
@@ -77,4 +102,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate migration candidate. Public deployment, session isolation, load testing, and the final public-readiness review remain pending.
+Public corporate codebase under active development. Synthetic reference validation and CI are active. Public deployment, session isolation, load testing, and the final public-readiness review remain in progress. Protocol/token utility remains roadmap functionality until separately specified and implemented.
