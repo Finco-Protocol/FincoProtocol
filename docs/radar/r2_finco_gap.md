@@ -79,7 +79,7 @@ These deltas are the R2 directional-GAP size comparison only. They are not a liq
 
 ### R0 size-impact authority
 
-R2 emits **no** R0 size-impact field, not even a null placeholder. The R0 size-impact metric is produced by the R0 live proof into its own evidence artifact (`sizeImpactBps` in `radar_r0_regression_on_r2.json`). R2 neither duplicates nor recomputes it. A null field in the R2 artifact could be misread as an observed zero or as a broken R2 metric, so the field is absent and `r0SizeImpactAuthority` states where the authority actually lives.
+R2 emits the canonical R0 size-impact fields `r0BuySizeImpactBps` and `r0SellSizeImpactBps` in its `sizeComparison` block. They are computed with the canonical helper `finco_radar.quotes.normalization.quote_size_impact_bps` over the same BUY/SELL $100/$1,000 execution quote pairs that produced the directional GAP observations, for evidence alignment only. R2 does not redefine or reinterpret the metric: R0 size impact (output/input rate delta) remains distinct from the directional GAP delta (execution price vs multiplier-adjusted reference side), and the R0 live proof continues to publish `sizeImpactBps` in its own evidence artifact (`radar_r0_regression_on_r2.json`). `r0SizeImpactAuthority` in the R2 artifact states this provenance.
 
 ## Candidate audit trail
 
