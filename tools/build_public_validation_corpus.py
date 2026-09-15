@@ -4,8 +4,16 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
-from finco_protocol.verification.public_corpus import (
+# Direct ``python tools/...py`` execution places ``tools/`` rather than the
+# repository root on sys.path.  Add the root explicitly so this utility behaves
+# the same in local shells and GitHub Actions without requiring package install.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from finco_protocol.verification.public_corpus import (  # noqa: E402
     build_public_validation_corpus,
     verify_public_validation_corpus,
 )
