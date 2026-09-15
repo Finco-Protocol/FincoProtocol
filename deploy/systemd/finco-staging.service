@@ -1,0 +1,39 @@
+[Unit]
+Description=FINCO Model Corporate Staging
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=finco-staging
+Group=finco-staging
+WorkingDirectory=/opt/finco_staging
+Environment="PATH=/opt/finco_staging/.venv/bin"
+EnvironmentFile=/opt/finco_staging/.env.staging
+
+# Fail closed before startup if the staging identity, paths, secrets, or
+# checked-out commit do not match the declared staging contract.
+ExecStartPre=/opt/finco_staging/.venv/bin/python /opt/finco_staging/tools/staging_preflight.py --env-file /opt/finco_staging/.env.staging --repo-root /opt/finco_staging
+
+# Staging deliberately uses a port distinct from production (:8000).
+ExecStart=/opt/finco_staging/.venv/bin/python -m uvicorn main_web:app \
+    --host 127.0.0.1 \
+    --port 8100 \
+    --workers 2 \
+    --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGINT
+
+# Service hardening. Only the staging tree/storage are writable by the app.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/finco_staging
+
+[Install]
+WantedBy=multi-user.target
