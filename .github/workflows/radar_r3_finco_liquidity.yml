@@ -1,0 +1,255 @@
+name: Radar R3 FINCO LIQUIDITY
+
+on:
+  push:
+    branches: [radar/r3-finco-liquidity]
+    paths:
+      - "finco_radar/liquidity/**"
+      - "finco_radar/r3/**"
+      - "tests/test_radar_r3_liquidity.py"
+      - "docs/radar/r3_finco_liquidity.md"
+      - "docs/radar/r2_finco_gap.md"
+      - ".github/workflows/radar_r3_finco_liquidity.yml"
+  workflow_dispatch:
+
+jobs:
+  finco-liquidity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Radar test/runtime dependencies
+        run: python -m pip install "httpx>=0.27,<1" "pytest>=8,<10" "pytest-asyncio>=0.21,<2"
+      - name: Run focused R3 tests (offline, deterministic)
+        run: pytest -q tests/test_radar_r3_liquidity.py
+      - name: Run R3 live executable liquidity proof
+        run: python -m finco_radar.r3.live_proof
+      - name: Require executable liquidity invariants
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r3_finco_liquidity.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit(f"R3_BLOCKED: live proof not PASS: {data}")
+          if data.get("typedStatus") != "LIQUIDITY_OK":
+              raise SystemExit("R3_BLOCKED: typed status is not LIQUIDITY_OK")
+          key = str(data["asset"]["canonicalKey"])
+          if not key.startswith("4663:0x"):
+              raise SystemExit("R3_BLOCKED: selected asset is not a canonical Robinhood Chain key")
+          if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
+              raise SystemExit("R3_BLOCKED: git HEAD not recorded")
+          if not data.get("producedAt"):
+              raise SystemExit("R3_BLOCKED: producedAt missing")
+
+          # Exact one-asset four-quote matrix, every row QUOTE_OK.
+          matrix = data.get("quoteMatrixEvidence", [])
+          expected = {("BUY", "100"), ("BUY", "1000"), ("SELL", "100"), ("SELL", "1000")}
+          actual = {(i["side"], i["requestedNotionalUsd"]) for i in matrix}
+          if actual != expected or len(matrix) != 4:
+              raise SystemExit(f"R3_BLOCKED: quote matrix mismatch {actual}")
+          for item in matrix:
+              if item["status"] != "QUOTE_OK":
+                  raise SystemExit("R3_BLOCKED: non-QUOTE_OK row in PASS artifact")
+              if item["settlementEvidence"]["contractAddress"] != data[
+                  "settlementConversionEvidence"
+              ]["contractAddress"]:
+                  raise SystemExit("R3_BLOCKED: settlement identity not coherent across matrix")
+
+          # R0 size evidence: canonical authority, finite values.
+          si = data.get("sizeImpactEvidence", {})
+          if si.get("authority") != "finco_radar.quotes.normalization.quote_size_impact_bps":
+              raise SystemExit("R3_BLOCKED: R0 size-impact authority statement wrong")
+          for field in ("buySizeImpactBps", "sellSizeImpactBps"):
+              if not Decimal(str(si.get(field))).is_finite():
+                  raise SystemExit(f"R3_BLOCKED: {field} is not finite")
+
+          # R2 gap evidence: all four GAPs plus side-specific deltas, finite.
+          ge = data.get("gapEvidence", {})
+          for field in (
+              "buyGapBpsAt100", "buyGapBpsAt1000", "sellGapBpsAt100", "sellGapBpsAt1000",
+              "buyDirectionalGapDeltaBps", "sellDirectionalGapDeltaBps",
+          ):
+              if not Decimal(str(ge.get(field))).is_finite():
+                  raise SystemExit(f"R3_BLOCKED: gapEvidence {field} is not finite")
+          if ge.get("buyDeltaInterpretation") == ge.get("sellDeltaInterpretation"):
+              raise SystemExit("R3_BLOCKED: side-specific delta interpretations must differ")
+
+          # Executable spreads: finite at both notionals plus finite delta.
+          se = data.get("spreadEvidence", {})
+          for notch in ("at100", "at1000"):
+              block = se.get(notch, {})
+              if not block:
+                  raise SystemExit(f"R3_BLOCKED: spreadEvidence {notch} missing")
+              for field in (
+                  "buyExecutionPriceUsdPerToken", "sellExecutionPriceUsdPerToken",
+                  "executionMidPriceUsdPerToken", "executionSpreadBps",
+              ):
+                  if not Decimal(str(block.get(field))).is_finite():
+                      raise SystemExit(f"R3_BLOCKED: {notch}.{field} is not finite")
+              if Decimal(str(block["executionMidPriceUsdPerToken"])) <= 0:
+                  raise SystemExit(f"R3_BLOCKED: {notch} mid is not positive")
+          if not Decimal(str(se.get("executionSpreadDeltaBps"))).is_finite():
+              raise SystemExit("R3_BLOCKED: executionSpreadDeltaBps is not finite")
+
+          # Route evidence (Correction A): all four signatures must be
+          # authoritative — present, non-empty, never NO_ROUTE_EVIDENCE — and
+          # change flags must be real booleans because route evidence exists.
+          re_ = data.get("routeEvidence", {})
+          for side in ("buy", "sell"):
+              block = re_.get(side, {})
+              for field in ("smallRouteSignature", "largeRouteSignature"):
+                  signature = block.get(field)
+                  if not isinstance(signature, str) or not signature:
+                      raise SystemExit(f"R3_BLOCKED: routeEvidence.{side}.{field} missing")
+                  if signature == "NO_ROUTE_EVIDENCE":
+                      raise SystemExit(
+                          f"R3_BLOCKED: non-authoritative route signature in PASS artifact: "
+                          f"{side}.{field}"
+                      )
+              if not isinstance(block.get(f"{side}RouteChanged"), bool):
+                  raise SystemExit(f"R3_BLOCKED: routeEvidence.{side} change flag missing")
+
+          # Provider-cost evidence: four slots, classified, no double counting.
+          ce = data.get("costEvidence", [])
+          if len(ce) != 4:
+              raise SystemExit("R3_BLOCKED: cost evidence must cover the four slots")
+          allowed_states = {
+              "EVIDENCE_ONLY_INCLUSION_UNRESOLVED",
+              "SOURCE_PROVEN_INCLUDED",
+              "SOURCE_PROVEN_EXCLUDED",
+          }
+          for entry in ce:
+              if entry.get("costTreatmentState") not in allowed_states:
+                  raise SystemExit("R3_BLOCKED: unclassified cost-treatment state")
+              for field in ("feeBpsOfNotional", "gasBpsOfNotional", "reportedCostBps"):
+                  value = entry.get(field)
+                  if value is not None and not Decimal(str(value)).is_finite():
+                      raise SystemExit(f"R3_BLOCKED: cost {field} is not finite")
+          if "never" not in (data.get("costSemantics") or ""):
+              raise SystemExit("R3_BLOCKED: no-double-count cost boundary not declared")
+
+          # Temporal evidence: explicit policy, four observed pair skews within it.
+          te = data.get("temporalEvidence", {})
+          policy = te.get("policy", {})
+          max_skew = policy.get("maxQuotePairSkewSeconds")
+          if not isinstance(max_skew, int) or max_skew <= 0:
+              raise SystemExit("R3_BLOCKED: quote-pair coherence policy missing")
+          skews = te.get("observedPairSkews", {})
+          if set(skews) != {
+              "BUY_SIZE_PAIR", "SELL_SIZE_PAIR", "CROSS_SIDE_100", "CROSS_SIDE_1000"
+          }:
+              raise SystemExit("R3_BLOCKED: observed pair skews incomplete")
+          for label, skew in skews.items():
+              if Decimal(str(skew)) > Decimal(str(max_skew)):
+                  raise SystemExit(f"R3_BLOCKED: {label} skew exceeds declared policy")
+          if not Decimal(str(te.get("maxObservedPairSkewSeconds"))).is_finite():
+              raise SystemExit("R3_BLOCKED: max observed pair skew missing")
+
+          # Candidate audit trail must be preserved.
+          audit = data.get("candidateAttempts")
+          if not isinstance(audit, dict) or not isinstance(audit.get("skippedCandidates"), list):
+              raise SystemExit("R3_BLOCKED: candidateAttempts audit block missing")
+          if audit.get("skippedCandidateCount") != len(audit["skippedCandidates"]):
+              raise SystemExit("R3_BLOCKED: candidateAttempts count mismatch")
+          if audit.get("selectedSymbol") != data["asset"]["symbol"]:
+              raise SystemExit("R3_BLOCKED: selectedSymbol disagrees with asset identity")
+
+          # No score, no classification, no signal; boundaries preserved.
+          def keys_below(node, skip=frozenset()):
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      yield k
+                      if k not in skip:
+                          yield from keys_below(v)
+              elif isinstance(node, list):
+                  for v in node:
+                      yield from keys_below(v)
+          forbidden = ("score", "rank", "rating", "grade", "verdict", "opportunit")
+          if any(w in k.lower() for k in keys_below(data) for w in forbidden):
+              raise SystemExit("R3_BLOCKED: forbidden ranking/score field present")
+          if any(
+              w in k.lower()
+              for k in keys_below(data, skip={"boundaries"})
+              for w in ("signal", "recommend")
+          ):
+              raise SystemExit("R3_BLOCKED: forbidden signal field present")
+          boundaries = data.get("boundaries", {})
+          if boundaries.get("referenceStateAuthority") != "R4_NOT_YET_APPLIED":
+              raise SystemExit("R3_BLOCKED: R3 falsely claimed reference-state authority")
+          if boundaries.get("signalAuthority") != "R5_NOT_YET_APPLIED":
+              raise SystemExit("R3_BLOCKED: R3 falsely claimed signal authority")
+          if boundaries.get("terminalAuthority") != "R6_NOT_YET_APPLIED":
+              raise SystemExit("R3_BLOCKED: R3 falsely claimed terminal authority")
+
+          print(
+              f"R3_FINCO_LIQUIDITY_PASS key={key} matrix=4 "
+              f"buyImpact={si['buySizeImpactBps']}bps sellImpact={si['sellSizeImpactBps']}bps "
+              f"spread100={se['at100']['executionSpreadBps']}bps "
+              f"spread1000={se['at1000']['executionSpreadBps']}bps "
+              f"skew={te['maxObservedPairSkewSeconds']}s policy={max_skew}s "
+              f"selected={audit['selectedSymbol']} skippedCandidates={audit['skippedCandidateCount']}"
+          )
+          PY
+      - name: Run R2 FINCO GAP regression
+        env:
+          RADAR_R2_EVIDENCE_PATH: artifacts/radar_r2_regression_on_r3.json
+        run: python -m finco_radar.r2.live_proof
+      - name: Require R2 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r2_regression_on_r3.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R2_REGRESSION_BLOCKED: live proof not PASS")
+          print("R2_REGRESSION_PASS")
+          PY
+      - name: Run R1 canonical registry regression
+        env:
+          RADAR_R1_EVIDENCE_PATH: artifacts/radar_r1_regression_on_r3.json
+        run: python -m finco_radar.r1.live_proof
+      - name: Require R1 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r1_regression_on_r3.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R1_REGRESSION_BLOCKED: live proof not PASS")
+          print("R1_REGRESSION_PASS")
+          PY
+      - name: Run R0 execution quote regression
+        env:
+          RADAR_R0_EVIDENCE_PATH: artifacts/radar_r0_regression_on_r3.json
+        run: python -m finco_radar.r0.live_proof
+      - name: Require original R0 size-aware acceptance
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r0_regression_on_r3.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R0_REGRESSION_BLOCKED: live proof not PASS")
+          buy = Decimal(data["sizeImpactBps"]["BUY"])
+          sell = Decimal(data["sizeImpactBps"]["SELL"])
+          if buy == 0 and sell == 0:
+              raise SystemExit("R0_REGRESSION_BLOCKED: no size-dependent quote economics observed")
+          print(f"R0_SIZE_AWARE_REGRESSION_PASS BUY={buy}bps SELL={sell}bps")
+          PY
+      - name: Upload R3 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r3-finco-liquidity-evidence
+          path: |
+            artifacts/radar_r3_finco_liquidity.json
+            artifacts/radar_r2_regression_on_r3.json
+            artifacts/radar_r1_regression_on_r3.json
+            artifacts/radar_r0_regression_on_r3.json
+          if-no-files-found: error
