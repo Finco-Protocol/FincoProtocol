@@ -43,17 +43,17 @@ Potential premium surfaces include advanced scenario and portfolio analysis, exp
 
 ## Verification and CI
 
-FINCO is structured to expose reproducible verification rather than relying on repository claims alone.
+FINCO is structured to expose repeatable verification procedures and per-run evidence rather than relying on repository claims alone.
 
 The main release CI gate currently performs:
-- public-repository safety scanning,
+- configured public-release safety scanning,
 - Python compilation checks,
 - dependency consistency checks,
 - synthetic reference and regression tests.
 
 Radar components also use dedicated evidence-oriented workflows for component-specific runtime and deterministic gates.
 
-See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification model, local reproduction commands, evidence boundaries, and known limitations.
+See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification model, local reproduction commands, evidence boundaries, CI provenance, and known limitations.
 
 ## Public reference models
 
@@ -80,7 +80,7 @@ The migration policy is fail-closed: source enters this repository only after sa
 ```bash
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
 uvicorn main_web:app --reload
 ```
 
