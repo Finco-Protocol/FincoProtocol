@@ -46,10 +46,12 @@ Potential premium surfaces include advanced scenario and portfolio analysis, exp
 FINCO is structured to expose repeatable verification procedures and per-run evidence rather than relying on repository claims alone.
 
 The main release CI gate currently performs:
-- configured public-release safety scanning,
+- configured public-release safety scanning for defined identifiers/patterns/artifact types,
 - Python compilation checks,
 - dependency consistency checks,
 - synthetic reference and regression tests.
+
+The safety scan is an automated control, not a general-purpose confidentiality or provenance guarantee. Controlled public release still requires human review.
 
 Radar components also use dedicated evidence-oriented workflows for component-specific runtime and deterministic gates.
 
