@@ -17,6 +17,7 @@ What authority, calculation, state, or public behavior changes? If none, state `
 
 - Base SHA:
 - Head SHA:
+- Actual tested SHA, if different from Head SHA:
 - Focused tests:
 - Full public gate:
 - Runtime/evidence artifact, if applicable:
