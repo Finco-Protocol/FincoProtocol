@@ -54,11 +54,10 @@ reporting/__pycache__/
 *.pkl
 *.pickle
 *.parquet
-app/data/
 storage/
 reports/
 artifacts/
-exports/
+/exports/
 uploads/
 backups/
 playwright-report/
