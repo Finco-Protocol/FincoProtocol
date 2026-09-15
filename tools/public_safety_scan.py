@@ -2,11 +2,20 @@
 
 The sensitive denylist is stored only as SHA-256 digests so the prohibited
 identifiers themselves never appear in the public Git history.
+
+Scanning strategy:
+  Git-tracked files are enumerated deterministically via ``git ls-files``.
+  This means a force-added forbidden artifact (e.g. a .db file under app/data/)
+  is always caught regardless of .gitignore rules — .gitignore does not hide
+  committed content from ``git ls-files``.
+  If git is unavailable the scanner falls back to a filesystem walk and emits
+  a warning (CI environments must have git available for the scan to be authoritative).
 """
 from __future__ import annotations
 import hashlib
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,6 +46,8 @@ SECRET_PATTERNS = (
 
 ALLOW_EMAILS = {b"noreply@users.noreply.github.com"}
 
+_THIS_SCRIPT = "tools/public_safety_scan.py"
+
 
 def _contains_hashed_term(data: bytes) -> bool:
     low = data.lower()
@@ -50,59 +61,103 @@ def _contains_hashed_term(data: bytes) -> bool:
     return False
 
 
-_SKIP_DIR_NAMES = frozenset({
-    ".git", "__pycache__", ".pytest_cache", ".venv", "venv",
-    "node_modules", ".worktrees",
-})
-_SKIP_DIR_PATHS = frozenset({
-    # Gitignored data directories — DB, WAL, and runtime exports live here
-    "app/data",
-    "storage",
-    "storage/exports",
-    "reports",
-    "artifacts",
-    "exports",
-    "uploads",
-    "backups",
-    "playwright-report",
-    "test-results",
-    ".pytest-tmp",
-})
+def _git_tracked_files(root: Path) -> list[str] | None:
+    """Return list of git-tracked relative file paths, or None if git unavailable."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return None
+        # git ls-files --cached gives tracked files; --others --exclude-standard gives
+        # untracked-not-ignored (should also be scanned to catch staged-not-committed
+        # content that would be caught by CI on push).
+        # We prefer --cached for the primary scan but include --others as extra coverage.
+        return [line for line in result.stdout.splitlines() if line.strip()]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
 
 
-def main() -> int:
-    failures = []
-    for path in ROOT.rglob("*"):
-        parts = path.parts
-        # Skip any path that contains a skipped directory name
-        if any(p in _SKIP_DIR_NAMES for p in parts):
+def _filesystem_fallback(root: Path) -> list[str]:
+    """Walk filesystem when git is unavailable. Skips known runtime-only directories."""
+    _SKIP_DIR_NAMES = frozenset({
+        ".git", "__pycache__", ".pytest_cache", ".venv", "venv",
+        "node_modules", ".worktrees",
+    })
+    # Gitignored runtime directories that must never contain committed files.
+    # These are skipped here ONLY in the fallback walk — git ls-files is preferred
+    # because it cannot be fooled by .gitignore.
+    _SKIP_DIR_PATHS = frozenset({
+        "app/data", "storage", "storage/exports", "reports",
+        "artifacts", "exports", "uploads", "backups",
+        "playwright-report", "test-results",
+    })
+    files = []
+    for path in root.rglob("*"):
+        if any(p in _SKIP_DIR_NAMES for p in path.parts):
             continue
         if not path.is_file():
             continue
-        rel = path.relative_to(ROOT).as_posix()
-        # Skip gitignored directory prefixes
+        rel = path.relative_to(root).as_posix()
         if any(rel == d or rel.startswith(d + "/") for d in _SKIP_DIR_PATHS):
             continue
-        rel = path.relative_to(ROOT).as_posix()
-        rel_bytes = rel.encode("utf-8", errors="ignore")
-        if _contains_hashed_term(rel_bytes):
-            failures.append(f"forbidden identifier in path: {rel}")
-        if path.suffix.lower() in FORBIDDEN_BINARY_SUFFIXES:
-            failures.append(f"forbidden binary/data artifact: {rel}")
-            continue
-        if path.suffix.lower() not in TEXT_SUFFIXES:
-            continue
+        files.append(rel)
+    return files
+
+
+def scan_file(rel: str, root: Path) -> list[str]:
+    """Scan a single file and return a list of failure strings (empty = clean)."""
+    failures: list[str] = []
+    path = root / rel
+    rel_bytes = rel.encode("utf-8", errors="ignore")
+
+    if _contains_hashed_term(rel_bytes):
+        failures.append(f"forbidden identifier in path: {rel}")
+
+    if path.suffix.lower() in FORBIDDEN_BINARY_SUFFIXES:
+        failures.append(f"forbidden binary/data artifact: {rel}")
+        return failures  # no content scan needed
+
+    if path.suffix.lower() not in TEXT_SUFFIXES:
+        return failures
+
+    try:
         data = path.read_bytes()
-        if _contains_hashed_term(data):
-            failures.append(f"forbidden identifier in content: {rel}")
-        for email in EMAIL_RE.findall(data):
-            if email.lower() not in ALLOW_EMAILS:
-                failures.append(f"email-like identifier in {rel}")
-                break
-        if rel != "tools/public_safety_scan.py" and any(p.search(data) for p in LOCAL_PATH_PATTERNS):
-            failures.append(f"local user path in {rel}")
-        if any(p.search(data) for p in SECRET_PATTERNS):
-            failures.append(f"secret-like token in {rel}")
+    except OSError:
+        return failures
+
+    if _contains_hashed_term(data):
+        failures.append(f"forbidden identifier in content: {rel}")
+    for email in EMAIL_RE.findall(data):
+        if email.lower() not in ALLOW_EMAILS:
+            failures.append(f"email-like identifier in {rel}")
+            break
+    if rel != _THIS_SCRIPT and any(p.search(data) for p in LOCAL_PATH_PATTERNS):
+        failures.append(f"local user path in {rel}")
+    if any(p.search(data) for p in SECRET_PATTERNS):
+        failures.append(f"secret-like token in {rel}")
+
+    return failures
+
+
+def main() -> int:
+    files = _git_tracked_files(ROOT)
+    using_git = files is not None
+    if not using_git:
+        print("WARNING: git not available — falling back to filesystem walk (coverage reduced)", file=sys.stderr)
+        files = _filesystem_fallback(ROOT)
+
+    failures = []
+    for rel in files:
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        failures.extend(scan_file(rel, ROOT))
+
     if failures:
         print("\n".join(sorted(set(failures))))
         return 1

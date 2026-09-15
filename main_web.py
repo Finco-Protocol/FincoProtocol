@@ -156,12 +156,47 @@ _logger.info("FINCO Model startup: asset_version=%s", ASSET_VERSION)
 app = FastAPI(title="FINCO Protocol")
 
 # -- Model run concurrency limiter (P6.6) -------------------------------------
-# Prevents resource exhaustion when multiple demo users run the model simultaneously.
-# FINCO_MAX_CONCURRENT_RUNS=0 means unlimited (single-user / dev mode).
+# Bounds concurrent model runs to prevent resource exhaustion.
+#
+# Design:
+#   - asyncio.Semaphore(_MAX_CONCURRENT_RUNS) limits concurrent /run executions.
+#   - Acquisition is non-blocking: locked() returns False immediately if full.
+#   - Full → immediate 503 "Model busy" (fail-fast; no queue).
+#   - This is per-process: with Gunicorn multi-worker, each worker has its own
+#     semaphore, so the effective total = FINCO_MAX_CONCURRENT_RUNS × workers.
+#     Default 8 × 1 worker (uvicorn) or set FINCO_MAX_CONCURRENT_RUNS=2 with
+#     4 workers to get effective limit of 8. Document this in deploy/staging config.
+#   - FINCO_MAX_CONCURRENT_RUNS=0 disables the limiter (dev/single-user mode).
 _MAX_CONCURRENT_RUNS = int(os.getenv("FINCO_MAX_CONCURRENT_RUNS", "8"))
 _run_semaphore: asyncio.Semaphore | None = (
     asyncio.Semaphore(_MAX_CONCURRENT_RUNS) if _MAX_CONCURRENT_RUNS > 0 else None
 )
+
+
+async def _acquire_run_slot() -> bool:
+    """Non-blocking attempt to acquire a model-run slot.
+
+    Returns True if acquired (caller must call _release_run_slot()).
+    Returns False immediately when all slots are busy — caller returns 503.
+
+    Atomic in asyncio's single-threaded model: locked() is checked and
+    acquire() is called with no intervening await points. When the semaphore
+    is unlocked (value > 0), acquire() decrement is synchronous — the while
+    loop inside asyncio.Semaphore.acquire() only awaits when value == 0.
+    The locked() check and the acquire() therefore form a single atomic unit
+    with no TOCTOU gap.
+    """
+    if _run_semaphore is None:
+        return True
+    if _run_semaphore.locked():
+        return False
+    await _run_semaphore.acquire()
+    return True
+
+
+def _release_run_slot() -> None:
+    if _run_semaphore is not None:
+        _run_semaphore.release()
 
 
 @app.on_event("startup")
@@ -177,18 +212,32 @@ async def _bootstrap_reference_models():
 
 @app.on_event("startup")
 async def _schedule_demo_cleanup():
-    """Run demo TTL cleanup in a background thread after a short delay (P6.5)."""
+    """Schedule recurring demo TTL cleanup in a daemon thread (P6.5).
+
+    TTL authority: the ``created_at`` timestamp of the oldest project row owned
+    by a demo user_id. If all projects for a demo user are older than
+    FINCO_DEMO_TTL_HOURS, all their data is deleted. This is conservative —
+    a user is not purged until their entire project set has aged out.
+
+    Runs once at startup (deferred 5 min) then repeats every FINCO_DEMO_TTL_HOURS
+    hours so long-lived staging processes clean up without operator intervention.
+    """
     import threading
+    import time as _time
+
+    from app.auth import DEMO_TTL_HOURS
 
     def _run():
-        import time as _time
-        _time.sleep(300)  # defer 5 min so startup I/O is not blocked
-        try:
-            from app.demo_cleanup import cleanup_expired_demo_data
-            cleanup_expired_demo_data()
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception("Demo TTL cleanup failed")
+        _time.sleep(300)  # defer 5 min so startup I/O settles
+        while True:
+            try:
+                from app.demo_cleanup import cleanup_expired_demo_data
+                cleanup_expired_demo_data()
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("Demo TTL cleanup failed")
+            # Sleep for the full TTL period before next sweep
+            _time.sleep(max(3600, DEMO_TTL_HOURS * 3600))
 
     t = threading.Thread(target=_run, daemon=True, name="demo-cleanup")
     t.start()
@@ -3027,21 +3076,20 @@ async def run(request: Request):
                 status_code=429,
             )
 
-    # P6.6 — global concurrency limiter
-    if _run_semaphore is not None and _run_semaphore.locked():
-        _can_acquire = _run_semaphore._value > 0  # noqa: SLF001 — bounded semaphore internal
-        if not _can_acquire:
-            return templates.TemplateResponse(
-                request=request,
-                name="errors.html",
-                context={
-                    "error_title": "Model busy",
-                    "error_message": (
-                        "All model run slots are in use. Please wait a moment and try again."
-                    ),
-                },
-                status_code=503,
-            )
+    # P6.6 — global concurrency limiter (atomic non-blocking acquire)
+    slot_acquired = await _acquire_run_slot()
+    if not slot_acquired:
+        return templates.TemplateResponse(
+            request=request,
+            name="errors.html",
+            context={
+                "error_title": "Model busy",
+                "error_message": (
+                    "All model run slots are in use. Please wait a moment and try again."
+                ),
+            },
+            status_code=503,
+        )
 
     form = await request.form()
 
@@ -3068,15 +3116,12 @@ async def run(request: Request):
         snapshot_input_error=SnapshotInputError,
     )
 
-    if _run_semaphore is not None:
-        async with _run_semaphore:
-            outcome = await execute_run_route(
-                request=request, form=form, user=user, deps=deps,
-            )
-    else:
+    try:
         outcome = await execute_run_route(
             request=request, form=form, user=user, deps=deps,
         )
+    finally:
+        _release_run_slot()
 
     # Plain errors.html path: just render the template (no prepend_html).
     if not outcome.prepend_html:
@@ -3375,6 +3420,15 @@ async def download_post(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    # P6.7 — demo rate limiting for export generation
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "export_generate")
+        if not allowed:
+            return HTMLResponse(
+                content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
+                status_code=429,
+            )
+
     form = await request.form()
     deps = DownloadRouteDeps(
         collect_form_snapshot=_collect_form_snapshot,
@@ -3472,6 +3526,15 @@ async def runtime_summary_export(request: Request, project: str = "generic_wind_
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    # P6.7 — demo rate limiting
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "export_generate")
+        if not allowed:
+            return HTMLResponse(
+                content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
+                status_code=429,
+            )
+
     safe_project = project.strip().lower() if project else "generic_wind_reference"
     project_record = get_project_by_code(user.user_id, safe_project)
     runtime_project_code = safe_project
@@ -3520,6 +3583,15 @@ async def institutional_workbook_export(request: Request, project: str = "generi
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    # P6.7 — demo rate limiting
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "export_generate")
+        if not allowed:
+            return HTMLResponse(
+                content=f"<p>Export limit reached. Try again in {retry_after}s.</p>",
+                status_code=429,
+            )
 
     safe_project = project.strip().lower() if project else "generic_wind_reference"
     project_record = get_project_by_code(user.user_id, safe_project)
@@ -5516,6 +5588,20 @@ async def add_scenario_endpoint(request: Request):
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    # P6.7 — demo rate limiting for scenario creation
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "scenario_add")
+        if not allowed:
+            return JSONResponse(
+                {
+                    "error": (
+                        f"Demo sessions are limited to 15 new scenarios per hour. "
+                        f"Try again in {retry_after}s."
+                    )
+                },
+                status_code=429,
+            )
 
     form = await request.form()
     deps = ScenariosAddRouteDeps(

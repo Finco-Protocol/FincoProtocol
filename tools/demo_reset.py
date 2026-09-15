@@ -22,10 +22,14 @@ import sys
 
 # ── Safety gate: refuse production ───────────────────────────────────────────
 
+# Positive allowlist: only these environments may run demo reset.
+# Any unrecognized value (including "production") is refused fail-closed.
+_ALLOWED_ENVS = frozenset({"staging", "demo", "test", "development", ""})
 _ENV = os.getenv("FINCO_ENV", "").strip().lower()
-if _ENV == "production":
-    print("ERROR: demo_reset refused. FINCO_ENV=production.")
-    print("  This script must never run against production.")
+if _ENV not in _ALLOWED_ENVS:
+    print(f"ERROR: demo_reset refused. FINCO_ENV={_ENV!r} is not in the allowed set.")
+    print(f"  Allowed: {sorted(_ALLOWED_ENVS)}")
+    print("  This script must never run against production or unknown environments.")
     sys.exit(2)
 
 _APP_MODE = os.getenv("FINCO_APP_MODE", "development").strip().lower()
