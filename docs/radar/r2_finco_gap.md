@@ -55,6 +55,38 @@ Interpretation is intentionally raw and directional:
 
 R2 does not collapse these into an opportunity score. R5 owns signals.
 
+## Size comparison
+
+R2 compares the directional GAP at two notionals. The formulas are:
+
+`buyDirectionalGapDeltaBps = BUY_gap_1000 - BUY_gap_100`
+
+`sellDirectionalGapDeltaBps = SELL_gap_1000 - SELL_gap_100`
+
+The sign interpretation is **side-specific and must never be generalized across both sides**. A positive delta does not mean "worse" on both sides, because the two sides measure opposite economic directions: the BUY gap rises when the on-chain purchase price rises, while the SELL gap rises when the on-chain sale proceeds rise.
+
+For BUY:
+
+- positive delta = larger size is **worse** — the on-chain purchase is more expensive relative to the multiplier-adjusted ASK;
+- negative delta = larger size is **better**.
+
+For SELL:
+
+- positive delta = larger size is **better** — the on-chain sale is richer relative to the multiplier-adjusted BID;
+- negative delta = larger size is **worse**.
+
+These deltas are the R2 directional-GAP size comparison only. They are not a liquidity score and not an all-in execution-cost model; R3 owns those.
+
+### R0 size-impact authority
+
+R2 emits **no** R0 size-impact field, not even a null placeholder. The R0 size-impact metric is produced by the R0 live proof into its own evidence artifact (`sizeImpactBps` in `radar_r0_regression_on_r2.json`). R2 neither duplicates nor recomputes it. A null field in the R2 artifact could be misread as an observed zero or as a broken R2 metric, so the field is absent and `r0SizeImpactAuthority` states where the authority actually lives.
+
+## Candidate audit trail
+
+The live proof evaluates candidate symbols in order and accepts the first that independently supplies all four valid observations. Candidates rejected before it are preserved in the PASS artifact under `candidateAttempts.skippedCandidates` as **audit-only** evidence.
+
+This does not change PASS acceptance. One candidate must still provide all four BUY/SELL observations on its own, and observations are never stitched across candidates. The audit trail exists so that a systematic identity or economic failure affecting earlier candidates remains visible in a PASS artifact instead of being silently discarded.
+
 ## Cost boundary
 
 R2 derives execution price from the normalized route `fromAmount` / `toAmount` economics already returned by the quote authority. Separately reported `feeCosts` and `gasCosts` are preserved in evidence but are **not added** to R2 execution price because doing so could double-count route economics without a dedicated cost-authority contract.
@@ -90,6 +122,19 @@ R2 refuses to compute a numeric gap when:
 - R1 binding UID/key/symbol does not match the canonical asset;
 - exact canonical deployment evidence is absent or duplicated;
 - reference timestamp is malformed or timezone-naive.
+
+### Typed status contract
+
+Every R2 failure carries a typed `GapStatus` on `GapComputationError`, so callers categorize failures without parsing message text.
+
+R1 normalization helpers such as `normalize_symbol()` and `normalize_asset_uid()` raise their own exception family (`RegistrySourceError`, `RegistryConflictError`, `RegistryLookupError`). Those types are not part of the R2 typed contract, so without conversion a malformed symbol or UID would escape R2 untyped and bypass `GapStatus` entirely.
+
+Every R2 boundary that calls into R1 validation therefore converts them:
+
+- malformed or broken binding identity → `REFERENCE_BINDING_FAILED`;
+- malformed reference content → `REFERENCE_INVALID`.
+
+R1 code is never modified; the conversion happens only at the R2 boundary. An already-typed `GapComputationError` raised inside a converted block passes through unchanged rather than being relabelled.
 
 ## Acceptance
 

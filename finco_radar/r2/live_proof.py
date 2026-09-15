@@ -236,15 +236,30 @@ def _midpoint_analytics(
     }
 
 
+BUY_DELTA_INTERPRETATION = (
+    "positive = larger size is worse (on-chain purchase is more expensive relative to "
+    "the multiplier-adjusted ASK); negative = larger size is better"
+)
+
+SELL_DELTA_INTERPRETATION = (
+    "positive = larger size is better (on-chain sale is richer relative to the "
+    "multiplier-adjusted BID); negative = larger size is worse"
+)
+
+
 def _size_comparison(
     buy_obs_100: dict[str, Any],
     sell_obs_100: dict[str, Any],
     buy_obs_1000: dict[str, Any],
     sell_obs_1000: dict[str, Any],
-    r0_buy_impact: Decimal | None,
-    r0_sell_impact: Decimal | None,
 ) -> dict[str, Any]:
-    """C4: Deterministic size comparison of directional GAP across notionals."""
+    """C4/D1: Deterministic size comparison of directional GAP across notionals.
+
+    D1: The delta formulas are unchanged, but a positive delta does NOT mean "worse"
+    on both sides. BUY gap rises when the on-chain purchase price rises, which is
+    worse for the buyer. SELL gap rises when the on-chain sale proceeds rise, which
+    is better for the seller. The interpretation is therefore side-specific.
+    """
     buy_gap_100 = Decimal(buy_obs_100["gapBps"])
     sell_gap_100 = Decimal(sell_obs_100["gapBps"])
     buy_gap_1000 = Decimal(buy_obs_1000["gapBps"])
@@ -260,16 +275,27 @@ def _size_comparison(
         "buyGapBpsAt1000": str(buy_gap_1000),
         "sellGapBpsAt100": str(sell_gap_100),
         "sellGapBpsAt1000": str(sell_gap_1000),
-        # C4: directional gap delta (positive = larger size is worse for that side)
+        # C4/D1: formulas unchanged; interpretation is side-specific.
         "buyDirectionalGapDeltaBps": str(buy_directional_gap_delta_bps),
+        "buyDeltaInterpretation": BUY_DELTA_INTERPRETATION,
         "sellDirectionalGapDeltaBps": str(sell_directional_gap_delta_bps),
-        # C4: R0 size-impact preserved separately — not renamed or conflated with GAP delta
-        "r0BuySizeImpactBps": str(r0_buy_impact) if r0_buy_impact is not None else None,
-        "r0SellSizeImpactBps": str(r0_sell_impact) if r0_sell_impact is not None else None,
+        "sellDeltaInterpretation": SELL_DELTA_INTERPRETATION,
+        # D4: R0 size-impact is NOT emitted here. It is produced by the R0 live proof
+        # into its own evidence artifact. R2 neither duplicates nor recomputes it, and
+        # deliberately emits no placeholder that could be misread as an observed zero
+        # or as an unavailable R2 metric.
+        "r0SizeImpactAuthority": (
+            "NOT_EMITTED_BY_R2. R0 size-impact authority remains the separate R0 "
+            "regression evidence artifact (sizeImpactBps in radar_r0_regression_on_r2.json). "
+            "R2 does not duplicate or recompute the R0 metric."
+        ),
         "semantics": (
-            "buyDirectionalGapDeltaBps = $1000 BUY directional GAP - $100 BUY directional GAP. "
-            "r0BuySizeImpactBps is the original R0 metric, preserved separately. "
-            "Delta positive = larger notional is worse for that execution side."
+            "buyDirectionalGapDeltaBps = $1000 BUY directional GAP - $100 BUY directional GAP; "
+            "sellDirectionalGapDeltaBps = $1000 SELL directional GAP - $100 SELL directional GAP. "
+            "Sign interpretation is side-specific and must not be generalized: "
+            f"BUY {BUY_DELTA_INTERPRETATION}; SELL {SELL_DELTA_INTERPRETATION}. "
+            "These deltas are the R2 directional-GAP size comparison only; they are not "
+            "the R0 size-impact metric and are not liquidity or all-in-cost scores (R3)."
         ),
     }
     return result
@@ -376,12 +402,8 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             reference.token_midpoint_usd_per_token,
                         )
 
-                        # C4: Deterministic size comparison
-                        size_cmp = _size_comparison(
-                            buy_100, sell_100, buy_1000, sell_1000,
-                            r0_buy_impact=None,  # R0 size-impact requires R0 normalization
-                            r0_sell_impact=None,
-                        )
+                        # C4/D1: Deterministic size comparison
+                        size_cmp = _size_comparison(buy_100, sell_100, buy_1000, sell_1000)
 
                         return {
                             "status": "PASS",
@@ -436,8 +458,23 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             "observations": observations,
                             # C3: neutral midpoint analytics (secondary — not the primary FINCO GAP metric)
                             "midpointAnalytics": midpoint_analytics,
-                            # C4: deterministic size comparison
+                            # C4/D1: deterministic size comparison
                             "sizeComparison": size_cmp,
+                            # D3: audit-only record of candidates skipped before this one.
+                            # Acceptance is unchanged: the single candidate above still had
+                            # to supply all four valid observations on its own. Observations
+                            # are never stitched across candidates.
+                            "candidateAttempts": {
+                                "selectedSymbol": asset.token_symbol,
+                                "skippedCandidates": list(failures),
+                                "skippedCandidateCount": len(failures),
+                                "semantics": (
+                                    "Audit-only. Candidates evaluated and rejected before the "
+                                    "selected symbol succeeded. These did not contribute any "
+                                    "observation; the selected candidate independently provided "
+                                    "all four BUY/SELL observations."
+                                ),
+                            },
                             "gapSemantics": (
                                 "PRIMARY: gap_bps=(quote_implied_token_price/reference_side_price-1)*10000; "
                                 "BUY compares with official multiplier-adjusted ASK; SELL with BID; "

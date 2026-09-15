@@ -10,8 +10,11 @@ from finco_radar.assets.contracts import (
     CanonicalAssetRecord,
     ReferenceBinding,
     RegistryAssetStatus,
+    RegistrySourceError,
 )
 from finco_radar.gap.contracts import (
+    BoundReferencePrice,
+    DirectionalGapObservation,
     GapComparisonPolicy,
     GapComputationError,
     GapStatus,
@@ -749,3 +752,260 @@ def test_c7_raw_bid_ask_preserved_separately() -> None:
     # They differ by exactly the multiplier
     assert ref.token_bid_usd_per_token == ref.raw_bid_usd_per_share * ref.current_multiplier
     assert ref.token_ask_usd_per_token == ref.raw_ask_usd_per_share * ref.current_multiplier
+
+
+# ---------------------------------------------------------------------------
+# D1: Side-specific size-comparison sign interpretation
+# ---------------------------------------------------------------------------
+
+def _gap_only(gap_bps: str) -> dict[str, object]:
+    """Minimal observation stub — _size_comparison reads only gapBps."""
+    return {"gapBps": gap_bps}
+
+
+def _sell_obs(token_in: str, settlement_out: str):
+    """SELL observation: P_sell = settlement_out / token_in (usd_per_asset = 1)."""
+    return compute_directional_gap(
+        reference(),
+        quote(QuoteSide.SELL, normalized_in=token_in, normalized_out=settlement_out),
+    )
+
+
+def _buy_obs(settlement_in: str, token_out: str):
+    """BUY observation: P_buy = settlement_in / token_out (usd_per_asset = 1)."""
+    return compute_directional_gap(
+        reference(),
+        quote(QuoteSide.BUY, normalized_in=settlement_in, normalized_out=token_out),
+    )
+
+
+def test_d1_sell_positive_delta_means_larger_size_is_better() -> None:
+    """D1: SELL gap rises when sale proceeds rise, so a positive delta is BETTER."""
+    # $100 sells 1 token for 90; $1000 sells 10 tokens for 920 → 92/token.
+    obs_100 = _sell_obs("1", "90")
+    obs_1000 = _sell_obs("10", "920")
+
+    assert obs_1000.execution_price_usd_per_token > obs_100.execution_price_usd_per_token
+    delta = obs_1000.gap_bps - obs_100.gap_bps
+    assert delta > 0
+    # The larger size realized MORE USD per token, i.e. it was better for the seller.
+    # A generic "positive delta = worse" reading would invert this.
+    assert obs_1000.reference_side is ReferenceSide.BID
+
+
+def test_d1_sell_negative_delta_means_larger_size_is_worse() -> None:
+    """D1: SELL negative delta means the larger size realized less per token."""
+    obs_100 = _sell_obs("1", "90")
+    obs_1000 = _sell_obs("10", "880")
+
+    assert obs_1000.execution_price_usd_per_token < obs_100.execution_price_usd_per_token
+    delta = obs_1000.gap_bps - obs_100.gap_bps
+    assert delta < 0
+
+
+def test_d1_buy_positive_delta_means_larger_size_is_worse() -> None:
+    """D1: BUY gap rises when purchase price rises, so a positive delta is WORSE."""
+    obs_100 = _buy_obs("100", "0.8")     # 125 per token
+    obs_1000 = _buy_obs("1000", "7.5")   # ~133.33 per token
+
+    assert obs_1000.execution_price_usd_per_token > obs_100.execution_price_usd_per_token
+    delta = obs_1000.gap_bps - obs_100.gap_bps
+    assert delta > 0
+    assert obs_1000.reference_side is ReferenceSide.ASK
+
+
+def test_d1_buy_negative_delta_means_larger_size_is_better() -> None:
+    """D1: BUY negative delta means the larger size paid less per token."""
+    obs_100 = _buy_obs("100", "0.8")     # 125 per token
+    obs_1000 = _buy_obs("1000", "8.5")   # ~117.65 per token
+
+    assert obs_1000.execution_price_usd_per_token < obs_100.execution_price_usd_per_token
+    delta = obs_1000.gap_bps - obs_100.gap_bps
+    assert delta < 0
+
+
+def test_d1_same_delta_sign_has_opposite_meaning_per_side() -> None:
+    """D1: the crux — an identical positive delta is worse for BUY and better for SELL."""
+    buy_100 = _buy_obs("100", "0.8")
+    buy_1000 = _buy_obs("1000", "7.5")
+    sell_100 = _sell_obs("1", "90")
+    sell_1000 = _sell_obs("10", "920")
+
+    buy_delta = buy_1000.gap_bps - buy_100.gap_bps
+    sell_delta = sell_1000.gap_bps - sell_100.gap_bps
+    assert buy_delta > 0 and sell_delta > 0
+
+    # Same sign, opposite economic meaning: BUY paid more, SELL received more.
+    assert buy_1000.execution_price_usd_per_token > buy_100.execution_price_usd_per_token
+    assert sell_1000.execution_price_usd_per_token > sell_100.execution_price_usd_per_token
+
+
+def test_d1_size_comparison_emits_side_specific_interpretations() -> None:
+    """D1: the artifact must state per-side meaning, never a generic 'positive = worse'."""
+    from finco_radar.r2.live_proof import _size_comparison
+
+    sc = _size_comparison(
+        _gap_only("8"), _gap_only("-42"), _gap_only("10"), _gap_only("-40")
+    )
+
+    assert Decimal(sc["buyDirectionalGapDeltaBps"]) == Decimal("2")
+    assert Decimal(sc["sellDirectionalGapDeltaBps"]) == Decimal("2")
+
+    assert sc["buyDeltaInterpretation"].startswith("positive = larger size is worse")
+    assert sc["sellDeltaInterpretation"].startswith("positive = larger size is better")
+    assert sc["buyDeltaInterpretation"] != sc["sellDeltaInterpretation"]
+
+    # The removed generic claim must not reappear anywhere in the block.
+    assert "worse for that execution side" not in sc["semantics"]
+
+
+def test_d1_delta_formulas_are_unchanged() -> None:
+    """D1: only the interpretation changed — the formulas stay large minus small."""
+    from finco_radar.r2.live_proof import _size_comparison
+
+    sc = _size_comparison(
+        _gap_only("8.5"), _gap_only("-42.5"), _gap_only("11.25"), _gap_only("-39.75")
+    )
+    assert Decimal(sc["buyDirectionalGapDeltaBps"]) == Decimal("11.25") - Decimal("8.5")
+    assert Decimal(sc["sellDirectionalGapDeltaBps"]) == Decimal("-39.75") - Decimal("-42.5")
+
+
+# ---------------------------------------------------------------------------
+# D2: R1 validation errors cannot escape the typed GapStatus contract
+# ---------------------------------------------------------------------------
+
+def _observation(**overrides: object) -> DirectionalGapObservation:
+    kwargs: dict[str, object] = {
+        "asset_uid": UID,
+        "asset_key": AssetKey(4663, TOKEN),
+        "side": QuoteSide.BUY,
+        "requested_notional_usd": Decimal("100"),
+        "token_amount": Decimal("0.8"),
+        "settlement_amount_usd": Decimal("100"),
+        "execution_price_usd_per_token": Decimal("125"),
+        "reference_side": ReferenceSide.ASK,
+        "reference_price_usd_per_token": Decimal("105"),
+        "gap_bps": Decimal("1904.76"),
+        "gap_to_mid_bps": Decimal("2500"),
+        "quote_source": "TEST",
+        "quoted_at": NOW,
+        "reference_generated_at": NOW,
+        "settlement_observed_at": NOW,
+        "reference_is_trading_halt": False,
+        "fee_cost_usd": None,
+        "gas_cost_usd": None,
+    }
+    kwargs.update(overrides)
+    return DirectionalGapObservation(**kwargs)  # type: ignore[arg-type]
+
+
+def _bound_reference(**overrides: object) -> BoundReferencePrice:
+    kwargs: dict[str, object] = {
+        "asset_uid": UID,
+        "asset_key": AssetKey(4663, TOKEN),
+        "symbol": "AAA",
+        "raw_bid_usd_per_share": Decimal("95"),
+        "raw_ask_usd_per_share": Decimal("105"),
+        "current_multiplier": Decimal("1"),
+        "currency": "USD",
+        "generated_at": NOW,
+        "is_trading_halt": False,
+        "source": "TEST_BOUND_PRICE",
+    }
+    kwargs.update(overrides)
+    return BoundReferencePrice(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("bad_symbol", ["../AAA", "AAA/BBB", "AAA?X", "AAA BBB", ""])
+def test_d2_malformed_symbol_cannot_escape_as_registry_source_error(bad_symbol: str) -> None:
+    """D2: a malformed symbol is a typed R2 binding failure, not a raw R1 exception."""
+    with pytest.raises(GapComputationError) as exc_info:
+        _bound_reference(symbol=bad_symbol)
+
+    assert not isinstance(exc_info.value, RegistrySourceError)
+    assert exc_info.value.status is GapStatus.REFERENCE_BINDING_FAILED
+
+
+@pytest.mark.parametrize("bad_uid", ["0x123", "not-a-uid", "0x" + "11" * 31, ""])
+def test_d2_malformed_uid_cannot_escape_as_registry_source_error(bad_uid: str) -> None:
+    """D2: a malformed asset UID is a typed R2 binding failure."""
+    with pytest.raises(GapComputationError) as exc_info:
+        _bound_reference(asset_uid=bad_uid)
+
+    assert not isinstance(exc_info.value, RegistrySourceError)
+    assert exc_info.value.status is GapStatus.REFERENCE_BINDING_FAILED
+
+
+def test_d2_observation_malformed_uid_cannot_escape_as_registry_source_error() -> None:
+    """D2: the observation boundary normalizes a UID too, and must stay typed."""
+    with pytest.raises(GapComputationError) as exc_info:
+        _observation(asset_uid="0xdeadbeef")
+
+    assert not isinstance(exc_info.value, RegistrySourceError)
+    assert exc_info.value.status is GapStatus.REFERENCE_BINDING_FAILED
+
+
+@pytest.mark.parametrize("bad_symbol", ["../AAA", "AAA/BBB", "AAA%2FBBB", "AAA BBB"])
+def test_d2_malformed_reference_evidence_cannot_escape_as_registry_source_error(
+    bad_symbol: str,
+) -> None:
+    """D2: a malformed tokenSymbol in the canonical reference row is REFERENCE_INVALID."""
+    with pytest.raises(GapComputationError) as exc_info:
+        build_bound_reference_price(asset(), binding(), price_row(tokenSymbol=bad_symbol))
+
+    assert not isinstance(exc_info.value, RegistrySourceError)
+    assert exc_info.value.status is GapStatus.REFERENCE_INVALID
+
+
+def test_d2_every_r2_boundary_failure_carries_a_typed_status() -> None:
+    """D2: no R2 entry point may raise a bare R1 exception without a GapStatus."""
+    cases = [
+        lambda: _bound_reference(symbol="../AAA"),
+        lambda: _bound_reference(asset_uid="0x123"),
+        lambda: _observation(asset_uid="0x123"),
+        lambda: build_bound_reference_price(
+            asset(), binding(), price_row(tokenSymbol="../AAA")
+        ),
+    ]
+    for case in cases:
+        with pytest.raises(GapComputationError) as exc_info:
+            case()
+        assert isinstance(exc_info.value.status, GapStatus)
+        assert exc_info.value.status is not GapStatus.GAP_OK
+
+
+def test_d2_typed_errors_raised_inside_the_boundary_are_not_relabelled() -> None:
+    """D2: the converter must not swallow or rewrite an already-typed R2 error."""
+    with pytest.raises(GapComputationError) as exc_info:
+        _bound_reference(currency="EUR")
+    # Currency is validated after the R1 boundary block and keeps its own status.
+    assert exc_info.value.status is GapStatus.REFERENCE_INVALID
+
+
+# ---------------------------------------------------------------------------
+# D4: R0 size-impact placeholders removed from the R2 artifact
+# ---------------------------------------------------------------------------
+
+def test_d4_r2_emits_no_null_r0_size_impact_placeholders() -> None:
+    """D4: null placeholders could be misread as an observed zero or a broken metric."""
+    from finco_radar.r2.live_proof import _size_comparison
+
+    sc = _size_comparison(
+        _gap_only("8"), _gap_only("-42"), _gap_only("10"), _gap_only("-40")
+    )
+    assert "r0BuySizeImpactBps" not in sc
+    assert "r0SellSizeImpactBps" not in sc
+
+
+def test_d4_r0_size_impact_authority_is_explicitly_deferred() -> None:
+    """D4: R2 states where R0 size-impact authority actually lives."""
+    from finco_radar.r2.live_proof import _size_comparison
+
+    sc = _size_comparison(
+        _gap_only("8"), _gap_only("-42"), _gap_only("10"), _gap_only("-40")
+    )
+    authority = sc["r0SizeImpactAuthority"]
+    assert "NOT_EMITTED_BY_R2" in authority
+    assert "radar_r0_regression_on_r2.json" in authority
+    # R2 must not duplicate or recompute the R0 metric.
+    assert "does not duplicate or recompute" in authority
