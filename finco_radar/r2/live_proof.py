@@ -6,12 +6,12 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable
 
 import httpx
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
-from finco_radar.assets.contracts import AssetKey, RegistryAssetStatus
+from finco_radar.assets.contracts import RegistryAssetStatus
 from finco_radar.gap.engine import build_bound_reference_price, compute_directional_gap
 from finco_radar.quotes.adapters.lifi import LifiExecutionQuoteAdapter
 from finco_radar.quotes.contracts import (
@@ -124,105 +124,125 @@ def _observation_dict(observation: Any, quote: Any) -> dict[str, Any]:
     }
 
 
-def run(symbols: Iterable[str] = CANDIDATE_SYMBOLS) -> dict[str, Any]:
+def _run(symbols: Iterable[str]) -> dict[str, Any]:
     timeout = httpx.Timeout(25.0)
     failures: list[dict[str, str]] = []
     with httpx.Client(timeout=timeout, headers={"accept": "application/json"}) as client:
         _, settlement_reference = _discover_settlement(client)
-        registry_adapter = RobinhoodAssetRegistryAdapter(client=client)
-        snapshot = registry_adapter.fetch_snapshot()
+        with httpx.Client(
+            base_url=ROBINHOOD_API,
+            timeout=timeout,
+            headers={"accept": "application/json"},
+        ) as robinhood_client:
+            registry_adapter = RobinhoodAssetRegistryAdapter(client=robinhood_client)
+            snapshot = registry_adapter.fetch_snapshot()
 
-        with httpx.Client(base_url=LIFI_API, timeout=timeout, headers={"accept": "application/json"}) as lifi_client:
-            quote_adapter = LifiExecutionQuoteAdapter(client=lifi_client)
-            for requested_symbol in symbols:
-                try:
-                    matches = snapshot.find_by_symbol(requested_symbol)
-                    if len(matches) != 1:
-                        raise RuntimeError(f"symbol discovery returned {len(matches)} matches")
-                    asset = matches[0]
-                    if asset.status is not RegistryAssetStatus.ACTIVE:
-                        raise RuntimeError("canonical asset is not ACTIVE")
-                    key = asset.deployment_for_chain(CHAIN_ID)
-                    if key is None:
-                        raise RuntimeError("canonical asset has no Robinhood Chain deployment")
-                    binding, price_row = registry_adapter.fetch_bound_reference(snapshot, key)
-                    reference = build_bound_reference_price(asset, binding, price_row)
-                    if reference.is_trading_halt:
-                        raise RuntimeError("official reference is explicitly halted")
+            with httpx.Client(
+                base_url=LIFI_API,
+                timeout=timeout,
+                headers={"accept": "application/json"},
+            ) as lifi_client:
+                quote_adapter = LifiExecutionQuoteAdapter(client=lifi_client)
+                for requested_symbol in symbols:
+                    try:
+                        matches = snapshot.find_by_symbol(requested_symbol)
+                        if len(matches) != 1:
+                            raise RuntimeError(f"symbol discovery returned {len(matches)} matches")
+                        asset = matches[0]
+                        if asset.status is not RegistryAssetStatus.ACTIVE:
+                            raise RuntimeError("canonical asset is not ACTIVE")
+                        key = asset.deployment_for_chain(CHAIN_ID)
+                        if key is None:
+                            raise RuntimeError("canonical asset has no Robinhood Chain deployment")
+                        binding, price_row = registry_adapter.fetch_bound_reference(snapshot, key)
+                        reference = build_bound_reference_price(asset, binding, price_row)
+                        if reference.is_trading_halt:
+                            raise RuntimeError("official reference is explicitly halted")
 
-                    token_decimals = _erc20_decimals(client, key.contract_address)
-                    token = AssetRef(
-                        CHAIN_ID,
-                        key.contract_address,
-                        symbol=asset.token_symbol,
-                        decimals=token_decimals,
-                    )
-                    observations: list[dict[str, Any]] = []
-                    for side in (QuoteSide.BUY, QuoteSide.SELL):
-                        for notional in NOTIONALS:
-                            request = QuoteRequest(
-                                token=token,
-                                settlement=settlement_reference,
-                                side=side,
-                                requested_notional_usd=notional,
-                                taker_address=TAKER,
-                                token_sizing_reference_usd=(
-                                    reference.token_midpoint_usd_per_token
-                                    if side is QuoteSide.SELL
-                                    else None
-                                ),
-                                token_sizing_reference_source=(
-                                    "R2_BOUND_REFERENCE_MIDPOINT_SIZING_ONLY"
-                                    if side is QuoteSide.SELL
-                                    else None
-                                ),
-                            )
-                            quote = quote_adapter.quote(request)
-                            if quote.status is not QuoteStatus.QUOTE_OK:
-                                raise RuntimeError(
-                                    f"{side.value}-{notional} quote status {quote.status.value}"
+                        token_decimals = _erc20_decimals(client, key.contract_address)
+                        token = AssetRef(
+                            CHAIN_ID,
+                            key.contract_address,
+                            symbol=asset.token_symbol,
+                            decimals=token_decimals,
+                        )
+                        observations: list[dict[str, Any]] = []
+                        for side in (QuoteSide.BUY, QuoteSide.SELL):
+                            for notional in NOTIONALS:
+                                request = QuoteRequest(
+                                    token=token,
+                                    settlement=settlement_reference,
+                                    side=side,
+                                    requested_notional_usd=notional,
+                                    taker_address=TAKER,
+                                    token_sizing_reference_usd=(
+                                        reference.token_midpoint_usd_per_token
+                                        if side is QuoteSide.SELL
+                                        else None
+                                    ),
+                                    token_sizing_reference_source=(
+                                        "R2_BOUND_REFERENCE_MIDPOINT_SIZING_ONLY"
+                                        if side is QuoteSide.SELL
+                                        else None
+                                    ),
                                 )
-                            observation = compute_directional_gap(reference, quote)
-                            observations.append(_observation_dict(observation, quote))
+                                quote = quote_adapter.quote(request)
+                                if quote.status is not QuoteStatus.QUOTE_OK:
+                                    raise RuntimeError(
+                                        f"{side.value}-{notional} quote status {quote.status.value}"
+                                    )
+                                observation = compute_directional_gap(reference, quote)
+                                observations.append(_observation_dict(observation, quote))
 
-                    return {
-                        "status": "PASS",
-                        "chainId": CHAIN_ID,
-                        "asset": {
-                            "assetUid": asset.asset_uid,
-                            "canonicalKey": key.canonical_id,
-                            "symbol": asset.token_symbol,
-                            "currentMultiplier": str(asset.current_multiplier),
-                        },
-                        "reference": {
-                            "source": reference.source,
-                            "currency": reference.currency,
-                            "rawBidUsdPerShare": str(reference.raw_bid_usd_per_share),
-                            "rawAskUsdPerShare": str(reference.raw_ask_usd_per_share),
-                            "tokenBidUsdPerToken": str(reference.token_bid_usd_per_token),
-                            "tokenAskUsdPerToken": str(reference.token_ask_usd_per_token),
-                            "tokenMidpointUsdPerToken": str(reference.token_midpoint_usd_per_token),
-                            "generatedAt": reference.generated_at.isoformat(),
-                            "isTradingHalt": reference.is_trading_halt,
-                        },
-                        "observations": observations,
-                        "gapSemantics": (
-                            "gap_bps=(quote_implied_token_price/reference_side_price-1)*10000; "
-                            "BUY compares with official multiplier-adjusted ASK; SELL with BID; "
-                            "positive=onchain price above reference, negative=below"
-                        ),
-                        "costSemantics": (
-                            "R2 uses normalized route input/output amounts only; separately reported "
-                            "feeCosts/gasCosts are preserved as evidence and are not added"
-                        ),
-                        "referenceStateAuthority": "R4_NOT_YET_APPLIED",
-                    }
-                except Exception as exc:
-                    failures.append(
-                        {"symbol": requested_symbol, "reason": f"{type(exc).__name__}:{exc}"}
-                    )
-                    continue
+                        return {
+                            "status": "PASS",
+                            "chainId": CHAIN_ID,
+                            "asset": {
+                                "assetUid": asset.asset_uid,
+                                "canonicalKey": key.canonical_id,
+                                "symbol": asset.token_symbol,
+                                "currentMultiplier": str(asset.current_multiplier),
+                            },
+                            "reference": {
+                                "source": reference.source,
+                                "currency": reference.currency,
+                                "rawBidUsdPerShare": str(reference.raw_bid_usd_per_share),
+                                "rawAskUsdPerShare": str(reference.raw_ask_usd_per_share),
+                                "tokenBidUsdPerToken": str(reference.token_bid_usd_per_token),
+                                "tokenAskUsdPerToken": str(reference.token_ask_usd_per_token),
+                                "tokenMidpointUsdPerToken": str(reference.token_midpoint_usd_per_token),
+                                "generatedAt": reference.generated_at.isoformat(),
+                                "isTradingHalt": reference.is_trading_halt,
+                            },
+                            "observations": observations,
+                            "gapSemantics": (
+                                "gap_bps=(quote_implied_token_price/reference_side_price-1)*10000; "
+                                "BUY compares with official multiplier-adjusted ASK; SELL with BID; "
+                                "positive=onchain price above reference, negative=below"
+                            ),
+                            "costSemantics": (
+                                "R2 uses normalized route input/output amounts only; separately reported "
+                                "feeCosts/gasCosts are preserved as evidence and are not added"
+                            ),
+                            "referenceStateAuthority": "R4_NOT_YET_APPLIED",
+                        }
+                    except Exception as exc:
+                        failures.append(
+                            {"symbol": requested_symbol, "reason": f"{type(exc).__name__}:{exc}"}
+                        )
+                        continue
     return {"status": "BLOCKED", "chainId": CHAIN_ID, "attempts": failures}
+
+
+def run(symbols: Iterable[str] = CANDIDATE_SYMBOLS) -> dict[str, Any]:
+    try:
+        return _run(symbols)
+    except Exception as exc:
+        return {
+            "status": "BLOCKED",
+            "chainId": CHAIN_ID,
+            "reason": f"INFRASTRUCTURE:{type(exc).__name__}:{exc}",
+        }
 
 
 def main() -> int:
