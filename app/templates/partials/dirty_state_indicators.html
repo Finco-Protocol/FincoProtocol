@@ -1,0 +1,67 @@
+{# ──────────────────────────────────────────────────────────────────────────
+   Phase 25B-4 — Dirty state visual indicators (read-only partial)
+
+   This partial renders ALL four UI surfaces from one payload:
+
+   1. ds-saved-badge         — small chip in the workspace top bar
+   2. ds-notice              — "Changes not yet saved" notice (or
+                                factory notice)
+   3. ds-run-warning         — "Run will use older than current draft"
+   4. ds-scenario-dot        — per-scenario dirty dot (in the scenario
+                                list, rendered separately by the
+                                scenario-list partial)
+
+   All classes are prefixed with ``ds-`` (dirty-state) to avoid
+   collisions with existing ``.badge``, ``.dsr-*`` and other classes.
+   No JavaScript. No inline script. No Tailwind. No Alpine.
+   ────────────────────────────────────────────────────────────────────────── #}
+
+{# ── 1. Saved-state chip ──────────────────────────────────────────────── #}
+{%- macro saved_state_chip(badge) -%}
+<span class="ds-badge {{ badge.css_class }}"
+      title="{{ badge.label }}">
+  <span class="ds-badge__icon" aria-hidden="true">{{ badge.icon }}</span>
+  <span class="ds-badge__label">{{ badge.label }}</span>
+</span>
+{%- endmacro -%}
+
+{# ── 2. "Changes not yet saved" notice ───────────────────────────────── #}
+{%- macro changes_not_saved_notice(notice) -%}
+{% if notice %}
+<div class="ds-notice {{ notice.css_class }}" role="status" aria-live="polite">
+  <span class="ds-notice__icon" aria-hidden="true">{{ notice.icon }}</span>
+  <div class="ds-notice__body">
+    <div class="ds-notice__title">{{ notice.title }}</div>
+    <div class="ds-notice__text">{{ notice.body }}</div>
+  </div>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 3. Run-disabled warning chip ────────────────────────────────────── #}
+{%- macro run_disabled_warning(warning) -%}
+{% if warning %}
+<span class="ds-run-warning {{ warning.css_class }}"
+      title="{{ warning.body }}">
+  <span class="ds-run-warning__icon" aria-hidden="true">{{ warning.icon }}</span>
+  <span class="ds-run-warning__label">{{ warning.title }}</span>
+</span>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 4. Per-scenario dirty dot ───────────────────────────────────────── #}
+{%- macro scenario_dirty_dot(dot) -%}
+{% if dot.is_dirty %}
+<span class="ds-dot {{ dot.css_class }}"
+      title="{{ dot.title }}"
+      aria-label="{{ dot.title }}"></span>
+{% endif %}
+{%- endmacro -%}
+
+{# ── Public: render the whole row in one place ───────────────────────── #}
+{%- macro dirty_state_row(dirty_state_ui) -%}
+<div class="ds-row">
+  {{ saved_state_chip(dirty_state_ui.badge) }}
+  {{ run_disabled_warning(dirty_state_ui.run_warning) }}
+</div>
+{%- endmacro -%}

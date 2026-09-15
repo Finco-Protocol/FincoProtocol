@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finco_protocol"
+version = "0.1.0"
+description = "FINCO Protocol financial modelling application"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "openpyxl",
+    "python-dateutil",
+    "fastapi",
+    "python-multipart",
+    "itsdangerous",
+    "bcrypt",
+    "sqlalchemy",
+    "jinja2",
+    "scipy",
+    "httpx",
+    "click",
+]
+
+[tool.setuptools]
+py-modules = ["main_web", "main_api"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "static*", "utils*"]
+exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*.html", "templates/**/*.txt", "templates/**/*.css", "templates/**/*.js"]
+static = ["*", "**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_"]
+addopts = "-q --tb=short"

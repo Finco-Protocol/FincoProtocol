@@ -1,0 +1,179 @@
+{# ── Validation summary partial (Phase 24-G-1 + 24-G-2) ──────────────
+   Renders validation messages grouped by severity:
+   - Error    (red, must be fixed)
+   - Warning  (amber, review before run)
+   - Information (blue, FYI only)
+
+   Phase 24-G-2 additions (UI-only, no backend changes):
+   - Strict severity order: Error → Warning → Information (always,
+     even if one group is empty). Empty groups render as collapsed
+     hint rows so the user always sees "0 Errors, 0 Warnings, 0 Info"
+     when nothing is wrong.
+   - Hint subtitle under each group ("Must be fixed", "Review before
+     run", "FYI only") — clarifies what each severity means.
+   - Improved visual hierarchy: larger headings, clearer icon
+     contrast, consistent spacing.
+   - Static grouped sections (no collapsible, no JS).
+
+   Backward-compatible: if `errors` is a list of plain strings they
+   are all treated as `Error` severity. If items are dicts with a
+   `severity` field, they are grouped by that field. `messages`
+   (optional, list of plain strings) are treated as `Information`.
+
+   This is presentation only — no backend changes, no model/formula/
+   persistence changes. No auto-runs. No calculations.
+
+   Conservative copy; uses the same wording as the original
+   validation.html so existing tests that assert "Validation failed"
+   and "Input checks passed" continue to pass.
+
+   Note: uses Jinja2 `namespace()` for cross-loop accumulation, since
+   `{% set x = x + [...] %}` inside `{% for %}` does not mutate the
+   outer binding in Jinja2's default scope rules. #}
+
+{% set _errors = errors|default([]) %}
+{% set _messages = messages|default([]) %}
+{% set _valid = valid|default(_errors|length == 0) %}
+
+{% set _ns = namespace(
+  error_items=[],
+  warn_items=[],
+  info_items=[]
+) %}
+
+{% for _e in _errors %}
+  {% if _e is mapping %}
+    {% if _e.severity == 'warning' or _e.severity == 'warn' %}
+      {% set _ns.warn_items = _ns.warn_items + [_e] %}
+    {% elif _e.severity == 'information' or _e.severity == 'info' %}
+      {% set _ns.info_items = _ns.info_items + [_e] %}
+    {% else %}
+      {% set _ns.error_items = _ns.error_items + [_e] %}
+    {% endif %}
+  {% else %}
+    {% set _ns.error_items = _ns.error_items + [{'message': _e, 'severity': 'error'}] %}
+  {% endif %}
+{% endfor %}
+{% for _m in _messages %}
+  {% if _m is mapping %}
+    {% set _ns.info_items = _ns.info_items + [_m] %}
+  {% else %}
+    {% set _ns.info_items = _ns.info_items + [{'message': _m, 'severity': 'information'}] %}
+  {% endif %}
+{% endfor %}
+
+{# Deduplicate repeated wording. Rendered as "msg (×N)" in the UI. #}
+{% set _dedup = namespace(items=[]) %}
+{% for _e in _ns.error_items %}
+  {% set _msg = _e.message if _e is mapping else _e %}
+  {% set _found = namespace(hit=false, next_items=[]) %}
+  {% for _d in _dedup.items %}
+    {% if _d.message == _msg and not _found.hit %}
+      {% set _found.next_items = _found.next_items + [{'message': _msg, 'severity': 'error', 'count': (_d.count|default(1)) + 1}] %}
+      {% set _found.hit = true %}
+    {% else %}
+      {% set _found.next_items = _found.next_items + [_d] %}
+    {% endif %}
+  {% endfor %}
+  {% if not _found.hit %}
+    {% set _found.next_items = _found.next_items + [{'message': _msg, 'severity': 'error', 'count': 1}] %}
+  {% endif %}
+  {% set _dedup.items = _found.next_items %}
+{% endfor %}
+
+{% set _dedup_count = _dedup.items|length %}
+{% set _warn_count = _ns.warn_items|length %}
+{% set _info_count = _ns.info_items|length %}
+{% set _total_count = _dedup_count + _warn_count + _info_count %}
+
+{% if not _valid %}
+<div class="alert alert-error validation-header" role="alert" aria-label="Validation failed">
+  <strong>Validation failed</strong> - please review the messages below.
+</div>
+{% endif %}
+
+{# ── Strict severity order: Error → Warning → Information ── #}
+{# Group 1: Error (always rendered, even when empty after dedup, so the
+   user always sees the severity hierarchy). #}
+<div class="validation-group validation-group--error
+            {% if _dedup_count == 0 %}validation-group--empty{% endif %}"
+     role="group" aria-label="Validation errors"
+     data-severity="error"
+     data-count="{{ _dedup_count }}">
+  <div class="validation-group-header">
+    <span class="validation-group-icon" aria-hidden="true">!</span>
+    <span class="validation-group-title">Error</span>
+    <span class="validation-group-count">{{ _dedup_count }}</span>
+    <span class="validation-group-hint">Must be fixed</span>
+  </div>
+  <div class="validation-group-body">
+    {% if _dedup_count == 0 %}
+    <div class="validation-group-empty">No errors. Inputs are clear for run.</div>
+    {% else %}
+    {% for _e in _dedup.items %}
+    <div class="alert alert-error validation-item">
+      <span class="validation-item-message">{{ _e.message }}</span>
+      {% if _e.count and _e.count > 1 %}
+      <span class="validation-item-count" title="Repeated {{ _e.count }} times">×{{ _e.count }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+{# Group 2: Warning (always rendered) #}
+<div class="validation-group validation-group--warning
+            {% if _warn_count == 0 %}validation-group--empty{% endif %}"
+     role="group" aria-label="Validation warnings"
+     data-severity="warning"
+     data-count="{{ _warn_count }}">
+  <div class="validation-group-header">
+    <span class="validation-group-icon" aria-hidden="true">⚠</span>
+    <span class="validation-group-title">Warning</span>
+    <span class="validation-group-count">{{ _warn_count }}</span>
+    <span class="validation-group-hint">Review before run</span>
+  </div>
+  <div class="validation-group-body">
+    {% if _warn_count == 0 %}
+    <div class="validation-group-empty">No warnings. Nothing to review.</div>
+    {% else %}
+    {% for _e in _ns.warn_items %}
+    <div class="alert alert-warn validation-item">
+      <span class="validation-item-message">{{ _e.message if _e is mapping else _e }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+{# Group 3: Information (always rendered) #}
+<div class="validation-group validation-group--information
+            {% if _info_count == 0 %}validation-group--empty{% endif %}"
+     role="group" aria-label="Validation information"
+     data-severity="information"
+     data-count="{{ _info_count }}">
+  <div class="validation-group-header">
+    <span class="validation-group-icon" aria-hidden="true">i</span>
+    <span class="validation-group-title">Information</span>
+    <span class="validation-group-count">{{ _info_count }}</span>
+    <span class="validation-group-hint">FYI only</span>
+  </div>
+  <div class="validation-group-body">
+    {% if _info_count == 0 %}
+    <div class="validation-group-empty">No additional information.</div>
+    {% else %}
+    {% for _e in _ns.info_items %}
+    <div class="alert alert-info validation-item">
+      <span class="validation-item-message">{{ _e.message if _e is mapping else _e }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+{% if _valid %}
+<div class="alert alert-info validation-header" role="status" aria-label="Validation passed" style="margin-bottom:1rem;">
+  Input checks passed. Click <strong>Run Model</strong> when ready.
+</div>
+{% endif %}

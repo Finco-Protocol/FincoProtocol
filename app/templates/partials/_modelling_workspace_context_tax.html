@@ -1,0 +1,78 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — TAX CONTEXT  ·  UI-5
+  -----------------------------------------------------------------------
+  Right-side context panel for the Tax sheet. Reads from
+  `project_ctx` only — never invents new calculations.
+  =======================================================================
+-->
+{% set _cit = project_ctx.cit_rate_pct %}
+{% set _cf = project_ctx.loss_carryforward_years %}
+{% set _depr = project_ctx.depreciation_years|default(0) %}
+{% set _country = project_ctx.country_iso %}
+{% set _country_template = project_ctx.country_template|default(_country) %}
+{% set _wht = project_ctx.wht_rate_pct|default(0) %}
+{% set _tax_regime = project_ctx.tax_regime|default("corporate") %}
+
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="Tax context" data-fo-context-sheet="tax">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
+  <dl class="fo-modelling-workspace__context-list">
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Tax regime</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ _tax_regime|capitalize }}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Sourced from country template
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">CIT rate</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.1f}".format(_cit or 0) }}%
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Corporate income tax
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Loss carryforward</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_cf or 0) }} years
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Maximum years losses can be carried
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Depreciation</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_depr or 0) }} years
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Asset depreciation schedule
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">WHT rate</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.1f}".format(_wht or 0) }}%
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Withholding tax (dividends / interest)
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Country template</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ _country_template or "—" }}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        ISO {{ _country or "—" }}
+      </p>
+    </div>
+  </dl>
+</aside>

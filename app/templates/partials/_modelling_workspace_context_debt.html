@@ -1,0 +1,69 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — SENIOR DEBT CONTEXT  ·  UI-5
+  -----------------------------------------------------------------------
+  Right-side context panel for the Senior Debt sheet. Reads from
+  `project_ctx` only — never invents new calculations.
+  =======================================================================
+-->
+{% set _sizing = project_ctx.debt_sizing_mode|default("fixed") %}
+{% set _target = project_ctx.target_dscr %}
+{% set _tenor = project_ctx.senior_tenor_years %}
+{% set _margin = project_ctx.debt_margin_bps|default(0) %}
+{% set _debt = project_ctx.senior_debt_keur %}
+{% set _capex = project_ctx.total_capex_keur|default(project_ctx.hard_capex_total_keur) %}
+{% set _gearing = ((_debt or 0) / (_capex or 1) * 100) if _capex else 0 %}
+
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="Senior Debt context" data-fo-context-sheet="debt">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
+  <dl class="fo-modelling-workspace__context-list">
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Sizing mode</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ _sizing|capitalize }}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        How senior debt is sized
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Senior Debt</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_debt or 0) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Realized gearing {{ "{:,.1f}".format(_gearing or 0) }}%
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Target DSCR</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.2f}".format(_target or 0) }}×
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Debt service coverage target
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Tenor</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_tenor or 0) }} years
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Repayment period
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Margin</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_margin or 0) }} bps
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Spread over base rate
+      </p>
+    </div>
+  </dl>
+</aside>

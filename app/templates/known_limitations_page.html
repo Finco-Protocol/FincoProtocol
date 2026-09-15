@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Known Limitations - FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  <script src="/static/vendor/htmx.min.js"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="standalone-page standalone-page--known-limitations"
+      data-page="known-limitations">
+
+  {% include "partials/_standalone_header.html" %}
+
+  <main class="standalone-main" id="standalone-main">
+    <div class="page-shell page-shell--known-limitations" id="page-shell-known-limitations">
+      <div class="page-shell-header">
+        <h1 class="page-shell-title">Model Scope & Limitations</h1>
+        <p class="page-shell-desc">Current FINCO Model coverage and boundaries for the synthetic reference models and working models.</p>
+      </div>
+
+      <section class="kl-section">
+        <h2 class="kl-section-title">Synthetic reference models</h2>
+        <p><strong>Generic Solar Reference</strong> and <strong>Generic Wind Reference</strong> are protected synthetic models covered by the public regression ring. They are not representations of real projects, companies or jurisdictions.</p>
+        <p><strong>Generic Storage Reference</strong> is also synthetic and protected, but its runtime validation coverage is currently narrower than Solar/Wind.</p>
+      </section>
+
+      <section class="kl-section">
+        <h2 class="kl-section-title">Methodology boundaries</h2>
+        <ul class="kl-list">
+          <li><strong>Debt sizing.</strong> The engine supports deterministic debt sizing and coverage analysis, but specialist lender-specific structures may require additional modelling.</li>
+          <li><strong>Tax.</strong> Country-specific tax conclusions require an explicit reviewed policy configuration; generic market profiles are illustrative.</li>
+          <li><strong>Storage.</strong> Storage modelling is available as a synthetic reference surface, with narrower runtime and validation coverage than Solar/Wind.</li>
+          <li><strong>Portfolio.</strong> Portfolio capabilities remain experimental relative to the core single-project engine.</li>
+        </ul>
+      </section>
+
+      <section class="kl-section">
+        <h2 class="kl-section-title">Not currently covered</h2>
+        <ul class="kl-list">
+          <li>Full multi-lender syndication and complex intercreditor structures.</li>
+          <li>All jurisdiction-specific tax, legal or accounting interpretations.</li>
+          <li>External audit, credit approval or investment recommendation.</li>
+        </ul>
+      </section>
+
+      <section class="kl-section kl-disclaimer">
+        <p><strong>Disclaimer:</strong> Outputs are financial modelling estimates and do not constitute legal, tax, accounting, credit or investment advice.</p>
+      </section>
+    </div>
+  </main>
+
+  {% include "partials/_app_footer.html" %}
+
+</body>
+</html>

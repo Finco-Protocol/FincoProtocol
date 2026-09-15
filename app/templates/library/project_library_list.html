@@ -1,0 +1,135 @@
+{#
+  Project Library List partial — rendered inline and via HTMX swap.
+  Context variables: projects, search, role_filter, page, page_size,
+                     total, total_pages, has_prev, has_next, selected_project
+#}
+
+{# Results summary #}
+<div style="font-size:.8125rem;color:var(--fo-text-muted,#6b7280);margin-bottom:.75rem;">
+  {% if total == 0 %}
+    No projects match your search.
+  {% elif total == 1 %}
+    1 project
+  {% else %}
+    {{ total }} projects — page {{ page }} of {{ total_pages }}
+  {% endif %}
+</div>
+
+{% if projects %}
+<div class="fo-library-table-wrapper" style="overflow-x:auto;">
+<table style="width:100%;border-collapse:collapse;font-size:.875rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--fo-border,#e5e7eb);text-align:left;">
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Project</th>
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Role</th>
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Technology</th>
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Template</th>
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Last updated</th>
+      <th style="padding:.5rem .75rem;font-weight:600;white-space:nowrap;">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for proj in projects %}
+    {% set is_selected = (proj.project_code == selected_project) %}
+    {% set is_ref = (proj.project_role == 'reference') %}
+    {% set is_wc  = (proj.project_role == 'working_copy') %}
+    <tr data-testid="library-row-{{ proj.project_code }}"
+        style="border-bottom:1px solid var(--fo-border,#f3f4f6);{% if is_selected %}background:var(--fo-surface-raised,#f9fafb);{% endif %}">
+
+      <td style="padding:.625rem .75rem;">
+        <span style="font-weight:{% if is_ref %}600{% else %}500{% endif %};">{{ proj.project_name }}</span>
+        {% if is_ref %}
+          <span class="fo-badge fo-badge-reference" data-testid="badge-reference-{{ proj.project_code }}"
+                style="margin-left:.5rem;font-size:.6875rem;padding:.125rem .375rem;border-radius:3px;background:#dbeafe;color:#1d4ed8;font-weight:600;text-transform:uppercase;letter-spacing:.02em;">Reference</span>
+        {% elif is_wc %}
+          <span class="fo-badge fo-badge-working-copy" data-testid="badge-working-copy-{{ proj.project_code }}"
+                style="margin-left:.5rem;font-size:.6875rem;padding:.125rem .375rem;border-radius:3px;background:#d1fae5;color:#065f46;font-weight:600;text-transform:uppercase;letter-spacing:.02em;">Working copy</span>
+        {% endif %}
+      </td>
+
+      <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);">
+        {% if is_ref %}Reference{% elif is_wc %}Working copy{% else %}My project{% endif %}
+      </td>
+
+      <td style="padding:.625rem .75rem;">{{ proj.project_type or '—' }}</td>
+
+      <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);">{{ (proj.template_source or '—') | replace("generic_", "") | replace("_", " ") | title }}</td>
+
+      <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);white-space:nowrap;font-variant-numeric:tabular-nums;">
+        {{ proj.updated_at.strftime('%Y-%m-%d') if proj.updated_at else '—' }}
+      </td>
+
+      <td style="padding:.625rem .75rem;white-space:nowrap;">
+        {# Open link — flag-aware via workbook_destination_fn. #}
+        <a href="{{ workbook_destination_fn(proj.project_code) }}"
+           data-testid="open-{{ proj.project_code }}"
+           data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}"
+           style="font-size:.8125rem;color:var(--fo-accent,#1d4ed8);text-decoration:none;margin-right:.75rem;">Open</a>
+
+        {# Create working copy for references #}
+        {% if is_ref %}
+          <form method="POST"
+                action="/library/clone/{{ proj.project_id }}"
+                hx-post="/library/clone/{{ proj.project_id }}"
+                hx-swap="none"
+                style="display:inline;">
+            <button type="submit"
+                    data-testid="clone-{{ proj.project_code }}"
+                    style="font-size:.8125rem;padding:.25rem .625rem;border-radius:4px;border:1px solid var(--fo-accent,#1d4ed8);background:transparent;color:var(--fo-accent,#1d4ed8);cursor:pointer;">
+              Create working copy
+            </button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{# Pagination controls #}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:1rem;font-size:.875rem;">
+  <div style="color:var(--fo-text-muted,#6b7280);">
+    Showing {{ ((page-1)*page_size)+1 }}–{{ [page*page_size, total]|min }} of {{ total }}
+  </div>
+  <div style="display:flex;gap:.5rem;">
+    {% if has_prev %}
+      <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page-1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+         hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page-1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+         hx-target="#library-list-region"
+         hx-push-url="true"
+         data-testid="library-prev"
+         style="padding:.375rem .75rem;border:1px solid var(--fo-border,#d1d5db);border-radius:5px;text-decoration:none;color:inherit;">← Prev</a>
+    {% endif %}
+    {% for p in range(1, total_pages+1) %}
+      {% if p == page %}
+        <span style="padding:.375rem .75rem;border:1px solid var(--fo-accent,#1d4ed8);border-radius:5px;background:var(--fo-accent,#1d4ed8);color:#fff;font-weight:600;">{{ p }}</span>
+      {% elif (p <= 2) or (p >= total_pages-1) or (p|abs - page|abs <= 1) %}
+        <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+           hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+           hx-target="#library-list-region"
+           hx-push-url="true"
+           style="padding:.375rem .75rem;border:1px solid var(--fo-border,#d1d5db);border-radius:5px;text-decoration:none;color:inherit;">{{ p }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if has_next %}
+      <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page+1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+         hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page+1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
+         hx-target="#library-list-region"
+         hx-push-url="true"
+         data-testid="library-next"
+         style="padding:.375rem .75rem;border:1px solid var(--fo-border,#d1d5db);border-radius:5px;text-decoration:none;color:inherit;">Next →</a>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+<div style="padding:3rem;text-align:center;color:var(--fo-text-muted,#6b7280);border:1px dashed var(--fo-border,#d1d5db);border-radius:8px;">
+  {% if search %}
+    No projects matching <strong>{{ search }}</strong>
+    {% if role_filter %} with role <strong>{{ role_filter }}</strong>{% endif %}.
+  {% else %}
+    No projects yet. <a href="/projects/new">Create your first project</a>.
+  {% endif %}
+</div>
+{% endif %}

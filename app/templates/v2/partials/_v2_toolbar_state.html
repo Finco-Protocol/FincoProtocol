@@ -1,0 +1,24 @@
+{#
+  UI-4A — Toolbar runtime state chip + last-run timestamp.
+  Context: has_runtime (bool), ws_dirty (bool), last_runtime_at (str|""),
+           run_failed (bool, optional)
+#}
+{% if run_failed %}
+  <span class="v2-toolbar-state v2-state-failed" data-testid="toolbar-runtime-state">Run failed</span>
+  {% if last_runtime_at %}
+    <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Last attempt: {{ last_runtime_at }}</span>
+  {% endif %}
+{% elif not has_runtime %}
+  <span class="v2-toolbar-state v2-state-notrun" data-testid="toolbar-runtime-state">Not run</span>
+  <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Never run</span>
+{% elif ws_dirty %}
+  <span class="v2-toolbar-state v2-state-stale" data-testid="toolbar-runtime-state">Stale</span>
+  {% if last_runtime_at %}
+    <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Last run: {{ last_runtime_at }}</span>
+  {% endif %}
+{% else %}
+  <span class="v2-toolbar-state v2-state-clean" data-testid="toolbar-runtime-state">Current</span>
+  {% if last_runtime_at %}
+    <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Last run: {{ last_runtime_at }}</span>
+  {% endif %}
+{% endif %}

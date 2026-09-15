@@ -1,0 +1,120 @@
+/* ============================================================================
+   FINCO PROTOCOL — UI-1A  Single Application Shell
+   ----------------------------------------------------------------------------
+   Additive styles for:
+     1. Brand bar utility actions (help / limitations / guide / sign-out)
+        relocated from the removed legacy .top-header.
+     2. Level-1 project workflow navigation in .project-sidebar
+        (.ps-workflow-nav / .ps-workflow-item / .ps-workflow-group)
+
+   Uses only --fo-* tokens already declared in tokens.css.
+   Zero !important. Zero overlap with existing selectors.
+   ========================================================================== */
+
+/* ──────────────────────────────────────────────────────────────────────────
+   1. BRAND BAR — utility additions
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Version badge */
+.fo-brand-bar__version {
+  font-size: var(--fo-text-xs, 11px);
+  color: var(--fo-ink-faint, #9ca3af);
+  padding: 0 var(--fo-s1, 4px);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Link-style action button (inherits .fo-brand-bar__action base) */
+.fo-brand-bar__action--link {
+  text-decoration: none;
+}
+
+/* Sign-out button inherits .fo-brand-bar__action; no extra style needed */
+
+/* ──────────────────────────────────────────────────────────────────────────
+   2. PROJECT SIDEBAR — Level-1 workflow navigation
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ps-workflow-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--sidebar-border, rgba(255,255,255,.08));
+}
+
+/* Shared base for L1 and L2 items */
+.ps-workflow-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--fo-font-ui, system-ui, sans-serif);
+  color: var(--sidebar-muted, #9ca3af);
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+  text-decoration: none;
+}
+
+.ps-workflow-item:hover,
+.ps-workflow-item:focus-visible {
+  background: var(--sidebar-hover, rgba(255,255,255,.05));
+  color: #fff;
+  outline: none;
+}
+
+.ps-workflow-item:focus-visible {
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: -2px;
+}
+
+/* Level 1 */
+.ps-workflow-item--l1 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+  gap: 0.25rem;
+  justify-content: space-between;
+  letter-spacing: 0.01em;
+}
+
+.ps-workflow-item--l1.ps-workflow-item--active {
+  color: #fff;
+  background: var(--sidebar-hover, rgba(255,255,255,.07));
+}
+
+/* Link variant (for <a> tags at L1) */
+.ps-workflow-item--link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+}
+
+/* Level 2 */
+.ps-workflow-item--l2 {
+  font-size: 0.72rem;
+  font-weight: 400;
+  padding: 0.3rem 1rem 0.3rem 1.75rem;
+}
+
+/* Chevron rotates when group is open */
+.ps-workflow-chevron {
+  font-size: 0.75rem;
+  color: var(--sidebar-muted, #9ca3af);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.ps-workflow-group--open > .ps-workflow-item--l1 .ps-workflow-chevron {
+  transform: rotate(90deg);
+}
+
+/* Sub-items container — collapsed by default */
+.ps-workflow-sub {
+  display: none;
+  flex-direction: column;
+}
+
+.ps-workflow-group--open .ps-workflow-sub {
+  display: flex;
+}

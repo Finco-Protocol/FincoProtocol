@@ -1,0 +1,321 @@
+{#
+  Workbook V2 — Revenue worksheet partial.
+
+  Registry-driven.  Each editable field renders via the render_field macro
+  (hx_target="#v2-sheet-revenue", sheet_id="revenue").
+
+  Sections
+  --------
+  1. Commercial Structure  — ppa section BOUND fields
+  2. Balancing & CO2       — balancing section fields
+  3. Revenue Outputs       — runtime state + derivation evidence from RuntimeResult
+  4. Planned inputs        — collapsed; not wired in V2 engine
+  5. Future Modules        — collapsed; Battery, ancillary, certs, GOOs, carbon
+
+  Context variables (from app/v2/router.py _build_revenue_ctx):
+    revenue_fields           list[dict]  — revenue sheet fields from registry
+    revenue_state            str         — NOT_RUN | CLEAN | STALE | UNAVAILABLE
+    revenue_runtime_summary  dict|None   — thawed runtime_summary dict or None
+    project_code             str
+    workbook_version         str
+    content_hash             str
+    project_editable         bool
+    ws_dirty                 bool
+    has_runtime              bool
+    field_error              str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{# Macro: read-only placeholder row #}
+{% macro placeholder_row(label, note="Not yet supported") %}
+<div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value"><span class="v2-future-tag">{{ note }}</span></span>
+</div>
+{% endmacro %}
+
+{# Macro: section nav anchor header #}
+{% macro section_anchor(id, label, icon="") %}
+<summary class="v2-inputs-section-summary" id="nav-rev-{{ id }}">
+  {%- if icon %}<span class="v2-inputs-section-icon">{{ icon }}</span>{% endif -%}
+  {{ label }}
+</summary>
+{% endmacro %}
+
+<div id="v2-sheet-revenue" data-sheet="revenue"
+     data-fc-grid="revenue" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── Local navigation ──────────────────────────────────────────────── #}
+  <nav class="v2-inputs-nav" aria-label="Revenue sections">
+    <a href="#nav-rev-commercial">Commercial</a>
+    <a href="#nav-rev-balancing">Balancing &amp; CO2</a>
+    <a href="#nav-rev-merchant">Merchant Curve</a>
+    <a href="#nav-rev-outputs">Outputs</a>
+    <a href="#nav-rev-future">Future</a>
+  </nav>
+
+  {# ── 1. Commercial Structure ──────────────────────────────────────── #}
+  {# Revenue Model V1: single PPA plus residual merchant.               #}
+  {# All ppa section BOUND fields are live — canonical rev_ppa_*        #}
+  {# keys win over legacy tariff_eur_mwh / ppa_term_years in the        #}
+  {# snapshot adapter (C2B2).                                            #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("commercial", "1. Commercial Structure") }}
+    <div class="v2-section-fields">
+
+      {% for f in revenue_fields %}
+        {% if f.section_id == "ppa" and f.binding_label != "partial" %}
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% endif %}
+      {% endfor %}
+
+    </div>
+  </details>
+
+  {# ── 2. Balancing & CO2 ────────────────────────────────────────────── #}
+  {# Two separate balancing concepts:                                     #}
+  {# • Merchant Balancing %: fraction of spot sales (synthetic reference assumption)  #}
+  {# • Balancing EUR/MWh: flat per-MWh cost (wind projects)              #}
+  {# CO2 price is EUR/MWh applied to total generation (not EUR/tCO2).    #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("balancing", "2. Balancing &amp; CO2") }}
+    <div class="v2-section-fields">
+
+      {% for f in revenue_fields %}
+        {% if f.section_id == "balancing" %}
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% endif %}
+      {% endfor %}
+
+    </div>
+  </details>
+
+  {# ── 3. Merchant Price Curve ────────────────────────────────────────── #}
+  {# Calendar-year price schedule stored as JSON array.                   #}
+  {# Format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]               #}
+  {# Matches Excel Inputs row 106 / CF row 30. When present wins over     #}
+  {# the legacy market_prices_curve (operating-year indexed).             #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("merchant", "3. Merchant Price Curve") }}
+    <div class="v2-section-fields">
+
+      {# Locate the merchant price curve field #}
+      {% set mcf = namespace(field=none) %}
+      {% for f in revenue_fields %}
+        {% if f.field_id == "revenue.merchant.price_curve_json" %}
+          {% set mcf.field = f %}
+        {% endif %}
+      {% endfor %}
+
+      {% if mcf.field is not none %}
+        {% if mcf.field.binding_label == "bound" and project_editable %}
+          {# spreadsheet-style Year | Merchant Price grid #}
+          <div class="v2-merchant-grid-wrapper" data-field-id="{{ mcf.field.field_id }}">
+            <form id="v2-merchant-curve-form"
+                  method="post" action="/v2/workbook/update"
+                  autocomplete="off"
+                  hx-post="/v2/workbook/update"
+                  hx-target="#v2-sheet-revenue"
+                  hx-swap="outerHTML">
+              <input type="hidden" name="sheet_id"        value="revenue">
+              <input type="hidden" name="field_id"         value="{{ mcf.field.field_id }}">
+              <input type="hidden" name="project"          value="{{ project_code }}">
+              <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+              <input type="hidden" name="content_hash"     value="{{ content_hash }}">
+              {# Hidden textarea that holds the serialised JSON submitted with the form #}
+              <textarea id="v2-merchant-json-value" name="value"
+                        style="display:none" aria-hidden="true"></textarea>
+
+              {# Store raw JSON in a data attribute; JS populates rows on load #}
+              <table class="v2-merchant-grid" aria-label="Merchant Price Curve"
+                     id="v2-merchant-grid-table"
+                     data-curve-json="{{ mcf.field.value | e if mcf.field.value else '[]' }}">
+                <thead>
+                  <tr>
+                    <th class="v2-mg-col-year">Year</th>
+                    <th class="v2-mg-col-price">Merchant Price (EUR/MWh)</th>
+                    <th class="v2-mg-col-action" aria-label="Actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="v2-merchant-grid-body">
+                  {# Rows injected by v2MerchantGridInit() on DOMContentLoaded #}
+                </tbody>
+              </table>
+
+              <div class="v2-merchant-grid-controls">
+                <button type="button" class="v2-mg-add-row">
+                  + Add Year
+                </button>
+                <button type="submit" class="v2-field-save v2-mg-save"
+                        aria-label="Save merchant price curve">
+                  Save Curve &#10003;
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <script>
+          // Merchant grid initialized by static/js/workbook_v2.js merchantGridInit().
+          // After HTMX swap, workbook_v2.js re-initializes via htmx:afterSwap.
+          if (typeof window.v2MerchantGridInit === 'function') {
+            window.v2MerchantGridInit();
+          }
+          </script>
+
+        {% else %}
+          {# Read-only: show compact summary #}
+          <div class="v2-field-row v2-field-readonly" data-field-id="{{ mcf.field.field_id }}">
+            <span class="v2-field-label">{{ mcf.field.label }}</span>
+            <span class="v2-field-value">
+              {% if mcf.field.value %}
+                <span class="v2-runtime-mono">{{ mcf.field.value | truncate(60) }}</span>
+              {% else %}
+                <span class="v2-field-empty">—</span>
+              {% endif %}
+            </span>
+            <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}"
+                  title="{% if mcf.field.binding_label == 'bound' %}This field can be edited{% elif mcf.field.binding_label == 'template_locked' %}This field is locked by the template{% else %}This field is calculated automatically{% endif %}">
+              {%- if mcf.field.binding_label in ('display_only', 'computed', 'partial') -%}Calculated
+              {%- elif mcf.field.binding_label == 'template_locked' -%}Locked
+              {%- elif mcf.field.binding_label == 'bound' -%}Editable
+              {%- else -%}Calculated{%- endif -%}
+            </span>
+          </div>
+        {% endif %}
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
+  {#
+    Data authority: runtime_summary["revenue_derivation"] from persisted RuntimeResult.
+    No arithmetic, no totals, no annualisation in this template.
+    State classification uses the same four states as Debt / Tax / FS.
+  #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("outputs", "4. Revenue Outputs") }}
+    <div class="v2-section-fields">
+
+      {# State badge #}
+      <div class="v2-revenue-state-bar" data-testid="revenue-state-bar">
+        {% if revenue_state == "NOT_RUN" %}
+          <span class="v2-field-empty" data-testid="revenue-state-notrun">
+            Run the model to generate revenue outputs.
+          </span>
+        {% elif revenue_state == "UNAVAILABLE" %}
+          <span class="v2-runtime-mono" data-testid="revenue-state-unavailable">
+            The model ran but no revenue derivation was persisted.
+            Re-run the model to generate revenue outputs.
+          </span>
+        {% elif revenue_state == "STALE" %}
+          <span class="v2-runtime-clean" data-testid="revenue-state-stale">
+            Revenue outputs below
+          </span>
+          <span class="v2-revenue-stale-notice" data-testid="revenue-stale-notice">
+            &#9888; Inputs changed — outputs are stale. Run again to refresh.
+          </span>
+        {% else %}
+          <span class="v2-runtime-clean" data-testid="revenue-state-clean">
+            Outputs current
+          </span>
+        {% endif %}
+      </div>
+
+      {# Derivation evidence — only when runtime_summary carries revenue_derivation #}
+      {% if revenue_state in ("CLEAN", "STALE") and revenue_runtime_summary is not none %}
+        {% set rd = revenue_runtime_summary.get("revenue_derivation") if revenue_runtime_summary else none %}
+        {% if rd is not none %}
+          <dl class="v2-revenue-derivation" data-testid="revenue-derivation">
+
+            {# Generation evidence — labelled with the persisted sample period #}
+            <dt>Generation</dt>
+            <dd data-testid="revenue-derivation-generation">
+              {% set gen = rd.get("sample_generation_mwh") %}
+              {% set period_lbl = rd.get("sample_period_label", "") %}
+              {% if gen is not none and gen != "NOT_AVAILABLE" %}
+                {{ gen }}{% if period_lbl %} — {{ period_lbl }}{% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            {# Sample period revenue #}
+            <dt>Sample period revenue</dt>
+            <dd data-testid="revenue-derivation-sample-revenue">
+              {% set sr = rd.get("sample_revenue_keur") %}
+              {% if sr is not none and sr != "NOT_AVAILABLE" %}{{ sr }}{% else %}—{% endif %}
+            </dd>
+
+            {# Summary method — describes how the derivation was computed #}
+            <dt>Method</dt>
+            <dd data-testid="revenue-derivation-method">
+              {{ rd.get("summary_method") or "—" }}
+            </dd>
+
+            {# Period formula — the scaling / annualisation formula used by the engine #}
+            <dt>Period formula</dt>
+            <dd data-testid="revenue-derivation-formula">
+              {{ rd.get("period_formula") or "—" }}
+            </dd>
+
+            {# Audit source #}
+            <dt>Audit source</dt>
+            <dd data-testid="revenue-derivation-audit-source"
+                style="font-size:.75rem;color:#6b7280;">
+              {{ rd.get("audit_source") or "—" }}
+            </dd>
+
+          </dl>
+
+          {# Total revenue kEUR — from display_value_keur only; no derivation in template #}
+          {% set total = rd.get("display_value_keur") %}
+          {% if total is not none and total != "NOT_AVAILABLE" %}
+            <div class="v2-kpi-grid" data-testid="revenue-kpi-bar"
+                 style="margin-top:.5rem;">
+              <div class="v2-kpi-tile" data-testid="revenue-kpi-total">
+                <span class="v2-kpi-label">Revenue (persisted summary)</span>
+                <span class="v2-kpi-value">{{ total }}</span>
+              </div>
+            </div>
+          {% endif %}
+
+        {% else %}
+          <div class="v2-field-row v2-field-readonly" data-testid="revenue-derivation-absent">
+            <span class="v2-field-value">
+              <span class="v2-runtime-mono">Revenue derivation not available for this run.</span>
+            </span>
+          </div>
+        {% endif %}
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── 5. Future Modules (collapsed) ────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("future", "5. Future Modules") }}
+    <div class="v2-section-fields">
+      {{ placeholder_row("Battery Revenue") }}
+      {{ placeholder_row("Ancillary Services") }}
+      {{ placeholder_row("Certificates (ROC/LGC)") }}
+      {{ placeholder_row("GOOs") }}
+      {{ placeholder_row("Carbon Credits") }}
+      {{ placeholder_row("Hydrogen") }}
+    </div>
+  </details>
+
+</div>{# v2-sheet-revenue #}

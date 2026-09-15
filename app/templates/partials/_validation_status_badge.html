@@ -1,0 +1,58 @@
+{# G1D: project validation status badge partial.
+
+   Renders the project-level validation tier (calibrated reference /
+   validated with caveats / design-only / experimental) plus the
+   metric-level validated vs methodology-caveat labels and disclosure
+   text for the active project.
+
+   Expects a context variable named `validation_status`, an instance of
+   app.validation_status.ProjectValidationStatus (or an equivalent dict
+   with the same keys). Renders a safe neutral placeholder if missing.
+   Presentation-only; does not compute or alter any financial figure.
+#}
+
+{% set _vstat = validation_status|default(none) %}
+
+{% if _vstat %}
+  <div class="validation-status-badge validation-status-{{ _vstat.tier_tone }}" role="status" aria-label="{{ _vstat.tier_label }}">
+    <div class="validation-status-header">
+      <span class="badge badge-{{ _vstat.tier_tone }}">{{ _vstat.tier_label }}</span>
+      <span class="validation-status-project">{{ _vstat.display_name }}</span>
+    </div>
+    <p class="validation-status-description">{{ _vstat.tier_description }}</p>
+
+    {% if _vstat.metrics %}
+      <table class="validation-status-metrics">
+        <thead>
+          <tr><th>Metric</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for metric in _vstat.metrics %}
+            <tr>
+              <td>{{ metric.display_name }}</td>
+              <td>
+                {% if metric.level.value == 'validated' %}
+                  <span class="badge badge-pass">Validated</span>
+                {% else %}
+                  <span class="badge badge-warn" title="{{ metric.caveat_text }}">Methodology caveat</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if _vstat.disclosures %}
+      <ul class="validation-status-disclosures">
+        {% for disclosure in _vstat.disclosures %}
+          <li>{{ disclosure }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="validation-status-badge validation-status-info" role="status" aria-label="Validation status unavailable">
+    <span class="badge badge-info">Validation status unavailable</span>
+  </div>
+{% endif %}

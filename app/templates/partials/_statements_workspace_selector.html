@@ -1,0 +1,145 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — STATEMENTS WORKSPACE — STATEMENT SELECTOR + TOOLBAR
+  -----------------------------------------------------------------------
+  Sticky statement selector (PART A) + compact toolbar (Period
+  selector, Scenario, Export, Print, View options).
+
+  Caller sets:
+    _active_statement  "pl" | "cf" | "bs" | "notes" | "audit"
+    _available         list of statement keys to render tabs for
+                        (e.g. ["pl", "cf", "bs", "notes"])
+    _statement_labels  list of {key, label, anchor} pairs
+
+  Toolbar selectors (Period, Scenario, Export, Print) re-use the
+  existing data-fo-* dataset hooks wired by the runtime renderer.
+  =======================================================================
+-->
+{% set _print_title = _title|default("Financial Statements") %}
+{% set _print_scenario = active_scenario_name|default("") %}
+
+{# UI-8E: data-fo-fs-state defaults to "no-runtime"; JS sets "runtime" after a Run. #}
+<div class="fo-statements-workspace" data-fo-stmts-print-title="{{ _print_title }}"
+     data-fo-stmts-print-scenario="{{ _print_scenario }}"
+     data-fo-fs-state="no-runtime">
+
+  {# ── Statement selector (sticky) ───────────────────────────────── #}
+  {% if _available %}
+  <nav class="fo-statements-selector" role="tablist"
+       aria-label="{{ _title|default('Financial Statements') }} — statement selector">
+    <div class="fo-statements-selector__group">
+      {% for spec in _available %}
+        <button type="button"
+                role="tab"
+                class="fo-statements-selector__btn{% if spec == _active_statement %} is-active{% endif %}"
+                data-fo-statement="{{ spec }}"
+                aria-selected="{{ 'true' if spec == _active_statement else 'false' }}"
+                aria-controls="fo-stmts-panel-{{ spec }}">
+          {{ _statement_labels[spec] }}
+        </button>
+      {% endfor %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {# ── Compact toolbar ───────────────────────────────────────────── #}
+  <div class="fo-statements-toolbar">
+    <div class="fo-statements-toolbar__group">
+      <span class="fo-statements-toolbar__label">Period</span>
+      <select class="fo-statements-toolbar__select"
+              data-fo-stmts-period-selector
+              aria-label="Reporting period">
+        <option value="annual" selected>Annual</option>
+        <option value="quarterly">Quarterly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+
+    <div class="fo-statements-toolbar__group">
+      <span class="fo-statements-toolbar__label">Scenario</span>
+      <select class="fo-statements-toolbar__select"
+              data-fo-stmts-scenario-selector
+              aria-label="Scenario selector">
+        {% if active_scenario_name %}
+          <option value="current" selected>{{ active_scenario_name }}</option>
+        {% else %}
+          <option value="current" selected>Active scenario</option>
+        {% endif %}
+      </select>
+    </div>
+
+    <div class="fo-statements-toolbar__group">
+      <span class="fo-statements-toolbar__label">View</span>
+      <select class="fo-statements-toolbar__select"
+              data-fo-stmts-view-selector
+              aria-label="View options">
+        <option value="standard" selected>Standard</option>
+        <option value="compact">Compact</option>
+        <option value="expanded">Expanded</option>
+      </select>
+    </div>
+
+    <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+      <button type="button" class="fo-statements-toolbar__btn"
+              data-fo-stmts-export-trigger
+              aria-label="Export current statement">
+        ⬇ Export
+      </button>
+      <button type="button" class="fo-statements-toolbar__btn"
+              data-fo-stmts-print-trigger
+              aria-label="Print current statement"
+              onclick="window.print()">
+        🖶 Print
+      </button>
+    </div>
+  </div>
+
+  <div class="fo-statements-workspace__layout">
+
+    {# ── Section navigator ────────────────────────────────────────── #}
+    {% if _nav_items %}
+    <aside class="fo-statements-workspace__nav"
+           aria-label="{{ _title|default('Statements') }} sections">
+      <h2 class="fo-statements-workspace__nav-title">Sections</h2>
+      <ul class="fo-statements-workspace__nav-list">
+        {% for item in _nav_items %}
+        <li>
+          <a class="fo-statements-workspace__nav-link"
+             href="#fo-stmts-section-{{ _kind }}-{{ loop.index }}">
+            <span class="fo-statements-workspace__nav-dot" aria-hidden="true"></span>
+            <span>{{ item.label }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+    {% endif %}
+
+    {# ── Main content column ──────────────────────────────────────── #}
+    <div class="fo-statements-workspace__content">
+      {{ body|safe }}
+    </div>
+
+    {# ── Right context panel ──────────────────────────────────────── #}
+    {% if _context_items %}
+    <aside class="fo-statements-workspace__context"
+           aria-label="{{ _title|default('Statements') }} context">
+      <h2 class="fo-statements-workspace__context-title">Context</h2>
+      <dl class="fo-statements-workspace__context-list">
+        {% for item in _context_items %}
+        <div class="fo-statements-workspace__context-row">
+          <dt class="fo-statements-workspace__context-label">{{ item.label }}</dt>
+          <dd class="fo-statements-workspace__context-value{% if item.placeholder %} fo-statements-workspace__context-value--placeholder{% endif %}">
+            {{ item.value }}
+          </dd>
+          {% if item.hint %}
+          <p class="fo-statements-workspace__context-hint">{{ item.hint }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </dl>
+    </aside>
+    {% endif %}
+
+  </div>
+</div>

@@ -1,0 +1,212 @@
+<!-- Phase 25A: Empty States Notice -->
+<!-- Shared empty / no-data states for consistent user guidance -->
+
+{# ── No scenario selected ── #}
+{% macro no_scenario_selected() %}
+<div class="empty-state-notice">
+  <div class="esn-icon">📋</div>
+  <div class="esn-title">No scenario selected</div>
+  <div class="esn-desc">Open a project and select or create a scenario to see model outputs here.</div>
+</div>
+{% endmacro %}
+
+{# ── No run yet ── #}
+{% macro no_run_yet() %}
+<div class="empty-state-notice">
+  <div class="esn-icon">▶️</div>
+  <div class="esn-title">No run yet</div>
+  <div class="esn-desc">Save your scenario, then click <strong>Run model</strong> to produce outputs. Exports are based on the last backend run, not unsaved edits.</div>
+</div>
+{% endmacro %}
+
+{# ── Unsaved edits ── #}
+{% macro unsaved_edits() %}
+<div class="empty-state-notice empty-state-notice--warn">
+  <div class="esn-icon">✏️</div>
+  <div class="esn-title">Unsaved edits</div>
+  <div class="esn-desc">Your draft has unsaved changes. Save the scenario to create a clean snapshot, then run the model. Runtime outputs reflect the last clean run until you run again.</div>
+</div>
+{% endmacro %}
+
+{# ── Stale run ── #}
+{% macro stale_run(workspace_state_meta=None) %}
+{# Phase 24-G-1: enhanced stale run macro.
+   - keeps the original visible "Stale run" copy (existing tests
+     assert "Stale run" string and "previous run" / "run again" copy)
+   - adds a visible "STALE" badge and a "Re-run" anchor link to the
+     sidebar Run button (no JS, no app.js change, no backend change)
+   - adds a read-only "what changed" hint pulled from
+     workspace_state_meta.dirty_label (already in context, optional)
+   - does NOT alter calculations, does NOT trigger auto-runs, and
+     does NOT persist anything. Presentation only. #}
+<div class="empty-state-notice empty-state-notice--warn empty-state-notice--stale">
+  <div class="esn-icon esn-icon--stale">
+    <span class="esn-stale-badge" title="Outputs are from a previous run">STALE</span>
+  </div>
+  <div class="esn-title">Stale run</div>
+  <div class="esn-desc">
+    The current outputs are from a previous run. If you changed the
+    draft after the last run, run again to reflect your changes.
+    Export will use the last clean run.
+  </div>
+  <div class="esn-stale-actions">
+    <a class="esn-stale-rerun" href="#btn-run-model-sidebar"
+       title="Jump to the Run button in the sidebar">
+      Re-run
+    </a>
+    {% if workspace_state_meta and workspace_state_meta.dirty_label %}
+    <span class="esn-stale-changed"
+          title="Inputs changed since the last clean run">
+      {{ workspace_state_meta.dirty_label }}
+    </span>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{# ── No validation run ── #}
+{% macro no_validation_run() %}
+<div class="empty-state-notice">
+  <div class="esn-icon">🔍</div>
+  <div class="esn-title">No validation run available</div>
+  <div class="esn-desc">Validation results appear after a successful model run.</div>
+</div>
+{% endmacro %}
+
+{# ── No export available yet ── #}
+{% macro no_export_yet() %}
+<div class="empty-state-notice">
+  <div class="esn-icon">📥</div>
+  <div class="esn-title">No export available yet</div>
+  <div class="esn-desc">Run the model first, then return to the Downloads tab to export. Exports are based on the last backend run.</div>
+</div>
+{% endmacro %}
+
+{# ── Generic project selected ── #}
+{% macro generic_project_selected() %}
+<div class="empty-state-notice empty-state-notice--warn">
+  <div class="esn-icon">⚠️</div>
+  <div class="esn-title">Generic project — unvalidated path</div>
+  <div class="esn-desc">This project type is not reference-validated. Model outputs should be reviewed independently before any reliance. See the Audit / Reference tab for details.</div>
+</div>
+{% endmacro %}
+
+<style>
+.empty-state-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  gap: 0.5rem;
+  color: var(--text-2, #6b7280);
+}
+
+.empty-state-notice--warn {
+  background: var(--warn-bg, #fef9c3);
+  border: 1px solid var(--warn-border, #fde047);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text, #111827);
+}
+
+.esn-icon {
+  font-size: 2rem;
+  margin-bottom: 0.25rem;
+}
+
+.esn-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.esn-desc {
+  font-size: 0.8rem;
+  color: var(--muted, #9ca3af);
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.empty-state-notice--warn .esn-desc {
+  color: var(--text-2, #6b7280);
+}
+
+/* ── Phase 24-G-1: Stale run enhancements ──────────────────────────── */
+.empty-state-notice--stale {
+  align-items: center;
+}
+
+.esn-icon--stale {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.esn-stale-badge {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border-radius: 4px;
+  background: var(--fo-rag-amber, #b45309);
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.esn-stale-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+}
+
+.esn-stale-rerun {
+  display: inline-block;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  background: var(--fo-rag-amber, #b45309);
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  border: 1px solid var(--fo-rag-amber-dark, #92400e);
+}
+
+.esn-stale-rerun:hover {
+  background: var(--fo-rag-amber-dark, #92400e);
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.esn-stale-rerun:focus-visible {
+  background: var(--fo-rag-amber-dark, #92400e);
+  color: #ffffff;
+  text-decoration: none;
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: 2px;
+}
+
+.esn-stale-changed {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(180, 83, 9, 0.12);
+  color: #7c2d12;
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

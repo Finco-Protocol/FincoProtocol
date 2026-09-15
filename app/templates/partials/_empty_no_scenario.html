@@ -1,0 +1,26 @@
+{# ── Phase 24-G-2: Empty state — no scenario selected ─────────────────
+   UI-only. Renders nothing if a base case scenario is available for
+   the current project. Otherwise, renders a consistent empty-state
+   notice that explains how to create a scenario.
+
+   "No scenario" gate: there is no `base_case_record` AND no
+   `non_base_scenarios` in the index context (i.e. the project has
+   no scenarios at all). If the project has any scenario
+   (base or not), this partial renders nothing — the existing
+   empty_states_notice.html macros handle those cases.
+
+   No business logic. Wording improvement only. #}
+{% set _has_base = (base_case_record is defined and base_case_record) %}
+{% set _has_non_base = (non_base_scenarios is defined and non_base_scenarios|length > 0) %}
+{% if not _has_base and not _has_non_base %}
+<div class="empty-state-notice empty-state-notice--info empty-state-notice--no-scenario"
+     role="status" aria-label="No scenario selected">
+  <div class="esn-icon esn-icon--no-scenario" aria-hidden="true">📋</div>
+  <div class="esn-title">No scenario selected</div>
+  <div class="esn-desc">
+    This project has no scenarios yet. Create a base case to
+    start modeling — scenarios capture inputs, assumptions, and
+    keep run history separate per what-if.
+  </div>
+</div>
+{% endif %}

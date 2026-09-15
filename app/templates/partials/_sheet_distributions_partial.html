@@ -1,0 +1,169 @@
+<!-- UX-2: Distributions panel body (shared_runtime_block is prepended separately by OOB assembly).
+
+     Phase G1: Distribution schedule wired from sessionStorage["lastDistributionSchedule"].
+     Source: WaterfallResult.periods (per-period engine output) via _serialize_distribution_schedule().
+     Pre-Run: dist-unavailable-panel shown; hidden by JS after a Run has been executed.
+     Post-Run: dist-schedule-block populated from sessionStorage. No JS arithmetic. Read-only. -->
+<div class="panel-header">
+  <div class="panel-title">Distributions</div>
+  <div class="panel-desc">Equity distribution schedule, lockup periods, and distribution constraints.</div>
+</div>
+
+<!-- Phase G1: Distribution Output
+     Pre-Run: dist-unavailable-panel shown (fallback, hidden by JS after Run).
+     Post-Run: dist-schedule-block populated from sessionStorage["lastDistributionSchedule"].
+     Source: WaterfallResult.periods (per-period engine output).
+     No financial calculations performed here. Read-only display only. -->
+<div class="sheet-card">
+  <div class="section-header">Distribution Schedule
+    <span class="badge badge-runtime" style="float:right;margin-top:2px;" title="Source: WaterfallResult.periods (per-period engine output)">Engine Output</span>
+  </div>
+
+  {# Pre-Run fallback — shown when no lastDistributionSchedule in sessionStorage.
+     JS hides this and shows dist-schedule-block once a Run has been executed. #}
+  <div class="empty-state-notice empty-state-notice--warn dist-unavailable-panel"
+       id="dist-unavailable-panel"
+       role="status" aria-label="Distribution output not yet available"
+       style="display:none;">
+    <div class="esn-icon" aria-hidden="true">💵</div>
+    <div class="esn-title">Distribution output is not available yet</div>
+    <div class="esn-desc">
+      Run-backed distribution schedule results will be shown here once you execute a Run.
+      Values are sourced directly from <code>WaterfallResult.periods</code> —
+      the same engine output used by the XLSX export. No values are hardcoded
+      or computed client-side.
+    </div>
+  </div>
+
+  {# Post-Run: distribution schedule table, populated from sessionStorage by JS. #}
+  <div id="dist-schedule-block" style="display:none;">
+    <div class="fc-table-wrapper" id="dist-schedule-table-wrapper">
+      <table class="fc-grid fs-statement-table" id="dist-schedule-table">
+        <thead><tr id="dist-schedule-header"></tr></thead>
+        <tbody id="dist-schedule-body"></tbody>
+      </table>
+    </div>
+    <div class="fs-statements-footer">
+      <span class="fs-footer-note">
+        Values in kEUR. Source: <code>WaterfallResult.periods</code> per-period
+        engine output — identical to XLSX export. Read-only.
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // ── Distribution Schedule row definitions (label, field key) ─────────────
+  // Phase G1: read-only display of per-period engine fields from
+  // WaterfallResult.periods. No JS calculations. No aggregations.
+  var DIST_ROWS = [
+    { label: "CF After Reserves",         key: "cf_after_reserves_keur" },
+    { label: "Lockup Active",             key: "lockup_active",          bool: true },
+    { label: "Distribution",              key: "distribution_keur",      bold: true },
+    { label: "Cash Sweep",                key: "cash_sweep_keur" },
+    { label: "Cumulative Distribution",   key: "cum_distribution_keur",  bold: true },
+    { label: "DSRA Balance",              key: "dsra_balance_keur" },
+    { label: "DSRA Contribution",         key: "dsra_contribution_keur" },
+    { label: "MRA Balance",               key: "mra_balance_keur" },
+    { label: "MRA Contribution",          key: "mra_contribution_keur" },
+  ];
+
+  function _fmtDist(v, isBool) {
+    if (isBool) return v ? "Yes" : "No";
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function _buildDistHeader(headRow, periods) {
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  function _buildDistBody(tbody, rowDefs, periods) {
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label;
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmtDist(periods[i][def.key], def.bool);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderDistributionSchedule(ds) {
+    // Show only operation periods for the distribution schedule table.
+    var allPeriods = (ds && ds.periods) ? ds.periods : [];
+    var opPeriods = [];
+    for (var i = 0; i < allPeriods.length; i++) {
+      if (allPeriods[i].is_operation) opPeriods.push(allPeriods[i]);
+    }
+
+    var schedHead = document.getElementById("dist-schedule-header");
+    var schedBody = document.getElementById("dist-schedule-body");
+    if (schedHead && schedBody && opPeriods.length > 0) {
+      _buildDistHeader(schedHead, opPeriods);
+      _buildDistBody(schedBody, DIST_ROWS, opPeriods);
+    }
+
+    // Show schedule block, hide unavailable panel
+    var schedBlock = document.getElementById("dist-schedule-block");
+    if (schedBlock) schedBlock.style.display = "";
+    var unavail = document.getElementById("dist-unavailable-panel");
+    if (unavail) unavail.style.display = "none";
+  }
+
+  // Phase G1: pre-Run fallback — show unavailable panel when no data.
+  function _populateDistributionSchedule() {
+    var rawDs = sessionStorage.getItem("lastDistributionSchedule");
+    if (rawDs) {
+      try {
+        var ds = JSON.parse(rawDs);
+        _renderDistributionSchedule(ds);
+      } catch(e) {
+        // Malformed data: show unavailable panel
+        var unavail = document.getElementById("dist-unavailable-panel");
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel (pre-Run state)
+      var unavail2 = document.getElementById("dist-unavailable-panel");
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
+
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest && e.target.closest("#panel-distributions"))) {
+      _populateDistributionSchedule();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+      _populateDistributionSchedule();
+    });
+  } else {
+    _populateDistributionSchedule();
+  }
+})();
+</script>

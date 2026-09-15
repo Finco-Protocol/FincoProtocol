@@ -1,0 +1,20 @@
+{# ── Phase P2-min-2: Generic status line (single clear status per screen) ──
+   The brief: "Internal-use model — results are indicative."
+   Renders a single clear status line at the top of the
+   workspace for any project where the generic-disclosure rule
+   applies (user_created + generic_solar/generic_wind). The
+   full disclaimer remains in Export & Audit.
+   This is presentation only — no backend / no factory / no
+   model change. No CSS class rename, no context-key rename,
+   no route rename, no test rename. Only user-visible copy. #}
+{% if is_exploratory_project|default(false) %}
+<div class="generic-status-line"
+     role="note"
+     aria-label="Internal-use model — results are indicative"
+     data-p2min2-status="generic-disclosure">
+  <span class="generic-status-line__icon" aria-hidden="true">●</span>
+  <span class="generic-status-line__text">
+    Internal-use model — results are indicative.
+  </span>
+</div>
+{% endif %}

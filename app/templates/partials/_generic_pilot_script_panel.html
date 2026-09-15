@@ -1,0 +1,62 @@
+{# ── Phase 25C-1: Generic Solar / Wind first-user pilot script ───────────
+   Renders a 9-step "Try this workflow" panel for
+   exploratory Generic Solar / Generic Wind users.
+
+   Render conditions:
+   - Renders NOTHING if `generic_pilot_script` is
+     missing from the context.
+   - Renders the panel with the pre-built step list
+     when the helper is present.
+
+   Behavior:
+   - Pure read-side. No backend calls. No mutation
+     of project state, scenarios, or inputs.
+   - No autosave. No fake run IDs. No fake validation
+     claims.
+   - Exploratory disclaimer shown at the top is
+     descriptive scope language, not a no-go claim.
+   - All routes are pre-existing app routes; we never
+     invent new ones.
+   - No JS financial calculations.
+   - No Tailwind, no Alpine, no inline script. #}
+{% if generic_pilot_script is defined and generic_pilot_script %}
+  {% set _script = generic_pilot_script %}
+  <aside class="gps-panel"
+         role="region"
+         aria-label="First-user pilot script"
+         data-project-type="{{ _script.project_type }}"
+         data-step-count="{{ _script.step_count() }}">
+    <header class="gps-panel__header">
+      <h3 class="gps-panel__title">Try this workflow</h3>
+      <span class="gps-panel__subtitle">
+        Exploratory script for {{ _script.project_label }}
+        — {{ _script.step_count() }} steps
+      </span>
+    </header>
+
+    <div class="gps-panel__disclaimer" role="note"
+         aria-label="Exploratory disclaimer">
+      {{ _script.exploratory_disclaimer }}
+    </div>
+
+    <ol class="gps-panel__steps">
+      {% for step in _script.steps %}
+        <li class="gps-panel__step"
+            data-step-key="{{ step.key }}"
+            data-step-order="{{ step.order }}">
+          <span class="gps-panel__step-marker"
+                aria-hidden="true">{{ step.order }}</span>
+          <div class="gps-panel__step-body">
+            <a class="gps-panel__step-label"
+               href="{{ step.route }}">{{ step.label }}</a>
+            <span class="gps-panel__step-hint">
+              {{ step.hint }}
+            </span>
+            <span class="gps-panel__step-route"
+                  aria-label="Route">{{ step.route }}</span>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </aside>
+{% endif %}

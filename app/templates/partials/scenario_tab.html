@@ -1,0 +1,335 @@
+<!-- Scenario Tab — spreadsheet-like input comparison matrix — Phase 20E -->
+
+{# UX-4A: alias → canonical map mirrors SCENARIO-2 run endpoint.
+   Matrix stores overrides under alias keys (ppa_tariff_eur_mwh);
+   SCENARIO_EDITABLE_FIELDS uses canonical keys (tariff_eur_mwh).
+   All three macros must resolve both directions. #}
+{% set _SC_ALIAS_TO_CANONICAL = {
+    "ppa_tariff_eur_mwh": "tariff_eur_mwh",
+    "operating_hours_p50": "p50_hours",
+    "opex_y1_total_keur":  "opex_y1_keur",
+    "senior_tenor_years":  "tenor_years"
+} %}
+{% set _SC_CANONICAL_TO_ALIAS = {
+    "tariff_eur_mwh": "ppa_tariff_eur_mwh",
+    "p50_hours":       "operating_hours_p50",
+    "opex_y1_keur":    "opex_y1_total_keur",
+    "tenor_years":     "senior_tenor_years"
+} %}
+
+{% macro effectiveValue(scenarioRecord, fieldName) -%}
+  {%- set _alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
+  {%- set _overrides = scenarioRecord.overrides or {} -%}
+  {%- set _snapshot  = scenarioRecord.snapshot or {} -%}
+  {%- set _bis       = scenarioRecord.base_input_set or {} -%}
+  {%- if scenarioRecord.is_base_case -%}
+    {{ _bis.get(fieldName, "") or _snapshot.get(fieldName, "") or "" }}
+  {%- else -%}
+    {# Priority: alias override > canonical override > canonical snapshot > canonical base #}
+    {{ _overrides.get(_alias, "") or _overrides.get(fieldName, "") or _snapshot.get(fieldName, "") or _bis.get(fieldName, "") or "" }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro hasOverride(scenarioRecord, fieldName) -%}
+  {%- set _alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
+  {%- set _overrides = scenarioRecord.overrides or {} -%}
+  {%- if scenarioRecord.is_base_case -%}false{%- else -%}{{ (_alias in _overrides) or (fieldName in _overrides) }}{%- endif -%}
+{%- endmacro %}
+
+{% macro cellClass(scenarioRecord, fieldName) -%}
+  {%- if scenarioRecord.is_base_case -%}sc-matrix-cell sc-matrix-cell--base
+  {%- else -%}
+    {%- set _alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
+    {%- set _overrides = scenarioRecord.overrides or {} -%}
+    {%- if (_alias in _overrides) or (fieldName in _overrides) -%}sc-matrix-cell sc-matrix-cell--override
+    {%- else -%}sc-matrix-cell sc-matrix-cell--inherited
+    {%- endif -%}
+  {%- endif -%}
+{%- endmacro %}
+
+<div id="scenario-tab" class="sc-container"
+     data-project-code="{{ project_record.project_code }}"
+     data-base-case-id="{{ base_case_record.scenario_id if base_case_record else '' }}"
+     data-active-scenario-id="{{ workspace_state.active_scenario_id if workspace_state else '' }}">
+
+  <!-- Section banner: Scenario Assumptions -->
+  <div class="sc-section-banner sc-section-banner--inputs">
+    <span class="sc-section-banner-label">Scenario Assumptions</span>
+    <span class="sc-section-banner-note">
+      {% if not is_user_project %}
+        <span class="badge badge-muted">Protected original</span>
+        Read-only — use Create Working Copy to add or edit scenarios.
+      {% else %}
+        Double-click any non-Base cell to override an assumption. Highlighted cells differ from the Base Case.
+      {% endif %}
+    </span>
+  </div>
+
+  {% if is_user_project %}
+  <!-- Add Scenario form — only for user_created projects -->
+  <div class="sc-add-form" id="sc-add-form">
+    <form hx-post="/scenarios/add"
+          hx-target="#scenario-tab"
+          hx-swap="innerHTML"
+          hx-include="#sc-add-form"
+          onsubmit="return false;">
+      <input type="hidden" name="project_code" value="{{ project_record.project_code }}" />
+      <input type="text"
+             name="scenario_name"
+             id="sc-add-name"
+             class="inp-input sc-add-input"
+             placeholder="New scenario name…"
+             maxlength="60"
+             autocomplete="off" />
+      <button type="submit"
+              class="btn btn--primary btn--sm"
+              id="sc-add-btn"
+              onclick="this.disabled=true; this.textContent='Adding…'; this.form.requestSubmit();">
+        + Add Scenario
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- Scenario matrix -->
+  <div class="sc-matrix-wrapper" id="sc-matrix-wrapper" data-fc-grid="scenario-inputs" data-fc-scroll-container="true">
+    <table class="sc-matrix" id="sc-matrix">
+
+      <!-- Column header row (sticky) -->
+      <thead>
+        <tr>
+          <th class="sc-th sc-th--label">
+            <div class="sc-col-header">
+              <div class="sc-col-name">Assumption</div>
+              <div class="sc-col-sub">Input parameter</div>
+            </div>
+          </th>
+
+          <!-- Base Case column -->
+          {% if base_case_record %}
+          <th class="sc-th sc-th--base" id="col-base">
+            <div class="sc-col-header">
+              <div class="sc-col-name">
+                {% if base_case_record.scenario_name %}
+                  {{ base_case_record.scenario_name }}
+                {% else %}
+                  Base Case
+                {% endif %}
+              </div>
+              <div class="sc-col-sub">Live project values</div>
+              <div class="sc-col-meta">
+                <span class="badge badge-info">Base</span>
+                {% if workspace_state and workspace_state.active_scenario_id == base_case_record.scenario_id %}
+                  <span class="badge badge-pass">Active</span>
+                {% endif %}
+              </div>
+            </div>
+          </th>
+          {% endif %}
+
+          <!-- Non-base scenario columns -->
+          {% for scen in non_base_scenarios %}
+          <th class="sc-th{% if scen.scenario_id == workspace_state.active_scenario_id %} sc-th--active{% endif %}"
+              id="col-{{ scen.scenario_id }}">
+            <div class="sc-col-header">
+              <div class="sc-col-name" title="{{ scen.scenario_name }}">{{ scen.scenario_name }}</div>
+              <div class="sc-col-sub">
+                {%- if loop.index == 1 %}Downside
+                {%- elif loop.index == 2 %}Upside
+                {%- elif loop.index == 3 %}Custom
+                {%- else %}Scenario {{ loop.index }}
+                {%- endif %}
+              </div>
+              <div class="sc-col-meta">
+                {% if scen.last_run_summary %}
+                  <span class="sc-run-badge sc-run-badge--run" data-wf6-run-badge="run" title="Model results available">Run ✓</span>
+                {% else %}
+                  <span class="sc-run-badge sc-run-badge--not-run" data-wf6-run-badge="not-run" title="Run the model to see outputs">Not run</span>
+                {% endif %}
+                {% if scen.scenario_id == workspace_state.active_scenario_id %}
+                  <span class="badge badge-pass">Active</span>
+                {% else %}
+                  <button class="sc-select-btn"
+                          title="Set as active scenario for Run Model"
+                          hx-post="/scenarios/{{ scen.scenario_id }}/select"
+                          hx-target="#scenario-tab"
+                          hx-swap="innerHTML">Activate</button>
+                {% endif %}
+              </div>
+            </div>
+          </th>
+          {% endfor %}
+
+        </tr>
+      </thead>
+
+      <!-- Section-grouped data rows -->
+      <tbody>
+        {% for sectionLabel, fields in scenario_editable_fields %}
+        <tr class="sc-section-header">
+          <td colspan="{{ 1 + (1 if base_case_record else 0) + non_base_scenarios|length }}"
+              class="sc-section-label">{{ sectionLabel }}</td>
+        </tr>
+
+        {% for fieldName, fieldLabel in fields %}
+        <tr class="sc-row" data-field="{{ fieldName }}" data-fc-row="true">
+
+          <!-- Label cell (frozen first column) -->
+          <td class="sc-td sc-td--label">{{ fieldLabel }}</td>
+
+          <!-- Base Case value cell -->
+          {% if base_case_record %}
+          <td class="{{ cellClass(base_case_record, fieldName) }}" data-scenario="{{ base_case_record.scenario_id }}" data-field="{{ fieldName }}"
+              data-fc-cell="true" data-fc-addr="scenario-input_source_ref{{ fieldName }}"
+              data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ effectiveValue(base_case_record, fieldName) }}">
+            {% if is_user_project %}
+              {# Base Case fields are read-only in Scenario tab for now (edit via Inputs tab) #}
+              <span class="sc-value sc-value--base">{{ effectiveValue(base_case_record, fieldName) }}</span>
+            {% else %}
+              <span class="sc-value">{{ effectiveValue(base_case_record, fieldName) }}</span>
+            {% endif %}
+          </td>
+          {% endif %}
+
+          <!-- Non-base scenario value cells -->
+          {% for scen in non_base_scenarios %}
+          <td class="{{ cellClass(scen, fieldName) }} sc-editable-td"
+              data-scenario="{{ scen.scenario_id }}"
+              data-field="{{ fieldName }}"
+              {% if is_user_project %}ondblclick="window.startScenarioEdit(this)"{% endif %}
+              data-fc-cell="true" data-fc-addr="scenario-inputs!{{ scen.scenario_id }}.{{ fieldName }}"
+              data-fc-kind="text" data-fc-editable="{{ 'true' if is_user_project else 'false' }}"
+              data-fc-raw="{{ effectiveValue(scen, fieldName) }}">
+            <span class="sc-value">{{ effectiveValue(scen, fieldName) }}</span>
+            {%- set _badge_alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
+            {%- set _scen_overrides = scen.overrides or {} -%}
+            {% if not scen.is_base_case and ((_badge_alias in _scen_overrides) or (fieldName in _scen_overrides)) %}
+              <span class="sc-override-badge" title="Overridden — differs from Base Case">▲</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+
+        </tr>
+        {% endfor %}
+
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+
+  <!-- Inline edit popover (hidden by default) -->
+  <div id="sc-edit-popover" class="sc-popover" style="display:none;" role="dialog" aria-label="Edit scenario value">
+    <div class="sc-popover-header">
+      <span id="sc-popover-title">Edit</span>
+      <button type="button" class="sc-popover-close" onclick="window.cancelScenarioEdit()">✕</button>
+    </div>
+    <div class="sc-popover-body">
+      <input type="hidden" id="sc-edit-scenario-id" value="" />
+      <input type="hidden" id="sc-edit-field-name" value="" />
+      <input type="number"
+             id="sc-edit-input"
+             class="inp-input sc-popover-input"
+             step="any"
+             placeholder="Enter value…" />
+    </div>
+    <div class="sc-popover-footer">
+      <button type="button" class="btn btn--ghost btn--sm" onclick="window.cancelScenarioEdit()">Cancel</button>
+      <button type="button" class="btn btn--primary btn--sm" id="sc-edit-apply-btn" onclick="window.applyScenarioEdit()">Apply</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  (function() {
+    /* ── Start inline scenario edit ── */
+    window.startScenarioEdit = function(tdCell) {
+      var popover = document.getElementById('sc-edit-popover');
+      var title   = document.getElementById('sc-popover-title');
+      var input   = document.getElementById('sc-edit-input');
+      var scenId  = document.getElementById('sc-edit-scenario-id');
+      var fieldEl = document.getElementById('sc-edit-field-name');
+
+      var scenarioId = tdCell.dataset.scenario;
+      var fieldName  = tdCell.dataset.field;
+      var currentVal = tdCell.querySelector('.sc-value') ? tdCell.querySelector('.sc-value').textContent.trim() : '';
+
+      scenId.value  = scenarioId;
+      fieldEl.value = fieldName;
+      input.value   = currentVal;
+
+      // Label: use the row's human-readable label cell, fall back to field name
+      var labelCell = tdCell.closest('tr').querySelector('.sc-td--label');
+      var fieldLabel = (labelCell ? labelCell.textContent.trim() : '') || fieldName || 'Edit';
+      var scenName = tdCell.closest('table').querySelector('#col-' + scenarioId + ' .sc-col-name');
+      title.textContent = fieldLabel + ' — ' + (scenName ? scenName.textContent.trim() : '');
+
+      // Position near the cell
+      var rect = tdCell.getBoundingClientRect();
+      popover.style.top  = Math.min(rect.bottom + 4, window.innerHeight - popover.offsetHeight - 20) + 'px';
+      popover.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+      popover.style.display = 'block';
+      input.focus();
+      input.select();
+
+      // Enter key submits
+      input.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('sc-edit-apply-btn').click();
+        } else if (e.key === 'Escape') {
+          window.cancelScenarioEdit();
+        }
+      };
+    };
+
+    /* ── Apply scenario edit ── */
+    window.applyScenarioEdit = function() {
+      var scenarioId = document.getElementById('sc-edit-scenario-id').value;
+      var fieldName  = document.getElementById('sc-edit-field-name').value;
+      var inputVal   = document.getElementById('sc-edit-input').value;
+
+      if (!scenarioId || !fieldName) return;
+
+      var overrides = {};
+      overrides[fieldName] = inputVal;
+
+      var popover = document.getElementById('sc-edit-popover');
+      popover.style.display = 'none';
+
+      // HTMX: POST updated overrides and re-render the tab
+      htmx.ajax('POST',
+        '/scenarios/' + scenarioId + '/update-overrides',
+        {
+          target: '#scenario-tab',
+          swap: 'innerHTML',
+          body: JSON.stringify(overrides),
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    };
+
+    /* ── Cancel inline edit ── */
+    window.cancelScenarioEdit = function() {
+      document.getElementById('sc-edit-popover').style.display = 'none';
+    };
+
+    /* ── Close popover on outside click ── */
+    document.addEventListener('click', function(e) {
+      var popover = document.getElementById('sc-edit-popover');
+      if (popover.style.display === 'none') return;
+      if (!popover.contains(e.target) && !e.target.closest('.sc-editable-td')) {
+        window.cancelScenarioEdit();
+      }
+    });
+
+    /* ── Re-enable Add Scenario button after swap ── */
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      if (evt.detail.target && evt.detail.target.id === 'scenario-tab') {
+        var btn = document.getElementById('sc-add-btn');
+        if (btn) { btn.disabled = false; btn.textContent = '+ Add Scenario'; }
+      }
+    });
+  })();
+</script>

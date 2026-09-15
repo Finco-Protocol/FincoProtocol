@@ -1,0 +1,62 @@
+{#
+  Workbook V2 — Project Setup sheet partial.
+
+  BOUND fields (project_name, capacity_mw, p50_hours, cod_date,
+  construction_months, horizon_years) render as editable forms when
+  project_editable is True.  Protected reference projects (Generic Wind Reference/Generic Solar Reference)
+  receive project_editable=False and all fields render read-only.
+
+  Context variables (from app/v2/router.py):
+    ps_fields        list of field dicts (field_id, label, unit, field_type,
+                     binding_label, options, section_id, section_label, value,
+                     required, min_value, max_value, step, help_text)
+    project_code     str
+    workbook_version str   (WORKBOOK.version, passed to each form)
+    content_hash     str   (current PIS content_hash, passed to each form)
+    project_editable bool  (False for Generic Wind Reference/Generic Solar Reference protected references)
+    field_error      str   (inline error from a failed HTMX edit, or "")
+
+  Values always come from pis.get(field_id).  Snapshot keys never appear here.
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+<div id="v2-sheet-project-setup" data-sheet="project_setup"
+     data-fc-grid="project_setup" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">
+        Create working copy
+      </a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {% set ns = namespace(current_section=None) %}
+  {% for f in ps_fields %}
+
+    {% if f.section_id != ns.current_section %}
+      {% if ns.current_section is not none %}
+        </div>{# close section-fields #}
+      </div>{# close section #}
+      {% endif %}
+      <div class="v2-section" data-section="{{ f.section_id }}">
+        <h3 class="v2-section-label">{{ f.section_label }}</h3>
+        <div class="v2-section-fields">
+      {% set ns.current_section = f.section_id %}
+    {% endif %}
+
+    {{ render_field(f, project_code, workbook_version, content_hash, project_editable) }}
+
+  {% endfor %}
+
+  {% if ns.current_section is not none %}
+    </div>{# close section-fields #}
+  </div>{# close last section #}
+  {% endif %}
+
+</div>{# v2-sheet-project-setup #}

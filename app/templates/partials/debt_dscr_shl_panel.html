@@ -1,0 +1,159 @@
+<!-- Phase 24C: Debt / DSCR / SHL Panel -->
+<!-- UI surface for frozen senior DS path status, DSCR, SHL, and distribution lock-up -->
+<!-- No JS financial calculations. Backend remains source of truth. -->
+
+<div class="debt-dscr-shl-panel" id="debt-dscr-shl-panel">
+
+  <div class="dss-provenance-banner">
+    <div class="dss-provenance-left">
+      <span class="dss-provenance-icon">Debt</span>
+      <div class="dss-provenance-info">
+        <span class="dss-provenance-label">Debt / DSCR / SHL</span>
+        <span class="dss-provenance-sublabel">Frozen Senior DS Path</span>
+      </div>
+    </div>
+    <div class="dss-provenance-right">
+      <span class="badge badge-runtime" title="Runtime Impact: value from the active backend debt schedule">
+        Drives model
+      </span>
+      <span class="badge badge-info" title="Reference model schedule">
+        Reference schedule
+      </span>
+    </div>
+  </div>
+
+  <div class="dss-warning-banner">
+    <span class="badge badge-warn">Frozen schedule warning</span>
+    <span class="dss-warning-text">
+      This panel shows the active backend senior debt schedule. Editing or duplicating
+      this project will not re-sculpt senior debt. To use derived sizing, switch to
+      a Generic project type. Generic wind and solar remain preliminary review models and are not reference-validated.
+    </span>
+  </div>
+
+  {% if runtime_summary %}
+  <div class="dss-anchor-grid">
+    <div class="dss-anchor-card">
+      <div class="dss-anchor-label">Senior Debt</div>
+      <div class="dss-anchor-value">{{ runtime_summary.senior_debt_keur }}</div>
+    </div>
+    <div class="dss-anchor-card">
+      <div class="dss-anchor-label">SHL Opening</div>
+      <div class="dss-anchor-value">{{ runtime_summary.shl_opening_keur }}</div>
+    </div>
+    <div class="dss-anchor-card">
+      <div class="dss-anchor-label">Avg DSCR</div>
+      <div class="dss-anchor-value">{{ runtime_summary.avg_dscr }}</div>
+    </div>
+    <div class="dss-anchor-card">
+      <div class="dss-anchor-label">Min DSCR</div>
+      <div class="dss-anchor-value">{{ runtime_summary.min_dscr }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if debt_table and debt_table.rows %}
+  <div class="dss-table-section">
+    <div class="dss-table-header">Senior Debt Schedule</div>
+    <div class="dss-table-wrap">
+      <table class="dss-table">
+        <thead>
+          <tr>
+            <th>Line Item</th>
+            {% for col in debt_table.headers %}
+            <th>{{ col }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row_label, row_data in debt_table.rows.items() %}
+          <tr>
+            <td class="dss-row-label">{{ row_label }}</td>
+            {% for cell in row_data %}
+            <td class="dss-cell {% if cell.status == 'inf' %}dss-cell-inf{% elif cell.status == 'zero' %}dss-cell-zero{% endif %}">
+              {% if cell.status == 'inf' %}
+              <span class="dss-inf-label" title="Debt repaid">n/a - debt repaid</span>
+              {% elif cell.status == 'zero' %}
+              <span class="dss-zero-label">-</span>
+              {% else %}
+              {{ cell.value }}
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if shl_status %}
+  <div class="dss-shl-section">
+    <div class="dss-table-header">SHL Status</div>
+    <div class="dss-shl-grid">
+      <div class="dss-shl-card">
+        <div class="dss-shl-label">SHL Balance</div>
+        <div class="dss-shl-value">{{ shl_status.balance_keur }}</div>
+      </div>
+      <div class="dss-shl-card">
+        <div class="dss-shl-label">SHL Service</div>
+        <div class="dss-shl-value">{{ shl_status.service_keur }}</div>
+      </div>
+      <div class="dss-shl-card">
+        <div class="dss-shl-label">SHL Interest / PIK</div>
+        <div class="dss-shl-value">{{ shl_status.interest_keur }}</div>
+      </div>
+      <div class="dss-shl-card">
+        <div class="dss-shl-label">Lock-up Status</div>
+        <div class="dss-shl-value">
+          {% if shl_status.locked %}
+          <span class="badge badge-warn">Distribution blocked</span>
+          {% else %}
+          <span class="badge badge-pass">SHL cleared</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if distribution_status %}
+  <div class="dss-dist-section">
+    <div class="dss-table-header">Distribution Status</div>
+    <div class="dss-dist-grid">
+      <div class="dss-dist-card">
+        <div class="dss-dist-label">Lock-up State</div>
+        <div class="dss-dist-value">
+          {% if distribution_status.blocked %}
+          <span class="badge badge-warn">Distribution blocked - SHL outstanding</span>
+          {% else %}
+          <span class="badge badge-pass">Distributions active</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if distribution_status.first_distribution %}
+      <div class="dss-dist-card">
+        <div class="dss-dist-label">First Valid Distribution</div>
+        <div class="dss-dist-value">{{ distribution_status.first_distribution.date }} - {{ distribution_status.first_distribution.amount_keur }}</div>
+      </div>
+      {% endif %}
+      {% if distribution_status.total_distributions_keur %}
+      <div class="dss-dist-card">
+        <div class="dss-dist-label">Total Distributions</div>
+        <div class="dss-dist-value">{{ distribution_status.total_distributions_keur }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="dss-notice">
+    <span class="badge badge-runtime">Runtime</span>
+    <span class="dss-notice-text">
+      Live model outputs - authoritative. Not a static template estimate.
+      DSCR is backward-computed from frozen senior debt service.
+    </span>
+  </div>
+
+</div>

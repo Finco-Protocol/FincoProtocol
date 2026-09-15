@@ -1,0 +1,179 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — KEYBOARD SHORTCUTS OVERLAY  ·  UI-7 PART E
+  -----------------------------------------------------------------------
+  Static markup for the `?` shortcuts overlay. JS in
+  _power_user_init.html wires Ctrl/Cmd + / and `?` to open / close.
+  =======================================================================
+-->
+<div class="fo-power-shortcuts-backdrop"
+     data-fo-power-shortcuts-backdrop
+     hidden></div>
+<section class="fo-power-shortcuts"
+         data-fo-power-shortcuts
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="fo-power-shortcuts-title"
+         hidden>
+  <header class="fo-power-shortcuts__header">
+    <h2 class="fo-power-shortcuts__title" id="fo-power-shortcuts-title">
+      Keyboard shortcuts
+    </h2>
+    <button type="button"
+            class="fo-power-shortcuts__close"
+            data-fo-power-shortcuts-close
+            aria-label="Close shortcuts overlay">✕</button>
+  </header>
+  <div class="fo-power-shortcuts__body">
+    <div class="fo-power-shortcuts__group">
+      <h3 class="fo-power-shortcuts__group-title">Global</h3>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Open command palette</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">K</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Show shortcuts</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">?</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Run model</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">F9</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Save scenario</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">S</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Close dialog</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Esc</kbd>
+        </span>
+      </div>
+    </div>
+    <div class="fo-power-shortcuts__group">
+      <h3 class="fo-power-shortcuts__group-title">Modelling sheets</h3>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Overview / Inputs / Revenue</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">1</kbd>
+          <span>·</span>
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">3</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">OPEX / CAPEX / Debt / Tax</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">4</kbd>
+          <span>·</span>
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">5</kbd>
+          <span>·</span>
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">6</kbd>
+          <span>·</span>
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">7</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Income Statement</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">8</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Scenarios</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">9</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Compare</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">0</kbd>
+        </span>
+      </div>
+    </div>
+    <div class="fo-power-shortcuts__group">
+      <h3 class="fo-power-shortcuts__group-title">Reports & workspaces</h3>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Executive Summary</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">⇧</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">1</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">IC Pack</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">⇧</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">2</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Credit Pack</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">⇧</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">3</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Lender Workspace</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">⇧</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">4</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Sensitivity</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Ctrl</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">⇧</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">5</kbd>
+        </span>
+      </div>
+    </div>
+    <div class="fo-power-shortcuts__group">
+      <h3 class="fo-power-shortcuts__group-title">In palette</h3>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Navigate</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">↑</kbd>
+          <kbd class="fo-power-shortcuts__row-kbd">↓</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Execute</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">↵</kbd>
+        </span>
+      </div>
+      <div class="fo-power-shortcuts__row">
+        <span class="fo-power-shortcuts__row-label">Close palette</span>
+        <span class="fo-power-shortcuts__row-kbds">
+          <kbd class="fo-power-shortcuts__row-kbd">Esc</kbd>
+        </span>
+      </div>
+    </div>
+  </div>
+</section>

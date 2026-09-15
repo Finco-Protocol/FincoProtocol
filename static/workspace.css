@@ -1,0 +1,556 @@
+/* ============================================================================
+   FINCO PROTOCOL — WORKSPACE REDESIGN  ·  static/workspace.css
+   ----------------------------------------------------------------------------
+   UI-4: Redesigns the Overview and Inputs primary workspace surface.
+   Layered ABOVE the existing legacy chrome + panel content. No edit to
+   existing stylesheets (static/styles.css, chrome.css, sheet-tabs.css
+   remain untouched).
+
+   Layered visual contract:
+     .fo-overview-workspace   Project Summary + KPI Grid + Model Health +
+                              Recent Activity for the Overview panel.
+     .fo-inputs-workspace      Sticky section navigator + collapsible
+                              section surface for the Inputs panel.
+
+   Token contract: every colour, spacing, typography, shadow, motion
+   property consumes a `--fo-*` token from tokens.css (UI-1). No raw
+   hex, no rgba, no px shadows. The `.fo-*` class family is strictly
+   namespaced and does not collide with the legacy `.fc-*`, `.ps-*`,
+   `.scm-*`, `.top-header`, `.dashboard-*`, `.inp-card`, `.inp-row`,
+   `.inp-section-*` families.
+   ========================================================================== */
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Section: Overview                                                       */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-overview-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s5);
+  padding: 0;
+}
+
+/* Project Summary card. */
+.fo-project-summary {
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  padding: var(--fo-s5);
+  box-shadow: var(--fo-shadow-card);
+}
+
+.fo-project-summary__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fo-s3);
+  margin-bottom: var(--fo-s4);
+  padding-bottom: var(--fo-s3);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-project-summary__title {
+  font-size: var(--fo-text-xl);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  letter-spacing: -0.01em;
+  font-family: var(--fo-font-ui);
+}
+
+.fo-project-summary__sub {
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-soft);
+  margin-top: 2px;
+}
+
+.fo-project-summary__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  height: 22px;
+  padding: 0 var(--fo-s2);
+  border-radius: 11px;
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-medium);
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink-soft);
+  border: 1px solid var(--fo-line);
+}
+
+.fo-project-summary__pill--user {
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-rag-green);
+  border-color: var(--fo-rag-green);
+}
+
+.fo-project-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--fo-s3);
+}
+
+.fo-project-summary__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fo-project-summary__label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-project-summary__value {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+  transition: color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-project-summary__value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+}
+
+/* KPI Grid — uses sticky values from UI-2. */
+.fo-kpi-grid {
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  box-shadow: var(--fo-shadow-card);
+  overflow: hidden;
+}
+
+.fo-kpi-grid__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--fo-s3);
+  padding: var(--fo-s4) var(--fo-s5);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-kpi-grid__title {
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+}
+
+.fo-kpi-grid__caption {
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-soft);
+}
+
+.fo-kpi-grid__cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0;
+}
+
+.fo-kpi-grid__cell {
+  padding: var(--fo-s4) var(--fo-s5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--fo-line);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-kpi-grid__cell:last-child {
+  border-right: none;
+}
+
+.fo-kpi-grid__label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-kpi-grid__value {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.fo-kpi-grid__value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+  font-weight: var(--fo-weight-regular);
+}
+
+/* Model Health panel. */
+.fo-health {
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  box-shadow: var(--fo-shadow-card);
+  padding: var(--fo-s5);
+}
+
+.fo-health__header {
+  margin-bottom: var(--fo-s3);
+}
+
+.fo-health__title {
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+}
+
+.fo-health__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--fo-s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fo-health__item {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: var(--fo-s2) 0;
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink);
+}
+
+.fo-health__icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: var(--fo-weight-semibold);
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-rag-green);
+  flex: 0 0 auto;
+}
+
+.fo-health__icon--warn {
+  background: var(--fo-rag-amber-bg);
+  color: var(--fo-rag-amber);
+}
+
+.fo-health__icon--error {
+  background: var(--fo-rag-red-bg);
+  color: var(--fo-rag-red);
+}
+
+.fo-health__icon--info {
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-700);
+}
+
+.fo-health__icon--unknown {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink-faint);
+}
+
+/* Recent Activity. */
+.fo-activity {
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  box-shadow: var(--fo-shadow-card);
+  padding: var(--fo-s5);
+}
+
+.fo-activity__header {
+  margin-bottom: var(--fo-s3);
+}
+
+.fo-activity__title {
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+}
+
+.fo-activity__rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--fo-s3);
+}
+
+.fo-activity__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--fo-s2) var(--fo-s3);
+  border-radius: var(--fo-r-sm);
+  background: var(--fo-surface-alt);
+  border: 1px solid var(--fo-line);
+}
+
+.fo-activity__label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-activity__value {
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+}
+
+.fo-activity__value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Section: Inputs                                                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/* Two-column layout: sticky section navigator on the left, content on
+   the right. On narrow viewports the navigator stacks above. */
+.fo-inputs-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--fo-s5);
+  align-items: start;
+}
+
+.fo-inputs-workspace__nav {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h) + var(--fo-chrome-cmd-h)
+            + var(--fo-chrome-tabs-h) + var(--fo-s3));
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  padding: var(--fo-s3);
+  box-shadow: var(--fo-shadow-card);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.fo-inputs-workspace__nav-title {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+  padding: var(--fo-s2) var(--fo-s3);
+  margin-bottom: var(--fo-s1);
+}
+
+.fo-inputs-workspace__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fo-inputs-workspace__nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: var(--fo-s2) var(--fo-s3);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink-soft);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-inputs-workspace__nav-link:hover,
+.fo-inputs-workspace__nav-link:focus-visible {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+  outline: none;
+}
+
+.fo-inputs-workspace__nav-link.is-active {
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-700);
+  border-left: 3px solid var(--fo-brand-600);
+}
+
+.fo-inputs-workspace__nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fo-rag-neutral);
+  flex: 0 0 auto;
+}
+
+.fo-inputs-workspace__nav-label {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: inherit;
+  line-height: 1.2;
+}
+
+.fo-inputs-workspace__content {
+  min-width: 0;
+}
+
+/* When the inputs_section.html renders, the .inp-card elements
+   become collapsible via the surrounding <details> element. UI-4
+   does not edit inputs_section.html — the .fo-inputs-collapser
+   script wraps each .inp-card at runtime. The wrapper keeps the
+   <summary> in sync with the existing .inp-section-header text. */
+.fo-inputs-workspace__details {
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-lg);
+  box-shadow: var(--fo-shadow-card);
+  margin-bottom: var(--fo-s4);
+  overflow: hidden;
+}
+
+.fo-inputs-workspace__details > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: var(--fo-s3) var(--fo-s5);
+  background: var(--fo-surface);
+  border-bottom: 1px solid var(--fo-line);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  letter-spacing: -0.005em;
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h) + var(--fo-chrome-cmd-h)
+            + var(--fo-chrome-tabs-h) + var(--fo-s3));
+  z-index: 5;
+}
+
+.fo-inputs-workspace__details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fo-inputs-workspace__details > summary::after {
+  content: "+";
+  font-weight: var(--fo-weight-regular);
+  font-size: var(--fo-text-lg);
+  color: var(--fo-ink-soft);
+  margin-left: auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fo-line);
+  border-radius: 50%;
+  background: var(--fo-surface-alt);
+}
+
+.fo-inputs-workspace__details[open] > summary::after {
+  content: "\2212";
+}
+
+.fo-inputs-workspace__details > summary:hover {
+  background: var(--fo-surface-alt);
+}
+
+.fo-inputs-workspace__details[open] > summary {
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-inputs-workspace__details-body {
+  padding: var(--fo-s4) var(--fo-s5);
+}
+
+/* Section note callout (re-uses inp-section-note tone but our own class). */
+.fo-inputs-workspace__note {
+  margin-top: var(--fo-s3);
+  padding: var(--fo-s2) var(--fo-s3);
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-800);
+  border-left: 3px solid var(--fo-brand-300);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-sm);
+}
+
+/* Keyboard hint: subtle banner above the inputs content for first-time
+   users; tells them about Tab / Shift+Tab navigation. */
+.fo-inputs-workspace__kbd-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: var(--fo-s2) var(--fo-s3);
+  background: var(--fo-surface-alt);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-soft);
+  margin-bottom: var(--fo-s3);
+}
+
+.fo-inputs-workspace__kbd-hint kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid var(--fo-line);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--fo-surface);
+  color: var(--fo-ink);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Responsive                                                              */
+/* ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .fo-inputs-workspace {
+    grid-template-columns: 1fr;
+  }
+  .fo-inputs-workspace__nav {
+    position: static;
+    max-height: none;
+  }
+  .fo-inputs-workspace__nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--fo-s1);
+  }
+  .fo-inputs-workspace__nav-link {
+    padding: var(--fo-s1) var(--fo-s3);
+  }
+}
+
+@media (max-width: 700px) {
+  .fo-project-summary__grid,
+  .fo-kpi-grid__cells,
+  .fo-health__list,
+  .fo-activity__rows {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .fo-project-summary__grid,
+  .fo-kpi-grid__cells,
+  .fo-health__list,
+  .fo-activity__rows {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Print                                                                  */
+/* ────────────────────────────────────────────────────────────────────────── */
+@media print {
+  .fo-overview-workspace,
+  .fo-inputs-workspace {
+    display: none;
+  }
+}

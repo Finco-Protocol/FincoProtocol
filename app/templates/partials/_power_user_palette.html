@@ -1,0 +1,109 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — COMMAND PALETTE  ·  UI-7 PART A
+  -----------------------------------------------------------------------
+  The palette overlay markup. Static HTML — the JS lives in
+  _power_user_init.html (lazy-initialised on DOMContentLoaded).
+  Mounted once at the bottom of workspace_shell.html.
+  =======================================================================
+-->
+<div class="fo-power-palette-backdrop"
+     data-fo-power-palette-backdrop
+     hidden></div>
+<section class="fo-power-palette"
+         data-fo-power-palette
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="fo-power-palette-label"
+         hidden>
+  <label id="fo-power-palette-label" style="position:absolute;left:-9999px;">
+    Command palette search
+  </label>
+  <input type="text"
+         class="fo-power-palette__input"
+         data-fo-power-palette-input
+         placeholder="Search projects, scenarios, sheets, reports…"
+         autocomplete="off"
+         spellcheck="false" />
+  <div class="fo-power-palette__results"
+       data-fo-power-palette-results
+       role="listbox"
+       aria-label="Command palette results">
+    {# Pre-populated with quick-access groups; the JS re-renders
+       results based on input query. #}
+    <div class="fo-power-palette__group" data-fo-group="quick">
+      <h3 class="fo-power-palette__group-title">Quick actions</h3>
+      <ul class="fo-power-palette__list" data-fo-quick-list>
+        <li class="fo-power-palette__item"
+            data-fo-action="run"
+            data-fo-label="Run model"
+            data-fo-kbd="F9">
+          <span class="fo-power-palette__item-icon" aria-hidden="true">▶</span>
+          <span class="fo-power-palette__item-label">Run model</span>
+          <span class="fo-power-palette__item-kbd">F9</span>
+        </li>
+        <li class="fo-power-palette__item"
+            data-fo-action="save"
+            data-fo-label="Save scenario"
+            data-fo-kbd="Ctrl+S">
+          <span class="fo-power-palette__item-icon" aria-hidden="true">⤓</span>
+          <span class="fo-power-palette__item-label">Save scenario</span>
+          <span class="fo-power-palette__item-kbd">Ctrl S</span>
+        </li>
+        <li class="fo-power-palette__item"
+            data-fo-action="palette"
+            data-fo-label="Open command palette"
+            data-fo-kbd="Ctrl+K">
+          <span class="fo-power-palette__item-icon" aria-hidden="true">⌘</span>
+          <span class="fo-power-palette__item-label">Open command palette</span>
+          <span class="fo-power-palette__item-kbd">Ctrl K</span>
+        </li>
+        <li class="fo-power-palette__item"
+            data-fo-action="shortcuts"
+            data-fo-label="Show keyboard shortcuts"
+            data-fo-kbd="?">
+          <span class="fo-power-palette__item-icon" aria-hidden="true">?</span>
+          <span class="fo-power-palette__item-label">Show keyboard shortcuts</span>
+          <span class="fo-power-palette__item-kbd">?</span>
+        </li>
+      </ul>
+    </div>
+    <div class="fo-power-palette__group" data-fo-group="sheets">
+      <h3 class="fo-power-palette__group-title">Modelling sheets</h3>
+      <ul class="fo-power-palette__list" data-fo-sheets-list>
+        <li class="fo-power-palette__item" data-fo-tab="overview"><span class="fo-power-palette__item-icon" aria-hidden="true">ⓞ</span><span class="fo-power-palette__item-label">Overview</span><span class="fo-power-palette__item-kbd">1</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="inputs"><span class="fo-power-palette__item-icon" aria-hidden="true">ⓘ</span><span class="fo-power-palette__item-label">Inputs</span><span class="fo-power-palette__item-kbd">2</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="revenue"><span class="fo-power-palette__item-icon" aria-hidden="true">$</span><span class="fo-power-palette__item-label">Revenue</span><span class="fo-power-palette__item-kbd">3</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="opex"><span class="fo-power-palette__item-icon" aria-hidden="true">Σ</span><span class="fo-power-palette__item-label">OPEX</span><span class="fo-power-palette__item-kbd">4</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="capex"><span class="fo-power-palette__item-icon" aria-hidden="true">C</span><span class="fo-power-palette__item-label">CAPEX</span><span class="fo-power-palette__item-kbd">5</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="senior-debt"><span class="fo-power-palette__item-icon" aria-hidden="true">D</span><span class="fo-power-palette__item-label">Senior Debt</span><span class="fo-power-palette__item-kbd">6</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="tax"><span class="fo-power-palette__item-icon" aria-hidden="true">T</span><span class="fo-power-palette__item-label">Tax</span><span class="fo-power-palette__item-kbd">7</span></li>
+        <li class="fo-power-palette__item" data-fo-tab="pl"><span class="fo-power-palette__item-icon" aria-hidden="true">P</span><span class="fo-power-palette__item-label">Income Statement</span><span class="fo-power-palette__item-kbd">8</span></li>
+      </ul>
+    </div>
+    <div class="fo-power-palette__group" data-fo-group="reports">
+      <h3 class="fo-power-palette__group-title">Reports & workspaces</h3>
+      <ul class="fo-power-palette__list" data-fo-reports-list>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/exec-summary"><span class="fo-power-palette__item-icon" aria-hidden="true">★</span><span class="fo-power-palette__item-label">Executive Summary</span><span class="fo-power-palette__item-kbd">⇧1</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/ic-pack"><span class="fo-power-palette__item-icon" aria-hidden="true">I</span><span class="fo-power-palette__item-label">IC Pack (Investment Committee)</span><span class="fo-power-palette__item-kbd">⇧2</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/credit-pack"><span class="fo-power-palette__item-icon" aria-hidden="true">¢</span><span class="fo-power-palette__item-label">Credit Pack (Credit Committee)</span><span class="fo-power-palette__item-kbd">⇧3</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/lender-case"><span class="fo-power-palette__item-icon" aria-hidden="true">L</span><span class="fo-power-palette__item-label">Lender Workspace</span><span class="fo-power-palette__item-kbd">⇧4</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/sensitivity"><span class="fo-power-palette__item-icon" aria-hidden="true">⇋</span><span class="fo-power-palette__item-label">Sensitivity</span><span class="fo-power-palette__item-kbd">⇧5</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/compare"><span class="fo-power-palette__item-icon" aria-hidden="true">⇌</span><span class="fo-power-palette__item-label">Compare</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/scenarios/bess-revenue"><span class="fo-power-palette__item-icon" aria-hidden="true">B</span><span class="fo-power-palette__item-label">BESS Revenue</span></li>
+        <li class="fo-power-palette__item" data-fo-url="/help"><span class="fo-power-palette__item-icon" aria-hidden="true">?</span><span class="fo-power-palette__item-label">Help & model guidance</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="fo-power-palette__footer">
+    <div class="fo-power-palette__footer-kbds">
+      <span class="fo-power-palette__item-kbd">↑↓</span>
+      <span>navigate</span>
+      <span class="fo-power-palette__item-kbd">↵</span>
+      <span>execute</span>
+      <span class="fo-power-palette__item-kbd">esc</span>
+      <span>close</span>
+    </div>
+    <div data-fo-power-palette-count></div>
+  </div>
+</section>

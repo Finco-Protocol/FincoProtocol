@@ -1,0 +1,394 @@
+<!-- Sheet: Senior Debt — {{ project_ctx.name }}
+     Phase 9.5 — Output Tabs Runtime Summary Binding
+     PR #857 — output honesty: fix protected badge, guard editable inputs,
+     fix unavailable panel display, add section labels -->
+
+{# PR #857: section banner — truthful status labels #}
+<div class="sc-section-banner sc-section-banner--inputs" style="margin-bottom:0.75rem;">
+  <span class="sc-section-banner-label">Senior Debt</span>
+  <span class="sc-section-banner-note">
+    {% if is_user_project %}
+      <span class="badge badge-pass">Editing</span>
+      Debt assumptions are editable. Debt schedule outputs appear after running the model.
+    {% else %}
+      <span class="badge badge-muted">Protected original</span>
+      Read-only — use Create Working Copy to edit debt assumptions.
+    {% endif %}
+  </span>
+</div>
+
+<!-- Live Runtime Summary -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+  <div class="runtime-block-secondary" id="sd-secondary-metrics">
+    <div class="rb-metric">
+      <span class="rb-metric-label">Senior Debt</span>
+      <span class="rb-metric-value" id="sd-senior-debt"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Avg DSCR</span>
+      <span class="rb-metric-value" id="sd-avg-dscr"></span>
+    </div>
+    <div class="rb-metric">
+      <span class="rb-metric-label">Min DSCR</span>
+      <span class="rb-metric-value" id="sd-min-dscr"></span>
+    </div>
+  </div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Debt Assumptions -->
+<div class="sheet-card" data-fc-grid="seniordebt" data-fc-scroll-container="true">
+  <div class="sc-section-banner sc-section-banner--inputs" style="border-radius:4px 4px 0 0;margin:-1px -1px 0.75rem -1px;">
+    <span class="sc-section-banner-label">Debt Assumptions</span>
+    <span class="sc-section-banner-note">Saved input values — not engine outputs. Run the model to compute debt sizing and service.</span>
+  </div>
+
+  {% if is_user_project %}
+  {# Editable draft grid — user projects only #}
+  <div class="editable-grid-shell">
+    <div class="editable-grid-shell__header">
+      <div>
+        <div class="editable-grid-shell__title">Draft financing assumptions</div>
+        <div class="editable-grid-shell__note">These controls update draft workspace state only. The last runtime snapshot stays authoritative until you save or revert.</div>
+      </div>
+      <span class="badge badge-runtime">Draft only</span>
+    </div>
+    <div class="editable-grid-scroll">
+      <table class="editable-grid-table">
+        <thead>
+          <tr>
+            <th>Assumption</th>
+            <th>Draft value (unsaved workspace)</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-fc-row="true">
+            <td>Gearing (%)</td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!gearing_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.gearing_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" aria-label="Draft gearing percentage" /></td>
+            <td>Save and run to see effect on debt sizing.</td>
+          </tr>
+          <tr data-fc-row="true">
+            <td>Target DSCR</td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!target_dscr" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.target_dscr }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" aria-label="Draft target debt service coverage ratio" /></td>
+            <td>Minimum coverage required for debt sizing.</td>
+          </tr>
+          <tr data-fc-row="true">
+            <td>Interest Rate (%)</td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.interest_rate_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
+            <td>All-in rate applied to senior balance.</td>
+          </tr>
+          <tr data-fc-row="true">
+            <td>Tenor (years)</td>
+            <td data-fc-cell="true" data-fc-addr="seniordebt!tenor_years" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.senior_tenor_years }}"><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
+            <td>Repayment period (years from COD).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  <div class="assumption-grid sd-assumption-grid">
+    {# ── Facility ── #}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Facility Amount</span>
+      <span class="metric-value"
+            data-fc-cell="true" data-fc-addr="seniordebt!facility_amount"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_debt_keur }}">
+        {% if project_ctx.senior_debt_keur %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR
+      </span>
+    </div>
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Tenor</span>
+      <span class="metric-value"
+            data-fc-cell="true" data-fc-addr="seniordebt!tenor_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_tenor_years }}">
+        {{ project_ctx.senior_tenor_years }} years
+      </span>
+    </div>
+
+    {# ── Pricing ── #}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">All-in Rate</span>
+      <span class="metric-value"
+            data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.interest_rate_pct }}">
+        {{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.
+      </span>
+    </div>
+    {% if project_ctx.senior_base_rate_pct or project_ctx.senior_margin_bps %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Base Rate</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.senior_base_rate_pct * 100) }}% p.a.</span>
+    </div>
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Credit Margin</span>
+      <span class="metric-value">{{ project_ctx.senior_margin_bps }} bps</span>
+    </div>
+    {% endif %}
+
+    {# ── Covenants & DSRA ── #}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Target DSCR</span>
+      <span class="metric-value"
+            data-fc-cell="true" data-fc-addr="seniordebt!target_dscr_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.target_dscr }}">
+        {{ "%.2f"|format(project_ctx.target_dscr) }}x
+      </span>
+    </div>
+    {% if project_ctx.lockup_dscr %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Cash Lock-up DSCR</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.lockup_dscr) }}x</span>
+    </div>
+    {% endif %}
+    {% if project_ctx.dsra_months %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">DSRA Reserve</span>
+      <span class="metric-value">{{ project_ctx.dsra_months }} months debt service</span>
+    </div>
+    {% endif %}
+
+    {# ── Gearing ── #}
+    {% if project_ctx.gearing_pct %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Indicative Gearing (input)</span>
+      <span class="metric-value"
+            data-fc-cell="true" data-fc-addr="seniordebt!gearing_pct_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.gearing_pct }}">
+        {{ "%.1f"|format(project_ctx.gearing_pct * 100) }}%
+      </span>
+    </div>
+    {% endif %}
+    {% if project_ctx.realized_gearing_pct %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Realized Gearing</span>
+      <span class="metric-value">{{ "%.1f"|format(project_ctx.realized_gearing_pct) }}%</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <style>
+    .sd-assumption-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem 1rem; }
+  </style>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Phase E3/E4: Debt Schedule Output
+     PR #857: display inversion fixed — unavailable panel now starts visible
+     (consistent with sheet_financials.html). JS hides it after a Run.
+     Source: WaterfallResult.periods (per-period engine output).
+     No financial calculations performed here. Read-only display only. -->
+<div class="sheet-card">
+  <div class="sc-section-banner sc-section-banner--outputs" style="border-radius:4px 4px 0 0;margin:-1px -1px 0.75rem -1px;">
+    <span class="sc-section-banner-label">Runtime Debt Outputs</span>
+    <span class="sc-section-banner-note">
+      Draft schedule — not yet a full lender debt model.
+      Calculated after Run from <code>WaterfallResult.periods</code>.
+      Identical to XLSX export. Read-only.
+    </span>
+  </div>
+
+  {# Pre-Run fallback — starts visible. JS hides this and shows sd-schedule-block
+     once a Run has been executed. PR #857 fix: removed style="display:none;"
+     (was an inverted display pattern inconsistent with sheet_financials.html). #}
+  <div class="empty-state-notice empty-state-notice--warn sd-unavailable-panel"
+       id="sd-unavailable-panel"
+       role="status" aria-label="Senior debt schedule output outside current runtime view">
+    <div class="esn-icon" aria-hidden="true">📋</div>
+    <div class="esn-title">Debt schedule not yet available</div>
+    <div class="esn-desc">
+      Run the model to generate the debt schedule.
+      Results are sourced directly from <code>WaterfallResult.periods</code> — the same
+      engine output used by the XLSX export. No values are hardcoded
+      or computed client-side.
+    </div>
+  </div>
+
+  {# Post-Run: debt schedule table, populated from sessionStorage by JS. #}
+  <div id="sd-schedule-block" style="display:none;">
+    <div class="fc-table-wrapper" id="sd-schedule-table-wrapper">
+      <table class="fc-grid fs-statement-table" id="sd-schedule-table">
+        <thead><tr id="sd-schedule-header"></tr></thead>
+        <tbody id="sd-schedule-body"></tbody>
+      </table>
+    </div>
+    <div class="fs-statements-footer">
+      <span class="fs-footer-note">
+        Values in kEUR. Source: <code>WaterfallResult.periods</code> per-period
+        engine output — identical to XLSX export. Read-only.
+      </span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // ── Debt Schedule row definitions (label, field key) ─────────────────────
+  // Phase E3: read-only display of per-period engine fields from
+  // WaterfallResult.periods. No JS calculations. No aggregations.
+  var SD_ROWS = [
+    { label: "Opening Balance",     key: "senior_balance_keur",     note: "closing prev period" },
+    { label: "Interest",            key: "senior_interest_keur" },
+    { label: "Principal Repayment", key: "senior_principal_keur" },
+    { label: "Total Debt Service",  key: "senior_ds_keur",          bold: true },
+    { label: "Closing Balance",     key: "senior_balance_keur",     bold: true },
+    { label: "DSCR",                key: "dscr" },
+    { label: "DSRA Balance",        key: "dsra_balance_keur" },
+    { label: "DSRA Contribution",   key: "dsra_contribution_keur" },
+  ];
+
+  function _fmt(v) {
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function _buildSDHeader(headRow, periods) {
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  function _buildSDBody(tbody, rowDefs, periods) {
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label + (def.note ? " (" + def.note + ")" : "");
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmt(periods[i][def.key]);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderDebtSchedule(ds) {
+    // Show only operation periods for the debt schedule table.
+    var allPeriods = (ds && ds.periods) ? ds.periods : [];
+    var opPeriods = [];
+    for (var i = 0; i < allPeriods.length; i++) {
+      if (allPeriods[i].is_operation) opPeriods.push(allPeriods[i]);
+    }
+
+    var schedHead = document.getElementById("sd-schedule-header");
+    var schedBody = document.getElementById("sd-schedule-body");
+    if (schedHead && schedBody && opPeriods.length > 0) {
+      _buildSDHeader(schedHead, opPeriods);
+      _buildSDBody(schedBody, SD_ROWS, opPeriods);
+    }
+
+    // Show schedule block, hide unavailable panel
+    var schedBlock = document.getElementById("sd-schedule-block");
+    if (schedBlock) schedBlock.style.display = "";
+    var unavail = document.getElementById("sd-unavailable-panel");
+    if (unavail) unavail.style.display = "none";
+  }
+
+  // Phase E4: pre-Run fallback — show unavailable panel when no data.
+  function _populateSDDebtSchedule() {
+    var rawDs = sessionStorage.getItem("lastDebtSchedule");
+    if (rawDs) {
+      try {
+        var ds = JSON.parse(rawDs);
+        _renderDebtSchedule(ds);
+      } catch(e) {
+        // Malformed data: show unavailable panel
+        var unavail = document.getElementById("sd-unavailable-panel");
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel (pre-Run state)
+      var unavail2 = document.getElementById("sd-unavailable-panel");
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
+
+  function _populateSDRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Min DSCR",     key: "min_dscr" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+
+    var sdEl = document.getElementById("sd-senior-debt");
+    if (sdEl) sdEl.textContent = (data.senior_debt_keur != null && data.senior_debt_keur !== 'N/A') ? data.senior_debt_keur : "N/A";
+    var avgEl = document.getElementById("sd-avg-dscr");
+    if (avgEl) avgEl.textContent = data.avg_dscr || "NOT_AVAILABLE";
+    var minEl = document.getElementById("sd-min-dscr");
+    if (minEl) minEl.textContent = data.min_dscr || "NOT_AVAILABLE";
+  }
+
+  function _populateAll() {
+    _populateSDRuntimeBlock();
+    _populateSDDebtSchedule();
+  }
+
+  window._populateSDRuntimeBlock = _populateSDRuntimeBlock;
+  window._populateSDDebtSchedule = _populateSDDebtSchedule;
+
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-senior-debt"))) {
+      _populateAll();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _populateAll);
+  } else {
+    _populateAll();
+  }
+})();
+</script>

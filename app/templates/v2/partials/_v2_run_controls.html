@@ -1,0 +1,20 @@
+{#
+  V2 Run controls — rendered standalone for OOB HTMX refreshes after mutations.
+  Always carries the current composite content_hash so the Run button submits
+  the right identity.
+
+  Context vars: project_code, workbook_version, content_hash
+#}
+<form method="post" action="/v2/workbook/run"
+      hx-post="/v2/workbook/run"
+      hx-swap="none"
+      hx-disabled-elt="find button"
+      class="v2-run-form">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <button type="submit" class="v2-run-btn" data-testid="v2-run-btn">
+    <span class="v2-run-label">Run{% if active_scenario_name and active_scenario_name != "Base Case" %} {{ active_scenario_name }}{% else %} Base Case{% endif %}</span>
+    <span class="v2-run-loading" aria-hidden="true">Running…</span>
+  </button>
+</form>

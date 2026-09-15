@@ -1,0 +1,164 @@
+<!-- Sheet: Construction — {{ project_ctx.name }} -->
+
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏗️ Construction</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+{# ── Readonly notice for baselines ─────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--construction">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Protected original — read only</strong>
+    <p>Construction schedule is derived from CAPEX assumptions. Edit via <strong>Duplicate / Save As</strong> to create your own project.</p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Construction Summary Cards ───────────────────────────────── #}
+<div class="fc-const-idc-cards sheet-card">
+
+  <div class="section-header">Construction Summary</div>
+  <div class="assumption-grid">
+
+    <div class="assumption-item">
+      <span class="metric-label">Financial Close</span>
+      <span class="metric-value">{{ project_ctx.financial_close }}</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">COD</span>
+      <span class="metric-value">{{ project_ctx.cod_date }}</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Construction Period</span>
+      <span class="metric-value">{{ project_ctx.construction_months }} months</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Total CAPEX</span>
+      <span class="metric-value">{{ (project_ctx.total_capex_keur if project_ctx.total_capex_keur is string else "{:,.0f}".format(project_ctx.total_capex_keur or 0)) }} kEUR</span>
+    </div>
+
+    <div class="assumption-item">
+      <span class="metric-label">Senior Debt</span>
+      <span class="metric-value">{{ (project_ctx.senior_debt_keur if project_ctx.senior_debt_keur is string else "{:,.0f}".format(project_ctx.senior_debt_keur or 0)) }} kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">SHL Amount</span>
+      <span class="metric-value">{{ (project_ctx.shl_amount_keur if project_ctx.shl_amount_keur is string else "{:,.0f}".format(project_ctx.shl_amount_keur or 0)) }} kEUR</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">SHL Rate</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.shl_rate_pct * 100) }}%</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">IDC (Total)</span>
+      <span class="metric-value">{{ (project_ctx.idc_keur if project_ctx.idc_keur is string else "{:,.0f}".format(project_ctx.idc_keur or 0)) }} kEUR</span>
+    </div>
+
+  </div>
+</div>
+
+{# ── Monthly Drawdown Grid (Audit Only) ─────────────────────── #}
+{% if project_ctx.construction_items %}
+{% set monthly_rows = [] %}
+{% set summary_rows = [] %}
+{% for item in project_ctx.construction_items %}
+  {% if item.type == 'monthly' %}
+    {% set _ = monthly_rows.append(item) %}
+  {% else %}
+    {% set _ = summary_rows.append(item) %}
+  {% endif %}
+{% endfor %}
+
+<div class="fc-construction-grid-wrapper sheet-card">
+
+  <div class="section-header">
+    Monthly Drawdown Schedule
+    <span class="badge badge-preview" style="margin-left:0.5rem;">Audit / Preview</span>
+    <span class="table-note__text" style="font-size:0.72rem;color:var(--muted);margin-left:0.5rem;">
+      Monthly drawdown is computed by the offline construction engine. Runtime model remains authoritative.
+    </span>
+  </div>
+
+  <div class="fc-grid-wrapper fc-grid-wrapper--scroll-x">
+    <table class="fc-grid" id="construction-grid">
+
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-grid-col-label fc-th">Line Item</th>
+          <th class="fc-th fc-th--code">Unit</th>
+          <th class="fc-th fc-th--amount">Equity</th>
+          <th class="fc-th fc-th--amount">SHL</th>
+          <th class="fc-th fc-th--amount">Junior</th>
+          <th class="fc-th fc-th--amount">Senior Debt</th>
+          <th class="fc-th fc-th--amount">Total Draw</th>
+          <th class="fc-th fc-th--amount">Cumul. Uses</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {% for item in monthly_rows %}
+        <tr class="fc-data-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label">{{ item.label }}</td>
+          <td class="fc-cell">{{ item.unit }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.equity_draw_keur if item.equity_draw_keur is string else "{:,.1f}".format(item.equity_draw_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.shl_draw_keur if item.shl_draw_keur is string else "{:,.1f}".format(item.shl_draw_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.junior_draw_keur if item.junior_draw_keur is string else "{:,.1f}".format(item.junior_draw_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.senior_draw_keur if item.senior_draw_keur is string else "{:,.1f}".format(item.senior_draw_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.total_draw_keur if item.total_draw_keur is string else "{:,.1f}".format(item.total_draw_keur)) }}</td>
+          <td class="fc-cell fc-cell--amount">{{ (item.cumulative_uses_keur if item.cumulative_uses_keur is string else "{:,.1f}".format(item.cumulative_uses_keur)) }}</td>
+        </tr>
+        {% endfor %}
+
+        {# ── Funding Summary ─────────────────────────────────────── #}
+        <tr class="fc-section-band">
+          <td class="fc-section-band__label" colspan="8">Funding Summary</td>
+        </tr>
+
+        {% for item in summary_rows %}
+        <tr class="fc-subtotal-row">
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">{{ item.label }}</td>
+          {% if item.label == 'Total Equity Draw' %}
+            <td class="fc-total-cell">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+            <td colspan="6"></td>
+          {% elif item.label == 'Total SHL Principal Draw' %}
+            <td colspan="2"></td>
+            <td class="fc-total-cell">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+            <td colspan="5"></td>
+          {% elif item.label == 'Total Senior Principal Draw' %}
+            <td colspan="3"></td>
+            <td class="fc-total-cell">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+            <td colspan="4"></td>
+          {% elif item.label == 'Total Junior Draw' %}
+            <td colspan="4"></td>
+            <td class="fc-total-cell">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+            <td colspan="3"></td>
+          {% elif item.label == 'Total Uses (CAPEX)' %}
+            <td colspan="6"></td>
+            <td class="fc-total-cell fc-grand-total__value">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+          {% else %}
+            <td class="fc-total-cell">{{ (item.value if item.value is string else "{:,.1f}".format(item.value)) }}</td>
+            <td colspan="6"></td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+
+      </tbody>
+    </table>
+  </div>{# /fc-grid-wrapper #}
+
+</div>{# /sheet-card #}
+{% endif %}
+
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+  <span class="table-note__text">
+    IDC: {{ (project_ctx.idc_keur if project_ctx.idc_keur is string else "{:,.0f}".format(project_ctx.idc_keur or 0)) }} kEUR
+    · SHL Rate: {{ "%.2f"|format(project_ctx.shl_rate_pct * 100) }}%
+    · Target DSCR: {{ (project_ctx.target_dscr if project_ctx.target_dscr is string else "%.2f".format(project_ctx.target_dscr or 1.0)) }}x
+  </span>
+</div>

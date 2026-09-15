@@ -1,0 +1,35 @@
+[Unit]
+Description=FINCO Model Web Application
+After=network.target
+
+[Service]
+Type=notify
+User=finco
+Group=finco
+WorkingDirectory=/opt/finco_protocol
+
+# Activate the virtual environment
+Environment="PATH=/opt/finco_protocol/.venv/bin"
+ExecStart=/opt/finco_protocol/.venv/bin/gunicorn main_web:app \
+    --workers 2 \
+    --bind 127.0.0.1:8000 \
+    --timeout 120 \
+    --access-logfile /var/log/finco-web/access.log \
+    --error-logfile  /var/log/finco-web/error.log \
+    --capture-output \
+    --graceful-timeout 30
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Environment file (contains secrets)
+EnvironmentFile=/opt/finco_protocol/.env
+
+# Security: no new privileges
+NoNewPrivileges=true
+# Security: don't split environment
+# (systemd default; explicit for clarity)
+
+[Install]
+WantedBy=multi-user.target

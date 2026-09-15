@@ -1,0 +1,997 @@
+/* ============================================================================
+   FINCO PROTOCOL — STATEMENTS & REPORTING  ·  static/statements-reporting.css
+   ----------------------------------------------------------------------------
+   UI-6: Institutional presentation layer for Financial Statements (Income /
+   Cash Flow / Balance Sheet) and reporting surfaces (Executive Summary, IC
+   Pack, Credit Pack, Lender Workspace, FS Compare).
+
+   This stylesheet:
+     1. Sticky statement selector + compact toolbar (PART A).
+     2. Sticky-header / sticky-first-column institutional tables (PART B).
+     3. Convention / disclosure / reconciliation notes (PART C).
+     4. Reporting dashboard layout — shared across Exec / IC / Credit /
+        Lender packs (PART D).
+     5. Print-friendly page breaks, headers, footers, page numbers (PART E).
+     6. Compare experience with direction colouring + sticky compare header
+        (PART F).
+     7. Only `--fo-*` tokens (PART G).
+     8. WCAG-AA focus rings + screen-reader table semantics (PART H).
+
+   Same isolated `.fo-statements-workspace*` namespace as UI-4 / UI-5.
+   No edits to existing stylesheets (styles.css, chrome.css, sheet-tabs.css,
+   workspace.css, modelling-workspace.css remain untouched).
+   ============================================================================ */
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Token contract                                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-workspace {
+  --fo-stmts-nav-w: 220px;
+  --fo-stmts-context-w: 280px;
+  --fo-stmts-gap: var(--fo-s5);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s5);
+  padding: var(--fo-s5) 0;
+  font-family: var(--fo-font-ui);
+  color: var(--fo-ink);
+  background: var(--fo-paper);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Statement selector (PART A)                                              */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  flex-wrap: wrap;
+  padding: var(--fo-s3) var(--fo-s4);
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-s2));
+  z-index: 5;
+  box-shadow: 0 1px 0 var(--fo-line);
+}
+
+.fo-statements-selector__group {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.fo-statements-selector__divider {
+  width: 1px;
+  height: 24px;
+  background: var(--fo-line);
+  flex: 0 0 auto;
+}
+
+.fo-statements-selector__btn {
+  appearance: none;
+  border: 1px solid var(--fo-line);
+  background: var(--fo-paper);
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-medium);
+  padding: 6px 12px;
+  border-radius: var(--fo-r-sm);
+  cursor: pointer;
+  transition:
+    background var(--fo-t-fast) var(--fo-ease),
+    border-color var(--fo-t-fast) var(--fo-ease),
+    color var(--fo-t-fast) var(--fo-ease);
+  white-space: nowrap;
+}
+
+.fo-statements-selector__btn:hover {
+  background: var(--fo-rag-neutral-bg);
+  border-color: var(--fo-ink-soft);
+}
+
+.fo-statements-selector__btn:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 2px;
+}
+
+.fo-statements-selector__btn.is-active {
+  background: var(--fo-brand-700);
+  border-color: var(--fo-brand-700);
+  color: var(--fo-paper);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Compact toolbar (PART A)                                                 */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s3);
+  padding: var(--fo-s2) var(--fo-s4);
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  flex-wrap: wrap;
+}
+
+.fo-statements-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-statements-toolbar__label {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+}
+
+.fo-statements-toolbar__select {
+  appearance: none;
+  border: 1px solid var(--fo-line);
+  background: var(--fo-paper);
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  padding: 4px 24px 4px 10px;
+  border-radius: var(--fo-r-sm);
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--fo-ink-soft) 50%),
+                    linear-gradient(135deg, var(--fo-ink-soft) 50%, transparent 50%);
+  background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.fo-statements-toolbar__select:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 1px;
+}
+
+.fo-statements-toolbar__btn {
+  appearance: none;
+  border: 1px solid var(--fo-line);
+  background: var(--fo-paper);
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-medium);
+  padding: 4px 12px;
+  border-radius: var(--fo-r-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s1);
+}
+
+.fo-statements-toolbar__btn:hover {
+  background: var(--fo-rag-neutral-bg);
+}
+
+.fo-statements-toolbar__btn:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 1px;
+}
+
+.fo-statements-toolbar__btn--primary {
+  background: var(--fo-brand-700);
+  border-color: var(--fo-brand-700);
+  color: var(--fo-paper);
+}
+
+.fo-statements-toolbar__btn--primary:hover {
+  background: var(--fo-brand-800);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Three-column layout                                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-workspace__layout {
+  display: grid;
+  grid-template-columns: var(--fo-stmts-nav-w) minmax(0, 1fr) var(--fo-stmts-context-w);
+  gap: var(--fo-stmts-gap);
+  align-items: start;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Section navigator                                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-workspace__nav {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-stmts-selector-h, 96px) + var(--fo-s3));
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s2);
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+}
+
+.fo-statements-workspace__nav-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+  margin: 0;
+}
+
+.fo-statements-workspace__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fo-statements-workspace__nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: 6px var(--fo-s2);
+  border-radius: var(--fo-r-sm);
+  text-decoration: none;
+  color: var(--fo-ink);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  border-left: 3px solid transparent;
+  transition:
+    background var(--fo-t-fast) var(--fo-ease),
+    border-color var(--fo-t-fast) var(--fo-ease),
+    color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-statements-workspace__nav-link:hover {
+  background: var(--fo-rag-neutral-bg);
+}
+
+.fo-statements-workspace__nav-link.is-active {
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-700);
+  border-left-color: var(--fo-brand-600);
+  font-weight: var(--fo-weight-medium);
+}
+
+.fo-statements-workspace__nav-link:focus-visible {
+  outline: 2px solid var(--fo-brand-600);
+  outline-offset: 2px;
+}
+
+.fo-statements-workspace__nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fo-rag-neutral);
+  flex: 0 0 auto;
+}
+
+.fo-statements-workspace__nav-link.is-active .fo-statements-workspace__nav-dot {
+  background: var(--fo-brand-600);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Main content column                                                      */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-workspace__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s4);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Right-side context panel                                                 */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-workspace__context {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-stmts-selector-h, 96px) + var(--fo-s3));
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s3);
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+}
+
+.fo-statements-workspace__context-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+  margin: 0;
+}
+
+.fo-statements-workspace__context-list {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s3);
+}
+
+.fo-statements-workspace__context-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--fo-s2);
+  border-bottom: 1px dashed var(--fo-line);
+}
+
+.fo-statements-workspace__context-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.fo-statements-workspace__context-label {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  font-weight: var(--fo-weight-medium);
+}
+
+.fo-statements-workspace__context-value {
+  font-family: var(--fo-font-mono);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  line-height: 1.3;
+}
+
+.fo-statements-workspace__context-value--placeholder {
+  color: var(--fo-ink-faint);
+  font-style: italic;
+  font-weight: var(--fo-weight-regular);
+}
+
+.fo-statements-workspace__context-hint {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin: 2px 0 0;
+  line-height: 1.3;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Institutional tables (PART B)                                            */
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Applies to the legacy `.fs-table` and `.fc-grid` (within statement
+   panels) tables — improves sticky header, sticky first column, decimal
+   alignment, expandable notes, negative numbers, subtotal/grand-total
+   hierarchy. No data change. */
+.fo-statements-workspace__content .fs-table,
+.fo-statements-workspace__content .fc-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  background: var(--fo-paper);
+}
+
+.fo-statements-workspace__content .fs-table thead th,
+.fo-statements-workspace__content .fc-grid thead th {
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-stmts-selector-h, 96px) + var(--fo-s4));
+  background: var(--fo-paper);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fo-ink-soft);
+  border-bottom: 2px solid var(--fo-line);
+  padding: var(--fo-s2) var(--fo-s3);
+  text-align: right;
+  z-index: 4;
+}
+
+.fo-statements-workspace__content .fs-table thead th:first-child,
+.fo-statements-workspace__content .fc-grid thead th:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 5;
+}
+
+.fo-statements-workspace__content .fs-table tbody td,
+.fo-statements-workspace__content .fc-grid tbody td {
+  padding: var(--fo-s2) var(--fo-s3);
+  border-bottom: 1px solid var(--fo-line);
+  font-size: var(--fo-text-sm);
+  text-align: right;
+  font-family: var(--fo-font-mono);
+}
+
+.fo-statements-workspace__content .fs-table tbody td:first-child,
+.fo-statements-workspace__content .fc-grid tbody td:first-child {
+  text-align: left;
+  font-family: var(--fo-font-ui);
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+  position: sticky;
+  left: 0;
+  background: var(--fo-paper);
+  z-index: 1;
+}
+
+.fo-statements-workspace__content .fs-table tbody tr:hover td,
+.fo-statements-workspace__content .fc-grid tbody tr:hover td {
+  background: var(--fo-rag-neutral-bg);
+}
+
+/* Subtotal / total / grand-total hierarchy. */
+.fo-statements-workspace__content .fs-table tbody tr.fs-row--subtotal td,
+.fo-statements-workspace__content .fs-table .fs-subtotal,
+.fo-statements-workspace__content .fc-grid .fc-subtotal-row td {
+  font-weight: var(--fo-weight-semibold);
+  border-top: 1px solid var(--fo-line);
+  background: var(--fo-rag-neutral-bg);
+}
+
+.fo-statements-workspace__content .fs-table tbody tr.fs-row--total td,
+.fo-statements-workspace__content .fs-table .fs-total,
+.fo-statements-workspace__content .fc-grid .fc-grand-total td,
+.fo-statements-workspace__content .fc-grid .fc-total-cell {
+  font-weight: var(--fo-weight-bold);
+  border-top: 2px solid var(--fo-ink);
+  border-bottom: 2px solid var(--fo-ink);
+  background: var(--fo-rag-neutral-bg);
+}
+
+/* Negative numbers — wrap the value in a `.fo-stmts-neg` span to get
+   the institutional red colour. Only affects presentation. */
+.fo-statements-workspace__content .fo-stmts-neg {
+  color: var(--fo-rag-red);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fo-statements-workspace__content .fo-stmts-pos {
+  color: var(--fo-rag-green);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Expandable note rows. */
+.fo-statements-workspace__content .fs-table .fs-note-toggle,
+.fo-statements-workspace__content .fc-grid .fs-note-toggle {
+  cursor: pointer;
+  user-select: none;
+  color: var(--fo-brand-700);
+  font-family: var(--fo-font-ui);
+  font-weight: var(--fo-weight-medium);
+  text-align: left;
+  padding: var(--fo-s2) var(--fo-s3);
+  border-top: 1px dashed var(--fo-line);
+  background: var(--fo-brand-50);
+}
+
+.fo-statements-workspace__content .fs-table .fs-note-toggle:hover,
+.fo-statements-workspace__content .fc-grid .fs-note-toggle:hover {
+  background: var(--fo-brand-100, var(--fo-brand-50));
+}
+
+.fo-statements-workspace__pass-marker {
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-rag-green);
+  font-weight: var(--fo-weight-semibold);
+}
+
+.fo-statements-workspace__warn-marker {
+  background: var(--fo-rag-amber-bg);
+  color: var(--fo-rag-amber);
+  font-weight: var(--fo-weight-semibold);
+  border-radius: var(--fo-r-lg);
+}
+
+.fo-statements-workspace__content .fs-note-detail {
+  background: var(--fo-rag-neutral-bg);
+  padding: var(--fo-s3) var(--fo-s4);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-soft);
+  border-top: 1px solid var(--fo-line);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Financial notes panel (PART C)                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-notes {
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s4) var(--fo-s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s3);
+}
+
+.fo-statements-notes__title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-statements-notes__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s2);
+}
+
+.fo-statements-notes__item {
+  background: var(--fo-rag-neutral-bg);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  padding: var(--fo-s3) var(--fo-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s1);
+}
+
+.fo-statements-notes__item-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-statements-notes__item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--fo-rag-green);
+  color: var(--fo-paper);
+  font-size: 11px;
+  font-weight: var(--fo-weight-bold);
+  font-family: var(--fo-font-ui);
+}
+
+.fo-statements-notes__item-icon--warn {
+  background: var(--fo-rag-amber);
+}
+
+.fo-statements-notes__item-icon--info {
+  background: var(--fo-rag-neutral);
+}
+
+.fo-statements-notes__item-body {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-soft);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.fo-statements-notes__disclosure {
+  font-family: var(--fo-font-mono);
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin: 0;
+  padding-top: var(--fo-s1);
+  border-top: 1px dashed var(--fo-line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Reporting dashboard (PART D) — shared across Exec/IC/Credit/Lender      */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-reporting-dashboard {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--fo-s4);
+  padding: var(--fo-s4) 0;
+}
+
+.fo-reporting-dashboard__header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--fo-s3);
+  padding-bottom: var(--fo-s3);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-reporting-dashboard__title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xl);
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--fo-ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.fo-reporting-dashboard__subtitle {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-soft);
+  margin: 0;
+  line-height: 1.4;
+  max-width: 600px;
+}
+
+.fo-reporting-dashboard__card {
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  padding: var(--fo-s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s2);
+  box-shadow: 0 1px 0 var(--fo-line);
+}
+
+.fo-reporting-dashboard__card-title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-soft);
+  margin: 0;
+}
+
+.fo-reporting-dashboard__card-content {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.fo-reporting-dashboard__card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fo-s3);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Compare experience (PART F)                                              */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-statements-compare {
+  background: var(--fo-paper);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fo-statements-compare__header {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  background: var(--fo-brand-700);
+  color: var(--fo-paper);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  font-weight: var(--fo-weight-semibold);
+  position: sticky;
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-stmts-selector-h, 96px) + var(--fo-s2));
+  z-index: 4;
+}
+
+.fo-statements-compare__header > div {
+  padding: var(--fo-s3) var(--fo-s4);
+  border-right: 1px solid var(--fo-brand-800, var(--fo-brand-700));
+}
+
+.fo-statements-compare__header > div:last-child {
+  border-right: none;
+}
+
+.fo-statements-compare__header--scenario-a,
+.fo-statements-compare__header--scenario-b {
+  text-align: right;
+}
+
+.fo-statements-compare__row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr;
+  border-bottom: 1px solid var(--fo-line);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.fo-statements-compare__row:last-child {
+  border-bottom: none;
+}
+
+.fo-statements-compare__row > div {
+  padding: var(--fo-s2) var(--fo-s4);
+  font-family: var(--fo-font-mono);
+  font-size: var(--fo-text-sm);
+  border-right: 1px solid var(--fo-line);
+}
+
+.fo-statements-compare__row > div:first-child {
+  font-family: var(--fo-font-ui);
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+  text-align: left;
+}
+
+.fo-statements-compare__row > div:not(:first-child) {
+  text-align: right;
+}
+
+.fo-statements-compare__row > div:last-child {
+  border-right: none;
+}
+
+.fo-statements-compare__row--subtotal > div {
+  background: var(--fo-rag-neutral-bg);
+  font-weight: var(--fo-weight-semibold);
+}
+
+.fo-statements-compare__row--total > div {
+  background: var(--fo-brand-50);
+  font-weight: var(--fo-weight-bold);
+  border-top: 2px solid var(--fo-brand-700);
+}
+
+.fo-statements-compare__delta--up {
+  color: var(--fo-rag-green);
+  font-weight: var(--fo-weight-semibold);
+}
+
+.fo-statements-compare__delta--down {
+  color: var(--fo-rag-red);
+  font-weight: var(--fo-weight-semibold);
+}
+
+.fo-statements-compare__delta--flat {
+  color: var(--fo-ink-soft);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Print (PART E)                                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+@media print {
+  .fo-statements-selector,
+  .fo-statements-toolbar,
+  .fo-statements-workspace__nav,
+  .fo-statements-workspace__context,
+  .fo-chrome,
+  .fo-sheets,
+  .fo-modelling-workspace__nav,
+  .fo-modelling-workspace__context,
+  .fo-modelling-workspace__status,
+  .fo-overview-workspace,
+  .fo-inputs-workspace,
+  .runtime-block,
+  .fs-runtime-block,
+  .runtime-block-header,
+  .sheet-banner,
+  .inp-dirty-indicator,
+  .inp-readonly-notice,
+  button.fo-statements-selector__btn,
+  button.fo-statements-toolbar__btn {
+    display: none !important;
+  }
+
+  .fo-statements-workspace__layout {
+    display: block !important;
+  }
+
+  .fo-statements-workspace__content {
+    width: 100% !important;
+  }
+
+  .fo-statements-workspace__content .fs-table thead th,
+  .fo-statements-workspace__content .fc-grid thead th {
+    position: static !important;
+    background: transparent !important;
+  }
+
+  .fo-statements-workspace__content .fs-table tbody td:first-child,
+  .fo-statements-workspace__content .fc-grid tbody td:first-child {
+    position: static !important;
+    background: transparent !important;
+  }
+
+  .fo-statements-workspace,
+  .fo-statements-workspace__content {
+    page-break-inside: auto;
+  }
+
+  .fo-statements-workspace__content > section,
+  .fo-statements-workspace__content > div {
+    page-break-inside: avoid;
+  }
+
+  .fo-statements-notes,
+  .fo-statements-notes__item,
+  .fo-reporting-dashboard__card {
+    page-break-inside: avoid;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Print page header / footer via @page pseudo-class (where supported). */
+  @page {
+    size: A4 portrait;
+    margin: 18mm 14mm 22mm 14mm;
+
+    @top-left {
+      content: "FINCO Protocol — " attr(data-fo-print-title);
+      font-family: var(--fo-font-ui);
+      font-size: 9pt;
+      color: var(--fo-ink-soft);
+    }
+    @top-right {
+      content: attr(data-fo-print-scenario);
+      font-family: var(--fo-font-ui);
+      font-size: 9pt;
+      color: var(--fo-ink-soft);
+    }
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: var(--fo-font-ui);
+      font-size: 9pt;
+      color: var(--fo-ink-soft);
+    }
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Responsive                                                               */
+/* ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 1280px) {
+  .fo-statements-workspace__layout {
+    grid-template-columns: minmax(0, 1fr) var(--fo-stmts-context-w);
+  }
+  .fo-statements-workspace__nav {
+    grid-column: 1 / -1;
+    position: static;
+    max-height: none;
+  }
+  .fo-statements-workspace__nav-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--fo-s1);
+  }
+}
+
+@media (max-width: 1024px) {
+  .fo-statements-workspace__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fo-statements-workspace__context {
+    position: static;
+    max-height: none;
+  }
+  .fo-statements-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fo-statements-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 700px) {
+  .fo-statements-workspace {
+    --fo-stmts-gap: var(--fo-s3);
+    padding: var(--fo-s3) 0;
+  }
+  .fo-statements-workspace__title {
+    font-size: var(--fo-text-lg);
+  }
+  .fo-statements-compare__header,
+  .fo-statements-compare__row {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    font-size: var(--fo-text-xs);
+  }
+  .fo-statements-compare__header > div,
+  .fo-statements-compare__row > div {
+    padding: var(--fo-s1) var(--fo-s2);
+  }
+}
+/* ============================================================================
+   UI-8E — Financial statements runtime state
+   ========================================================================== */
+
+/* Professional empty state — shown by default, hidden by JS after Run */
+.fo-fs-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fo-s3);
+  padding: var(--fo-s8) var(--fo-s4);
+  text-align: center;
+  color: var(--fo-ink-soft);
+}
+
+.fo-fs-empty-state__icon {
+  font-size: 2rem;
+  opacity: 0.25;
+  line-height: 1;
+}
+
+.fo-fs-empty-state__title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink-soft);
+}
+
+.fo-fs-empty-state__body {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-faint);
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.fo-fs-empty-state__body kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 0.85em;
+  border: 1px solid var(--fo-line-strong);
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+}
+
+/* Toolbar disabled when no runtime — grey out controls, block interaction */
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-toolbar__btn,
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-toolbar__select {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Statement selector tabs disabled when no runtime */
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-selector__btn {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}

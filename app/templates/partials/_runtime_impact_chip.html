@@ -1,0 +1,38 @@
+{# ── UI-2.2: Runtime Impact Chip Partial ──────────────────────────────
+   Renders a standardized Runtime Impact chip.
+
+   4 states (from runtime_impact_taxonomy.py):
+     1. Drives model     - included in model calculations
+     2. Display only     - shown for review, does not affect calculations
+     3. Pending          - mapped but not yet connected to runtime
+     4. Needs review     - requires review before use
+
+   Safe sub-reason tooltip: optional, appended to the main tooltip
+   if `sub_reason` is supplied.
+
+   If `runtime_impact` is missing, renders NOTHING (safe default).
+#}
+
+{% if runtime_impact %}
+  {% set _rt = runtime_impact|default('') %}
+  {% set _rt_class = _rt|replace(' ', '-')|lower() %}
+  {% set _sub = sub_reason|default('') %}
+
+  {% if _rt == 'Drives model' %}
+    {% set _tt = 'Included in model calculations.' %}
+  {% elif _rt == 'Display only' %}
+    {% set _tt = 'Shown for review; does not affect calculations.' %}
+  {% elif _rt == 'Pending' %}
+    {% set _tt = 'Not included in current model calculations. Available in a future version.' %}
+  {% elif _rt == 'Needs review' %}
+    {% set _tt = 'Requires review before use.' %}
+  {% else %}
+    {% set _tt = 'Runtime impact: ' ~ _rt %}
+  {% endif %}
+
+  {% if _sub %}
+    {% set _tt = _tt ~ ' ' ~ _sub %}
+  {% endif %}
+
+  <span class="chip chip-{{ _rt_class }}" title="{{ _tt }}">{{ _rt }}</span>
+{% endif %}

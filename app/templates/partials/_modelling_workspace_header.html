@@ -1,0 +1,53 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — HEADER  ·  UI-5
+  -----------------------------------------------------------------------
+  Renders the title + dirty state + validation summary header for a
+  modelling sheet. Uses existing metadata (current_context, validation_summary)
+  — never invents new calculations.
+  =======================================================================
+-->
+<header class="fo-modelling-workspace__header">
+  <div class="fo-modelling-workspace__title-row">
+    <h1 class="fo-modelling-workspace__title">{{ _title }}</h1>
+    <div class="fo-modelling-workspace__status">
+      {% if current_context and current_context.dirty %}
+        <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--dirty"
+              data-fo-dirty-indicator="{{ _kind|default('modelling') }}">
+          <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
+          Unsaved
+        </span>
+      {% else %}
+        <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--saved"
+              data-fo-saved-indicator="{{ _kind|default('modelling') }}">
+          <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
+          Saved
+        </span>
+      {% endif %}
+      {% if validation_summary %}
+        {% set _pc = validation_summary.get("pass_count", 0) %}
+        {% set _wc = validation_summary.get("warn_count", 0) %}
+        {% set _fc = validation_summary.get("fail_count", 0) %}
+        {% if _fc > 0 %}
+          <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--fail">
+            <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">✕</span>
+            {{ _fc }} {{ "issue" if _fc == 1 else "issues" }}
+          </span>
+        {% elif _wc > 0 %}
+          <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--warn">
+            <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">!</span>
+            {{ _wc }} {{ "warning" if _wc == 1 else "warnings" }}
+          </span>
+        {% elif _pc > 0 %}
+          <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--ok">
+            <span class="fo-modelling-workspace__pill-icon" aria-hidden="true">✓</span>
+            {{ _pc }} checks
+          </span>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  {% if _description %}
+  <p class="fo-modelling-workspace__description">{{ _description }}</p>
+  {% endif %}
+</header>

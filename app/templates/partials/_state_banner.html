@@ -1,0 +1,126 @@
+{# ── UI-2.1: State Clarity Banner Partial ──────────────────────────────
+   Renders a state-clarity banner for the active scenario / project.
+   Renders NOTHING if banner_context is missing (safe default).
+
+   Supported contexts (11):
+     1. factory_template
+     2. user_created_project
+     3. active_scenario
+     4. saved_scenario
+     5. browser_draft
+     6. dirty_state
+     7. stale_result
+     8. last_run
+     9. validation_failed
+    10. display_only_row
+    11. pending_runtime_source
+
+   Tones (5): info | success | warn | fail | neutral
+#}
+
+{% if banner_context %}
+  {% set _ctx = banner_context %}
+  {% set _tone = banner_tone|default('info') %}
+  {% set _title = '' %}
+  {% set _desc = '' %}
+  {% set _icon = '' %}
+
+  {# Phase P2-FIX-7: restrict the "Protected original"
+     state banner to protected references only.
+     Previously the banner triggered for any
+     factory_template project (including Generic
+     Solar / Wind), which mis-classified Generic
+     projects as protected. P2-FIX-7 requires
+     both ``_ctx == 'factory_template'`` AND
+     ``is_protected_reference``. Generic projects
+     now fall through to the index.html
+     gov-banner ("Internal-use model") which is
+     the authoritative project-type-aware
+     disclosure.
+
+     NOTE: the P2-FIX-6 conditional CTA further
+     down still uses the same three-condition
+     gate (factory_template + is_protected_reference
+     + not is_user_project) so the "Create editable
+     copy" button visibility is preserved. #}
+  {% if _ctx == 'factory_template' and is_protected_reference %}
+    {% set _title = 'Protected original' %}
+    {% set _desc = 'Protected original — create a working copy to edit inputs.' %}
+    {% set _icon = '◆' %}
+  {% elif _ctx == 'user_created_project' %}
+    {% set _title = 'User-created project' %}
+    {% set _desc = 'You created this project. All inputs are editable unless source-locked.' %}
+    {% set _icon = '●' %}
+  {% elif _ctx == 'active_scenario' %}
+    {% set _title = 'Active scenario' %}
+    {% set _desc = 'Editing the active scenario updates the model after save.' %}
+    {% set _icon = '●' %}
+  {% elif _ctx == 'saved_scenario' %}
+    {% set _title = 'Saved scenario' %}
+    {% set _desc = 'Saved. Scenario ID on file. Use the scenario tab to load or duplicate.' %}
+    {% set _icon = '✓' %}
+  {% elif _ctx == 'browser_draft' %}
+    {% set _title = 'Browser draft' %}
+    {% set _desc = 'Unsaved browser draft — changes are not saved to a scenario yet.' %}
+    {% set _icon = '◐' %}
+  {% elif _ctx == 'dirty_state' %}
+    {% set _title = 'Unsaved changes' %}
+    {% set _desc = 'This scenario has unsaved changes. Save the scenario to create a clean snapshot, then run the model.' %}
+    {% set _icon = '◐' %}
+  {% elif _ctx == 'stale_result' %}
+    {% set _title = 'Stale result' %}
+    {% set _desc = 'Results may be stale — inputs changed after the last run. Re-run the model for current results.' %}
+    {% set _icon = '↻' %}
+  {% elif _ctx == 'last_run' %}
+    {% set _title = 'Last run available' %}
+    {% set _desc = 'Last run available — review model evidence before export.' %}
+    {% set _icon = '✓' %}
+  {% elif _ctx == 'validation_failed' %}
+    {% set _title = 'Validation failed' %}
+    {% set _desc = 'Validation checks need review before relying on this run.' %}
+    {% set _icon = '!' %}
+  {% elif _ctx == 'display_only_row' %}
+    {% set _title = 'Display only' %}
+    {% set _desc = 'This row is for reference. Editing is disabled.' %}
+    {% set _icon = '◇' %}
+  {% elif _ctx == 'pending_runtime_source' %}
+    {% set _title = 'Pending runtime source' %}
+    {% set _desc = 'This row is for reference only and does not affect model results.' %}
+    {% set _icon = '◌' %}
+  {% endif %}
+
+  {% if _title %}
+  {# Phase 56F: added `.banner-56f` modifier class for the new calmer
+     visual hierarchy. The base `.banner` is preserved for backward
+     compat (other places in the app still use the original style). #}
+  <div class="banner banner-{{ _tone }} banner-56f" role="status" aria-label="{{ _title }}">
+    <span class="banner-icon" aria-hidden="true">{{ _icon }}</span>
+    <div class="banner-body">
+      <span class="banner-title">{{ _title }}</span>
+      {% if _desc %}<span class="banner-desc">{{ _desc }}</span>{% endif %}
+      {# P2-FIX-8 PR3: Transparent copy-on-first-save. In normal mode
+         the explicit button is retired — the first Save triggers
+         the copy mechanism automatically via the draft route.
+         In reviewer/audit mode the button is kept as an explicit
+         affordance for reviewers who need to understand the mechanic. #}
+      {% if _ctx == 'factory_template' and is_protected_reference and not is_user_project %}
+        <form class="banner-action"
+              method="POST"
+              action="/projects/{{ active_project_code }}/confirm-first-edit-copy"
+              data-p2fix6-form="create-editable-copy"
+              data-p2fix6-source="{{ active_project_code }}">
+          <button type="submit"
+                  class="btn btn-primary banner-action-btn"
+                  data-p2fix6-cta="create-working-copy"
+                  aria-label="Create working copy of {{ active_project_code }}">
+            Create Working Copy
+          </button>
+          <span class="banner-action-hint">
+            Creates an editable copy. The original stays read-only.
+          </span>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+{% endif %}

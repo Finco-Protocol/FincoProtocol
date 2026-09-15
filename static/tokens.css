@@ -1,0 +1,187 @@
+/* ============================================================================
+   FINCO PROTOCOL — DESIGN TOKENS  ·  static/tokens.css
+   ----------------------------------------------------------------------------
+   Single source of truth for colour, type, spacing, elevation, motion.
+   Rules:
+     1. New/edited styles consume tokens. No new hard-coded hex, px spacing,
+        or ad-hoc shadows.
+     2. Existing classes are NOT renamed (backward compatible). The fo-*
+        namespace layers alongside legacy families (.fc-, .ps-, .scm-, ...).
+     3. Components must not know about dark mode: only tokens change under
+        [data-theme="dark"].
+   Load order: tokens.css BEFORE styles.css in base.html.
+   ========================================================================== */
+
+:root {
+  /* ------------------------------------------------------------ brand ---- */
+  --fo-brand-50:  #eef4ff;
+  --fo-brand-100: #dbe6fe;
+  --fo-brand-200: #bfd3fe;
+  --fo-brand-300: #93b4fd;
+  --fo-brand-400: #6090fa;
+  --fo-brand-500: #3b6ff6;
+  --fo-brand-600: #1a56db;   /* Finco brand blue (existing favicon/brand) */
+  --fo-brand-700: #1743b8;
+  --fo-brand-800: #183a95;
+  --fo-brand-900: #1a3576;
+
+  /* ---------------------------------------------------------- neutrals ---- */
+  --fo-slate-0:   #ffffff;
+  --fo-slate-50:  #f8fafc;
+  --fo-slate-100: #f1f5f9;
+  --fo-slate-200: #e2e8f0;
+  --fo-slate-300: #cbd5e1;
+  --fo-slate-400: #94a3b8;
+  --fo-slate-500: #64748b;
+  --fo-slate-600: #475569;
+  --fo-slate-700: #334155;
+  --fo-slate-800: #1e293b;
+  --fo-slate-900: #0f172a;
+  --fo-slate-950: #020617;
+
+  /* ------------------------------------------------------- semantic UI ---- */
+  --fo-paper:        var(--fo-slate-50);   /* app background            */
+  --fo-surface:      var(--fo-slate-0);    /* cards, sheets, tables     */
+  --fo-surface-alt:  var(--fo-slate-100);  /* table stripe, wells       */
+  --fo-ink:          var(--fo-slate-800);  /* primary text              */
+  --fo-ink-soft:     var(--fo-slate-600);  /* secondary text            */
+  --fo-ink-faint:    var(--fo-slate-400);  /* placeholders, captions    */
+  --fo-line:         var(--fo-slate-200);  /* hairline borders          */
+  --fo-line-strong:  var(--fo-slate-300);
+  --fo-focus:        var(--fo-brand-500);
+  --fo-link:         var(--fo-brand-600);
+
+  /* -------------------------------------------------- RAG / status (AA) --- */
+  --fo-rag-green:      #047857;
+  --fo-rag-green-bg:   #ecfdf5;
+  --fo-rag-amber:      #b45309;
+  --fo-rag-amber-bg:   #fffbeb;
+  --fo-rag-red:        #b91c1c;
+  --fo-rag-red-bg:     #fef2f2;
+  --fo-rag-neutral:    var(--fo-slate-500);
+  --fo-rag-neutral-bg: var(--fo-slate-100);
+  --fo-state-dirty:    var(--fo-brand-500);   /* unsaved-edit dot        */
+  --fo-state-stale:    var(--fo-rag-amber);   /* results behind inputs   */
+
+  /* --------------------------------------------------------- data-viz ----- */
+  /* Colour-blind-safe 6-series (Okabe-Ito derived), consistent everywhere. */
+  --fo-viz-1: #0072b2;
+  --fo-viz-2: #e69f00;
+  --fo-viz-3: #009e73;
+  --fo-viz-4: #cc79a7;
+  --fo-viz-5: #56b4e9;
+  --fo-viz-6: #d55e00;
+  --fo-viz-pos: var(--fo-rag-green);
+  --fo-viz-neg: var(--fo-rag-red);
+
+  /* -------------------------------------------------------- typography ---- */
+  --fo-font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                "Helvetica Neue", Arial, sans-serif;           /* no CDN */
+  --fo-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+                  "Liberation Mono", monospace;
+  --fo-text-xs:  11px;   /* captions, table meta            */
+  --fo-text-sm:  12.5px; /* dense table body                */
+  --fo-text-md:  14px;   /* default UI                      */
+  --fo-text-lg:  16px;   /* section titles                  */
+  --fo-text-xl:  19px;   /* sheet titles                    */
+  --fo-text-2xl: 22px;   /* page/KPI hero                   */
+  --fo-lh-table: 1.25;
+  --fo-lh-prose: 1.5;
+  --fo-weight-regular: 400;
+  --fo-weight-medium:  500;
+  --fo-weight-semibold: 600;
+  --fo-weight-bold:    700;
+
+  /* ----------------------------------------------------------- spacing ---- */
+  --fo-s0: 2px;
+  --fo-s1: 4px;
+  --fo-s2: 8px;
+  --fo-s3: 12px;
+  --fo-s4: 16px;
+  --fo-s5: 24px;
+  --fo-s6: 32px;
+  --fo-s7: 40px;
+  --fo-s8: 48px;
+
+  /* ------------------------------------------------------------ layout ---- */
+  --fo-row-h: 28px;            /* table/grid row height (compact default)  */
+  --fo-row-h-comfort: 34px;    /* density toggle target                    */
+  --fo-chrome-brand-h: 28px;   /* brand bar                                */
+  --fo-chrome-cmd-h:   44px;   /* command bar                              */
+  --fo-chrome-kpi-h:   56px;   /* KPI strip                                */
+  --fo-chrome-tabs-h:  36px;   /* sheet tab strip                          */
+  /* Total stacked chrome height — all sticky content below chrome must use
+     top: var(--fo-sticky-base) to avoid sliding under the chrome block.    */
+  --fo-sticky-base: calc(var(--fo-chrome-brand-h) + var(--fo-chrome-cmd-h) + var(--fo-chrome-kpi-h) + var(--fo-chrome-tabs-h));
+  --fo-bp-lg: 1280px;          /* desktop floor                            */
+  --fo-bp-xl: 1600px;          /* wide layout                              */
+
+  /* --------------------------------------------------- radius / shadow ---- */
+  --fo-r-sm: 4px;
+  --fo-r-md: 6px;
+  --fo-r-lg: 10px;
+  --fo-shadow-card:    0 1px 2px rgba(15, 23, 42, 0.06);
+  --fo-shadow-popover: 0 4px 16px rgba(15, 23, 42, 0.12);
+  --fo-shadow-modal:   0 12px 40px rgba(15, 23, 42, 0.18);
+
+  /* ------------------------------------------------------------ motion ---- */
+  --fo-t-fast: 120ms;
+  --fo-t-base: 200ms;
+  --fo-ease:   cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ------------------------------------------------------------ dark mode --- */
+/* Components never branch on theme; only tokens do. Toggle ships later;     */
+/* defining the palette now guarantees no component needs a retrofit.        */
+[data-theme="dark"] {
+  --fo-paper:       var(--fo-slate-900);
+  --fo-surface:     var(--fo-slate-800);
+  --fo-surface-alt: #24324a;
+  --fo-ink:         var(--fo-slate-100);
+  --fo-ink-soft:    var(--fo-slate-300);
+  --fo-ink-faint:   var(--fo-slate-500);
+  --fo-line:        var(--fo-slate-700);
+  --fo-line-strong: var(--fo-slate-600);
+  --fo-link:        var(--fo-brand-300);
+
+  --fo-rag-green:    #34d399;
+  --fo-rag-green-bg: rgba(52, 211, 153, 0.12);
+  --fo-rag-amber:    #fbbf24;
+  --fo-rag-amber-bg: rgba(251, 191, 36, 0.12);
+  --fo-rag-red:      #f87171;
+  --fo-rag-red-bg:   rgba(248, 113, 113, 0.12);
+
+  --fo-shadow-card:    0 1px 2px rgba(0, 0, 0, 0.4);
+  --fo-shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --fo-shadow-modal:   0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------------------------------------------------------- utilities ----- */
+/* The one utility every financial number must carry. */
+.fo-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  text-align: right;
+}
+
+.fo-num--pos { color: var(--fo-viz-pos); }
+.fo-num--neg { color: var(--fo-viz-neg); }
+
+/* Status dot used on sheet tabs and section headers. */
+.fo-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.fo-dot--dirty   { background: var(--fo-state-dirty); }
+.fo-dot--warn    { background: var(--fo-rag-amber); }
+.fo-dot--error   { background: var(--fo-rag-red); }
+.fo-dot--ok      { background: var(--fo-rag-green); }
+.fo-dot--neutral { background: var(--fo-rag-neutral); }
+
+/* Respect user motion preferences globally. */
+@media (prefers-reduced-motion: reduce) {
+  :root { --fo-t-fast: 0ms; --fo-t-base: 0ms; }
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

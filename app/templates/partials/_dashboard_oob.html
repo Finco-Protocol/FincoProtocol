@@ -1,0 +1,38 @@
+{# OOB dashboard KPI grid — appended to POST /run response so HTMX
+   swaps #dashboard-v1 in-place without a full page reload.
+   hx-swap-oob="true" tells HTMX to find #dashboard-v1 in the DOM
+   and replace it with this element. #}
+<section class="dashboard" id="dashboard-v1"
+         data-p2min3-dashboard="v1"
+         hx-swap-oob="true">
+
+  {# Run status chip #}
+  <div class="dashboard-run-status"
+       id="dashboard-run-status"
+       data-p2fix4-cta="run-status"
+       role="status"
+       aria-label="Last run status">
+    <span class="badge badge-pass">Last run completed</span>
+    <span class="dashboard-run-status-label">{{ run_status_label }}</span>
+    <span class="dashboard-run-status-time">{{ run_timestamp }}</span>
+  </div>
+
+  {# KPI cards row #}
+  <div class="dashboard-kpi-grid" data-p2min3-kpi-grid="true">
+    {% for key, kpi in dashboard_kpis.items() %}
+      <div class="dashboard-kpi-card dashboard-kpi-{{ key }}"
+           data-p2min3-kpi-key="{{ key }}">
+        <div class="dashboard-kpi-label">{{ kpi.label }}</div>
+        <div class="dashboard-kpi-value"
+             data-p2min3-kpi-status="{{ kpi.status }}">
+          {{ kpi.value }}
+        </div>
+        {% if kpi.tooltip %}
+          <div class="dashboard-kpi-tooltip"
+               title="{{ kpi.tooltip }}">ⓘ</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+</section>

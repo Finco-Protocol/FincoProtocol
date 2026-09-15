@@ -1,0 +1,204 @@
+/* ============================================================================
+   FINCO PROTOCOL — EXCEL-STYLE WORKSHEET NAVIGATION  ·  static/sheet-tabs.css
+   ----------------------------------------------------------------------------
+   Replaces the placeholder reserved in UI-2 (fo-sheet-tab-reserve) with a
+   real Excel-style worksheet strip.
+
+   Visual contract (from Fable UI review):
+   - One row, single line of compact worksheet tabs.
+   - Three logical groups separated by a thin vertical divider:
+       Group A  Modeling     Overview, Inputs, Revenue, OPEX, CAPEX, Debt,
+                             Tax, Financials
+       Group B  Analysis     Scenarios, Compare, Sensitivity
+       Group C  Delivery     Lender, Reports
+       Group D  Storage      BESS, Settings
+   - Each tab shows a small status dot inline (clean / edited / warn / error /
+     running / complete) — never a badge, never a banner.
+   - The active tab has a coloured top + bottom hairline and a subtle paper
+     background; inactive tabs are quiet.
+   - The strip itself is quiet — no shadows, no heavy borders, no ribbon
+     effects.
+
+   Behaviour contract:
+   - DOM tabs (Overview, Inputs, Revenue, OPEX, CAPEX, Debt, Tax,
+     Financials) call window.switchTab('<id>') which only swaps panels
+     in the existing workspace_shell — no route change, no engine call.
+   - URL tabs (Scenarios, Compare, Sensitivity, Lender, Reports, BESS,
+     Settings) navigate to the existing route via a real <a href>.
+   - The strip itself never makes an HTTP request.
+
+   Token contract: every colour, spacing, typography, shadow, motion
+   property consumes a `--fo-*` token from tokens.css. No raw hex,
+   no rgba, no px shadows, no Tailwind/Bootstrap utility imports.
+   ========================================================================== */
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Wrapper. Mounts inside the .fo-chrome sticky frame, replacing the
+    UI-2 reserve placeholder row.                                         */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-sheets {
+  display: flex;
+  align-items: stretch;
+  height: var(--fo-chrome-tabs-h);
+  background: var(--fo-paper);
+  border-bottom: 1px solid var(--fo-line);
+  padding: 0 var(--fo-s3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  /* UI-8A: contain the tab-load indicator pseudo-element */
+  position: relative;
+}
+
+/* Logical group separator (vertical hairline). */
+.fo-sheets__divider {
+  flex: 0 0 auto;
+  width: 1px;
+  margin: var(--fo-s2) var(--fo-s2);
+  background: var(--fo-line);
+}
+
+/* Trailing spacer pushes the right-most group flush right on wide
+   viewports; on narrow viewports overflow-x: auto takes over. */
+.fo-sheets__spacer {
+  flex: 1 1 auto;
+  min-width: var(--fo-s3);
+}
+
+/* ============================================================================
+   Worksheet tab cell.
+   ========================================================================== */
+.fo-sheet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  flex: 0 0 auto;
+  height: var(--fo-chrome-tabs-h);
+  padding: 0 var(--fo-s3);
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-medium);
+  letter-spacing: -0.005em;
+  color: var(--fo-ink-soft);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--fo-t-fast) var(--fo-ease),
+              background var(--fo-t-fast) var(--fo-ease),
+              border-bottom-color var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-sheet:hover,
+.fo-sheet:focus-visible {
+  color: var(--fo-ink);
+  background: var(--fo-surface-alt);
+  outline: none;
+}
+
+.fo-sheet:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--fo-focus);
+}
+
+.fo-sheet--active {
+  color: var(--fo-ink);
+  background: var(--fo-surface);
+  border-bottom-color: var(--fo-brand-600);
+}
+
+.fo-sheet--active:hover,
+.fo-sheet--active:focus-visible {
+  background: var(--fo-surface);
+}
+
+/* ── Status dot — small inline circle inside each tab ────────────────── */
+.fo-sheet__dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fo-rag-neutral);
+  /* Reserve space even when no status is set so layout is stable. */
+  flex: 0 0 auto;
+}
+
+.fo-sheet__dot--clean    { background: var(--fo-rag-green); }
+.fo-sheet__dot--edited   { background: var(--fo-state-dirty); }
+.fo-sheet__dot--warn     { background: var(--fo-rag-amber); }
+.fo-sheet__dot--error    { background: var(--fo-rag-red); }
+.fo-sheet__dot--running  { background: var(--fo-brand-500); }
+.fo-sheet__dot--complete { background: var(--fo-rag-green); }
+.fo-sheet__dot--none     { background: transparent; outline: 1px solid var(--fo-line); }
+
+/* Tab label slot — semantic marker that groups label content for
+   future translations and per-label CSS overrides. The label itself
+   inherits colour from the parent .fo-sheet; we set only the explicit
+   display so a future PR can scope badges or count chips to .fo-sheet__label
+   without rewriting the rest of the chrome. */
+.fo-sheet__label {
+  display: inline-block;
+  line-height: 1.2;
+}
+
+/* Dirty inputs: small amber dot on the active tab. */
+.fo-sheet--dirty .fo-sheet__dot {
+  background: var(--fo-rag-amber);
+  box-shadow: 0 0 0 3px var(--fo-rag-amber-bg);
+}
+
+/* Anchor (URL-tab) version — never underlines on hover; rely on colour. */
+a.fo-sheet {
+  user-select: none;
+}
+
+/* Keyboard shortcut hint inside the tab — sub-pixel, faint. */
+.fo-sheet__kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 10px;
+  font-weight: var(--fo-weight-regular);
+  color: var(--fo-ink-faint);
+  border: 1px solid var(--fo-line);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 14px;
+  margin-left: var(--fo-s1);
+}
+
+.fo-sheet--active .fo-sheet__kbd {
+  color: var(--fo-ink-soft);
+  border-color: var(--fo-line-strong);
+}
+
+/* ============================================================================
+   Responsive: hide keyboard shortcuts below 1100 px so the strip fits.
+   ========================================================================== */
+@media (max-width: 1100px) {
+  .fo-sheet__kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .fo-sheets {
+    padding: 0 var(--fo-s2);
+  }
+  .fo-sheet {
+    padding: 0 var(--fo-s2);
+    font-size: var(--fo-text-sm);
+  }
+  .fo-sheets__divider {
+    margin: var(--fo-s1) var(--fo-s1);
+  }
+}
+
+/* ============================================================================
+   Print — chrome is already hidden via .fo-chrome { display: none }
+   in chrome.css; this strips the sheet row on its own to be safe.
+   ========================================================================== */
+@media print {
+  .fo-sheets {
+    display: none;
+  }
+}

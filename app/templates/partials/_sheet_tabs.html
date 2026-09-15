@@ -1,0 +1,371 @@
+{# ── UI-3 spreadsheet-style Worksheet Navigation ───────────────────────────────────
+   Single horizontal row of compact worksheet tabs. Replaces the
+   UI-2 reserved placeholder in `_app_chrome.html`.
+
+   Logical groups (separated by a thin vertical hairline):
+     Modeling   Overview · Inputs · Revenue · OPEX · CAPEX ·
+                Debt · Tax · Financials
+     Analysis   Scenarios · Compare · Sensitivity
+     Delivery   Lender · Reports
+     Storage    BESS · Settings
+
+   DOM-switch tabs (Modeling) call `window.switchTab('<id>')` — no
+   route change, no engine call. The IDs are the panel IDs already
+   mounted by `workspace_shell.html` so the existing JS path is
+   reused.
+
+   URL tabs (Analysis / Delivery / Storage) navigate to the existing
+   production routes — no new route is added, no page is moved.
+
+   Strictly additive. No template rename, no styles.css touch, no
+   engine / route / calculation / persistence / report / financial-
+   statement / template rename.
+
+   Note on testability: the markup is written out explicitly so the
+   test suite can grep for `data-fo-sheet-id="..."` literals without
+   having to render a Jinja macro first. Duplication is the price
+   of testability for a static, locked tab strip. #}
+
+{% set _dirty = dirty|default(false) %}
+{% set _path = '/' %}
+{% if request is defined and request is not none %}
+  {% set _path = request.path %}
+{% endif %}
+{# When the user is on `/` (home) the active Modeling tab is whatever
+   `active_tab` happens to be in context (set by the legacy tab
+   machinery); fall back to overview if absent. #}
+{% set _active = active_tab|default('overview') %}
+
+<nav class="fo-sheets" id="fo-sheets" role="navigation" aria-label="Worksheet navigation">
+
+  {# ── Modeling group ─────────────────────────────────────────────────────── #}
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'overview' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="overview"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Overview">
+    <span class="fo-sheet__dot fo-sheet__dot--complete" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Overview</span>
+    <span class="fo-sheet__kbd">⌃1</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'inputs' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="inputs"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Inputs">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Inputs</span>
+    <span class="fo-sheet__kbd">⌃2</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'revenue' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="revenue"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Revenue">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Revenue</span>
+    <span class="fo-sheet__kbd">⌃3</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'opex' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="opex"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="OPEX">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">OPEX</span>
+    <span class="fo-sheet__kbd">⌃4</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'capex' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="capex"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="CAPEX">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">CAPEX</span>
+    <span class="fo-sheet__kbd">⌃5</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'senior-debt' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="senior-debt"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Debt">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Debt</span>
+    <span class="fo-sheet__kbd">⌃6</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'tax' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="tax"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Tax">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Tax</span>
+    <span class="fo-sheet__kbd">⌃7</span>
+  </button>
+
+  <button type="button"
+          class="fo-sheet{% if _path == '/' and _active == 'pl' %} fo-sheet--active{% endif %}{% if _dirty %} fo-sheet--dirty{% endif %}"
+          data-fo-sheet-id="pl"
+          data-fo-sheet-group="modeling"
+          data-fo-sheet-kind="dom"
+          aria-label="Financials">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Financials</span>
+    <span class="fo-sheet__kbd">⌃8</span>
+  </button>
+
+  <span class="fo-sheets__divider" aria-hidden="true"></span>
+
+  {# ── Analysis group ──────────────────────────────────────────────────────── #}
+  {# UI-8A: URL tabs converted to HTMX canvas swaps.
+     hx-get fetches the page; hx-select extracts #main-canvas from the
+     full response; hx-swap outerHTML replaces the current #main-canvas
+     without touching the chrome. hx-push-url keeps the address bar in
+     sync. hx-indicator shows the tab-load indicator during fetch.
+     The bare href= remains so the tab works without JS / on direct load. #}
+  <a href="/scenarios"
+     hx-get="/scenarios"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path == '/scenarios' %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="scenarios"
+     data-fo-sheet-group="analysis"
+     data-fo-sheet-kind="url"
+     aria-label="Scenarios">
+    <span class="fo-sheet__dot fo-sheet__dot--clean" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Scenarios</span>
+  </a>
+
+  <a href="/scenarios/compare"
+     hx-get="/scenarios/compare"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path.startswith('/scenarios/compare') %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="compare"
+     data-fo-sheet-group="analysis"
+     data-fo-sheet-kind="url"
+     aria-label="Compare">
+    <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Compare</span>
+  </a>
+
+  <a href="/scenarios/sensitivity"
+     hx-get="/scenarios/sensitivity"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path.startswith('/scenarios/sensitivity') %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="sensitivity"
+     data-fo-sheet-group="analysis"
+     data-fo-sheet-kind="url"
+     aria-label="Sensitivity">
+    <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Sensitivity</span>
+  </a>
+
+  <span class="fo-sheets__divider" aria-hidden="true"></span>
+
+  {# ── Delivery group ─────────────────────────────────────────────────────── #}
+  <a href="/scenarios/lender-case"
+     hx-get="/scenarios/lender-case"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path.startswith('/scenarios/lender') %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="lender"
+     data-fo-sheet-group="delivery"
+     data-fo-sheet-kind="url"
+     aria-label="Lender">
+    <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Lender</span>
+  </a>
+
+  <a href="/scenarios/exec-summary"
+     hx-get="/scenarios/exec-summary"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path.startswith('/scenarios/exec') or _path.startswith('/scenarios/ic') or _path.startswith('/scenarios/credit') %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="reports"
+     data-fo-sheet-group="delivery"
+     data-fo-sheet-kind="url"
+     aria-label="Reports">
+    <span class="fo-sheet__dot fo-sheet__dot--complete" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Reports</span>
+  </a>
+
+  <span class="fo-sheets__divider" aria-hidden="true"></span>
+
+  {# ── Storage group ──────────────────────────────────────────────────────── #}
+  <a href="/scenarios/bess-revenue"
+     hx-get="/scenarios/bess-revenue"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path.startswith('/scenarios/bess') %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="bess"
+     data-fo-sheet-group="storage"
+     data-fo-sheet-kind="url"
+     aria-label="BESS">
+    <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
+    <span class="fo-sheet__label">BESS</span>
+  </a>
+
+  <a href="/help"
+     hx-get="/help"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
+     class="fo-sheet{% if _path == '/help' %} fo-sheet--active{% endif %}"
+     data-fo-sheet-id="settings"
+     data-fo-sheet-group="storage"
+     data-fo-sheet-kind="url"
+     aria-label="Settings">
+    <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
+    <span class="fo-sheet__label">Settings</span>
+  </a>
+
+  {# Tab-load indicator — shown by htmx-indicator during canvas swap #}
+  <span id="fo-tab-indicator" class="fo-tab-indicator htmx-indicator" aria-hidden="true"></span>
+
+</nav>
+
+{# ── Keyboard plumbing (Ctrl/Cmd + 1..8, +9, +0) ────────────────────────
+   Wires the controller shortcut from the Fable brief. The DOM-switch
+   tabs (Modeling) route through the existing window.switchTab; the
+   URL tabs (Analysis / Delivery / Storage) fall back to location.href
+   navigation. The handler is non-invasive: it only acts when the user
+   is NOT typing into an input/textarea/contenteditable. No new JS
+   file is created — the handler is embedded in this partial. #}
+<script>
+(function() {
+  var _domMap = {
+    '1': 'overview',
+    '2': 'inputs',
+    '3': 'revenue',
+    '4': 'opex',
+    '5': 'capex',
+    '6': 'senior-debt',
+    '7': 'tax',
+    '8': 'pl'
+  };
+  var _urlMap = {
+    '9':  '/scenarios',
+    '0':  '/scenarios/compare'
+  };
+
+  function _isTyping(el) {
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.altKey || e.shiftKey) return;
+    var key = e.key;
+    if (key in _domMap) {
+      var target = e.target;
+      if (_isTyping(target)) return;
+      e.preventDefault();
+      if (typeof window.switchTab === 'function') {
+        window.switchTab(_domMap[key]);
+      }
+    } else if (key in _urlMap) {
+      var t = e.target;
+      if (_isTyping(t)) return;
+      e.preventDefault();
+      // UI-8A: trigger HTMX canvas swap instead of full navigation
+      var tabEl = document.querySelector('[data-fo-sheet-kind="url"][href="' + _urlMap[key] + '"]');
+      if (tabEl && window.htmx) {
+        htmx.trigger(tabEl, 'click');
+      } else {
+        window.location.href = _urlMap[key];
+      }
+    }
+  }, true);
+})();
+
+// UI-9: wire click handlers for DOM-switch modeling tabs
+(function() {
+  function _syncFoSheetActive(tabId) {
+    document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="dom"]').forEach(function(btn) {
+      btn.classList.toggle('fo-sheet--active', btn.getAttribute('data-fo-sheet-id') === tabId);
+    });
+  }
+
+  document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="dom"]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var sheetId = btn.getAttribute('data-fo-sheet-id');
+      if (!sheetId) return;
+      if (typeof window.switchTab === 'function') {
+        window.switchTab(sheetId);
+      }
+      _syncFoSheetActive(sheetId);
+    });
+  });
+
+  // Patch switchTab to also keep fo-sheet active state in sync when called
+  // from keyboard shortcuts or other code paths.
+  var _origSwitchTab = window.switchTab;
+  if (typeof _origSwitchTab === 'function') {
+    window.switchTab = function(tabId) {
+      _origSwitchTab(tabId);
+      _syncFoSheetActive(tabId);
+    };
+  } else {
+    // switchTab not yet defined — patch once it is (DOMContentLoaded fires before this partial
+    // is parsed in most cases, but guard the race just in case).
+    document.addEventListener('DOMContentLoaded', function() {
+      var _st = window.switchTab;
+      if (typeof _st === 'function') {
+        window.switchTab = function(tabId) {
+          _st(tabId);
+          _syncFoSheetActive(tabId);
+        };
+      }
+    });
+  }
+})();
+
+// UI-8A: sync active tab highlight after HTMX canvas swap
+document.addEventListener('htmx:pushedIntoHistory', function() {
+  var path = window.location.pathname;
+  document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="url"]').forEach(function(el) {
+    var href = el.getAttribute('href') || '';
+    var active = href && (path === href || (href.length > 1 && path.startsWith(href)));
+    el.classList.toggle('fo-sheet--active', active);
+  });
+});
+</script>

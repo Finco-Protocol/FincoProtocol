@@ -1,0 +1,467 @@
+{#
+  Workbook V2 — OPEX worksheet partial.
+
+  Registry-driven + OpexSheetGroup-driven + custom-row lifecycle.
+  Field saves for scalar fields route through POST /v2/workbook/update with sheet_id="opex".
+  Custom-row commands route through POST /v2/opex/line/{add,update,deactivate,reorder}.
+
+  Canonical structure
+  -------------------
+  Always renders exactly 13 groups B.01–B.13 in fixed order, regardless of
+  whether the project-specific ViewModel contains data for each group.
+  Groups with no project VM row render as ENGINE/DERIVED with — values.
+
+  Row types
+  ---------
+  1. BOUND field   — render_field() for editable registry scalar fields
+  2. ENGINE        — read-only ENGINE badge (group absent from the project VM
+                     or no BOUND registry field)
+  3. DERIVED       — read-only DERIVED badge for B.13 contingencies
+  4. CUSTOM        — user-added rows with edit + deactivate forms
+  5. Add Row form  — visible on eligible groups when project is editable
+
+  B.09 "Fees" is a pure custom-row group: no registry scalar field, user
+  creates individual fee lines. The group header shows ENGINE badge (no BOUND
+  field) but the body shows custom rows + Add Row.
+
+  B.13 "Contingencies" is always DERIVED — never editable, never custom.
+
+  Runtime truth matrix
+  --------------------
+  State A: no RuntimeResult    → "Not yet run"
+  State B: runtime + clean     → "Outputs current"
+  State C: runtime + dirty     → "Previous run available — stale for current draft"
+                                  Run Required = Yes
+
+  Year projection table
+  ---------------------
+  A horizontally-scrollable table showing each group's Y1–Y30 subtotals.
+
+  Context variables (from app/v2/router.py → _build_opex_vm_ctx)
+    opex_vm              OpexViewModel  — per-year totals, KPIs
+    opex_sheet_groups    tuple[OpexSheetGroup, ...]  — always 13, canonical order
+    opex_summary_fields  list[dict]     — summary section registry fields (PARTIAL)
+    project_code         str
+    workbook_version     str
+    content_hash         str
+    project_editable     bool
+    ws_dirty             bool
+    has_runtime          bool
+    field_error          str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{# Macro: read-only calculated row #}
+{% macro opex_ro_row(label, value, badge="ENGINE", unit="kEUR") %}
+<div class="v2-field-row v2-field-readonly v2-opex-ro-row" data-binding="{{ badge | lower }}">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value">
+    {%- if value is not none and value != "" -%}
+      <span class="v2-opex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+    {%- else -%}
+      <span class="v2-field-empty">—</span>
+    {%- endif -%}
+    <span class="v2-binding-badge v2-opex-badge-calc">Calculated</span>
+  </span>
+  {%- if unit %}<span class="v2-unit">{{ unit }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{# Macro: factory sub-line row (read-only) #}
+{% macro opex_line_row(line) %}
+<div class="v2-opex-line-row{% if not line.is_active %} v2-opex-inactive{% endif %}">
+  <span class="v2-opex-line-code">{{ line.code }}</span>
+  <span class="v2-opex-line-name">{{ line.name }}</span>
+  <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
+  <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
+  {# Calibration/development notes suppressed in standard product view. #}
+  {%- if line.is_derived or line.is_read_only %}<span class="v2-binding-badge v2-opex-badge-calc" data-binding="{{ 'derived' if line.is_derived else 'engine' }}">Calculated</span>{%- endif %}
+</div>
+{% endmacro %}
+
+{# Macro: custom user-added row #}
+{% macro opex_custom_row(line, project_code, workbook_version, project_editable) %}
+<div class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
+     data-fc-row>
+  {%- if project_editable %}
+    {# Inline update form #}
+    <form class="v2-opex-custom-row-form"
+          hx-post="/v2/opex/line/update"
+          hx-target="#v2-sheet-opex"
+          hx-swap="outerHTML">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+      <input type="hidden" name="row_version" value="{{ line.row_version }}">
+      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
+            data-fc-editable="true" data-fc-kind="text">
+        <input class="v2-opex-custom-label-input v2-field-input"
+               type="text"
+               name="label"
+               value="{{ line.name }}"
+               required
+               aria-label="Label"
+               data-testid="opex-custom-label-{{ line.sub_line_id }}">
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
+            data-fc-editable="true" data-fc-kind="amount">
+        <input class="v2-opex-custom-amount-input v2-opex-amount-cell v2-field-input"
+               type="number"
+               name="amount_keur"
+               value="{{ "%.0f"|format(line.y1_keur) }}"
+               step="any"
+               aria-label="Y1 kEUR"
+               data-testid="opex-custom-amount-{{ line.sub_line_id }}">
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
+            data-fc-editable="true" data-fc-kind="amount">
+        <input class="v2-opex-custom-escl-input v2-field-input"
+               type="number"
+               name="inflation_pct"
+               value="{{ "%.2f"|format(line.inflation_pct) }}"
+               step="0.1"
+               aria-label="Escalation %"
+               data-testid="opex-custom-escl-{{ line.sub_line_id }}">
+      </span>
+      <input class="v2-opex-custom-notes-input"
+             type="text"
+             name="notes"
+             value="{{ line.notes }}"
+             placeholder="Notes…"
+             aria-label="Notes"
+             data-testid="opex-custom-notes-{{ line.sub_line_id }}">
+      <button type="submit" class="v2-opex-custom-save-btn" data-testid="opex-custom-save-{{ line.sub_line_id }}">Save</button>
+      <span class="v2-binding-badge v2-opex-badge-custom">CUSTOM</span>
+    </form>
+    {# Deactivate form #}
+    <form class="v2-opex-deactivate-form"
+          hx-post="/v2/opex/line/deactivate"
+          hx-target="#v2-sheet-opex"
+          hx-swap="outerHTML"
+          hx-confirm="Deactivate this fee line?">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
+      <input type="hidden" name="row_version" value="{{ line.row_version }}">
+      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+      <button type="submit" class="v2-opex-deactivate-btn" aria-label="Deactivate"
+              data-testid="opex-custom-deactivate-{{ line.sub_line_id }}">✕</button>
+    </form>
+  {%- else %}
+    <span class="v2-opex-line-code">{{ line.code }}</span>
+    <span class="v2-opex-line-name">{{ line.name }}</span>
+    <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
+    <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
+    <span class="v2-binding-badge v2-opex-badge-custom">CUSTOM</span>
+  {%- endif %}
+</div>
+{% endmacro %}
+
+{# Macro: Add Row form #}
+{% macro opex_add_row_form(group_code, project_code, workbook_version, content_hash) %}
+<form class="v2-opex-add-row-form"
+      hx-post="/v2/opex/line/add"
+      hx-target="#v2-sheet-opex"
+      hx-swap="outerHTML">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  <input type="hidden" name="parent_group_code" value="{{ group_code }}">
+  <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
+  <input class="v2-opex-add-label-input"
+         type="text"
+         name="label"
+         placeholder="Line description…"
+         required
+         aria-label="New line description"
+         data-testid="opex-add-label-{{ group_code }}">
+  <input class="v2-opex-add-amount-input v2-opex-amount-cell"
+         type="number"
+         name="amount_keur"
+         value="0"
+         step="any"
+         aria-label="Y1 kEUR"
+         data-testid="opex-add-amount-{{ group_code }}">
+  <input class="v2-opex-add-escl-input"
+         type="number"
+         name="inflation_pct"
+         value="0"
+         step="0.1"
+         aria-label="Escalation %"
+         data-testid="opex-add-escl-{{ group_code }}">
+  <button type="submit" class="v2-opex-add-btn"
+          data-testid="opex-add-row-btn-{{ group_code }}">+ Add Row</button>
+</form>
+{% endmacro %}
+
+<div id="v2-sheet-opex" data-sheet="opex"
+     data-fc-grid="opex" data-fc-scroll-container>
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── KPI strip ────────────────────────────────────────────────── #}
+  <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">OPEX Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-y1-total">
+        {{ "%.0f"|format(opex_vm.y1_total_opex) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">OPEX Y{{ opex_vm.display_years }}</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-final-year-total">
+        {{ "%.0f"|format(opex_vm.final_year_total_opex) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">kEUR/MW Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-per-mw">
+        {%- if opex_vm.opex_per_mw_y1 is not none -%}
+          {{ "%.1f"|format(opex_vm.opex_per_mw_y1) }}
+        {%- else -%}—{%- endif -%}
+      </span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">EUR/MWh Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-per-mwh">
+        {%- if opex_vm.opex_per_mwh_y1 is not none -%}
+          {{ "%.2f"|format(opex_vm.opex_per_mwh_y1) }}
+        {%- else -%}—{%- endif -%}
+      </span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">Contingency</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-contingency-rate">
+        {{ "%.1f"|format(opex_vm.contingency_rate) }}%
+      </span>
+    </div>
+  </div>
+
+  {# ── Runtime status bar ────────────────────────────────────────── #}
+  <div class="v2-opex-runtime-bar" data-testid="opex-runtime-bar">
+    <div class="v2-field-row v2-field-readonly" data-testid="opex-runtime-status-row">
+      <span class="v2-field-label">Runtime Status</span>
+      <span class="v2-field-value">
+        {%- if not has_runtime -%}
+          <span class="v2-field-empty" data-testid="opex-runtime-state-a">Not yet run</span>
+        {%- elif not ws_dirty -%}
+          <span class="v2-runtime-clean" data-testid="opex-runtime-state-b">Outputs current</span>
+        {%- else -%}
+          <span class="v2-runtime-dirty" data-testid="opex-runtime-state-c">Previous run available — stale for current draft</span>
+        {%- endif -%}
+      </span>
+    </div>
+    <div class="v2-field-row v2-field-readonly" data-testid="opex-run-required-row">
+      <span class="v2-field-label">Run Required</span>
+      <span class="v2-field-value">
+        {%- if ws_dirty -%}
+          <span class="v2-runtime-dirty" data-testid="opex-run-required-yes">Yes</span>
+        {%- else -%}
+          <span data-testid="opex-run-required-no">No</span>
+        {%- endif -%}
+      </span>
+    </div>
+  </div>
+
+  {# ── Column header ─────────────────────────────────────────────── #}
+  <div class="v2-opex-col-header" aria-hidden="true">
+    <span class="v2-opex-col-code">Code</span>
+    <span class="v2-opex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
+    <span class="v2-opex-col-y1">Y1 kEUR<span class="fc-col-resize-handle" data-col="y1"></span></span>
+    <span class="v2-opex-col-escl">Escl %</span>
+    <span class="v2-opex-col-status">Status</span>
+  </div>
+
+  {# ── Canonical B.01–B.13 groups (always 13, fixed order) ─────── #}
+  {% for sg in opex_sheet_groups %}
+    <details class="v2-opex-group{% if sg.is_derived %} v2-opex-group-contingency{% endif %}{% if not sg.has_vm_data and not sg.is_custom_eligible %} v2-opex-group-no-data{% endif %}"
+             open
+             data-group-code="{{ sg.code }}"
+             data-testid="opex-group-{{ sg.code }}">
+
+      <summary class="v2-opex-group-header">
+        <span class="v2-opex-col-code">{{ sg.code }}</span>
+        <span class="v2-opex-col-desc">{{ sg.display_name }}</span>
+        <span class="v2-opex-col-y1 v2-opex-subtotal v2-opex-amount-cell"
+              data-testid="opex-subtotal-{{ sg.code }}">
+          {%- if sg.has_vm_data -%}
+            {{ "%.0f"|format(sg.subtotal_y1) }}
+          {%- else -%}—{%- endif -%}
+        </span>
+        <span class="v2-opex-col-escl">
+          {%- if sg.has_vm_data -%}
+            {{ "%.1f"|format(sg.inflation_pct) }}%
+          {%- else -%}—{%- endif -%}
+        </span>
+        <span class="v2-opex-col-status">
+          {%- if sg.is_derived -%}
+            <span class="v2-binding-badge v2-opex-badge-derived" data-testid="badge-derived-{{ sg.code }}">Calculated</span>
+          {%- elif sg.is_engine -%}
+            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
+          {%- elif not sg.has_vm_data -%}
+            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
+          {%- elif sg.is_bound -%}
+            <span class="v2-binding-badge v2-opex-badge-bound">Editable</span>
+          {%- elif sg.field and sg.field.binding_label == "partial" -%}
+            <span class="v2-binding-badge v2-opex-badge-partial">Calculated</span>
+          {%- elif sg.field -%}
+            <span class="v2-binding-badge v2-opex-badge-engine">Calculated</span>
+          {%- endif -%}
+        </span>
+      </summary>
+
+      <div class="v2-opex-group-body">
+
+        {# --- Registry / scalar value row --- #}
+        {%- if sg.is_derived -%}
+          {# Contingency: always calculated by engine #}
+          {%- if sg.field -%}
+            {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
+          {%- else -%}
+            {{ opex_ro_row(sg.display_name, sg.subtotal_y1 if sg.has_vm_data else none, badge="Calculated") }}
+          {%- endif -%}
+
+        {%- elif sg.is_engine -%}
+          {%- if sg.has_vm_data -%}
+            {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="Calculated") }}
+          {%- else -%}
+            {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
+          {%- endif -%}
+
+        {%- elif not sg.has_vm_data and not sg.is_custom_eligible -%}
+          {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
+
+        {%- elif not sg.has_vm_data -%}
+          {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
+
+        {%- elif sg.is_bound and project_editable -%}
+          {{ render_field(sg.field, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#panel-opex", sheet_id="opex") }}
+
+        {%- elif sg.field -%}
+          {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
+
+        {%- elif sg.has_vm_data -%}
+          {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="Calculated") }}
+        {%- endif -%}
+
+        {# --- Factory sub-line rows (read-only context, not custom) --- #}
+        {%- if sg.has_vm_data and sg.vm_group.lines -%}
+          <div class="v2-opex-lines-container">
+            {% for line in sg.vm_group.lines if not line.is_custom %}
+              {{ opex_line_row(line) }}
+            {% endfor %}
+          </div>
+        {%- endif -%}
+
+        {# --- Custom (user-added) rows --- #}
+        {%- if sg.is_custom_eligible -%}
+          {%- if sg.custom_lines -%}
+            <div class="v2-opex-custom-lines-container"
+                 data-testid="opex-custom-lines-{{ sg.code }}">
+              {% for line in sg.custom_lines %}
+                {{ opex_custom_row(line, project_code, workbook_version, project_editable) }}
+              {% endfor %}
+            </div>
+          {%- endif -%}
+
+          {# Add Row form — only for editable projects #}
+          {%- if project_editable -%}
+            {{ opex_add_row_form(sg.code, project_code, workbook_version, content_hash) }}
+          {%- endif -%}
+        {%- endif -%}
+
+      </div>
+    </details>
+  {% endfor %}
+
+  {# ── Grand total row ──────────────────────────────────────────── #}
+  <div class="v2-opex-grand-total-row" data-testid="opex-grand-total-row">
+    <span class="v2-opex-col-code"></span>
+    <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX (incl. contingency)</span>
+    <span class="v2-opex-col-y1 v2-opex-grand-total-amount v2-opex-amount-cell"
+          data-testid="opex-grand-total-y1">
+      {{ "%.0f"|format(opex_vm.y1_total_opex) }}
+    </span>
+    <span class="v2-opex-col-escl"></span>
+    <span class="v2-opex-col-status"></span>
+  </div>
+
+  {# ── Summary fields (PARTIAL — e.g. opex.summary.total_y1) ─────── #}
+  {% if opex_summary_fields %}
+    <div class="v2-opex-summary-fields" data-testid="opex-summary-fields">
+      {% for f in opex_summary_fields %}
+        {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                        hx_target="#panel-opex", sheet_id="opex") }}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {# ── Year projection table ─────────────────────────────────────── #}
+  <details class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
+    <summary class="v2-opex-projection-toggle">
+      Year Projection (Y1–Y{{ opex_vm.display_years }})
+    </summary>
+    <div class="v2-opex-projection-scroll">
+      <table class="v2-opex-proj-table" data-testid="opex-projection-table">
+        <thead>
+          <tr>
+            <th class="v2-opex-proj-th-code v2-opex-proj-sticky-code">Code</th>
+            <th class="v2-opex-proj-th-name v2-opex-proj-sticky-name">Group</th>
+            {% for yr in range(1, opex_vm.display_years + 1) %}
+              <th class="v2-opex-proj-th-year" data-testid="proj-year-{{ yr }}">Y{{ yr }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for sg in opex_sheet_groups %}
+            <tr class="v2-opex-proj-row{% if sg.is_derived %} v2-opex-proj-contingency{% endif %}{% if not sg.has_vm_data %} v2-opex-proj-no-data{% endif %}"
+                data-testid="proj-row-{{ sg.code }}">
+              <td class="v2-opex-proj-td-code v2-opex-proj-sticky-code">{{ sg.code }}</td>
+              <td class="v2-opex-proj-td-name v2-opex-proj-sticky-name">{{ sg.display_name }}</td>
+              {% if sg.has_vm_data %}
+                {% for yr_idx in range(opex_vm.display_years) %}
+                  <td class="v2-opex-proj-td-year v2-opex-amount-cell"
+                      data-testid="proj-{{ sg.code }}-y{{ yr_idx + 1 }}">
+                    {%- if yr_idx < sg.year_rows | length -%}
+                      {{ "%.0f"|format(sg.year_rows[yr_idx]) }}
+                    {%- else -%}—{%- endif -%}
+                  </td>
+                {% endfor %}
+              {% else %}
+                {% for yr_idx in range(opex_vm.display_years) %}
+                  <td class="v2-opex-proj-td-year v2-opex-proj-no-data-cell">—</td>
+                {% endfor %}
+              {% endif %}
+            </tr>
+          {% endfor %}
+          <tr class="v2-opex-proj-total-row" data-testid="proj-row-total">
+            <td class="v2-opex-proj-sticky-code"></td>
+            <td class="v2-opex-proj-td-name v2-opex-proj-sticky-name v2-opex-proj-total-label">
+              Total OPEX
+            </td>
+            {% for yr_idx in range(opex_vm.display_years) %}
+              <td class="v2-opex-proj-td-year v2-opex-proj-total-cell v2-opex-amount-cell"
+                  data-testid="proj-total-y{{ yr_idx + 1 }}">
+                {{ "%.0f"|format(opex_vm.total_incl_contingency[yr_idx]) }}
+              </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+</div>{# v2-sheet-opex #}

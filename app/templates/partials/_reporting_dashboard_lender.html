@@ -1,0 +1,30 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — REPORTING DASHBOARD WRAPPER — LENDER WORKSPACE  ·  UI-6
+  -----------------------------------------------------------------------
+  Renders the V4-4 Part A `lender_case.html` inside the institutional
+  reporting dashboard chrome. No engine / report calculation change.
+  =======================================================================
+-->
+<section class="fo-reporting-dashboard" data-fo-reporting-pack="lender">
+  <header class="fo-reporting-dashboard__header">
+    <div>
+      <h1 class="fo-reporting-dashboard__title">Lender Workspace</h1>
+      <p class="fo-reporting-dashboard__subtitle">Lender-facing case — sizing, covenants, repayment, security.</p>
+    </div>
+    <div class="fo-statements-toolbar">
+      <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+        <button type="button" class="fo-statements-toolbar__btn"
+                onclick="window.print()"
+                aria-label="Print lender workspace">🖶 Print</button>
+        <button type="button" class="fo-statements-toolbar__btn"
+                data-fo-pack-export
+                aria-label="Export lender workspace">⬇ Export</button>
+      </div>
+    </div>
+  </header>
+
+  <article class="fo-reporting-dashboard__card" style="grid-column: 1 / -1;">
+    {% include "partials/lender_case.html" %}
+  </article>
+</section>

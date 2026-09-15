@@ -1,0 +1,20 @@
+{#
+  Tax runtime state bar fragment.
+  Included inside #tax-runtime-bar in sheet_tax.html.
+  Also rendered standalone for OOB HTMX updates from other sheets.
+
+  Context: tax_state  (str)
+    NOT_RUN     — no RuntimeResult at all
+    CLEAN       — rr + tax payload + workspace clean
+    STALE       — rr + tax payload + workspace dirty
+    UNAVAILABLE — run completed but no tax schedule persisted
+#}
+{% if tax_state == "NOT_RUN" %}
+  <span class="v2-field-empty" data-testid="tax-runtime-state-a">Not run</span>
+{% elif tax_state == "CLEAN" %}
+  <span class="v2-runtime-clean" data-testid="tax-runtime-state-b">Outputs current</span>
+{% elif tax_state == "STALE" %}
+  <span class="v2-runtime-dirty" data-testid="tax-runtime-state-c">Run required</span>
+{% elif tax_state == "UNAVAILABLE" %}
+  <span class="v2-runtime-mono" data-testid="tax-runtime-state-d">Output unavailable</span>
+{% endif %}

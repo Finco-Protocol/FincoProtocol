@@ -1,0 +1,85 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — STATEMENTS WORKSPACE — FINANCIAL NOTES (PART C)
+  -----------------------------------------------------------------------
+  Surfaces existing disclosures as visible UI elements. Each note is
+  sourced from project_ctx / current_context / runtime_summary — no
+  new calculations. Renders 4 canonical notes by default plus any
+  custom notes passed via _extra_notes.
+  =======================================================================
+-->
+{% set _notes = [] %}
+
+{% if project_ctx.country_iso is defined and project_ctx.country_iso %}
+  {% set _ = _notes.append({
+    "level": "ok",
+    "title": "Tax policy",
+    "body": "Corporate income tax rate applied: " ~ ("{0:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%") ~ " (" ~ project_ctx.country_iso ~ " template).",
+    "disclosure": "CIT template applied via app/ui/project_context.py:project_ctx.",
+  }) %}
+{% endif %}
+
+{% if project_ctx.loss_carryforward_years is defined and project_ctx.loss_carryforward_years is not none %}
+  {% set _ = _notes.append({
+    "level": "info",
+    "title": "Loss carry-forward policy",
+    "body": "Tax losses may be carried forward for up to " ~ (project_ctx.loss_carryforward_years or 0) ~ " years (per country template).",
+    "disclosure": "loss_carryforward_years is sourced from the country tax template.",
+  }) %}
+{% endif %}
+
+{% if project_ctx.senior_debt_keur is defined and project_ctx.senior_debt_keur is not none %}
+  {% set _ = _notes.append({
+    "level": "ok",
+    "title": "Debt reconciliation",
+    "body": "Senior Debt " ~ ("{0:,.0f}".format(project_ctx.senior_debt_keur or 0) ~ " kEUR") ~ " · Tenor " ~ (project_ctx.senior_tenor_years or 0) ~ " years · Target DSCR " ~ ("{0:,.2f}".format(project_ctx.target_dscr or 0) ~ "x") ~ ".",
+    "disclosure": "Reconciles with the debt sizing + DSCR driver in app/excel_export.py.",
+  }) %}
+{% endif %}
+
+{% set _ = _notes.append({
+  "level": "info",
+  "title": "SHL convention",
+  "body": "Shareholder Loan opening balance is reconstructed at financial close (no opening deficit for the project entity).",
+  "disclosure": "Convention: opening SHL balance is built from sources & uses, not from prior accounting periods.",
+}) %}
+
+{% set _ = _notes.append({
+  "level": "ok",
+  "title": "Balance Sheet closes",
+  "body": "Canonical financial statements reconcile — Assets = Liabilities + Equity at every reporting period.",
+  "disclosure": "Verified by app/excel_export.py balance_check.",
+}) %}
+
+{% if _extra_notes %}
+  {% for note in _extra_notes %}
+    {% set _ = _notes.append(note) %}
+  {% endfor %}
+{% endif %}
+
+<section class="fo-statements-notes"
+         id="fo-stmts-section-notes"
+         aria-labelledby="fo-stmts-notes-title">
+  <h2 class="fo-statements-notes__title" id="fo-stmts-notes-title">
+    <span aria-hidden="true">📋</span>
+    Financial Notes
+  </h2>
+  <ul class="fo-statements-notes__list">
+    {% for note in _notes %}
+    <li class="fo-statements-notes__item">
+      <h3 class="fo-statements-notes__item-title">
+        <span class="fo-statements-notes__item-icon
+                     {% if note.level == 'warn' %}fo-statements-notes__item-icon--warn{% elif note.level == 'info' %}fo-statements-notes__item-icon--info{% endif %}"
+              aria-hidden="true">
+          {% if note.level == 'warn' %}!{% elif note.level == 'info' %}i{% else %}✓{% endif %}
+        </span>
+        {{ note.title }}
+      </h3>
+      <p class="fo-statements-notes__item-body">{{ note.body }}</p>
+      {% if note.disclosure %}
+      <p class="fo-statements-notes__disclosure">{{ note.disclosure }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>

@@ -1,0 +1,82 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — REPORTING DASHBOARD  ·  UI-6 PART D
+  -----------------------------------------------------------------------
+  Shared layout used by Executive Summary, Investment Committee Pack,
+  Credit Committee Pack, and Lender Workspace. Each pack customises
+  by passing its own section cards via _sections.
+
+  Sections covered:
+    Executive KPIs
+    Project Snapshot
+    Financial Highlights
+    Key Risks
+    Debt Metrics
+    Tax Summary
+    Validation Status
+    Exports
+
+  Renders the inner pack body inside a 12-column CSS grid. Each card
+  takes a configurable grid span (default: 6 cols). No duplication
+  of layouts across packs.
+  =======================================================================
+-->
+<section class="fo-reporting-dashboard"
+         data-fo-reporting-pack="{{ _pack_kind|default('reporting') }}">
+
+  <header class="fo-reporting-dashboard__header">
+    <div>
+      <h1 class="fo-reporting-dashboard__title">{{ _title }}</h1>
+      {% if _subtitle %}
+      <p class="fo-reporting-dashboard__subtitle">{{ _subtitle }}</p>
+      {% endif %}
+    </div>
+    <div class="fo-statements-toolbar">
+      <div class="fo-statements-toolbar__group">
+        <span class="fo-statements-toolbar__label">Audience</span>
+        <select class="fo-statements-toolbar__select"
+                aria-label="Pack audience"
+                data-fo-pack-audience-selector>
+          {% for audience in _audiences|default(['Executive', 'IC', 'Credit', 'Lender']) %}
+          <option value="{{ audience|lower }}"
+                  {% if audience == _active_audience %}selected{% endif %}>
+            {{ audience }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+        <button type="button" class="fo-statements-toolbar__btn"
+                onclick="window.print()"
+                aria-label="Print pack">🖶 Print</button>
+        <button type="button" class="fo-statements-toolbar__btn"
+                data-fo-pack-export
+                aria-label="Export pack">⬇ Export</button>
+      </div>
+    </div>
+  </header>
+
+  {% for card in _sections %}
+  <article class="fo-reporting-dashboard__card"
+           style="grid-column: span {{ card.span|default(6) }};">
+    <h2 class="fo-reporting-dashboard__card-title">{{ card.title }}</h2>
+    {% if card.body %}
+    <div class="fo-reporting-dashboard__card-content">{{ card.body|safe }}</div>
+    {% endif %}
+    {% if card.grid %}
+    <div class="fo-reporting-dashboard__card-grid">
+      {% for cell in card.grid %}
+      <div>
+        <div class="fo-statements-workspace__context-label">{{ cell.label }}</div>
+        <div class="fo-statements-workspace__context-value">{{ cell.value }}</div>
+        {% if cell.hint %}
+        <div class="fo-statements-workspace__context-hint">{{ cell.hint }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+
+</section>

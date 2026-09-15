@@ -1,0 +1,54 @@
+<div class="card">
+  <div class="card-title">📊 Scenario Comparison — {{ project_type }}</div>
+
+  <div class="comp-table-wrap">
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          {% for sc in scenarios %}
+          <th>{{ sc }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% set metric_order = ['project_irr', 'equity_irr', 'min_dscr', 'avg_dscr', 'total_revenue_keur', 'total_ebitda_keur'] %}
+        {% set metric_labels = {'project_irr': 'Project IRR', 'equity_irr': 'Equity IRR', 'min_dscr': 'Min DSCR', 'avg_dscr': 'Avg DSCR', 'total_revenue_keur': 'Total Revenue (kEUR)', 'total_ebitda_keur': 'Total EBITDA (kEUR)'} %}
+
+        {% for key in metric_order %}
+        <tr>
+          <td>{{ metric_labels[key] }}</td>
+          {% for sc in scenarios %}
+            {% set val = results[sc][key] if results[sc] and results[sc][key] is not none else '—' %}
+            {% set is_err = results[sc] and results[sc].error %}
+
+            {% if is_err %}
+              <td><span style="color:var(--muted);font-size:0.8rem;">{{ results[sc].error[:30] }}</span></td>
+            {% elif val == '—' %}
+              <td class="comp-value" style="color:var(--muted);">—</td>
+            {% else %}
+              {% set num_val = val|float %}
+              {% set is_pct = key in ('project_irr', 'equity_irr') %}
+              {% set display = (num_val * 100)|round(2)|string + '%' if is_pct else (num_val)|round(2)|string %}
+
+              {# Find best/worst among numeric results #}
+              {% set nums = [] %}
+              {% for s in scenarios %}
+                {% if results[s] and results[s][key] is not none and not results[s].error %}
+                  {% set _ = nums.append(results[s][key]|float) %}
+                {% endif %}
+              {% endfor %}
+              {% set best = nums|max if nums else none %}
+              {% set worst = nums|min if nums else none %}
+
+              <td class="comp-value {% if nums and num_val == best %}comp-best{% elif nums and num_val == worst and nums|length > 1 %}comp-worst{% endif %}">
+                {{ display }}
+              </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

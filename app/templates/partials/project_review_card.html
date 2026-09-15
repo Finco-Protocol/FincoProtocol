@@ -1,0 +1,161 @@
+{# ──────────────────────────────────────────────────────────────────────────
+   Phase 25B-6 — Generic Project Review Pack (read-only)
+
+   Renders four review sections from the ``project_review_ui`` payload:
+
+   1. rev-classification-bar  — "Working model" / "Synthetic reference"
+   2. rev-assumptions         — 2-column key-value table of key inputs
+   3. rev-kpis                — 2-column key-value table of last-run KPIs
+   4. rev-scenarios           — scenario count + names + active highlight
+   5. rev-exploratory-notes   — exploratory limitations (only when
+                                classification == "exploratory")
+   6. rev-known-exclusions    — known exclusions (always shown)
+
+   All classes are prefixed with ``rev-`` to avoid collisions.
+   No JavaScript. No inline <script>. No Tailwind. No Alpine.
+   ────────────────────────────────────────────────────────────────────────── #}
+
+{# ── 1. Classification bar ───────────────────────────────────────────── #}
+{%- macro classification_bar(review) -%}
+{% if review %}
+<div class="rev-classification rev-classification--{{ review.classification }}">
+  <span class="rev-classification__icon" aria-hidden="true">
+    {% if review.classification == "exploratory" %}⚠
+    {% elif review.classification == "parity_validated" %}✓
+    {% elif review.classification == "factory_template" %}🔒
+    {% else %}•{% endif %}
+  </span>
+  <span class="rev-classification__text">
+    {% if review.classification == "exploratory" %}
+    Exploratory project — not validated against reference evidence
+    {% elif review.classification == "parity_validated" %}
+    Synthetic reference model
+    {% elif review.classification == "factory_template" %}
+    Protected original — read-only reference
+    {% else %}
+    User-created project
+    {% endif %}
+  </span>
+  {% if review.template_source %}
+  <span class="rev-classification__source">{{ review.template_source }}</span>
+  {% endif %}
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 2. Assumptions table ────────────────────────────────────────────── #}
+{%- macro assumptions_table(review) -%}
+{% if review and review.assumptions %}
+<div class="rev-section">
+  <div class="rev-section__title">Project Assumptions</div>
+  <table class="rev-table">
+    <tbody>
+      {% for row in review.assumptions %}
+      <tr>
+        <th scope="row" class="rev-table__label">{{ row.label }}</th>
+        <td class="rev-table__value">{{ row.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 3. KPIs table ───────────────────────────────────────────────────── #}
+{%- macro kpis_table(review) -%}
+{% if review and review.kpis %}
+<div class="rev-section">
+  <div class="rev-section__title">Key KPIs (last run)</div>
+  {% if review.has_run %}
+  <table class="rev-table">
+    <tbody>
+      {% for row in review.kpis %}
+      <tr>
+        <th scope="row" class="rev-table__label">{{ row.label }}</th>
+        <td class="rev-table__value">{{ row.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="rev-section__note">
+    No run has been recorded yet. Run the model to populate this section.
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 4. Scenarios summary ────────────────────────────────────────────── #}
+{%- macro scenarios_summary(review) -%}
+{% if review and review.scenarios %}
+<div class="rev-section">
+  <div class="rev-section__title">Scenarios</div>
+  <div class="rev-scenarios">
+    <div class="rev-scenarios__count">
+      <span class="rev-scenarios__count-num">{{ review.scenarios.count }}</span>
+      <span class="rev-scenarios__count-label">saved</span>
+    </div>
+    {% if review.scenarios.by_kind %}
+    <div class="rev-scenarios__kinds">
+      {% for kind in ["base", "downside", "upside", "custom"] %}
+        {% if review.scenarios.by_kind.get(kind, 0) > 0 %}
+        <span class="rev-scenarios__kind rev-scenarios__kind--{{ kind }}">
+          {{ review.scenarios.by_kind[kind] }} × {{ kind }}
+        </span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if review.scenarios.active_name %}
+    <div class="rev-scenarios__active">
+      Active: <strong>{{ review.scenarios.active_name }}</strong>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 5. Exploratory limitations ──────────────────────────────────────── #}
+{%- macro exploratory_notes(review) -%}
+{% if review and review.exploratory_limitations %}
+<div class="rev-section rev-section--note">
+  <div class="rev-section__title">Internal-use model notes</div>
+  <ul class="rev-list">
+    {% for note in review.exploratory_limitations %}
+    <li>{{ note }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── 6. Known exclusions ─────────────────────────────────────────────── #}
+{%- macro known_exclusions(review) -%}
+{% if review and review.known_exclusions %}
+<div class="rev-section rev-section--warn">
+  <div class="rev-section__title">Known Exclusions</div>
+  <ul class="rev-list">
+    {% for note in review.known_exclusions %}
+    <li>{{ note }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro -%}
+
+{# ── Public: full review card (composition of all six) ───────────────── #}
+{%- macro project_review_card(review) -%}
+{% if review %}
+<div class="rev-card" data-classification="{{ review.classification }}">
+  {{ classification_bar(review) }}
+  {{ assumptions_table(review) }}
+  {{ kpis_table(review) }}
+  {{ scenarios_summary(review) }}
+  {{ exploratory_notes(review) }}
+  {{ known_exclusions(review) }}
+</div>
+{% endif %}
+{%- endmacro -%}

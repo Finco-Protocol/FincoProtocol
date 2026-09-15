@@ -1,0 +1,142 @@
+{#
+  UI-3B — Workbook V2 Scenarios sheet partial.
+
+  Consumes ScenarioPresentation objects (from app.v2.scenario_presentation).
+  All values are pre-normalised by the router — NO datetime slicing, NO
+  type checks, NO financial arithmetic here.
+
+  Context variables:
+    scenarios          list[ScenarioPresentation]
+    active_scenario_id str | None
+    project_code       str
+    ws                 WorkspaceStateRecord | None
+#}
+<div id="v2-sheet-scenarios" class="v2-scenarios" data-sheet="scenarios">
+
+  {# ── Header + create form ──────────────────────────────────────────── #}
+  <div class="v2-scenarios-header">
+    <div class="v2-scenarios-header-title">Scenarios</div>
+    <form class="v2-scenario-create-form"
+          hx-post="/v2/workbook/scenarios/create"
+          hx-target="#v2-sheet-scenarios"
+          hx-swap="outerHTML">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input class="v2-scenario-name-input" type="text" name="scenario_name"
+             placeholder="New scenario name…" maxlength="80" required
+             aria-label="New scenario name">
+      <button class="v2-scenario-create-btn" type="submit">+ Create</button>
+    </form>
+  </div>
+
+  {# ── Scenario list ─────────────────────────────────────────────────── #}
+  <div class="v2-scenario-list">
+
+    {% if not scenarios %}
+    <div class="v2-scenario-empty">
+      No scenarios yet. The Base Case is created automatically on first run.
+    </div>
+    {% endif %}
+
+    {% for sc in scenarios %}
+    <div class="v2-scenario-row {% if sc.is_active %}v2-scenario-row--active{% endif %}"
+         data-scenario-id="{{ sc.scenario_id }}">
+
+      <div class="v2-scenario-row-main">
+        <div class="v2-scenario-row-name">
+          {% if sc.is_base_case %}
+            <span class="v2-scenario-base-badge" title="Base Case">BC</span>
+          {% endif %}
+          {{ sc.scenario_name }}
+          {% if sc.is_active %}
+            <span class="v2-scenario-active-badge">Active</span>
+          {% endif %}
+        </div>
+        <div class="v2-scenario-row-meta">
+          {% if sc.state == "STALE" %}
+            <span class="v2-scenario-state v2-scenario-state--stale" title="Inputs changed since last run">Stale</span>
+          {% elif sc.state == "CURRENT" %}
+            <span class="v2-scenario-state v2-scenario-state--clean" title="Has authoritative run results">Current</span>
+          {% else %}
+            <span class="v2-scenario-state v2-scenario-state--notrun">Not run</span>
+          {% endif %}
+          {% if sc.run_at_display %}
+            <span class="v2-scenario-ts" title="Last run">{{ sc.run_at_display }}</span>
+          {% elif sc.updated_at_display %}
+            <span class="v2-scenario-ts" title="Last updated">{{ sc.updated_at_display }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="v2-scenario-row-actions">
+        {% if not sc.is_active %}
+        <form hx-post="/v2/workbook/scenarios/select"
+              hx-target="#v2-sheet-scenarios"
+              hx-swap="outerHTML"
+              style="display:inline">
+          <input type="hidden" name="project" value="{{ project_code }}">
+          <input type="hidden" name="scenario_id" value="{{ sc.scenario_id }}">
+          <button class="v2-scenario-action-btn" type="submit" title="Select scenario">Select</button>
+        </form>
+        {% endif %}
+
+        {% if not sc.is_base_case %}
+        <button class="v2-scenario-action-btn v2-scenario-action-btn--rename"
+                onclick="v2ScenarioRename('{{ sc.scenario_id }}', {{ sc.scenario_name | tojson }})"
+                title="Rename">Rename</button>
+
+        <form hx-post="/v2/workbook/scenarios/archive"
+              hx-target="#v2-sheet-scenarios"
+              hx-swap="outerHTML"
+              hx-confirm="Archive scenario '{{ sc.scenario_name }}'?"
+              style="display:inline">
+          <input type="hidden" name="project" value="{{ project_code }}">
+          <input type="hidden" name="scenario_id" value="{{ sc.scenario_id }}">
+          <button class="v2-scenario-action-btn v2-scenario-action-btn--archive" type="submit"
+                  title="Archive">Archive</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+
+  </div>{# .v2-scenario-list #}
+
+  {# ── Compare & Sensitivity links ───────────────────────────────────── #}
+  <div class="v2-scenarios-nav">
+    <button class="v2-tab-link-btn" onclick="document.getElementById('tab-compare').click()">
+      Compare Scenarios →
+    </button>
+    <button class="v2-tab-link-btn" onclick="document.getElementById('tab-sensitivity').click()">
+      Sensitivity Analysis →
+    </button>
+  </div>
+
+  {# ── Inline rename modal (progressive) ──────────────────────────────── #}
+  <div id="v2-scenario-rename-modal" class="v2-scenario-modal" hidden>
+    <form id="v2-scenario-rename-form"
+          hx-post="/v2/workbook/scenarios/rename"
+          hx-target="#v2-sheet-scenarios"
+          hx-swap="outerHTML">
+      <input type="hidden" name="project" value="{{ project_code }}">
+      <input type="hidden" name="scenario_id" id="v2-rename-scenario-id">
+      <label class="v2-scenario-modal-label">Rename scenario</label>
+      <input class="v2-scenario-name-input" type="text" name="new_name"
+             id="v2-rename-new-name" maxlength="80" required>
+      <div class="v2-scenario-modal-actions">
+        <button class="v2-scenario-create-btn" type="submit">Save</button>
+        <button class="v2-scenario-action-btn" type="button"
+                onclick="document.getElementById('v2-scenario-rename-modal').hidden=true">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+</div>{# v2-sheet-scenarios #}
+
+<script>
+function v2ScenarioRename(id, currentName) {
+  document.getElementById('v2-rename-scenario-id').value = id;
+  document.getElementById('v2-rename-new-name').value = currentName;
+  document.getElementById('v2-scenario-rename-modal').hidden = false;
+  document.getElementById('v2-rename-new-name').focus();
+}
+</script>

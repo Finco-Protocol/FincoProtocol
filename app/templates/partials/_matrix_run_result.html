@@ -1,0 +1,25 @@
+{# Phase M4 — Matrix Run Result fragment.
+   Replaces the matrix-run-badge-wrap div after a successful scenario run.
+   Context: scenario_id, col_key, project_irr, avg_dscr, run_ok, error_msg
+
+   IRR-ANOMALY-1-FIX: matrix badge now uses Project IRR + Avg DSCR
+   to match Dashboard Run summary semantics. (Previously displayed
+   Equity IRR + Min DSCR, which caused pilot confusion because
+   Project IRR for a tariff haircut scenario is LOWER than Base
+   while Equity IRR is higher when target_dscr is met.) #}
+<div id="matrix-run-badge-{{ scenario_id }}" class="matrix-run-badge-wrap" data-m4-run-result="true" data-m4-run-wrap="{{ col_key }}">
+  {% if run_ok %}
+    <span class="matrix-run-badge matrix-run-badge--run" data-m4-run-badge="run">Run &#x2713;</span>
+    {% if avg_dscr is not none %}
+      <span class="matrix-run-kpi" data-m4-kpi="avg_dscr">DSCR {{ avg_dscr }}</span>
+    {% endif %}
+    {% if project_irr is not none %}
+      <span class="matrix-run-kpi" data-m4-kpi="project_irr">IRR {{ project_irr }}</span>
+    {% endif %}
+  {% else %}
+    <span class="matrix-run-badge matrix-run-badge--error" data-m4-run-badge="error">Run &#x2717;</span>
+    {% if error_msg %}
+      <span class="matrix-run-error-msg" data-m4-run-error="{{ error_msg }}">{{ error_msg }}</span>
+    {% endif %}
+  {% endif %}
+</div>

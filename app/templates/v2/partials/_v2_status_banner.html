@@ -1,0 +1,28 @@
+{#
+  UI-4A — V2 status banner content.
+  Rendered standalone for OOB HTMX swaps and embedded in workbook.html on initial load.
+
+  Context vars: ws_dirty, has_runtime, field_error, flash_error, run_failed (optional)
+  State priority: field_error > flash_error > run_failed > ws_dirty > has_runtime > not_run
+#}
+{% if field_error or flash_error %}
+  <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-error">
+    {{ field_error or flash_error }}
+  </div>
+{% elif run_failed %}
+  <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-run-failed">
+    Run failed — check inputs and try again. Prior results (if any) are still shown.
+  </div>
+{% elif ws_dirty %}
+  <div class="v2-banner v2-banner-dirty" role="status" data-testid="banner-stale">
+    Inputs changed — outputs are stale. Run the model to refresh.
+  </div>
+{% elif has_runtime %}
+  <div class="v2-banner v2-banner-clean" role="status" data-testid="banner-current">
+    Outputs are current — reflecting the latest inputs.
+  </div>
+{% else %}
+  <div class="v2-banner v2-banner-dirty" role="status" data-testid="banner-not-run">
+    Model has not been run — click Run to generate financial outputs.
+  </div>
+{% endif %}

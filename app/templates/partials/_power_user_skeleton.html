@@ -1,0 +1,24 @@
+{# ======================================================================
+   FINCO PROTOCOL — POWER USER — SKELETON LOADER  ·  UI-7 PART H
+   ----------------------------------------------------------------------
+   Inline skeleton placeholders. Use:
+     {{ '{{' }} set _variant = "circle" {{ '}}' }}
+     {{ '{{' }} include "partials/_power_user_skeleton.html" {{ '}}' }}
+     {{ '{{' }} set _variant = "row" {{ '}}' }}
+     {{ '{{' }} include "partials/_power_user_skeleton.html" {{ '}}' }}
+     {{ '{{' }} set _variant = "block" {{ '}}' }}
+     {{ '{{' }} set _width = "60%" {{ '}}' }}
+     {{ '{{' }} include "partials/_power_user_skeleton.html" {{ '}}' }}
+   ====================================================================== #}
+{% set _variant = _variant|default("block") %}
+{% if _variant == "circle" %}
+<span class="fo-power-skeleton fo-power-skeleton--circle" aria-hidden="true"></span>
+{% elif _variant == "row" %}
+<span class="fo-power-skeleton fo-power-skeleton--row" aria-hidden="true">
+  <span class="fo-power-skeleton fo-power-skeleton--circle" aria-hidden="true"></span>
+  <span class="fo-power-skeleton fo-power-skeleton--block" aria-hidden="true" style="flex:1;"></span>
+</span>
+{% else %}
+<span class="fo-power-skeleton fo-power-skeleton--block" aria-hidden="true"
+      style="width: {{ _width|default('100%') }};"></span>
+{% endif %}

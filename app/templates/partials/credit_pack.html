@@ -1,0 +1,273 @@
+{# ── V4-5 Part C — Credit Committee Pack ────────────────────────────────── #}
+{# Bank-oriented: debt sizing, DSCR/LLCR/PLCR, lockup, covenants, stress.   #}
+<div class="rp-credit" data-testid="credit-pack">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Credit</span>
+    <span class="scm-multi-heading-label">Credit Committee Pack</span>
+  </div>
+
+  {% if credit_pack_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Credit Pack Unavailable</div>
+        <div class="ps-history-meta">{{ credit_pack_error }}</div>
+      </div>
+    </div>
+  {% elif credit_pack %}
+    {% set cp = credit_pack %}
+    {% set es = cp['exec_summary'] %}
+    {% set ds = cp['debt_summary'] %}
+
+    {# Branding strip #}
+    <div class="rp-brand-header">
+      <div class="rp-brand-logo">FINCO Protocol</div>
+      <div class="rp-brand-meta">
+        Credit Pack &nbsp;·&nbsp; {{ es['report_date'] }} &nbsp;·&nbsp;
+        Engine {{ es['engine_version'] }} &nbsp;·&nbsp; {{ es['model_version'] }}
+      </div>
+    </div>
+
+    {# ── Section 1: Transaction Summary ── #}
+    <div class="rp-section" id="cc-transaction">
+      <div class="rp-section-title">1. Transaction Summary</div>
+      <div class="rp-two-col">
+        <div>
+          <div class="rp-kv-group-title">Project</div>
+          {% for label, val in [
+            ('Name', es['project_name']),
+            ('Technology', es['technology']),
+            ('Country', es['country']),
+            ('COD', es['cod_date']),
+            ('Capacity', es['capacity_mw']|string + ' MW'),
+          ] %}
+            <div class="rp-kv-row"><span class="rp-kv-label">{{ label }}</span><span class="rp-kv-val">{{ val }}</span></div>
+          {% endfor %}
+        </div>
+        <div>
+          <div class="rp-kv-group-title">Debt Sizing</div>
+          {% for label, val, unit in [
+            ('Senior Debt',  es['debt_keur'],          'kEUR'),
+            ('Gearing',      es['gearing_pct'],        '%'),
+            ('Tenor',        es['senior_tenor_years'], 'yrs'),
+            ('Total CAPEX',  es['total_capex_keur'],   'kEUR'),
+            ('Equity',       es['equity_keur'],        'kEUR'),
+          ] %}
+            <div class="rp-kv-row">
+              <span class="rp-kv-label">{{ label }}</span>
+              <span class="rp-kv-val">
+                {% if val is number %}
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }} kEUR
+                  {% elif unit == '%' %}{{ "%.1f"|format(val) }}%
+                  {% else %}{{ val }}{% if unit %} {{ unit }}{% endif %}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Section 2: Debt Metrics ── #}
+    <div class="rp-section" id="cc-debt-metrics">
+      <div class="rp-section-title">2. Debt Service Metrics</div>
+
+      {# DSCR/LLCR headline chips #}
+      <div class="cv-summary-chips" style="margin-bottom:0.75rem;">
+        <span class="cv-chip cv-chip--{{ 'ok' if es['min_dscr'] and es['min_dscr'] >= 1.15 else ('warn' if es['min_dscr'] and es['min_dscr'] >= 1.05 else 'breach') }}">
+          Min DSCR {{ "%.4f"|format(es['min_dscr']) }}x
+        </span>
+        <span class="cv-chip cv-chip--ok">
+          Avg DSCR {{ "%.4f"|format(es['avg_dscr']) }}x
+        </span>
+        <span class="cv-chip cv-chip--ok">
+          Min LLCR {{ "%.4f"|format(es['min_llcr']) }}x
+        </span>
+        {% if es['min_plcr'] and es['min_plcr'] > 0 %}
+        <span class="cv-chip cv-chip--ok">
+          Min PLCR {{ "%.4f"|format(es['min_plcr']) }}x
+        </span>
+        {% endif %}
+      </div>
+
+      <div class="rp-kpi-table">
+        {% for label, val, fmt in [
+          ('Min DSCR',         es['min_dscr'],           'x'),
+          ('Avg DSCR',         es['avg_dscr'],           'x'),
+          ('Min LLCR',         es['min_llcr'],           'x'),
+          ('Min PLCR',         es['min_plcr'],           'x'),
+          ('Total Senior DS',  ds['total_senior_ds_keur'],'keur'),
+          ('Lock-up Periods',  cp['lockup_count'],       ''),
+          ('Breach Periods',   cp['breach_count'],       ''),
+          ('Warning Periods',  cp['warning_count'],      ''),
+        ] %}
+          <div class="rp-kpi-trow {% if label == 'Breach Periods' and val > 0 %}rp-kpi-trow--breach{% endif %}">
+            <span class="rp-kpi-tlabel">{{ label }}</span>
+            <span class="rp-kpi-tval">
+              {% if fmt == 'keur' %}{{ "{:,.0f} kEUR"|format(val) if val is not none else '—' }}
+              {% elif fmt == 'x' %}{{ "%.4fx"|format(val) if val is not none else '—' }}
+              {% else %}{{ val if val is not none else '—' }}{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Section 3: Covenant Thresholds ── #}
+    <div class="rp-section" id="cc-thresholds">
+      <div class="rp-section-title">3. Covenant Thresholds</div>
+      {% set th = cp['covenant_thresholds'] %}
+      <div class="cv-legend" style="margin-bottom:0.5rem;">
+        <span class="cv-legend-item cv-rag--breach">
+          &#9679; Event of Default (&lt;{{ "%.2f"|format(th['event_of_default']) }}x)
+        </span>
+        <span class="cv-legend-item cv-rag--warning">
+          &#9679; Lock-up (&lt;{{ "%.2f"|format(th['lockup']) }}x)
+        </span>
+        <span class="cv-legend-item cv-rag--caution">
+          &#9679; Dist. Restricted (&lt;{{ "%.2f"|format(th['distribution']) }}x)
+        </span>
+        <span class="cv-legend-item cv-rag--ok">
+          &#9679; Within Covenants (&ge;{{ "%.2f"|format(th['distribution']) }}x)
+        </span>
+      </div>
+
+      {# Compact covenant table (all periods) #}
+      {% if cp['covenant_periods'] %}
+        <div style="overflow-x:auto;">
+          <table class="cv-table" data-testid="credit-covenant-table">
+            <thead>
+              <tr>
+                <th>Period</th><th>Date</th><th>DSCR</th><th>LLCR</th>
+                <th>Sr Bal (kEUR)</th><th>Lockup</th>
+                <th>Dist (kEUR)</th><th>Sweep (kEUR)</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in cp['covenant_periods'] %}
+                <tr class="cv-row cv-rag--{{ p['rag'] }}">
+                  <td>{{ p['period'] }}</td>
+                  <td>{{ p['date'][:7] if p['date'] else '—' }}</td>
+                  <td class="cv-cell-num {% if p['dscr'] and p['dscr'] < th['lockup'] %}cv-cell--breach{% endif %}">
+                    {{ "%.4f"|format(p['dscr']) if p['dscr'] is not none else '—' }}x
+                  </td>
+                  <td class="cv-cell-num">
+                    {{ "%.4f"|format(p['llcr']) if p['llcr'] is not none else '—' }}
+                    {%- if p['llcr'] is not none %}x{% endif %}
+                  </td>
+                  <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_balance_keur']) }}</td>
+                  <td class="cv-cell-center">
+                    {% if p['lockup'] %}<span class="cv-lockup-badge">LOCKED</span>{% else %}—{% endif %}
+                  </td>
+                  <td class="cv-cell-num">
+                    {% if p['distribution_keur'] > 0 %}{{ "{:,.1f}".format(p['distribution_keur']) }}{% else %}—{% endif %}
+                  </td>
+                  <td class="cv-cell-num">
+                    {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}".format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
+                  </td>
+                  <td class="cv-cell-center">
+                    <span class="cv-rag-badge cv-rag-badge--{{ p['rag'] }}">
+                      {% if p['rag'] == 'breach' %}BREACH
+                      {% elif p['rag'] == 'warning' %}WARN
+                      {% elif p['rag'] == 'caution' %}CAUTION
+                      {% else %}OK{% endif %}
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+    {# ── Section 4: Stress Scenario ── #}
+    {% if cp['stress_delta'] %}
+    <div class="rp-section" id="cc-stress">
+      <div class="rp-section-title">4. Stress Scenario</div>
+      {% set sd = cp['stress_delta'] %}
+      {% if sd['adjustment_summary'] %}
+        <div class="lc-adj-chips" style="margin-bottom:0.6rem;">
+          {% for a in sd['adjustment_summary'] %}
+            <span class="lc-adj-chip">{{ a['label'] }}: <strong>{{ a['display'] }}</strong></span>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <div class="rp-kpi-table">
+        {% for label, base_val, stress_val, fmt in [
+          ('Equity IRR', sd['equity_irr_base'], sd['equity_irr_stress'], 'pct'),
+          ('Min DSCR',   sd['min_dscr_base'],   sd['min_dscr_stress'],   'x'),
+          ('Min LLCR',   sd['min_llcr_base'],   sd['min_llcr_stress'],   'x'),
+        ] %}
+          {% set delta = (stress_val - base_val) if (stress_val is not none and base_val is not none) else none %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ label }}</span>
+            <span class="rp-kpi-tval">
+              Base: {{ _fmt_kpi(base_val, fmt) }}
+            </span>
+            <span class="rp-kpi-tval {{ 'scm-delta--bad' if delta is not none and delta < 0 else '' }}">
+              Stress: {{ _fmt_kpi(stress_val, fmt) }}
+              {% if delta is not none %}
+                <span class="cs-delta scm-delta--{{ 'bad' if delta < 0 else 'good' }}">
+                  ({{ _fmt_delta(delta, fmt) }})
+                </span>
+              {% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Section 5: Cash Sweep Summary ── #}
+    {% if cp['covenant_periods'] %}
+      {% set sweep_periods = cp['covenant_periods'] | selectattr('cash_sweep_keur', 'gt', 0) | list %}
+      {% if sweep_periods %}
+      <div class="rp-section" id="cc-sweep">
+        <div class="rp-section-title">{{ '5' if cp['stress_delta'] else '4' }}. Cash Sweep Events</div>
+        <div style="overflow-x:auto;">
+          <table class="cv-table">
+            <thead>
+              <tr><th>Period</th><th>Date</th><th>DSCR</th><th>Cash Sweep (kEUR)</th></tr>
+            </thead>
+            <tbody>
+              {% for p in sweep_periods %}
+                <tr>
+                  <td>{{ p['period'] }}</td>
+                  <td>{{ p['date'][:7] if p['date'] else '—' }}</td>
+                  <td class="cv-cell-num">{{ "%.4f"|format(p['dscr']) if p['dscr'] is not none else '—' }}x</td>
+                  <td class="cv-cell-num">{{ "{:,.1f}".format(p['cash_sweep_keur']) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    {% endif %}
+
+    {# Export links #}
+    <div class="rp-export-row" data-testid="credit-pack-exports">
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=xlsx"
+         class="rp-export-btn rp-export-btn--xl" download>Excel Bundle</a>
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=docx_credit"
+         class="rp-export-btn rp-export-btn--docx" download>Download DOCX</a>
+    </div>
+
+    <div class="rp-footer">
+      FINCO Protocol {{ es['model_version'] }} · Engine {{ es['engine_version'] }} ·
+      Scenario: {{ cp['scenario_name'] }} · {{ cp['report_date'] }}
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Credit Pack Loaded</div>
+        <div class="ps-history-meta">
+          Navigate to /scenarios/credit-pack?project=... to generate.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

@@ -1,0 +1,156 @@
+{# ── V4-4 Part C — Credit Summary ────────────────────────────────────────── #}
+{# One-page printable lender credit summary. All values from canonical engine. #}
+<div class="cs-summary" data-testid="credit-summary">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Credit</span>
+    <span class="scm-multi-heading-label">Credit Summary</span>
+  </div>
+
+  {% if credit_summary_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Credit Summary Unavailable</div>
+        <div class="ps-history-meta">{{ credit_summary_error }}</div>
+      </div>
+    </div>
+  {% elif credit_summary %}
+    {% set cs = credit_summary %}
+
+    <div class="cs-print-area" data-testid="credit-summary-content">
+
+      {# Header #}
+      <div class="cs-header">
+        <div class="cs-project-name">{{ cs['project_name'] }}</div>
+        <div class="cs-project-meta">
+          {{ cs['technology'] }} · {{ cs['country'] }} ·
+          {{ cs['capacity_mw'] }} MW ·
+          COD {{ cs['cod_date'] }}
+        </div>
+      </div>
+
+      {# Two-column card grid #}
+      <div class="cs-grid">
+
+        {# Project card #}
+        <div class="cs-card">
+          <div class="cs-card-title">Project</div>
+          {% set proj_rows = [
+            ('Company', cs['company'], ''),
+            ('Technology', cs['technology'], ''),
+            ('Country', cs['country'], ''),
+            ('Capacity', cs['capacity_mw'], 'MW'),
+            ('COD', cs['cod_date'], ''),
+            ('Horizon', cs['horizon_years'], 'yrs'),
+            ('PPA Tariff', cs['ppa_tariff'], 'EUR/MWh'),
+            ('PPA Term', cs['ppa_term_years'], 'yrs'),
+          ] %}
+          {% for label, val, unit in proj_rows %}
+            <div class="cs-row">
+              <span class="cs-label">{{ label }}</span>
+              <span class="cs-value">
+                {% if val is number %}
+                  {% if unit == 'EUR/MWh' %}{{ "%.2f"|format(val) }}
+                  {% elif unit == 'MW' %}{{ "%.1f"|format(val) }}
+                  {% else %}{{ val }}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+                {% if unit %} {{ unit }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Capital structure card #}
+        <div class="cs-card">
+          <div class="cs-card-title">Capital Structure</div>
+          {% set cap_rows = [
+            ('Total CAPEX', cs['total_capex_keur'], 'kEUR'),
+            ('Senior Debt', cs['debt_keur'], 'kEUR'),
+            ('Equity', cs['equity_keur'], 'kEUR'),
+            ('Gearing', cs['gearing_pct'], '%'),
+            ('Tenor', cs['senior_tenor_years'], 'yrs'),
+            ('Corp. Tax Rate', cs['corporate_tax_rate_pct'], '%'),
+          ] %}
+          {% for label, val, unit in cap_rows %}
+            <div class="cs-row">
+              <span class="cs-label">{{ label }}</span>
+              <span class="cs-value">
+                {% if val is number %}
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }}
+                  {% elif unit == '%' %}{{ "%.1f"|format(val) }}
+                  {% else %}{{ val }}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+                {% if unit %} {{ unit }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Base case returns card #}
+        <div class="cs-card">
+          <div class="cs-card-title">Base Case Returns</div>
+          {% set ret_rows = [
+            ('Project IRR', cs['project_irr'], 'pct'),
+            ('Equity IRR', cs['equity_irr'], 'pct'),
+            ('Equity NPV', cs['equity_npv'], 'keur'),
+            ('Avg DSCR', cs['avg_dscr'], 'x'),
+            ('Min DSCR', cs['min_dscr'], 'x'),
+            ('Min LLCR', cs['min_llcr'], 'x'),
+            ('Distributions', cs['total_distribution_keur'], 'keur'),
+            ('Total Tax', cs['total_tax_keur'], 'keur'),
+          ] %}
+          {% for label, val, fmt in ret_rows %}
+            <div class="cs-row">
+              <span class="cs-label">{{ label }}</span>
+              <span class="cs-value">{{ _fmt_kpi(val, fmt) }}</span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Lender case (if provided) #}
+        {% if cs['lender_equity_irr'] is not none %}
+        <div class="cs-card cs-card--lender">
+          <div class="cs-card-title">Lender Case</div>
+          {% set ldr_rows = [
+            ('Project IRR', cs['lender_project_irr'], 'pct'),
+            ('Equity IRR', cs['lender_equity_irr'], 'pct'),
+            ('Avg DSCR', cs['lender_avg_dscr'], 'x'),
+            ('Min DSCR', cs['lender_min_dscr'], 'x'),
+            ('Min LLCR', cs['lender_min_llcr'], 'x'),
+          ] %}
+          {% for label, val, fmt in ldr_rows %}
+            {% set bkey_map = {'Equity IRR': cs['equity_irr'], 'Project IRR': cs['project_irr'], 'Avg DSCR': cs['avg_dscr'], 'Min DSCR': cs['min_dscr'], 'Min LLCR': cs['min_llcr']} %}
+            {% set bv = bkey_map.get(label) %}
+            {% set delta = (val - bv) if (val is not none and bv is not none) else none %}
+            {% set d_class = 'scm-delta--bad' if delta is not none and delta < 0 else '' %}
+            <div class="cs-row">
+              <span class="cs-label">{{ label }}</span>
+              <span class="cs-value {{ d_class }}">{{ _fmt_kpi(val, fmt) }}</span>
+              {% if delta is not none %}
+                <span class="cs-delta {{ d_class }}">{{ _fmt_delta(delta, fmt) }}</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </div>{# /cs-grid #}
+
+      <div class="cs-footer">
+        All values from canonical engine. Source: FINCO Protocol.
+      </div>
+
+    </div>{# /cs-print-area #}
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No Credit Summary Loaded</div>
+        <div class="ps-history-meta">
+          Navigate to /scenarios/credit-summary?project=... to generate a credit summary.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

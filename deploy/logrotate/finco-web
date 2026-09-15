@@ -1,0 +1,29 @@
+# FINCO Model logrotate config
+# Install: sudo cp deploy/logrotate/finco-web /etc/logrotate.d/finco-web
+# Test:    sudo logrotate -d /etc/logrotate.d/finco-web
+
+/var/log/finco-web/*.log {
+    daily
+    missingok
+    rotate 14          # keep 2 weeks of logs
+    compress
+    delaycompress
+    notifempty
+    create 0640 finco finco
+    sharedscripts
+
+    # Restart app after rotate (catch new log file)
+    postrotate
+        sudo systemctl kill -s HUP finco-web 2>/dev/null || true
+    endscript
+}
+
+/opt/finco_protocol/var/log/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    delaycompress
+    notifempty
+    create 0640 finco finco
+}

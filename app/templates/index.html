@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block body %}
+
+{# ── Phase P2-FIX-2 (review-fix): Governance Banner is the
+   reviewer surface. In normal mode we render a project-type-aware
+   neutral disclosure line.
+
+   - Generic / user-created projects: a single short line,
+     "Internal-use model — results are indicative." No reference
+     or template language.
+   - Generic Wind Reference / Generic Solar Reference protected originals: a single short line,
+     "Protected original — open for review, run and export.
+     Create an editable copy before changing assumptions."
+
+   The full Governance / G20 / R99 / R102 copy lives in the
+   Audit / Reference tab. #}
+{% if audit_mode %}
+<!-- Governance Banner (audit / reviewer surface) -->
+<div class="gov-banner gov-blocked" style="margin-bottom:1.5rem;">
+  <div class="gov-icon">Gate</div>
+  <div class="gov-content">
+    <div class="gov-title">G20 Gate - BLOCKED</div>
+    <div class="gov-desc">Equity IRR residual (0.29pp) is within +/-1.0pp tolerance. G20 remains BLOCKED pending stakeholder decision on reconciliation IRR or formal acceptance of convention differences.</div>
+  </div>
+  <span class="badge badge-blocked">Blocked</span>
+</div>
+{% else %}
+  {% if is_user_project %}
+    {# User-created / Generic projects: single neutral line. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="internal-use-model">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Internal-use model</div>
+        <div class="gov-desc">Internal-use model — results are indicative.</div>
+      </div>
+      <span class="badge badge-info">Internal</span>
+    </div>
+  {% elif template_source in ("generic_solar", "generic_wind") or (project_ctx.code and "generic" in project_ctx.code|lower) %}
+    {# Phase P2-FIX-7: Generic factory templates are internal-use
+       model only. P2-FIX-2 originally matched on
+       ``template_source`` only, but factory-seeded
+       Generic Solar / Wind records do not populate
+       ``template_source`` (it lives on
+       ``source_project_template``). P2-FIX-7 adds
+       ``project_ctx.code`` as a second signal so the
+       Generic factory seed path lands in the
+       internal-use model branch instead of leaking
+       the "Protected original" copy. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="internal-use-model">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Internal-use model</div>
+        <div class="gov-desc">Internal-use model — results are indicative.</div>
+      </div>
+      <span class="badge badge-info">Internal</span>
+    </div>
+  {% else %}
+    {# Generic Wind Reference / Generic Solar Reference protected originals: read-only disclosure. #}
+    <div class="gov-banner gov-info" style="margin-bottom:1.5rem;"
+         data-p2fix2-disclosure="protected-original">
+      <div class="gov-icon">Info</div>
+      <div class="gov-content">
+        <div class="gov-title">Protected original</div>
+        <div class="gov-desc">Protected original — open for review, run and export. Create an editable copy before changing assumptions.</div>
+      </div>
+      <span class="badge badge-info">Protected</span>
+    </div>
+  {% endif %}
+{% endif %}
+
+{# UI-2.1: State clarity banner partial (renders nothing if banner_context is missing) #}
+{% include "partials/_state_banner.html" %}
+
+{# ── UI-2.5: Stale result warning ────────────────────────────────────────────────
+   Reuses the existing stale_run() macro from empty_states_notice.html.
+
+   Explicit stale signal used (already in context, no backend changes):
+     workspace_state.dirty                      — draft has unsaved edits
+     workspace_state.last_runtime_snapshot_id   — a runtime was ever bound
+
+   The warning renders ONLY when BOTH are true:
+     1. The draft is dirty (unsaved edits active), AND
+     2. A previous runtime snapshot exists.
+
+   In other words: the draft is newer than the last clean runtime snapshot.
+   This is the same condition that backend already detects in
+   `_workspace_state_meta()` (see "older than current draft" label) and
+   in `_build_export_lineage_ui_context()` (action_note for unsaved drafts).
+
+   Important: `runtime_summary` is NOT a stale signal. It only proves
+   a previous run exists. We never use it alone to render stale_run().
+
+   This is presentation only — no backend changes. #}
+{% from "partials/empty_states_notice.html" import stale_run %}
+{% if workspace_state and workspace_state.dirty and workspace_state.last_runtime_snapshot_id %}
+  {{ stale_run(workspace_state_meta) }}
+{% endif %}
+
+<!-- Workspace Shell - tab panels loaded here -->
+{% include "partials/workspace_shell.html" %}
+
+{# ── Phase 24-G-2: Empty-state review ──────────────────────────────────────────
+   Three new empty-state partials. Each renders nothing if its gate
+   condition is false (i.e. a project / scenario / run already exists).
+   These are top-of-page notices that complement the in-tab macros
+   in empty_states_notice.html (which are still used by tab panels).
+
+   - _empty_no_project.html  — no project selected
+   - _empty_no_scenario.html — no scenario for the project
+   - _empty_no_run.html      — no run performed yet
+#}
+{% include "partials/_empty_no_project.html" %}
+{% include "partials/_empty_no_scenario.html" %}
+{% include "partials/_empty_no_run.html" %}
+
+{# ── UI-2.6 + Phase 24-G-2: Last run / run-source indicator (renders nothing if no runtime_summary) ──
+   Run status clarity: OK / ERROR / BLOCKED / NO RUN badge.
+   Project + scenario association.
+   Stale / fresh state inline (same gate as stale_run() above).
+#}
+{% include "partials/_last_run_indicator.html" %}
+
+{% endblock %}
+
+{% block sidebar_input %}
+{# Legacy accordion removed per Phase 21 shell unification. Inputs tab is the primary input surface. #}
+{% endblock %}

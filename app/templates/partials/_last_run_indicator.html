@@ -1,0 +1,139 @@
+{# ── UI-2.6 + Phase 24-G-2: Last run / run-source indicator ──────────────────
+   Conservative last-run indicator with run-status clarity.
+
+   Behavior:
+   - Renders nothing if `runtime_summary` is missing from the context.
+   - Renders nothing if `runtime_summary.run_id` is missing AND no
+     `runtime_summary.last_run_at` is present (we never show a fake ID).
+   - When `runtime_summary.run_id` is present, displays safe generic
+     "Last run" / "Runtime source" copy + the run_id (truncated).
+   - When only `runtime_summary.last_run_at` is present (no run_id),
+     shows safe generic last-run info with no run_id.
+
+   Phase 24-G-2 additions (UI-only, no backend changes):
+   - Run status badge (OK / ERROR / NO RUN) — sourced from the same
+     `runtime_summary` context that is already passed in.
+   - Project association (project_code) — sourced from existing
+     `project_record` already in index context.
+   - Scenario association (scenario_name) — sourced from existing
+     `base_case_record` already in index context.
+   - Stale / fresh state badge — same gate as stale_run()
+     (workspace_state.dirty AND last_runtime_snapshot_id).
+   - All fields are optional; falls back to "(not set)" if missing.
+   - No fake run IDs. No fake timestamps. No invented scenario IDs.
+
+   No backend context was added in this PR — this partial is a safe
+   extension point that renders nothing in the current state. When
+   `runtime_summary` is later added to the index context, the partial
+   will activate automatically.
+
+   Copy is conservative. No no-go claims. #}
+{% set _rs = runtime_summary|default({}) %}
+{% set _rs_run_id = _rs.run_id|default('') %}
+{% set _rs_last_run_at = _rs.last_run_at|default('') %}
+{% set _rs_status = _rs.status|default('') %}
+{% set _rs_error = _rs.error_message|default('') %}
+{% set _project_code = (project_record.project_code|default('') if project_record is defined and project_record else '') %}
+{% set _project_name = (project_record.project_name|default(_project_code) if project_record is defined and project_record else _project_code) %}
+{% set _scenario_name = (base_case_record.scenario_name if base_case_record is defined and base_case_record else '') %}
+{% set _is_dirty = (workspace_state is defined and workspace_state and workspace_state.dirty) %}
+{% set _has_prior_run = (_rs_run_id|length > 0) or (_rs_last_run_at|length > 0) %}
+{% set _is_stale = (_is_dirty and (workspace_state.last_runtime_snapshot_id|default('') if workspace_state is defined and workspace_state else '')) %}
+{# Phase 24-H: Exploratory warning for user_created generic projects. #}
+{% set _is_exploratory = (is_exploratory_project|default(false)) %}
+{# Decide status: real only; never invent. #}
+{% if _rs_status == 'ok' %}
+  {% set _status_label = 'OK' %}
+  {% set _status_tone = 'ok' %}
+{% elif _rs_status == 'error' %}
+  {% set _status_label = 'ERROR' %}
+  {% set _status_tone = 'error' %}
+{% elif _rs_status == 'blocked' %}
+  {% set _status_label = 'BLOCKED' %}
+  {% set _status_tone = 'blocked' %}
+{% else %}
+  {% set _status_label = '—' %}
+  {% set _status_tone = 'none' %}
+{% endif %}
+{% if _rs_run_id or _rs_last_run_at %}
+  <aside class="last-run-indicator last-run-indicator--status-{{ _status_tone }}"
+         role="status"
+         aria-label="Last run source and status"
+         data-run-status="{{ _status_tone }}"
+         data-stale-state="{{ 'stale' if _is_stale else 'fresh' }}">
+    <div class="last-run-indicator__row last-run-indicator__row--header">
+      <span class="last-run-indicator__label">Last run</span>
+      <span class="last-run-indicator__value last-run-indicator__value--strong">Runtime source</span>
+      <span class="last-run-indicator__status last-run-indicator__status--{{ _status_tone }}"
+            title="{% if _status_tone == 'ok' %}Run completed successfully{% elif _status_tone == 'error' %}Run failed: {{ _rs_error }}{% elif _status_tone == 'blocked' %}Run blocked{% else %}No run performed yet{% endif %}">
+        {% if _status_tone == 'ok' %}✓ {{ _status_label }}{% elif _status_tone == 'error' %}✗ {{ _status_label }}{% elif _status_tone == 'blocked' %}⊘ {{ _status_label }}{% else %}{{ _status_label }}{% endif %}
+      </span>
+    </div>
+
+    {% if _is_stale %}
+    <div class="last-run-indicator__row last-run-indicator__row--stale"
+         role="note" aria-label="Stale result warning">
+      <span class="last-run-indicator__stale-badge" title="Outputs are from a previous run">STALE</span>
+      <span class="last-run-indicator__stale-hint">
+        Draft has unsaved changes; outputs reflect a previous run.
+        Run again to reflect the current draft.
+      </span>
+    </div>
+    {% endif %}
+
+    {% if _is_exploratory %}
+    <div class="last-run-indicator__row last-run-indicator__row--exploratory"
+         role="note" aria-label="Exploratory / not reference-validated"
+         data-exploratory-warning="true"
+         data-exploration-source="runtime-summary">
+      <span class="last-run-indicator__exploratory-badge"
+            title="This project is exploratory / not reference-validated">EXPLORATORY</span>
+      <span class="last-run-indicator__exploratory-hint">
+        Exploratory / not reference-validated. Outputs are not
+        lender-ready, audit-ready, or bank-approved. Do not use for
+        external signoff.
+      </span>
+    </div>
+    {% endif %}
+
+    {% if _project_code %}
+    <div class="last-run-indicator__row last-run-indicator__row--project">
+      <span class="last-run-indicator__label">Project</span>
+      <span class="last-run-indicator__value last-run-indicator__value--mono"
+            title="{{ _project_name }}">{{ _project_code }}</span>
+    </div>
+    {% endif %}
+
+    {% if _scenario_name %}
+    <div class="last-run-indicator__row last-run-indicator__row--scenario">
+      <span class="last-run-indicator__label">Scenario</span>
+      <span class="last-run-indicator__value">{{ _scenario_name }}</span>
+    </div>
+    {% endif %}
+
+    {% if _rs_run_id %}
+      <div class="last-run-indicator__row last-run-indicator__row--id">
+        <span class="last-run-indicator__label">Run reference</span>
+        <span class="last-run-indicator__value last-run-indicator__value--mono">{{ _rs_run_id[:12] }}{% if _rs_run_id|length > 12 %}…{% endif %}</span>
+      </div>
+    {% endif %}
+    {% if _rs_last_run_at %}
+      <div class="last-run-indicator__row last-run-indicator__row--time">
+        <span class="last-run-indicator__label">When</span>
+        <span class="last-run-indicator__value">{{ _rs_last_run_at }}</span>
+      </div>
+    {% endif %}
+
+    {% if _rs_error %}
+    <div class="last-run-indicator__row last-run-indicator__row--error"
+         role="alert" aria-label="Run error message">
+      <span class="last-run-indicator__label">Run error</span>
+      <span class="last-run-indicator__value last-run-indicator__value--error">{{ _rs_error }}</span>
+    </div>
+    {% endif %}
+
+    <div class="last-run-indicator__row last-run-indicator__row--note">
+      <span class="last-run-indicator__note">Review model evidence before export.</span>
+    </div>
+  </aside>
+{% endif %}

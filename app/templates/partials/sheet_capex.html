@@ -1,0 +1,989 @@
+<!--
+  CAPEX Single-Sheet — {{ project_ctx.name }}
+  Phase 57A-3 / UI-3.2: Single spreadsheet-like CAPEX input sheet.
+  Phase 57A-3 (post-feedback revision): the C.01–C.05
+  simplified grouping was a screenshot crop, not the
+  full model. The target canonical hierarchy is
+  C.01–C.18 with sub-lines (C.01.01, C.01.02, ...).
+
+  What this PR delivers (runtime draft, NOT final):
+  - Renders all 18 category bands (C.01..C.18) using
+    data already exposed at `project_ctx.capex_detail_items`
+    (built by `app/ui/project_context.py::_build_capex_detail_items`).
+  - Renders sub-lines under each category.
+  - Editable amount inputs for ordinary CAPEX lines
+    (user project mode).
+  - Derived category subtotals (read-only).
+  - Derived Hard CAPEX / Financing / Total CAPEX
+    (read-only).
+  - Deferred placeholders for VAT / WHT / depreciation /
+    payment schedule / utilisation (documented at the
+    bottom of the sheet as future model inputs that
+    will feed P&L, Balance Sheet, Cash Flow, Sources &
+    Uses, funding drawdown, IDC, opening debt balances).
+  - Sources & Uses bridge documentation (see the
+    `capex-sources-uses-bridge` block at the bottom of
+    the sheet).
+
+  Important:
+  - The app is the source of truth. No Excel-vs-App
+    reconciliation is rendered in this sheet.
+  - The deprecated `sheet_capex_detail.html` (Excel
+    audit view) is no longer included in
+    `workspace_shell.html`. It is kept on disk as a
+    deprecated alias.
+  - Backend / model / formula / persistence / service
+    changes: NONE. This PR is a UI migration only.
+
+  Out of scope (per spec):
+    * No IDC calculation change.
+    * No construction funding engine change.
+    * No senior debt / SHL drawdown logic change.
+    * No tax engine change.
+    * No backend financial formula change.
+    * No Tailwind / Alpine.
+
+  Editability policy:
+    * Ordinary CAPEX line items: editable for
+      user-created projects (`is_user_project=True`).
+    * Financing / IDC / backend-calculated rows
+      (idc, bank_fees, commitment_fees, other_financial,
+      vat_costs, reserve_accounts): read-only
+      (data_financing row type, preserved from 57A-1
+      Fix A).
+    * Subtotals / totals: read-only.
+    * VAT / WHT / depreciation / payment schedule
+      columns: read-only (placeholders for now; will
+      become inputs in a follow-up phase that does not
+      change financial outputs).
+
+  Rendered via the shared `lig_render` macro from
+  `partials/_line_item_grid.html`. The 57A macro is
+  reused as-is.
+
+  Phase 57A-5 (line-item hierarchy foundation):
+    * Each C.01..C.16 category band is marked with
+      `data-capex-add-line="<code>"` so a future JS
+      hook (in 57A-6 runtime) can present a "Add line"
+      affordance.
+    * Each category subtotal is derived from its
+      sub-lines (read-only).
+    * The grand total is derived from all 18 sections
+      (read-only).
+    * C.17 and C.18 are NOT marked as add-line (they
+      are backend-computed and must not be user-
+      editable).
+    * Persistence is NOT changed in 57A-5. The
+      add-line UX is in-memory only; if dynamic
+      add-line requires a schema change, that
+      schema change is documented in 57A-6 and is
+      explicitly out of scope for 57A-5.
+
+  Phase 57A-8 (add-line UX, in-memory preview only):
+    * The "Add line" affordance is rendered as a
+      toolbar of small + buttons (one per C.01..C.16
+      category) in the capex-add-line-toolbar block
+      just above the line-item grid. C.17 and C.18
+      do NOT have an add-line button.
+    * Clicking + inserts a temporary row into the
+      grid. The temporary row:
+        - has data-capex-tmp=\"true\"
+        - has a generated temporary business code
+          (e.g. C.03.TMP-1) shown in the Code cell
+        - has an editable label and editable amount
+        - has an Unsaved / not persisted badge
+        - has a Remove / cancel button
+    * Temporary rows have NO `name` attribute on
+      their amount input, so they are NOT submitted
+      with the rest of the form (no backend key is
+      ever created, no existing CAPEX value is
+      modified).
+    * Temporary rows do NOT affect the hard CAPEX
+      total, the category subtotals, the financing
+      total, or the grand total in any authoritative
+      way. A small preview-only total is shown in
+      the toolbar (clearly labelled \"Preview only —
+      not used by Run until persistence is
+      implemented\").
+    * When temporary rows exist, a warning block
+      appears just above the Run / Save actions
+      saying: \"Temporary CAPEX lines are not
+      persisted and are not included in model run.\"
+    * The capex-add-line-copy block above the grid
+      explains: \"Added lines are temporary in this
+      preview and will be persisted in a later
+      phase. They are not included in model runs
+      yet.\"
+    * Behaviour is implemented in static/app.js as
+      pure DOM manipulation. No API calls. No
+      persistence. No model / run mutation.
+-->
+
+<style>
+  /* ── Phase 57A-10H: Unified CAPEX column key panel ─────────────────── */
+  .capex-column-key {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .capex-column-key__title { margin: 0; font-size: 0.95rem; }
+  .capex-column-key__lead {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .capex-column-key__section { display: flex; flex-direction: column; gap: 0.35rem; }
+  .capex-column-key__section-title {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .capex-column-key__chips {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .capex-column-key__chips li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+  }
+  .capex-column-key__chip-desc {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .capex-column-key__group-dot {
+    display: inline-block;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="core"] {
+    background: #6f9fc8; /* softened blue */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="costing"] {
+    background: #a18ec8; /* softened purple */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="tax"] {
+    background: #c89a78; /* softened orange */
+  }
+  .capex-column-key__group-dot[data-capex-group-dot="schedule"] {
+    background: #c8b86f; /* softened yellow */
+  }
+  .capex-column-key [data-capex-group="core"]     { color: #2c5b85; }
+  .capex-column-key [data-capex-group="costing"]  { color: #6b4d96; }
+  .capex-column-key [data-capex-group="tax"]      { color: #955c2a; }
+  .capex-column-key [data-capex-group="schedule"] { color: #856a18; }
+
+  /* ── Phase 57A-10H: Tighten the deferred-note disclaimer ──────────── */
+  .capex-deferred-note .capex-metadata-disclaimer {
+    margin: 0 0 0.6rem 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .capex-deferred-note .capex-metadata-disclaimer .badge {
+    margin-right: 0.4rem;
+  }
+  .capex-deferred-note ul {
+    margin: 0.3rem 0 0 0;
+    padding-left: 1.2rem;
+  }
+  .capex-deferred-note li {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    margin-bottom: 0.25rem;
+  }
+
+  /* ── Phase 57A-10H: Compact status legend ─────────────────────────── */
+  .capex-status-legend {
+    margin: 0.5rem 0 0.75rem 0;
+    padding: 0.5rem 0.85rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+  .capex-status-legend p { margin: 0 0 0.3rem 0; font-size: 0.78rem; }
+  .capex-status-legend ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .capex-status-legend li { display: flex; align-items: center; gap: 0.35rem; }
+</style>
+
+{% from "partials/_line_item_grid.html" import lig_render %}
+
+{# ── Sheet banner ─────────────────────────────────────────────────────── #}
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏗️ CAPEX</span>
+  <span class="sheet-banner-badge">
+    {% if not is_user_project %}
+    <span class="badge badge-muted">Reference — read-only</span>
+    {% else %}
+    <span class="badge badge-pass">User Project — editable</span>
+    {% endif %}
+  </span>
+</div>
+
+{# ── Read-only notice for factory / reference projects ────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="inp-readonly-notice__icon">🔒</span>
+  <div class="inp-readonly-notice__body">
+    <strong>Protected original — read only</strong>
+    <p>This is a protected original. Use <strong>Duplicate / Save As</strong>
+    to create your own copy, then edit CAPEX assumptions.</p>
+    <p class="inp-readonly-notice__hint">
+      The app is the source of truth. Edit line items directly in
+      this sheet; section totals and the grand total are derived
+      automatically.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+{# ── Resolve CAPEX data ───────────────────────────────────────────── #}
+{#
+   The canonical C.01–C.18 hierarchy with sub-lines is exposed
+   at `project_ctx.capex_detail_items`. If that data is not
+   available (older factory or older test contexts), fall back
+   to `project_ctx.capex_items` (the flat 6-section summary
+   data). The fallback path is for backward compatibility
+   only; the production path uses the C.01–C.18 detail data.
+
+   57A-5B: `project_ctx.capex_detail_items` is a TUPLE of
+   category dicts (built by
+   `app/ui/project_context.py::_build_capex_detail_items`).
+   The previous template code expected a dict with a
+   `.categories` property, which caused the canonical
+   catalogue to be silently hidden and the template to
+   fall through to the older 6-section fallback.
+#}
+{% set _raw_detail = project_ctx.capex_detail_items %}
+{% if _raw_detail is mapping and _raw_detail.get('categories') is defined %}
+  {% set capex_categories = _raw_detail['categories'] %}
+  {% set capex_grand_total = _raw_detail.get('grand_total_keur', 0.0) %}
+  {% set capex_hard_total = _raw_detail.get('hard_capex_total_keur', 0.0) %}
+  {% set capex_financing_total = _raw_detail.get('financing_total_keur', 0.0) %}
+{% else %}
+  {% set capex_categories = _raw_detail if _raw_detail else () %}
+  {% set capex_grand_total = (project_ctx.grand_total_keur if project_ctx.grand_total_keur is defined else 0.0) %}
+  {% set capex_hard_total = (project_ctx.hard_capex_total_keur if project_ctx.hard_capex_total_keur is defined else 0.0) %}
+  {% set capex_financing_total = (project_ctx.financing_total_keur if project_ctx.financing_total_keur is defined else 0.0) %}
+{% endif %}
+
+{# ── Build lig_rows (structured data for the LineItemGrid macro) ───── #}
+{% set lig_rows = [] %}
+
+{% if capex_categories %}
+  {# ── Primary path: render C.01–C.18 with sub-lines from ────────── #}
+  {#    project_ctx.capex_detail_items ──────────────────────────── #}
+  {% for cat in capex_categories %}
+    {# Category section band: C.01..C.18 #}
+    {# 57A-5: foundation for the add-line UX hook.
+       For C.01..C.16 (non-backend-calculated, user-
+       editable categories), the section band is
+       marked with data-capex-add-line so a future
+       JS hook (in 57A-6 runtime) can present a
+       "Add line" affordance under this category.
+
+       The hook is data-only in this PR (no
+       behaviour). Adding a line still requires a
+       schema change that is out of scope for 57A-5;
+       see 57A-6 design doc. #}
+    {% set _add_line = (
+      cat.code if (
+        not cat.is_backend_calculated
+        and cat.code not in ["C.17", "C.18"]
+      ) else ""
+    ) %}
+    {# Category code/name are server-defined constants (not request
+       data), so plain concatenation is used here rather than the
+       autoescape `e` filter, which would coerce the whole string to
+       Markup and double-escape the literal HTML built below. #}
+    {% set _band_label = cat.code ~ "  " ~ cat.name %}
+    {% if _add_line %}
+      {% set _band_cell_html = (
+        '<span class="fc-section-band__label-text">' ~ _band_label ~ '</span>'
+        ~ '<button type="button" class="capex-add-line-btn capex-add-line-btn--inline"'
+        ~ ' data-capex-add-line-btn="' ~ cat.code ~ '"'
+        ~ ' data-capex-cat-name="' ~ cat.name ~ '"'
+        ~ ' aria-label="Add temporary line to ' ~ cat.name ~ '">'
+        ~ '<span class="capex-add-line-btn-icon" aria-hidden="true">+</span>'
+        ~ '<span class="capex-add-line-btn-text">Add line</span>'
+        ~ '</button>'
+      ) %}
+    {% else %}
+      {% set _band_cell_html = _band_label %}
+    {% endif %}
+    {% set _ = lig_rows.append({
+      "type": "section_band",
+      "attrs": {
+        "data-capex-category": cat.code,
+        "data-capex-add-line": _add_line,
+        "data-fc-row": "true",
+      },
+      "cells": [{"kind": "section_band_label", "value": _band_cell_html, "safe_html": True}],
+    }) %}
+    {# Sub-lines under the category #}
+    {% for child in cat.children %}
+      {# Skip C.17 and C.18 sub-lines in the main data
+         loop; they are rendered separately in the
+         Financing / Reserve sections as data_financing
+         (read-only) rows. #}
+      {% if cat.code not in ["C.17", "C.18"] %}
+        {% set line_code = child.code %}
+        {# Sanitize the dotted code for use in the input
+           field name (HTML name attributes may not contain
+           dots). C.01.01 -> C_01_01. The full dotted code
+           is preserved in data-capex-code-full for
+           downstream consumers that need the canonical
+           identifier. #}
+        {% set sanitized_code = child.code|replace(".", "_") %}
+        {# Compute amount; if 0 or negative, still render the
+           row as a 0.00 input (some categories are placeholders
+           for items the user has not yet added). #}
+        {% set amt = child.amount_keur|default(0)|float %}
+        {% set _fc_addr = "capex!" ~ child.code ~ ".amount" %}
+        {% set _ = lig_rows.append({
+          "type": "data",
+          "attrs": {
+            "data-capex-code": sanitized_code,
+            "data-capex-code-full": child.code,
+            "data-capex-name": child.name,
+            "data-fc-row": "true",
+          },
+          "cells": [
+            {"kind": "label",  "value": child.name},
+            {"kind": "code",   "value": child.code},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": _fc_addr,
+              "data-fc-editable": "true" if is_user_project else "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
+          ],
+        }) %}
+      {% endif %}
+    {% endfor %}
+    {# Category subtotal (derived, read-only) #}
+    {% set cat_total = namespace(value=0.0) %}
+    {% for child in cat.children %}
+      {% set cat_total.value = cat_total.value + (child.amount_keur|default(0)|float) %}
+    {% endfor %}
+    {% if cat_total.value > 0 or cat.children %}
+      {% set _ = lig_rows.append({
+        "type": "subtotal",
+        "attrs": {
+          "data-capex-row": "cat-subtotal-" ~ cat.code,
+          "data-capex-category": cat.code,
+          "data-fc-row": "true",
+        },
+        "cells": [
+          {"kind": "label",  "value": cat.code ~ " Subtotal", "safe_html": True},
+          {"kind": "code",   "value": ""},
+          {"kind": "amount", "value": "{:,.2f}".format(cat_total.value), "attrs": {
+            "data-fc-cell": "true",
+            "data-fc-addr": "capex!" ~ cat.code ~ ".subtotal",
+            "data-fc-editable": "false",
+            "data-fc-kind": "subtotal",
+            "data-fc-raw": cat_total.value,
+          }},
+        ],
+      }) %}
+    {% endif %}
+  {% endfor %}
+
+  {# ── Hard CAPEX Total (sum of C.01–C.16 hard categories) ─────── #}
+  {% set _ = lig_rows.append({
+    "type": "subtotal",
+    "attrs": {"data-capex-row": "hard-capex-total", "data-fc-row": "true"},
+    "cells": [
+      {"kind": "label",  "value": "<strong>Hard CAPEX Total (C.01–C.16)</strong>", "safe_html": True},
+      {"kind": "code",   "value": ""},
+      {"kind": "amount", "value": "{:,.2f}".format(capex_hard_total), "attrs": {
+        "data-fc-cell": "true",
+        "data-fc-addr": "capex!hard-capex-total.subtotal",
+        "data-fc-editable": "false",
+        "data-fc-kind": "subtotal",
+        "data-fc-raw": capex_hard_total,
+      }},
+    ],
+  }) %}
+
+  {# ── Financing Costs (C.17) and Reserve Accounts (C.18) are #}
+  {#    backend-calculated; rendered as data_financing rows  ──── #}
+  {% set _ = lig_rows.append({
+    "type": "section_band",
+    "attrs": {"data-capex-category": "C.17"},
+    "cells": ["C.17  Financing Costs (read-only — backend-computed)"],
+  }) %}
+  {# Find C.17 children; render each as data_financing #}
+  {% for cat in capex_categories %}
+    {% if cat.code == "C.17" %}
+      {% for child in cat.children %}
+        {% set amt = child.amount_keur|default(0)|float %}
+        {% set _ = lig_rows.append({
+          "type": "data_financing",
+          "attrs": {
+            "data-capex-code": child.code|replace(".", "_"),
+            "data-capex-code-full": child.code,
+            "data-capex-name": child.name,
+            "data-fc-row": "true",
+          },
+          "cells": [
+            {"kind": "label",  "value": child.name},
+            {"kind": "code",   "value": child.code},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": "capex!" ~ child.code ~ ".amount",
+              "data-fc-editable": "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
+          ],
+        }) %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+
+  {% set _ = lig_rows.append({
+    "type": "section_band",
+    "attrs": {"data-capex-category": "C.18"},
+    "cells": ["C.18  Reserve Accounts (read-only — backend-computed)"],
+  }) %}
+  {% for cat in capex_categories %}
+    {% if cat.code == "C.18" %}
+      {% for child in cat.children %}
+        {% set amt = child.amount_keur|default(0)|float %}
+        {% set _ = lig_rows.append({
+          "type": "data_financing",
+          "attrs": {
+            "data-capex-code": child.code|replace(".", "_"),
+            "data-capex-code-full": child.code,
+            "data-capex-name": child.name,
+            "data-fc-row": "true",
+          },
+          "cells": [
+            {"kind": "label",  "value": child.name},
+            {"kind": "code",   "value": child.code},
+            {"kind": "amount", "value": "{:.2f}".format(amt), "attrs": {
+              "data-fc-cell": "true",
+              "data-fc-addr": "capex!" ~ child.code ~ ".amount",
+              "data-fc-editable": "false",
+              "data-fc-kind": "amount",
+              "data-fc-raw": amt,
+            }},
+          ],
+        }) %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+
+  {# ── Grand Total CAPEX (derived, read-only) ──────────────────── #}
+  {% set _ = lig_rows.append({
+    "type": "total",
+    "attrs": {"data-capex-row": "grand-total", "data-fc-row": "true"},
+    "cells": [
+      {"kind": "label",  "value": "<strong>Total CAPEX (C.01–C.18)</strong>", "safe_html": True},
+      {"kind": "code",   "value": ""},
+      {"kind": "amount", "value": "{:,.2f}".format(capex_grand_total), "attrs": {
+        "data-fc-cell": "true",
+        "data-fc-addr": "capex!grand-total.total",
+        "data-fc-editable": "false",
+        "data-fc-kind": "total",
+        "data-fc-raw": capex_grand_total,
+      }},
+    ],
+  }) %}
+{% else %}
+  {# ── Fallback path: project_ctx.capex_items (6-section summary) #}
+  {#    This is the older flat data structure; render the same  #}
+  {#    C.01–C.18 bands but with empty children. The 6-section #}
+  {#    summary data is mapped into C.01..C.05 (the four hard  #}
+  {#    categories that overlap with the old summary labels)   #}
+  {#    and the financing rows into C.17.                       #}
+  {% set fallback_categories = [
+    ("C.01", "Production Unit", []),
+    ("C.02", "EPC Contract", []),
+    ("C.03", "Grid Connection", []),
+    ("C.04", "Monitoring & Telecom", []),
+    ("C.05", "Operation Investments", []),
+    ("C.06", "Insurances", []),
+    ("C.07", "Land Securing Costs", []),
+    ("C.08", "Bank Due Diligence", []),
+    ("C.09", "Construction Management", []),
+    ("C.10", "Commissioning", []),
+    ("C.11", "Audit & Accounting & Legal", []),
+    ("C.12", "Construction Mgmt", []),
+    ("C.13", "Contingencies", []),
+    ("C.14", "Import Taxes", []),
+    ("C.15", "Project Acquisition / Development", []),
+    ("C.16", "Project Rights", []),
+    ("C.17", "Financing Costs", []),
+    ("C.18", "Reserve Accounts", []),
+  ] %}
+  {# Lookup capex items by code (6-section summary codes) #}
+  {% set capex_by_code = {} %}
+  {% for item in project_ctx.capex_items %}
+    {% set _ = capex_by_code.update({item.code: item}) %}
+  {% endfor %}
+  {# Map old summary codes to C.01..C.05 (rough mapping) #}
+  {% set summary_to_cat = {
+    "epc_contract": ("C.02", "EPC Contract"),
+    "production_units": ("C.01", "Production Unit"),
+    "epc_other": ("C.02", "EPC Contract"),
+    "project_acquisition": ("C.15", "Project Acquisition / Development"),
+    "project_rights": ("C.16", "Project Rights"),
+    "ops_prep": ("C.15", "Project Acquisition / Development"),
+    "construction_mgmt_a": ("C.09", "Construction Management"),
+    "construction_mgmt_b": ("C.09", "Construction Management"),
+    "commissioning": ("C.10", "Commissioning"),
+    "audit_legal": ("C.11", "Audit & Accounting & Legal"),
+    "lease_tax": ("C.07", "Land Securing Costs"),
+    "insurances": ("C.06", "Insurances"),
+    "contingencies": ("C.13", "Contingencies"),
+    "taxes": ("C.14", "Import Taxes"),
+  } %}
+  {# Per-backend-key spreadsheet-style display codes. The backend
+     key (e.g. "epc_contract") is preserved in
+     data-capex-code but is NOT shown to the user. The
+     spreadsheet-style code (e.g. "C.02.01") is shown in the
+     Code column. The full dotted code is preserved in
+     data-capex-code-full. #}
+  {% set backend_to_display_code = {
+    "epc_contract":            "C.02.01",
+    "production_units":        "C.01.01",
+    "epc_other":               "C.02.02",
+    "project_acquisition":     "C.15.01",
+    "project_rights":          "C.16.01",
+    "ops_prep":                "C.15.02",
+    "construction_mgmt_a":     "C.09.01",
+    "construction_mgmt_b":     "C.09.02",
+    "commissioning":           "C.10.01",
+    "audit_legal":             "C.11.01",
+    "lease_tax":               "C.07.01",
+    "insurances":              "C.06.01",
+    "contingencies":           "C.13.01",
+    "taxes":                   "C.14.01",
+  } %}
+  {# Group items by category #}
+  {% set items_by_cat = {} %}
+  {% for code, item in capex_by_code.items() %}
+    {% if item.amount_keur|default(0)|float > 0 %}
+      {% if code in summary_to_cat %}
+        {% set mapped = summary_to_cat[code] %}
+        {% set cat_code = mapped[0] %}
+        {% set existing = items_by_cat.get(cat_code, []) %}
+        {% set _ = items_by_cat.update({cat_code: existing + [item]}) %}
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% for cat_code, cat_name, _ in fallback_categories %}
+    {% set _ = lig_rows.append({
+      "type": "section_band",
+      "attrs": {"data-capex-category": cat_code},
+      "cells": [cat_code ~ "  " ~ cat_name],
+    }) %}
+    {% set items = items_by_cat.get(cat_code, []) %}
+    {% set cat_total = namespace(value=0.0) %}
+    {% for item in items %}
+      {% set amt = item.amount_keur|default(0)|float %}
+      {# Resolve the visible spreadsheet-style code. If the
+         backend key is not in the display-code table
+         (e.g. a user-added line with no mapping), use a
+         dash so the user never sees a snake_case key. #}
+      {% set visible_code = backend_to_display_code.get(item.code, "—") %}
+      {% set _ = lig_rows.append({
+        "type": "data",
+        "attrs": {
+          "data-capex-code": item.code,
+          "data-capex-code-full": visible_code,
+          "data-capex-name": item.name,
+        },
+        "cells": [
+          {"kind": "label",  "value": item.name},
+          {"kind": "code",   "value": visible_code},
+          {"kind": "amount", "value": "{:.2f}".format(amt)},
+        ],
+      }) %}
+      {% set cat_total.value = cat_total.value + amt %}
+    {% endfor %}
+    {% if cat_total.value > 0 or items %}
+      {% set _ = lig_rows.append({
+        "type": "subtotal",
+        "attrs": {
+          "data-capex-row": "cat-subtotal-" ~ cat_code,
+          "data-capex-category": cat_code,
+        },
+        "cells": [
+          {"kind": "label",  "value": cat_code ~ " Subtotal", "safe_html": True},
+          {"kind": "code",   "value": ""},
+          {"kind": "amount", "value": "{:,.2f}".format(cat_total.value)},
+        ],
+      }) %}
+    {% endif %}
+  {% endfor %}
+
+  {# ── Hard CAPEX Total (sum of all C.01–C.16 hard totals) ─── #}
+  {% set hard_total_fb = namespace(value=0.0) %}
+  {% for cat_code, _, _ in fallback_categories %}
+    {% if cat_code not in ["C.17", "C.18"] %}
+      {% set items = items_by_cat.get(cat_code, []) %}
+      {% for item in items %}
+        {% set hard_total_fb.value = hard_total_fb.value + (item.amount_keur|default(0)|float) %}
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+  {% set _ = lig_rows.append({
+    "type": "subtotal",
+    "attrs": {"data-capex-row": "hard-capex-total"},
+    "cells": [
+      {"kind": "label",  "value": "<strong>Hard CAPEX Total (C.01–C.16)</strong>", "safe_html": True},
+      {"kind": "code",   "value": ""},
+      {"kind": "amount", "value": "{:,.2f}".format(hard_total_fb.value)},
+    ],
+  }) %}
+
+  {# ── Financing rows (data_financing) ─────────────────────── #}
+  {% set financing_total_fb = namespace(value=0.0) %}
+  {% for code in ["idc", "bank_fees", "commitment_fees", "other_financial", "vat_costs", "reserve_accounts"] %}
+    {% if code in capex_by_code and capex_by_code[code].amount_keur|default(0)|float > 0 %}
+      {% set item = capex_by_code[code] %}
+      {% set amt = item.amount_keur|default(0)|float %}
+      {% set _ = lig_rows.append({
+        "type": "data_financing",
+        "attrs": {
+          "data-capex-code": item.code,
+          "data-capex-name": item.name,
+        },
+        "cells": [
+          {"kind": "label",  "value": item.name},
+          {"kind": "code",   "value": item.code},
+          {"kind": "amount", "value": "{:.2f}".format(amt)},
+        ],
+      }) %}
+      {% set financing_total_fb.value = financing_total_fb.value + amt %}
+    {% endif %}
+  {% endfor %}
+
+  {% set grand_total_fb = hard_total_fb.value + financing_total_fb.value %}
+  {% set _ = lig_rows.append({
+    "type": "total",
+    "attrs": {"data-capex-row": "grand-total"},
+    "cells": [
+      {"kind": "label",  "value": "<strong>Total CAPEX (C.01–C.18)</strong>", "safe_html": True},
+      {"kind": "code",   "value": ""},
+      {"kind": "amount", "value": "{:,.2f}".format(grand_total_fb)},
+    ],
+  }) %}
+  {% set capex_grand_total = grand_total_fb %}
+  {% set capex_hard_total = hard_total_fb.value %}
+  {% set capex_financing_total = financing_total_fb.value %}
+{% endif %}
+
+{# ── Derived top summary (small strip; NOT a competing view) ──── #}
+<div class="capex-summary-strip" id="capex-summary-strip"
+     data-derived-from="capex-single-sheet-grid">
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Hard CAPEX</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(capex_hard_total) }}</div>
+    <div class="capex-summary-card__unit">kEUR (C.01–C.16)</div>
+  </div>
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">Financing / Reserve</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(capex_financing_total) }}</div>
+    <div class="capex-summary-card__unit">kEUR (C.17 + C.18, read-only)</div>
+  </div>
+  <div class="capex-summary-card capex-summary-card--total">
+    <div class="capex-summary-card__label">Total CAPEX</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(capex_grand_total) }}</div>
+    <div class="capex-summary-card__unit">kEUR (derived, C.01–C.18)</div>
+  </div>
+  {% if (project_ctx.capacity_mw|default(0)|float) > 0 %}
+  <div class="capex-summary-card">
+    <div class="capex-summary-card__label">CAPEX / MW</div>
+    <div class="capex-summary-card__value">{{ "{:,.1f}".format(capex_grand_total / (project_ctx.capacity_mw|float)) }}</div>
+    <div class="capex-summary-card__unit">kEUR / MW</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Clear copy: line items drive the model-level total ──── #}
+<div class="capex-driving-copy" data-capex-driving-copy="true">
+  <p>
+    <strong>CAPEX line items drive the model-level CAPEX total.</strong>
+    Edit the line items below in the C.01–C.18 grid; the
+    category subtotals, the hard CAPEX total, and the
+    Total CAPEX are derived automatically. Financing (C.17)
+    and Reserve Accounts (C.18) are backend-computed and
+    are read-only here.
+  </p>
+</div>
+
+{# ── Workbook grid (rendered via shared LineItemGrid) ────────────── #}
+{# UX-2A: the grid is the primary working surface and now appears ── #}
+{# immediately after the summary strip / driving copy, ahead of ──── #}
+{# the (collapsed-by-default) CAPEX Sheet Guide below. ────────────── #}
+<div class="fc-grid-wrapper fc-capex-grid-wrapper" id="capex-single-sheet"
+     data-fc-grid="capex" data-fc-scroll-container="true">
+  {{ lig_render(
+       table_label="CAPEX input sheet for " ~ project_ctx.name,
+       columns=[
+         {"key": "label",  "label": "Line Item", "kind": "label",  "classes": "fc-grid-col-label"},
+         {"key": "code",   "label": "Code",      "kind": "code",   "classes": "fc-th fc-th--code"},
+         {"key": "amount", "label": "Amount (kEUR)", "kind": "amount", "classes": "fc-th fc-th--amount"},
+       ],
+       rows=lig_rows,
+       editable=is_user_project,
+       input_field_template="capex_{code}_keur",
+       table_id="capex-single-sheet-grid",
+     ) }}
+</div>
+
+{# ── Add-line preview totals (UX-2A: buttons relocated into ─────── #}
+{#    each category's section band inside the grid itself; ──────── #}
+{#    this strip only surfaces the running preview total). ──────── #}
+{# 57A-8: pure-UI affordance. Behaviour lives in static/app.js. #}
+<p class="capex-add-line-preview-totals"
+   data-capex-add-line-preview-totals="true"
+   hidden>
+  <strong>Draft total shown for reference. Save and run the model to include these rows in results.</strong>
+  <span class="capex-add-line-preview-totals-detail"
+        data-capex-add-line-preview-detail="true"></span>
+</p>
+
+{# ── Run/Save warning (only shown when temporary rows exist) ─────── #}
+<div class="capex-tmp-run-warning" id="capex-tmp-run-warning"
+     data-capex-tmp-run-warning="true"
+     hidden>
+  <p>
+    <strong>⚠ Temporary CAPEX lines are not persisted
+    and are not included in model run.</strong>
+  </p>
+  <p>
+    Added lines are preview-only and will be lost on
+    page reload. The authoritative CAPEX total and the
+    backend Run output are unaffected by temporary
+    lines.
+  </p>
+</div>
+
+{# ── UX-2A: CAPEX Sheet Guide ─────────────────────────────────────── #}
+{# Column key, status legend, deferred-note and Sources & Uses ────── #}
+{# bridge governance/architecture copy collapsed into a single, ──── #}
+{# collapsed-by-default help section so the working grid above is ── #}
+{# the primary focus of the page. #}
+<details class="capex-sheet-guide" data-capex-sheet-guide="true">
+  <summary class="capex-sheet-guide__summary"
+           data-capex-sheet-guide-summary="true">
+    <span aria-hidden="true">?</span> CAPEX Sheet Guide
+  </summary>
+
+  {# ── Phase 57A-10H: Unified CAPEX column key (status + groups) ─── #}
+  <div class="capex-column-key" data-capex-column-key="true"
+       data-capex-column-groups="true"
+       aria-label="CAPEX column key">
+    <p class="capex-column-key__title">
+      <strong>CAPEX column key</strong>
+    </p>
+    <p class="capex-column-key__lead">
+      Each column in the detail grid belongs to one of these groups
+      and carries one of these status labels. Status is the source of
+      truth for whether a column affects Run.
+    </p>
+
+    <div class="capex-column-key__section"
+         data-capex-column-key-section="status">
+      <p class="capex-column-key__section-title">Status labels</p>
+      <ul class="capex-column-key__chips">
+        <li><span class="badge badge-runtime-used">Runtime-used</span>
+            <span class="capex-column-key__chip-desc">
+              feeds the model
+            </span></li>
+        <li><span class="badge badge-metadata-only">Metadata-only</span>
+            <span class="capex-column-key__chip-desc">
+              captured for audit; does not affect Run
+            </span></li>
+        <li><span class="badge badge-design-only">Design-only</span>
+            <span class="capex-column-key__chip-desc">
+              designed for a future phase; not yet wired
+            </span></li>
+        <li><span class="badge badge-export-only">Export-only</span>
+            <span class="capex-column-key__chip-desc">
+              surfaced in export / audit artefacts only
+            </span></li>
+      </ul>
+    </div>
+
+    <div class="capex-column-key__section"
+         data-capex-column-key-section="groups">
+      <p class="capex-column-key__section-title">Column groups</p>
+      <ul class="capex-column-key__chips">
+        <li data-capex-group="core">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="core" aria-hidden="true"></span>
+          <strong>Core</strong>
+          <span class="capex-column-key__chip-desc">
+            Line Item, Code, Amount
+          </span>
+          <span class="badge badge-runtime-used">Runtime-used</span>
+        </li>
+        <li data-capex-group="costing">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="costing" aria-hidden="true"></span>
+          <strong>Costing</strong>
+          <span class="capex-column-key__chip-desc">
+            Contingency %, Per MW
+          </span>
+          <span class="badge badge-metadata-only">Metadata-only</span>
+        </li>
+        <li data-capex-group="tax">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="tax" aria-hidden="true"></span>
+          <strong>Tax</strong>
+          <span class="capex-column-key__chip-desc">
+            VAT %, WHT %
+          </span>
+          <span class="badge badge-metadata-only">Metadata-only</span>
+        </li>
+        <li data-capex-group="schedule">
+          <span class="capex-column-key__group-dot"
+                data-capex-group-dot="schedule" aria-hidden="true"></span>
+          <strong>Schedule</strong>
+          <span class="capex-column-key__chip-desc">
+            M1–M18 (spending profile, construction utilisation)
+          </span>
+          <span class="badge badge-runtime-used">Runtime-used</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  {# ── CAPEX column status legend (Phase 57A-10F) ─────────────── #}
+  <div class="capex-status-legend" data-capex-status-legend="true">
+    <p class="capex-legend-lead" data-capex-legend-lead="true">
+      <strong>Quick reference:</strong> status labels below mirror the
+      column-key panel above. Use this list as a fast lookup after
+      scrolling through the grid.
+    </p>
+    <ul>
+      <li><span class="badge badge-runtime-used">Runtime-used</span> — feeds the model</li>
+      <li><span class="badge badge-metadata-only">Metadata-only</span> — captured for audit; does not affect Run</li>
+      <li><span class="badge badge-design-only">Design-only</span> — designed for a future phase; not yet wired</li>
+      <li><span class="badge badge-export-only">Export-only</span> — surfaced in export / audit artefacts only</li>
+    </ul>
+  </div>
+
+  {# ── Deferred placeholders / future model inputs ─────────────── #}
+  <div class="capex-deferred-note" data-capex-deferred="true">
+    <p class="capex-metadata-disclaimer" data-capex-metadata-disclaimer="true">
+      <span class="badge badge-metadata-only">Metadata only — does not affect Run.</span>
+      The placeholders below are visible for design / planning but
+      they do not affect the current model calculations.
+    </p>
+    <p class="capex-deferred-lead" data-capex-deferred-lead="true">
+      These six items are CAPEX detail columns that the
+      current runtime does not yet consume. They are captured
+      for design / planning, will be visible in audit exports,
+      and are documented here as a forward-looking contract.
+    </p>
+    <ul>
+      <li><span class="badge badge-metadata-only">Metadata-only</span>
+          <strong>VAT % / WHT % / Contingency %</strong>
+          <span class="capex-deferred-detail">— captured in CAPEX
+          detail columns; not yet fed to tax / model.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>Payment schedule by construction month</strong>
+          <span class="capex-deferred-detail">— equity / senior /
+          SHL drawdown, IDC, opening balances at COD.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>Depreciation category / useful life / flag</strong>
+          <span class="capex-deferred-detail">— P&amp;L and fixed
+          asset schedule.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>VAT applicability / rate / cost</strong>
+          <span class="capex-deferred-detail">— cash flow /
+          balance sheet / working capital / tax receivable.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>WHT rate / cost</strong>
+          <span class="capex-deferred-detail">— tax / cash flow
+          treatment.</span></li>
+      <li><span class="badge badge-design-only">Design-only</span>
+          <strong>Utilisation of funds during construction</strong>
+          <span class="capex-deferred-detail">— derived from the
+          payment schedule.</span></li>
+    </ul>
+  </div>
+
+  {# ── Sources & Uses bridge (future model wiring) ─────────────── #}
+  <div class="capex-sources-uses-bridge" data-capex-su-bridge="true">
+    <p class="capex-su-lead" data-capex-su-lead="true">
+      <strong>Sources &amp; Uses bridge (future model wiring):</strong>
+      this CAPEX sheet is one of the core input engines. Once
+      VAT / WHT / depreciation / payment schedule are wired, the
+      CAPEX inputs will feed drawdowns (equity / senior / SHL),
+      IDC, opening debt balances at COD, fixed asset base, tax
+      and cash flow.
+    </p>
+    <p class="capex-su-summary" data-capex-su-summary="true">
+      <strong>What feeds what:</strong>
+      <span class="capex-su-tag">Payment schedule</span> →
+      Sources &amp; Uses, equity / senior / SHL drawdown, IDC.
+      <span class="capex-su-tag">VAT / WHT rates</span> →
+      cash flow, balance sheet, tax receivable / payable.
+      <span class="capex-su-tag">Depreciation flags</span> →
+      P&amp;L, fixed asset schedule.
+      <span class="capex-su-tag">Cumulative drawdowns</span> →
+      opening senior and SHL balances at COD.
+    </p>
+    <p class="capex-su-note" data-capex-su-note="true">
+      <em>This sheet is a UI input surface; the backend model
+      wiring above is a separate, larger effort and is not
+      implemented in this UI phase.</em>
+    </p>
+  </div>
+</details>
+
+{# ── Read-only notice (footer) ─────────────────────────────────── #}
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--capex">
+  <span class="badge badge-muted">Reference</span>
+  &nbsp;CAPEX values are template defaults — edit is disabled.
+  Use <strong>Duplicate / Save As</strong> to create an editable user project.
+</div>
+{% endif %}
+
+{# ── Dirty indicator ─────────────────────────────────────────── #}
+<div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
+  <span class="badge badge-warning">● Unsaved draft</span>
+</div>
+
+{# ── Footer note ─────────────────────────────────────────────── #}
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+  &nbsp;App is source of truth · CAPEX is the C.01–C.18
+  hierarchy with sub-lines
+</div>

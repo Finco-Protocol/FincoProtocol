@@ -1,0 +1,64 @@
+<!-- FINCO Model scope notice -->
+<div class="pilot-limitations-notice" id="pilot-limitations-notice">
+  <div class="pln-header"><span class="badge badge-warn">Model scope</span></div>
+  <div class="pln-body">
+    <div class="pln-section">
+      <div class="pln-section-title">Reference models</div>
+      <div class="pln-item"><strong>Generic Solar Reference / Generic Wind Reference</strong> — protected synthetic references covered by the public regression ring.</div>
+      <div class="pln-item"><strong>Generic Storage Reference</strong> — protected synthetic reference with narrower runtime coverage.</div>
+    </div>
+    <div class="pln-section">
+      <div class="pln-section-title">Boundaries</div>
+      <div class="pln-item">FINCO Model does not provide lender approval, external audit, legal advice, tax advice or investment recommendations.</div>
+      <div class="pln-item">Specialist financing, tax and portfolio structures may require additional reviewed configuration.</div>
+    </div>
+    <div class="pln-section">
+      <div class="pln-section-title">Runtime authority</div>
+      <div class="pln-item">Financial outputs are calculated by the backend engine; browser-side JavaScript is presentation-only.</div>
+      <div class="pln-item">Exports reflect the last completed backend run, not unsaved draft edits.</div>
+    </div>
+  </div>
+</div>
+
+<style>
+.pilot-limitations-notice {
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+  font-size: 0.8rem;
+}
+
+.pln-header {
+  padding: 0.6rem 1rem;
+  background: var(--warn-bg, #fef9c3);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.pln-body {
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pln-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.pln-section-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-2, #6b7280);
+  margin-bottom: 0.1rem;
+}
+
+.pln-item {
+  color: var(--text, #111827);
+  line-height: 1.5;
+}
+</style>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ project_name }} — Workbook</title>
+  <script src="/static/vendor/htmx.min.js"></script>
+  <link rel="stylesheet" href="/static/css/workbook_v2.css">
+</head>
+<body>
+  {# sessionStorage hydration: re-populates schedule data on load without re-run #}
+  {{ hydration_script | safe }}
+
+  {#
+    ── Workbook toolbar ─────────────────────────────────────────────────
+    Shows project identity, active scenario, runtime state, and Run button.
+    The #v2-status-banner element is hidden (display:none) in the toolbar
+    context — banners show below the tab bar instead.
+    The Run controls OOB-swaps the #v2-run-controls div within the toolbar.
+  #}
+  <div class="v2-toolbar" role="banner">
+    <div class="v2-toolbar-project">
+      <a class="v2-toolbar-back" href="{{ library_url }}" aria-label="Back to project library">&#8592; Library</a>
+      <span class="v2-toolbar-sep">·</span>
+      <span class="v2-toolbar-name">{{ project_name }}</span>
+      {% if project_type %}
+        <span class="v2-toolbar-sep">·</span>
+        <span class="v2-toolbar-badge v2-toolbar-type">{{ project_type }}</span>
+      {% endif %}
+      <span class="v2-toolbar-sep">·</span>
+      {% if not project_editable %}
+        <span class="v2-toolbar-badge v2-toolbar-ref-badge">Reference</span>
+      {% else %}
+        <span class="v2-toolbar-badge v2-toolbar-wc-badge">Working Copy</span>
+      {% endif %}
+      <span class="v2-toolbar-sep">·</span>
+      <a class="v2-toolbar-scenario-link" href="{{ scenario_url }}">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></a>
+    </div>
+    <div class="v2-toolbar-runtime" id="v2-toolbar-runtime-state">
+      {% include "partials/_v2_toolbar_state.html" %}
+    </div>
+    <div class="v2-toolbar-run" id="v2-run-controls">
+      {% include "partials/_v2_run_controls.html" %}
+    </div>
+  </div>
+
+  {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
+  <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">
+    <span class="fc-value-bar-addr" id="fc-value-bar-addr" aria-label="Cell address"></span>
+    <span class="fc-value-bar-sep" aria-hidden="true">›</span>
+    <span class="fc-value-bar-value" id="fc-value-bar-value" aria-label="Cell value"></span>
+  </div>
+
+  {# ── Sheet tab navigation ──────────────────────────────────────────── #}
+  <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
+    {# ANALYSIS group #}
+    <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
+    <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-scenarios"      id="tab-scenarios">Scenarios</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"        id="tab-compare">Compare</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-sensitivity"    id="tab-sensitivity">Sensitivity</button>
+    {# SETUP group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Setup</span>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
+    {# OPERATIONS group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Operations</span>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-revenue"         id="tab-revenue">Revenue</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-capex"           id="tab-capex">CAPEX</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-opex"            id="tab-opex">OPEX</button>
+    {# FINANCING group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Financing</span>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-debt"            id="tab-debt">Senior Debt</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-tax"             id="tab-tax">Tax</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
+  </nav>
+
+  {# ── Status banner — OOB-swappable ────────────────────────────────── #}
+  <div id="v2-status-banner">
+    {% include "partials/_v2_status_banner.html" %}
+  </div>
+
+  {# ── Sheet panels ─────────────────────────────────────────────────── #}
+  <div id="v2-workbook-shell"
+       data-project="{{ project_code }}"
+       data-workbook-version="{{ workbook_version }}"
+       data-content-hash="{{ content_hash }}"
+       data-template-source="{{ template_source }}">
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_overview.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-scenarios" aria-labelledby="tab-scenarios" hidden>
+      <div class="v2-sheet-body">
+        {% with active_scenario_id=active_scenario_id %}
+          {% include "partials/sheet_scenarios.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-compare" aria-labelledby="tab-compare" hidden>
+      <div class="v2-sheet-body">
+        {% with all_scenarios=scenarios, selected_scenarios=[], selected_ids=[], projections=[], compare_rows=[] %}
+          {% include "partials/sheet_compare.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-sensitivity" aria-labelledby="tab-sensitivity" hidden>
+      <div class="v2-sheet-body">
+        {% with active_scenario_id=active_scenario_id %}
+          {% include "partials/sheet_sensitivity.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-project-setup" aria-labelledby="tab-project-setup" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_project_setup.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-inputs" aria-labelledby="tab-inputs" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_inputs.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-revenue" aria-labelledby="tab-revenue" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_revenue.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-capex" aria-labelledby="tab-capex" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_capex.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-opex" aria-labelledby="tab-opex" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_opex.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-debt" aria-labelledby="tab-debt" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_senior_debt.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-tax" aria-labelledby="tab-tax" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_tax.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-fs" aria-labelledby="tab-fs" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_financial_statements.html" %}
+      </div>
+    </div>
+
+  </div>{# v2-workbook-shell #}
+
+  <script src="/static/js/workbook_v2.js"></script>
+
+  {# UI-2A: C1 spreadsheet interaction foundation — load order is fixed.
+     swap-lifecycle loads before focus-manager so authoritative post-
+     HTMX active-cell restoration is resolved before focus is applied. #}
+  <script src="/static/interaction/grid-registry.js"></script>
+  <script src="/static/interaction/engine.js"></script>
+  <script src="/static/interaction/active-cell.js"></script>
+  <script src="/static/interaction/swap-lifecycle.js"></script>
+  <script src="/static/interaction/focus-manager.js"></script>
+  <script src="/static/interaction/keyboard-router.js"></script>
+  <script src="/static/interaction/selection-manager.js"></script>
+
+  {# UI-2B: Advanced spreadsheet interaction — load after UI-2A foundation. #}
+  {# UI-3A: Overview decision dashboard charts — load after UI-2A/2B foundation. #}
+  <script src="/static/interaction/overview-charts.js"></script>
+  <script src="/static/interaction/clipboard-manager.js"></script>
+  <script src="/static/interaction/fill-manager.js"></script>
+  <script src="/static/interaction/undo-manager.js"></script>
+  <script src="/static/interaction/type-to-edit.js"></script>
+  <script src="/static/interaction/value-bar.js"></script>
+  <script src="/static/interaction/column-resizer.js"></script>
+</body>
+</html>

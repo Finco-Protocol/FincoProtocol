@@ -1,0 +1,272 @@
+<!-- Project Selector — Phase 21 + Phase 56E: sidebar shows active project.
+     Phase 56E simplifies the visual hierarchy:
+     - Project name is the primary label (largest, top).
+     - Technology badge + active scenario are compact metadata.
+     - Project code / slug is hidden by default; available via "Details" toggle.
+     - Project origin (template-based / user-created / saved baseline) is
+       shown as a small pill to disambiguate example-project vs. user work.
+     - "Switch" and "New project" actions are product-clear (no debug icons).
+-->
+<div class="project-selector" id="project-selector">
+
+  <!-- Active project (always shown) -->
+  {% if project_record %}
+  <div class="ps-active-project">
+    <div class="ps-ap-name">{{ project_record.project_name }}</div>
+    <div class="ps-ap-meta-row">
+      {% if project_record.project_type %}
+      <span class="ps-ap-badge {% if project_record.project_type == 'Wind' %}ps-badge--wind{% else %}ps-badge--solar{% endif %}">
+        {{ project_record.project_type }}
+      </span>
+      {% endif %}
+      {# Phase 56E: project origin pill (factory template / user created / saved baseline) #}
+      {% if project_record.project_origin == 'factory_template' %}
+      <span class="ps-ap-origin ps-ap-origin--factory">Example Project</span>
+      {% elif project_record.project_origin == 'user_created' %}
+      <span class="ps-ap-origin ps-ap-origin--user">My project</span>
+      {# P1-UX-FIX-1: Working Copy badge for user-created projects
+         that were created from a reference template (Generic Wind Reference / Generic Solar Reference
+         / Generic). Signals at-a-glance that this is a copy, not the
+         original. Visible only when source_project_template is set,
+         which the working-copy flow always populates. #}
+      {% if project_record.source_project_template or project_record.template_source %}
+        {% set _src = (project_record.template_source or project_record.source_project_template or '').strip().lower() %}
+        {% if _src in ('generic_wind_reference', 'generic_solar_reference', 'generic_storage_reference', 'generic_solar', 'generic_wind', 'generic_storage') %}
+        <span class="ps-ap-origin ps-ap-origin--wc"
+              data-p1uxfix1-component="working-copy-badge"
+              title="Editable copy of the {{ _src|upper }} reference template">
+          Working Copy
+        </span>
+        {% endif %}
+      {% endif %}
+      {% elif project_record.project_origin == 'saved_baseline' %}
+      <span class="ps-ap-origin ps-ap-origin--baseline">Example Project</span>
+      {% endif %}
+    </div>
+    {% if workspace_state and workspace_state.active_scenario_name %}
+    <div class="ps-ap-scenario">
+      <span class="ps-ap-scenario-dot"></span>
+      <span class="ps-ap-scenario-label">Scenario</span>
+      {{ workspace_state.active_scenario_name }}
+    </div>
+    {% endif %}
+    {# Phase 56E: project code / slug is hidden by default and only revealed
+       via a "Details" disclosure. We always render it in the DOM (hidden)
+       so the test suite can find it, but it is not the primary visible
+       label. #}
+    <details class="ps-ap-details">
+      <summary class="ps-ap-details-summary">Details</summary>
+      <div class="ps-ap-details-body">
+        <span class="ps-ap-details-label">Project code</span>
+        <code class="ps-ap-details-code">{{ project_record.project_code }}</code>
+      </div>
+    </details>
+  </div>
+  {% elif project_ctx %}
+  <div class="ps-active-project">
+    <div class="ps-ap-name">{{ project_ctx.name }}</div>
+    <details class="ps-ap-details">
+      <summary class="ps-ap-details-summary">Details</summary>
+      <div class="ps-ap-details-body">
+        <span class="ps-ap-details-label">Project code</span>
+        <code class="ps-ap-details-code">{{ project_ctx.id }}</code>
+      </div>
+    </details>
+  </div>
+  {% else %}
+  <div class="ps-active-project ps-active-project--empty">
+    <div class="ps-ap-name">No project selected</div>
+    <div class="ps-ap-empty-hint">Choose an existing project or create a new one.</div>
+  </div>
+  {% endif %}
+
+  <!-- State badges -->
+  <div class="ps-state-badges">
+    {% if workspace_state %}
+      {% if workspace_state.dirty %}
+      <span class="badge badge-warn">Unsaved</span>
+      {% else %}
+      <span class="badge badge-pass">Saved</span>
+      {% endif %}
+    {% endif %}
+    {% if runtime_summary and runtime_summary.active_scenario_name %}
+      <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
+    {% endif %}
+  </div>
+
+  <!-- Quick actions -->
+  <div class="ps-quick-actions">
+    <a class="ps-action-btn"
+       id="btn-project-home"
+       href="/projects/browse">
+      <span class="ps-action-icon" aria-hidden="true">⌂</span>
+      <span class="ps-action-label">Projects</span>
+    </a>
+    <button class="ps-action-btn ps-action-btn--primary"
+            id="btn-new-project"
+            type="button"
+            onclick="showNewProjectPanel()"
+            hx-get="/projects/new/minimal"
+            hx-target="#panel-new-project"
+            hx-swap="innerHTML">
+      <span class="ps-action-icon" aria-hidden="true">+</span>
+      <span class="ps-action-label">New project</span>
+    </button>
+  </div>
+
+  {# WF-3: Two labelled sidebar nav groups #}
+  {% if user_project_records %}
+  <div class="ps-nav-group" id="ps-nav-my-projects">
+    <div class="ps-nav-group-label">Recent projects</div>
+    {% for item in user_project_records %}
+    <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
+       href="/?project={{ item.project_code }}">
+      {{ item.label }}
+      {% if 'Copy' in (item.meta or '') %}
+        <span style="font-size:.65rem;opacity:.7;margin-left:.25rem;">copy</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if factory_template_projects %}
+  <div class="ps-nav-group" id="ps-nav-reference-projects">
+    <div class="ps-nav-group-label">Example Projects</div>
+    {% for item in factory_template_projects %}
+    <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
+       href="/?project={{ item.project_code }}">
+      {{ item.label }}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Project Library: bounded recent list — always offer the full library link #}
+  <div class="ps-nav-group" id="ps-nav-library-link" style="padding:.5rem .75rem;">
+    <a href="/library"
+       data-testid="view-all-projects-link"
+       style="font-size:.75rem;color:var(--sidebar-link-color,#9ca3af);text-decoration:none;display:flex;align-items:center;gap:.35rem;">
+      <span aria-hidden="true">☰</span> View all projects
+    </a>
+  </div>
+
+</div>
+
+<!-- Project Browser — rendered in main area, triggered by Switch project -->
+<div id="project-browser-container"></div>
+
+<style>
+/* ── Active project card ─────────────────────────────────────────────────── */
+.ps-active-project {
+  padding: 0.75rem 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.ps-ap-type { margin-bottom: 0.25rem; }
+.ps-ap-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 100px;
+  text-transform: uppercase;
+}
+.ps-badge--wind { background: rgba(0,112,200,0.25); color: #5fa8ff; }
+.ps-badge--solar { background: rgba(255,183,0,0.2); color: #ffd060; }
+
+.ps-ap-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+  margin-bottom: 0.2rem;
+}
+
+.ps-ap-scenario {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--sidebar-muted);
+  margin-bottom: 0.15rem;
+}
+.ps-ap-scenario-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sidebar-active);
+  flex-shrink: 0;
+}
+
+.ps-ap-meta {
+  font-size: 0.62rem;
+  color: var(--sidebar-muted);
+}
+
+.ps-active-project--empty .ps-ap-name {
+  color: var(--sidebar-muted);
+  font-weight: 500;
+}
+
+/* ── State badges row ────────────────────────────────────────────────────── */
+.ps-state-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+/* ── Quick action buttons ─────────────────────────────────────────────────── */
+.ps-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.ps-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--sidebar-text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  text-align: left;
+}
+.ps-action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+}
+.ps-action-btn:active {
+  background: rgba(255,255,255,0.05);
+}
+.ps-action-icon {
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+</style>
+
+<script>
+  function openProjectBrowser() {
+    // htmx loads /projects/browse into #project-browser-container
+    // Container is shown/hidden via CSS class
+  }
+
+  function closeProjectBrowser() {
+    var el = document.getElementById('project-browser-container');
+    if (el) el.innerHTML = '';
+  }
+
+  function switchToProject(projectCode) {
+    window.location.href = '/?project=' + projectCode;
+  }
+</script>

@@ -1,0 +1,30 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — REPORTING DASHBOARD WRAPPER — IC PACK  ·  UI-6
+  -----------------------------------------------------------------------
+  Renders the V4-5 Part B `ic_pack.html` inside the institutional
+  reporting dashboard chrome. No engine / report calculation change.
+  =======================================================================
+-->
+<section class="fo-reporting-dashboard" data-fo-reporting-pack="ic">
+  <header class="fo-reporting-dashboard__header">
+    <div>
+      <h1 class="fo-reporting-dashboard__title">Investment Committee Pack</h1>
+      <p class="fo-reporting-dashboard__subtitle">Detailed IC-facing pack — risks, sensitivities, returns.</p>
+    </div>
+    <div class="fo-statements-toolbar">
+      <div class="fo-statements-toolbar__group" style="margin-left:auto;">
+        <button type="button" class="fo-statements-toolbar__btn"
+                onclick="window.print()"
+                aria-label="Print IC pack">🖶 Print</button>
+        <button type="button" class="fo-statements-toolbar__btn"
+                data-fo-pack-export
+                aria-label="Export IC pack">⬇ Export</button>
+      </div>
+    </div>
+  </header>
+
+  <article class="fo-reporting-dashboard__card" style="grid-column: 1 / -1;">
+    {% include "partials/ic_pack.html" %}
+  </article>
+</section>

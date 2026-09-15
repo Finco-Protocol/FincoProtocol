@@ -1,0 +1,20 @@
+{#
+  Senior Debt runtime state bar fragment.
+  Included inside #debt-runtime-bar in sheet_senior_debt.html.
+  Also rendered standalone for OOB HTMX updates from other sheets.
+
+  Context: debt_state  (str)
+    NOT_RUN     — no RuntimeResult at all
+    CLEAN       — rr + debt payload + workspace clean
+    STALE       — rr + debt payload + workspace dirty
+    UNAVAILABLE — run completed but no debt schedule persisted
+#}
+{% if debt_state == "NOT_RUN" %}
+  <span class="v2-field-empty" data-testid="debt-runtime-state-a">Not run</span>
+{% elif debt_state == "CLEAN" %}
+  <span class="v2-runtime-clean" data-testid="debt-runtime-state-b">Outputs current</span>
+{% elif debt_state == "STALE" %}
+  <span class="v2-runtime-dirty" data-testid="debt-runtime-state-c">Run required</span>
+{% elif debt_state == "UNAVAILABLE" %}
+  <span class="v2-runtime-mono" data-testid="debt-runtime-state-d">Output unavailable</span>
+{% endif %}

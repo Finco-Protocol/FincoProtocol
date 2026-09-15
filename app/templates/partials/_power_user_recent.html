@@ -1,0 +1,24 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — POWER USER — RECENTLY EDITED  ·  UI-7 PART D
+  -----------------------------------------------------------------------
+  Renders the recent activity strip. The actual list is populated by
+  the JS in _power_user_init.html (sessionStorage-backed; no
+  persistence change).
+  =======================================================================
+-->
+<aside class="fo-power-recent"
+       data-fo-power-recent
+       aria-label="Recently edited items">
+  <div class="fo-power-recent__title">
+    <span>Recently edited</span>
+    <button type="button"
+            class="fo-power-recent__clear"
+            data-fo-power-recent-clear
+            aria-label="Clear recent items">Clear</button>
+  </div>
+  <ul class="fo-power-recent__list" data-fo-power-recent-list>
+    {# Populated at runtime by the JS. #}
+    <li class="fo-power-recent__empty">No recent activity yet.</li>
+  </ul>
+</aside>

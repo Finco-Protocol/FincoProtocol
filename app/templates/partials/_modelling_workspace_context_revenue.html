@@ -1,0 +1,81 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — REVENUE CONTEXT  ·  UI-5
+  -----------------------------------------------------------------------
+  Right-side context panel for the Revenue sheet. Reads from
+  `project_ctx` only — never invents new calculations.
+  =======================================================================
+-->
+{% set _tariff = project_ctx.ppa_tariff_eur_mwh %}
+{% set _index = project_ctx.ppa_index_pct * 100 %}
+{% set _term = project_ctx.ppa_term_years %}
+{% set _co2_on = project_ctx.co2_enabled %}
+{% set _co2_px = project_ctx.co2_price_eur_mwh %}
+{% set _cap = project_ctx.capacity_mw %}
+{% set _hrs = project_ctx.operating_hours_p50 %}
+{% set _avail = project_ctx.plant_availability * 100 %}
+
+{% set _y1_ppa_k = (_tariff or 0) * (_hrs or 0) * (_cap or 0) * (project_ctx.plant_availability or 0) %}
+{% set _y1_co2_k = (_co2_px or 0) * (_hrs or 0) * (_cap or 0) * (project_ctx.plant_availability or 0) if _co2_on else 0 %}
+
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="Revenue context" data-fo-context-sheet="revenue">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
+  <dl class="fo-modelling-workspace__context-list">
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">PPA Tariff</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.2f}".format(_tariff or 0) }} EUR/MWh
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Base tariff, escalated {{ "{:,.1f}".format(_index or 0) }}%/yr for {{ _term or 0 }} years
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Y1 PPA Revenue (est.)</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_y1_ppa_k) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Tariff × Hours × Capacity × Availability
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Merchant exposure</dt>
+      <dd class="{% if _co2_on %}fo-modelling-workspace__context-value{% else %}fo-modelling-workspace__context-value fo-modelling-workspace__context-value--placeholder{% endif %}">
+        {% if _co2_on %}
+          {{ "{:,.0f}".format(_y1_co2_k) }} kEUR (CO2)
+        {% else %}
+          None
+        {% endif %}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        {% if _co2_on %}
+          CO2 at {{ "{:,.3f}".format(_co2_px or 0) }} EUR/MWh
+        {% else %}
+          CO2 not enabled on this project
+        {% endif %}
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Curtailment</dt>
+      <dd class="fo-modelling-workspace__context-value fo-modelling-workspace__context-value--placeholder">
+        Not modelled
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Curtailment is captured via availability
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Plant availability</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.1f}".format(_avail or 0) }}%
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        {{ "{:,.0f}".format(_cap or 0) }} MW × {{ "{:,.0f}".format(_hrs or 0) }} h/yr (P50)
+      </p>
+    </div>
+  </dl>
+</aside>

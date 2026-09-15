@@ -1,0 +1,177 @@
+<!-- Scenario Workspace — Phase 21 v2: project-level status only, no scenario management UI
+     Scenario management moved to Scenarios tab.
+     This partial is included inside the outer #saved-scenario-panel div in base.html. -->
+<div class="scenario-workspace" data-project-code="{{ project_record.project_code if project_record else '' }}">
+
+  {# ── Phase 25B-4 — Dirty-state visual bar (saved / unsaved / stale) ── #}
+  {% if dirty_state_ui and dirty_state_ui.badge %}
+  <div class="workspace-dirty-state-bar" data-dirty-state="{{ dirty_state_ui.badge.state }}">
+    <span class="workspace-dirty-state-bar__title">Save state</span>
+    <span class="ds-badge {{ dirty_state_ui.badge.css_class }}"
+          title="{{ dirty_state_ui.badge.label }}">
+      <span class="ds-badge__icon" aria-hidden="true">{{ dirty_state_ui.badge.icon }}</span>
+      <span class="ds-badge__label">{{ dirty_state_ui.badge.label }}</span>
+    </span>
+    {# Run-disabled warning (only when stale) #}
+    {% if dirty_state_ui.run_warning %}
+    <span class="ds-run-warning {{ dirty_state_ui.run_warning.css_class }}"
+          title="{{ dirty_state_ui.run_warning.body }}">
+      <span class="ds-run-warning__icon" aria-hidden="true">{{ dirty_state_ui.run_warning.icon }}</span>
+      <span class="ds-run-warning__label">{{ dirty_state_ui.run_warning.label }}</span>
+    </span>
+    {% endif %}
+  </div>
+  {# "Changes not yet saved" notice (or factory notice) #}
+  {% if dirty_state_ui.notice %}
+  <div class="ds-notice {{ dirty_state_ui.notice.css_class }}" role="status" aria-live="polite">
+    <span class="ds-notice__icon" aria-hidden="true">{{ dirty_state_ui.notice.icon }}</span>
+    <div class="ds-notice__body">
+      <div class="ds-notice__title">{{ dirty_state_ui.notice.title }}</div>
+      <div class="ds-notice__text">{{ dirty_state_ui.notice.body }}</div>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- Active scenario / workspace state (sidebar-level, compact) -->
+  <div class="ps-section">
+    <div class="ps-section-label">Active Scenario</div>
+    <div class="ps-saved-item">
+      <div class="ps-saved-main">
+        <div class="ps-saved-title" id="workspace-active-scenario-name">
+          {{ workspace_state.active_scenario_name or "Base" }}
+        </div>
+        <div class="ps-saved-meta">
+          {% if workspace_state.dirty %}
+          <span class="badge badge-warn">Unsaved</span>
+          {% else %}
+          <span class="badge badge-pass">Saved</span>
+          {% endif %}
+          {% if workspace_state.updated_at %}
+            · {{ workspace_state.updated_at.strftime("%H:%M") }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if workspace_message %}
+  <div class="scenario-message" style="padding:0.5rem;font-size:0.72rem;color:var(--sidebar-muted);">
+    {{ workspace_message }}
+  </div>
+  {% endif %}
+
+  <!-- Phase 25B-6: Generic Project Review Pack (read-only) -->
+  {% if project_review_ui %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% import "partials/project_review_card.html" as rev %}
+    {{ rev.project_review_card(project_review_ui) }}
+  </div>
+  {% endif %}
+
+  <!-- Phase 33: Scenario Version History — lightweight version list + draft/saved/runtime explainer -->
+  {% if is_user_project %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_version_history.html" %}
+  </div>
+  {% endif %}
+
+  <!-- Phase 25B-2.1: Multi-Compare Picker (selection entry point) — user projects only -->
+  {% if is_user_project and not (multi_compare_result or multi_compare_error) %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_multi_compare_picker.html" %}
+  </div>
+  {% endif %}
+
+  <!-- Phase 25B-2: Multi-scenario compare (2-4 scenarios) -->
+  {% if multi_compare_result or multi_compare_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_compare_multi.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-2 Part B: Input Difference Viewer -->
+  {% if input_diff_result or input_diff_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_input_diff.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-2 Part D: FS Compare -->
+  {% if fs_compare_result or fs_compare_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/_reporting_dashboard_fs_compare.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-3: Sensitivity & Tornado -->
+  {% if sensitivity_result or sensitivity_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_sensitivity.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part A: Lender Case -->
+  {% if lender_case_result or lender_case_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/_reporting_dashboard_lender.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part B: Covenant Dashboard -->
+  {% if covenant_periods or covenant_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/covenant_dashboard.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part D: Covenant Timeline -->
+  {% if covenant_periods or covenant_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/covenant_timeline.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part C: Credit Summary -->
+  {% if credit_summary or credit_summary_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/credit_summary.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-5 Part A: Executive Summary -->
+  {% if exec_summary or exec_summary_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/_reporting_dashboard_exec.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-5 Part B: IC Pack -->
+  {% if ic_pack or ic_pack_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/_reporting_dashboard_ic.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-5 Part C: Credit Pack -->
+  {% if credit_pack or credit_pack_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/_reporting_dashboard_credit.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-7 Part C: BESS Revenue Breakdown -->
+  {% if bess_revenue or bess_revenue_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/bess_revenue_breakdown.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-7 Part D: BESS Asset Dashboard -->
+  {% if bess_asset or bess_asset_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/bess_asset_dashboard.html" %}
+  </div>
+  {% endif %}
+
+</div>

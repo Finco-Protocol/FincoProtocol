@@ -1,0 +1,71 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — OPEX CONTEXT  ·  UI-5
+  -----------------------------------------------------------------------
+  Right-side context panel for the OPEX sheet. Reads from
+  `project_ctx` only — never invents new calculations.
+  =======================================================================
+-->
+{% set _opex_y1 = project_ctx.opex_y1_total_keur %}
+{% set _inflation = project_ctx.opex_inflation_pct|default(0) * 100 %}
+{% set _escalation = project_ctx.opex_escalation_pct|default(0) * 100 %}
+{% set _horizon = project_ctx.horizon_years|default(0) %}
+{% set _capacity = project_ctx.capacity_mw %}
+
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="OPEX context" data-fo-context-sheet="opex">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
+  <dl class="fo-modelling-workspace__context-list">
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Total OPEX (Y1)</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_opex_y1 or 0) }} kEUR
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Computed by opex_engine — see runtime summary
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Unit OPEX</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {% if _capacity and _capacity > 0 %}
+          {{ "{:,.1f}".format((_opex_y1 or 0) * 1000 / (_capacity * 1000)) }} kEUR/MW
+        {% else %}
+          —
+        {% endif %}
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Y1 OPEX ÷ installed capacity
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Inflation</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.2f}".format(_inflation or 0) }}%/yr
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        General inflation assumption
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Escalation</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.2f}".format(_escalation or 0) }}%/yr
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Real OPEX escalation
+      </p>
+    </div>
+    <div class="fo-modelling-workspace__context-row">
+      <dt class="fo-modelling-workspace__context-label">Lifetime</dt>
+      <dd class="fo-modelling-workspace__context-value">
+        {{ "{:,.0f}".format(_horizon or 0) }} years
+      </dd>
+      <p class="fo-modelling-workspace__context-hint">
+        Project horizon — used for NPV computation
+      </p>
+    </div>
+  </dl>
+</aside>

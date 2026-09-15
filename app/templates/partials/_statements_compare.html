@@ -1,0 +1,45 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — STATEMENTS COMPARE  ·  UI-6 PART F
+  -----------------------------------------------------------------------
+  Financial Statement Compare layout. Sticky header, scenario A / B /
+  delta columns, direction colouring (up / down / flat), expandable
+  row support, accessible table semantics.
+
+  Caller passes:
+    _scenario_a      label for scenario A
+    _scenario_b      label for scenario B
+    _rows            list of dicts:
+                      {label, a, b, delta?, level?: subtotal|total|row,
+                       expandable?: {body}}
+  =======================================================================
+-->
+<section class="fo-statements-compare"
+         data-fo-statements-compare
+         aria-label="Financial statement compare">
+  {# Direction colouring is applied via these classes (declared in
+     statements-reporting.css):
+       - fo-statements-compare__delta--up
+       - fo-statements-compare__delta--down
+       - fo-statements-compare__delta--flat #}
+  <header class="fo-statements-compare__header">
+    <div>Line item</div>
+    <div class="fo-statements-compare__header--scenario-a">{{ _scenario_a }}</div>
+    <div class="fo-statements-compare__header--scenario-b">{{ _scenario_b }}</div>
+    <div>Delta</div>
+  </header>
+  {% for row in _rows %}
+  <div class="fo-statements-compare__row
+              {% if row.level == 'subtotal' %}fo-statements-compare__row--subtotal{% endif %}
+              {% if row.level == 'total' %}fo-statements-compare__row--total{% endif %}">
+    <div>{{ row.label }}</div>
+    <div>{{ row.a }}</div>
+    <div>{{ row.b }}</div>
+    {% set _d = row.delta if row.delta is defined else (row.b - row.a) %}
+    {% set _dir = "up" if _d > 0 else ("down" if _d < 0 else "flat") %}
+    <div class="fo-statements-compare__delta fo-statements-compare__delta--{{ _dir }}">
+      {% if _d > 0 %}+{% endif %}{{ "{:,.1f}".format(_d) }}
+    </div>
+  </div>
+  {% endfor %}
+</section>

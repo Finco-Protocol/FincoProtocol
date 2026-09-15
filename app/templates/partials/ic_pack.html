@@ -1,0 +1,285 @@
+{# ── V4-5 Part B — Investment Committee Pack ──────────────────────────────── #}
+{# Structured multi-section IC report. Sourced from canonical engine only.   #}
+<div class="rp-ic" data-testid="ic-pack">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">IC Pack</span>
+    <span class="scm-multi-heading-label">Investment Committee Pack</span>
+  </div>
+
+  {% if ic_pack_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">IC Pack Unavailable</div>
+        <div class="ps-history-meta">{{ ic_pack_error }}</div>
+      </div>
+    </div>
+  {% elif ic_pack %}
+    {% set ic = ic_pack %}
+    {% set es = ic['exec_summary'] %}
+
+    {# Branding strip #}
+    <div class="rp-brand-header">
+      <div class="rp-brand-logo">FINCO Protocol</div>
+      <div class="rp-brand-meta">
+        IC Pack &nbsp;·&nbsp; {{ es['report_date'] }} &nbsp;·&nbsp;
+        Engine {{ es['engine_version'] }} &nbsp;·&nbsp; {{ es['model_version'] }}
+      </div>
+    </div>
+
+    {# ── Section 1: Executive Summary ── #}
+    <div class="rp-section" id="ic-exec">
+      <div class="rp-section-title">1. Executive Summary</div>
+      <div class="rp-rag-strip">
+        {% for key, label in [('rag_financial','Financial'),('rag_debt','Debt'),('rag_tax','Tax'),('rag_covenants','Covenants')] %}
+          <div class="rp-rag-item rp-rag-item--{{ es[key] }}">
+            <span class="rp-rag-dot"></span>
+            <span class="rp-rag-label">{{ label }}</span>
+            <span class="rp-rag-status">{{ es[key].upper() }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <div class="rp-two-col">
+        <div>
+          <div class="rp-kv-group-title">Project</div>
+          {% for label, val in [
+            ('Name', es['project_name']),
+            ('Company', es['company']),
+            ('Technology', es['technology']),
+            ('Country', es['country']),
+            ('COD', es['cod_date']),
+            ('Capacity', es['capacity_mw']|string + ' MW'),
+            ('Horizon', es['horizon_years']|string + ' yrs'),
+          ] %}
+            <div class="rp-kv-row"><span class="rp-kv-label">{{ label }}</span><span class="rp-kv-val">{{ val }}</span></div>
+          {% endfor %}
+        </div>
+        <div>
+          <div class="rp-kv-group-title">Returns</div>
+          {% set ret_rows = [
+            ('Project IRR', es['project_irr'], 'pct'),
+            ('Equity IRR',  es['equity_irr'],  'pct'),
+            ('NPV',         es['equity_npv'],  'keur'),
+            ('Payback',     es['payback_years'], 'yrs_f'),
+            ('Distributions', es['total_distribution_keur'], 'keur'),
+          ] %}
+          {% for label, val, fmt in ret_rows %}
+            <div class="rp-kv-row">
+              <span class="rp-kv-label">{{ label }}</span>
+              <span class="rp-kv-val">{{ _fmt_kpi(val, fmt) }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Section 2: Scenario Overview ── #}
+    <div class="rp-section" id="ic-scenario">
+      <div class="rp-section-title">2. Scenario Overview</div>
+      <div class="rp-scenario-banner">
+        Scenario: <strong>{{ ic['scenario_name'] }}</strong> &nbsp;·&nbsp;
+        Generated: {{ ic['report_date'] }}
+      </div>
+      <div class="rp-two-col">
+        <div>
+          <div class="rp-kv-group-title">Capital Structure</div>
+          {% for label, val, unit in [
+            ('Total CAPEX',  es['total_capex_keur'],       'kEUR'),
+            ('Senior Debt',  es['debt_keur'],              'kEUR'),
+            ('Equity',       es['equity_keur'],            'kEUR'),
+            ('Gearing',      es['gearing_pct'],            '%'),
+            ('Senior Tenor', es['senior_tenor_years'],     'yrs'),
+          ] %}
+            <div class="rp-kv-row">
+              <span class="rp-kv-label">{{ label }}</span>
+              <span class="rp-kv-val">
+                {% if val is number %}
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }} kEUR
+                  {% elif unit == '%' %}{{ "%.1f"|format(val) }}%
+                  {% else %}{{ val }}{% if unit %} {{ unit }}{% endif %}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+        <div>
+          <div class="rp-kv-group-title">Key Assumptions</div>
+          {% for a in ic['assumptions'] %}
+            <div class="rp-kv-row">
+              <span class="rp-kv-label">{{ a['label'] }}</span>
+              <span class="rp-kv-val">{{ a['value'] }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Section 3: Key Risks ── #}
+    <div class="rp-section" id="ic-risks">
+      <div class="rp-section-title">3. Key Risks</div>
+      <div class="rp-risk-table">
+        <div class="rp-risk-row rp-risk-row--head">
+          <span>Risk</span><span>Severity</span><span>Note</span>
+        </div>
+        {% for r in ic['risks'] %}
+          <div class="rp-risk-row rp-risk-sev--{{ r['severity'] }}">
+            <span class="rp-risk-label">{{ r['risk'] }}</span>
+            <span class="rp-risk-sev-badge rp-sev--{{ r['severity'] }}">{{ r['severity'].upper() }}</span>
+            <span class="rp-risk-note">{{ r['note'] }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Section 4: Financial KPIs ── #}
+    <div class="rp-section" id="ic-kpis">
+      <div class="rp-section-title">4. Financial KPIs</div>
+      <div class="rp-kpi-table">
+        {% set kpi_rows = [
+          ('Project IRR',        es['project_irr'],             'pct'),
+          ('Equity IRR',         es['equity_irr'],              'pct'),
+          ('Equity NPV',         es['equity_npv'],              'keur'),
+          ('Payback',            es['payback_years'],           'yrs_f'),
+          ('Min DSCR',           es['min_dscr'],                'x'),
+          ('Avg DSCR',           es['avg_dscr'],                'x'),
+          ('Min LLCR',           es['min_llcr'],                'x'),
+          ('Min PLCR',           es['min_plcr'],                'x'),
+          ('Total Revenue',      es['total_revenue_keur'],      'keur'),
+          ('Total EBITDA',       es['total_ebitda_keur'],       'keur'),
+          ('Total Distributions',es['total_distribution_keur'],'keur'),
+          ('Total Tax',          es['total_tax_keur'],          'keur'),
+          ('Total Senior DS',    es['total_senior_ds_keur'],    'keur'),
+          ('Lock-up Periods',    es['periods_in_lockup'],       ''),
+        ] %}
+        {% for label, val, fmt in kpi_rows %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ label }}</span>
+            <span class="rp-kpi-tval">
+              {% if fmt == 'pct' %}{{ "%.2f%%"|format(val * 100) if val is not none else '—' }}
+              {% elif fmt == 'keur' %}{{ "{:,.0f} kEUR".format(val) if val is not none else '—' }}
+              {% elif fmt == 'x' %}{{ "%.4fx"|format(val) if val is not none else '—' }}
+              {% elif fmt == 'yrs_f' %}{{ "%.1f yrs"|format(val) if val is not none else '—' }}
+              {% else %}{{ val if val is not none else '—' }}{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Section 5: Sensitivity Summary ── #}
+    {% if ic['sens_headline'] %}
+    <div class="rp-section" id="ic-sensitivity">
+      <div class="rp-section-title">5. Sensitivity Summary</div>
+      <div class="scm-diff-section-label">Top shocks by Equity IRR impact</div>
+      <div class="rp-kpi-table">
+        <div class="rp-kpi-trow rp-kpi-trow--head">
+          <span>Shock</span><span>Level</span><span>Equity IRR Delta</span>
+        </div>
+        {% for row in ic['sens_headline'] %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ row['label'] }}</span>
+            <span class="rp-kpi-tval">{{ "{:+.0f}%".format(row['level']) }}</span>
+            <span class="rp-kpi-tval {{ 'scm-delta--bad' if row['delta'] < 0 else 'scm-delta--good' }}">
+              {{ "{:+.2f}pp".format(row['delta'] * 100) }}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Section 6: Debt Summary ── #}
+    <div class="rp-section" id="ic-debt">
+      <div class="rp-section-title">{{ '6' if ic['sens_headline'] else '5' }}. Debt Summary</div>
+      {% set ds = ic['debt_summary'] %}
+      <div class="rp-kpi-table">
+        {% for label, val, fmt in [
+          ('Senior Debt',    ds['debt_keur'],           'keur'),
+          ('Senior Tenor',   ds['senior_tenor_years'],  'yrs'),
+          ('Total Senior DS',ds['total_senior_ds_keur'],'keur'),
+          ('Min DSCR',       ds['min_dscr'],            'x'),
+          ('Avg DSCR',       ds['avg_dscr'],            'x'),
+          ('Min LLCR',       ds['min_llcr'],            'x'),
+          ('Min PLCR',       ds['min_plcr'],            'x'),
+          ('Lock-up Periods',ds['periods_in_lockup'],   ''),
+        ] %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ label }}</span>
+            <span class="rp-kpi-tval">
+              {% if fmt == 'keur' %}{{ "{:,.0f} kEUR".format(val) if val is not none else '—' }}
+              {% elif fmt == 'x' %}{{ "%.4fx"|format(val) if val is not none else '—' }}
+              {% else %}{{ val if val is not none else '—' }}{% if fmt == 'yrs' and val is not none %} yrs{% endif %}{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Section 7: Distribution Summary ── #}
+    <div class="rp-section" id="ic-distributions">
+      <div class="rp-section-title">{{ '7' if ic['sens_headline'] else '6' }}. Distribution Summary</div>
+      {% set ds = ic['dist_summary'] %}
+      <div class="rp-kv-row" style="margin-bottom:0.4rem;">
+        <span class="rp-kv-label">Total Distributions</span>
+        <span class="rp-kv-val"><strong>{{ "{:,.0f}".format(ds['total_keur']) }} kEUR</strong></span>
+      </div>
+      {% if ds['annual'] %}
+        <div style="overflow-x:auto;">
+          <table class="rp-dist-table">
+            <thead>
+              <tr><th>Year</th><th>Distribution (kEUR)</th><th>Cumulative (kEUR)</th></tr>
+            </thead>
+            <tbody>
+              {% set ns = namespace(cum=0) %}
+              {% for yr, dist in ds['annual'] %}
+                {% set ns.cum = ns.cum + dist %}
+                <tr>
+                  <td>{{ yr }}</td>
+                  <td class="rp-num">{{ "{:,.1f}".format(dist) }}</td>
+                  <td class="rp-num">{{ "{:,.1f}".format(ns.cum) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+
+    {# ── Section 8: Key Assumptions ── #}
+    <div class="rp-section" id="ic-assumptions">
+      <div class="rp-section-title">{{ '8' if ic['sens_headline'] else '7' }}. Key Assumptions</div>
+      <div class="rp-kpi-table">
+        {% for a in ic['assumptions'] %}
+          <div class="rp-kpi-trow">
+            <span class="rp-kpi-tlabel">{{ a['label'] }}</span>
+            <span class="rp-kpi-tval">{{ a['value'] }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Export links #}
+    <div class="rp-export-row" data-testid="ic-pack-exports">
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=xlsx"
+         class="rp-export-btn rp-export-btn--xl" download>Excel Bundle</a>
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=docx"
+         class="rp-export-btn rp-export-btn--docx" download>Download DOCX</a>
+    </div>
+
+    <div class="rp-footer">
+      FINCO Protocol {{ es['model_version'] }} · Engine {{ es['engine_version'] }} ·
+      Scenario: {{ ic['scenario_name'] }} · {{ ic['report_date'] }}
+    </div>
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No IC Pack Loaded</div>
+        <div class="ps-history-meta">
+          Navigate to /scenarios/ic-pack?project=... to generate.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

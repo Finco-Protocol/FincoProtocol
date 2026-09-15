@@ -1,0 +1,180 @@
+{# Reviewer-only lifecycle, runtime and export-lineage information. #}
+
+<div class="audit-governance-relocated"
+     data-p2fix2-audit-relocated="true"
+     data-fc-grid="audit"
+     data-fc-scroll-container="true"
+     aria-label="Audit and governance information">
+
+  {# ── Review boundary note (relocated from normal shell) ───── #}
+  <div class="audit-review-boundary"
+       id="audit-review-boundary"
+       role="note"
+       aria-label="Reviewer guidance for draft, saved, and runtime boundaries">
+    <strong>Review boundary:</strong>
+    the draft workspace may differ from the saved scenario,
+    and the saved scenario may differ from the last runtime
+    snapshot. Runtime cards and exported outputs reflect the
+    last clean backend run, not browser-side draft edits.
+  </div>
+
+  {# ── Lifecycle Clarity panel (relocated from normal shell) ─ #}
+  <div class="workspace-lifecycle-panel" id="workspace-lifecycle-panel"
+       data-p2fix2-audit-relocated-component="lifecycle-clarity"
+       aria-label="Model lifecycle clarity">
+    <div class="workspace-lifecycle-panel__header">
+      <div>
+        <div class="workspace-lifecycle-panel__title">Lifecycle Clarity</div>
+        <div class="workspace-lifecycle-panel__desc">
+          Follow the modelling boundary in order: edit inputs,
+          save the project or scenario, run the model, review
+          runtime outputs, then export reviewer-facing workbooks.
+        </div>
+      </div>
+    </div>
+    <div class="workspace-lifecycle-grid">
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Project state</div>
+        <div class="workspace-lifecycle-card__value">
+          {{ "User-created project" if is_user_project else "Protected original" }}
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          {% if is_user_project %}
+            Saved project inputs remain editable here. Runtime
+            outputs still stay tied to the last completed run
+            until you save and run again.
+          {% else %}
+            Reference projects are read-only. Use Save As
+            before editing controlled assumptions.
+          {% endif %}
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Runtime state</div>
+        <div class="workspace-lifecycle-card__value">Last completed run</div>
+        <div class="workspace-lifecycle-card__meta">
+          Runtime summary reflects the last completed run.
+        </div>
+      </div>
+      <div class="workspace-lifecycle-card">
+        <div class="workspace-lifecycle-card__label">Export state</div>
+        <div class="workspace-lifecycle-card__value">
+          Backend-authored audit output
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          Export workbook is generated from backend-authoritative
+          saved/run state.
+        </div>
+        <div class="workspace-lifecycle-card__meta">
+          Export is an audit output, not a free-form Excel model.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Export Lineage panel (relocated from normal shell) ────── #}
+  <div class="export-lineage-panel" id="export-lineage-panel"
+       data-p2fix2-audit-relocated-component="export-lineage"
+       aria-label="Export lineage summary">
+    <div class="export-lineage-panel__header">
+      <div>
+        <div class="export-lineage-panel__title">Export Lineage</div>
+        <div class="export-lineage-panel__desc">
+          Reviewer-facing lineage only. Exports remain descriptive
+          and do not become the calculation authority.
+        </div>
+      </div>
+    </div>
+    <div class="export-lineage-grid">
+      <div class="export-lineage-card" data-fc-row="true">
+        <div class="export-lineage-card__label">Active project</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.project" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.project_label if export_lineage_ui else '' }}">
+          {{ export_lineage_ui.current_context.project_label if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          {{ export_lineage_ui.current_context.project_code if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card" data-fc-row="true">
+        <div class="export-lineage-card__label">Saved scenario boundary</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.scenario" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.active_scenario_name if export_lineage_ui else '' }}">
+          {{ export_lineage_ui.current_context.active_scenario_name if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          Scenario ID {{ export_lineage_ui.current_context.active_scenario_id if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card" data-fc-row="true">
+        <div class="export-lineage-card__label">Last runtime snapshot</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.runtime_snapshot_id" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_snapshot_id if export_lineage_ui else '' }}">
+          {{ export_lineage_ui.current_context.runtime_snapshot_id if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">
+          {{ export_lineage_ui.current_context.runtime_origin_label if export_lineage_ui else "—" }}
+        </div>
+      </div>
+      <div class="export-lineage-card" data-fc-row="true">
+        <div class="export-lineage-card__label">Runtime generated at</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!current_context.runtime_generated_at" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ export_lineage_ui.current_context.runtime_generated_at if export_lineage_ui else '' }}">
+          {{ export_lineage_ui.current_context.runtime_generated_at if export_lineage_ui else "—" }}
+        </div>
+        <div class="export-lineage-card__meta">Last clean backend run</div>
+      </div>
+      <div class="export-lineage-card" data-fc-row="true">
+        <div class="export-lineage-card__label">Governance posture</div>
+        <div class="export-lineage-card__value" data-fc-cell="true" data-fc-addr="audit!governance_posture" data-fc-kind="text" data-fc-editable="false" data-fc-raw="G20 BLOCKED / R99 R102 NOT APPROVED">G20 BLOCKED</div>
+        <div class="export-lineage-card__meta">R99 / R102 NOT APPROVED</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Governance Status (relocated from normal shell) ──────── #}
+  <div class="audit-panel" style="margin:1.25rem 0;"
+       data-p2fix2-audit-relocated-component="governance-status">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Governance Status</div>
+        <span class="badge badge-blocked">Blocked</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">G20 Gate</span>
+          <span class="badge badge-blocked" data-fc-cell="true" data-fc-addr="audit!governance_status.g20_gate" data-fc-kind="text" data-fc-editable="false" data-fc-raw="BLOCKED">BLOCKED</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">R99 / R102 Promotion</span>
+          <span class="badge badge-notapproved" data-fc-cell="true" data-fc-addr="audit!governance_status.r99_r102_promotion" data-fc-kind="text" data-fc-editable="false" data-fc-raw="NOT APPROVED">NOT APPROVED</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">Equity IRR residual</span>
+          <span style="font-weight:600; color:var(--text);" data-fc-cell="true" data-fc-addr="audit!governance_status.equity_irr_residual" data-fc-kind="text" data-fc-editable="false" data-fc-raw="Within tolerance">Within tolerance</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Reference Evidence</div>
+        <span class="badge badge-convention">DA-Wired Audit</span>
+      </div>
+      <div style="font-size:0.82rem; display:flex; flex-direction:column; gap:0.5rem;">
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">Senior Debt</span>
+          <span class="badge badge-pass" data-fc-cell="true" data-fc-addr="audit!reference_evidence.senior_debt" data-fc-kind="text" data-fc-editable="false" data-fc-raw="PASS">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">SHL Opening</span>
+          <span class="badge badge-pass" data-fc-cell="true" data-fc-addr="audit!reference_evidence.shl_opening" data-fc-kind="text" data-fc-editable="false" data-fc-raw="PASS">PASS</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border);" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">Distributions</span>
+          <span class="badge badge-convention" data-fc-cell="true" data-fc-addr="audit!reference_evidence.distributions" data-fc-kind="text" data-fc-editable="false" data-fc-raw="ACCEPTED CONV">ACCEPTED CONV</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; padding:0.4rem 0;" data-fc-row="true">
+          <span style="color:var(--text-2); font-weight:500;">Tax / CFADS</span>
+          <span class="badge badge-missing" data-fc-cell="true" data-fc-addr="audit!reference_evidence.tax_cfads" data-fc-kind="text" data-fc-editable="false" data-fc-raw="MISSING_EVIDENCE">MISSING_EVIDENCE</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

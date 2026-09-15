@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{# Full-page wrapper for all analysis URL tabs (Scenarios, Compare,
+   Sensitivity, Lender, Reports, BESS).
+
+   base.html already provides the main-canvas element — this block
+   only provides the *content* inside it. A second main-canvas element
+   here would create a nested duplicate that breaks hx-select="#main-canvas"
+   (HTMX selects the outer element, swapping in nested/wrong content). #}
+
+{% block body %}
+{% set _path = request.path if (request is defined and request is not none) else '' %}
+{% if '/sensitivity' in _path %}
+  {% include "partials/scenario_sensitivity.html" %}
+{% elif '/lender' in _path %}
+  {% include "partials/lender_case.html" %}
+{% elif '/exec' in _path or '/ic' in _path or '/credit' in _path %}
+  {% include "partials/exec_summary.html" %}
+{% elif '/bess' in _path %}
+  {% include "partials/bess_revenue_breakdown.html" %}
+{% else %}
+  {# /scenarios and /scenarios/compare — show scenario management content #}
+  {% include "partials/scenario_workspace.html" %}
+{% endif %}
+{% endblock %}

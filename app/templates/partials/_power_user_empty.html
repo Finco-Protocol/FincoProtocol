@@ -1,0 +1,41 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — POWER USER — EMPTY STATE  ·  UI-7 PART G
+  -----------------------------------------------------------------------
+  Refresh of the empty-state component. Professional copy, helpful
+  primary / secondary actions. Pure presentation — never invent new
+  calculations.
+
+  Caller sets:
+    _icon     single emoji or short label
+    _title    primary headline
+    _body     descriptive copy
+    _actions  list of dicts: {label, href?, action?, primary?}
+  =======================================================================
+-->
+<section class="fo-power-empty" data-fo-power-empty>
+  <div class="fo-power-empty__icon" aria-hidden="true">{{ _icon|default("◌") }}</div>
+  <h3 class="fo-power-empty__title">{{ _title }}</h3>
+  {% if _body %}
+  <p class="fo-power-empty__body">{{ _body }}</p>
+  {% endif %}
+  {% if _actions %}
+  <div class="fo-power-empty__actions">
+    {% for a in _actions %}
+      {% if a.href %}
+      <a class="fo-power-empty__btn{% if a.primary %} fo-power-empty__btn--primary{% endif %}"
+         href="{{ a.href }}"
+         data-fo-empty-action="{{ a.action|default('') }}">
+        {{ a.label }}
+      </a>
+      {% else %}
+      <button type="button"
+              class="fo-power-empty__btn{% if a.primary %} fo-power-empty__btn--primary{% endif %}"
+              data-fo-empty-action="{{ a.action|default('') }}">
+        {{ a.label }}
+      </button>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>

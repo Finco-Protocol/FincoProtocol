@@ -1,0 +1,104 @@
+<!-- FINCO Model workflow guide -->
+<div class="pilot-workflow-guide" id="pilot-workflow-guide" role="navigation" aria-label="FINCO Model workflow steps">
+  <div class="pwg-steps">
+    <div class="pwg-step pwg-step--done" id="pwg-step-select"><div class="pwg-step-marker">1</div><div class="pwg-step-label">Select model</div><div class="pwg-step-hint">Open a protected reference or working model</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-review"><div class="pwg-step-marker">2</div><div class="pwg-step-label">Review assumptions</div><div class="pwg-step-hint">Check canonical inputs before running</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-save"><div class="pwg-step-marker">3</div><div class="pwg-step-label">Save scenario</div><div class="pwg-step-hint">Create a named input snapshot</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-run"><div class="pwg-step-marker">4</div><div class="pwg-step-label">Run model</div><div class="pwg-step-hint">Backend calculates outputs</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-results"><div class="pwg-step-marker">5</div><div class="pwg-step-label">Review results</div><div class="pwg-step-hint">Inspect returns, coverage and cash flow</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-audit"><div class="pwg-step-marker">6</div><div class="pwg-step-label">Review lineage</div><div class="pwg-step-hint">Confirm runtime and export state</div></div>
+    <div class="pwg-step-divider" aria-hidden="true"></div>
+    <div class="pwg-step" id="pwg-step-export"><div class="pwg-step-marker">7</div><div class="pwg-step-label">Export</div><div class="pwg-step-hint">Exports reflect the last completed backend run</div></div>
+  </div>
+  <div class="pwg-limitations-strip">
+    <span class="badge badge-warn">Scope</span>
+    <span class="pwg-limitations-text"><strong>Protected references:</strong> Generic Solar Reference and Generic Wind Reference are covered by the public regression ring. Generic Storage Reference has narrower runtime coverage. All three use synthetic assumptions and do not represent real projects or jurisdictions.</span>
+  </div>
+</div>
+
+<style>
+.pilot-workflow-guide {
+  background: var(--surface-secondary, #f9fafb);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.pwg-steps {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.pwg-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+  text-align: center;
+  gap: 0.25rem;
+}
+
+.pwg-step-marker {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--muted-bg, #e5e7eb);
+  color: var(--text-2, #6b7280);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.pwg-step--done .pwg-step-marker {
+  background: var(--pass-bg, #dcfce7);
+  color: var(--pass-color, #16a34a);
+}
+
+.pwg-step-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2, #6b7280);
+  line-height: 1.2;
+}
+
+.pwg-step-hint {
+  font-size: 0.65rem;
+  color: var(--muted, #9ca3af);
+  line-height: 1.2;
+}
+
+.pwg-step-divider {
+  flex: 0 0 16px;
+  height: 1px;
+  background: var(--border, #e5e7eb);
+  margin-top: 13px;
+}
+
+.pwg-limitations-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border, #e5e7eb);
+  font-size: 0.75rem;
+  color: var(--text-2, #6b7280);
+  line-height: 1.4;
+}
+
+.pwg-limitations-text {
+  text-align: left;
+}
+</style>

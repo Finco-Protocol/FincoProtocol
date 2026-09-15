@@ -1,0 +1,187 @@
+/*
+  =============================================================
+  FINCO PROTOCOL — UI-8G CONSISTENCY LAYER
+  -------------------------------------------------------------
+  Additive only. No overrides of engine/calculation output.
+  Covers:
+    1. Tabular numerals — KPI values, reporting tables
+    2. Focus rings — sheet tabs, toolbar, command palette
+    3. Disabled / placeholder button treatment
+    4. Empty-state unified spacing
+    5. Negative number styling in reporting tables
+    6. Sticky offset consistency
+    7. Toolbar button compact normalisation
+    8. Status pill text consistency
+  =============================================================
+*/
+
+/* ── 1. Tabular numerals — reporting and scenario tables ──────────── */
+.rp-kv-val,
+.lc-kpi-table .scm-col-base,
+.lc-kpi-table .scm-col-scenario,
+.scm-diff-delta,
+.scm-diff-value,
+.sens-table td,
+.sens-table .sens-kpi-base,
+.sens-table .sens-kpi-val,
+.cv-rag-val,
+.cv-covenant-val,
+.comp-cell,
+.scenario-diff-val,
+.matrix-kpi-val,
+.bess-lifetime-val {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ── 2. Negative numbers — red tint in scenario/reporting tables ───── */
+.sens-table td[data-neg="true"],
+.scm-diff-delta[data-neg="true"],
+.lc-kpi-table [data-neg="true"],
+.comp-cell[data-neg="true"] {
+  color: var(--fo-rag-red);
+}
+
+/* ── 3. Focus rings — worksheet tabs already handled in sheet-tabs.css.
+        Extend to: toolbar selects, context panel toggle, statements
+        toolbar controls. ─────────────────────────────────────────────── */
+.fo-statements-toolbar__select:focus-visible,
+.fo-statements-toolbar__btn:focus-visible {
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: 2px;
+}
+
+.fo-modelling-workspace__context-toggle:focus-visible {
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── 4. Disabled / placeholder button — clearly inactive ──────────── */
+.fo-btn--placeholder,
+.fo-btn[disabled],
+button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── 5. Empty-state spacing — unified across surfaces ─────────────── */
+.scm-multi-empty {
+  padding: 2rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.scm-multi-empty .ps-history-item {
+  text-align: center;
+  max-width: 360px;
+}
+
+.scm-multi-empty .ps-history-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 0.35rem;
+}
+
+.scm-multi-empty .ps-history-meta {
+  font-size: 0.8rem;
+  color: var(--text-2, #6b7280);
+  line-height: 1.5;
+}
+
+/* ── 6. Statements toolbar — compact & consistent height ──────────── */
+.fo-statements-toolbar {
+  gap: var(--fo-gap-2, 0.5rem);
+}
+
+.fo-statements-toolbar__label {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── 7. Badge section labels — consistent in heading strips ───────── */
+.scm-multi-heading .badge {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* ── 8. CAPEX preview-totals notice — user-facing tone ──────────── */
+.capex-add-line-preview-totals strong {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-2, #6b7280);
+}
+
+/* ── 9. Scenario compare empty state — remove badge-preview clutter ─ */
+.ps-mini-empty .badge {
+  display: none;
+}
+
+.ps-mini-empty .ps-history-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+}
+
+/* ── 10. Sticky offset audit — Financial Statements toolbar ─────────
+         The selector toolbar sits below the KPI chrome (--fo-sticky-base).
+         Ensure it doesn't overlap the chrome when sticky. ──────────── */
+.fo-statements-toolbar {
+  position: sticky;
+  top: var(--fo-sticky-base, 164px);
+  z-index: 30;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--fo-border, #e5e7eb);
+}
+
+/* ── 11. KPI strip stale state — text colour ──────────────────────── */
+.fo-kpi-strip--stale .fo-kpi__label {
+  color: var(--fo-rag-amber);
+}
+
+/* ── 12. Validation summary bar — consistent spacing ─────────────── */
+.validation-summary-bar {
+  gap: var(--fo-gap-2, 0.5rem);
+}
+
+/* ── 13. Print / export — hide interactive chrome ────────────────── */
+@media print {
+  .fo-sheets,
+  .fo-chrome,
+  .fo-kpi-strip,
+  .fo-modelling-workspace__context,
+  .fo-statements-toolbar {
+    display: none !important;
+  }
+}
+
+/* ── 14. Coming-soon badge — consistent size without inline styles ─ */
+.fo-badge-soon {
+  font-size: 0.65rem;
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+}
+
+/* ── 15. Focus order — skip link for keyboard users ──────────────── */
+.fo-skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 0;
+  z-index: 9999;
+  background: var(--fo-brand-600, #1d4ed8);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 0 0 4px 0;
+}
+
+.fo-skip-link:focus {
+  top: 0;
+}

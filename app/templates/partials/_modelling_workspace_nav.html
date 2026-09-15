@@ -1,0 +1,26 @@
+<!--
+  =======================================================================
+  FINCO PROTOCOL — MODELLING WORKSPACE — SECTION NAVIGATOR  ·  UI-5
+  -----------------------------------------------------------------------
+  Renders the sticky section navigator for a modelling sheet.
+
+  Caller passes:
+    kind   — revenue | opex | capex | senior-debt | tax
+    title  — sheet title
+    items  — list of dicts: {id, label}
+  =======================================================================
+-->
+<aside class="fo-modelling-workspace__nav" aria-label="{{ _nav_title }} sections">
+  <h2 class="fo-modelling-workspace__nav-title">Sections</h2>
+  <ul class="fo-modelling-workspace__nav-list">
+    {% for item in _nav_items %}
+    <li>
+      <a class="fo-modelling-workspace__nav-link"
+         href="#fo-mod-section-{{ _kind }}-{{ loop.index }}">
+        <span class="fo-modelling-workspace__nav-dot" aria-hidden="true"></span>
+        <span class="fo-modelling-workspace__nav-label">{{ item.label }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</aside>

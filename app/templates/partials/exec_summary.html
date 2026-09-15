@@ -1,0 +1,206 @@
+{# ── V4-5 Part A — Executive Summary ─────────────────────────────────────── #}
+{# Printable one-page executive summary. Sourced from canonical engine only.  #}
+<div class="rp-exec" data-testid="exec-summary">
+
+  <div class="scm-multi-heading">
+    <span class="badge badge-preview">Report</span>
+    <span class="scm-multi-heading-label">Executive Summary</span>
+  </div>
+
+  {% if exec_summary_error %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">Executive Summary Unavailable</div>
+        <div class="ps-history-meta">{{ exec_summary_error }}</div>
+      </div>
+    </div>
+  {% elif exec_summary %}
+    {% set es = exec_summary %}
+
+    <div class="rp-print-area" data-testid="exec-summary-content">
+
+      {# Branding header #}
+      <div class="rp-brand-header">
+        <div class="rp-brand-logo">FINCO Protocol</div>
+        <div class="rp-brand-meta">
+          {{ es['report_date'] }} &nbsp;·&nbsp;
+          Engine {{ es['engine_version'] }} &nbsp;·&nbsp;
+          {{ es['model_version'] }}
+        </div>
+      </div>
+
+      {# Project header #}
+      <div class="rp-proj-header">
+        <div class="rp-proj-name">{{ es['project_name'] }}</div>
+        <div class="rp-proj-sub">
+          {{ es['technology'] }} &nbsp;·&nbsp; {{ es['country'] }} &nbsp;·&nbsp;
+          {{ "%.1f"|format(es['capacity_mw']) }} MW &nbsp;·&nbsp;
+          COD {{ es['cod_date'] }}
+        </div>
+        <div class="rp-scenario-badge">Scenario: {{ es['scenario_name'] }}</div>
+      </div>
+
+      {# Traffic-light summary strip #}
+      <div class="rp-rag-strip">
+        <div class="rp-rag-item rp-rag-item--{{ es['rag_financial'] }}">
+          <span class="rp-rag-dot"></span>
+          <span class="rp-rag-label">Financial</span>
+          <span class="rp-rag-status">{{ es['rag_financial'].upper() }}</span>
+        </div>
+        <div class="rp-rag-item rp-rag-item--{{ es['rag_debt'] }}">
+          <span class="rp-rag-dot"></span>
+          <span class="rp-rag-label">Debt</span>
+          <span class="rp-rag-status">{{ es['rag_debt'].upper() }}</span>
+        </div>
+        <div class="rp-rag-item rp-rag-item--{{ es['rag_tax'] }}">
+          <span class="rp-rag-dot"></span>
+          <span class="rp-rag-label">Tax</span>
+          <span class="rp-rag-status">{{ es['rag_tax'].upper() }}</span>
+        </div>
+        <div class="rp-rag-item rp-rag-item--{{ es['rag_covenants'] }}">
+          <span class="rp-rag-dot"></span>
+          <span class="rp-rag-label">Covenants</span>
+          <span class="rp-rag-status">{{ es['rag_covenants'].upper() }}</span>
+        </div>
+      </div>
+
+      {# Four-column KPI grid #}
+      <div class="rp-kpi-grid">
+
+        {# Project card #}
+        <div class="rp-kpi-card">
+          <div class="rp-kpi-card-title">Project</div>
+          {% set proj_rows = [
+            ('Company',      es['company'],       ''),
+            ('Technology',   es['technology'],     ''),
+            ('Country',      es['country'],        ''),
+            ('Capacity',     es['capacity_mw'],    'MW'),
+            ('COD',          es['cod_date'],       ''),
+            ('Horizon',      es['horizon_years'],  'yrs'),
+            ('PPA Tariff',   es['ppa_tariff'],     'EUR/MWh'),
+            ('PPA Term',     es['ppa_term_years'], 'yrs'),
+          ] %}
+          {% for label, val, unit in proj_rows %}
+            <div class="rp-kpi-row">
+              <span class="rp-kpi-label">{{ label }}</span>
+              <span class="rp-kpi-value">
+                {% if val is number %}
+                  {% if unit == 'EUR/MWh' %}{{ "%.2f"|format(val) }}
+                  {% elif unit == 'MW' %}{{ "%.1f"|format(val) }}
+                  {% else %}{{ val }}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+                {% if unit %} {{ unit }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Capital structure card #}
+        <div class="rp-kpi-card">
+          <div class="rp-kpi-card-title">Capital Structure</div>
+          {% set cap_rows = [
+            ('Total CAPEX',   es['total_capex_keur'],       'kEUR'),
+            ('Senior Debt',   es['debt_keur'],              'kEUR'),
+            ('Equity',        es['equity_keur'],            'kEUR'),
+            ('Debt %',        es['gearing_pct'],            '%'),
+            ('Equity %',      es['equity_pct'],             '%'),
+            ('Sr Tenor',      es['senior_tenor_years'],     'yrs'),
+            ('Corp Tax',      es['corporate_tax_rate_pct'], '%'),
+          ] %}
+          {% for label, val, unit in cap_rows %}
+            <div class="rp-kpi-row">
+              <span class="rp-kpi-label">{{ label }}</span>
+              <span class="rp-kpi-value">
+                {% if val is number %}
+                  {% if unit == 'kEUR' %}{{ "%.0f"|format(val) }}
+                  {% elif unit == '%' %}{{ "%.1f"|format(val) }}
+                  {% else %}{{ val }}{% endif %}
+                {% else %}{{ val or '—' }}{% endif %}
+                {% if unit %} {{ unit }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Returns card #}
+        <div class="rp-kpi-card">
+          <div class="rp-kpi-card-title">Returns</div>
+          {% set ret_rows = [
+            ('Project IRR',     es['project_irr'],              'pct'),
+            ('Equity IRR',      es['equity_irr'],               'pct'),
+            ('NPV (kEUR)',       es['equity_npv'],               'keur'),
+            ('Payback',         es['payback_years'],            'yrs_f'),
+            ('Distributions',   es['total_distribution_keur'],  'keur'),
+            ('Total Tax',       es['total_tax_keur'],           'keur'),
+            ('Revenue',         es['total_revenue_keur'],       'keur'),
+          ] %}
+          {% for label, val, fmt in ret_rows %}
+            <div class="rp-kpi-row">
+              <span class="rp-kpi-label">{{ label }}</span>
+              <span class="rp-kpi-value">
+                {% if fmt == 'pct' %}
+                  {{ "%.2f%%"|format(val * 100) if val is number else (val if val is not none else '-') }}
+                {% elif fmt == 'keur' %}
+                  {{ "%.0f"|format(val) if val is number else (val if val is not none else '-') }}
+                {% elif fmt == 'yrs_f' %}
+                  {{ "%.1f yrs"|format(val) if val is number else (val if val is not none else '-') }}
+                {% else %}{{ val or '—' }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Debt metrics card #}
+        <div class="rp-kpi-card">
+          <div class="rp-kpi-card-title">Debt Metrics</div>
+          {% set dbt_rows = [
+            ('Min DSCR',   es['min_dscr'],             'x'),
+            ('Avg DSCR',   es['avg_dscr'],             'x'),
+            ('Min LLCR',   es['min_llcr'],             'x'),
+            ('Min PLCR',   es['min_plcr'],             'x'),
+            ('Lock-up',    es['periods_in_lockup'],    'periods'),
+          ] %}
+          {% for label, val, unit in dbt_rows %}
+            <div class="rp-kpi-row">
+              <span class="rp-kpi-label">{{ label }}</span>
+              <span class="rp-kpi-value">
+                {% if val is number %}
+                  {% if unit == 'x' %}{{ "%.4f"|format(val) }}x
+                  {% else %}{{ val }}{% endif %}
+                {% else %}{{ val if val is not none else '—' }}{% endif %}
+                {% if unit not in ('x', 'periods') %} {{ unit }}{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>{# /rp-kpi-grid #}
+
+      {# Export links #}
+      <div class="rp-export-row" data-testid="exec-summary-exports">
+        <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=xlsx"
+           class="rp-export-btn rp-export-btn--xl" download>Excel Bundle</a>
+        <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=docx"
+           class="rp-export-btn rp-export-btn--docx" download>IC Pack (DOCX)</a>
+        <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=docx_credit"
+           class="rp-export-btn rp-export-btn--docx" download>Credit Pack (DOCX)</a>
+      </div>
+
+      <div class="rp-footer">
+        Source: FINCO Protocol canonical engine · {{ es['model_version'] }} · {{ es['report_date'] }}
+      </div>
+
+    </div>{# /rp-print-area #}
+
+  {% else %}
+    <div class="scm-multi-empty">
+      <div class="ps-history-item">
+        <div class="ps-history-title">No model results available</div>
+        <div class="ps-history-meta">
+          Run the model to generate results for this workspace.
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+</div>

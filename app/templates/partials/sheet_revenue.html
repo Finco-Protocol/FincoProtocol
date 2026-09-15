@@ -1,0 +1,272 @@
+<!-- Sheet: Revenue - {{ project_ctx.name }}
+     PR-855: spreadsheet-style revenue assumptions and runtime evidence surface.
+     This partial is presentation-only; backend runtime remains authoritative. -->
+
+{% macro revenue_label(item) -%}
+  {%- if item.code == "operating_hours_p50" -%}P50 Yield
+  {%- elif item.code == "ppa_base_tariff" -%}PPA Price
+  {%- elif item.code == "ppa_index" -%}PPA Escalation
+  {%- elif item.code == "pv_degradation" -%}Degradation
+  {%- elif item.code == "first_merchant_period" -%}Merchant Start
+  {%- elif item.code == "co2_enabled" -%}CO2 Certificates
+  {%- elif item.code == "co2_price" -%}CO2 Certificate Price
+  {%- else -%}{{ item.name }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro revenue_unit(item) -%}
+  {%- if item.unit == "flag" -%}Status
+  {%- elif item.unit == "period index" -%}Period
+  {%- else -%}{{ item.unit }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro revenue_value(item) -%}
+  {%- if item.code == "co2_enabled" -%}
+    {{ "Enabled" if item.value == 1.0 else "Disabled" }}
+  {%- elif item.code == "first_merchant_period" and item.value == -1 -%}
+    Not configured
+  {%- elif item.unit in ["%", "%/yr"] -%}
+    {{ "{:.2f}%".format((item.value or 0) * 100) }}
+  {%- else -%}
+    {{ item.value }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro revenue_note(item, editable_now) -%}
+  {%- if editable_now -%}
+    Editable supported assumption.
+  {%- elif item.hint -%}
+    {{ item.hint }}
+  {%- else -%}
+    Read-only in this Revenue sheet.
+  {%- endif -%}
+{%- endmacro %}
+
+{% if not is_user_project %}
+<div class="inp-readonly-notice inp-readonly-notice--revenue">
+  <span class="badge badge-muted">Read-only</span>
+  <span>Protected original - use <strong>Duplicate</strong> or <strong>Save As</strong> to create an editable copy.</span>
+</div>
+{% endif %}
+
+{% if is_user_project %}
+<div class="inp-dirty-indicator" id="revenue-dirty-indicator" style="display:none;">
+  <span class="badge badge-warn">Unsaved revenue edits</span>
+</div>
+{% endif %}
+
+<div class="sheet-card" id="revenue-grid" data-fc-grid="revenue" data-fc-scroll-container="true">
+  <div class="section-header">Production assumptions</div>
+  <table class="fc-grid rev-grid" id="revenue-grid-production">
+    <thead>
+      <tr class="fc-grid-header">
+        <th class="fc-th fc-grid-col-label">Assumption</th>
+        <th class="fc-th fc-th--amount">Value</th>
+        <th class="fc-th fc-th--unit">Unit</th>
+        <th class="fc-th fc-th--notes">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in project_ctx.revenue_items %}
+        {% if item.group == "Production" %}
+        <tr class="fc-data-row" data-fc-row="true">
+          <td class="fc-cell fc-cell--label fc-grid-col-label" title="{{ item.hint }}">{{ revenue_label(item) }}</td>
+          <td class="fc-cell fc-cell--amount"
+              data-fc-cell="true"
+              data-fc-kind="text"
+              data-fc-addr="revenue!{{ item.code }}"
+              data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+              data-fc-raw="{{ item.value }}">
+            {% if is_user_project and item.editable %}
+            <input type="number" step="any" class="fc-input-native"
+                   name="rev_{{ item.code }}" value="{{ item.value }}"
+                   data-rev-item="{{ item.code }}" aria-label="{{ revenue_label(item) }}" />
+            {% else %}
+            <span class="fc-cell-runtime">{{ revenue_value(item) }}</span>
+            {% endif %}
+          </td>
+          <td class="fc-cell fc-th--unit">{{ revenue_unit(item) }}</td>
+          <td class="fc-cell fc-cell--notes">{{ revenue_note(item, is_user_project and item.editable) }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="sheet-card rev-contracts-card">
+  <div class="rev-contracts-header">
+    <div class="section-header">Price assumptions <span class="badge badge-muted">Offtake Contracts</span></div>
+    <span class="rev-contracts-note">The model currently supports one primary offtake contract. A second contract slot is reserved for a future update.</span>
+  </div>
+
+  <div class="rev-contract-block rev-contract-block--active">
+    <div class="rev-contract-block__header">
+      <span class="rev-contract-block__label">Contract 1</span>
+      {% if project_ctx.ppa_index_pct and project_ctx.ppa_index_pct > 0 %}
+        <span class="badge rev-offtake-badge">Indexed PPA</span>
+        <span class="rev-offtake-note">{{ "{:.1f}%".format(project_ctx.ppa_index_pct * 100) }} escalation/yr</span>
+      {% else %}
+        <span class="badge rev-offtake-badge">Fixed PPA</span>
+      {% endif %}
+      <span class="rev-contract-share">{{ "{:.0f}%".format(project_ctx.ppa_production_share * 100) if project_ctx.ppa_production_share else "100%" }} production share</span>
+    </div>
+    <table class="fc-grid rev-grid" id="revenue-grid-ppa">
+      <thead>
+        <tr class="fc-grid-header">
+          <th class="fc-th fc-grid-col-label">Assumption</th>
+          <th class="fc-th fc-th--amount">Value</th>
+          <th class="fc-th fc-th--unit">Unit</th>
+          <th class="fc-th fc-th--notes">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in project_ctx.revenue_items %}
+          {% if item.group == "PPA / Tariff" %}
+          <tr class="fc-data-row" data-fc-row="true">
+            <td class="fc-cell fc-cell--label fc-grid-col-label" title="{{ item.hint }}">{{ revenue_label(item) }}</td>
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-kind="text"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+                data-fc-raw="{{ item.value }}">
+              {% if is_user_project and item.editable %}
+              <input type="number" step="any" class="fc-input-native"
+                     name="rev_{{ item.code }}" value="{{ item.value }}"
+                     data-rev-item="{{ item.code }}" aria-label="{{ revenue_label(item) }}" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ revenue_value(item) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell fc-th--unit">{{ revenue_unit(item) }}</td>
+            <td class="fc-cell fc-cell--notes">{{ revenue_note(item, is_user_project and item.editable) }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+
+        {% for item in project_ctx.revenue_items %}
+          {% if item.group == "Market / Merchant" %}
+          <tr class="fc-data-row" data-fc-row="true">
+            <td class="fc-cell fc-cell--label fc-grid-col-label" title="{{ item.hint }}">{{ revenue_label(item) }}</td>
+            <td class="fc-cell fc-cell--amount"
+                data-fc-cell="true"
+                data-fc-kind="text"
+                data-fc-addr="revenue!{{ item.code }}"
+                data-fc-editable="{{ 'true' if (is_user_project and item.editable) else 'false' }}"
+                data-fc-raw="{{ item.value }}">
+              {% if is_user_project and item.editable %}
+              <input type="number" step="any" class="fc-input-native"
+                     name="rev_{{ item.code }}" value="{{ item.value }}"
+                     data-rev-item="{{ item.code }}" aria-label="{{ revenue_label(item) }}" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ revenue_value(item) }}</span>
+              {% endif %}
+            </td>
+            <td class="fc-cell fc-th--unit">{{ revenue_unit(item) }}</td>
+            <td class="fc-cell fc-cell--notes">{{ revenue_note(item, is_user_project and item.editable) }}</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rev-contract-block rev-contract-block--disabled" aria-disabled="true">
+    <div class="rev-contract-block__header">
+      <span class="rev-contract-block__label rev-contract-block__label--disabled">Contract 2</span>
+      <span class="badge badge-muted">Not configured</span>
+    </div>
+    <div class="rev-contract-disabled-notice">
+      <div class="esn-icon" aria-hidden="true">+</div>
+      <div class="esn-title">Second offtake contract</div>
+      <div class="esn-desc">
+        A second contract such as merchant, CfD, Feed-in Premium, or a second PPA can be added in a future update.
+        The current input form exposes one primary contract only.
+        Additional contract inputs should wait for a backend-authoritative Revenue v2 design.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-card">
+  <div class="section-header">CO2 / Certificates</div>
+  <table class="fc-grid rev-grid" id="revenue-grid-co2">
+    <thead>
+      <tr class="fc-grid-header">
+        <th class="fc-th fc-grid-col-label">Assumption</th>
+        <th class="fc-th fc-th--amount">Value</th>
+        <th class="fc-th fc-th--unit">Unit</th>
+        <th class="fc-th fc-th--notes">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in project_ctx.revenue_items %}
+        {% if item.group == "CO2 / Certificates" %}
+        <tr class="fc-data-row" data-fc-row="true">
+          <td class="fc-cell fc-cell--label fc-grid-col-label" title="{{ item.hint }}">{{ revenue_label(item) }}</td>
+          <td class="fc-cell fc-cell--amount"
+              data-fc-cell="true"
+              data-fc-kind="text"
+              data-fc-addr="revenue!{{ item.code }}"
+              data-fc-editable="false"
+              data-fc-raw="{{ item.value }}">
+            <span class="fc-cell-runtime">{{ revenue_value(item) }}</span>
+          </td>
+          <td class="fc-cell fc-th--unit">{{ revenue_unit(item) }}</td>
+          <td class="fc-cell fc-cell--notes">{{ revenue_note(item, false) }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="inp-section-note">CO2 / certificate assumptions are set by the project template and governed through project-template review.</div>
+</div>
+
+<div class="sheet-card">
+  <div class="section-header">Revenue output <span class="badge badge-runtime" style="float:right;margin-top:2px;">Calculated after Run</span></div>
+  <table class="fc-grid rev-grid" id="revenue-grid-output">
+    <thead>
+      <tr class="fc-grid-header">
+        <th class="fc-th fc-grid-col-label">Output</th>
+        <th class="fc-th fc-th--amount">Source</th>
+        <th class="fc-th fc-th--unit">Unit</th>
+        <th class="fc-th fc-th--notes">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="fc-subtotal-row" data-fc-row="true">
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label">Revenue Summary</td>
+        <td class="fc-total-cell"
+            data-fc-cell="true"
+            data-fc-kind="text"
+            data-fc-addr="revenue!summary.tariff_y1"
+            data-fc-editable="false">Runtime Summary after Run</td>
+        <td class="fc-cell fc-th--unit">kEUR</td>
+        <td class="fc-cell fc-cell--notes"><span class="badge badge-muted">Calculated after Run</span> Backend runtime is authoritative; this sheet does not recompute revenue.</td>
+      </tr>
+      <tr class="fc-data-row fc-grand-total" data-fc-row="true">
+        <td class="fc-cell fc-cell--label fc-grid-col-label">Year-by-year revenue</td>
+        <td class="fc-cell fc-cell--amount"
+            data-fc-cell="true"
+            data-fc-kind="text"
+            data-fc-addr="revenue!summary.ppa_revenue_y1"
+            data-fc-editable="false">Runtime outputs / export evidence</td>
+        <td class="fc-cell fc-th--unit">kEUR</td>
+        <td class="fc-cell fc-cell--notes">Use Run results for canonical period revenue values. No Revenue year grid is exposed here yet.</td>
+      </tr>
+      <tr class="fc-data-row" data-fc-row="true">
+        <td class="fc-cell fc-cell--label fc-grid-col-label">Revenue decomposition</td>
+        <td class="fc-cell fc-cell--amount"
+            data-fc-cell="true"
+            data-fc-kind="text"
+            data-fc-addr="revenue!summary.total_revenue_y1"
+            data-fc-editable="false">Not exposed in this workspace view yet</td>
+        <td class="fc-cell fc-th--unit">-</td>
+        <td class="fc-cell fc-cell--notes">Production, price, merchant and certificate split should wait for backend-authoritative Revenue v2 evidence.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="inp-section-note">Only backend-authoritative revenue assumptions and runtime evidence are displayed. The Revenue sheet does not perform hidden calculations.</div>
+</div>

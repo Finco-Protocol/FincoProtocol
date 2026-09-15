@@ -1,0 +1,453 @@
+{#
+  sheet_capex_grid.html — spreadsheet-style CAPEX grid
+
+  Consumes: capex_vm (CapexViewModel from app/ui/capex_view_model.py)
+            is_user_project (bool, passed by workspace_shell.html context)
+
+  CSS namespace: .cx-* (isolated, does not touch global styles.css)
+
+  Excel column structure:
+    Code (sticky) | Line Item (sticky) | Amount kEUR | per MW | Notes
+
+  Sticky contract:
+    .cx-grid-wrapper is the ONLY scroll container (overflow-x: auto; overflow-y: auto).
+    No ancestor may have overflow: hidden.
+    Sticky columns (Code, Label) are relative to the wrapper, not the viewport.
+
+  Editability:
+    Lines with is_editable=True render an <input type="number">.
+    All other lines render a read-only <span>.
+    Derived/financing/reserve lines are visually muted.
+
+  PR B scope:
+    No OPEX grid. No Inputs control tower. No CSS outside .cx-* namespace.
+    No engine, persistence, or route changes beyond adding capex_vm to context.
+#}
+
+{% if not capex_vm %}
+{# Fallback — view model not injected (should not happen in production) #}
+<div class="cx-unavailable">
+  CAPEX grid unavailable — view model not loaded.
+</div>
+{% else %}
+
+<style>
+/* ── .cx-* namespace — CAPEX grid only ─────────────────────────────── */
+.cx-grid-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 75vh;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+  /* NO position: relative — would break sticky inside overflow */
+}
+
+.cx-grid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+  table-layout: auto;
+  font-size: 0.82rem;
+}
+
+/* ── Sticky header row ──────────────────────────────────────────────── */
+.cx-grid thead tr {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-2, #f3f4f6);
+}
+
+.cx-grid thead th {
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  border-bottom: 2px solid var(--border, #d1d5db);
+  white-space: nowrap;
+  color: var(--text-muted, #6b7280);
+}
+
+.cx-grid thead th.cx-col-amount,
+.cx-grid thead th.cx-col-per-mw {
+  text-align: right;
+}
+
+/* ── Sticky first two columns ───────────────────────────────────────── */
+.cx-sticky-col {
+  position: sticky;
+  background: var(--surface, #fff);
+  z-index: 2;
+}
+
+.cx-grid thead .cx-sticky-col {
+  background: var(--surface-2, #f3f4f6);
+  z-index: 4;
+}
+
+.cx-col-code {
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+}
+
+.cx-col-code.cx-sticky-col { left: 0; }
+.cx-col-label.cx-sticky-col { left: 72px; min-width: 220px; }
+
+/* ── Cell base ──────────────────────────────────────────────────────── */
+.cx-grid td {
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border-light, #e5e7eb);
+  vertical-align: middle;
+}
+
+/* ── Group header rows ──────────────────────────────────────────────── */
+.cx-group-row td {
+  background: var(--surface-2, #f3f4f6);
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+
+.cx-group-row--readonly td {
+  color: var(--text-muted, #6b7280);
+}
+
+.cx-group-row--contingency td {
+  font-style: italic;
+}
+
+/* ── Sub-line rows ──────────────────────────────────────────────────── */
+.cx-line-row:hover td {
+  background: var(--hover, #f9fafb);
+}
+
+.cx-line-indent {
+  padding-left: 1.4rem !important;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.77rem;
+}
+
+.cx-line-row td.cx-sticky-col {
+  background: var(--surface, #fff);
+}
+
+.cx-line-row:hover td.cx-sticky-col {
+  background: var(--hover, #f9fafb);
+}
+
+/* ── Amount columns ─────────────────────────────────────────────────── */
+.cx-col-amount,
+.cx-col-per-mw {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cx-col-notes {
+  min-width: 140px;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.76rem;
+}
+
+/* ── Value display ──────────────────────────────────────────────────── */
+.cx-value--readonly {
+  color: var(--text-muted, #6b7280);
+}
+
+.cx-value--derived {
+  color: var(--text-muted, #6b7280);
+  font-style: italic;
+}
+
+.cx-value--muted {
+  color: var(--text-muted, #6b7280);
+  font-size: 0.76rem;
+}
+
+.cx-group-subtotal {
+  font-weight: 600;
+}
+
+/* ── Editable input ─────────────────────────────────────────────────── */
+.cx-input {
+  width: 88px;
+  text-align: right;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 3px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  background: var(--input-bg, #fff);
+  color: var(--text, #111827);
+}
+
+.cx-input:focus {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: 0;
+}
+
+/* ── Total rows ─────────────────────────────────────────────────────── */
+.cx-total-row td {
+  border-top: 2px solid var(--border, #d1d5db);
+  font-weight: 700;
+  font-size: 0.83rem;
+  background: var(--surface-2, #f3f4f6);
+}
+
+.cx-total-row--grand td {
+  border-top: 3px double var(--border, #d1d5db);
+  background: var(--surface-2, #f3f4f6);
+}
+
+.cx-amount-total {
+  font-weight: 700;
+}
+
+.cx-amount-total--grand {
+  color: var(--primary, #2563eb);
+}
+
+/* ── Readonly notice ────────────────────────────────────────────────── */
+.cx-readonly-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── KPI strip ──────────────────────────────────────────────────────── */
+.cx-kpi-strip {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.cx-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.cx-kpi-card__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6b7280);
+  text-transform: uppercase;
+}
+
+.cx-kpi-card__value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #111827);
+}
+
+.cx-kpi-card__unit {
+  font-size: 0.72rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── Unavailable fallback ───────────────────────────────────────────── */
+.cx-unavailable {
+  padding: 1rem;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border, #d1d5db);
+  border-radius: 4px;
+}
+
+/* ── Dark theme overrides ───────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .cx-grid-wrapper    { border-color: var(--border, #374151); }
+  .cx-grid thead tr   { background: var(--surface-2, #1f2937); }
+  .cx-grid thead th   { border-color: var(--border, #374151); color: var(--text-muted, #9ca3af); }
+  .cx-sticky-col      { background: var(--surface, #111827); }
+  .cx-grid thead .cx-sticky-col { background: var(--surface-2, #1f2937); }
+  .cx-group-row td    { background: var(--surface-2, #1f2937); }
+  .cx-line-row:hover td         { background: var(--hover, #1f2937); }
+  .cx-line-row:hover td.cx-sticky-col { background: var(--hover, #1f2937); }
+  .cx-total-row td    { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .cx-total-row--grand td { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .cx-readonly-notice { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+  .cx-input           { background: var(--input-bg, #1f2937); color: var(--text, #f9fafb); border-color: var(--border, #374151); }
+  .cx-line-row td.cx-sticky-col { background: var(--surface, #111827); }
+}
+
+:root[data-theme="dark"] .cx-grid-wrapper    { border-color: var(--border, #374151); }
+:root[data-theme="dark"] .cx-grid thead tr   { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .cx-grid thead th   { border-color: var(--border, #374151); color: var(--text-muted, #9ca3af); }
+:root[data-theme="dark"] .cx-sticky-col      { background: var(--surface, #111827); }
+:root[data-theme="dark"] .cx-grid thead .cx-sticky-col { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .cx-group-row td    { background: var(--surface-2, #1f2937); }
+:root[data-theme="dark"] .cx-line-row:hover td         { background: var(--hover, #1f2937); }
+:root[data-theme="dark"] .cx-line-row:hover td.cx-sticky-col { background: var(--hover, #1f2937); }
+:root[data-theme="dark"] .cx-total-row td    { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .cx-total-row--grand td { background: var(--surface-2, #1f2937); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .cx-input           { background: var(--input-bg, #1f2937); color: var(--text, #f9fafb); border-color: var(--border, #374151); }
+:root[data-theme="dark"] .cx-line-row td.cx-sticky-col { background: var(--surface, #111827); }
+
+:root[data-theme="light"] .cx-sticky-col     { background: var(--surface, #fff); }
+:root[data-theme="light"] .cx-grid thead .cx-sticky-col { background: var(--surface-2, #f3f4f6); }
+:root[data-theme="light"] .cx-line-row td.cx-sticky-col { background: var(--surface, #fff); }
+</style>
+
+{# ── Readonly notice ─────────────────────────────────────────────────────── #}
+{% if not capex_vm.is_user_project %}
+<div class="cx-readonly-notice">
+  <span>🔒</span>
+  <span>
+    <strong>Protected original — read only.</strong>
+    Duplicate or Save As to create an editable copy.
+  </span>
+</div>
+{% endif %}
+
+{# ── KPI strip ───────────────────────────────────────────────────────────── #}
+<div class="cx-kpi-strip">
+  <div class="cx-kpi-card">
+    <div class="cx-kpi-card__label">Total CAPEX</div>
+    <div class="cx-kpi-card__value">{{ "%.1f"|format(capex_vm.total_capex_keur) }}</div>
+    <div class="cx-kpi-card__unit">kEUR</div>
+  </div>
+  <div class="cx-kpi-card">
+    <div class="cx-kpi-card__label">Hard CAPEX</div>
+    <div class="cx-kpi-card__value">{{ "%.1f"|format(capex_vm.hard_capex_keur) }}</div>
+    <div class="cx-kpi-card__unit">kEUR (C.01–C.16)</div>
+  </div>
+  <div class="cx-kpi-card">
+    <div class="cx-kpi-card__label">CAPEX / MW</div>
+    <div class="cx-kpi-card__value">{{ "%.1f"|format(capex_vm.total_per_mw) }}</div>
+    <div class="cx-kpi-card__unit">kEUR/MW</div>
+  </div>
+  {% if capex_vm.financing_keur > 0 %}
+  <div class="cx-kpi-card">
+    <div class="cx-kpi-card__label">Financing Costs</div>
+    <div class="cx-kpi-card__value">{{ "%.1f"|format(capex_vm.financing_keur) }}</div>
+    <div class="cx-kpi-card__unit">kEUR (C.17)</div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Grid ────────────────────────────────────────────────────────────────── #}
+<div class="cx-grid-wrapper">
+  <table class="cx-grid" aria-label="CAPEX breakdown — {{ capex_vm.project_name }}">
+    <thead>
+      <tr>
+        <th class="cx-col-code cx-sticky-col" scope="col">Code</th>
+        <th class="cx-col-label cx-sticky-col" scope="col">Line Item</th>
+        <th class="cx-col-amount" scope="col">Amount kEUR</th>
+        <th class="cx-col-per-mw" scope="col">per MW</th>
+        <th class="cx-col-notes" scope="col">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for group in capex_vm.groups %}
+
+        {# ── Group header row ─────────────────────────────────────── #}
+        {% set group_row_class = "cx-group-row" %}
+        {% if group.is_readonly %}{% set group_row_class = group_row_class ~ " cx-group-row--readonly" %}{% endif %}
+        {% if group.is_contingency %}{% set group_row_class = group_row_class ~ " cx-group-row--contingency" %}{% endif %}
+        <tr class="{{ group_row_class }}">
+          <td class="cx-col-code cx-sticky-col">{{ group.code }}</td>
+          <td class="cx-col-label cx-sticky-col">{{ group.name }}</td>
+          <td class="cx-col-amount cx-group-subtotal">
+            {% if group.subtotal_keur != 0 %}
+              {{ "%.2f"|format(group.subtotal_keur) }}
+            {% else %}
+              <span class="cx-value--muted">—</span>
+            {% endif %}
+          </td>
+          <td class="cx-col-per-mw cx-value--muted">
+            {% if group.subtotal_per_mw != 0 %}
+              {{ "%.2f"|format(group.subtotal_per_mw) }}
+            {% endif %}
+          </td>
+          <td class="cx-col-notes">
+            {% if group.is_financing %}<span class="cx-value--muted">Backend computed</span>{% endif %}
+            {% if group.is_reserve %}<span class="cx-value--muted">Backend computed</span>{% endif %}
+            {% if group.is_contingency %}<span class="cx-value--muted">Rate × C.01–C.12</span>{% endif %}
+          </td>
+        </tr>
+
+        {# ── Sub-line rows ────────────────────────────────────────── #}
+        {% for line in group.lines if line.is_active %}
+        <tr class="cx-line-row" id="{{ line.row_id | replace(':', '-') }}">
+          <td class="cx-col-code cx-sticky-col cx-line-indent">{{ line.code }}</td>
+          <td class="cx-col-label cx-sticky-col">{{ line.name }}</td>
+          <td class="cx-col-amount">
+            {% if line.is_editable %}
+              <input
+                type="number"
+                name="capex_{{ line.code }}_keur"
+                value="{{ "%.2f"|format(line.amount_keur) }}"
+                step="0.01"
+                min="0"
+                class="cx-input"
+                aria-label="{{ line.name }} amount in kEUR"
+              />
+            {% elif line.is_derived %}
+              <span class="cx-value--derived">{{ "%.2f"|format(line.amount_keur) }}</span>
+            {% else %}
+              <span class="cx-value--readonly">{{ "%.2f"|format(line.amount_keur) }}</span>
+            {% endif %}
+          </td>
+          <td class="cx-col-per-mw cx-value--muted">
+            {% if line.per_mw != 0 %}{{ "%.2f"|format(line.per_mw) }}{% endif %}
+          </td>
+          <td class="cx-col-notes">{{ line.notes if line.notes }}</td>
+        </tr>
+        {% endfor %}
+
+      {% endfor %}
+
+      {# ── Hard CAPEX subtotal ──────────────────────────────────────── #}
+      <tr class="cx-total-row">
+        <td class="cx-col-code cx-sticky-col"></td>
+        <td class="cx-col-label cx-sticky-col">Hard CAPEX (C.01–C.16)</td>
+        <td class="cx-col-amount cx-amount-total">{{ "%.2f"|format(capex_vm.hard_capex_keur) }}</td>
+        <td class="cx-col-per-mw cx-value--muted">{{ "%.2f"|format(capex_vm.hard_capex_per_mw) }}</td>
+        <td class="cx-col-notes"></td>
+      </tr>
+
+      {% if capex_vm.financing_keur != 0 %}
+      <tr class="cx-total-row">
+        <td class="cx-col-code cx-sticky-col"></td>
+        <td class="cx-col-label cx-sticky-col cx-value--muted">Financing Costs (C.17)</td>
+        <td class="cx-col-amount cx-value--derived">{{ "%.2f"|format(capex_vm.financing_keur) }}</td>
+        <td class="cx-col-per-mw cx-value--muted"></td>
+        <td class="cx-col-notes cx-value--muted">Backend computed</td>
+      </tr>
+      {% endif %}
+
+      {% if capex_vm.reserve_keur != 0 %}
+      <tr class="cx-total-row">
+        <td class="cx-col-code cx-sticky-col"></td>
+        <td class="cx-col-label cx-sticky-col cx-value--muted">Reserve Accounts (C.18)</td>
+        <td class="cx-col-amount cx-value--derived">{{ "%.2f"|format(capex_vm.reserve_keur) }}</td>
+        <td class="cx-col-per-mw cx-value--muted"></td>
+        <td class="cx-col-notes cx-value--muted">Backend computed</td>
+      </tr>
+      {% endif %}
+
+      {# ── Grand total ──────────────────────────────────────────────── #}
+      <tr class="cx-total-row cx-total-row--grand">
+        <td class="cx-col-code cx-sticky-col"></td>
+        <td class="cx-col-label cx-sticky-col">Total CAPEX</td>
+        <td class="cx-col-amount cx-amount-total cx-amount-total--grand">{{ "%.2f"|format(capex_vm.total_capex_keur) }}</td>
+        <td class="cx-col-per-mw cx-value--muted">{{ "%.2f"|format(capex_vm.total_per_mw) }}</td>
+        <td class="cx-col-notes"></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% endif %}{# end capex_vm guard #}

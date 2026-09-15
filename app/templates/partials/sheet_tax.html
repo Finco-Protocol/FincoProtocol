@@ -1,0 +1,255 @@
+<!-- Sheet: Tax — {{ project_ctx.name }}
+     Product Gap PR9 — Tax Reality Check.
+
+     Investigation summary (see docs/PRODUCT_GAP_PR9_TAX_REALITY_CHECK.md):
+     - CIT Rate / Loss Carryforward are real project_ctx-backed
+       assumptions (project_context.py cit_rate_pct /
+       loss_carryforward_years, sourced from the project's tax
+       template), but there is no safe, already-wired persistence
+       path that lets a user edit them from this screen -- the
+       Inputs tab (inputs_section.html) renders the same two fields
+       read-only too (no editable=True passed to field_row). They
+       stay read-only here for the same reason.
+     - There is no Run-backed tax output anywhere in the codebase:
+       last_runtime_summary (main_web.py) carries no tax/CIT/WHT/
+       depreciation/loss-carryforward keys at all. The former
+       "Output Preview" card had zero Jinja binding and is replaced
+       below with an honest unavailable-state panel. -->
+<div class="sheet-banner">
+  <span class="sheet-banner-tag">🏛️ Tax</span>
+  <span class="sheet-banner-badge">
+    <span class="badge badge-preview">Protected</span>
+  </span>
+</div>
+
+<!-- Live Runtime Summary (project-level KPIs only -- there is no
+     Run-backed tax-specific output to bind here; see investigation
+     note above) -->
+<div class="runtime-block" id="shared-runtime-block" style="display:none;">
+  <div class="runtime-block-header">
+    <span class="badge badge-runtime">Runtime summary</span>
+    <span class="runtime-block-title">— last run</span>
+    <span class="runtime-block-project" id="runtime-block-project"></span>
+  </div>
+  <div class="runtime-block-kpis" id="runtime-block-kpis"></div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- CIT Assumptions: real project assumptions, read-only on this
+     screen (see investigation note above for why). -->
+<div class="sheet-card" data-fc-grid="tax" data-fc-scroll-container="true">
+  <div class="section-header">Tax Assumptions</div>
+  <div class="assumption-grid">
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">CIT Rate</span>
+      <span class="metric-value" data-fc-cell="true" data-fc-addr="tax!cit_rate" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ project_ctx.cit_rate_pct }}">{{ "%.0f"|format(project_ctx.cit_rate_pct * 100) }}%</span>
+    </div>
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Loss Carryforward</span>
+      <span class="metric-value" data-fc-cell="true" data-fc-addr="tax!loss_carryforward" data-fc-kind="text" data-fc-editable="false" data-fc-raw="{{ project_ctx.loss_carryforward_years }}">{{ project_ctx.loss_carryforward_years }} years</span>
+    </div>
+  </div>
+  <div class="table-note">Tax country template assumptions. These values are read-only and sourced from the project template.</div>
+</div>
+
+<div class="section-divider"></div>
+
+<!-- Phase F3/F4: Tax Output
+     Pre-Run: tax-unavailable-panel shown (fallback, hidden by JS after Run).
+     Post-Run: tax-schedule-block populated from sessionStorage["lastTaxSchedule"].
+     Source: WaterfallResult.periods (per-period engine output).
+     No financial calculations performed here. Read-only display only. -->
+<div class="sheet-card">
+  <div class="section-header">Tax Output
+    <span class="badge badge-runtime" style="float:right;margin-top:2px;" title="Source: WaterfallResult.periods (per-period engine output)">Engine Output</span>
+  </div>
+
+  {# Pre-Run fallback — shown when no lastTaxSchedule in sessionStorage.
+     JS hides this and shows tax-schedule-block once a Run has been executed. #}
+  <div class="empty-state-notice empty-state-notice--warn tax-unavailable-panel"
+       id="tax-unavailable-panel"
+       role="status" aria-label="Tax output outside current runtime view"
+       style="display:none;">
+    <div class="esn-icon" aria-hidden="true">📋</div>
+    <div class="esn-title">Tax output is not available yet</div>
+    <div class="esn-desc">
+      Run-backed taxable income, depreciation, loss carryforward, CIT,
+      and withholding tax results will be shown here once you execute a Run.
+      Values are sourced directly from <code>WaterfallResult.periods</code> —
+      the same engine output used by the XLSX export. No values are hardcoded
+      or computed client-side.
+    </div>
+  </div>
+
+  {# Post-Run: tax schedule table, populated from sessionStorage by JS. #}
+  <div id="tax-schedule-block" style="display:none;">
+    <div class="fc-table-wrapper" id="tax-schedule-table-wrapper">
+      <table class="fc-grid fs-statement-table" id="tax-schedule-table">
+        <thead><tr id="tax-schedule-header"></tr></thead>
+        <tbody id="tax-schedule-body"></tbody>
+      </table>
+    </div>
+    <div class="fs-statements-footer">
+      <span class="fs-footer-note">
+        Values in kEUR. Source: <code>WaterfallResult.periods</code> per-period
+        engine output — identical to XLSX export. Read-only.
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="table-note">
+  <span class="badge badge-preview">Protected</span>
+</div>
+
+<script>
+(function() {
+  "use strict";
+
+  // ── Tax Schedule row definitions (label, field key) ──────────────────────
+  // Phase F3: read-only display of per-period engine fields from
+  // WaterfallResult.periods. No JS calculations. No aggregations.
+  var TX_ROWS = [
+    { label: "Taxable Profit (pre-losses)",    key: "taxable_income_before_losses_audit_keur" },
+    { label: "Tax Loss Opening",               key: "tax_loss_opening_audit_keur" },
+    { label: "Tax Loss Used",                  key: "tax_loss_used_audit_keur" },
+    { label: "Tax Loss Closing",               key: "tax_loss_closing_audit_keur" },
+    { label: "Taxable Profit (after losses)",  key: "taxable_profit_after_losses_audit_keur", bold: true },
+    { label: "CIT Accrual",                    key: "tax_keur",                               bold: true },
+    { label: "Corporate Tax Cash",             key: "corporate_tax_cash_keur" },
+    { label: "Tax Depreciation (fiscal)",      key: "tax_depreciation_audit_keur" },
+    { label: "CF After Tax",                   key: "cf_after_tax_keur" },
+  ];
+
+  function _fmtTx(v) {
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function _buildTxHeader(headRow, periods) {
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  function _buildTxBody(tbody, rowDefs, periods) {
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label;
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmtTx(periods[i][def.key]);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderTaxSchedule(ts) {
+    // Show only operation periods for the tax schedule table.
+    var allPeriods = (ts && ts.periods) ? ts.periods : [];
+    var opPeriods = [];
+    for (var i = 0; i < allPeriods.length; i++) {
+      if (allPeriods[i].is_operation) opPeriods.push(allPeriods[i]);
+    }
+
+    var schedHead = document.getElementById("tax-schedule-header");
+    var schedBody = document.getElementById("tax-schedule-body");
+    if (schedHead && schedBody && opPeriods.length > 0) {
+      _buildTxHeader(schedHead, opPeriods);
+      _buildTxBody(schedBody, TX_ROWS, opPeriods);
+    }
+
+    // Show schedule block, hide unavailable panel
+    var schedBlock = document.getElementById("tax-schedule-block");
+    if (schedBlock) schedBlock.style.display = "";
+    var unavail = document.getElementById("tax-unavailable-panel");
+    if (unavail) unavail.style.display = "none";
+  }
+
+  // Phase F4: pre-Run fallback — show unavailable panel when no data.
+  function _populateTaxSchedule() {
+    var rawTs = sessionStorage.getItem("lastTaxSchedule");
+    if (rawTs) {
+      try {
+        var ts = JSON.parse(rawTs);
+        _renderTaxSchedule(ts);
+      } catch(e) {
+        // Malformed data: show unavailable panel
+        var unavail = document.getElementById("tax-unavailable-panel");
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel (pre-Run state)
+      var unavail2 = document.getElementById("tax-unavailable-panel");
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
+
+  function _populateTaxRuntimeBlock() {
+    var raw = sessionStorage.getItem("lastRuntimeSummary");
+    if (!raw) return;
+    var data;
+    try { data = JSON.parse(raw); } catch(e) { return; }
+
+    var block = document.getElementById("shared-runtime-block");
+    if (block) block.style.display = "";
+
+    var proj = document.getElementById("runtime-block-project");
+    if (proj) proj.textContent = data.project_name || "";
+
+    var kpiGrid = document.getElementById("runtime-block-kpis");
+    if (kpiGrid) {
+      var kpis = [
+        { label: "Project IRR", key: "project_irr" },
+        { label: "Equity IRR",  key: "equity_irr" },
+        { label: "Avg DSCR",     key: "avg_dscr" },
+        { label: "Total Revenue", key: "total_revenue_keur" },
+        { label: "EBITDA",      key: "total_ebitda_keur" },
+        { label: "Total OPEX",  key: "total_opex_keur" },
+      ];
+      var html = "";
+      for (var i = 0; i < kpis.length; i++) {
+        var kv = kpis[i];
+        var val = data[kv.key] || "NOT_AVAILABLE";
+        var cls = (val === "NOT_AVAILABLE") ? "rb-missing" : "rb-metric-value";
+        html += '<div class="rb-metric"><span class="rb-metric-label">' + kv.label + '</span><span class="' + cls + '">' + val + '</span></div>';
+      }
+      kpiGrid.innerHTML = html;
+    }
+  }
+  window._populateTaxRuntimeBlock = _populateTaxRuntimeBlock;
+  document.addEventListener("htmx:afterSwap", function(e) {
+    if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-tax"))) {
+      _populateTaxRuntimeBlock();
+      _populateTaxSchedule();
+    }
+  });
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+      _populateTaxRuntimeBlock();
+      _populateTaxSchedule();
+    });
+  } else {
+    _populateTaxRuntimeBlock();
+    _populateTaxSchedule();
+  }
+})();
+</script>

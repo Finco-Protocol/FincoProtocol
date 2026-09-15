@@ -1,0 +1,29 @@
+{# ── FINCO Protocol Application Chrome (UI-2 base, extended by UI-3) ──────────────
+   Single include that renders all four chrome rows inside the sticky
+   `.fo-chrome` wrapper:
+     1. Brand bar        (28 px)        _brand_bar.html
+     2. Command bar      (44 px)        _command_bar.html
+     3. KPI strip        (56 px)        _kpi_strip.html
+     4. Sheet tabs       (36 px)        _sheet_tabs.html   (UI-3)
+
+   UI-1A: this is the ONE global FINCO Protocol application header.
+   The legacy `.top-header` was removed from base.html in UI-1A —
+   its utility actions (help / known-limitations / pilot-guide /
+   sign-out) are now in _brand_bar.html.
+
+   `dirty`, `dashboard_kpis`, `validation_summary`, `runtime_*`,
+   `active_scenario_name`, `project_record` are all already in the
+   index context (see main_web.py). No new context is required. #}
+
+<div class="fo-chrome" id="fo-app-chrome" role="presentation">
+
+  {% include "partials/_brand_bar.html" %}
+  {% include "partials/_command_bar.html" %}
+  {% include "partials/_kpi_strip.html" %}
+
+  {# UI-3: spreadsheet-style worksheet navigation. Replaces the UI-2
+     reserved-placeholder row with the actual navigation component.
+     Reads only `dirty` + `request.path` from context. #}
+  {% include "partials/_sheet_tabs.html" %}
+
+</div>

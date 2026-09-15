@@ -1,0 +1,35 @@
+{# ── UI-2.4: Factory Lock Indicator Partial (relabeled P2-FIX-2) ─────────
+   Renders a small lock indicator for protected original projects
+   (formerly "factory templates"). The C2 architecture (P2-FIX-1)
+   moves factory/baseline vocabulary out of the normal-mode UI;
+   this partial retains the lock signal but uses neutral,
+   user-facing wording.
+
+   HOTFIX-PILOT-BLOCKER-1 (F2): Reuse the same protection logic
+   already used by _state_banner.html (P2-FIX-7) and the /run
+   defense in depth. The previous template_source-based gate
+   produced false positives for working copies whose
+   template_source is "generic_wind_reference" but project_origin is
+   "user_created". Now the gate is is_protected_reference only
+   (True for Generic Wind Reference and Generic Solar Reference factory templates, False for
+   everything else including working copies).
+
+   If no safe protected-original signal is found, render NOTHING.
+
+   Safe copy: "Protected original", "Source-locked template",
+   "Create a scenario or use Save As before editing controlled assumptions."
+
+   Do NOT use: "locked by governance", "certified template",
+   "approved model", "bank-ready template", "production control".
+#}
+
+{% set _is_protected = is_protected_reference|default(false) %}
+{% if _is_protected %}
+<div class="factory-lock-indicator" role="status" aria-label="Protected original indicator">
+  <span class="factory-lock-icon" aria-hidden="true">PL</span>
+  <div class="factory-lock-body">
+    <span class="factory-lock-title">Protected original — {{ template_source|default('') }}</span>
+    <span class="factory-lock-desc">Create a scenario or use Save As before editing controlled assumptions.</span>
+  </div>
+</div>
+{% endif %}
