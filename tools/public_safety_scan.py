@@ -50,10 +50,38 @@ def _contains_hashed_term(data: bytes) -> bool:
     return False
 
 
+_SKIP_DIR_NAMES = frozenset({
+    ".git", "__pycache__", ".pytest_cache", ".venv", "venv",
+    "node_modules", ".worktrees",
+})
+_SKIP_DIR_PATHS = frozenset({
+    # Gitignored data directories — DB, WAL, and runtime exports live here
+    "app/data",
+    "storage",
+    "storage/exports",
+    "reports",
+    "artifacts",
+    "exports",
+    "uploads",
+    "backups",
+    "playwright-report",
+    "test-results",
+    ".pytest-tmp",
+})
+
+
 def main() -> int:
     failures = []
     for path in ROOT.rglob("*"):
-        if ".git" in path.parts or not path.is_file():
+        parts = path.parts
+        # Skip any path that contains a skipped directory name
+        if any(p in _SKIP_DIR_NAMES for p in parts):
+            continue
+        if not path.is_file():
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        # Skip gitignored directory prefixes
+        if any(rel == d or rel.startswith(d + "/") for d in _SKIP_DIR_PATHS):
             continue
         rel = path.relative_to(ROOT).as_posix()
         rel_bytes = rel.encode("utf-8", errors="ignore")

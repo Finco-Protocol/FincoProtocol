@@ -1,4 +1,5 @@
 """FINCO Protocol web application with FINCO Model workspace."""
+import asyncio
 import hashlib
 import json
 import logging
@@ -48,6 +49,14 @@ from app.auth import (
     _record_failed_login,
     _clear_failed_logins,
     COOKIE_NAME,
+    # Demo session
+    DEMO_COOKIE_NAME,
+    create_demo_session_token,
+    decode_demo_session_token,
+    make_demo_cookie,
+    clear_demo_cookie,
+    new_demo_user_id,
+    check_demo_rate_limit,
 )
 
 # Import persistence
@@ -146,6 +155,14 @@ _logger.info("FINCO Model startup: asset_version=%s", ASSET_VERSION)
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FINCO Protocol")
 
+# -- Model run concurrency limiter (P6.6) -------------------------------------
+# Prevents resource exhaustion when multiple demo users run the model simultaneously.
+# FINCO_MAX_CONCURRENT_RUNS=0 means unlimited (single-user / dev mode).
+_MAX_CONCURRENT_RUNS = int(os.getenv("FINCO_MAX_CONCURRENT_RUNS", "8"))
+_run_semaphore: asyncio.Semaphore | None = (
+    asyncio.Semaphore(_MAX_CONCURRENT_RUNS) if _MAX_CONCURRENT_RUNS > 0 else None
+)
+
 
 @app.on_event("startup")
 async def _bootstrap_reference_models():
@@ -156,6 +173,25 @@ async def _bootstrap_reference_models():
     except Exception:
         import logging
         logging.getLogger(__name__).exception("Failed to bootstrap reference models at startup")
+
+
+@app.on_event("startup")
+async def _schedule_demo_cleanup():
+    """Run demo TTL cleanup in a background thread after a short delay (P6.5)."""
+    import threading
+
+    def _run():
+        import time as _time
+        _time.sleep(300)  # defer 5 min so startup I/O is not blocked
+        try:
+            from app.demo_cleanup import cleanup_expired_demo_data
+            cleanup_expired_demo_data()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Demo TTL cleanup failed")
+
+    t = threading.Thread(target=_run, daemon=True, name="demo-cleanup")
+    t.start()
 
 
 # -- Template setup -----------------------------------------------------------
@@ -256,6 +292,49 @@ try:
 except Exception:
     pass  # middleware registration failure should not break the app
 
+# -- Demo session middleware --------------------------------------------------
+# Provisions an anonymous demo session for visitors with no session cookie.
+# Stores the new token in request.state so get_current_user() can read it
+# within the same request; also sets the cookie on the outgoing response.
+
+_DEMO_PROVISION_SKIP_PREFIXES = (
+    "/static",
+    "/login",
+    "/logout",
+    "/public-health",
+    "/readyz",
+    "/health",
+    "/favicon",
+)
+
+
+async def _demo_session_middleware(request, call_next):
+    """Auto-provision anonymous demo sessions for new visitors."""
+    has_admin = COOKIE_NAME in request.cookies
+    has_demo = DEMO_COOKIE_NAME in request.cookies
+    path = request.url.path
+
+    new_demo_token: Optional[str] = None
+    if (
+        not has_admin
+        and not has_demo
+        and not any(path.startswith(p) for p in _DEMO_PROVISION_SKIP_PREFIXES)
+    ):
+        demo_id = new_demo_user_id()
+        new_demo_token = create_demo_session_token(demo_id)
+        request.state.demo_session_token = new_demo_token
+
+    response = await call_next(request)
+
+    if new_demo_token is not None:
+        cookie = make_demo_cookie(new_demo_token)
+        response.set_cookie(**cookie)
+
+    return response
+
+
+app.middleware("http")(_demo_session_middleware)
+
 # -- Shared caveats (visible in UI) -------------------------------------------
 CAVEATS = [
     "Synthetic reference models are illustrative and not jurisdiction-specific advice",
@@ -343,12 +422,34 @@ NEW_PROJECT_TEMPLATE_OPTIONS = [
 # -- Auth dependency ----------------------------------------------------------
 
 def get_current_user(request: Request):
-    """Extract session from cookie. Returns None if not authenticated."""
-    cookies = request.cookies
-    token = cookies.get(COOKIE_NAME)
-    if not token:
-        return None
-    return decode_session_token(token)
+    """Extract session from cookie. Admin session takes priority over demo session.
+
+    Resolution order:
+    1. Admin session cookie (COOKIE_NAME) — signed admin token
+    2. Demo session cookie (DEMO_COOKIE_NAME) — signed anonymous token
+    3. Freshly provisioned demo token in request.state (first visit, set by middleware)
+    4. None — only for login/logout/health routes that explicitly handle unauthenticated state
+    """
+    # 1. Admin session
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        session = decode_session_token(token)
+        if session:
+            return session
+
+    # 2. Existing demo session cookie
+    demo_token = request.cookies.get(DEMO_COOKIE_NAME)
+    if demo_token:
+        session = decode_demo_session_token(demo_token)
+        if session:
+            return session
+
+    # 3. Newly provisioned demo session (first visit — set by middleware this request)
+    state_token = getattr(request.state, "demo_session_token", None)
+    if state_token:
+        return decode_demo_session_token(state_token)
+
+    return None
 
 def require_auth(request: Request):
     """Require auth - returns user or raises redirect to /login."""
@@ -2909,6 +3010,39 @@ async def run(request: Request):
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    # P6.7 — demo session rate limiting for model runs
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "model_run")
+        if not allowed:
+            return templates.TemplateResponse(
+                request=request,
+                name="errors.html",
+                context={
+                    "error_title": "Run limit reached",
+                    "error_message": (
+                        f"Demo sessions are limited to {20} model runs per hour. "
+                        f"Try again in {retry_after}s."
+                    ),
+                },
+                status_code=429,
+            )
+
+    # P6.6 — global concurrency limiter
+    if _run_semaphore is not None and _run_semaphore.locked():
+        _can_acquire = _run_semaphore._value > 0  # noqa: SLF001 — bounded semaphore internal
+        if not _can_acquire:
+            return templates.TemplateResponse(
+                request=request,
+                name="errors.html",
+                context={
+                    "error_title": "Model busy",
+                    "error_message": (
+                        "All model run slots are in use. Please wait a moment and try again."
+                    ),
+                },
+                status_code=503,
+            )
+
     form = await request.form()
 
     deps = RunRouteDeps(
@@ -2934,9 +3068,15 @@ async def run(request: Request):
         snapshot_input_error=SnapshotInputError,
     )
 
-    outcome = await execute_run_route(
-        request=request, form=form, user=user, deps=deps,
-    )
+    if _run_semaphore is not None:
+        async with _run_semaphore:
+            outcome = await execute_run_route(
+                request=request, form=form, user=user, deps=deps,
+            )
+    else:
+        outcome = await execute_run_route(
+            request=request, form=form, user=user, deps=deps,
+        )
 
     # Plain errors.html path: just render the template (no prepend_html).
     if not outcome.prepend_html:
@@ -3864,6 +4004,23 @@ async def create_project_route(
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+
+    # P6.7 — demo session rate limiting for project creation
+    if user.is_demo:
+        allowed, retry_after = check_demo_rate_limit(user.user_id, "project_create")
+        if not allowed:
+            return templates.TemplateResponse(
+                request=request,
+                name="errors.html",
+                context={
+                    "error_title": "Project limit reached",
+                    "error_message": (
+                        f"Demo sessions are limited to 5 new projects per hour. "
+                        f"Try again in {retry_after}s."
+                    ),
+                },
+                status_code=429,
+            )
 
     # Build submitted dict from defaults + form values
     submitted = _submitted_new_project_defaults()
