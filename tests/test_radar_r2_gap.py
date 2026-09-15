@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -1198,3 +1200,60 @@ def test_d2_final_pass_artifact_requires_both_r0_impact_fields() -> None:
     # A block missing either field fails the gate invariant
     assert "r0BuySizeImpactBps" in sc
     assert "r0SellSizeImpactBps" in sc
+
+
+# ---------------------------------------------------------------------------
+# E4: Documentation/implementation alignment guards
+# ---------------------------------------------------------------------------
+
+def _repo_doc() -> str:
+    """Read the canonical R2 doc relative to the package, not the cwd."""
+    import finco_radar.r2.live_proof as live_proof
+
+    root = Path(live_proof.__file__).resolve().parents[2]
+    return (root / "docs" / "radar" / "r2_finco_gap.md").read_text(encoding="utf-8")
+
+
+def _live_proof_source() -> str:
+    import finco_radar.r2.live_proof as live_proof
+
+    return Path(live_proof.__file__).resolve().read_text(encoding="utf-8")
+
+
+def test_e4_doc_cannot_claim_r2_emits_no_r0_size_impact_while_it_emits_them() -> None:
+    """E4: the obsolete Correction-D claim cannot coexist with the emitting implementation."""
+    source = _live_proof_source()
+    emitted = [
+        field
+        for field in ("r0BuySizeImpactBps", "r0SellSizeImpactBps")
+        if f'"{field}"' in source
+    ]
+    # Guard is only meaningful while the implementation actually emits the fields.
+    assert emitted == ["r0BuySizeImpactBps", "r0SellSizeImpactBps"]
+
+    doc = _repo_doc()
+    for field in emitted:
+        assert field in doc, f"{field} is emitted by R2 but undocumented"
+
+    obsolete = re.compile(r"emits\s+\**no\**\s+R0 size-impact field", re.IGNORECASE)
+    assert obsolete.search(doc) is None, (
+        "doc still claims R2 emits no R0 size-impact field while the implementation emits them"
+    )
+
+
+def test_e4_doc_records_canonical_r0_formula_authority() -> None:
+    """E4: the doc must name the canonical R0 helper, not a re-derived formula."""
+    doc = _repo_doc()
+    assert "finco_radar.quotes.normalization.quote_size_impact_bps" in doc
+    # The R0 acceptance rule documented here must stay the original AND rule.
+    assert "buy == 0 and sell == 0" in doc
+
+
+def test_e4_doc_documents_mandatory_comparison_time_coherence() -> None:
+    """E4: mandatory policy and its R4 boundary must be documented, not just implemented."""
+    doc = _repo_doc()
+    assert "## Comparison-time coherence" in doc
+    assert "GapComparisonPolicy" in doc
+    assert "EVIDENCE_TIME_MISMATCH" in doc
+    # The documented threshold must be framed as a policy, not as market-state truth.
+    assert "not universal market-state truth" in doc
