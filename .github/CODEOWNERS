@@ -1,0 +1,16 @@
+# Default public-repository ownership
+* @FincoProtocol
+
+# Critical financial authority
+/financial_engine/ @FincoProtocol
+/finco_core/ @FincoProtocol
+
+# FINCO Radar authority and evidence
+/finco_radar/ @FincoProtocol
+
+# CI, repository safety, and governance
+/.github/ @FincoProtocol
+/tools/public_safety_scan.py @FincoProtocol
+/MIGRATION_CONTROL.md @FincoProtocol
+/SECURITY.md @FincoProtocol
+/docs/VERIFICATION.md @FincoProtocol
