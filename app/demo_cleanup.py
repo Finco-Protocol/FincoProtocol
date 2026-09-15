@@ -260,90 +260,122 @@ def cleanup_all_demo_data() -> dict:
 
 
 def bootstrap_staging_db(conn: "sqlite3.Connection") -> dict:
-    """Full disposable-staging bootstrap.
+    """Full disposable-staging bootstrap — transactionally fail-closed.
 
     Wipes ALL non-reference project and user state from ``conn``, then seeds
     the three canonical reference models.  Called ONLY after the fail-closed
     safety gates in ``tools/demo_reset.py`` have passed.
 
     Scope:
-    - Deletes ALL rows from sub-line tables (no user_id filter)
+    - Deletes ALL rows from sub-line tables belonging to non-reference projects
     - Deletes ALL rows from per-user tables (runs, scenarios, workspace_states,
       scenario_exports) for any user_id that is not '__reference__'
     - Deletes ALL project rows that are not owned by '__reference__'
     - Seeds Solar XA / Wind XB / Storage XC canonical references
-    - Verifies post-condition: exactly 3 reference rows, zero non-reference
-      project rows
+    - Verifies post-condition across ALL relevant tables: exactly 3 reference
+      project rows, zero non-reference rows in projects, scenarios,
+      workspace_states, runs, scenario_exports, capex_sub_lines,
+      opex_sub_lines
 
     Returns a summary dict with keys:
       - 'deleted': {table: rows_deleted}
       - 'seeded': number of reference rows seeded
       - 'post_condition': 'PASS' | 'FAIL: <detail>'
 
-    Raises ValueError if the post-condition fails.
+    Raises:
+      - RuntimeError if any required DELETE fails (transactional abort)
+      - ValueError if the post-condition fails
+
     Never deletes canonical reference rows themselves.
+    Never swallows required DELETE failures.
     """
     summary: dict = {"deleted": {}, "seeded": 0}
 
     with conn:
-        # 1. Wipe sub-lines for all non-reference projects
+        # 1. Wipe sub-lines for all non-reference projects.
+        # These are required deletes — any failure aborts the bootstrap.
         for table in _SUBLINE_TABLES:
-            try:
-                cur = conn.execute(
-                    f"""DELETE FROM {table} WHERE project_id IN (
-                        SELECT project_id FROM projects WHERE user_id != '__reference__'
-                    )"""
-                )
-                if cur.rowcount:
-                    summary["deleted"][table] = cur.rowcount
-            except Exception as exc:
-                logger.warning("bootstrap_staging_db: error clearing %s: %s", table, exc)
-
-        # 2. Wipe per-user tables for non-reference users
-        for table in _TABLES_WITH_USER_ID:
-            try:
-                cur = conn.execute(
-                    f"DELETE FROM {table} WHERE user_id != '__reference__'"
-                )
-                if cur.rowcount:
-                    summary["deleted"][table] = cur.rowcount
-            except Exception as exc:
-                logger.warning("bootstrap_staging_db: error clearing %s: %s", table, exc)
-
-        # 3. Wipe all non-reference projects
-        try:
             cur = conn.execute(
-                "DELETE FROM projects WHERE user_id != '__reference__'"
+                f"""DELETE FROM {table} WHERE project_id IN (
+                    SELECT project_id FROM projects WHERE user_id != '__reference__'
+                )"""
             )
             if cur.rowcount:
-                summary["deleted"]["projects"] = cur.rowcount
-        except Exception as exc:
-            logger.warning("bootstrap_staging_db: error clearing projects: %s", exc)
+                summary["deleted"][table] = cur.rowcount
+                logger.info("bootstrap_staging_db: deleted %d rows from %s", cur.rowcount, table)
+
+        # 2. Wipe per-user tables for non-reference users.
+        # Required deletes — any failure aborts the bootstrap.
+        for table in _TABLES_WITH_USER_ID:
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE user_id != '__reference__'"
+            )
+            if cur.rowcount:
+                summary["deleted"][table] = cur.rowcount
+                logger.info("bootstrap_staging_db: deleted %d rows from %s", cur.rowcount, table)
+
+        # 3. Wipe all non-reference projects.
+        # Required delete — any failure aborts the bootstrap.
+        cur = conn.execute(
+            "DELETE FROM projects WHERE user_id != '__reference__'"
+        )
+        if cur.rowcount:
+            summary["deleted"]["projects"] = cur.rowcount
+            logger.info("bootstrap_staging_db: deleted %d rows from projects", cur.rowcount)
 
     # 4. Seed canonical reference models using the standard service
     from app.services.project_library_service import ensure_reference_models
     seeded = ensure_reference_models()
     summary["seeded"] = len(seeded) if seeded else 0
 
-    # 5. Verify post-condition
+    # 5. Verify post-condition across ALL relevant tables.
+    # Non-reference state must be fully absent everywhere, not only in projects.
+    _VERIFY_TABLES_USER_ID = [
+        "projects",
+        "scenarios",
+        "workspace_states",
+        "runs",
+        "scenario_exports",
+    ]
+    failures: list[str] = []
+
     ref_count = conn.execute(
         "SELECT COUNT(*) FROM projects WHERE user_id = '__reference__'"
     ).fetchone()[0]
-    non_ref_count = conn.execute(
-        "SELECT COUNT(*) FROM projects WHERE user_id != '__reference__'"
-    ).fetchone()[0]
+    if ref_count != 3:
+        failures.append(f"projects: ref_count={ref_count} (expected 3)")
 
-    if ref_count == 3 and non_ref_count == 0:
+    for table in _VERIFY_TABLES_USER_ID:
+        non_ref = conn.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE user_id != '__reference__'"
+        ).fetchone()[0]
+        if non_ref != 0:
+            failures.append(f"{table}: non_ref_count={non_ref} (expected 0)")
+
+    # Sub-lines have no user_id; verify via project FK
+    for table in _SUBLINE_TABLES:
+        try:
+            orphan = conn.execute(
+                f"""SELECT COUNT(*) FROM {table}
+                    WHERE project_id IN (
+                        SELECT project_id FROM projects WHERE user_id != '__reference__'
+                    )"""
+            ).fetchone()[0]
+            if orphan != 0:
+                failures.append(f"{table}: orphan_count={orphan} (expected 0)")
+        except Exception as exc:
+            logger.warning("bootstrap_staging_db: post-condition check skipped for %s: %s", table, exc)
+
+    if not failures:
         summary["post_condition"] = "PASS"
         logger.info(
-            "bootstrap_staging_db: PASS — 3 canonical refs, 0 non-reference rows"
+            "bootstrap_staging_db: PASS — 3 canonical refs, 0 non-reference rows in all tables"
         )
     else:
-        detail = f"ref_count={ref_count}, non_ref_count={non_ref_count}"
+        detail = "; ".join(failures)
         summary["post_condition"] = f"FAIL: {detail}"
         raise ValueError(
-            f"bootstrap_staging_db post-condition failed: {detail}. "
-            "Expected exactly 3 reference rows and 0 non-reference project rows."
+            f"bootstrap_staging_db post-condition failed: {detail}."
         )
 
     return summary

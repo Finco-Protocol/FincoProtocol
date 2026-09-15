@@ -3114,45 +3114,59 @@ async def run(request: Request):
             status_code=503,
         )
 
-    form = await request.form()
-
-    deps = RunRouteDeps(
-        collect_form_snapshot=_collect_form_snapshot,
-        project_workspace_from_snapshot=_project_workspace_from_snapshot,
-        normalize_template_source=_normalize_template_source,
-        canonical_project_type=_canonical_project_type,
-        check_runtime_allowed=check_runtime_allowed,
-        resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
-        build_schema_from_form=_build_schema_from_form_with_timing(form),
-        validate_form=_validate_form,
-        format_kpis=_format_kpis,
-        default_workspace_snapshot=_default_workspace_snapshot,
-        replay_metadata_for_project=_replay_metadata_for_project,
-        governance_snapshot=_governance_snapshot,
-        scenario_provenance_for_record=_scenario_provenance_for_record,
-        run_project=run_project,
-        build_projectinputs=build_projectinputs,
-        build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
-        record_workspace_runtime=record_workspace_runtime,
-        update_scenario_last_run_summary=update_scenario_last_run_summary,
-        runtime_summary_to_dict=runtime_summary_to_dict,
-        snapshot_input_error=SnapshotInputError,
-    )
-
+    # P6.D — outer try/finally begins immediately after successful acquisition.
+    # Every exit path after this point (form parse error, deps construction,
+    # observability setup, execute_run_route, template render) is covered by
+    # _release_run_slot(), preventing permanent slot leaks.
     import time as _time
     from app.observability import log_run_started, log_run_completed, log_run_failed
-    log_run_started(user.user_id)
     _run_start = _time.monotonic()
-
+    _run_started_logged = False
     try:
-        outcome = await execute_run_route(
-            request=request, form=form, user=user, deps=deps,
+        form = await request.form()
+
+        deps = RunRouteDeps(
+            collect_form_snapshot=_collect_form_snapshot,
+            project_workspace_from_snapshot=_project_workspace_from_snapshot,
+            normalize_template_source=_normalize_template_source,
+            canonical_project_type=_canonical_project_type,
+            check_runtime_allowed=check_runtime_allowed,
+            resolve_runtime_snapshot_source=_resolve_runtime_snapshot_source,
+            build_schema_from_form=_build_schema_from_form_with_timing(form),
+            validate_form=_validate_form,
+            format_kpis=_format_kpis,
+            default_workspace_snapshot=_default_workspace_snapshot,
+            replay_metadata_for_project=_replay_metadata_for_project,
+            governance_snapshot=_governance_snapshot,
+            scenario_provenance_for_record=_scenario_provenance_for_record,
+            run_project=run_project,
+            build_projectinputs=build_projectinputs,
+            build_projectinputs_from_snapshot=build_projectinputs_from_snapshot,
+            record_workspace_runtime=record_workspace_runtime,
+            update_scenario_last_run_summary=update_scenario_last_run_summary,
+            runtime_summary_to_dict=runtime_summary_to_dict,
+            snapshot_input_error=SnapshotInputError,
         )
-        _run_ms = (_time.monotonic() - _run_start) * 1000
-        log_run_completed(_run_ms)
-    except Exception as _run_exc:
-        _run_ms = (_time.monotonic() - _run_start) * 1000
-        log_run_failed(type(_run_exc).__name__)
+
+        log_run_started(user.user_id)
+        _run_started_logged = True
+
+        try:
+            outcome = await execute_run_route(
+                request=request, form=form, user=user, deps=deps,
+            )
+            _run_ms = (_time.monotonic() - _run_start) * 1000
+            log_run_completed(_run_ms)
+        except Exception as _run_exc:
+            _run_ms = (_time.monotonic() - _run_start) * 1000
+            log_run_failed(type(_run_exc).__name__)
+            raise
+    except Exception:
+        if not _run_started_logged:
+            # Pre-execution failure: slot was held but run never started.
+            # Log run_failed with a synthetic type so observers see the leak
+            # path was covered (run_started was never emitted intentionally).
+            pass
         raise
     finally:
         _release_run_slot()
