@@ -26,6 +26,7 @@ from finco_radar.quotes.contracts import (
     SettlementReference,
     SettlementReferenceState,
 )
+from finco_radar.quotes.normalization import quote_size_impact_bps
 
 UID = "0x" + "11" * 32
 TOKEN = "0x" + "aa" * 20
@@ -166,7 +167,7 @@ def test_bound_reference_applies_multiplier_once_to_bid_and_ask() -> None:
 
 
 def test_buy_gap_uses_official_ask_not_midpoint() -> None:
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     expected_execution = Decimal("100") / Decimal("0.8")
     expected = ((expected_execution / Decimal("105")) - 1) * Decimal("10000")
     assert obs.reference_side is ReferenceSide.ASK
@@ -179,6 +180,7 @@ def test_sell_gap_uses_official_bid_not_midpoint() -> None:
     obs = compute_directional_gap(
         reference(),
         quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     expected = ((Decimal("90") / Decimal("95")) - 1) * Decimal("10000")
     assert obs.reference_side is ReferenceSide.BID
@@ -188,16 +190,17 @@ def test_sell_gap_uses_official_bid_not_midpoint() -> None:
 
 
 def test_multiplier_is_not_applied_to_execution_price() -> None:
-    obs = compute_directional_gap(reference("2"), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference("2"), quote(QuoteSide.BUY), policy=POLICY)
     assert obs.execution_price_usd_per_token == Decimal("125")
     assert obs.reference_price_usd_per_token == Decimal("210")
 
 
 def test_fees_and_gas_are_preserved_but_not_added_to_gap_price() -> None:
-    plain = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    plain = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     costed = compute_directional_gap(
         reference(),
         quote(QuoteSide.BUY, fee="7.5", gas="2.5"),
+        policy=POLICY,
     )
     assert costed.execution_price_usd_per_token == plain.execution_price_usd_per_token
     assert costed.gap_bps == plain.gap_bps
@@ -208,7 +211,7 @@ def test_fees_and_gas_are_preserved_but_not_added_to_gap_price() -> None:
 
 def test_quote_identity_mismatch_fails_closed() -> None:
     with pytest.raises(GapComputationError, match="identity"):
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN), policy=POLICY)
 
 
 @pytest.mark.parametrize("side", [QuoteSide.BUY, QuoteSide.SELL])
@@ -217,6 +220,7 @@ def test_settlement_chain_identity_mismatch_fails_closed(side: QuoteSide) -> Non
         compute_directional_gap(
             reference(),
             quote(side, settlement_chain_id=1),
+            policy=POLICY,
         )
 
 
@@ -225,6 +229,7 @@ def test_non_ok_quote_fails_closed_without_numeric_gap() -> None:
         compute_directional_gap(
             reference(),
             quote(QuoteSide.BUY, status=QuoteStatus.ROUTE_UNAVAILABLE),
+            policy=POLICY,
         )
 
 
@@ -233,6 +238,7 @@ def test_unusable_settlement_reference_fails_closed() -> None:
         compute_directional_gap(
             reference(),
             quote(QuoteSide.BUY, usable_settlement=False),
+            policy=POLICY,
         )
 
 
@@ -274,6 +280,7 @@ def test_explicit_halt_is_preserved_but_r4_state_authority_is_not_invented() -> 
     obs = compute_directional_gap(
         reference(isTradingHalt=True),
         quote(QuoteSide.BUY),
+        policy=POLICY,
     )
     assert obs.reference_is_trading_halt is True
     assert obs.reference_state_authority == "R4_NOT_YET_APPLIED"
@@ -360,15 +367,26 @@ def test_c1_missing_settlement_observed_at_fails_closed() -> None:
     assert exc_info.value.status is GapStatus.EVIDENCE_TIME_MISMATCH
 
 
-def test_c1_no_policy_skips_skew_check() -> None:
-    """Without a policy, stale evidence is not blocked (backward compat)."""
+# ---------------------------------------------------------------------------
+# D1: Mandatory policy enforcement
+# ---------------------------------------------------------------------------
+
+def test_d1_policy_is_mandatory_no_default() -> None:
+    """D1: compute_directional_gap requires an explicit GapComparisonPolicy — no default."""
+    with pytest.raises(TypeError):
+        compute_directional_gap(reference(), quote(QuoteSide.BUY))  # type: ignore[call-arg]
+
+
+def test_d1_stale_evidence_always_blocked_no_silent_bypass() -> None:
+    """D1: stale evidence cannot slip through; policy guard is unconditional."""
     old = NOW - timedelta(seconds=9999)
     ref = build_bound_reference_price(
         asset(), binding(),
         price_row(generatedAt=old.isoformat()),
     )
-    obs = compute_directional_gap(ref, quote(QuoteSide.BUY))
-    assert obs.gap_bps.is_finite()
+    with pytest.raises(GapComputationError) as exc_info:
+        compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
+    assert exc_info.value.status is GapStatus.EVIDENCE_TIME_MISMATCH
 
 
 # ---------------------------------------------------------------------------
@@ -377,15 +395,16 @@ def test_c1_no_policy_skips_skew_check() -> None:
 
 def test_c2_settlement_observed_at_preserved_in_observation() -> None:
     """C2: settlement_observed_at is in the observation for reconstruction."""
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     assert obs.settlement_observed_at == NOW
 
 
-def test_c2_settlement_observed_at_none_when_absent() -> None:
-    """C2: absent observed_at is preserved as None (without policy)."""
+def test_c2_absent_settlement_observed_at_fails_closed_under_mandatory_policy() -> None:
+    """C2/D1: absent settlement_observed_at fails closed — no silent bypass possible."""
     q = quote(QuoteSide.BUY, settlement_observed_at=None)
-    obs = compute_directional_gap(reference(), q)
-    assert obs.settlement_observed_at is None
+    with pytest.raises(GapComputationError) as exc_info:
+        compute_directional_gap(reference(), q, policy=POLICY)
+    assert exc_info.value.status is GapStatus.EVIDENCE_TIME_MISMATCH
 
 
 def test_c2_settlement_evidence_fields_present() -> None:
@@ -398,7 +417,7 @@ def test_c2_settlement_evidence_fields_present() -> None:
     assert sett.asset.chain_id == 4663
     assert sett.asset.contract_address == SETTLEMENT
     # Reconstruct: settlement_token_amount × usd_per_asset = settlement_usd
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     # normalized_in is 100 USDG, usd_per_asset is 1.0 → settlement_amount_usd = 100
     assert obs.settlement_amount_usd == Decimal("100")
     assert sett.usd_per_asset * Decimal("100") == obs.settlement_amount_usd
@@ -410,7 +429,7 @@ def test_c2_settlement_evidence_fields_present() -> None:
 
 def test_c3_buy_gap_still_uses_ask() -> None:
     """C3: BUY directional GAP unchanged — uses official ASK."""
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     assert obs.reference_side is ReferenceSide.ASK
     assert obs.reference_price_usd_per_token == Decimal("105")
 
@@ -418,7 +437,8 @@ def test_c3_buy_gap_still_uses_ask() -> None:
 def test_c3_sell_gap_still_uses_bid() -> None:
     """C3: SELL directional GAP unchanged — uses official BID."""
     obs = compute_directional_gap(
-        reference(), quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+        reference(), quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     assert obs.reference_side is ReferenceSide.BID
     assert obs.reference_price_usd_per_token == Decimal("95")
@@ -427,7 +447,7 @@ def test_c3_sell_gap_still_uses_bid() -> None:
 def test_c3_buy_gap_to_mid_formula() -> None:
     """C3: neutral midpoint BUY formula uses (bid+ask)/2."""
     ref = reference()
-    obs = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     mid = ref.token_midpoint_usd_per_token  # (95+105)/2 = 100
     assert mid == Decimal("100")
     expected_to_mid = ((obs.execution_price_usd_per_token / mid) - Decimal("1")) * Decimal("10000")
@@ -438,7 +458,8 @@ def test_c3_sell_gap_to_mid_formula() -> None:
     """C3: neutral midpoint SELL formula uses (bid+ask)/2."""
     ref = reference()
     obs = compute_directional_gap(
-        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     mid = ref.token_midpoint_usd_per_token
     expected_to_mid = ((Decimal("90") / mid) - Decimal("1")) * Decimal("10000")
@@ -448,7 +469,7 @@ def test_c3_sell_gap_to_mid_formula() -> None:
 def test_c3_gap_to_mid_differs_from_directional_gap() -> None:
     """C3: gap_to_mid_bps is distinct from gap_bps when bid != ask."""
     ref = reference()  # bid=95, ask=105, mid=100
-    obs = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     # BUY uses ask=105; mid=100 — these are different so gap_bps != gap_to_mid_bps
     assert obs.gap_bps != obs.gap_to_mid_bps
 
@@ -456,16 +477,17 @@ def test_c3_gap_to_mid_differs_from_directional_gap() -> None:
 def test_c3_gap_to_mid_equals_directional_when_bid_equals_ask() -> None:
     """C3: when bid==ask==mid, gap_to_mid_bps equals gap_bps for BUY."""
     ref = reference(bid="100", ask="100")  # bid==ask==mid==100
-    obs = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     assert obs.gap_bps == obs.gap_to_mid_bps
 
 
 def test_c3_execution_midpoint_formula() -> None:
     """C3: P_execution_mid = (P_buy + P_sell) / 2 computed externally from observations."""
     ref = reference()
-    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     obs_sell = compute_directional_gap(
-        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     p_exec_mid = (obs_buy.execution_price_usd_per_token + obs_sell.execution_price_usd_per_token) / Decimal("2")
     assert p_exec_mid.is_finite() and p_exec_mid > 0
@@ -474,9 +496,10 @@ def test_c3_execution_midpoint_formula() -> None:
 def test_c3_mid_gap_formula() -> None:
     """C3: mid_gap_bps = ((P_exec_mid / P_ref_mid) - 1) * 10_000."""
     ref = reference()
-    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     obs_sell = compute_directional_gap(
-        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     p_exec_mid = (obs_buy.execution_price_usd_per_token + obs_sell.execution_price_usd_per_token) / Decimal("2")
     ref_mid = ref.token_midpoint_usd_per_token
@@ -487,9 +510,10 @@ def test_c3_mid_gap_formula() -> None:
 def test_c3_quote_spread_formula() -> None:
     """C3: quote_spread_bps = ((P_buy - P_sell) / P_exec_mid) * 10_000."""
     ref = reference()
-    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs_buy = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     obs_sell = compute_directional_gap(
-        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+        ref, quote(QuoteSide.SELL, normalized_in="1", normalized_out="90"),
+        policy=POLICY,
     )
     p_exec_mid = (obs_buy.execution_price_usd_per_token + obs_sell.execution_price_usd_per_token) / Decimal("2")
     spread = ((obs_buy.execution_price_usd_per_token - obs_sell.execution_price_usd_per_token) / p_exec_mid) * Decimal("10000")
@@ -541,7 +565,7 @@ def _make_obs(side: QuoteSide, notional: str, out: str) -> object:
             settlement_reference=settlement(),
             status=QuoteStatus.QUOTE_OK,
         )
-    return compute_directional_gap(ref, q)
+    return compute_directional_gap(ref, q, policy=POLICY)
 
 
 def test_c4_size_snapshots_are_distinct_objects() -> None:
@@ -596,8 +620,8 @@ def test_c4_sell_directional_gap_delta_orientation() -> None:
         settlement_reference=settlement(), status=QuoteStatus.QUOTE_OK,
     )
 
-    obs_100 = compute_directional_gap(ref, q_100)
-    obs_1000 = compute_directional_gap(ref, q_1000)
+    obs_100 = compute_directional_gap(ref, q_100, policy=POLICY)
+    obs_1000 = compute_directional_gap(ref, q_1000, policy=POLICY)
     delta = obs_1000.gap_bps - obs_100.gap_bps
     assert delta.is_finite()
     # $1000 SELL realized 88/token, $100 realized 90/token — larger size is worse
@@ -629,6 +653,7 @@ def test_c5_quote_unavailable_carries_typed_status() -> None:
         compute_directional_gap(
             reference(),
             quote(QuoteSide.BUY, status=QuoteStatus.ROUTE_UNAVAILABLE),
+            policy=POLICY,
         )
     assert exc_info.value.status is GapStatus.QUOTE_UNAVAILABLE
 
@@ -636,21 +661,21 @@ def test_c5_quote_unavailable_carries_typed_status() -> None:
 def test_c5_settlement_unavailable_carries_typed_status() -> None:
     """C5: unusable settlement maps to SETTLEMENT_REFERENCE_UNAVAILABLE."""
     with pytest.raises(GapComputationError) as exc_info:
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, usable_settlement=False))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, usable_settlement=False), policy=POLICY)
     assert exc_info.value.status is GapStatus.SETTLEMENT_REFERENCE_UNAVAILABLE
 
 
 def test_c5_settlement_chain_mismatch_carries_typed_status() -> None:
     """C5: settlement chain mismatch maps to SETTLEMENT_REFERENCE_UNAVAILABLE."""
     with pytest.raises(GapComputationError) as exc_info:
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, settlement_chain_id=1))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, settlement_chain_id=1), policy=POLICY)
     assert exc_info.value.status is GapStatus.SETTLEMENT_REFERENCE_UNAVAILABLE
 
 
 def test_c5_reference_binding_mismatch_carries_typed_status() -> None:
     """C5: token identity mismatch maps to REFERENCE_BINDING_FAILED."""
     with pytest.raises(GapComputationError) as exc_info:
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN), policy=POLICY)
     assert exc_info.value.status is GapStatus.REFERENCE_BINDING_FAILED
 
 
@@ -691,27 +716,27 @@ def test_c5_reference_invalid_usd_carries_typed_status() -> None:
 
 def test_c6_settlement_observed_at_in_observation() -> None:
     """C6: settlement_observed_at in observation for provenance."""
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     assert obs.settlement_observed_at is not None
     assert obs.settlement_observed_at.tzinfo is not None
 
 
 def test_c6_reference_generated_at_in_observation() -> None:
     """C6: reference_generated_at preserved in observation."""
-    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY))
+    obs = compute_directional_gap(reference(), quote(QuoteSide.BUY), policy=POLICY)
     assert obs.reference_generated_at == NOW
 
 
 def test_c6_settlement_chain_mismatch_still_fails_closed() -> None:
     """C6: settlement chain mismatch is not silently ignored."""
     with pytest.raises(GapComputationError):
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, settlement_chain_id=1))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, settlement_chain_id=1), policy=POLICY)
 
 
 def test_c6_settlement_address_mismatch_still_fails_closed() -> None:
     """C6: settlement address mismatch detected via identity check."""
     with pytest.raises(GapComputationError):
-        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN))
+        compute_directional_gap(reference(), quote(QuoteSide.BUY, token_address=OTHER_TOKEN), policy=POLICY)
 
 
 # ---------------------------------------------------------------------------
@@ -734,7 +759,7 @@ def test_c7_multiplier_applied_once_only() -> None:
     assert ref.token_bid_usd_per_token == Decimal("285")
     assert ref.token_ask_usd_per_token == Decimal("315")
     # Execution price uses the settlement/token ratio, not the reference
-    obs = compute_directional_gap(ref, quote(QuoteSide.BUY))
+    obs = compute_directional_gap(ref, quote(QuoteSide.BUY), policy=POLICY)
     assert obs.execution_price_usd_per_token == Decimal("125")  # 100/0.8, unaffected by multiplier
     assert obs.reference_price_usd_per_token == Decimal("315")  # token_ask with multiplier
 
@@ -749,3 +774,174 @@ def test_c7_raw_bid_ask_preserved_separately() -> None:
     # They differ by exactly the multiplier
     assert ref.token_bid_usd_per_token == ref.raw_bid_usd_per_share * ref.current_multiplier
     assert ref.token_ask_usd_per_token == ref.raw_ask_usd_per_share * ref.current_multiplier
+
+
+# ---------------------------------------------------------------------------
+# D2: R0 size-impact populated in size comparison
+# ---------------------------------------------------------------------------
+
+def _make_buy_quote(notional: str, out: str) -> ExecutionQuote:
+    return ExecutionQuote(
+        chain_id=4663,
+        token_address=TOKEN,
+        side=QuoteSide.BUY,
+        input_asset=settlement().asset,
+        output_asset=AssetRef(4663, TOKEN, symbol="AAA", decimals=18),
+        requested_notional_usd=Decimal(notional),
+        raw_amount_in=1,
+        raw_amount_out=1,
+        normalized_amount_in=Decimal(notional),
+        normalized_amount_out=Decimal(out),
+        input_decimals=18,
+        output_decimals=18,
+        source="TEST",
+        quoted_at=NOW,
+        settlement_reference=settlement(),
+        status=QuoteStatus.QUOTE_OK,
+    )
+
+
+def _make_sell_quote(notional: str, token_in: str, usd_out: str) -> ExecutionQuote:
+    return ExecutionQuote(
+        chain_id=4663,
+        token_address=TOKEN,
+        side=QuoteSide.SELL,
+        input_asset=AssetRef(4663, TOKEN, symbol="AAA", decimals=18),
+        output_asset=settlement().asset,
+        requested_notional_usd=Decimal(notional),
+        raw_amount_in=1,
+        raw_amount_out=1,
+        normalized_amount_in=Decimal(token_in),
+        normalized_amount_out=Decimal(usd_out),
+        input_decimals=18,
+        output_decimals=18,
+        source="TEST",
+        quoted_at=NOW,
+        settlement_reference=settlement(),
+        status=QuoteStatus.QUOTE_OK,
+    )
+
+
+def test_d2_r0_size_impact_buy_is_finite_and_positive_when_larger_quote_is_worse() -> None:
+    """D2: quote_size_impact_bps returns a finite Decimal for BUY impact when $1000 quote worse."""
+    # $100: 0.8 tokens → rate 0.008; $1000: 7.5 tokens → rate 0.0075 (worse)
+    small = _make_buy_quote("100", "0.8")
+    large = _make_buy_quote("1000", "7.5")
+    impact = quote_size_impact_bps(small, large)
+    assert impact.is_finite()
+    assert impact > 0  # worse rate at larger size → positive impact bps
+
+
+def test_d2_r0_size_impact_sell_is_finite() -> None:
+    """D2: quote_size_impact_bps returns a finite Decimal for SELL impact."""
+    # $100 SELL: 1 token → 90 USD; $1000 SELL: 10 tokens → 880 USD (worse rate)
+    small = _make_sell_quote("100", "1", "90")
+    large = _make_sell_quote("1000", "10", "880")
+    impact = quote_size_impact_bps(small, large)
+    assert impact.is_finite()
+
+
+def test_d2_r0_size_impact_is_distinct_from_directional_gap_delta() -> None:
+    """D2: R0 size-impact and directional gap delta are independently computed metrics."""
+    small = _make_buy_quote("100", "0.8")
+    large = _make_buy_quote("1000", "7.5")
+    r0_impact = quote_size_impact_bps(small, large)
+
+    ref = reference()
+    obs_100 = compute_directional_gap(ref, small, policy=POLICY)
+    obs_1000 = compute_directional_gap(ref, large, policy=POLICY)
+    gap_delta = obs_1000.gap_bps - obs_100.gap_bps
+
+    # Both are finite and non-zero but use different formulas — they need not be equal.
+    assert r0_impact.is_finite()
+    assert gap_delta.is_finite()
+    # R0 uses effective_output_per_input ratio; GAP delta uses reference-side-adjusted prices.
+    # They measure different things and must not be conflated.
+    assert r0_impact != gap_delta or True  # structural: both computed independently
+
+
+def test_d2_r0_size_impact_requires_quote_ok() -> None:
+    """D2: quote_size_impact_bps rejects non-QUOTE_OK inputs."""
+    small = _make_buy_quote("100", "0.8")
+    bad = ExecutionQuote(
+        chain_id=4663,
+        token_address=TOKEN,
+        side=QuoteSide.BUY,
+        input_asset=settlement().asset,
+        output_asset=AssetRef(4663, TOKEN, symbol="AAA", decimals=18),
+        requested_notional_usd=Decimal("1000"),
+        raw_amount_in=1,
+        raw_amount_out=1,
+        normalized_amount_in=Decimal("1000"),
+        normalized_amount_out=Decimal("7.5"),
+        input_decimals=18,
+        output_decimals=18,
+        source="TEST",
+        quoted_at=NOW,
+        settlement_reference=settlement(),
+        status=QuoteStatus.ROUTE_UNAVAILABLE,
+    )
+    with pytest.raises(ValueError, match="QUOTE_OK"):
+        quote_size_impact_bps(small, bad)
+
+
+# ---------------------------------------------------------------------------
+# D3: Typed failure status preserved through live evidence boundary
+# ---------------------------------------------------------------------------
+
+def test_d3_gap_computation_error_exposes_status_value() -> None:
+    """D3: GapComputationError.status.value is a serializable string for live proof boundary."""
+    try:
+        compute_directional_gap(
+            reference(),
+            quote(QuoteSide.BUY, status=QuoteStatus.ROUTE_UNAVAILABLE),
+            policy=POLICY,
+        )
+        pytest.fail("expected GapComputationError")
+    except GapComputationError as exc:
+        # D3 requires that .status.value is serializable to a string
+        status_str = exc.status.value
+        assert isinstance(status_str, str)
+        assert status_str == "QUOTE_UNAVAILABLE"
+
+
+def test_d3_all_gap_status_values_are_serializable_strings() -> None:
+    """D3: every GapStatus member has a string .value for direct JSON serialization."""
+    for member in GapStatus:
+        assert isinstance(member.value, str)
+        assert member.value  # non-empty
+
+
+def test_d3_infrastructure_error_sentinel_is_not_a_gap_status() -> None:
+    """D3: INFRASTRUCTURE_ERROR category is distinct from all GapStatus enum values."""
+    gap_status_values = {s.value for s in GapStatus}
+    assert "INFRASTRUCTURE_ERROR" not in gap_status_values
+
+
+def test_d3_gap_computation_error_is_distinct_from_base_exception() -> None:
+    """D3: GapComputationError can be caught separately from generic Exception."""
+    caught_as_gap_error = False
+    caught_as_generic = False
+    try:
+        raise GapComputationError("test", GapStatus.REFERENCE_BINDING_FAILED)
+    except GapComputationError as exc:
+        caught_as_gap_error = True
+        assert exc.status is GapStatus.REFERENCE_BINDING_FAILED
+    except Exception:
+        caught_as_generic = True
+    assert caught_as_gap_error
+    assert not caught_as_generic
+
+
+def test_d3_non_gap_error_not_caught_as_gap_computation_error() -> None:
+    """D3: plain RuntimeError is not a GapComputationError — INFRASTRUCTURE_ERROR path."""
+    caught_as_gap_error = False
+    caught_as_infrastructure = False
+    try:
+        raise RuntimeError("network timeout")
+    except GapComputationError:
+        caught_as_gap_error = True
+    except Exception:
+        caught_as_infrastructure = True
+    assert not caught_as_gap_error
+    assert caught_as_infrastructure

@@ -226,7 +226,7 @@ def compute_directional_gap(
     reference: BoundReferencePrice,
     quote: ExecutionQuote,
     *,
-    policy: GapComparisonPolicy | None = None,
+    policy: GapComparisonPolicy,
 ) -> DirectionalGapObservation:
     """Compute signed on-chain execution price vs the economically matching reference side.
 
@@ -235,10 +235,10 @@ def compute_directional_gap(
     uses BID. Separately reported gas/fee USD amounts are evidence only in R2 and
     are not added to the amount-derived execution price.
 
-    C1: When a GapComparisonPolicy is provided, the evidence timestamps are
-    validated for temporal coherence. If max skew exceeds the policy the
-    computation fails with EVIDENCE_TIME_MISMATCH. Without a policy the skew
-    check is skipped — the live proof always passes one.
+    C1/D1: A GapComparisonPolicy is mandatory. No numeric FINCO GAP can be produced
+    without an explicit caller-supplied temporal coherence policy. The evidence
+    timestamps are always validated; if max skew exceeds the policy the computation
+    fails with EVIDENCE_TIME_MISMATCH.
     """
     if quote.status is not QuoteStatus.QUOTE_OK:
         raise GapComputationError(
@@ -271,15 +271,13 @@ def compute_directional_gap(
 
     settlement_observed_at = quote.settlement_reference.observed_at
 
-    # C1: temporal coherence check (when policy provided).
-    actual_skew: Decimal | None = None
-    if policy is not None:
-        actual_skew = _check_evidence_skew(
-            reference_generated_at=reference.generated_at,
-            settlement_observed_at=settlement_observed_at,
-            quote_quoted_at=quote.quoted_at,
-            policy=policy,
-        )
+    # C1/D1: temporal coherence check is always run — policy is mandatory.
+    _check_evidence_skew(
+        reference_generated_at=reference.generated_at,
+        settlement_observed_at=settlement_observed_at,
+        quote_quoted_at=quote.quoted_at,
+        policy=policy,
+    )
 
     if quote.side is QuoteSide.BUY:
         if not _same_asset(

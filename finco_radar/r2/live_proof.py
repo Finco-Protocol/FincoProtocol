@@ -13,8 +13,9 @@ import httpx
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import RegistryAssetStatus
-from finco_radar.gap.contracts import GapComparisonPolicy
+from finco_radar.gap.contracts import GapComputationError, GapComparisonPolicy
 from finco_radar.gap.engine import build_bound_reference_price, compute_directional_gap
+from finco_radar.quotes.normalization import quote_size_impact_bps
 from finco_radar.quotes.adapters.lifi import LifiExecutionQuoteAdapter
 from finco_radar.quotes.contracts import (
     AssetRef,
@@ -376,11 +377,26 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             reference.token_midpoint_usd_per_token,
                         )
 
-                        # C4: Deterministic size comparison
+                        # C4/D2: Deterministic size comparison with actual R0 size-impact.
+                        # Reuse the existing R0 quote_size_impact_bps authority.
+                        try:
+                            r0_buy_impact: Decimal | None = quote_size_impact_bps(
+                                quote_map[(QuoteSide.BUY, Decimal("100"))],
+                                quote_map[(QuoteSide.BUY, Decimal("1000"))],
+                            )
+                        except Exception:
+                            r0_buy_impact = None
+                        try:
+                            r0_sell_impact: Decimal | None = quote_size_impact_bps(
+                                quote_map[(QuoteSide.SELL, Decimal("100"))],
+                                quote_map[(QuoteSide.SELL, Decimal("1000"))],
+                            )
+                        except Exception:
+                            r0_sell_impact = None
                         size_cmp = _size_comparison(
                             buy_100, sell_100, buy_1000, sell_1000,
-                            r0_buy_impact=None,  # R0 size-impact requires R0 normalization
-                            r0_sell_impact=None,
+                            r0_buy_impact=r0_buy_impact,
+                            r0_sell_impact=r0_sell_impact,
                         )
 
                         return {
@@ -451,11 +467,20 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                             ),
                             "referenceStateAuthority": "R4_NOT_YET_APPLIED",
                         }
+                    except GapComputationError as exc:
+                        # D3: typed failure — preserve GapStatus for downstream consumers.
+                        failures.append({
+                            "symbol": requested_symbol,
+                            "status": exc.status.value,
+                            "detail": str(exc),
+                        })
                     except Exception as exc:
-                        failures.append(
-                            {"symbol": requested_symbol, "reason": f"{type(exc).__name__}:{exc}"}
-                        )
-                        continue
+                        # D3: non-GapComputationError — classify as infrastructure failure.
+                        failures.append({
+                            "symbol": requested_symbol,
+                            "status": "INFRASTRUCTURE_ERROR",
+                            "detail": f"{type(exc).__name__}:{exc}",
+                        })
     return {
         "status": "BLOCKED",
         "chainId": CHAIN_ID,
