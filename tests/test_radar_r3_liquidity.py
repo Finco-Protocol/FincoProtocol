@@ -130,7 +130,8 @@ def mk_quote(
     status: QuoteStatus = QuoteStatus.QUOTE_OK,
     fee: str | None = None,
     gas: str | None = None,
-    route: tuple[RouteLeg, ...] = (),
+    route: tuple[RouteLeg, ...] | None = None,
+    with_evidence: bool = True,
     token_address: str = TOKEN,
     chain_id: int = CHAIN,
     settlement_address: str = SETTLEMENT,
@@ -147,6 +148,23 @@ def mk_quote(
         input_asset, output_asset = token_ref, settlement_ref.asset
         normalized_in = Decimal(token_amount) if token_amount is not None else None
         normalized_out = Decimal(settlement_amount) if settlement_amount is not None else None
+    if with_evidence:
+        legs = route if route is not None else (
+            (
+                RouteLeg(
+                    tool="lifi",
+                    from_asset=(
+                        settlement_address if side is QuoteSide.BUY else token_address
+                    ),
+                    to_asset=(
+                        token_address if side is QuoteSide.BUY else settlement_address
+                    ),
+                ),
+            )
+        )
+        evidence = QuoteEvidence(request_params={}, response_fields={}, route=legs)
+    else:
+        evidence = None
     return ExecutionQuote(
         chain_id=chain_id,
         token_address=token_address,
@@ -166,7 +184,7 @@ def mk_quote(
         status=status,
         fee_cost_usd=Decimal(fee) if fee is not None else None,
         gas_cost_usd=Decimal(gas) if gas is not None else None,
-        evidence=QuoteEvidence(request_params={}, response_fields={}, route=route),
+        evidence=evidence,
     )
 
 
@@ -924,3 +942,250 @@ def test_53_spread_semantics_language_present() -> None:
     assert "not an order-book bid/ask spread" in payload["spreadEvidence"]["semantics"]
     assert "evidence only" in payload["routeEvidence"]["semantics"]
     assert "never be added" in payload["costSemantics"] or "never added" in payload["costSemantics"]
+
+
+# ---------------------------------------------------------------------------
+# Correction A1 — route evidence is mandatory (missing evidence is UNKNOWN)
+# ---------------------------------------------------------------------------
+
+def test_a1_01_missing_quote_evidence_rejected() -> None:
+    quotes = std_quotes()
+    blind = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+        with_evidence=False,
+    )
+    broken = [blind, *quotes[1:]]
+    failure = expect_failure(broken, None, LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE)
+    assert "UNKNOWN" in str(failure)
+
+
+def test_a1_02_empty_route_rejected() -> None:
+    quotes = std_quotes()
+    empty = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100", route=(),
+    )
+    broken = [empty, *quotes[1:]]
+    expect_failure(broken, None, LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE)
+
+
+def test_a1_03_missing_route_cannot_serialize_route_changed_false() -> None:
+    # A missing-route build produces no snapshot at all, so no artifact can
+    # ever serialize routeChanged=false derived from missing evidence.
+    blind_quotes = [
+        mk_quote(QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+                 with_evidence=False),
+        mk_quote(QuoteSide.BUY, LARGE, token_amount="7", settlement_amount="1000",
+                 with_evidence=False),
+        mk_quote(QuoteSide.SELL, SMALL, token_amount="0.8", settlement_amount="90",
+                 with_evidence=False),
+        mk_quote(QuoteSide.SELL, LARGE, token_amount="7", settlement_amount="880",
+                 with_evidence=False),
+    ]
+    for index, blind in enumerate(blind_quotes):
+        matrix = list(std_quotes())
+        matrix[index] = blind
+        with pytest.raises(LiquidityComputationError) as excinfo:
+            build(matrix)
+        assert excinfo.value.status is LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE
+
+
+def test_a1_04_leg_without_identity_information_rejected() -> None:
+    quotes = std_quotes()
+    anonymous = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+        route=(RouteLeg(tool="  ", from_asset=SETTLEMENT, to_asset=TOKEN),),
+    )
+    broken = [anonymous, *quotes[1:]]
+    expect_failure(broken, None, LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE)
+
+
+def test_a1_05_successful_snapshot_never_serializes_no_route_evidence() -> None:
+    payload = build().to_evidence_dict()
+    for side in ("buy", "sell"):
+        block = payload["routeEvidence"][side]
+        for field in ("smallRouteSignature", "largeRouteSignature"):
+            signature = block[field]
+            assert isinstance(signature, str) and signature
+            assert signature != "NO_ROUTE_EVIDENCE"
+        assert isinstance(block[f"{side}RouteChanged"], bool)
+
+
+# ---------------------------------------------------------------------------
+# Correction A2 — canonical route identity
+# ---------------------------------------------------------------------------
+
+def test_a2_01_mixed_case_evm_addresses_normalize_to_same_signature() -> None:
+    quotes = std_quotes()
+    checksummed = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+        route=(
+            RouteLeg(
+                tool="lifi",
+                from_asset="0x" + SETTLEMENT[2:].upper(),
+                to_asset="0x" + TOKEN[2:].upper(),
+            ),
+        ),
+    )
+    broken = [checksummed, *quotes[1:]]
+    snap = build(broken)
+    assert snap.buy.route_changed is False
+    expected = f"lifi:{SETTLEMENT}>{TOKEN}"
+    assert snap.buy.small_route_signature.canonical_form() == expected
+    assert snap.buy.large_route_signature.canonical_form() == expected
+
+
+def test_a2_02_whitespace_evm_addresses_normalize_correctly() -> None:
+    quotes = std_quotes()
+    padded = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+        route=(
+            RouteLeg(tool="lifi", from_asset=f"  {SETTLEMENT} ", to_asset=f"\t{TOKEN}\n"),
+        ),
+    )
+    broken = [padded, *quotes[1:]]
+    snap = build(broken)
+    assert snap.buy.route_changed is False
+    assert snap.buy.small_route_signature.canonical_form() == f"lifi:{SETTLEMENT}>{TOKEN}"
+
+
+def test_a2_03_tool_case_and_whitespace_normalize_to_same_signature() -> None:
+    quotes = std_quotes()
+    fancy_tool = mk_quote(
+        QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+        route=(RouteLeg(tool="  LiFi  ", from_asset=SETTLEMENT, to_asset=TOKEN),),
+    )
+    broken = [fancy_tool, *quotes[1:]]
+    snap = build(broken)
+    assert snap.buy.route_changed is False
+    assert snap.buy.small_route_signature.canonical_form() == f"lifi:{SETTLEMENT}>{TOKEN}"
+
+
+def test_a2_04_actually_different_address_changes_route() -> None:
+    quotes = std_quotes()
+    different = mk_quote(
+        QuoteSide.BUY, LARGE, token_amount="7", settlement_amount="1000",
+        route=(RouteLeg(tool="lifi", from_asset=SETTLEMENT, to_asset=OTHER_TOKEN),),
+    )
+    broken = [quotes[0], different, *quotes[2:]]
+    snap = build(broken)
+    assert snap.buy.route_changed is True
+
+
+def test_a2_05_reordered_legs_change_route() -> None:
+    forward = (
+        RouteLeg(tool="lifi", from_asset=SETTLEMENT, to_asset=TOKEN),
+        RouteLeg(tool="usdg_pool", from_asset=TOKEN, to_asset=TOKEN),
+    )
+    backward = (forward[1], forward[0])
+    quotes = [
+        mk_quote(QuoteSide.BUY, SMALL, token_amount="0.8", settlement_amount="100",
+                 route=forward),
+        mk_quote(QuoteSide.BUY, LARGE, token_amount="7", settlement_amount="1000",
+                 route=backward),
+        std_quotes()[2],
+        std_quotes()[3],
+    ]
+    snap = build(quotes)
+    assert snap.buy.route_changed is True
+    assert (
+        snap.buy.small_route_signature.canonical_form()
+        != snap.buy.large_route_signature.canonical_form()
+    )
+
+
+def test_a2_06_raw_amounts_alone_do_not_change_route() -> None:
+    quotes = [
+        mk_quote(
+            QuoteSide.SELL, SMALL, token_amount="0.8", settlement_amount="90",
+            route=(RouteLeg(tool="lifi", from_asset=TOKEN, to_asset=SETTLEMENT,
+                            from_amount_raw="800000", to_amount_raw="90000000"),),
+        ),
+        mk_quote(
+            QuoteSide.SELL, LARGE, token_amount="7", settlement_amount="880",
+            route=(RouteLeg(tool="lifi", from_asset=TOKEN, to_asset=SETTLEMENT,
+                            from_amount_raw="7", to_amount_raw="61"),),
+        ),
+        std_quotes()[0],
+        std_quotes()[1],
+    ]
+    snap = build(quotes)
+    assert snap.sell.route_changed is False
+    assert snap.sell.small_route_signature == snap.sell.large_route_signature
+
+
+# ---------------------------------------------------------------------------
+# Correction A3 — exact R2 observation ↔ R0 quote amount lineage
+# ---------------------------------------------------------------------------
+
+def test_a3_01_mismatched_r2_token_amount_rejected() -> None:
+    tampered = replace(STANDARD_OBSERVATIONS[0], token_amount=Decimal("1.6"))
+    observations = [tampered, *STANDARD_OBSERVATIONS[1:]]
+    expect_failure(None, observations, LiquidityStatus.R2_LINEAGE_MISMATCH)
+
+
+def test_a3_02_mismatched_r2_settlement_usd_amount_rejected() -> None:
+    tampered = replace(STANDARD_OBSERVATIONS[0], settlement_amount_usd=Decimal("200"))
+    observations = [tampered, *STANDARD_OBSERVATIONS[1:]]
+    expect_failure(None, observations, LiquidityStatus.R2_LINEAGE_MISMATCH)
+
+
+def test_a3_03_rescaled_fake_observation_with_same_price_rejected() -> None:
+    # Adversarial: same asset/side/notional/quoted_at/source/execution price,
+    # but token amount ×2 and settlement USD ×2. The execution price is
+    # unchanged, so the price-lineage check alone cannot catch it; exact amount
+    # lineage must.
+    original = STANDARD_OBSERVATIONS[0]
+    tampered = replace(
+        original,
+        token_amount=original.token_amount * Decimal("2"),
+        settlement_amount_usd=original.settlement_amount_usd * Decimal("2"),
+    )
+    assert tampered.execution_price_usd_per_token == original.execution_price_usd_per_token
+    observations = [tampered, *STANDARD_OBSERVATIONS[1:]]
+    expect_failure(None, observations, LiquidityStatus.R2_LINEAGE_MISMATCH)
+
+
+def test_a3_04_exact_quote_derived_observation_still_passes() -> None:
+    quotes = std_quotes()
+    snap = build(quotes, observations_for(quotes))
+    buy_obs = snap.buy.small_gap_observation
+    sell_obs = snap.sell.small_gap_observation
+    assert buy_obs.token_amount == quotes[0].normalized_amount_out == Decimal("0.8")
+    assert buy_obs.settlement_amount_usd == (
+        quotes[0].normalized_amount_in * quotes[0].settlement_reference.usd_per_asset
+    )
+    assert sell_obs.token_amount == quotes[2].normalized_amount_in == Decimal("0.8")
+    assert sell_obs.settlement_amount_usd == (
+        quotes[2].normalized_amount_out * quotes[2].settlement_reference.usd_per_asset
+    )
+
+
+def test_a3_05_fee_lineage_mismatch_rejected() -> None:
+    tampered = replace(STANDARD_OBSERVATIONS[0], fee_cost_usd=Decimal("9"))
+    observations = [tampered, *STANDARD_OBSERVATIONS[1:]]
+    expect_failure(None, observations, LiquidityStatus.R2_LINEAGE_MISMATCH)
+    # A quote with fees against an observation without them also mismatches.
+    fabricated = replace(STANDARD_OBSERVATIONS[0], fee_cost_usd=None)
+    quote_with_fee = replace(std_quotes()[0], fee_cost_usd=Decimal("1"))
+    broken_quotes = [quote_with_fee, *std_quotes()[1:]]
+    expect_failure(
+        broken_quotes,
+        [fabricated, *STANDARD_OBSERVATIONS[1:]],
+        LiquidityStatus.R2_LINEAGE_MISMATCH,
+    )
+
+
+def test_a3_06_gas_lineage_mismatch_rejected() -> None:
+    tampered = replace(STANDARD_OBSERVATIONS[0], gas_cost_usd=Decimal("7"))
+    observations = [tampered, *STANDARD_OBSERVATIONS[1:]]
+    expect_failure(None, observations, LiquidityStatus.R2_LINEAGE_MISMATCH)
+
+
+def test_a3_07_fee_gas_present_and_matching_remain_lineage_only() -> None:
+    quotes = std_quotes()
+    quotes[0] = replace(quotes[0], fee_cost_usd=Decimal("1"), gas_cost_usd=Decimal("0.5"))
+    snap = build(quotes, observations_for(quotes))
+    assert snap.buy.small_gap_observation.fee_cost_usd == Decimal("1")
+    assert snap.buy.small_gap_observation.gas_cost_usd == Decimal("0.5")
+    # Costs remain evidence only: execution prices and spreads are unchanged.
+    assert snap.spread_small.buy_execution_price_usd_per_token == Decimal("125")

@@ -58,11 +58,13 @@ This metric is called an **executable quote spread** (or cross-side executable s
 
 ## Route stability
 
-R3 builds deterministic route signatures from R0 `QuoteEvidence.route`, preserving ordered legs as `(tool, from_asset, to_asset)` at minimum. Raw leg amounts may be retained as evidence but never determine route identity. Per side, R3 compares the $100 route with the $1,000 route and exposes `buyRouteChanged` / `sellRouteChanged` plus both signatures.
+R3 builds deterministic route signatures from R0 `QuoteEvidence.route`, canonicalizing each leg to an ordered `(tool, canonical_from_asset, canonical_to_asset)` triple. Valid 20-byte EVM addresses are trimmed and lowercased (deployment identity is case-insensitive); arbitrary non-address identifiers keep their content verbatim and are never rewritten into addresses or replaced by tickers; tool names use a documented lowercased convention. Raw leg amounts may be retained as evidence but never determine route identity. Per side, R3 compares the $100 route with the $1,000 route and exposes `buyRouteChanged` / `sellRouteChanged` plus both canonical signatures.
 
 `route change != automatically poor liquidity`
 
 A changed route is evidence only. R3 does not interpret it and does not create a penalty score.
+
+**Route evidence is mandatory.** Absence of route evidence means UNKNOWN, not unchanged. A build fails typed closed with `ROUTE_EVIDENCE_UNAVAILABLE` when `quote.evidence` is missing, the route list is empty, or a leg lacks identity information — so a successful `LIQUIDITY_OK` snapshot guarantees four authoritative route signatures, and a PASS artifact can never serialize `NO_ROUTE_EVIDENCE`.
 
 ## Provider cost evidence
 
@@ -98,7 +100,9 @@ Every required pair must be within policy, otherwise R3 fails closed with `EVIDE
 
 ## Identity and lineage validation
 
-R3 fails closed unless all four quotes and all four R2 observations refer to the same canonical deployment. Validated: chain ID, token contract address, settlement chain ID, settlement contract address, side, requested notional, asset UID / R1 key, quote source lineage (all four quotes share one non-empty source), and R2 observation lineage (UID, key, side, notional, `quoted_at`, quote source, and the derived execution price must all match the bound quote). The required notional matrix is exactly `{BUY 100, BUY 1000, SELL 100, SELL 1000}` — no duplicates, no missing rows, no substitutions.
+R3 fails closed unless all four quotes and all four R2 observations refer to the same canonical deployment. Validated: chain ID, token contract address, settlement chain ID, settlement contract address, side, requested notional, asset UID / R1 key, quote source lineage (all four quotes share one non-empty source), and R2 observation lineage (UID, key, side, notional, `quoted_at`, quote source, execution price — plus, exactly and without tolerance, the derived token amount, the derived settlement USD amount, and the fee/gas evidence — must all match the bound quote). The required notional matrix is exactly `{BUY 100, BUY 1000, SELL 100, SELL 1000}` — no duplicates, no missing rows, no substitutions.
+
+Exact amount lineage means a proportionally rescaled fake observation with an identical execution price is rejected: `observation.token_amount` must equal the quote-derived token amount and `observation.settlement_amount_usd` must equal `settlement_amount × usd_per_asset` derived from the same quote. Fee/gas lineage is correspondence only and never economically additive.
 
 ## Typed statuses
 
@@ -113,6 +117,7 @@ R3 fails closed unless all four quotes and all four R2 observations refer to the
 - `EVIDENCE_TIME_MISMATCH`
 - `NON_FINITE_ECONOMICS`
 - `COST_EVIDENCE_INVALID`
+- `ROUTE_EVIDENCE_UNAVAILABLE`
 
 Every failure travels as `LiquidityComputationError` carrying its typed status. Infrastructure/network errors remain separate from economic/authority statuses (the live proof classifies them as `INFRASTRUCTURE_ERROR` in the candidate audit).
 

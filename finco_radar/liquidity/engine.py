@@ -9,6 +9,7 @@ R3 emits no composite score, no classification and no signal.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Sequence
@@ -80,17 +81,58 @@ def _quote_key(quote: ExecutionQuote) -> AssetKey | None:
         return None
 
 
-def build_route_signature(quote: ExecutionQuote) -> RouteSignature:
-    """Deterministic ordered (tool, from_asset, to_asset) identity from R0 evidence.
+_EVM_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
-    Raw leg amounts are deliberately excluded: they must never determine route
-    identity. A quote without route evidence yields the degenerate NO_ROUTE_EVIDENCE
-    signature, which is still deterministic and comparable.
+
+def _canonical_route_asset(value: str) -> str:
+    """Canonicalize one route-leg asset identifier.
+
+    EVM deployment identity is case-insensitive: a valid 20-byte EVM address is
+    trimmed and lowercased. Arbitrary non-address identifiers are preserved
+    verbatim (modulo surrounding whitespace) — they are never rewritten into
+    addresses and never replaced by tickers/symbols.
     """
+    component = value.strip()
+    if _EVM_ADDRESS_RE.fullmatch(component):
+        return component.lower()
+    return component
+
+
+def _canonical_route_tool(value: str) -> str:
+    """Tool identity convention: provider tool names are case-insensitive
+    identifiers, so the canonical form is trimmed and lowercased."""
+    return value.strip().lower()
+
+
+def build_route_signature(quote: ExecutionQuote) -> RouteSignature:
+    """Deterministic canonical ordered route identity from R0 evidence.
+
+    Legs are canonicalized to ordered ``(tool, canonical_from_asset,
+    canonical_to_asset)`` triples; raw amounts never determine route identity.
+
+    Fail-closed (A1): missing or unusable route evidence raises the typed
+    ROUTE_EVIDENCE_UNAVAILABLE — absence of route evidence means UNKNOWN, never
+    "unchanged". Refused when ``quote.evidence`` is None, the route list is
+    empty, or any leg lacks identity information (empty tool/from/to).
+    """
+    if quote.evidence is None or not quote.evidence.route:
+        raise LiquidityComputationError(
+            "route evidence is unavailable: absence of route evidence is UNKNOWN, "
+            "not an unchanged route",
+            LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE,
+        )
     legs: list[tuple[str, str, str]] = []
-    if quote.evidence is not None:
-        for leg in quote.evidence.route:
-            legs.append((str(leg.tool), str(leg.from_asset), str(leg.to_asset)))
+    for leg in quote.evidence.route:
+        tool = _canonical_route_tool(str(leg.tool))
+        src = _canonical_route_asset(str(leg.from_asset))
+        dst = _canonical_route_asset(str(leg.to_asset))
+        if not tool or not src or not dst:
+            raise LiquidityComputationError(
+                "route leg lacks identity information: tool, from_asset and "
+                "to_asset are required",
+                LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE,
+            )
+        legs.append((tool, src, dst))
     return RouteSignature(legs=tuple(legs))
 
 
@@ -315,6 +357,34 @@ def _validate_observation_lineage(
             "execution price was not derived from the bound quote economics"
         )
 
+    # A3: exact amount lineage. The observation must be the R2 authority output
+    # of THIS quote — re-derived from the same Decimal normalization path, so
+    # exact equality is required (no tolerance). A proportionally rescaled fake
+    # observation with the same execution price must not pass.
+    usd_per_asset = quote.settlement_reference.usd_per_asset
+    if usd_per_asset is None or not usd_per_asset.is_finite() or usd_per_asset <= 0:
+        raise lineage_error("bound quote settlement USD reference is unusable")
+    if quote.side is QuoteSide.BUY:
+        derived_token_amount = quote.normalized_amount_out
+        derived_settlement_amount = quote.normalized_amount_in
+    else:
+        derived_token_amount = quote.normalized_amount_in
+        derived_settlement_amount = quote.normalized_amount_out
+    if derived_token_amount is None or derived_settlement_amount is None:
+        raise lineage_error("bound quote normalized amounts are missing")
+    derived_settlement_usd = derived_settlement_amount * usd_per_asset
+    if observation.token_amount != derived_token_amount:
+        raise lineage_error("token amount was not derived from the bound quote")
+    if observation.settlement_amount_usd != derived_settlement_usd:
+        raise lineage_error(
+            "settlement USD amount was not derived from the bound quote"
+        )
+    # Fee/gas lineage only — never economically additive.
+    if observation.fee_cost_usd != quote.fee_cost_usd:
+        raise lineage_error("fee cost evidence does not correspond to the bound quote")
+    if observation.gas_cost_usd != quote.gas_cost_usd:
+        raise lineage_error("gas cost evidence does not correspond to the bound quote")
+
 
 def _pair_skew_seconds(first: datetime, second: datetime) -> Decimal:
     if first.tzinfo is None or second.tzinfo is None:
@@ -423,6 +493,20 @@ def build_liquidity_snapshot(
                 LiquidityStatus.EVIDENCE_TIME_MISMATCH,
             )
 
+    # A1: route stability evidence is mandatory for a successful snapshot.
+    # Missing evidence is UNKNOWN and fails typed closed; it is never mapped to
+    # an unchanged route, so a LIQUIDITY_OK snapshot guarantees four
+    # authoritative route signatures.
+    route_signatures: dict[tuple[QuoteSide, Decimal], RouteSignature] = {}
+    for slot in REQUIRED_MATRIX:
+        try:
+            route_signatures[slot] = build_route_signature(quote_matrix[slot])
+        except LiquidityComputationError as exc:
+            raise LiquidityComputationError(
+                f"{_slot_label(*slot)}: {exc}",
+                LiquidityStatus.ROUTE_EVIDENCE_UNAVAILABLE,
+            ) from exc
+
     # Canonical R0 size impact — consumed, never recomputed from R2 GAP values.
     try:
         buy_size_impact = quote_size_impact_bps(buy_small, buy_large)
@@ -497,8 +581,8 @@ def build_liquidity_snapshot(
             large_gap_observation=observation_matrix[(QuoteSide.BUY, LARGE_NOTIONAL_USD)],
             r0_size_impact_bps=buy_size_impact,
             directional_gap_delta_bps=buy_gap_delta,
-            small_route_signature=build_route_signature(buy_small),
-            large_route_signature=build_route_signature(buy_large),
+            small_route_signature=route_signatures[(QuoteSide.BUY, SMALL_NOTIONAL_USD)],
+            large_route_signature=route_signatures[(QuoteSide.BUY, LARGE_NOTIONAL_USD)],
         ),
         sell=LiquiditySideSnapshot(
             side=QuoteSide.SELL,
@@ -508,8 +592,8 @@ def build_liquidity_snapshot(
             large_gap_observation=observation_matrix[(QuoteSide.SELL, LARGE_NOTIONAL_USD)],
             r0_size_impact_bps=sell_size_impact,
             directional_gap_delta_bps=sell_gap_delta,
-            small_route_signature=build_route_signature(sell_small),
-            large_route_signature=build_route_signature(sell_large),
+            small_route_signature=route_signatures[(QuoteSide.SELL, SMALL_NOTIONAL_USD)],
+            large_route_signature=route_signatures[(QuoteSide.SELL, LARGE_NOTIONAL_USD)],
         ),
         spread_small=spread_small,
         spread_large=spread_large,

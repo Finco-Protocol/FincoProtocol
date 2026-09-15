@@ -96,13 +96,21 @@ jobs:
           if not Decimal(str(se.get("executionSpreadDeltaBps"))).is_finite():
               raise SystemExit("R3_BLOCKED: executionSpreadDeltaBps is not finite")
 
-          # Route evidence: deterministic signatures and change flags, no penalty.
+          # Route evidence (Correction A): all four signatures must be
+          # authoritative — present, non-empty, never NO_ROUTE_EVIDENCE — and
+          # change flags must be real booleans because route evidence exists.
           re_ = data.get("routeEvidence", {})
           for side in ("buy", "sell"):
               block = re_.get(side, {})
               for field in ("smallRouteSignature", "largeRouteSignature"):
-                  if not isinstance(block.get(field), str):
+                  signature = block.get(field)
+                  if not isinstance(signature, str) or not signature:
                       raise SystemExit(f"R3_BLOCKED: routeEvidence.{side}.{field} missing")
+                  if signature == "NO_ROUTE_EVIDENCE":
+                      raise SystemExit(
+                          f"R3_BLOCKED: non-authoritative route signature in PASS artifact: "
+                          f"{side}.{field}"
+                      )
               if not isinstance(block.get(f"{side}RouteChanged"), bool):
                   raise SystemExit(f"R3_BLOCKED: routeEvidence.{side} change flag missing")
 

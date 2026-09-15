@@ -53,6 +53,7 @@ class LiquidityStatus(str, Enum):
     EVIDENCE_TIME_MISMATCH = "EVIDENCE_TIME_MISMATCH"
     NON_FINITE_ECONOMICS = "NON_FINITE_ECONOMICS"
     COST_EVIDENCE_INVALID = "COST_EVIDENCE_INVALID"
+    ROUTE_EVIDENCE_UNAVAILABLE = "ROUTE_EVIDENCE_UNAVAILABLE"
 
 
 class LiquidityComputationError(ValueError):
@@ -105,12 +106,19 @@ class LiquidityComparisonPolicy:
 
 @dataclass(frozen=True)
 class RouteSignature:
-    """Deterministic ordered route identity built from R0 QuoteEvidence.route.
+    """Deterministic canonical ordered route identity from R0 QuoteEvidence.route.
 
-    Preserves ordered legs as (tool, from_asset, to_asset) at minimum. Raw leg
-    amounts may be retained separately as evidence but never determine route
-    identity. A changed route is evidence only: R3 does not interpret it as bad
-    liquidity and assigns it no penalty score.
+    Each leg is canonicalized to an ordered ``(tool, canonical_from_asset,
+    canonical_to_asset)`` triple: valid 20-byte EVM addresses are trimmed and
+    lowercased (deployment identity is case-insensitive), arbitrary non-address
+    identifiers keep their content verbatim, and tool names use the documented
+    lowercased convention. Raw leg amounts may be retained separately as
+    evidence but never determine route identity.
+
+    A changed route is evidence only: R3 does not interpret it as bad liquidity
+    and assigns it no penalty score. Route evidence itself is mandatory — the
+    engine refuses missing evidence with ROUTE_EVIDENCE_UNAVAILABLE, so a
+    successful snapshot never carries the degenerate NO_ROUTE_EVIDENCE form.
     """
 
     legs: tuple[tuple[str, str, str], ...]
@@ -476,9 +484,13 @@ class LiquiditySnapshot:
                     "sellRouteChanged": self.sell.route_changed,
                 },
                 "semantics": (
-                    "Deterministic ordered (tool, from, to) route identities from R0 "
-                    "QuoteEvidence.route. A changed route is evidence only: it is not "
-                    "automatically poor liquidity and carries no penalty score."
+                    "Deterministic canonical ordered (tool, from, to) route identities from "
+                    "R0 QuoteEvidence.route: EVM addresses trimmed and lowercased, tools "
+                    "lowercased, raw amounts excluded from identity. Route evidence is "
+                    "mandatory for a successful snapshot (absence is UNKNOWN and fails "
+                    "typed closed), so no signature here is NO_ROUTE_EVIDENCE. A changed "
+                    "route is evidence only: it is not automatically poor liquidity and "
+                    "carries no penalty score."
                 ),
             },
             "costEvidence": [
