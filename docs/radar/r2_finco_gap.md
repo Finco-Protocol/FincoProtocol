@@ -79,7 +79,58 @@ These deltas are the R2 directional-GAP size comparison only. They are not a liq
 
 ### R0 size-impact authority
 
-R2 emits the canonical R0 size-impact fields `r0BuySizeImpactBps` and `r0SellSizeImpactBps` in its `sizeComparison` block. They are computed with the canonical helper `finco_radar.quotes.normalization.quote_size_impact_bps` over the same BUY/SELL $100/$1,000 execution quote pairs that produced the directional GAP observations, for evidence alignment only. R2 does not redefine or reinterpret the metric: R0 size impact (output/input rate delta) remains distinct from the directional GAP delta (execution price vs multiplier-adjusted reference side), and the R0 live proof continues to publish `sizeImpactBps` in its own evidence artifact (`radar_r0_regression_on_r2.json`). `r0SizeImpactAuthority` in the R2 artifact states this provenance.
+The `sizeComparison` block also emits `r0BuySizeImpactBps` and `r0SellSizeImpactBps`.
+
+The formula authority is and remains `finco_radar.quotes.normalization.quote_size_impact_bps`. R2 calls that canonical R0 helper over the **exact same** `$100` / `$1,000` `ExecutionQuote` objects that produced the four directional GAP observations, so the two metrics are aligned to the same evidence. R2 does **not** reimplement the R0 formula, and does **not** reinterpret the R0 metric.
+
+The two metrics are distinct and must not be conflated:
+
+- **R0 size impact** is output/input rate deterioration between the small and large quote — `((small_rate − large_rate) / small_rate) × 10,000`, where `rate = normalized_amount_out / normalized_amount_in`. Positive means the larger quote has a worse rate. Because a router may select a different route at the larger size, this can include route switching.
+- **R2 directional GAP delta** is the change in execution price measured against the multiplier-adjusted reference side, per the formulas above.
+
+Neither metric is realized slippage, and neither is same-pool AMM depth. R3 owns generalized liquidity, route-quality and all-in execution-cost interpretation.
+
+**Zero is a valid individual observation.** A single side reporting `0` size impact is a legitimate measurement, not a missing or broken value, so R2 requires both fields only to be present and finite.
+
+Recording the metric here is evidence alignment, not a relocation of authority. The R0 live regression artifact (`sizeImpactBps` in `radar_r0_regression_on_r2.json`) remains independent regression evidence and retains its original acceptance rule, which blocks only when **both** sides are zero:
+
+```
+if buy == 0 and sell == 0:  # R0_REGRESSION_BLOCKED
+```
+
+## Comparison-time coherence
+
+Every numeric R2 GAP requires an explicit `GapComparisonPolicy(max_evidence_skew_seconds)`. The policy is a **mandatory** keyword argument to `compute_directional_gap` with no default; there is **no no-policy numeric GAP path**. A caller that omits it gets a `TypeError`, not a silently uncoherent number.
+
+The comparison clock set is:
+
+- official reference `generatedAt`;
+- settlement reference `observedAt`;
+- execution quote `quotedAt`.
+
+R2 computes:
+
+`actual_skew = max(timestamps) - min(timestamps)`
+
+and fails closed with `EVIDENCE_TIME_MISMATCH` when:
+
+`actual_skew > max_evidence_skew_seconds`
+
+All three timestamps must be timezone-aware. A missing settlement `observedAt` fails closed rather than being treated as coincident with the other evidence. `max_evidence_skew_seconds` must be positive.
+
+The live proof currently supplies 120 seconds (overridable via `RADAR_R2_MAX_SKEW_SECONDS`). That value is a **current R2 demonstration and comparison policy, not universal market-state truth**. It is recorded in the evidence artifact under `coherencePolicy` so any reviewer can see which threshold produced a given result.
+
+### What comparison-time coherence is not
+
+R2 comparison-time coherence answers one narrow question: were these three pieces of evidence observed close enough together to be compared at all? It does **not** classify:
+
+- market-open or market-closed;
+- expected-static reference;
+- stale reference;
+- paused or halted;
+- corporate-action state.
+
+Those remain **R4** authority. Passing the skew policy means the evidence is mutually timely, not that the reference is current or that the market is open.
 
 ## Candidate audit trail
 
@@ -121,7 +172,10 @@ R2 refuses to compute a numeric gap when:
 - reference currency is not USD;
 - R1 binding UID/key/symbol does not match the canonical asset;
 - exact canonical deployment evidence is absent or duplicated;
-- reference timestamp is malformed or timezone-naive.
+- reference timestamp is malformed or timezone-naive;
+- no `GapComparisonPolicy` is supplied (the parameter is mandatory);
+- settlement reference `observedAt` is missing or timezone-naive;
+- evidence skew across reference / settlement / quote exceeds the supplied policy (`EVIDENCE_TIME_MISMATCH`).
 
 ### Typed status contract
 
@@ -145,4 +199,8 @@ R2 live acceptance requires one canonical Robinhood Chain asset with four valid 
 - SELL $100;
 - SELL $1,000.
 
-Each must preserve exact canonical identity, use ASK for BUY and BID for SELL, emit a finite gap, and explicitly disclose that R4 reference-state authority is not yet applied. R1 and R0 live proofs are rerun as regressions. `financial_engine/` and `finco_core/` remain unchanged.
+Each must preserve exact canonical identity, use ASK for BUY and BID for SELL, emit a finite gap, and explicitly disclose that R4 reference-state authority is not yet applied.
+
+Acceptance additionally requires that every observation was produced under an explicit comparison policy with `actual_skew ≤ max_evidence_skew_seconds`, and that `r0BuySizeImpactBps` and `r0SellSizeImpactBps` are present and finite (either may legitimately be zero).
+
+R1 and R0 live proofs are rerun as regressions, and the R0 regression keeps its own original acceptance rule. `financial_engine/` and `finco_core/` remain unchanged.
