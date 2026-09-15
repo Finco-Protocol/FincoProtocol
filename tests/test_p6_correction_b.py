@@ -898,9 +898,15 @@ def test_architecture_audit_documents_subline_ownership_chain():
 
 
 def test_architecture_audit_ttl_section_uses_max_updated_at():
-    """P6_ARCHITECTURE_AUDIT.md TTL section must describe MAX(updated_at) as the authority."""
+    """P6_ARCHITECTURE_AUDIT.md TTL section must describe MAX(updated_at/created_at) as the authority.
+
+    Correction C updated §5.1 to the full 5-table authority; both the old
+    single-table form and the corrected multi-table form are accepted.
+    """
     repo_root = Path(__file__).resolve().parents[1]
     content = (repo_root / "docs" / "P6_ARCHITECTURE_AUDIT.md").read_text()
-    assert "MAX(updated_at)" in content, (
-        "Architecture audit TTL section must state MAX(updated_at) as the TTL authority"
+    has_single = "MAX(updated_at)" in content
+    has_multi = "MAX(updated_at / created_at)" in content or "5-table" in content or "all five session-owned" in content
+    assert has_single or has_multi, (
+        "Architecture audit TTL section must describe MAX(updated_at/created_at) as the TTL authority"
     )
