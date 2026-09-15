@@ -1,6 +1,7 @@
 # FINCO Protocol
 
 [![Public Safety and Model Smoke](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/public_safety_and_smoke.yml/badge.svg?branch=main)](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/public_safety_and_smoke.yml)
+[![Dependency Security Audit](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/dependency_security_audit.yml/badge.svg?branch=main)](https://github.com/Finco-Protocol/FincoProtocol/actions/workflows/dependency_security_audit.yml)
 
 **Financial Intelligence Infrastructure**
 
@@ -45,17 +46,18 @@ Potential premium surfaces include advanced scenario and portfolio analysis, exp
 
 FINCO is structured to expose repeatable verification procedures and per-run evidence rather than relying on repository claims alone.
 
-The main release CI gate currently performs:
+The main release CI gates currently perform:
 - configured public-release safety scanning for defined identifiers/patterns/artifact types,
 - Python compilation checks,
 - dependency consistency checks,
-- synthetic reference and regression tests.
+- synthetic reference and regression tests,
+- resolved-environment dependency vulnerability auditing with retained evidence.
 
-The safety scan is an automated control, not a general-purpose confidentiality or provenance guarantee. Controlled public release still requires human review.
+The safety scan and dependency audit are automated controls, not general-purpose confidentiality, provenance, or vulnerability-free guarantees. Controlled public release still requires human review.
 
 Radar components also use dedicated evidence-oriented workflows for component-specific runtime and deterministic gates.
 
-See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification model, local reproduction commands, evidence boundaries, CI provenance, and known limitations.
+See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification model, local reproduction commands, evidence boundaries, CI provenance, and known limitations. See [docs/GOVERNANCE.md](docs/GOVERNANCE.md) for repository governance, dependency-security automation, target `main` protection, and pre-public-release controls.
 
 ## Public reference models
 
