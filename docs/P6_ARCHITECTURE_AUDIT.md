@@ -103,18 +103,35 @@ Demo TTL cleanup deletes sub-line rows via an explicit `DELETE ... WHERE project
 ## 5. Demo Session TTL Cleanup
 
 ### 5.1 TTL authority
-- **`MAX(updated_at)`** across **all** project rows owned by a `demo_*` user_id.
-- A demo session is expired only when the most-recently-updated project for that user is older than `FINCO_DEMO_TTL_HOURS`.
-- This is an activity-based rule: as long as **any** project for a demo user was updated within the TTL window, the entire session is kept intact. No fresh object is deleted merely because another object in the same session is old.
-- Implementation (SQL authority):
+- **`MAX(updated_at / created_at)`** across **all five session-owned tables** for a `demo_*` user_id:
+  - `projects.updated_at`
+  - `scenarios.updated_at`
+  - `workspace_states.updated_at`
+  - `runs.created_at`
+  - `scenario_exports.created_at`
+- A demo session is expired only when the most-recent activity across **all** of these tables is older than `FINCO_DEMO_TTL_HOURS`. Fresh activity in any single table keeps the entire session intact.
+- `capex_sub_lines` and `opex_sub_lines` are **excluded** from TTL authority: their mutations always occur within a project-save or workspace-save code path that updates the parent `projects.updated_at` or `workspace_states.updated_at`, so they are always redundant in the TTL query.
+- Implementation (SQL authority — UNION across 5 tables):
   ```sql
   SELECT user_id
-  FROM projects
-  WHERE user_id LIKE 'demo_%'
-  GROUP BY user_id
-  HAVING MAX(updated_at) < :cutoff
+  FROM (
+      SELECT user_id, MAX(last_activity) AS last_activity
+      FROM (
+          SELECT user_id, updated_at AS last_activity FROM projects         WHERE user_id LIKE 'demo_%'
+          UNION ALL
+          SELECT user_id, updated_at AS last_activity FROM scenarios        WHERE user_id LIKE 'demo_%'
+          UNION ALL
+          SELECT user_id, updated_at AS last_activity FROM workspace_states WHERE user_id LIKE 'demo_%'
+          UNION ALL
+          SELECT user_id, created_at AS last_activity FROM runs             WHERE user_id LIKE 'demo_%'
+          UNION ALL
+          SELECT user_id, created_at AS last_activity FROM scenario_exports WHERE user_id LIKE 'demo_%'
+      )
+      GROUP BY user_id
+  )
+  WHERE last_activity < :cutoff
   ```
-- Example (TTL=24h): demo_X has Project A (updated 25h ago) and Project B (updated 2h ago). `MAX(updated_at) = 2h ago` — not expired; all data kept. demo_Y has only Project C (updated 30h ago). `MAX(updated_at) = 30h ago < cutoff` — expired; all data deleted.
+- Example (TTL=24h): demo_X has Project A (updated 30h ago) and Scenario B (updated 5 min ago). `last_activity = 5 min ago` — not expired; all data kept. demo_Y has only Project C (updated 30h ago, no other state). `last_activity = 30h ago < cutoff` — expired; all data deleted.
 
 ### 5.2 Scheduling
 - `_schedule_demo_cleanup()` startup hook starts a daemon thread.

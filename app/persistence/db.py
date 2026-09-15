@@ -310,11 +310,22 @@ def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> 
 @contextmanager
 def get_cursor():
     """Open a connection, yield a cursor, and close it automatically."""
+    import sqlite3 as _sqlite3
     conn = get_connection()
     cur = conn.cursor()
     try:
         yield cur
         conn.commit()
+    except _sqlite3.OperationalError as exc:
+        conn.rollback()
+        _msg = str(exc).lower()
+        if "locked" in _msg or "busy" in _msg:
+            try:
+                from app.observability import log_sqlite_lock
+                log_sqlite_lock()
+            except Exception:
+                pass
+        raise
     except Exception:
         conn.rollback()
         raise

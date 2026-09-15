@@ -384,6 +384,27 @@ async def _demo_session_middleware(request, call_next):
 
 app.middleware("http")(_demo_session_middleware)
 
+
+# -- HTTP error observability middleware --------------------------------------
+
+async def _http_error_observability_middleware(request: Request, call_next):
+    """Log structured events for 4xx/5xx responses via app.observability."""
+    response = await call_next(request)
+    if response.status_code >= 400:
+        try:
+            from app.observability import log_http_error
+            log_http_error(
+                status_code=response.status_code,
+                path=request.url.path,
+                method=request.method,
+            )
+        except Exception:
+            pass
+    return response
+
+
+app.middleware("http")(_http_error_observability_middleware)
+
 # -- Shared caveats (visible in UI) -------------------------------------------
 CAVEATS = [
     "Synthetic reference models are illustrative and not jurisdiction-specific advice",
@@ -3079,6 +3100,8 @@ async def run(request: Request):
     # P6.6 — global concurrency limiter (atomic non-blocking acquire)
     slot_acquired = await _acquire_run_slot()
     if not slot_acquired:
+        from app.observability import log_capacity_busy
+        log_capacity_busy(max_slots=_MAX_CONCURRENT_RUNS or 0)
         return templates.TemplateResponse(
             request=request,
             name="errors.html",
@@ -3116,10 +3139,21 @@ async def run(request: Request):
         snapshot_input_error=SnapshotInputError,
     )
 
+    import time as _time
+    from app.observability import log_run_started, log_run_completed, log_run_failed
+    log_run_started(user.user_id)
+    _run_start = _time.monotonic()
+
     try:
         outcome = await execute_run_route(
             request=request, form=form, user=user, deps=deps,
         )
+        _run_ms = (_time.monotonic() - _run_start) * 1000
+        log_run_completed(_run_ms)
+    except Exception as _run_exc:
+        _run_ms = (_time.monotonic() - _run_start) * 1000
+        log_run_failed(type(_run_exc).__name__)
+        raise
     finally:
         _release_run_slot()
 
