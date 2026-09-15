@@ -256,6 +256,8 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                         return {
                             "status": "PASS",
                             "typedStatus": typed_status,
+                            "gitHead": git_head,
+                            "producedAt": produced_at.isoformat(),
                             "authority": (
                                 "R3 executable liquidity evidence only: no score, no "
                                 "classification, no trading signal, no reference-state "
