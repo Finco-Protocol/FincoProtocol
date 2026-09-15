@@ -8,7 +8,7 @@ FINCO Protocol is financial-intelligence infrastructure for modelling, monitorin
 
 > **AI explains. FINCO calculates.**
 
-The protocol is built around deterministic financial engines, typed evidence, reproducible calculations, and explicit model-state authority. Financial modelling is one product surface of the protocol — not the identity of the whole product.
+FINCO Protocol is financial intelligence infrastructure built on deterministic financial engines, typed evidence, and verifiable state — connecting financial modelling, market intelligence, and future on-chain verification.
 
 ## Product surfaces
 
