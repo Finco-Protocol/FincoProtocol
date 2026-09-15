@@ -141,11 +141,19 @@ jobs:
                   f"maxEvidenceSkewSeconds {max_skew_str}"
               )
 
-          # D4: R0 size-impact placeholders must not be emitted by R2
-          for removed in ("r0BuySizeImpactBps", "r0SellSizeImpactBps"):
-              if removed in sc:
-                  raise SystemExit(f"R2_BLOCKED: R2 re-emitted R0 placeholder {removed}")
-          if "NOT_EMITTED_BY_R2" not in (sc.get("r0SizeImpactAuthority") or ""):
+          # D2-final: R0 size-impact values must be present and parse as finite Decimal.
+          # Neither individually is required to be non-zero.
+          for field in ("r0BuySizeImpactBps", "r0SellSizeImpactBps"):
+              val = sc.get(field)
+              if val is None:
+                  raise SystemExit(f"R2_BLOCKED: sizeComparison {field} missing")
+              try:
+                  parsed = Decimal(str(val))
+              except Exception as e:
+                  raise SystemExit(f"R2_BLOCKED: sizeComparison {field} cannot parse as Decimal: {e}")
+              if not parsed.is_finite():
+                  raise SystemExit(f"R2_BLOCKED: sizeComparison {field} is not finite")
+          if not sc.get("r0SizeImpactAuthority"):
               raise SystemExit("R2_BLOCKED: R0 size-impact authority statement missing")
 
           # D3: PASS artifact must preserve the candidate audit trail

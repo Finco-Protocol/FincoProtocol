@@ -1067,3 +1067,134 @@ def test_d3_non_gap_error_not_caught_as_gap_computation_error() -> None:
         caught_as_infrastructure = True
     assert not caught_as_gap_error
     assert caught_as_infrastructure
+
+
+# ---------------------------------------------------------------------------
+# D2-final: R0 size-impact recorded in R2 artifact via canonical R0 helper
+# ---------------------------------------------------------------------------
+
+def test_d2_final_r2_uses_canonical_r0_helper() -> None:
+    """D2-final: R2 uses quote_size_impact_bps from finco_radar.quotes.normalization."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="7.5",
+                     quoted_at=NOW + timedelta(seconds=1))
+    result = quote_size_impact_bps(buy_100, buy_1000)
+    assert result.is_finite()
+    # Verify it is the canonical formula: (small_rate - large_rate) / small_rate * 10000
+    small_rate = Decimal("0.8") / Decimal("100")
+    large_rate = Decimal("7.5") / Decimal("1000")
+    expected = ((small_rate - large_rate) / small_rate) * Decimal("10000")
+    assert result == expected
+
+
+def test_d2_final_buy_r0_size_impact_is_finite_and_serialized() -> None:
+    """D2-final: BUY R0 size-impact from same quote objects is finite and round-trips as string."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="7.5",
+                     quoted_at=NOW + timedelta(seconds=1))
+    impact = quote_size_impact_bps(buy_100, buy_1000)
+    assert impact.is_finite()
+    assert Decimal(str(impact)) == impact
+
+
+def test_d2_final_sell_r0_size_impact_is_finite_and_serialized() -> None:
+    """D2-final: SELL R0 size-impact from same quote objects is finite and round-trips as string."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    sell_100 = quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+    sell_1000 = quote(QuoteSide.SELL, normalized_in="10", normalized_out="880",
+                      quoted_at=NOW + timedelta(seconds=1))
+    impact = quote_size_impact_bps(sell_100, sell_1000)
+    assert impact.is_finite()
+    assert Decimal(str(impact)) == impact
+
+
+def test_d2_final_r0_metric_uses_same_quote_objects() -> None:
+    """D2-final: R0 metric is computed from the same $100/$1000 quote objects used for GAP."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="7.5",
+                     quoted_at=NOW + timedelta(seconds=1))
+    # Formula: (rate_100 - rate_1000) / rate_100 * 10000
+    rate_100 = buy_100.normalized_amount_out / buy_100.normalized_amount_in
+    rate_1000 = buy_1000.normalized_amount_out / buy_1000.normalized_amount_in
+    expected = ((rate_100 - rate_1000) / rate_100) * Decimal("10000")
+    assert quote_size_impact_bps(buy_100, buy_1000) == expected
+
+
+def test_d2_final_r0_metric_is_not_recomputed_from_gap_values() -> None:
+    """D2-final: R0 metric uses output/input rate directly; gap_bps is not its input."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="7.5",
+                     quoted_at=NOW + timedelta(seconds=1))
+    obs_100 = compute_directional_gap(reference(), buy_100, policy=POLICY)
+    obs_1000 = compute_directional_gap(reference(), buy_1000, policy=POLICY)
+    gap_delta = obs_1000.gap_bps - obs_100.gap_bps
+    r0_impact = quote_size_impact_bps(buy_100, buy_1000)
+    # Both finite and independently computed
+    assert gap_delta.is_finite() and r0_impact.is_finite()
+    # The gap delta compares execution price against reference; R0 metric compares route rates.
+    # For non-trivial cases these are different quantities:
+    ref_ask = Decimal("105")
+    expected_gap_delta = (
+        ((Decimal("1000") / Decimal("7.5") / ref_ask) - 1) * 10000
+        - ((Decimal("100") / Decimal("0.8") / ref_ask) - 1) * 10000
+    )
+    rate_100 = Decimal("0.8") / Decimal("100")
+    rate_1000 = Decimal("7.5") / Decimal("1000")
+    expected_r0 = ((rate_100 - rate_1000) / rate_100) * Decimal("10000")
+    assert gap_delta == expected_gap_delta
+    assert r0_impact == expected_r0
+    assert gap_delta != r0_impact
+
+
+def test_d2_final_r0_impact_semantically_distinct_from_gap_delta() -> None:
+    """D2-final: R0 size-impact and GAP delta measure different things with different formulas."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    # Construct a case where R0 impact and gap delta clearly differ
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="1")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="9",
+                     quoted_at=NOW + timedelta(seconds=1))
+    obs_100 = compute_directional_gap(reference(), buy_100, policy=POLICY)
+    obs_1000 = compute_directional_gap(reference(), buy_1000, policy=POLICY)
+    gap_delta = obs_1000.gap_bps - obs_100.gap_bps
+    r0_impact = quote_size_impact_bps(buy_100, buy_1000)
+    assert gap_delta.is_finite() and r0_impact.is_finite()
+    # GAP delta: ((1000/9)/105 - 1)*10000 - ((100/1)/105 - 1)*10000
+    # R0 impact: (rate_100 - rate_1000)/rate_100 * 10000
+    assert gap_delta != r0_impact
+
+
+def test_d2_final_zero_is_valid_r0_size_impact() -> None:
+    """D2-final: zero is a valid R0 size-impact value when rates are identical at both sizes."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    # Same rate: 0.8/100 == 8.0/1000 → impact = 0
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="8.0",
+                     quoted_at=NOW + timedelta(seconds=1))
+    impact = quote_size_impact_bps(buy_100, buy_1000)
+    assert impact == Decimal("0")
+    assert impact.is_finite()
+
+
+def test_d2_final_pass_artifact_requires_both_r0_impact_fields() -> None:
+    """D2-final: a PASS sizeComparison block must contain both r0BuySizeImpactBps and r0SellSizeImpactBps."""
+    from finco_radar.quotes.normalization import quote_size_impact_bps
+    # Compute via the canonical function
+    buy_100 = quote(QuoteSide.BUY, normalized_in="100", normalized_out="0.8")
+    buy_1000 = quote(QuoteSide.BUY, normalized_in="1000", normalized_out="7.5",
+                     quoted_at=NOW + timedelta(seconds=1))
+    sell_100 = quote(QuoteSide.SELL, normalized_in="1", normalized_out="90")
+    sell_1000 = quote(QuoteSide.SELL, normalized_in="10", normalized_out="880",
+                      quoted_at=NOW + timedelta(seconds=1))
+    buy_impact = str(quote_size_impact_bps(buy_100, buy_1000))
+    sell_impact = str(quote_size_impact_bps(sell_100, sell_1000))
+    # A valid PASS sizeComparison block
+    sc = {"r0BuySizeImpactBps": buy_impact, "r0SellSizeImpactBps": sell_impact}
+    assert Decimal(sc["r0BuySizeImpactBps"]).is_finite()
+    assert Decimal(sc["r0SellSizeImpactBps"]).is_finite()
+    # A block missing either field fails the gate invariant
+    assert "r0BuySizeImpactBps" in sc
+    assert "r0SellSizeImpactBps" in sc

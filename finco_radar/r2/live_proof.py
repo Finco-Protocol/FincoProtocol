@@ -24,6 +24,7 @@ from finco_radar.quotes.contracts import (
     SettlementReference,
     SettlementReferenceState,
 )
+from finco_radar.quotes.normalization import quote_size_impact_bps
 
 CHAIN_ID = 4663
 ROBINHOOD_API = "https://api.robinhood.com/rhj"
@@ -280,14 +281,18 @@ def _size_comparison(
         "buyDeltaInterpretation": BUY_DELTA_INTERPRETATION,
         "sellDirectionalGapDeltaBps": str(sell_directional_gap_delta_bps),
         "sellDeltaInterpretation": SELL_DELTA_INTERPRETATION,
-        # D4: R0 size-impact is NOT emitted here. It is produced by the R0 live proof
-        # into its own evidence artifact. R2 neither duplicates nor recomputes it, and
-        # deliberately emits no placeholder that could be misread as an observed zero
-        # or as an unavailable R2 metric.
+        # D2-final: r0BuySizeImpactBps and r0SellSizeImpactBps are injected by _run()
+        # using quote_size_impact_bps from the same quote objects that produced the
+        # directional GAP observations. The authority statement below records the formula
+        # provenance. R2 does not redefine or reinterpret the R0 metric.
         "r0SizeImpactAuthority": (
-            "NOT_EMITTED_BY_R2. R0 size-impact authority remains the separate R0 "
-            "regression evidence artifact (sizeImpactBps in radar_r0_regression_on_r2.json). "
-            "R2 does not duplicate or recompute the R0 metric."
+            "Formula authority: finco_radar.quotes.normalization.quote_size_impact_bps. "
+            "R2 records the canonical R0 metric over the same $100/$1000 quote pair used for "
+            "directional GAP observations, for evidence alignment only. "
+            "R2 does not redefine or reinterpret this metric. "
+            "R0 size impact (output/input rate delta) is distinct from directional GAP delta "
+            "(execution price vs multiplier-adjusted reference side). "
+            "Neither is realized slippage. R3 owns liquidity/all-in-cost interpretation."
         ),
         "semantics": (
             "buyDirectionalGapDeltaBps = $1000 BUY directional GAP - $100 BUY directional GAP; "
@@ -404,6 +409,18 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
 
                         # C4/D1: Deterministic size comparison
                         size_cmp = _size_comparison(buy_100, sell_100, buy_1000, sell_1000)
+
+                        # D2-final: Record canonical R0 size-impact using the SAME quote objects
+                        # used to produce the directional GAP observations above. Not recomputed
+                        # from gap values — uses quote_size_impact_bps (output/input rate delta).
+                        size_cmp["r0BuySizeImpactBps"] = str(quote_size_impact_bps(
+                            quote_map[(QuoteSide.BUY, Decimal("100"))],
+                            quote_map[(QuoteSide.BUY, Decimal("1000"))],
+                        ))
+                        size_cmp["r0SellSizeImpactBps"] = str(quote_size_impact_bps(
+                            quote_map[(QuoteSide.SELL, Decimal("100"))],
+                            quote_map[(QuoteSide.SELL, Decimal("1000"))],
+                        ))
 
                         return {
                             "status": "PASS",
