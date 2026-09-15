@@ -12,6 +12,25 @@ Invoked by:
 Demo user IDs start with ``demo_`` (defined in app.auth.DEMO_USER_ID_PREFIX).
 The canonical reference user (``__reference__``) and admin user (``1``) are
 never touched.
+
+TTL authority
+-------------
+A demo session is considered expired when the LATEST ``updated_at`` timestamp
+across ALL project rows owned by that ``demo_*`` user_id is older than the TTL.
+This is a conservative, activity-based rule:
+
+  expired = MAX(updated_at for all projects owned by user) < cutoff
+
+Consequence: as long as any project belonging to a demo session was updated
+(or created) within the TTL window, the entire session is kept intact.
+No fresh object is deleted merely because another object owned by the same
+session is old.
+
+Example (TTL = 24h):
+  - User demo_X has Project A (updated 25h ago) and Project B (updated 2h ago).
+  - MAX(updated_at) = 2h ago < cutoff? No → demo_X is NOT expired → all data kept.
+  - User demo_Y has Project C (updated 30h ago) and no other projects.
+  - MAX(updated_at) = 30h ago < cutoff? Yes → demo_Y is expired → all data deleted.
 """
 
 from __future__ import annotations
@@ -31,8 +50,9 @@ _TABLES_WITH_USER_ID = [
     "scenario_exports",
 ]
 
-# Sub-line tables reference project_id, not user_id — cleaned up via project cascade
-# after projects rows are deleted (if FK cascade is enabled) or via explicit join.
+# Sub-line tables reference project_id, not user_id.
+# Ownership chain: capex_sub_lines.project_id → projects.project_id → projects.user_id
+# These are cleaned via explicit JOIN, not by user_id directly.
 _SUBLINE_TABLES = [
     "capex_sub_lines",
     "opex_sub_lines",
@@ -45,10 +65,16 @@ def _cutoff_iso(ttl_hours: int) -> str:
 
 
 def cleanup_expired_demo_data(ttl_hours: int = DEMO_TTL_HOURS) -> dict:
-    """Delete all data for demo sessions older than ``ttl_hours``.
+    """Delete all data for demo sessions whose LATEST project activity is older
+    than ``ttl_hours``.
+
+    TTL authority: ``MAX(updated_at)`` across all project rows for that
+    demo user_id. A session is expired only when its most-recently-updated
+    project is beyond the TTL window. No fresh session-owned object is deleted
+    merely because another object in the same session is old.
 
     Returns a summary dict: {table: rows_deleted}.
-    Never touches admin or reference users.
+    Never touches admin (user_id='1') or reference (user_id='__reference__') rows.
     """
     from app.persistence.db import get_connection
 
@@ -58,14 +84,16 @@ def cleanup_expired_demo_data(ttl_hours: int = DEMO_TTL_HOURS) -> dict:
     try:
         conn = get_connection()
         with conn:
-            # Find expired demo user_ids (based on their oldest project/run created_at)
-            # We use the projects table as the authoritative source; users without
-            # any project are not tracked and have no data to clean up.
+            # Find demo user_ids whose LATEST project activity is before cutoff.
+            # Using MAX(updated_at): as long as any project is fresh, the whole
+            # session is kept. This is the activity-based TTL authority.
             expired_users_q = conn.execute(
                 """
-                SELECT DISTINCT user_id FROM projects
+                SELECT user_id
+                FROM projects
                 WHERE user_id LIKE ?
-                  AND created_at < ?
+                GROUP BY user_id
+                HAVING MAX(updated_at) < ?
                 """,
                 (DEMO_USER_ID_PREFIX + "%", cutoff),
             ).fetchall()
@@ -76,7 +104,7 @@ def cleanup_expired_demo_data(ttl_hours: int = DEMO_TTL_HOURS) -> dict:
                 return {}
 
             logger.info(
-                "demo_cleanup: found %d expired demo session(s) (cutoff=%s)",
+                "demo_cleanup: found %d expired demo session(s) (cutoff=%s, authority=MAX(updated_at))",
                 len(expired_ids),
                 cutoff,
             )
@@ -138,7 +166,12 @@ def cleanup_expired_demo_data(ttl_hours: int = DEMO_TTL_HOURS) -> dict:
 
 
 def cleanup_all_demo_data() -> dict:
-    """Delete ALL demo data regardless of age. Used by demo reset only."""
+    """Delete ALL demo data regardless of age. Used by demo reset only.
+
+    This is a destructive full-wipe, not a TTL cleanup. Only called by
+    ``tools/demo_reset.py`` after all safety gates have passed.
+    Never touches admin (user_id='1') or reference (user_id='__reference__') rows.
+    """
     from app.persistence.db import get_connection
 
     summary: dict[str, int] = {}

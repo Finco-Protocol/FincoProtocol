@@ -214,10 +214,10 @@ async def _bootstrap_reference_models():
 async def _schedule_demo_cleanup():
     """Schedule recurring demo TTL cleanup in a daemon thread (P6.5).
 
-    TTL authority: the ``created_at`` timestamp of the oldest project row owned
-    by a demo user_id. If all projects for a demo user are older than
-    FINCO_DEMO_TTL_HOURS, all their data is deleted. This is conservative —
-    a user is not purged until their entire project set has aged out.
+    TTL authority: ``MAX(updated_at)`` across ALL project rows owned by a
+    demo user_id. A session is expired only when its most-recently-updated
+    project is beyond the TTL window. No fresh session object is deleted
+    merely because another object in the same session is old.
 
     Runs once at startup (deferred 5 min) then repeats every FINCO_DEMO_TTL_HOURS
     hours so long-lived staging processes clean up without operator intervention.

@@ -10,26 +10,58 @@ Options:
     --cleanup-only   Delete expired demo data only (no full wipe)
     --yes            Skip the confirmation prompt
 
-Safety gates:
-    - Refuses to run if FINCO_ENV=production
-    - Refuses to run if FINCO_APP_MODE=pilot and --yes is not passed
-    - Never touches admin or reference user data
+Safety gates (fail-closed):
+    - FINCO_ENV must be explicitly set to one of: staging, demo, test
+      (absent/empty/production/development all refused)
+    - FINCO_DB_PATH must be explicitly set (refuses to operate on the
+      default/fallback database path)
+    - FINCO_DEMO_RESET_ALLOWED=true must be set as a second explicit
+      opt-in (prevents accidental invocation in scripts that happen to
+      have the right FINCO_ENV but have not consciously enabled reset)
+    - Never touches admin (user_id='1') or reference (user_id='__reference__') rows
     - Never deletes the database file itself
 """
 
 import os
 import sys
 
-# ── Safety gate: refuse production ───────────────────────────────────────────
+# ── Safety gate: refuse production and missing env ────────────────────────────
 
-# Positive allowlist: only these environments may run demo reset.
-# Any unrecognized value (including "production") is refused fail-closed.
-_ALLOWED_ENVS = frozenset({"staging", "demo", "test", "development", ""})
+# Positive allowlist — ONLY these three explicit values are accepted.
+# Empty string, "production", "development", and any unrecognised value are
+# refused. The empty-string case is critical: an absent FINCO_ENV variable
+# must not silently pass the gate.
+_ALLOWED_ENVS = frozenset({"staging", "demo", "test"})
 _ENV = os.getenv("FINCO_ENV", "").strip().lower()
 if _ENV not in _ALLOWED_ENVS:
     print(f"ERROR: demo_reset refused. FINCO_ENV={_ENV!r} is not in the allowed set.")
     print(f"  Allowed: {sorted(_ALLOWED_ENVS)}")
-    print("  This script must never run against production or unknown environments.")
+    print("  FINCO_ENV must be explicitly set to staging, demo, or test.")
+    print("  Absent, empty, 'production', or 'development' values are all refused.")
+    sys.exit(2)
+
+# ── Safety gate: require explicit FINCO_DB_PATH ───────────────────────────────
+
+_DB_PATH = os.getenv("FINCO_DB_PATH", "").strip()
+if not _DB_PATH:
+    print("ERROR: demo_reset refused. FINCO_DB_PATH is not set.")
+    print("  You must explicitly set FINCO_DB_PATH to the staging database path.")
+    print("  Refusing to operate on the default/fallback database path.")
+    sys.exit(2)
+
+_DEFAULT_DB_FRAGMENTS = ("finco_runs.db", "app/data/")
+if any(fragment in _DB_PATH for fragment in _DEFAULT_DB_FRAGMENTS):
+    print(f"ERROR: demo_reset refused. FINCO_DB_PATH={_DB_PATH!r} looks like the default DB path.")
+    print("  Set FINCO_DB_PATH to the staging-specific database path.")
+    sys.exit(2)
+
+# ── Safety gate: require FINCO_DEMO_RESET_ALLOWED=true ───────────────────────
+
+_RESET_ALLOWED = os.getenv("FINCO_DEMO_RESET_ALLOWED", "").strip().lower()
+if _RESET_ALLOWED != "true":
+    print("ERROR: demo_reset refused. FINCO_DEMO_RESET_ALLOWED is not set to 'true'.")
+    print("  Set FINCO_DEMO_RESET_ALLOWED=true to explicitly opt in to demo reset.")
+    print("  This prevents accidental invocation in scripts without conscious opt-in.")
     sys.exit(2)
 
 _APP_MODE = os.getenv("FINCO_APP_MODE", "development").strip().lower()

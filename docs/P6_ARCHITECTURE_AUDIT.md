@@ -1,7 +1,7 @@
 # P6 Architecture Audit — FINCO Protocol Corporate Staging
 
 **Scope:** Multi-user public demo and staging readiness.
-**Status:** P6 Correction A — hardening in progress.
+**Status:** P6 Correction B — final review blockers.
 **Engine boundary:** FINCO Model deterministic engine only. FINCO Radar excluded.
 
 ---
@@ -36,7 +36,15 @@
 ## 2. Persistence Layer and Ownership
 
 ### 2.1 Per-user scoping
-All tables have a `user_id` column. Every query in `app/persistence/projects_repository.py`, `runs_repository.py`, `scenarios_repository.py`, `workspace_repository.py` scopes by `user_id`. Cross-user data is not exposed through any service-layer function.
+Most tables carry a `user_id` column. Every query in `app/persistence/projects_repository.py`, `runs_repository.py`, `scenarios_repository.py`, `workspace_repository.py` scopes by `user_id`. Cross-user data is not exposed through any service-layer function.
+
+**Exception — sub-line tables:** `capex_sub_lines` and `opex_sub_lines` reference `project_id`, not `user_id` directly. Ownership chain:
+
+```
+capex_sub_lines.project_id → projects.project_id → projects.user_id
+```
+
+Demo TTL cleanup deletes sub-line rows via an explicit `DELETE ... WHERE project_id IN (SELECT project_id FROM projects WHERE user_id IN (...))` join, not by `user_id` directly. This is the correct deletion path; a direct `user_id` filter would not match these tables.
 
 ### 2.2 Canonical references
 - `user_id = "__reference__"`, `project_role = "reference"`, `is_protected = 1`, `archived = 0`.
@@ -95,9 +103,18 @@ All tables have a `user_id` column. Every query in `app/persistence/projects_rep
 ## 5. Demo Session TTL Cleanup
 
 ### 5.1 TTL authority
-- `created_at` timestamp of the **oldest project row** owned by a `demo_*` user_id.
-- A demo user's data is deleted when their oldest project is older than `FINCO_DEMO_TTL_HOURS`.
-- This is conservative: a user who keeps creating new projects will not be purged until all projects age out. Acceptable for a 24h demo TTL.
+- **`MAX(updated_at)`** across **all** project rows owned by a `demo_*` user_id.
+- A demo session is expired only when the most-recently-updated project for that user is older than `FINCO_DEMO_TTL_HOURS`.
+- This is an activity-based rule: as long as **any** project for a demo user was updated within the TTL window, the entire session is kept intact. No fresh object is deleted merely because another object in the same session is old.
+- Implementation (SQL authority):
+  ```sql
+  SELECT user_id
+  FROM projects
+  WHERE user_id LIKE 'demo_%'
+  GROUP BY user_id
+  HAVING MAX(updated_at) < :cutoff
+  ```
+- Example (TTL=24h): demo_X has Project A (updated 25h ago) and Project B (updated 2h ago). `MAX(updated_at) = 2h ago` — not expired; all data kept. demo_Y has only Project C (updated 30h ago). `MAX(updated_at) = 30h ago < cutoff` — expired; all data deleted.
 
 ### 5.2 Scheduling
 - `_schedule_demo_cleanup()` startup hook starts a daemon thread.
@@ -105,9 +122,40 @@ All tables have a `user_id` column. Every query in `app/persistence/projects_rep
 - Recurring loop ensures long-lived staging processes clean up without operator intervention.
 - Never deletes `user_id = "1"` or `user_id = "__reference__"` data.
 
+### 5.3 Sub-line cleanup ordering
+Sub-line tables (`capex_sub_lines`, `opex_sub_lines`) are cleaned before `projects` to avoid orphaned rows. See §2.1 for ownership chain.
+
 ---
 
-## 6. Remaining Gaps (Post-P6 Roadmap)
+## 6. Privacy-Safe Observability
+
+### 6.1 Structured log events
+`app/observability.py` exposes structured log helpers used throughout `main_web.py`:
+
+| Event | Logger level | Keys |
+|-------|-------------|------|
+| HTTP error (4xx/5xx route) | WARNING | `event`, `status_code`, `path`, `method` |
+| Model run started | INFO | `event`, `user_id_prefix` (first 12 chars only) |
+| Model run completed | INFO | `event`, `duration_ms`, `status` |
+| Model run failed | ERROR | `event`, `error_type` |
+| Capacity-busy (503) | WARNING | `event`, `max_slots` |
+| SQLite lock (`OperationalError`) | WARNING | `event`, `table` |
+
+### 6.2 What is never logged
+- Session tokens or cookie values
+- `FINCO_SECRET_KEY`, `FINCO_ADMIN_PASSWORD`, or any environment secret
+- Full request/response payloads
+- User-supplied financial inputs (capex, tariff, etc.)
+- Full `user_id` beyond the first 12 characters (prevents session enumeration)
+
+### 6.3 Health and readiness endpoints
+- `GET /public-health` — unauthenticated, returns `{status, app, mode}` only. No model run. No DB query.
+- `GET /readyz` — unauthenticated, delegates to `get_app_health_status()`. Checks DB directory reachability (not content). Returns HTTP 200 (ok/degraded) or HTTP 503 (error). Does not expose secret values.
+- `GET /health` — requires admin auth. Returns `{status: ok}` only.
+
+---
+
+## 7. Remaining Gaps (Post-P6 Roadmap)
 
 | Gap | Priority | Note |
 |-----|----------|------|
@@ -119,6 +167,8 @@ All tables have a `user_id` column. Every query in `app/persistence/projects_rep
 
 ---
 
-## 7. Staging Configuration
+## 8. Staging Configuration
 
 See `deploy/staging.env.example` for environment variable documentation.
+
+`FINCO_STORAGE_PATH` is defined in `deploy/staging.env.example` as a reserved variable for a future export-storage directory feature. It is not consumed by any current code path — the application writes exports using the default directory derived from `FINCO_DB_PATH`. Operators may set it in anticipation of the feature; it has no effect until the export-storage service is wired up.
