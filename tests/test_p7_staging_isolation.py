@@ -22,6 +22,7 @@ def _env() -> dict[str, str]:
         "FINCO_DEMO_RESET_ALLOWED": "true",
         "FINCO_STAGING_ROOT": "/opt/finco_staging",
         "FINCO_STAGING_PORT": "8100",
+        "FINCO_STAGING_HOST": "staging.finco.one",
         "FINCO_DEPLOY_SHA": HEAD,
     }
 
@@ -78,6 +79,13 @@ def test_weak_admin_password_is_rejected() -> None:
     env = _env()
     env["FINCO_ADMIN_PASSWORD"] = "short"
     with pytest.raises(StagingPreflightError, match="FINCO_ADMIN_PASSWORD"):
+        _validate(env)
+
+
+def test_production_hostname_is_rejected() -> None:
+    env = _env()
+    env["FINCO_STAGING_HOST"] = "app.finco.one"
+    with pytest.raises(StagingPreflightError, match="FINCO_STAGING_HOST"):
         _validate(env)
 
 
@@ -148,5 +156,6 @@ def test_staging_env_example_declares_separate_operational_identity() -> None:
     assert "FINCO_ENV=staging" in text
     assert "FINCO_STAGING_ROOT=/opt/finco_staging" in text
     assert "FINCO_STAGING_PORT=8100" in text
+    assert "FINCO_STAGING_HOST=staging.finco.one" in text
     assert "FINCO_DB_PATH=/opt/finco_staging/storage/finco_staging.db" in text
     assert "FINCO_DEPLOY_SHA=" in text
