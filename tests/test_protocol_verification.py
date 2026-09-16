@@ -268,7 +268,74 @@ def test_model_balance_sheet_rejects_deleted_operation_row():
     report = validate_model_run(payload)
     assert not report.passed
     assert "MODEL_PERIOD_AXIS_CONSISTENT" not in _failure_ids(report)
+    assert "MODEL_STATEMENT_PERIOD_AXIS_CONSISTENT" in _failure_ids(report)
     assert "MODEL_BALANCE_SHEET_BALANCES" in _failure_ids(report)
+
+
+def test_model_period_axis_rejects_coordinated_active_row_deletion():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    index = _active_debt_period_index(payload)
+    for schedule_name in ("debt_schedule", "tax_schedule", "distribution_schedule"):
+        del payload[schedule_name]["periods"][index]
+
+    report = validate_model_run(payload)
+    failures = _failure_ids(report)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in failures
+    assert "MODEL_OPERATION_PERIOD_COUNT_ANCHORED" in failures
+    assert "MODEL_STATEMENT_PERIOD_AXIS_CONSISTENT" in failures
+
+
+def test_model_period_axis_rejects_coordinated_operation_flag_suppression():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    index = _active_debt_period_index(payload)
+    for schedule_name in ("debt_schedule", "tax_schedule", "distribution_schedule"):
+        payload[schedule_name]["periods"][index]["is_operation"] = False
+
+    report = validate_model_run(payload)
+    failures = _failure_ids(report)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in failures
+    assert "MODEL_STATEMENT_PERIOD_AXIS_CONSISTENT" not in failures
+    assert "MODEL_OPERATION_PERIOD_COUNT_ANCHORED" in failures
+
+
+def test_model_operation_count_anchor_rejects_derivation_count_tampering():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    payload["derivation_evidence"]["revenue"]["period_count"] -= 1
+
+    report = validate_model_run(payload)
+    failures = _failure_ids(report)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in failures
+    assert "MODEL_OPERATION_PERIOD_COUNT_ANCHORED" in failures
+
+
+def test_model_statement_axis_rejects_independent_pnl_row_deletion():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    active_row = payload["debt_schedule"]["periods"][_active_debt_period_index(payload)]
+    pnl_periods = payload["financial_statements"]["pnl"]["periods"]
+    index = next(
+        index
+        for index, row in enumerate(pnl_periods)
+        if row.get("date") == active_row.get("date")
+    )
+    del pnl_periods[index]
+
+    report = validate_model_run(payload)
+    failures = _failure_ids(report)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in failures
+    assert "MODEL_OPERATION_PERIOD_COUNT_ANCHORED" not in failures
+    assert "MODEL_STATEMENT_PERIOD_AXIS_CONSISTENT" in failures
 
 
 def test_public_validation_corpus_is_cross_surface_and_self_verifying():
