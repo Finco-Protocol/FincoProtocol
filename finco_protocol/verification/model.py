@@ -159,6 +159,53 @@ def _extract_period_axis(
     return tuple(axis), tuple(invalid_rows), tuple(duplicate_rows)
 
 
+def _extract_statement_axis(
+    periods: Sequence[Any],
+    *,
+    period_field: str,
+) -> tuple[
+    tuple[tuple[int, str], ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
+    """Return a strict, unique statement ``(period, date)`` axis.
+
+    Financial-statement serializers expose the canonical model period index and
+    period-end date through an independently assembled statement surface. This
+    helper validates only those serialized structural fields; it performs no
+    financial calculation and does not infer operation state.
+    """
+
+    axis: list[tuple[int, str]] = []
+    invalid_rows: list[int] = []
+    duplicate_rows: list[int] = []
+    seen: set[tuple[int, str]] = set()
+
+    for index, raw_period in enumerate(periods):
+        if not isinstance(raw_period, Mapping):
+            invalid_rows.append(index)
+            continue
+
+        period = raw_period.get(period_field)
+        date_value = raw_period.get("date")
+        if not (
+            _strict_int(period)
+            and isinstance(date_value, str)
+            and bool(date_value)
+        ):
+            invalid_rows.append(index)
+            continue
+
+        key = (period, date_value)
+        if key in seen:
+            duplicate_rows.append(index)
+        else:
+            seen.add(key)
+        axis.append(key)
+
+    return tuple(axis), tuple(invalid_rows), tuple(duplicate_rows)
+
+
 def validate_model_run(
     payload: Mapping[str, Any],
     *,
@@ -172,7 +219,9 @@ def validate_model_run(
     ``app.api.project_runner.run_project``. Missing or malformed evidence on an
     applicable operation period fails closed. Operation applicability is taken
     only from a structural period axis that must reconcile exactly across the
-    debt, tax and distribution serializers of the same ``WaterfallResult``.
+    debt, tax and distribution serializers of the same ``WaterfallResult`` and
+    must remain complete against independent derivation-count and financial-
+    statement structural evidence already serialized from the same run.
     """
 
     checks: list[InvariantCheck] = []
@@ -404,6 +453,44 @@ def validate_model_run(
     )
 
     derivation = _mapping(payload.get("derivation_evidence"))
+    operation_count_sources = ("revenue", "ebitda", "opex")
+    operation_counts: dict[str, int] = {}
+    invalid_operation_count_sources: list[str] = []
+    for source_name in operation_count_sources:
+        raw_count = _mapping(derivation.get(source_name)).get("period_count")
+        if not _strict_int(raw_count) or raw_count <= 0:
+            invalid_operation_count_sources.append(source_name)
+        else:
+            operation_counts[source_name] = raw_count
+
+    common_operation_count = sum(
+        1 for _, _, _, _, is_operation in common_axis if is_operation
+    )
+    operation_count_anchor_ok = (
+        period_axis_ok
+        and not invalid_operation_count_sources
+        and len(operation_counts) == len(operation_count_sources)
+        and len(set(operation_counts.values())) == 1
+        and common_operation_count == next(iter(operation_counts.values()))
+    )
+    checks.append(
+        _check(
+            "MODEL_OPERATION_PERIOD_COUNT_ANCHORED",
+            operation_count_anchor_ok,
+            (
+                f"commonOperationCount={common_operation_count}; "
+                f"derivationCounts={operation_counts!r}"
+                if operation_count_anchor_ok
+                else (
+                    f"periodAxisConsistent={period_axis_ok}; "
+                    f"commonOperationCount={common_operation_count}; "
+                    f"derivationCounts={operation_counts!r}; "
+                    f"invalidSources={invalid_operation_count_sources!r}"
+                )
+            ),
+        )
+    )
+
     dscr = _mapping(derivation.get("dscr"))
     sample_cfads = _decimal(dscr.get("sample_cfads_keur"))
     sample_ds = _decimal(dscr.get("sample_senior_debt_service_keur"))
@@ -433,11 +520,64 @@ def validate_model_run(
     pnl_periods = _sequence(_mapping(fs.get("pnl")).get("periods"))
     bs_periods = _sequence(_mapping(fs.get("balance_sheet")).get("periods"))
     cash_periods = _sequence(_mapping(fs.get("pf_cash_waterfall")).get("periods"))
+    statements_present = bool(pnl_periods) and bool(bs_periods) and bool(cash_periods)
     checks.append(
         _check(
             "MODEL_FINANCIAL_STATEMENTS_PRESENT",
-            bool(pnl_periods) and bool(bs_periods) and bool(cash_periods),
+            statements_present,
             f"pnl={len(pnl_periods)} bs={len(bs_periods)} cash={len(cash_periods)}",
+        )
+    )
+
+    common_statement_axis = tuple(
+        (period, date_value)
+        for period, date_value, _, _, _ in common_axis
+    )
+    pnl_axis, pnl_axis_invalid, pnl_axis_duplicates = _extract_statement_axis(
+        pnl_periods,
+        period_field="period",
+    )
+    bs_axis, bs_axis_invalid, bs_axis_duplicates = _extract_statement_axis(
+        bs_periods,
+        period_field="period_index",
+    )
+    cash_axis, cash_axis_invalid, cash_axis_duplicates = _extract_statement_axis(
+        cash_periods,
+        period_field="period_index",
+    )
+    statement_axis_ok = (
+        period_axis_ok
+        and statements_present
+        and not pnl_axis_invalid
+        and not bs_axis_invalid
+        and not cash_axis_invalid
+        and not pnl_axis_duplicates
+        and not bs_axis_duplicates
+        and not cash_axis_duplicates
+        and len(pnl_axis) == len(pnl_periods)
+        and len(bs_axis) == len(bs_periods)
+        and len(cash_axis) == len(cash_periods)
+        and common_statement_axis == pnl_axis == bs_axis == cash_axis
+    )
+    checks.append(
+        _check(
+            "MODEL_STATEMENT_PERIOD_AXIS_CONSISTENT",
+            statement_axis_ok,
+            (
+                f"common/debt-tax-distribution and three statement surfaces share "
+                f"{len(common_statement_axis)} ordered (period,date) rows"
+                if statement_axis_ok
+                else (
+                    f"periodAxisConsistent={period_axis_ok}; statementsPresent={statements_present}; "
+                    f"counts=common:{len(common_statement_axis)},pnl:{len(pnl_periods)},"
+                    f"bs:{len(bs_periods)},cash:{len(cash_periods)}; "
+                    f"invalid=pnl:{list(pnl_axis_invalid)!r},bs:{list(bs_axis_invalid)!r},"
+                    f"cash:{list(cash_axis_invalid)!r}; "
+                    f"duplicates=pnl:{list(pnl_axis_duplicates)!r},bs:{list(bs_axis_duplicates)!r},"
+                    f"cash:{list(cash_axis_duplicates)!r}; "
+                    f"axesEqual={common_statement_axis == pnl_axis == bs_axis == cash_axis}"
+                )
+            ),
         )
     )
 
@@ -471,6 +611,8 @@ def validate_model_run(
     )
     balance_ok = (
         period_axis_ok
+        and operation_count_anchor_ok
+        and statement_axis_ok
         and bool(operation_dates)
         and not missing_operation_dates
         and not duplicate_operation_dates
@@ -490,6 +632,8 @@ def validate_model_run(
                 if balance_ok
                 else (
                     f"periodAxisConsistent={period_axis_ok}; "
+                    f"operationCountAnchored={operation_count_anchor_ok}; "
+                    f"statementAxisConsistent={statement_axis_ok}; "
                     f"missingOperationDates={missing_operation_dates!r}; "
                     f"duplicateOperationDates={duplicate_operation_dates!r}; "
                     f"invalidOperationPeriods={invalid_balance_periods!r}; "
