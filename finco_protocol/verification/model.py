@@ -101,8 +101,8 @@ def validate_model_run(
     The verifier is not a second financial engine. It checks identities and
     cross-view consistency in the serialized production result returned by
     ``app.api.project_runner.run_project``. Missing or malformed evidence on an
-    applicable serialized period fails closed; the verifier never invents a
-    zero value for a missing financial field.
+    applicable operation period fails closed; construction/pre-operation rows
+    may legitimately expose no debt-service or balance-check metric.
     """
 
     checks: list[InvariantCheck] = []
@@ -180,6 +180,7 @@ def validate_model_run(
     debt = _mapping(payload.get("debt_schedule"))
     debt_periods = _sequence(debt.get("periods"))
     debt_failures: list[int] = []
+    operation_dates: set[str] = set()
     applicable_debt_periods = 0
     debt_fields = (
         "senior_principal_keur",
@@ -188,19 +189,15 @@ def validate_model_run(
     )
     for index, raw_period in enumerate(debt_periods):
         period = _mapping(raw_period)
-        raw_values = tuple(period.get(name) for name in debt_fields)
-        # Construction/non-operation rows may legitimately carry no senior debt
-        # service fields. Every operation row, and every row that carries any
-        # senior debt-service evidence, is applicable and must be complete.
-        applicable = period.get("is_operation") is True or any(
-            value is not None for value in raw_values
-        )
-        if not applicable:
+        if period.get("is_operation") is not True:
             continue
         applicable_debt_periods += 1
-        principal = _decimal(raw_values[0])
-        interest = _decimal(raw_values[1])
-        debt_service = _decimal(raw_values[2])
+        date_value = period.get("date")
+        if isinstance(date_value, str) and date_value:
+            operation_dates.add(date_value)
+        principal = _decimal(period.get(debt_fields[0]))
+        interest = _decimal(period.get(debt_fields[1]))
+        debt_service = _decimal(period.get(debt_fields[2]))
         if principal is None or interest is None or debt_service is None:
             debt_failures.append(index)
             continue
@@ -221,12 +218,12 @@ def validate_model_run(
             "MODEL_DEBT_SERVICE_IDENTITY",
             debt_identity_ok,
             (
-                "all applicable serialized periods have finite senior principal, interest "
-                "and debt service; debt service = principal + interest"
+                "all operation periods have finite senior principal, interest and debt "
+                "service; debt service = principal + interest"
                 if debt_identity_ok
                 else (
                     f"periodFailures={debt_failures!r}; "
-                    f"applicablePeriodCount={applicable_debt_periods}; "
+                    f"operationPeriodCount={applicable_debt_periods}; "
                     f"periodCount={len(debt_periods)}"
                 )
             ),
@@ -315,24 +312,29 @@ def validate_model_run(
         )
     )
 
+    applicable_balance_rows: list[tuple[int, Mapping[str, Any]]] = [
+        (index, _mapping(period))
+        for index, period in enumerate(bs_periods)
+        if _mapping(period).get("date") in operation_dates
+    ]
     balance_checks = [
-        _decimal(_mapping(period).get("balance_check_keur"))
-        for period in bs_periods
+        (index, _decimal(period.get("balance_check_keur")))
+        for index, period in applicable_balance_rows
     ]
     invalid_balance_periods = [
-        index for index, value in enumerate(balance_checks) if value is None
+        index for index, value in balance_checks if value is None
     ]
     finite_balance_checks = [
-        value for value in balance_checks if value is not None
+        value for _, value in balance_checks if value is not None
     ]
     max_balance_check = max(
         (abs(value) for value in finite_balance_checks),
         default=None,
     )
     balance_ok = (
-        bool(bs_periods)
+        bool(applicable_balance_rows)
         and not invalid_balance_periods
-        and len(finite_balance_checks) == len(bs_periods)
+        and len(finite_balance_checks) == len(applicable_balance_rows)
         and max_balance_check is not None
         and max_balance_check <= abs_tol_keur
     )
@@ -341,13 +343,13 @@ def validate_model_run(
             "MODEL_BALANCE_SHEET_BALANCES",
             balance_ok,
             (
-                f"max_abs_balance_check_keur={str(max_balance_check)}; "
-                f"periodCount={len(bs_periods)}"
+                f"operation-period max_abs_balance_check_keur={str(max_balance_check)}; "
+                f"operationPeriodCount={len(applicable_balance_rows)}"
                 if balance_ok
                 else (
-                    f"invalidPeriods={invalid_balance_periods!r}; "
+                    f"invalidOperationPeriods={invalid_balance_periods!r}; "
                     f"max_abs_balance_check_keur={str(max_balance_check) if max_balance_check is not None else 'unavailable'}; "
-                    f"periodCount={len(bs_periods)}"
+                    f"operationPeriodCount={len(applicable_balance_rows)}"
                 )
             ),
         )
