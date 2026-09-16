@@ -226,7 +226,7 @@ def previous_entry(*, buy=("0", "0"), sell=("0", "0"), suppressed=False):
 ])
 def test_history_changes_are_consumed_from_r5(previous, current, kind):
     snap, _ = terminal(previous=(previous,), **current)
-    kinds = {x["kind"] for x in snap.history_panel.changes}
+    kinds = {x.kind for x in snap.history_panel.changes}
     assert kind in kinds
     if kind == "AUTHORITY_STATE_CHANGED":
         assert "SIGNAL_CLEARED" not in kinds
@@ -316,3 +316,22 @@ def test_no_execution_or_wallet_route_exists(path):
     snap, _ = terminal()
     client = TestClient(create_radar_app(lambda: snap))
     assert client.post(path).status_code == 404
+
+
+def test_terminal_nested_evidence_is_deeply_immutable():
+    snap, _ = terminal(buy=("60", "70"), previous=(previous_entry(),))
+    with pytest.raises((AttributeError, TypeError)):
+        snap.candidate_audit[0].status = "TAMPERED"
+    with pytest.raises((AttributeError, TypeError)):
+        snap.signal_panel.events[0].kind = "TAMPERED"
+    with pytest.raises((AttributeError, TypeError)):
+        snap.history_panel.changes[0].details_json = "{}"
+    assert reconstruct_terminal_digest(snap) == snap.terminal_snapshot_digest
+
+
+def test_web_fails_closed_if_snapshot_digest_is_stale():
+    snap, _ = terminal()
+    stale = replace(snap, git_head="tampered-without-redigest")
+    client = TestClient(create_radar_app(lambda: stale), raise_server_exceptions=False)
+    assert client.get("/radar").status_code == 500
+    assert client.get("/radar/api/snapshot").status_code == 500

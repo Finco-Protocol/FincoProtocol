@@ -19,6 +19,52 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e . pytest
+      - name: Wheel-installed terminal smoke
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir /tmp/r6-wheel
+          python -m venv /tmp/r6-installed
+          /tmp/r6-installed/bin/pip install /tmp/r6-wheel/*.whl
+          cd /tmp
+          /tmp/r6-installed/bin/python - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          from finco_radar.terminal.web import ROOT
+          from fastapi.testclient import TestClient
+          from finco_radar.terminal.web import create_radar_app
+          from finco_radar.terminal.contracts import (
+              AssetHeader, CandidateAuditEntry, DisplayValue, HistoryPanel,
+              LiquidityPanel, ReferencePanel, SignalPanel, TerminalSnapshot,
+              TerminalStatus,
+          )
+          from finco_radar.terminal.presenter import reconstruct_terminal_digest
+          from dataclasses import replace
+          assert (ROOT / "templates/radar_terminal.html").is_file()
+          assert (ROOT / "static/radar_terminal.css").is_file()
+          assert (ROOT / "static/radar_terminal.js").is_file()
+          value=DisplayValue("1", "1.00")
+          snapshot=TerminalSnapshot(
+              TerminalStatus.TERMINAL_OK, datetime.now(timezone.utc),
+              AssetHeader("TST", "Test Token", "uid", 1, "0x1", "1:0x1", "dom"),
+              ReferencePanel(value,value,value,value,value,"2026-01-01T00:00:00+00:00",value,
+                  "ACTIVE","NOT_HALTED","CURRENT","UNRESOLVED","NONE","CURRENT",True,(),
+                  "Session authority unresolved"),
+              (), (),
+              LiquidityPanel(value,value,value,"WITHIN_POLICY","WITHIN_POLICY",value,value,
+                  False,False,"route","route","route","route","COST_INCLUSION_UNRESOLVED",
+                  "Provider cost inclusion is unresolved."),
+              SignalPanel(True,"ACTIVE",(),(),"NO MATERIAL SIGNAL"),
+              HistoryPanel(False,"No previous comparable observation available",(),"source"),
+              (CandidateAuditEntry("TST","SELECTED"),), "source", "", "wheel-smoke",
+          )
+          snapshot=replace(snapshot,terminal_snapshot_digest=reconstruct_terminal_digest(snapshot))
+          app=create_radar_app(lambda: snapshot)
+          client=TestClient(app, raise_server_exceptions=False)
+          assert client.get("/radar").status_code == 200
+          assert client.get("/radar/api/snapshot").status_code == 200
+          assert client.get("/radar/static/radar_terminal.css").status_code == 200
+          assert client.get("/radar/static/radar_terminal.js").status_code == 200
+          PY
       - name: Focused R6 tests
         run: python -m pytest -q tests/test_radar_r6_terminal.py
       - name: Offline terminal render proof

@@ -15,9 +15,9 @@ from finco_radar.quotes.contracts import QuoteSide
 from finco_radar.reference_state.contracts import ReferenceStateSnapshot
 from finco_radar.signals.contracts import SignalSnapshot
 from .contracts import (
-    AssetHeader, DisplayValue, HistoryPanel, LiquidityPanel, MarketObservation,
-    ReferencePanel, SideSizePanel, SignalPanel, TerminalError, TerminalSnapshot,
-    TerminalStatus,
+    AssetHeader, CandidateAuditEntry, DisplayValue, HistoryChangeView, HistoryPanel,
+    LiquidityPanel, MarketObservation, ReferencePanel, SideSizePanel, SignalEventView,
+    SignalPanel, TerminalError, TerminalSnapshot, TerminalStatus,
 )
 
 
@@ -151,18 +151,22 @@ def build_terminal_snapshot(*, token_name: str, r3: LiquiditySnapshot,
         cost_authority=r5.net_economics_authority, cost_disclosure=cost_disclosure,
     )
     assessment_by_side = {a.side: a for a in (buy, sell)}
-    events = tuple({**event.to_evidence_dict(),
-                    "smallGapBps": str(assessment_by_side[event.side].small_gap_bps),
-                    "largeGapBps": str(assessment_by_side[event.side].large_gap_bps),
-                    "sizeImpactBps": str(assessment_by_side[event.side].r0_size_impact_bps),
-                    "routeChanged": assessment_by_side[event.side].route_changed}
-                   for event in r5.signal_events)
+    events = tuple(SignalEventView(
+        kind=event.kind.value, side=event.side.value,
+        small_direction=event.small_direction.value,
+        large_direction=event.large_direction.value,
+        size_state=event.size_state.value,
+        small_gap_bps=str(assessment_by_side[event.side].small_gap_bps),
+        large_gap_bps=str(assessment_by_side[event.side].large_gap_bps),
+        size_impact_bps=str(assessment_by_side[event.side].r0_size_impact_bps),
+        route_changed=assessment_by_side[event.side].route_changed,
+    ) for event in r5.signal_events)
     display_state = ("SIGNALS SUPPRESSED" if not r5.signals_active else
                      ("ACTIVE SIGNALS" if events else "NO MATERIAL SIGNAL"))
     signal = SignalPanel(r5.signals_active, r5.authority_state.value,
                          tuple(x.value for x in r5.suppression_reasons), events, display_state)
     if previous_history:
-        changes = tuple(x.to_evidence_dict() for x in
+        changes = tuple(HistoryChangeView.from_evidence_dict(x.to_evidence_dict()) for x in
                         compare_signal_snapshots(previous_history[-1].signal_snapshot, r5))
         history = HistoryPanel(True, "Changes from previous comparable observation", changes,
                                current_entry.snapshot_digest)
@@ -176,7 +180,10 @@ def build_terminal_snapshot(*, token_name: str, r3: LiquiditySnapshot,
                           hashlib.sha256(r5.canonical_key.canonical_id.encode()).hexdigest()[:16]),
         reference_panel=reference, market_panel=observations, size_panel=sizes,
         liquidity_panel=liquidity, signal_panel=signal, history_panel=history,
-        candidate_audit=tuple(dict(x) for x in candidate_audit),
+        candidate_audit=tuple(CandidateAuditEntry(
+            symbol=str(x["symbol"]), status=str(x["status"]),
+            detail=str(x["detail"]) if x.get("detail") is not None else None,
+        ) for x in candidate_audit),
         source_signal_snapshot_digest=source_signal_snapshot_digest,
         terminal_snapshot_digest="", git_head=git_head,
     )

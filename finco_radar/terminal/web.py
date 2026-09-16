@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .contracts import TerminalSnapshot
+from .presenter import reconstruct_terminal_digest
 
 ROOT = Path(__file__).resolve().parent
 
@@ -23,6 +24,8 @@ def _chip(value: str) -> str:
 
 
 def render_terminal_html(snapshot: TerminalSnapshot) -> str:
+    if reconstruct_terminal_digest(snapshot) != snapshot.terminal_snapshot_digest:
+        raise ValueError("terminal snapshot digest validation failed")
     template = (ROOT / "templates" / "radar_terminal.html").read_text(encoding="utf-8")
     asset, ref, liq, sig, hist = (snapshot.asset, snapshot.reference_panel,
                                   snapshot.liquidity_panel, snapshot.signal_panel,
@@ -52,16 +55,16 @@ def render_terminal_html(snapshot: TerminalSnapshot) -> str:
         for x in snapshot.size_panel
     )
     event_rows = "".join(
-        f'<li><strong>{_e(x["kind"])}</strong> · {_e(x["side"])} · '
-        f'{_e(x["smallDirection"])} → {_e(x["largeDirection"])} · {_e(x["sizeState"])}'
-        f'<span class="detail">Small {_e(x["smallGapBps"])} bps · '
-        f'Large {_e(x["largeGapBps"])} bps · Size impact {_e(x["sizeImpactBps"])} bps · '
-        f'Route changed {_e(x["routeChanged"])}</span></li>'
+        f'<li><strong>{_e(x.kind)}</strong> · {_e(x.side)} · '
+        f'{_e(x.small_direction)} → {_e(x.large_direction)} · {_e(x.size_state)}'
+        f'<span class="detail">Small {_e(x.small_gap_bps)} bps · '
+        f'Large {_e(x.large_gap_bps)} bps · Size impact {_e(x.size_impact_bps)} bps · '
+        f'Route changed {_e(x.route_changed)}</span></li>'
         for x in sig.events
     ) or '<li>No material R5 signal events in this observation.</li>'
     change_rows = "".join(
-        f'<li><strong>{_e(x["kind"])}</strong> · {_e(x.get("side") or "ALL")}'
-        f'<pre class="change-detail">{_e(__import__("json").dumps(x.get("details", {}), sort_keys=True))}</pre></li>'
+        f'<li><strong>{_e(x.kind)}</strong> · {_e(x.side or "ALL")}'
+        f'<pre class="change-detail">{_e(x.details_json)}</pre></li>'
         for x in hist.changes
     ) or f'<li>{_e(hist.message)}</li>'
     evidence = html.escape(__import__("json").dumps(snapshot.to_evidence_dict(), indent=2,
@@ -103,7 +106,10 @@ def create_radar_app(snapshot_provider: Callable[[], TerminalSnapshot]) -> FastA
 
     @app.get("/radar/api/snapshot")
     def snapshot() -> dict:
-        return snapshot_provider().to_evidence_dict()
+        value = snapshot_provider()
+        if reconstruct_terminal_digest(value) != value.terminal_snapshot_digest:
+            raise ValueError("terminal snapshot digest validation failed")
+        return value.to_evidence_dict()
 
     @app.get("/radar/api/health")
     def health() -> dict[str, str]:

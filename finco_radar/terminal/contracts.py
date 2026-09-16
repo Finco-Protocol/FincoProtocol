@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+import json
 from typing import Any
 
 
@@ -158,29 +159,81 @@ class LiquidityPanel:
 
 
 @dataclass(frozen=True)
+class SignalEventView:
+    kind: str
+    side: str
+    small_direction: str
+    large_direction: str
+    size_state: str
+    small_gap_bps: str
+    large_gap_bps: str
+    size_impact_bps: str
+    route_changed: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "side": self.side,
+                "smallDirection": self.small_direction,
+                "largeDirection": self.large_direction,
+                "sizeState": self.size_state, "smallGapBps": self.small_gap_bps,
+                "largeGapBps": self.large_gap_bps,
+                "sizeImpactBps": self.size_impact_bps,
+                "routeChanged": self.route_changed}
+
+
+@dataclass(frozen=True)
+class HistoryChangeView:
+    kind: str
+    side: str | None
+    details_json: str
+
+    @classmethod
+    def from_evidence_dict(cls, value: dict[str, Any]) -> "HistoryChangeView":
+        details = json.dumps(value.get("details", {}), sort_keys=True,
+                             separators=(",", ":"), ensure_ascii=False)
+        return cls(str(value["kind"]), value.get("side"), details)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "side": self.side,
+                "details": json.loads(self.details_json)}
+
+
+@dataclass(frozen=True)
+class CandidateAuditEntry:
+    symbol: str
+    status: str
+    detail: str | None = None
+
+    def to_dict(self) -> dict[str, str]:
+        value = {"symbol": self.symbol, "status": self.status}
+        if self.detail is not None:
+            value["detail"] = self.detail
+        return value
+
+
+@dataclass(frozen=True)
 class SignalPanel:
     signals_active: bool
     authority_state: str
     suppression_reasons: tuple[str, ...]
-    events: tuple[dict[str, Any], ...]
+    events: tuple[SignalEventView, ...]
     display_state: str
 
     def to_dict(self) -> dict[str, Any]:
         return {"signalsActive": self.signals_active, "authorityState": self.authority_state,
                 "suppressionReasons": list(self.suppression_reasons),
-                "signalEvents": [dict(e) for e in self.events], "displayState": self.display_state}
+                "signalEvents": [e.to_dict() for e in self.events], "displayState": self.display_state}
 
 
 @dataclass(frozen=True)
 class HistoryPanel:
     previous_observation_available: bool
     message: str
-    changes: tuple[dict[str, Any], ...]
+    changes: tuple[HistoryChangeView, ...]
     current_digest: str
 
     def to_dict(self) -> dict[str, Any]:
         return {"previousObservationAvailable": self.previous_observation_available,
-                "message": self.message, "changes": [dict(c) for c in self.changes],
+                "message": self.message, "changes": [c.to_dict() for c in self.changes],
                 "currentSnapshotDigest": self.current_digest}
 
 
@@ -195,7 +248,7 @@ class TerminalSnapshot:
     liquidity_panel: LiquidityPanel
     signal_panel: SignalPanel
     history_panel: HistoryPanel
-    candidate_audit: tuple[dict[str, str], ...]
+    candidate_audit: tuple[CandidateAuditEntry, ...]
     source_signal_snapshot_digest: str
     terminal_snapshot_digest: str
     git_head: str
@@ -214,6 +267,6 @@ class TerminalSnapshot:
                     "terminalAuthority": "R6_APPLIED"},
                 "sourceSignalSnapshotDigest": self.source_signal_snapshot_digest,
                 "terminalSnapshotDigest": self.terminal_snapshot_digest,
-                "candidateAudit": [dict(x) for x in self.candidate_audit],
+                "candidateAudit": [x.to_dict() for x in self.candidate_audit],
                 "gitHead": self.git_head,
                 "executionAuthority": "READ_ONLY_NO_WALLET_NO_TRADE"}
