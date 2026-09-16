@@ -98,9 +98,11 @@ def validate_model_run(
 ) -> ModelValidationReport:
     """Reconcile already-computed Model output surfaces.
 
-    The verifier is not a second financial engine.  It checks identities and
+    The verifier is not a second financial engine. It checks identities and
     cross-view consistency in the serialized production result returned by
-    ``app.api.project_runner.run_project``.
+    ``app.api.project_runner.run_project``. Missing or malformed evidence on an
+    applicable serialized period fails closed; the verifier never invents a
+    zero value for a missing financial field.
     """
 
     checks: list[InvariantCheck] = []
@@ -178,32 +180,55 @@ def validate_model_run(
     debt = _mapping(payload.get("debt_schedule"))
     debt_periods = _sequence(debt.get("periods"))
     debt_failures: list[int] = []
+    applicable_debt_periods = 0
+    debt_fields = (
+        "senior_principal_keur",
+        "senior_interest_keur",
+        "senior_ds_keur",
+    )
     for index, raw_period in enumerate(debt_periods):
         period = _mapping(raw_period)
-        principal = _decimal(period.get("senior_principal_keur"))
-        interest = _decimal(period.get("senior_interest_keur"))
-        debt_service = _decimal(period.get("senior_ds_keur"))
-        if principal is None and interest is None and debt_service is None:
+        raw_values = tuple(period.get(name) for name in debt_fields)
+        # Construction/non-operation rows may legitimately carry no senior debt
+        # service fields. Every operation row, and every row that carries any
+        # senior debt-service evidence, is applicable and must be complete.
+        applicable = period.get("is_operation") is True or any(
+            value is not None for value in raw_values
+        )
+        if not applicable:
             continue
-        if principal is None:
-            principal = Decimal("0")
-        if interest is None:
-            interest = Decimal("0")
-        if debt_service is None or not _close(
+        applicable_debt_periods += 1
+        principal = _decimal(raw_values[0])
+        interest = _decimal(raw_values[1])
+        debt_service = _decimal(raw_values[2])
+        if principal is None or interest is None or debt_service is None:
+            debt_failures.append(index)
+            continue
+        if not _close(
             principal + interest,
             debt_service,
             abs_tol=abs_tol_keur,
             rel_tol=rel_tol,
         ):
             debt_failures.append(index)
+    debt_identity_ok = (
+        bool(debt_periods)
+        and applicable_debt_periods > 0
+        and not debt_failures
+    )
     checks.append(
         _check(
             "MODEL_DEBT_SERVICE_IDENTITY",
-            bool(debt_periods) and not debt_failures,
+            debt_identity_ok,
             (
-                "senior debt service = principal + interest in all serialized periods"
-                if debt_periods and not debt_failures
-                else f"periodFailures={debt_failures!r}; periodCount={len(debt_periods)}"
+                "all applicable serialized periods have finite senior principal, interest "
+                "and debt service; debt service = principal + interest"
+                if debt_identity_ok
+                else (
+                    f"periodFailures={debt_failures!r}; "
+                    f"applicablePeriodCount={applicable_debt_periods}; "
+                    f"periodCount={len(debt_periods)}"
+                )
             ),
         )
     )
@@ -294,14 +319,37 @@ def validate_model_run(
         _decimal(_mapping(period).get("balance_check_keur"))
         for period in bs_periods
     ]
-    finite_balance_checks = [value for value in balance_checks if value is not None]
-    max_balance_check = max((abs(value) for value in finite_balance_checks), default=None)
-    balance_ok = bool(finite_balance_checks) and max_balance_check is not None and max_balance_check <= abs_tol_keur
+    invalid_balance_periods = [
+        index for index, value in enumerate(balance_checks) if value is None
+    ]
+    finite_balance_checks = [
+        value for value in balance_checks if value is not None
+    ]
+    max_balance_check = max(
+        (abs(value) for value in finite_balance_checks),
+        default=None,
+    )
+    balance_ok = (
+        bool(bs_periods)
+        and not invalid_balance_periods
+        and len(finite_balance_checks) == len(bs_periods)
+        and max_balance_check is not None
+        and max_balance_check <= abs_tol_keur
+    )
     checks.append(
         _check(
             "MODEL_BALANCE_SHEET_BALANCES",
             balance_ok,
-            f"max_abs_balance_check_keur={str(max_balance_check) if max_balance_check is not None else 'unavailable'}",
+            (
+                f"max_abs_balance_check_keur={str(max_balance_check)}; "
+                f"periodCount={len(bs_periods)}"
+                if balance_ok
+                else (
+                    f"invalidPeriods={invalid_balance_periods!r}; "
+                    f"max_abs_balance_check_keur={str(max_balance_check) if max_balance_check is not None else 'unavailable'}; "
+                    f"periodCount={len(bs_periods)}"
+                )
+            ),
         )
     )
 
