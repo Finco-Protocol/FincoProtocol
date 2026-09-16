@@ -671,6 +671,8 @@ def build_cross_market_snapshot(
         attribution_state=attribution,
         events=(),
         upstream_evidence=upstream_evidence or {},
+        source_digests=source_digests or {},
+        live_disclosures=live_disclosures or {},
         synthetic=synthetic,
         generated_at=generated_at or as_of,
         git_head=git_head,
