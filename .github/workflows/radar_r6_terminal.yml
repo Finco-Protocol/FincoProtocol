@@ -1,0 +1,101 @@
+name: Radar R6 Terminal
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r6-terminal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e . pytest
+      - name: Focused R6 tests
+        run: python -m pytest -q tests/test_radar_r6_terminal.py
+      - name: Offline terminal render proof
+        run: python tools/radar_r6_offline_render.py
+      - name: R6 live proof
+        run: python -m finco_radar.r6.live_proof
+      - name: R6 artifact and HTML invariants
+        run: |
+          python - <<'PY'
+          import hashlib, json, math, re
+          from pathlib import Path
+          evidence_path=Path("artifacts/radar_r6_terminal_evidence.json")
+          html_path=Path("artifacts/radar_r6_terminal.html")
+          d=json.loads(evidence_path.read_text())
+          assert d["status"] == "TERMINAL_OK"
+          assert all(d["asset"][x] for x in ("symbol","assetUid","canonicalKey","contractAddress"))
+          assert d["boundaries"] == {"referenceStateAuthority":"R4_APPLIED","signalAuthority":"R5_APPLIED","historyAuthority":"R5_APPLIED","terminalAuthority":"R6_APPLIED"}
+          assert len(d["sourceSignalSnapshotDigest"]) == 64 and d["candidateAudit"]
+          assert d["gitHead"] and d["generatedAt"]
+          expected=d["terminalSnapshotDigest"]
+          unsigned=dict(d); unsigned.pop("terminalSnapshotDigest")
+          actual=hashlib.sha256(json.dumps(unsigned,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode()).hexdigest()
+          assert actual == expected
+          known_directions={"PREMIUM","DISCOUNT","WITHIN_THRESHOLD"}
+          assert all(x["direction"] in known_directions for x in d["marketPanel"])
+          if not d["signalPanel"]["signalsActive"]:
+              assert d["signalPanel"]["displayState"] == "SIGNALS SUPPRESSED"
+              assert not d["signalPanel"]["signalEvents"] and d["signalPanel"]["suppressionReasons"]
+          if d["liquidityPanel"]["costTreatmentAuthority"] == "COST_INCLUSION_UNRESOLVED":
+              assert "unresolved" in d["liquidityPanel"]["costDisclosure"].lower()
+          banned={"score","rank","rating","grade","recommendation","expectedreturn","pricetarget","profit","arbitrage","prediction","wallet","trade","swap","sign"}
+          def walk(value):
+              if isinstance(value,dict):
+                  for key,item in value.items():
+                      assert key.replace("_","").lower() not in banned
+                      yield from walk(item)
+              elif isinstance(value,list):
+                  for item in value: yield from walk(item)
+              elif isinstance(value,float): assert math.isfinite(value)
+          list(walk(d))
+          rendered=html_path.read_text()
+          lower=rendered.lower()
+          assert rendered and d["asset"]["assetUid"] in rendered
+          assert "<script src=\"http" not in lower and "analytics" not in lower
+          assert not re.search(r"on(?:click|load|error)\s*=", lower)
+          assert "type=\"password\"" not in lower and "connect wallet" not in lower
+          assert "<script>alert(" not in lower
+          PY
+      - name: R5 through R0 focused regressions
+        run: |
+          python -m pytest -q tests/test_radar_r5_signals_history.py
+          python -m pytest -q tests/test_radar_r4_reference_state.py
+          python -m pytest -q tests/test_radar_r3_liquidity.py
+          python -m pytest -q tests/test_radar_r2_gap.py
+          python -m pytest -q tests/test_radar_r1_registry.py
+          python -m pytest -q tests/test_radar_r0_quotes.py
+      - name: R5 through R0 live regressions
+        run: |
+          python -m finco_radar.r5.live_proof
+          python -m finco_radar.r4.live_proof
+          python -m finco_radar.r3.live_proof
+          python -m finco_radar.r2.live_proof
+          python -m finco_radar.r1.live_proof
+          python -m finco_radar.r0.live_proof
+      - name: Original R0 size-aware gate
+        run: python -m pytest -q tests/test_radar_r0_quotes.py
+      - name: Protected production paths remain frozen
+        run: |
+          test -z "$(git diff --name-only 67abf93084164413167b7b908190625002efba65...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 finco_radar/signals finco_radar/history finco_radar/r5 financial_engine finco_core finco_protocol)"
+      - name: Package evidence and hashes
+        run: |
+          cd artifacts
+          sha256sum radar_r6_terminal_evidence.json > radar_r6_terminal_evidence.sha256
+          sha256sum radar_r6_terminal.html > radar_r6_terminal_html.sha256
+          zip -9 radar_r6_terminal_evidence.zip radar_r6_terminal_evidence.json radar_r6_terminal.html radar_r6_terminal_evidence.sha256 radar_r6_terminal_html.sha256
+          sha256sum radar_r6_terminal_evidence.zip > radar_r6_terminal_evidence_zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-r6-terminal-evidence
+          path: artifacts/radar_r6_*
