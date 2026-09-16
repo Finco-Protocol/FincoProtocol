@@ -135,9 +135,18 @@ def test_model_verifier_fails_closed_on_missing_balance_check():
     payload = deepcopy(_cached_model_payload())
     assert validate_model_run(payload).passed
 
-    periods = payload["financial_statements"]["balance_sheet"]["periods"]
-    assert periods
-    periods[0]["balance_check_keur"] = None
+    operation_dates = {
+        row.get("date")
+        for row in payload["debt_schedule"]["periods"]
+        if row.get("is_operation") is True and row.get("date")
+    }
+    period = next(
+        row
+        for row in payload["financial_statements"]["balance_sheet"]["periods"]
+        if row.get("date") in operation_dates
+        and row.get("balance_check_keur") is not None
+    )
+    period["balance_check_keur"] = None
 
     report = validate_model_run(payload)
     assert not report.passed
