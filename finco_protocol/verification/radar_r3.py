@@ -5,9 +5,29 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
 
+from finco_radar.liquidity.engine import (
+    BUY_SIZE_PAIR,
+    CROSS_SIDE_100,
+    CROSS_SIDE_1000,
+    LARGE_NOTIONAL_USD,
+    SELL_SIZE_PAIR,
+    SMALL_NOTIONAL_USD,
+)
+
 
 RADAR_R3_VALIDATION_SCHEMA = "finco.radar-r3-validation.v1"
 DECIMAL_TOL = Decimal("1e-18")
+
+_EXPECTED_QUOTE_MATRIX: dict[str, tuple[str, Decimal]] = {
+    "BUY_100": ("BUY", SMALL_NOTIONAL_USD),
+    "BUY_1000": ("BUY", LARGE_NOTIONAL_USD),
+    "SELL_100": ("SELL", SMALL_NOTIONAL_USD),
+    "SELL_1000": ("SELL", LARGE_NOTIONAL_USD),
+}
+_EXPECTED_COST_MATRIX = frozenset(_EXPECTED_QUOTE_MATRIX.values())
+_EXPECTED_TEMPORAL_PAIRS = frozenset(
+    {BUY_SIZE_PAIR, SELL_SIZE_PAIR, CROSS_SIDE_100, CROSS_SIDE_1000}
+)
 
 
 @dataclass(frozen=True)
@@ -88,7 +108,12 @@ def _walk_mapping_keys(value: Any):
 
 
 def validate_radar_r3_evidence(evidence: Mapping[str, Any]) -> RadarR3ValidationReport:
-    """Validate the published R3 evidence contract without re-routing quotes."""
+    """Validate the published R3 evidence contract without re-routing quotes.
+
+    R3 remains the sole liquidity-measurement authority. This verifier checks
+    that serialized evidence preserves the exact structural matrix and identities
+    that the R3 authority emitted; it does not request routes or recreate R0-R3.
+    """
 
     checks: list[RadarInvariantCheck] = []
     asset = _mapping(evidence.get("asset"))
@@ -112,23 +137,57 @@ def validate_radar_r3_evidence(evidence: Mapping[str, Any]) -> RadarR3Validation
     notionals = _mapping(evidence.get("observationNotionals"))
     small = _decimal(notionals.get("smallNotionalUsd"))
     large = _decimal(notionals.get("largeNotionalUsd"))
+    notionals_ok = small == SMALL_NOTIONAL_USD and large == LARGE_NOTIONAL_USD
     checks.append(
         _check(
             "R3_NOTIONAL_ORDERING",
-            small is not None and large is not None and small > 0 and large > small,
-            f"small={small!r}; large={large!r}",
+            notionals_ok,
+            (
+                "exact R3 observation notionals are 100 USD and 1000 USD"
+                if notionals_ok
+                else f"small={small!r}; large={large!r}"
+            ),
         )
     )
 
     quotes = _sequence(evidence.get("quoteMatrixEvidence"))
-    quote_slots = {str(_mapping(item).get("slot")) for item in quotes}
-    expected_slots = {"BUY_100", "BUY_1000", "SELL_100", "SELL_1000"}
-    quote_statuses_ok = all(_mapping(item).get("status") == "QUOTE_OK" for item in quotes)
+    seen_quote_slots: set[str] = set()
+    quote_matrix_failures: list[str] = []
+    for raw_item in quotes:
+        item = _mapping(raw_item)
+        slot = item.get("slot")
+        if not isinstance(slot, str) or slot not in _EXPECTED_QUOTE_MATRIX:
+            quote_matrix_failures.append(f"unknown-slot:{slot!r}")
+            continue
+        if slot in seen_quote_slots:
+            quote_matrix_failures.append(f"duplicate-slot:{slot}")
+            continue
+        seen_quote_slots.add(slot)
+        expected_side, expected_notional = _EXPECTED_QUOTE_MATRIX[slot]
+        side = item.get("side")
+        requested_notional = _decimal(item.get("requestedNotionalUsd"))
+        if item.get("status") != "QUOTE_OK":
+            quote_matrix_failures.append(f"{slot}:status={item.get('status')!r}")
+        if side != expected_side:
+            quote_matrix_failures.append(f"{slot}:side={side!r}")
+        if requested_notional != expected_notional:
+            quote_matrix_failures.append(
+                f"{slot}:requestedNotionalUsd={item.get('requestedNotionalUsd')!r}"
+            )
+    quote_matrix_ok = (
+        len(quotes) == 4
+        and seen_quote_slots == set(_EXPECTED_QUOTE_MATRIX)
+        and not quote_matrix_failures
+    )
     checks.append(
         _check(
             "R3_EXACT_QUOTE_MATRIX",
-            len(quotes) == 4 and quote_slots == expected_slots and quote_statuses_ok,
-            f"slots={sorted(quote_slots)!r}; count={len(quotes)}",
+            quote_matrix_ok,
+            (
+                "exact BUY/SELL x 100/1000 quote matrix with bound side/notional/status"
+                if quote_matrix_ok
+                else f"failures={quote_matrix_failures!r}; slots={sorted(seen_quote_slots)!r}"
+            ),
         )
     )
 
@@ -221,11 +280,33 @@ def validate_radar_r3_evidence(evidence: Mapping[str, Any]) -> RadarR3Validation
     )
 
     costs = _sequence(evidence.get("costEvidence"))
+    cost_slots: set[tuple[str, Decimal]] = set()
+    cost_failures: list[str] = []
+    for index, raw_item in enumerate(costs):
+        item = _mapping(raw_item)
+        side = item.get("side")
+        notional = _decimal(item.get("requestedNotionalUsd"))
+        if not isinstance(side, str) or notional is None:
+            cost_failures.append(f"row-{index}:malformed")
+            continue
+        slot = (side, notional)
+        if slot in cost_slots:
+            cost_failures.append(f"row-{index}:duplicate={slot!r}")
+        cost_slots.add(slot)
+    costs_ok = (
+        len(costs) == 4
+        and cost_slots == _EXPECTED_COST_MATRIX
+        and not cost_failures
+    )
     checks.append(
         _check(
             "R3_COST_EVIDENCE_FOUR_SLOTS",
-            len(costs) == 4,
-            f"costEvidenceCount={len(costs)}",
+            costs_ok,
+            (
+                "cost evidence binds exactly to BUY/SELL x 100/1000 matrix"
+                if costs_ok
+                else f"slots={sorted((side, str(n)) for side, n in cost_slots)!r}; failures={cost_failures!r}"
+            ),
         )
     )
 
@@ -233,22 +314,39 @@ def validate_radar_r3_evidence(evidence: Mapping[str, Any]) -> RadarR3Validation
     policy = _mapping(temporal.get("policy"))
     max_allowed = _decimal(policy.get("maxQuotePairSkewSeconds"))
     observed = _mapping(temporal.get("observedPairSkews"))
-    observed_values = [_decimal(value) for value in observed.values()]
-    observed_values = [value for value in observed_values if value is not None]
+    observed_keys = set(observed.keys())
+    observed_values: dict[str, Decimal] = {}
+    temporal_failures: list[str] = []
+    for label in _EXPECTED_TEMPORAL_PAIRS:
+        value = _decimal(observed.get(label))
+        if value is None or value < 0:
+            temporal_failures.append(f"{label}={observed.get(label)!r}")
+            continue
+        observed_values[label] = value
+    if observed_keys != _EXPECTED_TEMPORAL_PAIRS:
+        temporal_failures.append(
+            f"pairKeys={sorted(str(key) for key in observed_keys)!r}"
+        )
     stated_max = _decimal(temporal.get("maxObservedPairSkewSeconds"))
     temporal_ok = (
         max_allowed is not None
         and max_allowed > 0
+        and not temporal_failures
         and len(observed_values) == 4
         and stated_max is not None
-        and _close(max(observed_values), stated_max)
+        and stated_max >= 0
+        and _close(max(observed_values.values()), stated_max)
         and stated_max <= max_allowed
     )
     checks.append(
         _check(
             "R3_TEMPORAL_COHERENCE",
             temporal_ok,
-            f"observedMax={stated_max!r}; allowed={max_allowed!r}; pairs={len(observed_values)}",
+            (
+                f"observedMax={stated_max!r}; allowed={max_allowed!r}; canonicalPairs=4"
+                if temporal_ok
+                else f"observedMax={stated_max!r}; allowed={max_allowed!r}; failures={temporal_failures!r}"
+            ),
         )
     )
 
