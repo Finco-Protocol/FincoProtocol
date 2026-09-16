@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FINCO Radar · __SYMBOL__</title>
+  <link rel="stylesheet" href="/radar/static/radar_terminal.css">
+  <script src="/radar/static/radar_terminal.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div><p class="eyebrow">FINCO RADAR · R6 READ-ONLY TERMINAL</p><h1>__SYMBOL__ <small>__TOKEN_NAME__</small></h1></div>
+  <button id="refresh" type="button">Refresh snapshot</button>
+</header>
+<main id="terminal" data-canonical-key="__CANONICAL_KEY__">
+  <section class="identity"><code>__CANONICAL_KEY__</code><span>UID <code>__ASSET_UID__</code></span><span>Contract <code>__CONTRACT__</code></span><time>Generated __GENERATED_AT__</time></section>
+  __WARNING__
+  <section class="grid two">
+    <article class="panel"><h2>Official reference <span>__REFERENCE_USABLE__</span></h2>
+      <div class="quote-grid"><div><label>Official bid</label><strong>__OFFICIAL_BID__</strong></div><div><label>Official ask</label><strong>__OFFICIAL_ASK__</strong></div><div><label>Token-equivalent bid</label><strong>__TOKEN_BID__</strong></div><div><label>Token-equivalent ask</label><strong>__TOKEN_ASK__</strong></div></div>
+      <p>Multiplier __MULTIPLIER__ · Age __REFERENCE_AGE__</p><p>__SESSION_LABEL__</p><div class="chips">__REFERENCE_STATES__</div>
+    </article>
+    <article class="panel signal"><h2>Signal authority</h2><strong class="hero-state">__SIGNAL_STATE__</strong><ul>__SIGNAL_EVENTS__</ul><p>GAP is descriptive and not a trading recommendation.</p></article>
+  </section>
+  <section class="panel"><h2>Executable market vs official reference</h2><div class="table-wrap"><table><thead><tr><th>Observation</th><th>Execution</th><th>Official side reference</th><th>GAP</th><th>Direction</th><th>Quote time</th></tr></thead><tbody>__MARKET_ROWS__</tbody></table></div></section>
+  <section class="grid two">__SIZE_CARDS__</section>
+  <section class="panel"><h2>Executable liquidity</h2><div class="quote-grid"><div><label>Spread $100</label><strong>__SPREAD_100__</strong> __SPREAD_SMALL_STATE__</div><div><label>Spread $1,000</label><strong>__SPREAD_1000__</strong> __SPREAD_LARGE_STATE__</div></div><dl><dt>BUY routes</dt><dd><code>__BUY_ROUTE__</code></dd><dt>SELL routes</dt><dd><code>__SELL_ROUTE__</code></dd><dt>Cost authority</dt><dd><code>__COST_AUTHORITY__</code></dd></dl><p class="notice">__COST_DISCLOSURE__</p></section>
+  <section class="panel"><h2>What changed?</h2><ul>__HISTORY_CHANGES__</ul></section>
+  <details class="panel evidence"><summary>Evidence and reconstruction</summary><p>R5 source digest <code>__SOURCE_DIGEST__</code></p><p>R6 terminal digest <code>__TERMINAL_DIGEST__</code></p><pre>__EVIDENCE_JSON__</pre></details>
+  <footer>R4_APPLIED · R5_APPLIED · HISTORY_R5_APPLIED · R6_APPLIED · READ ONLY · NO WALLET · NO EXECUTION</footer>
+</main>
+</body>
+</html>

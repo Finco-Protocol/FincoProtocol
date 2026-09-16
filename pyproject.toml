@@ -34,6 +34,7 @@ exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
 [tool.setuptools.package-data]
 app = ["templates/**/*.html", "templates/**/*.txt", "templates/**/*.css", "templates/**/*.js"]
 static = ["*", "**/*"]
+finco_radar = ["terminal/templates/*.html", "terminal/static/*.css", "terminal/static/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
