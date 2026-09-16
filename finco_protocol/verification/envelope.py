@@ -1,8 +1,8 @@
 """Deterministic content-addressed evidence envelopes for FINCO Protocol.
 
-The envelope is deliberately chain-agnostic.  It produces a stable SHA-256
+The envelope is deliberately chain-agnostic. It produces a stable SHA-256
 content address for already-produced Model or Radar evidence without claiming
-that the digest is currently anchored on-chain.  A future anchoring layer can
+that the digest is currently anchored on-chain. A future anchoring layer can
 store the digest while the full financial evidence remains off-chain.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from enum import Enum
 import hashlib
 import json
 import math
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 EVIDENCE_ENVELOPE_SCHEMA = "finco.evidence-envelope.v1"
@@ -24,9 +24,9 @@ CANONICALIZATION = "FINCO_SORTED_JSON_V1"
 def _normalize(value: Any) -> Any:
     """Convert supported values to an unambiguous JSON-compatible form.
 
-    Floats are retained as JSON numbers but must be finite.  Decimal values are
+    Floats are retained as JSON numbers but must be finite. Decimal values are
     serialized as strings so financial precision is never silently coerced to
-    binary floating point.  Datetimes keep their explicit ISO-8601 offset.
+    binary floating point. Datetimes keep their explicit ISO-8601 offset.
     """
 
     if value is None or isinstance(value, (str, bool, int)):
@@ -81,6 +81,22 @@ def canonical_sha256(value: Any) -> str:
     """Return lowercase SHA-256 hex for FINCO canonical JSON bytes."""
 
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _valid_metadata(
+    surface: Any,
+    evidence_type: Any,
+    authority_refs: Any,
+) -> bool:
+    if not isinstance(surface, str) or not surface.strip():
+        return False
+    if not isinstance(evidence_type, str) or not evidence_type.strip():
+        return False
+    if not isinstance(authority_refs, Sequence) or isinstance(
+        authority_refs, (str, bytes, bytearray)
+    ):
+        return False
+    return all(isinstance(ref, str) and bool(ref.strip()) for ref in authority_refs)
 
 
 @dataclass(frozen=True)
@@ -142,14 +158,35 @@ def build_evidence_envelope(
 
 
 def verify_evidence_envelope(envelope: EvidenceEnvelope | Mapping[str, Any]) -> bool:
-    """Recompute the payload digest and verify the declared envelope contract."""
+    """Recompute payload digest and fail closed on the declared envelope contract.
+
+    ``payloadSha256`` remains intentionally payload-only. Envelope metadata is
+    schema-validated here but is not silently folded into that historical digest
+    semantics; a future full-envelope digest would require a new versioned contract.
+    """
 
     if isinstance(envelope, EvidenceEnvelope):
+        if not _valid_metadata(
+            envelope.surface,
+            envelope.evidence_type,
+            envelope.authority_refs,
+        ):
+            return False
+        try:
+            payload_digest = canonical_sha256(envelope.payload)
+        except (TypeError, ValueError):
+            return False
         return (
             envelope.schema == EVIDENCE_ENVELOPE_SCHEMA
             and envelope.canonicalization == CANONICALIZATION
-            and canonical_sha256(envelope.payload) == envelope.payload_sha256
+            and payload_digest == envelope.payload_sha256
         )
+
+    surface = envelope.get("surface")
+    evidence_type = envelope.get("evidenceType")
+    authority_refs = envelope.get("authorityRefs")
+    if not _valid_metadata(surface, evidence_type, authority_refs):
+        return False
 
     schema = envelope.get("schema")
     canonicalization = envelope.get("canonicalization")
@@ -158,9 +195,13 @@ def verify_evidence_envelope(envelope: EvidenceEnvelope | Mapping[str, Any]) -> 
     content_address = envelope.get("contentAddress")
     if not isinstance(digest, str):
         return False
+    try:
+        payload_digest = canonical_sha256(payload)
+    except (TypeError, ValueError):
+        return False
     return (
         schema == EVIDENCE_ENVELOPE_SCHEMA
         and canonicalization == CANONICALIZATION
-        and canonical_sha256(payload) == digest
+        and payload_digest == digest
         and content_address == f"sha256:{digest}"
     )
