@@ -117,9 +117,9 @@ def _run(symbols: Iterable[str]) -> dict[str, Any]:
                     entry = build_history_entry(r5)
                     evidence = r5.to_evidence_dict()
                     return {
+                        **evidence,
                         "schemaVersion": "radar-r5-signals-history-v1", "status": "PASS",
                         "typedStatus": r5.status.value, "gitHead": git_head,
-                        **evidence,
                         "history": {"previousObservationAvailable": False,
                                     "currentEntry": entry.to_evidence_dict(), "changes": []},
                         "candidateAttempts": {"selectedSymbol": asset.token_symbol,
