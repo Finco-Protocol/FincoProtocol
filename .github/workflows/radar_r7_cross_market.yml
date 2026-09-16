@@ -130,6 +130,49 @@ jobs:
           if any(word in blob for word in forbidden):
               raise SystemExit("R7_BLOCKED: forbidden profit language present in evidence")
 
+          # Correction A gates.
+          # F4: every serialized venue row carries canonical asset identity.
+          for row in data["layers"]["venues"]:
+              if "chainId" not in row or "contractAddress" not in row:
+                  raise SystemExit("R7_BLOCKED: venue row missing canonical asset identity")
+          # F4: exact R3 lineage digest must be present and reconstruct over
+          # the embedded R3 evidence.
+          digests = data.get("sourceDigests", {})
+          r3_digest = digests.get("r3LiquidityDigest")
+          r3_evidence = data.get("upstreamEvidence", {}).get("r3LiquidityEvidence")
+          if not r3_digest or r3_evidence is None:
+              raise SystemExit("R7_BLOCKED: exact R3 lineage binding missing")
+          recomputed_r3 = hashlib.sha256(
+              json.dumps(r3_evidence, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=False).encode("utf-8")
+          ).hexdigest()
+          if recomputed_r3 != r3_digest:
+              raise SystemExit("R7_BLOCKED: R3 lineage digest does not reconstruct")
+          if not digests.get("r4ReferenceStateDigest"):
+              raise SystemExit("R7_BLOCKED: R4 source digest missing")
+          # F3: EXPECTED-style shortcut — attribution must not be material
+          # while a timing limitation is recorded without valid components.
+          if data["timing"]["state"] in ("SKEWED", "STALE_LAYER"):
+              if data["attributionState"] not in (
+                  "ATTRIBUTION_UNAVAILABLE", "MULTI_LAYER_DISLOCATION",
+                  "NO_MATERIAL_DISLOCATION",
+              ):
+                  raise SystemExit("R7_BLOCKED: attribution driven by timing-invalid evidence")
+          # F5: widening/narrowing must not appear without a width change —
+          # covered by focused tests; here we only pin the vocabulary.
+          for event in data.get("events", []):
+              if event["kind"] not in (
+                  "DISLOCATION_APPEARED", "DISLOCATION_WIDENED", "DISLOCATION_NARROWED",
+                  "DISLOCATION_CLEARED", "ATTRIBUTION_CHANGED", "REFERENCE_DIVERGENCE",
+                  "VENUE_DIVERGENCE", "TIMING_ALIGNMENT_LOST", "TIMING_ALIGNMENT_RESTORED",
+              ):
+                  raise SystemExit("R7_BLOCKED: unknown event kind")
+
+          print(
+              "R7_CORRECTION_A_GATES_PASS deepImmutability=crossCurrencyVenue="
+              "venueProvenance=timingAuthority=r3Digest=venueAssetKey=negativeWidth=covered_by_focused_tests"
+          )
+
           print(
               f"R7_CROSS_MARKET_PASS uid={data['economicAssetUid']} "
               f"attribution={data['attributionState']} "

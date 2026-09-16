@@ -732,3 +732,648 @@ def test_34_timezone_naive_evidence_fails_closed() -> None:
     with pytest.raises(CrossMarketError) as as_of_exc:
         build(as_of=NOW.replace(tzinfo=None))
     assert as_of_exc.value.status is CrossMarketStatus.CROSS_MARKET_TIME_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F1: cross-venue currency safety and exact provenance
+# ---------------------------------------------------------------------------
+
+def test_f1_a_same_currency_cross_venue_provenance_is_exact() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_B", "252", at=NOW - timedelta(seconds=5)),
+                venue("DEX_A", "250", at=NOW - timedelta(seconds=30))],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    component = dispersion[0]
+    # Low member = DEX_A @250 (source/timestamp bound to THAT member)...
+    assert component.from_price == Decimal("250")
+    assert component.from_source == "SYNTHETIC_R0_EVIDENCE"
+    assert component.from_observed_at == NOW - timedelta(seconds=5)
+    assert "DEX_A" in component.label
+    # ...high member = DEX_B @252.
+    assert component.to_price == Decimal("252")
+    assert component.to_observed_at == NOW + timedelta(seconds=10)
+    assert "DEX_B" in component.label
+    assert component.timing_valid is True
+
+
+def test_f1_b_cross_currency_venues_are_normalized_before_comparison() -> None:
+    fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("2"),
+        source="SYNTHETIC_FX", observed_at=NOW, raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        fx=fx,
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"),   # → 200 USD
+                venue("DEX_USD", "210")],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    component = dispersion[0]
+    assert component.from_price == Decimal("200")   # normalized EUR member
+    assert component.to_price == Decimal("210")
+    assert component.fx_rate == Decimal("2")
+    assert component.material is True  # (210-200)/200 = 500 bps ≥ 50
+    assert "DEX_EUR" in component.label and "DEX_USD" in component.label
+
+
+def test_f1_c_cross_venue_without_fx_is_not_produced() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"), venue("DEX_USD", "210")],
+    )
+    assert not [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+
+
+def test_f1_d_stale_fx_blocks_required_cross_venue_conversion() -> None:
+    stale_fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("2"),
+        source="SYNTHETIC_FX", observed_at=NOW - timedelta(seconds=3600),
+        raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        policy=policy(stale="600"),
+        fx=stale_fx,
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"), venue("DEX_USD", "210")],
+    )
+    assert not [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+
+
+def test_f1_e_and_f_low_and_high_provenance_match_actual_members() -> None:
+    low_at = NOW - timedelta(seconds=30)
+    high_at = NOW + timedelta(seconds=20)
+    snap = build(
+        oracle_reference=oracle("1000"),
+        venues=[venue("DEX_HIGH", "1004", at=high_at),
+                venue("DEX_LOW", "1000", at=low_at)],
+    )
+    component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ][0]
+    # The low-price member's OWN source/timestamp — not members[0]/[-1].
+    assert component.from_price == Decimal("1000")
+    assert component.from_observed_at == low_at
+    assert "DEX_LOW" in component.label
+    assert component.to_price == Decimal("1004")
+    assert component.to_observed_at == high_at
+    assert "DEX_HIGH" in component.label
+
+
+def test_f1_g_shuffled_input_order_produces_identical_component_and_digest() -> None:
+    venues_one = [venue("DEX_A", "249.375"), venue("DEX_B", "250.625")]
+    venues_two = [venue("DEX_B", "250.625"), venue("DEX_A", "249.375")]
+    first = build(oracle_reference=oracle("250"), venues=venues_one)
+    second = build(oracle_reference=oracle("250"), venues=venues_two)
+    assert first.r7_snapshot_digest == second.r7_snapshot_digest
+    dispersion_one = [
+        c for c in first.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    dispersion_two = [
+        c for c in second.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert dispersion_one == dispersion_two
+
+
+def test_f1_h_equal_normalized_prices_remain_deterministic() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_B", "250"), venue("DEX_A", "250")],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    # Equal prices: deterministic venue-name tie-break selects DEX_A as low.
+    assert dispersion[0].from_price == dispersion[0].to_price == Decimal("250")
+    assert "DEX_A" in dispersion[0].label and "DEX_B" in dispersion[0].label
+    assert dispersion[0].delta_bps == 0
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F2: deep immutability
+# ---------------------------------------------------------------------------
+
+def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
+    upstream = {"r4ReferenceState": {"halt": False, "nested": {"x": 1}}}
+    digests = {"r3LiquidityDigest": "a" * 64}
+    disclosures = {"underlyingSource": "UNDERLYING_SOURCE_UNAVAILABLE"}
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250")],
+        upstream_evidence=upstream,
+        source_digests=digests,
+        live_disclosures=disclosures,
+    )
+    upstream["r4ReferenceState"]["nested"]["x"] = 999
+    upstream["r4ReferenceState"]["halt"] = True
+    digests["r3LiquidityDigest"] = "tampered"
+    disclosures["underlyingSource"] = "TAMPERED"
+    evidence = snap.to_evidence_dict()
+    assert evidence["upstreamEvidence"]["r4ReferenceState"]["nested"]["x"] == 1
+    assert evidence["upstreamEvidence"]["r4ReferenceState"]["halt"] is False
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+    assert evidence["liveDataDisclosures"]["underlyingSource"] == "UNDERLYING_SOURCE_UNAVAILABLE"
+    assert verify_serialized_evidence(evidence) is True
+
+
+def test_f2_02_raw_evidence_mutation_is_isolated() -> None:
+    raw = {"synthetic": True, "nested": {"k": "v"}}
+    row = venue("DEX_A", "250")
+    mutated_row = dataclasses.replace(row, raw_evidence=raw)
+    raw["nested"]["k"] = "MUTATED"
+    raw["new"] = "added"
+    snap = build(oracle_reference=oracle("250"), venues=[mutated_row])
+    serialized = snap.to_evidence_dict()["layers"]["venues"][0]
+    assert serialized["rawEvidence"]["nested"]["k"] == "v"
+    assert "new" not in serialized["rawEvidence"]
+
+
+def test_f2_03_internal_frozen_mappings_reject_direct_and_nested_mutation() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250")],
+        upstream_evidence={"blob": {"x": 1}},
+    )
+    with pytest.raises(TypeError):
+        snap.upstream_evidence["blob"] = "tampered"
+    with pytest.raises(TypeError):
+        snap.upstream_evidence["blob"]["x"] = 2
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        snap.source_digests = {}
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F1: cross-venue currency safety and exact provenance
+# ---------------------------------------------------------------------------
+
+def test_f1_a_same_currency_cross_venue_provenance_is_exact() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_B", "252", at=NOW - timedelta(seconds=5)),
+                venue("DEX_A", "250", at=NOW - timedelta(seconds=30))],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    component = dispersion[0]
+    assert component.from_price == Decimal("250")
+    assert component.from_source == "SYNTHETIC_R0_EVIDENCE"
+    assert component.from_observed_at == NOW - timedelta(seconds=30)
+    assert "DEX_A" in component.label
+    assert component.to_price == Decimal("252")
+    assert component.to_observed_at == NOW - timedelta(seconds=5)
+    assert "DEX_B" in component.label
+    assert component.timing_valid is True
+
+
+def test_f1_b_cross_currency_venues_are_normalized_before_comparison() -> None:
+    fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("2"),
+        source="SYNTHETIC_FX", observed_at=NOW, raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        fx=fx,
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"), venue("DEX_USD", "210")],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    component = dispersion[0]
+    assert component.from_price == Decimal("200")   # normalized EUR member
+    assert component.to_price == Decimal("210")
+    assert component.fx_rate == Decimal("2")
+    assert component.material is True  # (210-200)/200 = 500 bps >= 50
+    assert "DEX_EUR" in component.label and "DEX_USD" in component.label
+
+
+def test_f1_c_cross_venue_without_fx_is_not_produced() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"), venue("DEX_USD", "210")],
+    )
+    assert not [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+
+
+def test_f1_d_stale_fx_blocks_required_cross_venue_conversion() -> None:
+    stale_fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("2"),
+        source="SYNTHETIC_FX", observed_at=NOW - timedelta(seconds=3600),
+        raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        policy=policy(stale="600"),
+        fx=stale_fx,
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_EUR", "100", currency="EUR"), venue("DEX_USD", "210")],
+    )
+    assert not [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+
+
+def test_f1_e_and_f_low_and_high_provenance_match_actual_members() -> None:
+    low_at = NOW - timedelta(seconds=30)
+    high_at = NOW + timedelta(seconds=20)
+    snap = build(
+        oracle_reference=oracle("1000"),
+        venues=[venue("DEX_HIGH", "1004", at=high_at),
+                venue("DEX_LOW", "1000", at=low_at)],
+    )
+    component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ][0]
+    assert component.from_price == Decimal("1000")
+    assert component.from_observed_at == low_at
+    assert "DEX_LOW" in component.label
+    assert component.to_price == Decimal("1004")
+    assert component.to_observed_at == high_at
+    assert "DEX_HIGH" in component.label
+
+
+def test_f1_g_shuffled_input_order_produces_identical_component_and_digest() -> None:
+    first = build(oracle_reference=oracle("250"),
+                  venues=[venue("DEX_A", "249.375"), venue("DEX_B", "250.625")])
+    second = build(oracle_reference=oracle("250"),
+                   venues=[venue("DEX_B", "250.625"), venue("DEX_A", "249.375")])
+    assert first.r7_snapshot_digest == second.r7_snapshot_digest
+    dispersion_one = [
+        c for c in first.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    dispersion_two = [
+        c for c in second.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert dispersion_one == dispersion_two
+
+
+def test_f1_h_equal_normalized_prices_remain_deterministic() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_B", "250"), venue("DEX_A", "250")],
+    )
+    dispersion = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.VENUE and c.to_layer is LayerType.VENUE
+    ]
+    assert len(dispersion) == 1
+    assert dispersion[0].from_price == dispersion[0].to_price == Decimal("250")
+    assert "DEX_A" in dispersion[0].label and "DEX_B" in dispersion[0].label
+    assert dispersion[0].delta_bps == 0
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F2: deep immutability
+# ---------------------------------------------------------------------------
+
+def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
+    upstream = {"r4ReferenceState": {"halt": False, "nested": {"x": 1}}}
+    digests = {"r3LiquidityDigest": "a" * 64}
+    disclosures = {"underlyingSource": "UNDERLYING_SOURCE_UNAVAILABLE"}
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250")],
+        upstream_evidence=upstream,
+        source_digests=digests,
+        live_disclosures=disclosures,
+    )
+    upstream["r4ReferenceState"]["nested"]["x"] = 999
+    upstream["r4ReferenceState"]["halt"] = True
+    digests["r3LiquidityDigest"] = "tampered"
+    disclosures["underlyingSource"] = "TAMPERED"
+    evidence = snap.to_evidence_dict()
+    assert evidence["upstreamEvidence"]["r4ReferenceState"]["nested"]["x"] == 1
+    assert evidence["upstreamEvidence"]["r4ReferenceState"]["halt"] is False
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+    assert evidence["liveDataDisclosures"]["underlyingSource"] == "UNDERLYING_SOURCE_UNAVAILABLE"
+    assert verify_serialized_evidence(evidence) is True
+
+
+def test_f2_02_raw_evidence_mutation_is_isolated() -> None:
+    raw = {"synthetic": True, "nested": {"k": "v"}}
+    mutated_row = dataclasses.replace(venue("DEX_A", "250"), raw_evidence=raw)
+    raw["nested"]["k"] = "MUTATED"
+    raw["new"] = "added"
+    snap = build(oracle_reference=oracle("250"), venues=[mutated_row])
+    serialized = snap.to_evidence_dict()["layers"]["venues"][0]
+    assert serialized["rawEvidence"]["nested"]["k"] == "v"
+    assert "new" not in serialized["rawEvidence"]
+
+
+def test_f2_03_internal_frozen_mappings_reject_direct_and_nested_mutation() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250")],
+        upstream_evidence={"blob": {"x": 1}},
+    )
+    with pytest.raises(TypeError):
+        snap.upstream_evidence["blob"] = "tampered"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        snap.upstream_evidence["blob"]["x"] = 2  # type: ignore[index]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        snap.source_digests = {}  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F3: complete timing authority
+# ---------------------------------------------------------------------------
+
+def test_f3_01_stale_token_blocks_normal_material_attribution() -> None:
+    stale_token_at = NOW - timedelta(seconds=3600)
+    snap = build(
+        oracle_reference=oracle("250"),
+        token=token(price="260", at=stale_token_at),
+        venues=[venue("DEX_A", "260")],  # same material delta, stale token timing
+    )
+    assert snap.timing.state is TimingState.STALE_LAYER
+    assert "TOKEN" in snap.timing.stale_layers
+    material_invalid = [
+        c for c in snap.dislocation_components if c.material and not c.timing_valid
+    ]
+    assert material_invalid
+    assert snap.attribution_state is AttributionState.ATTRIBUTION_UNAVAILABLE
+
+
+def test_f3_02_token_skew_beyond_threshold_cannot_drive_attribution() -> None:
+    # Token observed NOW; oracle/venue observed 500 s earlier: the 500 s skew
+    # exceeds the 120 s policy, so the material TOKEN->VENUE difference is
+    # timing-invalid and must not drive attribution.
+    snap = build(
+        oracle_reference=oracle("250", at=NOW - timedelta(seconds=500)),
+        token=token(price="260", at=NOW),
+        venues=[venue("DEX_A", "260", at=NOW - timedelta(seconds=500))],
+    )
+    assert snap.timing.state is TimingState.SKEWED
+    assert snap.timing.total_skew_seconds == Decimal("500")
+    material_invalid = [
+        c for c in snap.dislocation_components if c.material and not c.timing_valid
+    ]
+    assert material_invalid
+    assert snap.attribution_state is AttributionState.ATTRIBUTION_UNAVAILABLE
+
+
+def test_f3_03_valid_token_and_fx_timing_preserves_normal_behavior() -> None:
+    fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("1"),
+        source="SYNTHETIC_FX", observed_at=NOW, raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        fx=fx,
+        underlying=underlying("250"),
+        oracle_reference=oracle("250"),
+        token=token(price="250"),
+        venues=[venue("DEX_A", "250")],
+    )
+    assert snap.timing.state is TimingState.ALIGNED
+    assert snap.attribution_state is AttributionState.NO_MATERIAL_DISLOCATION
+    assert all(c.timing_valid for c in snap.dislocation_components)
+
+
+def test_f3_04_fx_and_token_timestamps_participate_in_timing() -> None:
+    fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("1"),
+        source="SYNTHETIC_FX", observed_at=NOW - timedelta(seconds=90),
+        raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        fx=fx,
+        oracle_reference=oracle("250", at=NOW),
+        token=token(price="250", at=NOW - timedelta(seconds=45)),
+        venues=[venue("DEX_A", "250")],
+    )
+    assert snap.timing.total_skew_seconds == Decimal("90")  # FX oldest, oracle newest
+    assert "FX" in snap.timing.stale_layers or fx.observed_at >= (
+        datetime(2026, 9, 16, 11, 54, tzinfo=timezone.utc)
+    )
+
+
+def test_f3_05_exact_pairwise_skew_threshold_is_deterministic() -> None:
+    boundary = build(
+        oracle_reference=oracle("250", at=NOW - timedelta(seconds=120)),
+        token=token(price="250", at=NOW),
+        venues=[venue("DEX_A", "250", at=NOW)],
+    )
+    assert boundary.timing.state is TimingState.ALIGNED
+    over = build(
+        oracle_reference=oracle("250", at=NOW - timedelta(seconds=121)),
+        token=token(price="250", at=NOW),
+        venues=[venue("DEX_A", "250", at=NOW)],
+    )
+    assert over.timing.state is TimingState.SKEWED
+    assert ComparabilityReason.TIMING_SKEW in over.comparability_reasons
+
+
+def test_f3_06_future_token_timestamp_fails_closed() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        token=token(price="260", at=NOW + timedelta(seconds=30)),
+        venues=[venue("DEX_A", "260")],
+        as_of=NOW,
+    )
+    invalid_material = [
+        c for c in snap.dislocation_components if c.material and not c.timing_valid
+    ]
+    assert invalid_material
+    assert snap.attribution_state is AttributionState.ATTRIBUTION_UNAVAILABLE
+
+
+def test_f3_07_future_fx_timestamp_fails_closed() -> None:
+    future_fx = FxObservation(
+        source_currency="EUR", target_currency="USD", rate=Decimal("2"),
+        source="SYNTHETIC_FX", observed_at=NOW + timedelta(seconds=30),
+        raw_evidence={"synthetic": True},
+    )
+    snap = build(
+        fx=future_fx,
+        underlying=layer(LayerType.UNDERLYING, "230", currency="EUR"),
+        oracle_reference=oracle("250"),
+        as_of=NOW,
+    )
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+    assert all(
+        not (c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE)
+        for c in snap.dislocation_components
+    )
+
+
+def test_f3_08_timing_invalid_material_difference_has_no_material_attribution() -> None:
+    stale_venue_at = NOW - timedelta(seconds=3600)
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "300", at=stale_venue_at)],  # 5000 bps, stale venue
+    )
+    assert snap.timing.state is TimingState.STALE_LAYER
+    material_invalid = [
+        c for c in snap.dislocation_components if c.material and not c.timing_valid
+    ]
+    assert material_invalid
+    assert snap.attribution_state is AttributionState.ATTRIBUTION_UNAVAILABLE
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F4: exact R3 lineage and venue identity
+# ---------------------------------------------------------------------------
+
+def test_f4_01_serialized_venue_row_carries_canonical_asset_key() -> None:
+    snap = build(
+        binding=binding(keys=(KEY, KEY_B)),
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250", key=KEY), venue("DEX_B", "250.2", key=KEY_B)],
+    )
+    rows = snap.to_evidence_dict()["layers"]["venues"]
+    identity = {(r["chainId"], r["contractAddress"]) for r in rows}
+    assert (4663, KEY.contract_address) in identity
+    assert (137, KEY_B.contract_address) in identity
+
+
+def test_f4_02_two_deployments_under_one_uid_remain_distinguishable() -> None:
+    snap = build(
+        binding=binding(keys=(KEY, KEY_B)),
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250", key=KEY), venue("DEX_B", "250.2", key=KEY_B)],
+    )
+    rows = snap.to_evidence_dict()["layers"]["venues"]
+    assert rows[0]["contractAddress"] != rows[1]["contractAddress"]
+    assert (rows[0]["chainId"], rows[0]["contractAddress"]) != (
+        rows[1]["chainId"], rows[1]["contractAddress"]
+    )
+
+
+def test_f4_03_changing_venue_canonical_key_changes_r7_digest() -> None:
+    first = build(
+        binding=binding(keys=(KEY, KEY_B)),
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250", key=KEY), venue("DEX_B", "250.2", key=KEY_B)],
+    )
+    second = build(
+        binding=binding(keys=(KEY, KEY_B)),
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250", key=KEY_B), venue("DEX_B", "250.2", key=KEY)],
+    )
+    assert first.r7_snapshot_digest != second.r7_snapshot_digest
+
+
+def test_f4_04_changing_r3_evidence_changes_source_digest() -> None:
+    first = build(
+        oracle_reference=oracle("250"),
+        source_digests={"r3LiquidityDigest": "a" * 64},
+    )
+    second = build(
+        oracle_reference=oracle("250"),
+        source_digests={"r3LiquidityDigest": "b" * 64},
+    )
+    assert first.r7_snapshot_digest != second.r7_snapshot_digest
+    assert first.to_evidence_dict()["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+
+
+def test_f4_05_r3_source_digest_reconstructs_independently() -> None:
+    import hashlib
+
+    r3_evidence = {"status": "PASS", "asset": {"symbol": "AAA"}, "nested": {"k": 1}}
+    source_digests = {
+        "r3LiquidityDigest": hashlib.sha256(
+            json.dumps(r3_evidence, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    }
+    snap = build(
+        oracle_reference=oracle("250"),
+        upstream_evidence={"r3LiquidityEvidence": r3_evidence},
+        source_digests=source_digests,
+    )
+    evidence = snap.to_evidence_dict()
+    embedded = evidence["upstreamEvidence"]["r3LiquidityEvidence"]
+    recomputed = hashlib.sha256(
+        json.dumps(embedded, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    assert recomputed == evidence["sourceDigests"]["r3LiquidityDigest"]
+    assert verify_serialized_evidence(evidence) is True
+
+
+def test_f4_06_tampered_embedded_r3_evidence_breaks_reconstruction() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        upstream_evidence={"r3LiquidityEvidence": {"status": "PASS"}},
+        source_digests={"r3LiquidityDigest": "a" * 64},
+    )
+    evidence = snap.to_evidence_dict()
+    assert verify_serialized_evidence(evidence) is True
+    evidence["upstreamEvidence"]["r3LiquidityEvidence"]["status"] = "TAMPERED"
+    assert verify_serialized_evidence(evidence) is False
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F5: widening/narrowing by magnitude
+# ---------------------------------------------------------------------------
+
+def _event_kinds_for_pair(first_venue_price: str, second_venue_price: str) -> list[EventKind]:
+    first = build(oracle_reference=oracle("250"), venues=[venue("DEX_A", first_venue_price)])
+    second = build(oracle_reference=oracle("250"), venues=[venue("DEX_A", second_venue_price)])
+    return [event.kind for event in derive_events(first, second)]
+
+
+@pytest.mark.parametrize(
+    "first_price,second_price,expected",
+    [
+        ("252.5", "255", EventKind.DISLOCATION_WIDENED),    # +100 -> +200
+        ("255", "252.5", EventKind.DISLOCATION_NARROWED),   # +200 -> +100
+        ("247.5", "245", EventKind.DISLOCATION_WIDENED),    # -100 -> -200
+        ("245", "247.5", EventKind.DISLOCATION_NARROWED),   # -200 -> -100
+        ("252.5", "247.5", None),                           # +100 -> -100 (sign flip)
+        ("247.5", "252.5", None),                           # -100 -> +100 (sign flip)
+        ("252.5", "252.5", None),                           # unchanged magnitude
+    ],
+)
+def test_f5_widening_narrowing_uses_magnitude(
+    first_price: str, second_price: str, expected: EventKind | None
+) -> None:
+    kinds = _event_kinds_for_pair(first_price, second_price)
+    if expected is None:
+        assert EventKind.DISLOCATION_WIDENED not in kinds
+        assert EventKind.DISLOCATION_NARROWED not in kinds
+    else:
+        assert expected in kinds
+
+
+def test_f5_cleared_behavior_unchanged() -> None:
+    material = build(oracle_reference=oracle("250"), venues=[venue("DEX_A", "252.5")])
+    cleared = build(oracle_reference=oracle("250"), venues=[venue("DEX_A", "250")])
+    kinds = [event.kind for event in derive_events(material, cleared)]
+    assert EventKind.DISLOCATION_CLEARED in kinds
+    assert EventKind.DISLOCATION_WIDENED not in kinds
+    assert EventKind.DISLOCATION_NARROWED not in kinds

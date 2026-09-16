@@ -101,15 +101,31 @@ def _component(
     from_price: Decimal,
     to_price: Decimal,
     policy: CrossMarketPolicy,
+    as_of: datetime,
     from_observed_at: datetime,
     to_observed_at: datetime,
     from_source: str,
     to_source: str,
     fx: tuple[str, str, Decimal] | None = None,
 ) -> DislocationComponent:
+    """Build one component and evaluate its timing authority (Correction A).
+
+    A component is timing-valid only when BOTH endpoint observations are fresh
+    within the policy staleness window (a future observation is never fresh)
+    and their pairwise skew is inside the policy skew window. Timing-invalid
+    components are retained as evidence but excluded from attribution.
+    """
     delta = to_price - from_price
     delta_bps = (to_price / from_price - Decimal(1)) * Decimal(10000)
     material = abs(delta_bps) >= policy.material_dislocation_bps
+    from_age = _decimal_seconds((as_of - from_observed_at).total_seconds())
+    to_age = _decimal_seconds((as_of - to_observed_at).total_seconds())
+    timing_skew = _decimal_seconds(abs((to_observed_at - from_observed_at).total_seconds()))
+    timing_valid = (
+        Decimal(0) <= from_age <= policy.stale_layer_seconds
+        and Decimal(0) <= to_age <= policy.stale_layer_seconds
+        and timing_skew <= policy.max_layer_skew_seconds
+    )
     return DislocationComponent(
         from_layer=from_layer,
         to_layer=to_layer,
@@ -120,14 +136,13 @@ def _component(
         delta_bps=delta_bps,
         threshold_bps=policy.material_dislocation_bps,
         material=material,
+        timing_valid=timing_valid,
         fx_source_currency=fx[0] if fx else None,
         fx_target_currency=fx[1] if fx else None,
         fx_rate=fx[2] if fx else None,
         from_observed_at=from_observed_at,
         to_observed_at=to_observed_at,
-        timing_skew_seconds=_decimal_seconds(
-            abs((to_observed_at - from_observed_at).total_seconds())
-        ),
+        timing_skew_seconds=timing_skew,
         from_source=from_source,
         to_source=to_source,
     )
@@ -181,20 +196,32 @@ def derive_events(
                     )
                 )
         else:
-            if component.delta_bps > was.delta_bps:
+            # Correction A (F5): dislocation WIDTH is the magnitude of the
+            # signed delta. A sign flip with unchanged magnitude is neither
+            # widened nor narrowed; direction stays observable on the
+            # component itself.
+            was_width = abs(was.delta_bps)
+            current_width = abs(component.delta_bps)
+            if current_width > was_width:
                 events.append(
                     CrossMarketEvent(
                         kind=EventKind.DISLOCATION_WIDENED,
                         label=label,
-                        detail=f"{was.delta_bps} -> {component.delta_bps} bps",
+                        detail=(
+                            f"{was.delta_bps} -> {component.delta_bps} bps "
+                            f"(width {was_width} -> {current_width})"
+                        ),
                     )
                 )
-            elif component.delta_bps < was.delta_bps:
+            elif current_width < was_width:
                 events.append(
                     CrossMarketEvent(
                         kind=EventKind.DISLOCATION_NARROWED,
                         label=label,
-                        detail=f"{was.delta_bps} -> {component.delta_bps} bps",
+                        detail=(
+                            f"{was.delta_bps} -> {component.delta_bps} bps "
+                            f"(width {was_width} -> {current_width})"
+                        ),
                     )
                 )
     for label, was in sorted(previous_material.items()):
@@ -281,6 +308,7 @@ def compare_cross_deployments(
         from_price=oracle_a.price,
         to_price=oracle_b.price,
         policy=policy,
+        as_of=max(stack_a.generated_at, stack_b.generated_at),
         from_observed_at=oracle_a.observed_at,
         to_observed_at=oracle_b.observed_at,
         from_source=oracle_a.source,
@@ -385,6 +413,16 @@ def build_cross_market_snapshot(
         return price * rate, (currency, comparison_currency, rate), False
 
     # ---- timing diagnostics ----------------------------------------------
+    # Correction A (F3): every priced layer actually used in comparisons
+    # participates — UNDERLYING, ORACLE_REFERENCE, EXTERNAL_ORACLE, FX when
+    # supplied for normalization, TOKEN when its observed price is used, and
+    # every VENUE observation.
+    token_price_available = (
+        token is not None
+        and token.observed_price is not None
+        and token.observed_at is not None
+        and token.currency is not None
+    )
     stamps: list[tuple[str, datetime]] = []
     for label, observation in (
         ("UNDERLYING", underlying),
@@ -393,6 +431,10 @@ def build_cross_market_snapshot(
     ):
         if _is_available(observation) and observation.observed_at is not None:
             stamps.append((label, observation.observed_at))
+    if fx is not None:
+        stamps.append(("FX", fx.observed_at))
+    if token_price_available:
+        stamps.append(("TOKEN", token.observed_at))
     for venue in venues_canonical:
         stamps.append((f"VENUE[{venue.venue}:{venue.side.value}:{venue.notional_usd}]", venue.observed_at))
     stale_layers: list[str] = []
@@ -457,6 +499,7 @@ def build_cross_market_snapshot(
                 from_price=underlying.price,
                 to_price=underlying_normalized,
                 policy=policy,
+                as_of=as_of,
                 from_observed_at=underlying.observed_at,
                 to_observed_at=underlying.observed_at,
                 from_source=underlying.source,
@@ -483,6 +526,7 @@ def build_cross_market_snapshot(
                     from_price=underlying_normalized,
                     to_price=oracle_price,
                     policy=policy,
+                as_of=as_of,
                     from_observed_at=underlying.observed_at,
                     to_observed_at=oracle_reference.observed_at,
                     from_source=underlying.source,
@@ -493,12 +537,6 @@ def build_cross_market_snapshot(
 
     # ORACLE_REFERENCE → TOKEN → VENUE (or ORACLE_REFERENCE → VENUE directly
     # when the token layer carries no independent price observation).
-    token_price_available = (
-        token is not None
-        and token.observed_price is not None
-        and token.observed_at is not None
-        and token.currency is not None
-    )
     if oracle_available and not oracle_suppressed:
         assert oracle_reference is not None
         oracle_price, _, oracle_fx_unavailable = normalize(
@@ -525,6 +563,7 @@ def build_cross_market_snapshot(
                             from_price=oracle_price,
                             to_price=token_price,
                             policy=policy,
+                as_of=as_of,
                             from_observed_at=oracle_reference.observed_at,
                             to_observed_at=token.observed_at,
                             from_source=oracle_reference.source,
@@ -557,6 +596,7 @@ def build_cross_market_snapshot(
                         from_price=anchor_price,
                         to_price=venue_price,
                         policy=policy,
+                as_of=as_of,
                         from_observed_at=anchor_time,
                         to_observed_at=venue.observed_at,
                         from_source=anchor_source,
@@ -570,24 +610,70 @@ def build_cross_market_snapshot(
     for venue in venues_canonical:
         by_side_notional.setdefault((venue.side.value, str(venue.notional_usd)), []).append(venue)
     for (side, notional), members in sorted(by_side_notional.items()):
-        distinct_venues = {m.venue for m in members}
+        # Correction A (F1): every member price is first normalized into the
+        # comparison currency with the same explicit FX authority rules used
+        # elsewhere — raw cross-currency prices are never compared. Members
+        # whose conversion is unavailable/stale are dropped with
+        # FX_UNAVAILABLE. The component binds each endpoint to the EXACT
+        # normalized member that produced the low/high price (price, source,
+        # timestamp, venue identity), selected by a deterministic order
+        # independent of caller input order.
+        normalized_members: list[tuple[Decimal, VenueObservation]] = []
+        low_fx: dict[str, tuple[str, str, Decimal]] = {}
+        high_fx: dict[str, tuple[str, str, Decimal]] = {}
+        for member in members:
+            member_price, member_fx, member_fx_unavailable = normalize(
+                member.price, member.currency
+            )
+            if member_fx_unavailable:
+                reasons.append(ComparabilityReason.FX_UNAVAILABLE)
+                continue
+            if member_fx is not None:
+                low_fx[member.venue] = member_fx
+                high_fx[member.venue] = member_fx
+            normalized_members.append((member_price, member))
+        distinct_venues = {m.venue for _, m in normalized_members}
         if len(distinct_venues) < 2:
             reasons.append(ComparabilityReason.INSUFFICIENT_MEMBERS)
             continue
-        prices = sorted(m.price for m in members)
-        low, high = prices[0], prices[-1]
+
+        def _member_order(entry: tuple[Decimal, VenueObservation]) -> tuple:
+            normalized_price, member = entry
+            return (
+                normalized_price,
+                member.venue,
+                member.side.value,
+                str(member.notional_usd),
+                member.asset_key.canonical_id,
+                member.observed_at.isoformat(),
+                member.route_signature or "",
+            )
+
+        ordered_members = sorted(normalized_members, key=_member_order)
+        low_price, low_observation = ordered_members[0]
+        high_price, high_observation = ordered_members[-1]
+        # FX provenance: the component reports the conversion applied to the
+        # low member (or the high member when only that one required FX).
+        component_fx = low_fx.get(low_observation.venue) or high_fx.get(
+            high_observation.venue
+        )
         components.append(
             _component(
                 from_layer=LayerType.VENUE,
                 to_layer=LayerType.VENUE,
-                label=f"VENUE→VENUE[dispersion:{side}:{notional}]",
-                from_price=low,
-                to_price=high,
+                label=(
+                    f"VENUE→VENUE[dispersion:{side}:{notional}:"
+                    f"{low_observation.venue}|{high_observation.venue}]"
+                ),
+                from_price=low_price,
+                to_price=high_price,
                 policy=policy,
-                from_observed_at=members[0].observed_at,
-                to_observed_at=members[-1].observed_at,
-                from_source=members[0].source,
-                to_source=members[-1].source,
+                as_of=as_of,
+                from_observed_at=low_observation.observed_at,
+                to_observed_at=high_observation.observed_at,
+                from_source=low_observation.source,
+                to_source=high_observation.source,
+                fx=component_fx,
             )
         )
 
@@ -638,8 +724,16 @@ def build_cross_market_snapshot(
         # Reference unavailable: cross-layer attribution cannot be established.
         attribution = AttributionState.ATTRIBUTION_UNAVAILABLE
     else:
-        material = [c for c in components if c.material]
-        if not material:
+        # Correction A (F3): a component violating the timing policy must not
+        # contribute to valid dislocation attribution. Timing-invalid material
+        # components stay in the evidence but cannot drive attribution.
+        material = [c for c in components if c.material and c.timing_valid]
+        invalid_material = [
+            c for c in components if c.material and not c.timing_valid
+        ]
+        if invalid_material and not material:
+            attribution = AttributionState.ATTRIBUTION_UNAVAILABLE
+        elif not material:
             attribution = AttributionState.NO_MATERIAL_DISLOCATION
         elif len(material) == 1:
             attribution = _COMPONENT_ATTRIBUTION[

@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from types import MappingProxyType
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -27,6 +28,24 @@ SCHEMA_VERSION = "radar-r7-cross-market-v1"
 PHASE = "R7"
 
 _ECONOMIC_UID_RE = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
+
+
+def deep_freeze(value: Any) -> Any:
+    """Recursively convert mutable evidence into owned immutable structures.
+
+    dict/Mapping -> MappingProxyType over a PRIVATE deep-frozen copy (caller
+    mutations can never leak through), list/tuple -> tuple of frozen members,
+    set/frozenset -> deterministically ordered tuple. Scalars pass through.
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: deep_freeze(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(deep_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted((repr(deep_freeze(item)) for item in value)))
+    return value
 
 
 class CrossMarketStatus(str, Enum):
@@ -149,6 +168,7 @@ class EconomicIdentityBinding:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         uid = self.economic_asset_uid.strip().upper()
         if not _ECONOMIC_UID_RE.fullmatch(uid):
             raise CrossMarketError(
@@ -195,6 +215,7 @@ class LayerObservation:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         if not self.source.strip():
             raise CrossMarketError(
                 f"{self.layer.value} layer requires a non-empty source",
@@ -243,6 +264,7 @@ class VenueObservation:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         if not self.venue.strip() or not self.source.strip():
             raise CrossMarketError(
                 "venue observation requires non-empty venue and source",
@@ -277,6 +299,7 @@ class FxObservation:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         if not self.source_currency.strip() or not self.target_currency.strip():
             raise CrossMarketError(
                 "FX observation requires both currencies",
@@ -321,6 +344,7 @@ class TokenRepresentation:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         if not self.multiplier.is_finite() or self.multiplier <= 0:
             raise CrossMarketError(
                 "token representation multiplier must be positive and finite",
@@ -355,6 +379,7 @@ class SettlementContext:
     raw_evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "raw_evidence", deep_freeze(self.raw_evidence))
         if not self.authority_status.strip():
             raise CrossMarketError(
                 "settlement context requires an authority status",
@@ -399,6 +424,7 @@ class DislocationComponent:
     delta_bps: Decimal
     threshold_bps: Decimal
     material: bool
+    timing_valid: bool
     fx_source_currency: str | None
     fx_target_currency: str | None
     fx_rate: Decimal | None
@@ -419,6 +445,7 @@ class DislocationComponent:
             "deltaBps": str(self.delta_bps),
             "thresholdBps": str(self.threshold_bps),
             "material": self.material,
+            "timingValid": self.timing_valid,
             "fx": {
                 "sourceCurrency": self.fx_source_currency,
                 "targetCurrency": self.fx_target_currency,
@@ -503,6 +530,9 @@ class CrossMarketSnapshot:
     r7_snapshot_digest: str = ""
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "upstream_evidence", deep_freeze(self.upstream_evidence))
+        object.__setattr__(self, "source_digests", deep_freeze(self.source_digests))
+        object.__setattr__(self, "live_disclosures", deep_freeze(self.live_disclosures))
         if self.status is not CrossMarketStatus.CROSS_MARKET_OK:
             raise CrossMarketError(
                 "successful snapshot requires CROSS_MARKET_OK",
@@ -584,8 +614,11 @@ class CrossMarketSnapshot:
                         "currency": v.currency,
                         "observedAt": v.observed_at.isoformat(),
                         "source": v.source,
+                        "chainId": v.asset_key.chain_id,
+                        "contractAddress": v.asset_key.contract_address,
                         "gapBps": str(v.gap_bps) if v.gap_bps is not None else None,
                         "routeSignature": v.route_signature,
+                        "rawEvidence": _deep_copy_mapping(v.raw_evidence),
                     }
                     for v in self.venues
                 ],
