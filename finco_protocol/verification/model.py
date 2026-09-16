@@ -9,6 +9,13 @@ from typing import Any, Mapping, Sequence
 MODEL_VALIDATION_SCHEMA = "finco.model-validation.v1"
 DEFAULT_ABS_TOL_KEUR = Decimal("0.10")
 DEFAULT_REL_TOL = Decimal("1e-9")
+_PERIOD_AXIS_FIELDS = (
+    "period",
+    "date",
+    "year_index",
+    "period_in_year",
+    "is_operation",
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,68 @@ def _check(invariant_id: str, passed: bool, detail: str) -> InvariantCheck:
     return InvariantCheck(invariant_id=invariant_id, passed=bool(passed), detail=detail)
 
 
+def _strict_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _extract_period_axis(
+    periods: Sequence[Any],
+) -> tuple[
+    tuple[tuple[int, str, int, int, bool], ...],
+    tuple[int, ...],
+    tuple[int, ...],
+]:
+    """Return a strict, unique serialized WaterfallResult period axis.
+
+    Debt, tax and distribution serializers all iterate the same
+    ``WaterfallResult.periods`` source and expose the same structural fields.
+    This helper validates those fields only; it performs no financial
+    calculation and does not infer operation state.
+    """
+
+    axis: list[tuple[int, str, int, int, bool]] = []
+    invalid_rows: list[int] = []
+    duplicate_rows: list[int] = []
+    seen: set[tuple[int, str, int, int, bool]] = set()
+
+    for index, raw_period in enumerate(periods):
+        if not isinstance(raw_period, Mapping):
+            invalid_rows.append(index)
+            continue
+
+        period = raw_period.get("period")
+        date_value = raw_period.get("date")
+        year_index = raw_period.get("year_index")
+        period_in_year = raw_period.get("period_in_year")
+        is_operation = raw_period.get("is_operation")
+
+        if not (
+            _strict_int(period)
+            and isinstance(date_value, str)
+            and bool(date_value)
+            and _strict_int(year_index)
+            and _strict_int(period_in_year)
+            and type(is_operation) is bool
+        ):
+            invalid_rows.append(index)
+            continue
+
+        key = (
+            period,
+            date_value,
+            year_index,
+            period_in_year,
+            is_operation,
+        )
+        if key in seen:
+            duplicate_rows.append(index)
+        else:
+            seen.add(key)
+        axis.append(key)
+
+    return tuple(axis), tuple(invalid_rows), tuple(duplicate_rows)
+
+
 def validate_model_run(
     payload: Mapping[str, Any],
     *,
@@ -101,9 +170,9 @@ def validate_model_run(
     The verifier is not a second financial engine. It checks identities and
     cross-view consistency in the serialized production result returned by
     ``app.api.project_runner.run_project``. Missing or malformed evidence on an
-    applicable operation period fails closed; construction/pre-operation rows
-    and operation rows where the serializer declares no senior-debt evidence and
-    no active senior balance remain legitimate N/A states.
+    applicable operation period fails closed. Operation applicability is taken
+    only from a structural period axis that must reconcile exactly across the
+    debt, tax and distribution serializers of the same ``WaterfallResult``.
     """
 
     checks: list[InvariantCheck] = []
@@ -179,9 +248,57 @@ def validate_model_run(
     )
 
     debt = _mapping(payload.get("debt_schedule"))
+    tax = _mapping(payload.get("tax_schedule"))
+    distribution = _mapping(payload.get("distribution_schedule"))
     debt_periods = _sequence(debt.get("periods"))
+    tax_periods = _sequence(tax.get("periods"))
+    distribution_periods = _sequence(distribution.get("periods"))
+
+    debt_axis, debt_axis_invalid, debt_axis_duplicates = _extract_period_axis(debt_periods)
+    tax_axis, tax_axis_invalid, tax_axis_duplicates = _extract_period_axis(tax_periods)
+    distribution_axis, distribution_axis_invalid, distribution_axis_duplicates = _extract_period_axis(
+        distribution_periods
+    )
+    period_axis_ok = (
+        bool(debt_periods)
+        and bool(tax_periods)
+        and bool(distribution_periods)
+        and not debt_axis_invalid
+        and not tax_axis_invalid
+        and not distribution_axis_invalid
+        and not debt_axis_duplicates
+        and not tax_axis_duplicates
+        and not distribution_axis_duplicates
+        and len(debt_axis) == len(debt_periods)
+        and len(tax_axis) == len(tax_periods)
+        and len(distribution_axis) == len(distribution_periods)
+        and debt_axis == tax_axis == distribution_axis
+    )
+    checks.append(
+        _check(
+            "MODEL_PERIOD_AXIS_CONSISTENT",
+            period_axis_ok,
+            (
+                f"debt/tax/distribution share {len(debt_axis)} unique serialized WaterfallResult periods"
+                if period_axis_ok
+                else (
+                    f"counts=debt:{len(debt_periods)},tax:{len(tax_periods)},distribution:{len(distribution_periods)}; "
+                    f"invalid=debt:{list(debt_axis_invalid)!r},tax:{list(tax_axis_invalid)!r},distribution:{list(distribution_axis_invalid)!r}; "
+                    f"duplicates=debt:{list(debt_axis_duplicates)!r},tax:{list(tax_axis_duplicates)!r},distribution:{list(distribution_axis_duplicates)!r}; "
+                    f"axesEqual={debt_axis == tax_axis == distribution_axis}"
+                )
+            ),
+        )
+    )
+
+    common_axis = debt_axis if period_axis_ok else ()
+    operation_dates = {
+        date_value
+        for _, date_value, _, _, is_operation in common_axis
+        if is_operation
+    }
+
     debt_failures: list[int] = []
-    operation_dates: set[str] = set()
     applicable_debt_periods = 0
     debt_fields = (
         "senior_principal_keur",
@@ -190,14 +307,16 @@ def validate_model_run(
     )
     for index, raw_period in enumerate(debt_periods):
         period = _mapping(raw_period)
+        raw_balance = period.get("senior_balance_keur")
+        senior_balance = _decimal(raw_balance)
+        if raw_balance is not None and senior_balance is None:
+            debt_failures.append(index)
+            continue
+
         if period.get("is_operation") is not True:
             continue
-        date_value = period.get("date")
-        if isinstance(date_value, str) and date_value:
-            operation_dates.add(date_value)
 
         raw_values = tuple(period.get(field) for field in debt_fields)
-        senior_balance = _decimal(period.get("senior_balance_keur"))
         carries_debt_service_evidence = any(value is not None for value in raw_values)
         has_active_senior_balance = senior_balance is not None and senior_balance > 0
         if not carries_debt_service_evidence and not has_active_senior_balance:
@@ -217,8 +336,10 @@ def validate_model_run(
             rel_tol=rel_tol,
         ):
             debt_failures.append(index)
+
+    debt_failures = sorted(set(debt_failures))
     debt_identity_ok = (
-        bool(debt_periods)
+        period_axis_ok
         and applicable_debt_periods > 0
         and not debt_failures
     )
@@ -227,12 +348,13 @@ def validate_model_run(
             "MODEL_DEBT_SERVICE_IDENTITY",
             debt_identity_ok,
             (
-                "all applicable operation debt rows have finite senior principal, interest "
-                "and debt service; debt service = principal + interest"
+                "all applicable operation debt rows have finite senior balance metadata when present, "
+                "finite senior principal/interest/debt service, and debt service = principal + interest"
                 if debt_identity_ok
                 else (
                     f"periodFailures={debt_failures!r}; "
                     f"applicableDebtPeriodCount={applicable_debt_periods}; "
+                    f"periodAxisConsistent={period_axis_ok}; "
                     f"periodCount={len(debt_periods)}"
                 )
             ),
@@ -253,7 +375,6 @@ def validate_model_run(
         )
     )
 
-    tax = _mapping(payload.get("tax_schedule"))
     tax_summary = _mapping(tax.get("summary"))
     checks.append(
         _check(
@@ -268,7 +389,6 @@ def validate_model_run(
         )
     )
 
-    distribution = _mapping(payload.get("distribution_schedule"))
     distribution_summary = _mapping(distribution.get("summary"))
     checks.append(
         _check(
@@ -326,6 +446,15 @@ def validate_model_run(
         for index, period in enumerate(bs_periods)
         if _mapping(period).get("date") in operation_dates
     ]
+    balance_date_counts: dict[str, int] = {}
+    for _, period in applicable_balance_rows:
+        date_value = period.get("date")
+        if isinstance(date_value, str):
+            balance_date_counts[date_value] = balance_date_counts.get(date_value, 0) + 1
+    missing_operation_dates = sorted(operation_dates - set(balance_date_counts))
+    duplicate_operation_dates = sorted(
+        date_value for date_value, count in balance_date_counts.items() if count != 1
+    )
     balance_checks = [
         (index, _decimal(period.get("balance_check_keur")))
         for index, period in applicable_balance_rows
@@ -341,7 +470,11 @@ def validate_model_run(
         default=None,
     )
     balance_ok = (
-        bool(applicable_balance_rows)
+        period_axis_ok
+        and bool(operation_dates)
+        and not missing_operation_dates
+        and not duplicate_operation_dates
+        and len(applicable_balance_rows) == len(operation_dates)
         and not invalid_balance_periods
         and len(finite_balance_checks) == len(applicable_balance_rows)
         and max_balance_check is not None
@@ -356,6 +489,9 @@ def validate_model_run(
                 f"operationPeriodCount={len(applicable_balance_rows)}"
                 if balance_ok
                 else (
+                    f"periodAxisConsistent={period_axis_ok}; "
+                    f"missingOperationDates={missing_operation_dates!r}; "
+                    f"duplicateOperationDates={duplicate_operation_dates!r}; "
                     f"invalidOperationPeriods={invalid_balance_periods!r}; "
                     f"max_abs_balance_check_keur={str(max_balance_check) if max_balance_check is not None else 'unavailable'}; "
                     f"operationPeriodCount={len(applicable_balance_rows)}"
