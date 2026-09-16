@@ -19,6 +19,7 @@ STAGING_ROOT = Path("/opt/finco_staging")
 STAGING_PORT = "8100"
 STAGING_HOST = "staging.finco.one"
 PRODUCTION_ROOT = Path("/opt/finco_protocol")
+GIT_BIN = Path("/usr/bin/git")
 PLACEHOLDER_MARKERS = ("changeme", "replace_with", "example", "placeholder")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -29,17 +30,23 @@ class StagingPreflightError(RuntimeError):
 
 def parse_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
         if "=" not in line:
-            raise StagingPreflightError(f"invalid environment line: {raw_line!r}")
+            raise StagingPreflightError(
+                f"invalid environment syntax at line {line_number}"
+            )
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")
         if not key:
-            raise StagingPreflightError("empty environment key")
+            raise StagingPreflightError(
+                f"empty environment key at line {line_number}"
+            )
         values[key] = value
     return values
 
@@ -158,8 +165,15 @@ def validate_staging_env(
 
 
 def _git_head(repo_root: Path) -> str:
+    """Resolve the deployed revision without depending on the service PATH.
+
+    The systemd unit intentionally uses a minimal PATH containing only the
+    staging virtualenv. Ubuntu installs git at /usr/bin/git, so the preflight
+    calls that reviewed absolute binary directly. A missing executable remains
+    fail-closed via the caller's OSError handling.
+    """
     result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        [str(GIT_BIN), "-C", str(repo_root), "rev-parse", "HEAD"],
         check=True,
         capture_output=True,
         text=True,
