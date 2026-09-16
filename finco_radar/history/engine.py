@@ -25,6 +25,16 @@ def validate_history_series(entries: tuple[HistoryEntry, ...]) -> None:
     first = entries[0]
     previous = None
     for entry in entries:
+        snapshot = entry.signal_snapshot
+        if (entry.asset_uid != snapshot.asset_uid or
+                entry.canonical_key != snapshot.canonical_key or
+                entry.symbol != snapshot.symbol or
+                entry.observed_at != snapshot.observed_at or
+                entry.policy != snapshot.policy):
+            raise HistoryError(
+                "history entry metadata does not match its embedded snapshot",
+                HistoryStatus.HISTORY_EVIDENCE_INVALID,
+            )
         if entry.observed_at.tzinfo is None:
             raise HistoryError("history timestamps must be timezone-aware", HistoryStatus.HISTORY_TIME_ORDER_INVALID)
         if entry.asset_uid != first.asset_uid or entry.canonical_key != first.canonical_key:
@@ -59,20 +69,39 @@ def compare_signal_snapshots(previous: SignalSnapshot, current: SignalSnapshot) 
         raise HistoryError("comparison timestamps must be aware and strictly increasing",
                            HistoryStatus.HISTORY_TIME_ORDER_INVALID)
     changes: list[SignalChange] = []
+    authority_changed = (
+        previous.signals_active != current.signals_active or
+        previous.authority_state is not current.authority_state or
+        previous.suppression_reasons != current.suppression_reasons
+    )
+    if authority_changed:
+        changes.append(SignalChange(
+            SignalChangeKind.AUTHORITY_STATE_CHANGED,
+            None,
+            {
+                "signalsActiveBefore": previous.signals_active,
+                "signalsActiveAfter": current.signals_active,
+                "authorityStateBefore": previous.authority_state.value,
+                "authorityStateAfter": current.authority_state.value,
+                "suppressionReasonsBefore": [r.value for r in previous.suppression_reasons],
+                "suppressionReasonsAfter": [r.value for r in current.suppression_reasons],
+            },
+        ))
     for before, after in ((previous.buy_assessment, current.buy_assessment),
                           (previous.sell_assessment, current.sell_assessment)):
         bm, am = _material(previous, before), _material(current, after)
-        if not bm and am:
+        comparable = previous.signals_active and current.signals_active
+        if current.signals_active and not bm and am:
             changes.append(SignalChange(SignalChangeKind.SIGNAL_APPEARED, after.side, {}))
-        elif bm and not am:
+        elif comparable and bm and not am:
             changes.append(SignalChange(SignalChangeKind.SIGNAL_CLEARED, after.side, {}))
-        if bm and am and _direction(before) is not None and _direction(after) is not None and _direction(before) is not _direction(after):
+        if comparable and bm and am and _direction(before) is not None and _direction(after) is not None and _direction(before) is not _direction(after):
             changes.append(SignalChange(SignalChangeKind.DIRECTION_CHANGED, after.side,
                                         {"before": _direction(before).value, "after": _direction(after).value}))
-        if before.size_persistence_state is not after.size_persistence_state:
+        if comparable and before.size_persistence_state is not after.size_persistence_state:
             changes.append(SignalChange(SignalChangeKind.SIZE_STATE_CHANGED, after.side,
                                         {"before": before.size_persistence_state.value, "after": after.size_persistence_state.value}))
-        if (before.adverse_size_impact != after.adverse_size_impact or
+        if comparable and (before.adverse_size_impact != after.adverse_size_impact or
                 before.route_changed != after.route_changed):
             changes.append(SignalChange(SignalChangeKind.LIQUIDITY_CONTEXT_CHANGED, after.side,
                                         {"adverseSizeImpactBefore": before.adverse_size_impact,
@@ -82,11 +111,12 @@ def compare_signal_snapshots(previous: SignalSnapshot, current: SignalSnapshot) 
         small_delta = after.small_gap_bps - before.small_gap_bps
         large_delta = after.large_gap_bps - before.large_gap_bps
         threshold = current.policy.material_history_change_bps
-        if abs(small_delta) >= threshold or abs(large_delta) >= threshold:
+        if comparable and (abs(small_delta) >= threshold or abs(large_delta) >= threshold):
             changes.append(SignalChange(SignalChangeKind.MAGNITUDE_CHANGED, after.side,
                                         {"smallGapDeltaBps": str(small_delta), "largeGapDeltaBps": str(large_delta)}))
-    if (previous.spread_small_state is not current.spread_small_state or
-            previous.spread_large_state is not current.spread_large_state):
+    if (previous.signals_active and current.signals_active and
+            (previous.spread_small_state is not current.spread_small_state or
+             previous.spread_large_state is not current.spread_large_state)):
         changes.append(SignalChange(SignalChangeKind.LIQUIDITY_CONTEXT_CHANGED, None,
                                     {"spreadSmallBefore": previous.spread_small_state.value,
                                      "spreadSmallAfter": current.spread_small_state.value,

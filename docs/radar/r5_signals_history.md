@@ -27,7 +27,7 @@ These are caller policy, not universal market truth. History generated under dif
 
 ## Side and size semantics
 
-Positive GAP is `PREMIUM`, negative GAP is `DISCOUNT`, and values inside the inclusive material boundaries are `WITHIN_THRESHOLD`. BUY remains a comparison with official ASK; SELL remains a comparison with official BID. The labels never imply an action.
+Positive GAP is `PREMIUM`, negative GAP is `DISCOUNT`, and values strictly between `−min_abs_gap_bps` and `+min_abs_gap_bps` are `WITHIN_THRESHOLD`. Equality at either boundary is material. BUY remains a comparison with official ASK; SELL remains a comparison with official BID. The labels never imply an action.
 
 For each side, `$100 → $1,000` becomes `NO_MATERIAL_DISLOCATION`, `PERSISTS`, `DECAYS`, `EMERGES_AT_SIZE`, or `REVERSES`. Both exact GAPs and their R2 delta remain in evidence; they are never averaged into a score.
 
@@ -41,6 +41,6 @@ When R4 says `reference_usable=false`, R5 succeeds with `SUPPRESSED_REFERENCE_UN
 
 ## Deterministic history
 
-Each immutable R5 snapshot is serialized as canonical sorted JSON and identified by a SHA-256 evidence digest. A comparable series requires identical canonical asset identity and SignalPolicy, timezone-aware strictly increasing times, deterministic ordering and reconstructible digests. Change types are `SIGNAL_APPEARED`, `SIGNAL_CLEARED`, `DIRECTION_CHANGED`, `SIZE_STATE_CHANGED`, `LIQUIDITY_CONTEXT_CHANGED`, `MAGNITUDE_CHANGED`, and `UNCHANGED`.
+Each immutable R5 snapshot is serialized as canonical sorted JSON and identified by a SHA-256 evidence digest. Every history entry must exactly bind its duplicated identity, symbol, observation time and policy metadata to that embedded snapshot. A comparable series requires identical canonical asset identity and SignalPolicy, timezone-aware strictly increasing times, deterministic ordering and reconstructible digests. Change types include `AUTHORITY_STATE_CHANGED`, `SIGNAL_APPEARED`, `SIGNAL_CLEARED`, `DIRECTION_CHANGED`, `SIZE_STATE_CHANGED`, `LIQUIDITY_CONTEXT_CHANGED`, `MAGNITUDE_CHANGED`, and `UNCHANGED`. Economic change labels require comparable active authority at both endpoints; becoming suppressed never asserts that a signal cleared.
 
 The live proof never invents a prior observation. Until a runtime supplies one, it records `previousObservationAvailable=false`, the current entry and an empty change list. Persistence storage, scheduling and terminal UX remain later runtime/R6 work. R4's future market-session authority requirement also remains explicit.

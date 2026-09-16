@@ -98,6 +98,33 @@ def test_suppressed_to_active_material_state_is_signal_appeared():
     assert SignalChangeKind.SIGNAL_APPEARED in kinds(suppressed, active)
 
 
+def test_active_material_to_suppressed_is_authority_change_not_signal_cleared():
+    active = snapshot()
+    suppressed = replace(
+        active,
+        observed_at=active.observed_at + timedelta(minutes=1),
+        signals_active=False,
+        authority_state=SignalAuthorityState.SUPPRESSED_REFERENCE_UNUSABLE,
+        suppression_reasons=(ReferenceStateReason.TRADING_HALTED,),
+        signal_events=(),
+    )
+    result = kinds(active, suppressed)
+    assert SignalChangeKind.AUTHORITY_STATE_CHANGED in result
+    assert SignalChangeKind.SIGNAL_CLEARED not in result
+    assert SignalChangeKind.DIRECTION_CHANGED not in result
+    assert SignalChangeKind.SIZE_STATE_CHANGED not in result
+    assert SignalChangeKind.MAGNITUDE_CHANGED not in result
+
+
+def test_suppressed_to_suppressed_raw_gap_movement_has_no_economic_change_labels():
+    r4 = replace(build_r4(), reference_usable=False,
+                 blocking_reasons=(ReferenceStateReason.TRADING_HALTED,))
+    before = snapshot(r4=r4)
+    after = replace(snapshot(buy=("500", "700"), sell=("-500", "-700"), r4=r4),
+                    observed_at=before.observed_at + timedelta(minutes=1))
+    assert kinds(before, after) == {SignalChangeKind.UNCHANGED}
+
+
 def test_zero_material_history_policy_is_invalid():
     with pytest.raises(SignalComputationError) as exc:
         replace(POLICY, material_history_change_bps=Decimal("0"))
@@ -194,9 +221,13 @@ def test_history_identity_policy_time_and_digest_validation():
     validate_history_series((first, second))
     with pytest.raises(HistoryError) as identity:
         validate_history_series((first, replace(second, asset_uid="other")))
-    assert identity.value.status is HistoryStatus.HISTORY_IDENTITY_MISMATCH
+    assert identity.value.status is HistoryStatus.HISTORY_EVIDENCE_INVALID
+    other_policy = replace(POLICY, min_abs_gap_bps=Decimal("51"))
+    other_snapshot = replace(snapshot(policy=other_policy),
+                             observed_at=snap.observed_at + timedelta(minutes=2))
+    other_entry = build_history_entry(other_snapshot)
     with pytest.raises(HistoryError) as policy:
-        validate_history_series((first, replace(second, policy=replace(POLICY, min_abs_gap_bps=Decimal("51")))))
+        validate_history_series((first, other_entry))
     assert policy.value.status is HistoryStatus.HISTORY_POLICY_MISMATCH
     with pytest.raises(HistoryError) as time:
         validate_history_series((second, first))
@@ -204,6 +235,20 @@ def test_history_identity_policy_time_and_digest_validation():
     with pytest.raises(HistoryError) as digest:
         validate_history_series((replace(first, snapshot_digest="0" * 64),))
     assert digest.value.status is HistoryStatus.HISTORY_EVIDENCE_INVALID
+
+
+@pytest.mark.parametrize("field,value", [
+    ("asset_uid", "0x" + "22" * 32),
+    ("canonical_key", AssetKey(4663, "0x" + "bb" * 20)),
+    ("symbol", "FORGED"),
+    ("observed_at", snapshot().observed_at + timedelta(minutes=5)),
+    ("policy", replace(POLICY, min_abs_gap_bps=Decimal("51"))),
+])
+def test_single_entry_forged_metadata_fails_closed(field, value):
+    entry = build_history_entry(snapshot())
+    with pytest.raises(HistoryError) as exc:
+        validate_history_series((replace(entry, **{field: value}),))
+    assert exc.value.status is HistoryStatus.HISTORY_EVIDENCE_INVALID
 
 
 def test_governance_no_prohibited_top_level_fields():
