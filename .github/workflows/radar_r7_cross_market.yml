@@ -73,14 +73,23 @@ jobs:
           if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
               raise SystemExit("R7_BLOCKED: git HEAD not recorded")
 
-          # Digest chain: file bytes == .sha256 file == evidenceJsonSha256,
-          # and the embedded r7SnapshotDigest reconstructs over the artifact.
+          # Digest chain: file bytes == .sha256 file == manifest
+          # evidenceJsonSha256, and the embedded r7SnapshotDigest reconstructs
+          # over the artifact. The file digest lives in the manifest because a
+          # file cannot contain its own hash.
           file_digest = hashlib.sha256(raw).hexdigest()
           sha_file = Path("artifacts/radar_r7_cross_market_evidence.sha256").read_text()
           if file_digest != sha_file.split()[0]:
               raise SystemExit("R7_BLOCKED: evidence file digest mismatch")
-          if data.get("evidenceJsonSha256") != file_digest:
+          manifest = json.loads(
+              Path("artifacts/radar_r7_cross_market_manifest.json").read_text()
+          )
+          if manifest.get("evidenceJsonSha256") != file_digest:
               raise SystemExit("R7_BLOCKED: manifest evidence digest mismatch")
+          if manifest.get("r7SnapshotDigest") != data.get("r7SnapshotDigest"):
+              raise SystemExit("R7_BLOCKED: manifest snapshot digest mismatch")
+          if manifest.get("gitHead") != data.get("gitHead"):
+              raise SystemExit("R7_BLOCKED: manifest gitHead mismatch")
           if not verify_serialized_evidence(data):
               raise SystemExit("R7_BLOCKED: r7SnapshotDigest does not reconstruct")
 
