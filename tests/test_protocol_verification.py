@@ -131,6 +131,31 @@ def test_model_verifier_fails_closed_on_missing_debt_period_field():
     assert "MODEL_DEBT_SERVICE_IDENTITY" in _failure_ids(report)
 
 
+def test_model_verifier_rejects_all_debt_service_fields_removed_from_active_debt_period():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    fields = (
+        "senior_principal_keur",
+        "senior_interest_keur",
+        "senior_ds_keur",
+    )
+    period = next(
+        row
+        for row in payload["debt_schedule"]["periods"]
+        if row.get("is_operation") is True
+        and row.get("senior_balance_keur") is not None
+        and Decimal(str(row["senior_balance_keur"])) > 0
+        and all(row.get(field) is not None for field in fields)
+    )
+    for field in fields:
+        period[field] = None
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_DEBT_SERVICE_IDENTITY" in _failure_ids(report)
+
+
 def test_model_verifier_fails_closed_on_missing_balance_check():
     payload = deepcopy(_cached_model_payload())
     assert validate_model_run(payload).passed
