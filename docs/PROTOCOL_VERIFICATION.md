@@ -43,6 +43,8 @@ Each envelope records:
 - SHA-256 payload digest;
 - `sha256:<digest>` content address.
 
+The serialized envelope verifier validates the declared schema/canonicalization and requires non-empty surface, evidence type, and string authority references before recomputing the payload digest and content address. `payloadSha256` remains intentionally a **payload-only** digest; envelope metadata is schema-validated but is not represented as cryptographically bound by that payload digest. A future full-envelope digest would require a separately versioned contract.
+
 The canonicalization is a FINCO project-defined encoding. It is **not** represented as RFC 8785 or another external canonical-JSON standard.
 
 Decimal values are serialized as strings to preserve financial precision. Non-finite numeric values and timezone-naive datetimes are rejected rather than normalized silently.
@@ -60,15 +62,17 @@ The Model verifier consumes the serialized result from `app.api.project_runner.r
 - required KPIs are finite;
 - total EBITDA reconciles to total revenue less total OPEX;
 - minimum DSCR is positive;
-- serialized senior debt service reconciles to principal plus interest in every period;
+- for applicable operation-period senior-debt rows, principal, interest and debt service must all be finite and debt service must reconcile to principal plus interest;
+- construction/pre-operation rows and operation rows with no serialized senior-debt-service evidence and no active senior balance are treated as explicit N/A states rather than coerced to zero;
 - debt-schedule total senior service reconciles to the KPI total;
 - tax-schedule total reconciles to the KPI total;
 - distribution-schedule total reconciles to the KPI total;
 - representative DSCR reconciles to CFADS divided by senior debt service;
 - P&L, balance sheet and PF cash-waterfall statement surfaces are present;
-- serialized balance-sheet balance checks remain within the public verification tolerance.
+- every operation-period serialized balance-sheet row must contain a finite `balance_check_keur`, and every applicable balance check must remain within the public verification tolerance;
+- construction/pre-operation balance-sheet rows may legitimately omit the balance-check metric and are not reinterpreted as zero.
 
-These checks reconcile output surfaces. They do not independently calculate a second project valuation.
+These checks reconcile output surfaces. They do not independently calculate a second project valuation. Missing or malformed evidence on an applicable row fails closed.
 
 ## FINCO Radar R3 verification
 
@@ -78,30 +82,34 @@ The R3 verifier consumes `LiquiditySnapshot.to_evidence_dict()` output and check
 
 - `LIQUIDITY_OK` status and canonical asset identity;
 - exact four-slot BUY/SELL × $100/$1,000 quote matrix;
-- notional ordering;
+- every quote slot is bound to its canonical side, requested notional and `QUOTE_OK` status;
+- exact R3 observation notionals of $100 and $1,000;
 - BUY and SELL directional GAP-delta identities;
 - executable cross-side spread formula at both notionals;
 - executable spread-delta identity;
 - canonical route evidence for all four quote slots;
-- four provider-cost evidence rows;
-- quote-pair timing coherence against the caller-supplied R3 policy;
+- provider-cost evidence contains the exact BUY/SELL × $100/$1,000 matrix with no duplicate slot;
+- temporal evidence contains exactly the four canonical R3 comparison-pair identities: `BUY_SIZE_PAIR`, `SELL_SIZE_PAIR`, `CROSS_SIDE_100`, and `CROSS_SIDE_1000`;
+- every observed pair skew is finite and non-negative, the stated maximum reconciles to those four values, and that maximum remains within caller policy;
 - complete R0/R1/R2/R3 lineage evidence;
 - preserved R3 boundaries (`R4_NOT_YET_APPLIED`, `R5_NOT_YET_APPLIED`, `R6_NOT_YET_APPLIED`);
 - no composite score, classification, recommendation or trading-signal field.
 
-R3 remains the authority for liquidity measurement. The verification layer only reconciles the evidence R3 publishes.
+R3 remains the authority for liquidity measurement. The verification layer only reconciles the exact evidence structure and identities R3 publishes; it does not request routes or create alternate liquidity economics.
 
 ## Public validation corpus
 
 Schema: `finco.public-validation-corpus.v1`
 
-The current corpus contains exactly three deterministic synthetic cases:
+The v1 corpus contract contains exactly these three deterministic synthetic cases, in this order and with these surfaces:
 
-- `model-solar-base`;
-- `model-wind-base`;
-- `radar-r3-synthetic-liquidity`.
+1. `model-solar-base` / `FINCO_MODEL`;
+2. `model-wind-base` / `FINCO_MODEL`;
+3. `radar-r3-synthetic-liquidity` / `FINCO_RADAR_R3`.
 
 The Model cases use the repository's generic synthetic reference factories. The Radar case uses a synthetic local-chain-style deployment, fictional token/settlement identities, fixed timestamps, fixed reference prices and fixed router quote amounts.
+
+The corpus verifier requires the exact v1 case IDs/order/surfaces, each case's outer surface to agree with its nested envelope surface, the expected evidence type for each case, a valid nested evidence envelope, and a self-consistent corpus digest. A different three-case corpus is not accepted merely because it has been rehashed under the v1 schema name.
 
 The corpus contains no client project, workbook, wallet, company, person, historical calibration dataset, or jurisdiction-specific source data.
 
@@ -148,7 +156,7 @@ A byte difference fails the gate.
 - installs the constrained dependency set;
 - runs `pip check`;
 - compiles the verification package;
-- runs focused verification tests;
+- runs focused verification tests, including malformed-evidence/adversarial cases;
 - builds the public corpus twice;
 - requires byte-identical output;
 - runs the repository public-safety scan;
