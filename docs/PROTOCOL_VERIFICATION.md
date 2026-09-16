@@ -65,7 +65,9 @@ The Model verifier consumes the serialized result from `app.api.project_runner.r
 - debt, tax and distribution schedules expose the exact same unique serialized `WaterfallResult.periods` structural axis: `(period, date, year_index, period_in_year, is_operation)`;
 - every axis field is structurally valid and `is_operation` must be an actual boolean;
 - missing, duplicated, reordered or conflicting debt/tax/distribution period evidence fails the common-axis check;
-- operation applicability is derived from that validated common axis rather than from the debt schedule alone;
+- the number of operation rows on that common axis must equal the independently serialized `derivation_evidence.revenue.period_count`, `ebitda.period_count` and `opex.period_count`, and those three counts must be valid positive integers and mutually equal;
+- the full common `(period, date)` axis must also equal the independently assembled P&L, balance-sheet and PF cash-waterfall statement axes;
+- operation applicability is derived from the validated common schedule axis only after those independent structural anchors remain consistent;
 - for every applicable operation debt row, present senior-balance metadata must be finite and senior debt service reconciles to principal plus interest;
 - debt-schedule total senior service reconciles to the KPI total;
 - tax-schedule total reconciles to the KPI total;
@@ -75,9 +77,11 @@ The Model verifier consumes the serialized result from `app.api.project_runner.r
 - every operation date from the validated common period axis has exactly one serialized balance-sheet row;
 - every applicable operation balance-sheet row has a finite balance check within the public verification tolerance.
 
-Construction/pre-operation rows may legitimately carry N/A debt or balance-check values when the source serializer declares them non-operation. The verifier does not invent zero values for missing evidence and does not infer a replacement operation axis.
+A coordinated mutation of debt, tax and distribution cannot establish completeness by agreement alone while the independently serialized derivation-count or statement-axis evidence remains unchanged. The verifier still does not attempt to protect against an attacker who can coherently rewrite every serialized authority and then recompute every digest; source authenticity is a separate trust boundary.
 
-These checks reconcile output surfaces. They do not independently calculate a second project valuation, debt schedule, tax schedule, distribution schedule, or balance sheet.
+Construction/pre-operation rows may legitimately carry N/A debt or balance-check values when the reconciled serialized evidence declares them non-operation. The verifier does not invent zero values, infer COD, or construct a replacement financial period axis.
+
+These checks reconcile output surfaces. They do not independently calculate a second project valuation, debt schedule, tax schedule, distribution schedule, financial statement, or balance sheet.
 
 ## FINCO Radar R3 verification
 
