@@ -1,7 +1,7 @@
 """Build FINCO's sanitized deterministic public verification corpus.
 
 The corpus uses only fictional Model projects and a fully synthetic Radar R3
-asset/quote matrix.  It is intentionally network-free and contains no client,
+asset/quote matrix. It is intentionally network-free and contains no client,
 workbook, wallet, company or jurisdiction-specific source data.
 """
 from __future__ import annotations
@@ -43,6 +43,11 @@ from .radar_r3 import build_radar_r3_validation_claim, validate_radar_r3_evidenc
 
 
 PUBLIC_CORPUS_SCHEMA = "finco.public-validation-corpus.v1"
+_EXPECTED_V1_CASES: tuple[tuple[str, str, str], ...] = (
+    ("model-solar-base", "FINCO_MODEL", "MODEL_PUBLIC_VALIDATION"),
+    ("model-wind-base", "FINCO_MODEL", "MODEL_PUBLIC_VALIDATION"),
+    ("radar-r3-synthetic-liquidity", "FINCO_RADAR_R3", "RADAR_R3_PUBLIC_VALIDATION"),
+)
 
 # Deliberately synthetic local-chain-style identity; not a real listed asset.
 _SYNTH_CHAIN = 31337
@@ -270,21 +275,35 @@ def build_public_validation_corpus() -> dict[str, Any]:
 
 
 def verify_public_validation_corpus(corpus: Mapping[str, Any]) -> bool:
-    """Verify corpus digest and each nested evidence envelope."""
+    """Verify exact v1 case contract, nested envelopes and corpus digest."""
 
     if corpus.get("schema") != PUBLIC_CORPUS_SCHEMA:
         return False
     cases = corpus.get("cases")
-    if not isinstance(cases, list) or len(cases) != 3:
+    if not isinstance(cases, list) or len(cases) != len(_EXPECTED_V1_CASES):
         return False
-    if not all(
-        isinstance(case, Mapping)
-        and case.get("synthetic") is True
-        and isinstance(case.get("envelope"), Mapping)
-        and verify_evidence_envelope(case["envelope"])
-        for case in cases
+
+    for case, (expected_id, expected_surface, expected_evidence_type) in zip(
+        cases, _EXPECTED_V1_CASES
     ):
-        return False
+        if not isinstance(case, Mapping):
+            return False
+        if case.get("caseId") != expected_id:
+            return False
+        if case.get("surface") != expected_surface:
+            return False
+        if case.get("synthetic") is not True:
+            return False
+        envelope = case.get("envelope")
+        if not isinstance(envelope, Mapping):
+            return False
+        if envelope.get("surface") != expected_surface:
+            return False
+        if envelope.get("evidenceType") != expected_evidence_type:
+            return False
+        if not verify_evidence_envelope(envelope):
+            return False
+
     body = {
         "schema": corpus.get("schema"),
         "sanitization": corpus.get("sanitization"),
