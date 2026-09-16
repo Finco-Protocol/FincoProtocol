@@ -1,0 +1,219 @@
+name: Radar R4 REFERENCE STATE
+
+on:
+  push:
+    branches: [radar/r4-reference-state]
+    paths:
+      - "finco_radar/reference_state/**"
+      - "finco_radar/r4/**"
+      - "tests/test_radar_r4_reference_state.py"
+      - "docs/radar/r4_reference_state.md"
+      - ".github/workflows/radar_r4_reference_state.yml"
+  workflow_dispatch:
+
+jobs:
+  reference-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Radar test/runtime dependencies
+        run: python -m pip install "httpx>=0.27,<1" "pytest>=8,<10" "pytest-asyncio>=0.21,<2"
+      - name: Run focused R4 tests (offline, deterministic)
+        run: pytest -q tests/test_radar_r4_reference_state.py
+      - name: Run R4 live reference-state proof
+        run: python -m finco_radar.r4.live_proof
+      - name: Require reference-state invariants
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r4_reference_state_evidence.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit(f"R4_BLOCKED: live proof not PASS: {data}")
+          if data.get("typedStatus") != "REFERENCE_STATE_OK":
+              raise SystemExit("R4_BLOCKED: typed status is not REFERENCE_STATE_OK")
+          if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
+              raise SystemExit("R4_BLOCKED: git HEAD not recorded")
+          if not data.get("producedAt"):
+              raise SystemExit("R4_BLOCKED: producedAt missing")
+          if data.get("schemaVersion") != "radar-r4-reference-state-v1":
+              raise SystemExit("R4_BLOCKED: schema version missing")
+
+          # Exact canonical identity.
+          key = str(data["asset"]["canonicalKey"])
+          if not key.startswith("4663:0x"):
+              raise SystemExit("R4_BLOCKED: selected asset is not a canonical Robinhood Chain key")
+
+          # Every state dimension must be present and typed.
+          states = data.get("states", {})
+          vocabulary = {
+              "assetLifecycle": {"ACTIVE", "INACTIVE", "UNSPECIFIED"},
+              "halt": {"NOT_HALTED", "TRADING_HALTED"},
+              "freshness": {"CURRENT", "EXPECTED_STATIC", "STALE_UNEXPECTED", "UNRESOLVED"},
+              "marketSession": {"OPEN", "CLOSED", "UNRESOLVED"},
+              "corporateAction": {"NONE", "IN_PROGRESS", "COMPLETED", "UNRESOLVED"},
+              "multiplier": {"CURRENT", "PENDING_FUTURE", "TRANSITION_DUE_UNRESOLVED", "INCONSISTENT"},
+          }
+          for dimension, allowed in vocabulary.items():
+              if states.get(dimension) not in allowed:
+                  raise SystemExit(f"R4_BLOCKED: state dimension {dimension} missing or invalid")
+
+          # EXPECTED_STATIC is RESERVED and unreachable with the current
+          # point-in-time session evidence contract (Correction A). The live
+          # proof evaluates with UNRESOLVED session evidence, so this state
+          # must never appear; reaching it means the authority was fabricated.
+          if states["freshness"] == "EXPECTED_STATIC":
+              raise SystemExit(
+                  "R4_BLOCKED: EXPECTED_STATIC emitted without an interval-capable "
+                  "session authority (R4_MARKET_SESSION_AUTHORITY_REQUIRED)"
+              )
+
+          # Usability must be reconstructible from blocking reasons.
+          reasons = data.get("blockingReasons", [])
+          if data.get("referenceUsable") != (not reasons):
+              raise SystemExit("R4_BLOCKED: referenceUsable inconsistent with blockingReasons")
+
+          # Freshness evidence must be recorded with age and policy.
+          timing = data.get("timing", {})
+          if timing.get("asOf") is None or timing.get("referenceGeneratedAt") is None:
+              raise SystemExit("R4_BLOCKED: evaluation timestamps missing")
+          policy = data.get("policy", {})
+          for field in (
+              "maxLiveReferenceAgeSeconds", "maxSessionEvidenceAgeSeconds",
+              "maxClockSkewSeconds",
+          ):
+              if not isinstance(policy.get(field), int) or policy[field] < 0:
+                  raise SystemExit(f"R4_BLOCKED: policy {field} missing or invalid")
+
+          # Corporate-action evidence: rows preserved with raw payloads.
+          ca = data.get("corporateActionEvidence", {})
+          if not isinstance(ca.get("rows"), list):
+              raise SystemExit("R4_BLOCKED: corporate-action evidence rows missing")
+          for row in ca["rows"]:
+              if not isinstance(row.get("rawEvidence"), dict) or not row.get("type"):
+                  raise SystemExit("R4_BLOCKED: corporate-action row evidence incomplete")
+
+          # Session authority boundary must be disclosed honestly.
+          session_authority = data.get("sessionAuthority", {})
+          if not session_authority.get("note"):
+              raise SystemExit("R4_BLOCKED: session authority boundary not disclosed")
+
+          # Boundaries and audit trail.
+          boundaries = data.get("boundaries", {})
+          if boundaries.get("referenceStateAuthority") != "R4_APPLIED":
+              raise SystemExit("R4_BLOCKED: R4 must establish reference-state authority")
+          if boundaries.get("signalAuthority") != "R5_NOT_YET_APPLIED":
+              raise SystemExit("R4_BLOCKED: R4 falsely claimed signal authority")
+          if boundaries.get("terminalAuthority") != "R6_NOT_YET_APPLIED":
+              raise SystemExit("R4_BLOCKED: R4 falsely claimed terminal authority")
+          audit = data.get("candidateAttempts")
+          if not isinstance(audit, dict) or not isinstance(audit.get("skippedCandidates"), list):
+              raise SystemExit("R4_BLOCKED: candidateAttempts audit block missing")
+
+          # No score, no ranking, no trading signal.
+          def keys_below(node, skip=frozenset()):
+              if isinstance(node, dict):
+                  for k, v in node.items():
+                      yield k
+                      if k not in skip:
+                          yield from keys_below(v)
+              elif isinstance(node, list):
+                  for v in node:
+                      yield from keys_below(v)
+          forbidden = ("score", "rank", "rating", "grade", "verdict", "opportunit")
+          if any(w in k.lower() for k in keys_below(data) for w in forbidden):
+              raise SystemExit("R4_BLOCKED: forbidden ranking/score field present")
+          if any(
+              w in k.lower()
+              for k in keys_below(data, skip={"boundaries"})
+              for w in ("signal", "recommend")
+          ):
+              raise SystemExit("R4_BLOCKED: forbidden signal field present")
+
+          print(
+              f"R4_REFERENCE_STATE_PASS key={key} "
+              f"freshness={states['freshness']} session={states['marketSession']} "
+              f"halt={states['halt']} lifecycle={states['assetLifecycle']} "
+              f"corporateAction={states['corporateAction']} multiplier={states['multiplier']} "
+              f"usable={data['referenceUsable']} blocking={reasons} "
+              f"selected={audit['selectedSymbol']} skippedCandidates={audit['skippedCandidateCount']}"
+          )
+          PY
+      - name: Run R3 FINCO LIQUIDITY regression
+        env:
+          RADAR_R3_EVIDENCE_PATH: artifacts/radar_r3_regression_on_r4.json
+        run: python -m finco_radar.r3.live_proof
+      - name: Require R3 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r3_regression_on_r4.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R3_REGRESSION_BLOCKED: live proof not PASS")
+          print("R3_REGRESSION_PASS")
+          PY
+      - name: Run R2 FINCO GAP regression
+        env:
+          RADAR_R2_EVIDENCE_PATH: artifacts/radar_r2_regression_on_r4.json
+        run: python -m finco_radar.r2.live_proof
+      - name: Require R2 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r2_regression_on_r4.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R2_REGRESSION_BLOCKED: live proof not PASS")
+          print("R2_REGRESSION_PASS")
+          PY
+      - name: Run R1 canonical registry regression
+        env:
+          RADAR_R1_EVIDENCE_PATH: artifacts/radar_r1_regression_on_r4.json
+        run: python -m finco_radar.r1.live_proof
+      - name: Require R1 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r1_regression_on_r4.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R1_REGRESSION_BLOCKED: live proof not PASS")
+          print("R1_REGRESSION_PASS")
+          PY
+      - name: Run R0 execution quote regression
+        env:
+          RADAR_R0_EVIDENCE_PATH: artifacts/radar_r0_regression_on_r4.json
+        run: python -m finco_radar.r0.live_proof
+      - name: Require original R0 size-aware acceptance
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r0_regression_on_r4.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R0_REGRESSION_BLOCKED: live proof not PASS")
+          buy = Decimal(data["sizeImpactBps"]["BUY"])
+          sell = Decimal(data["sizeImpactBps"]["SELL"])
+          if buy == 0 and sell == 0:
+              raise SystemExit("R0_REGRESSION_BLOCKED: no size-dependent quote economics observed")
+          print(f"R0_SIZE_AWARE_REGRESSION_PASS BUY={buy}bps SELL={sell}bps")
+          PY
+      - name: Upload R4 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r4-reference-state-evidence
+          path: |
+            artifacts/radar_r4_reference_state_evidence.json
+            artifacts/radar_r3_regression_on_r4.json
+            artifacts/radar_r2_regression_on_r4.json
+            artifacts/radar_r1_regression_on_r4.json
+            artifacts/radar_r0_regression_on_r4.json
+          if-no-files-found: error
