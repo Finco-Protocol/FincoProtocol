@@ -55,6 +55,22 @@ def _failure_ids(report) -> set[str]:
     return {failure.invariant_id for failure in report.failures}
 
 
+def _active_debt_period_index(payload: dict) -> int:
+    fields = (
+        "senior_principal_keur",
+        "senior_interest_keur",
+        "senior_ds_keur",
+    )
+    return next(
+        index
+        for index, row in enumerate(payload["debt_schedule"]["periods"])
+        if row.get("is_operation") is True
+        and row.get("senior_balance_keur") is not None
+        and Decimal(str(row["senior_balance_keur"])) > 0
+        and all(row.get(field) is not None for field in fields)
+    )
+
+
 def test_canonical_digest_is_order_independent_and_decimal_exact():
     left = {
         "z": Decimal("1.2300"),
@@ -140,14 +156,7 @@ def test_model_verifier_rejects_all_debt_service_fields_removed_from_active_debt
         "senior_interest_keur",
         "senior_ds_keur",
     )
-    period = next(
-        row
-        for row in payload["debt_schedule"]["periods"]
-        if row.get("is_operation") is True
-        and row.get("senior_balance_keur") is not None
-        and Decimal(str(row["senior_balance_keur"])) > 0
-        and all(row.get(field) is not None for field in fields)
-    )
+    period = payload["debt_schedule"]["periods"][_active_debt_period_index(payload)]
     for field in fields:
         period[field] = None
 
@@ -175,6 +184,90 @@ def test_model_verifier_fails_closed_on_missing_balance_check():
 
     report = validate_model_run(payload)
     assert not report.passed
+    assert "MODEL_BALANCE_SHEET_BALANCES" in _failure_ids(report)
+
+
+def test_model_period_axis_rejects_deleted_active_debt_operation_row():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    del payload["debt_schedule"]["periods"][_active_debt_period_index(payload)]
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" in _failure_ids(report)
+
+
+def test_model_period_axis_rejects_operation_flag_conflict():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    index = _active_debt_period_index(payload)
+    payload["debt_schedule"]["periods"][index]["is_operation"] = False
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" in _failure_ids(report)
+
+
+def test_model_verifier_rejects_malformed_non_null_senior_balance():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    index = _active_debt_period_index(payload)
+    payload["debt_schedule"]["periods"][index]["senior_balance_keur"] = "not-a-number"
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in _failure_ids(report)
+    assert "MODEL_DEBT_SERVICE_IDENTITY" in _failure_ids(report)
+
+
+def test_model_period_axis_rejects_duplicate_serialized_row():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    payload["tax_schedule"]["periods"].append(
+        deepcopy(payload["tax_schedule"]["periods"][-1])
+    )
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" in _failure_ids(report)
+
+
+def test_model_period_axis_requires_boolean_is_operation():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    index = _active_debt_period_index(payload)
+    payload["distribution_schedule"]["periods"][index]["is_operation"] = "true"
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" in _failure_ids(report)
+
+
+def test_model_balance_sheet_rejects_deleted_operation_row():
+    payload = deepcopy(_cached_model_payload())
+    assert validate_model_run(payload).passed
+
+    operation_dates = {
+        row.get("date")
+        for row in payload["tax_schedule"]["periods"]
+        if row.get("is_operation") is True and row.get("date")
+    }
+    bs_periods = payload["financial_statements"]["balance_sheet"]["periods"]
+    index = next(
+        index
+        for index, row in enumerate(bs_periods)
+        if row.get("date") in operation_dates
+    )
+    del bs_periods[index]
+
+    report = validate_model_run(payload)
+    assert not report.passed
+    assert "MODEL_PERIOD_AXIS_CONSISTENT" not in _failure_ids(report)
     assert "MODEL_BALANCE_SHEET_BALANCES" in _failure_ids(report)
 
 
