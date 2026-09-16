@@ -102,7 +102,8 @@ def validate_model_run(
     cross-view consistency in the serialized production result returned by
     ``app.api.project_runner.run_project``. Missing or malformed evidence on an
     applicable operation period fails closed; construction/pre-operation rows
-    may legitimately expose no debt-service or balance-check metric.
+    and operation rows where the serializer declares no senior-debt evidence and
+    no active senior balance remain legitimate N/A states.
     """
 
     checks: list[InvariantCheck] = []
@@ -191,13 +192,21 @@ def validate_model_run(
         period = _mapping(raw_period)
         if period.get("is_operation") is not True:
             continue
-        applicable_debt_periods += 1
         date_value = period.get("date")
         if isinstance(date_value, str) and date_value:
             operation_dates.add(date_value)
-        principal = _decimal(period.get(debt_fields[0]))
-        interest = _decimal(period.get(debt_fields[1]))
-        debt_service = _decimal(period.get(debt_fields[2]))
+
+        raw_values = tuple(period.get(field) for field in debt_fields)
+        senior_balance = _decimal(period.get("senior_balance_keur"))
+        carries_debt_service_evidence = any(value is not None for value in raw_values)
+        has_active_senior_balance = senior_balance is not None and senior_balance > 0
+        if not carries_debt_service_evidence and not has_active_senior_balance:
+            continue
+
+        applicable_debt_periods += 1
+        principal = _decimal(raw_values[0])
+        interest = _decimal(raw_values[1])
+        debt_service = _decimal(raw_values[2])
         if principal is None or interest is None or debt_service is None:
             debt_failures.append(index)
             continue
@@ -218,12 +227,12 @@ def validate_model_run(
             "MODEL_DEBT_SERVICE_IDENTITY",
             debt_identity_ok,
             (
-                "all operation periods have finite senior principal, interest and debt "
-                "service; debt service = principal + interest"
+                "all applicable operation debt rows have finite senior principal, interest "
+                "and debt service; debt service = principal + interest"
                 if debt_identity_ok
                 else (
                     f"periodFailures={debt_failures!r}; "
-                    f"operationPeriodCount={applicable_debt_periods}; "
+                    f"applicableDebtPeriodCount={applicable_debt_periods}; "
                     f"periodCount={len(debt_periods)}"
                 )
             ),
