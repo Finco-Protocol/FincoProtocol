@@ -1,0 +1,78 @@
+name: Radar R5 Signals History
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r5-authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e . pytest
+      - name: Focused and upstream regression tests
+        run: |
+          python -m pytest -q tests/test_radar_r5_signals_history.py
+          python -m pytest -q tests/test_radar_r4_reference_state.py
+          python -m pytest -q tests/test_radar_r3_liquidity.py
+          python -m pytest -q tests/test_radar_r2_gap.py
+          python -m pytest -q tests/test_radar_r1_registry.py
+          python -m pytest -q tests/test_radar_r0_quotes.py
+      - name: Protected production paths remain frozen
+        run: |
+          test -z "$(git diff --name-only 297a750e354895c582d923946e67978129fa2e5a...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 financial_engine finco_core finco_protocol)"
+      - name: R5 live proof
+        run: python -m finco_radar.r5.live_proof
+      - name: Artifact invariants
+        run: |
+          python - <<'PY'
+          import json, math
+          from pathlib import Path
+          p=Path("artifacts/radar_r5_signals_history_evidence.json")
+          d=json.loads(p.read_text())
+          assert d["status"] == "PASS" and d["typedStatus"] == "SIGNALS_OK"
+          assert d["asset"]["assetUid"] and d["asset"]["canonicalKey"]
+          assert d["boundaries"] == {"referenceStateAuthority":"R4_APPLIED","signalAuthority":"R5_APPLIED","historyAuthority":"R5_APPLIED","terminalAuthority":"R6_NOT_YET_APPLIED"}
+          assert set(d["policy"]) == {"minAbsGapBps","maxExecutionSpreadBps","maxAdverseSizeImpactBps","maxInputSkewSeconds","materialHistoryChangeBps"}
+          assert d["history"]["currentEntry"]["snapshotDigest"] and len(d["history"]["currentEntry"]["snapshotDigest"]) == 64
+          assert "candidateAttempts" in d and d["gitHead"]
+          if not d["signalsActive"]: assert not d["signalEvents"] and d["suppressionReasons"]
+          banned={"score","rank","rating","grade","confidenceScore","opportunityScore","buyRecommendation","sellRecommendation","arbitrage","profit","expectedReturn","priceTarget"}
+          def walk(v):
+              if isinstance(v,dict):
+                  for k,x in v.items():
+                      assert k not in banned
+                      yield from walk(x)
+              elif isinstance(v,list):
+                  for x in v: yield from walk(x)
+              elif isinstance(v,float): assert math.isfinite(v)
+          list(walk(d))
+          PY
+      - name: Live upstream regressions
+        run: |
+          python -m finco_radar.r4.live_proof
+          python -m finco_radar.r3.live_proof
+          python -m finco_radar.r2.live_proof
+          python -m finco_radar.r1.live_proof
+          python -m finco_radar.r0.live_proof
+      - name: Original R0 size-aware gate
+        run: python -m pytest -q tests/test_radar_r0_quotes.py
+      - name: Package evidence and hashes
+        run: |
+          cd artifacts
+          sha256sum radar_r5_signals_history_evidence.json > radar_r5_signals_history_evidence.sha256
+          zip -9 radar_r5_signals_history_evidence.zip radar_r5_signals_history_evidence.json radar_r5_signals_history_evidence.sha256
+          sha256sum radar_r5_signals_history_evidence.zip > radar_r5_signals_history_evidence_zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-r5-signals-history-evidence
+          path: artifacts/radar_r5_signals_history_*
