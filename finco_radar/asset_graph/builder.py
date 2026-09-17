@@ -74,8 +74,10 @@ def digest_record(record: Mapping) -> str:
     return hashlib.sha256(canonical_evidence_bytes(record)).hexdigest()
 
 
-def _canonical_bytes_key(record: Mapping) -> bytes:
-    return canonical_evidence_bytes(record)
+def _canonical_order_key(record: Mapping) -> str:
+    # Hex digest ordering: stable, and identical to the CI gate's
+    # re-derivation of QUOTED_ON evidence records.
+    return hashlib.sha256(canonical_evidence_bytes(record)).hexdigest()
 
 
 def validate_path_structure(
@@ -252,7 +254,7 @@ class AssetGraphBuilder:
         # observation used, independent of caller iteration order.
         record = {
             "venue": venue,
-            "observations": sorted(observations, key=_canonical_bytes_key),
+            "observations": sorted(observations, key=_canonical_order_key),
         }
         self._add_edge(AssetGraphEdge(
             edge_id=eid,

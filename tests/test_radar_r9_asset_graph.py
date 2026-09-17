@@ -1006,8 +1006,9 @@ def test_f2_02_quoted_on_digest_covers_exact_observations_order_independent():
     builder_b = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
     builder_b.add_quoted_on_edge(VENUE, [row_b, row_a])
     expected = digest_record(
-        {"venue": VENUE, "observations": sorted([row_a, row_b],
-                                                key=canonical_evidence_bytes)})
+        {"venue": VENUE, "observations": sorted(
+            [row_a, row_b],
+            key=lambda r: hashlib.sha256(canonical_evidence_bytes(r)).hexdigest())})
     assert builder_a._edges[0].evidence_digest == expected
     assert builder_b._edges[0].evidence_digest == expected
 
