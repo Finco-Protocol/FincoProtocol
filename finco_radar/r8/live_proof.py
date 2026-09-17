@@ -339,6 +339,12 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                         source_digests={
                             "r7CrossMarketDigest": _canonical_digest(r7_evidence),
                             "r3LiquidityDigest": _canonical_digest(r3.to_evidence_dict()),
+                            "r2GapEvidenceDigest": _canonical_digest(
+                                upstream_evidence["r2GapEvidence"]
+                            ),
+                            "r0QuoteEvidenceDigest": _canonical_digest(
+                                upstream_evidence["r0QuoteEvidence"]
+                            ),
                         },
                         synthetic=False,
                         generated_at=datetime.now(timezone.utc),
