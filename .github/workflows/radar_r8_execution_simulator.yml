@@ -120,14 +120,16 @@ jobs:
                   raise SystemExit(f"R8_BLOCKED: {digest_name} does not reconstruct")
 
           # NO-DOUBLE-COUNT gate (spec §4/§35): for every scenario the gross
-          # execution edge must equal the side-adjusted R2 gap exactly.
-          # R0/R3 size impact is diagnostic evidence and must never appear as
-          # an additional deduction.
+          # execution edge must equal the side-adjusted R2 gap within the same
+          # arithmetic-reconstruction tolerance the engine enforces (pure
+          # Decimal division-rounding residue, <= 1e-6 bps). R0/R3 size impact
+          # is diagnostic evidence and must never appear as an additional
+          # deduction — a whole-bps deviation means double counting.
           for scenario in data["scenarios"]:
               gap = Decimal(scenario["r2GapBps"])
               gross = Decimal(scenario["grossExecutionEdgeBps"])
               expected = -gap if scenario["scenario"]["side"] == "BUY" else gap
-              if gross != expected:
+              if abs(gross - expected) > Decimal("0.000001"):
                   raise SystemExit(
                       f"R8_BLOCKED: gross edge {gross} != side-adjusted R2 gap {expected}; "
                       "double counting suspected"
