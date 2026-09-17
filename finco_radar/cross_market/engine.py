@@ -10,6 +10,7 @@ general asset graph (R9 boundary).
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from decimal import Decimal
 from typing import Sequence
@@ -34,6 +35,7 @@ from .contracts import (
     LayerType,
     SettlementContext,
     StackTiming,
+    canonical_evidence_bytes,
     TimingState,
     TokenRepresentation,
     VenueObservation,
@@ -90,7 +92,7 @@ def _fx_rate_for(
     age = _decimal_seconds((as_of - fx.observed_at).total_seconds())
     if age < 0 or age > policy.stale_layer_seconds:
         return None
-    return fx.rate
+    return fx.rate, fx.observed_at
 
 
 def _component(
@@ -107,25 +109,47 @@ def _component(
     from_source: str,
     to_source: str,
     fx: tuple[str, str, Decimal] | None = None,
+    fx_observed_at: datetime | None = None,
 ) -> DislocationComponent:
-    """Build one component and evaluate its timing authority (Correction A).
+    """Build one component and evaluate its CAUSAL timing authority.
 
-    A component is timing-valid only when BOTH endpoint observations are fresh
-    within the policy staleness window (a future observation is never fresh)
-    and their pairwise skew is inside the policy skew window. Timing-invalid
+    Correction B (F3): timing validity is component-local and causal. Every
+    observation that causally contributes to the component price participates:
+    both endpoints AND the FX observation whenever FX normalization was
+    actually used. A component is timing-valid only if (1) no dependency is in
+    the future relative to as_of, (2) every dependency is fresh within
+    policy.stale_layer_seconds, and (3) the oldest-to-newest skew across ALL
+    dependencies is within policy.max_layer_skew_seconds. Timing-invalid
     components are retained as evidence but excluded from attribution.
     """
     delta = to_price - from_price
     delta_bps = (to_price / from_price - Decimal(1)) * Decimal(10000)
     material = abs(delta_bps) >= policy.material_dislocation_bps
-    from_age = _decimal_seconds((as_of - from_observed_at).total_seconds())
-    to_age = _decimal_seconds((as_of - to_observed_at).total_seconds())
-    timing_skew = _decimal_seconds(abs((to_observed_at - from_observed_at).total_seconds()))
-    timing_valid = (
-        Decimal(0) <= from_age <= policy.stale_layer_seconds
-        and Decimal(0) <= to_age <= policy.stale_layer_seconds
-        and timing_skew <= policy.max_layer_skew_seconds
-    )
+    dependencies: list[tuple[str, datetime]] = [
+        (f"{from_layer.value}", from_observed_at),
+        (f"{to_layer.value}", to_observed_at),
+    ]
+    if fx is not None:
+        if fx_observed_at is None:
+            raise CrossMarketError(
+                "FX normalization was applied without an FX observation timestamp",
+                CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH,
+            )
+        dependencies.append(("FX_NORMALIZATION", fx_observed_at))
+    ordered = sorted(dependencies, key=lambda item: item[1])
+    oldest = ordered[0][1]
+    newest = ordered[-1][1]
+    timing_skew = _decimal_seconds((newest - oldest).total_seconds())
+    timing_valid = True
+    for dep_label, stamp in dependencies:
+        _require_aware(stamp, f"{dep_label} observed_at")
+        age = _decimal_seconds((as_of - stamp).total_seconds())
+        if age < 0:
+            timing_valid = False  # future observation: never fresh
+        if age > policy.stale_layer_seconds:
+            timing_valid = False
+    if timing_skew > policy.max_layer_skew_seconds:
+        timing_valid = False
     return DislocationComponent(
         from_layer=from_layer,
         to_layer=to_layer,
@@ -145,6 +169,9 @@ def _component(
         timing_skew_seconds=timing_skew,
         from_source=from_source,
         to_source=to_source,
+        timing_dependencies=tuple(sorted(dependencies, key=lambda item: item[0])),
+        timing_oldest=oldest,
+        timing_newest=newest,
     )
 
 
@@ -344,6 +371,27 @@ def build_cross_market_snapshot(
     comparison_currency = policy.comparison_currency.strip().upper()
 
     # ---- identity and lineage validation (fail closed) --------------------
+    # Correction B (F4): the R3 lineage pair must be internally consistent.
+    # A valid outer r7SnapshotDigest can never legitimize embedded R3 evidence
+    # whose recorded digest does not reconstruct, nor a one-sided lineage.
+    upstream = upstream_evidence or {}
+    digests = source_digests or {}
+    r3_evidence = upstream.get("r3LiquidityEvidence")
+    r3_digest = digests.get("r3LiquidityDigest")
+    if (r3_evidence is None) != (r3_digest is None):
+        raise CrossMarketError(
+            "incomplete R3 lineage pair: r3LiquidityEvidence and r3LiquidityDigest "
+            "must be supplied together or not at all",
+            CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH,
+        )
+    if r3_evidence is not None:
+        recomputed = hashlib.sha256(canonical_evidence_bytes(r3_evidence)).hexdigest()
+        if recomputed != r3_digest:
+            raise CrossMarketError(
+                "r3LiquidityDigest does not match the canonical digest of the "
+                "embedded r3LiquidityEvidence",
+                CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH,
+            )
     if token is not None:
         if token.economic_asset_uid != binding.economic_asset_uid:
             raise CrossMarketError(
@@ -402,15 +450,20 @@ def build_cross_market_snapshot(
     # ---- currency normalization into the comparison currency --------------
     def normalize(
         price: Decimal, currency: str
-    ) -> tuple[Decimal, tuple[str, str, Decimal] | None, bool]:
-        """Return (converted price, fx applied, conversion unavailable)."""
+    ) -> tuple[Decimal, tuple[str, str, Decimal, datetime] | None, bool]:
+        """Return (converted price, fx applied with its timestamp, unavailable)."""
         currency = currency.strip().upper()
         if currency == comparison_currency:
             return price, None, False
-        rate = _fx_rate_for(fx, currency, comparison_currency, as_of=as_of, policy=policy)
-        if rate is None:
+        rate_pair = _fx_rate_for(fx, currency, comparison_currency, as_of=as_of, policy=policy)
+        if rate_pair is None:
             return price, None, True
-        return price * rate, (currency, comparison_currency, rate), False
+        rate, fx_observed_at = rate_pair
+        return (
+            price * rate,
+            (currency, comparison_currency, rate, fx_observed_at),
+            False,
+        )
 
     # ---- timing diagnostics ----------------------------------------------
     # Correction A (F3): every priced layer actually used in comparisons
@@ -505,6 +558,7 @@ def build_cross_market_snapshot(
                 from_source=underlying.source,
                 to_source=fx.source if fx else "FX",
                 fx=fx_applied,
+                fx_observed_at=(fx_applied[3] if fx_applied else None),
             )
         )
 
@@ -531,7 +585,9 @@ def build_cross_market_snapshot(
                     to_observed_at=oracle_reference.observed_at,
                     from_source=underlying.source,
                     to_source=oracle_reference.source,
-                    fx=oracle_fx,
+                    fx=(fx_applied or oracle_fx),
+                    fx_observed_at=((fx_applied or oracle_fx)[3]
+                                    if (fx_applied or oracle_fx) else None),
                 )
             )
 
@@ -569,6 +625,7 @@ def build_cross_market_snapshot(
                             from_source=oracle_reference.source,
                             to_source=f"TOKEN_REPRESENTATION[{token.symbol}]",
                             fx=token_fx,
+                            fx_observed_at=(token_fx[3] if token_fx else None),
                         )
                     )
             anchor_price = token_normalized if token_normalized is not None else oracle_price
@@ -602,6 +659,7 @@ def build_cross_market_snapshot(
                         from_source=anchor_source,
                         to_source=venue.source,
                         fx=venue_fx,
+                        fx_observed_at=(venue_fx[3] if venue_fx else None),
                     )
                 )
 
@@ -653,7 +711,8 @@ def build_cross_market_snapshot(
         low_price, low_observation = ordered_members[0]
         high_price, high_observation = ordered_members[-1]
         # FX provenance: the component reports the conversion applied to the
-        # low member (or the high member when only that one required FX).
+        # low member (or the high member when only that one required FX),
+        # including its observation timestamp for causal component timing.
         component_fx = low_fx.get(low_observation.venue) or high_fx.get(
             high_observation.venue
         )
@@ -674,6 +733,7 @@ def build_cross_market_snapshot(
                 from_source=low_observation.source,
                 to_source=high_observation.source,
                 fx=component_fx,
+                fx_observed_at=(component_fx[3] if component_fx else None),
             )
         )
 

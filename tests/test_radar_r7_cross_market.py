@@ -876,8 +876,18 @@ def test_f1_h_equal_normalized_prices_remain_deterministic() -> None:
 # ---------------------------------------------------------------------------
 
 def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
-    upstream = {"r4ReferenceState": {"halt": False, "nested": {"x": 1}}}
-    digests = {"r3LiquidityDigest": "a" * 64}
+    import hashlib
+
+    r3_evidence = {"status": "PASS", "symbol": "AAA"}
+    upstream = {
+        "r4ReferenceState": {"halt": False, "nested": {"x": 1}},
+        "r3LiquidityEvidence": r3_evidence,
+    }
+    correct_digest = hashlib.sha256(
+        json.dumps(r3_evidence, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    digests = {"r3LiquidityDigest": correct_digest}
     disclosures = {"underlyingSource": "UNDERLYING_SOURCE_UNAVAILABLE"}
     snap = build(
         oracle_reference=oracle("250"),
@@ -893,7 +903,7 @@ def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
     evidence = snap.to_evidence_dict()
     assert evidence["upstreamEvidence"]["r4ReferenceState"]["nested"]["x"] == 1
     assert evidence["upstreamEvidence"]["r4ReferenceState"]["halt"] is False
-    assert evidence["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == correct_digest
     assert evidence["liveDataDisclosures"]["underlyingSource"] == "UNDERLYING_SOURCE_UNAVAILABLE"
     assert verify_serialized_evidence(evidence) is True
 
@@ -1061,8 +1071,18 @@ def test_f1_h_equal_normalized_prices_remain_deterministic() -> None:
 # ---------------------------------------------------------------------------
 
 def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
-    upstream = {"r4ReferenceState": {"halt": False, "nested": {"x": 1}}}
-    digests = {"r3LiquidityDigest": "a" * 64}
+    import hashlib
+
+    r3_evidence = {"status": "PASS", "symbol": "AAA"}
+    upstream = {
+        "r4ReferenceState": {"halt": False, "nested": {"x": 1}},
+        "r3LiquidityEvidence": r3_evidence,
+    }
+    correct_digest = hashlib.sha256(
+        json.dumps(r3_evidence, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    digests = {"r3LiquidityDigest": correct_digest}
     disclosures = {"underlyingSource": "UNDERLYING_SOURCE_UNAVAILABLE"}
     snap = build(
         oracle_reference=oracle("250"),
@@ -1078,7 +1098,7 @@ def test_f2_01_caller_mutations_after_build_have_no_effect() -> None:
     evidence = snap.to_evidence_dict()
     assert evidence["upstreamEvidence"]["r4ReferenceState"]["nested"]["x"] == 1
     assert evidence["upstreamEvidence"]["r4ReferenceState"]["halt"] is False
-    assert evidence["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == correct_digest
     assert evidence["liveDataDisclosures"]["underlyingSource"] == "UNDERLYING_SOURCE_UNAVAILABLE"
     assert verify_serialized_evidence(evidence) is True
 
@@ -1288,16 +1308,28 @@ def test_f4_03_changing_venue_canonical_key_changes_r7_digest() -> None:
 
 
 def test_f4_04_changing_r3_evidence_changes_source_digest() -> None:
+    import hashlib
+
+    def _digest_for(evidence: dict) -> str:
+        return hashlib.sha256(
+            json.dumps(evidence, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
+    evidence_first = {"status": "PASS", "snapshot": 1}
+    evidence_second = {"status": "PASS", "snapshot": 2}
     first = build(
         oracle_reference=oracle("250"),
-        source_digests={"r3LiquidityDigest": "a" * 64},
+        upstream_evidence={"r3LiquidityEvidence": evidence_first},
+        source_digests={"r3LiquidityDigest": _digest_for(evidence_first)},
     )
     second = build(
         oracle_reference=oracle("250"),
-        source_digests={"r3LiquidityDigest": "b" * 64},
+        upstream_evidence={"r3LiquidityEvidence": evidence_second},
+        source_digests={"r3LiquidityDigest": _digest_for(evidence_second)},
     )
     assert first.r7_snapshot_digest != second.r7_snapshot_digest
-    assert first.to_evidence_dict()["sourceDigests"]["r3LiquidityDigest"] == "a" * 64
+    assert first.to_evidence_dict()["sourceDigests"]["r3LiquidityDigest"] == _digest_for(evidence_first)
 
 
 def test_f4_05_r3_source_digest_reconstructs_independently() -> None:
@@ -1326,10 +1358,17 @@ def test_f4_05_r3_source_digest_reconstructs_independently() -> None:
 
 
 def test_f4_06_tampered_embedded_r3_evidence_breaks_reconstruction() -> None:
+    import hashlib
+
+    r3_evidence = {"status": "PASS"}
+    correct_digest = hashlib.sha256(
+        json.dumps(r3_evidence, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
     snap = build(
         oracle_reference=oracle("250"),
-        upstream_evidence={"r3LiquidityEvidence": {"status": "PASS"}},
-        source_digests={"r3LiquidityDigest": "a" * 64},
+        upstream_evidence={"r3LiquidityEvidence": r3_evidence},
+        source_digests={"r3LiquidityDigest": correct_digest},
     )
     evidence = snap.to_evidence_dict()
     assert verify_serialized_evidence(evidence) is True
@@ -1377,3 +1416,182 @@ def test_f5_cleared_behavior_unchanged() -> None:
     assert EventKind.DISLOCATION_CLEARED in kinds
     assert EventKind.DISLOCATION_WIDENED not in kinds
     assert EventKind.DISLOCATION_NARROWED not in kinds
+
+
+# ---------------------------------------------------------------------------
+# Correction B — F3-B: causal component timing (FX dependency)
+# ---------------------------------------------------------------------------
+
+def _fx_at(seconds_offset: int) -> FxObservation:
+    return FxObservation(
+        source_currency="EUR",
+        target_currency="USD",
+        rate=Decimal("1"),
+        source="SYNTHETIC_FX",
+        observed_at=NOW + timedelta(seconds=seconds_offset),
+        raw_evidence={"synthetic": True},
+    )
+
+
+def _fx_stack(fx_seconds_offset: int, oracle_price: str = "250"):
+    return build(
+        underlying=layer(LayerType.UNDERLYING, "250", currency="EUR"),
+        fx=_fx_at(fx_seconds_offset),
+        oracle_reference=oracle(oracle_price),
+    )
+
+
+def test_f3_b1_fx_fresh_for_staleness_but_outside_skew_window() -> None:
+    # FX age 500 s: inside the 600 s staleness window (conversion available)
+    # but 500 s away from the T-oracle endpoints, far beyond the 120 s skew
+    # window. The FX-dependent component must be timing-invalid and must not
+    # drive material attribution.
+    # Material FX-dependent dislocation (250 vs 260) that is timing-invalid.
+    snap = _fx_stack(-500, oracle_price="260")  # FX observed 500 s ago
+    assert snap.timing.state is TimingState.SKEWED
+    fx_component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE
+    ]
+    assert len(fx_component) == 1
+    assert fx_component[0].timing_valid is False
+    assert snap.attribution_state is AttributionState.ATTRIBUTION_UNAVAILABLE
+    serialized_component = [
+        c for c in snap.to_evidence_dict()["pricePath"]
+        if c["fromLayer"] == "UNDERLYING" and c["toLayer"] == "ORACLE_REFERENCE"
+    ][0]["timingAuthority"]
+    assert serialized_component["timingSkewSeconds"] == "500.0"
+    dependency_names = [
+        entry["observation"] for entry in serialized_component["timingDependencyObservations"]
+    ]
+    assert dependency_names == ["FX_NORMALIZATION", "ORACLE_REFERENCE", "UNDERLYING"]
+
+
+def test_f3_b2_fx_exactly_at_skew_boundary_is_timing_valid() -> None:
+    snap = _fx_stack(-120)  # FX observed exactly 120 s ago
+    assert snap.timing.state is TimingState.ALIGNED
+    fx_component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE
+    ]
+    assert fx_component[0].timing_valid is True
+    assert fx_component[0].timing_skew_seconds == Decimal("120")
+
+
+def test_f3_b3_fx_one_second_over_skew_boundary_is_invalid() -> None:
+    snap = _fx_stack(-121)  # FX observed 121 s ago
+    fx_component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE
+    ]
+    assert fx_component[0].timing_valid is False
+    assert fx_component[0].timing_skew_seconds == Decimal("121")
+
+
+def test_f3_b4_fresh_aligned_fx_preserves_normal_attribution() -> None:
+    snap = _fx_stack(-30)   # FX observed 30 s ago
+    assert snap.timing.state is TimingState.ALIGNED
+    assert snap.attribution_state is AttributionState.NO_MATERIAL_DISLOCATION
+    fx_component = [
+        c for c in snap.dislocation_components
+        if c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE
+    ]
+    assert fx_component[0].timing_valid is True
+
+
+def test_f3_b5_future_fx_remains_fail_closed() -> None:
+    snap = _fx_stack(60)  # FX timestamped in the future relative to as_of
+    assert ComparabilityReason.FX_UNAVAILABLE in snap.comparability_reasons
+    assert all(
+        not (c.from_layer is LayerType.UNDERLYING and c.to_layer is LayerType.ORACLE_REFERENCE)
+        for c in snap.dislocation_components
+    )
+
+
+# ---------------------------------------------------------------------------
+# Correction B — F4-B: R3 lineage pair validation inside the contract
+# ---------------------------------------------------------------------------
+
+import hashlib as _hashlib
+
+
+def _r3_digest_for(evidence: dict) -> str:
+    return _hashlib.sha256(
+        json.dumps(evidence, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def test_f4_b1_consistent_r3_lineage_pair_is_accepted() -> None:
+    r3_evidence = {"status": "PASS", "symbol": "AAA"}
+    snap = build(
+        oracle_reference=oracle("250"),
+        upstream_evidence={"r3LiquidityEvidence": r3_evidence},
+        source_digests={"r3LiquidityDigest": _r3_digest_for(r3_evidence)},
+    )
+    evidence = snap.to_evidence_dict()
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == _r3_digest_for(r3_evidence)
+    assert verify_serialized_evidence(evidence) is True
+
+
+def test_f4_b2_mismatched_r3_digest_is_rejected() -> None:
+    with pytest.raises(CrossMarketError) as excinfo:
+        build(
+            oracle_reference=oracle("250"),
+            upstream_evidence={"r3LiquidityEvidence": {"status": "PASS"}},
+            source_digests={"r3LiquidityDigest": "0" * 64},
+        )
+    assert excinfo.value.status is CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH
+
+
+def test_f4_b3_r3_evidence_without_digest_is_rejected() -> None:
+    with pytest.raises(CrossMarketError) as excinfo:
+        build(
+            oracle_reference=oracle("250"),
+            upstream_evidence={"r3LiquidityEvidence": {"status": "PASS"}},
+            source_digests={},
+        )
+    assert excinfo.value.status is CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH
+
+
+def test_f4_b4_r3_digest_without_evidence_is_rejected() -> None:
+    with pytest.raises(CrossMarketError) as excinfo:
+        build(
+            oracle_reference=oracle("250"),
+            upstream_evidence={},
+            source_digests={"r3LiquidityDigest": _r3_digest_for({"status": "PASS"})},
+        )
+    assert excinfo.value.status is CrossMarketStatus.CROSS_MARKET_EVIDENCE_MISMATCH
+
+
+def test_f4_b5_caller_mutation_after_build_remains_isolated() -> None:
+    r3_evidence = {"status": "PASS"}
+    upstream = {"r3LiquidityEvidence": r3_evidence}
+    digests = {"r3LiquidityDigest": _r3_digest_for(r3_evidence)}
+    snap = build(
+        oracle_reference=oracle("250"),
+        upstream_evidence=upstream,
+        source_digests=digests,
+    )
+    r3_evidence["status"] = "MUTATED"
+    upstream["r3LiquidityEvidence"] = {"status": "MUTATED"}
+    digests["r3LiquidityDigest"] = "0" * 64
+    evidence = snap.to_evidence_dict()
+    assert evidence["upstreamEvidence"]["r3LiquidityEvidence"]["status"] == "PASS"
+    assert evidence["sourceDigests"]["r3LiquidityDigest"] == _r3_digest_for({"status": "PASS"})
+    assert verify_serialized_evidence(evidence) is True
+
+
+def test_f4_b6_live_shape_r3_digest_reconstructs_from_embedded_evidence() -> None:
+    # Live-proof shape: r3.to_evidence_dict() embedded and digested exactly as
+    # finco_radar/r7/live_proof.py records it.
+    r3_evidence = {"status": "PASS", "asset": {"symbol": "AAA"}, "observations": [1, 2]}
+    snap = build(
+        oracle_reference=oracle("250"),
+        upstream_evidence={"r3LiquidityEvidence": r3_evidence},
+        source_digests={"r3LiquidityDigest": _r3_digest_for(r3_evidence)},
+    )
+    evidence = snap.to_evidence_dict()
+    embedded = evidence["upstreamEvidence"]["r3LiquidityEvidence"]
+    assert _r3_digest_for(embedded) == evidence["sourceDigests"]["r3LiquidityDigest"]
+    assert verify_serialized_evidence(evidence) is True

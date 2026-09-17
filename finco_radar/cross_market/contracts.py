@@ -433,6 +433,9 @@ class DislocationComponent:
     timing_skew_seconds: Decimal
     from_source: str
     to_source: str
+    timing_dependencies: tuple[tuple[str, datetime], ...] = ()
+    timing_oldest: datetime | None = None
+    timing_newest: datetime | None = None
 
     def to_evidence_dict(self) -> dict[str, Any]:
         return {
@@ -453,7 +456,23 @@ class DislocationComponent:
             },
             "fromObservedAt": self.from_observed_at.isoformat(),
             "toObservedAt": self.to_observed_at.isoformat(),
-            "timingSkewSeconds": str(self.timing_skew_seconds),
+            "timingAuthority": {
+                "timingDependencyObservations": [
+                    {"observation": label, "observedAt": stamp.isoformat()}
+                    for label, stamp in self.timing_dependencies
+                ],
+                "timingOldest": (
+                    self.timing_oldest.isoformat()
+                    if self.timing_oldest is not None
+                    else None
+                ),
+                "timingNewest": (
+                    self.timing_newest.isoformat()
+                    if self.timing_newest is not None
+                    else None
+                ),
+                "timingSkewSeconds": str(self.timing_skew_seconds),
+            },
             "fromSource": self.from_source,
             "toSource": self.to_source,
         }

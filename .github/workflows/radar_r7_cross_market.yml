@@ -168,9 +168,24 @@ jobs:
               ):
                   raise SystemExit("R7_BLOCKED: unknown event kind")
 
+          # Correction B gates: causal per-component timing authority.
+          for component in data.get("pricePath", []):
+              timing_authority = component.get("timingAuthority")
+              if not isinstance(timing_authority, dict):
+                  raise SystemExit("R7_BLOCKED: component timing authority missing")
+              deps = timing_authority.get("timingDependencyObservations")
+              if not isinstance(deps, list) or not deps:
+                  raise SystemExit("R7_BLOCKED: component timing dependencies missing")
+              for dep in deps:
+                  if not dep.get("observedAt"):
+                      raise SystemExit("R7_BLOCKED: dependency timestamp missing")
+              if timing_authority.get("timingOldest") is None or timing_authority.get("timingNewest") is None:
+                  raise SystemExit("R7_BLOCKED: component timing window missing")
+
           print(
-              "R7_CORRECTION_A_GATES_PASS deepImmutability=crossCurrencyVenue="
-              "venueProvenance=timingAuthority=r3Digest=venueAssetKey=negativeWidth=covered_by_focused_tests"
+              "R7_CORRECTION_B_GATES_PASS causalComponentTiming="
+              "r3LineageValidation=venueAssetIdentity=deepImmutability="
+              "crossCurrencyVenue=negativeWidth=covered_by_focused_tests"
           )
 
           print(
