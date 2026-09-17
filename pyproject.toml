@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "finco_protocol"
 version = "0.1.0"
-description = "Deterministic financial intelligence infrastructure for modelling, market evidence, and verification"
+description = "Deterministic RWA infrastructure modelling, market intelligence, and verification"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
