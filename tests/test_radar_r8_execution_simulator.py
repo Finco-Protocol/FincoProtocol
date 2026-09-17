@@ -63,6 +63,32 @@ def _r3_digest_for(evidence: dict) -> str:
     ).hexdigest()
 
 
+def _lineage_pair_for(labels, uid=None, key=None):
+    uid = uid or UID
+    key = key or KEY
+    return {
+        "r7CrossMarketEvidence": _make_r7_evidence(labels, uid=uid, key=key),
+        "r3LiquidityEvidence": {
+            "status": "PASS",
+            "asset": {
+                "assetUid": uid,
+                "canonicalKey": f"{key.chain_id}:{key.contract_address}",
+                "symbol": "AAA",
+                "chainId": key.chain_id,
+                "contractAddress": key.contract_address,
+            },
+        },
+    }
+
+
+def _lineage_digests_for(labels, uid=None, key=None):
+    pair = _lineage_pair_for(labels, uid=uid, key=key)
+    return {
+        "r7CrossMarketDigest": _r3_digest_for(pair["r7CrossMarketEvidence"]),
+        "r3LiquidityDigest": _r3_digest_for(pair["r3LiquidityEvidence"]),
+    }
+
+
 def _make_r7_evidence(labels, uid: str = UID, key: AssetKey = KEY) -> dict:
     """Synthetic embedded R7 evidence with a self-consistent internal digest."""
     evidence = {
@@ -71,6 +97,13 @@ def _make_r7_evidence(labels, uid: str = UID, key: AssetKey = KEY) -> dict:
         "status": "CROSS_MARKET_OK",
         "economicAssetUid": uid,
         "canonicalAssetKey": {"chainId": key.chain_id, "contractAddress": key.contract_address},
+        "identityBinding": {
+            "economicAssetUid": uid,
+            "canonicalKeys": [
+                {"chainId": key.chain_id, "contractAddress": key.contract_address}
+            ],
+            "source": "SYNTHETIC_TEST_REGISTRY",
+        },
         "dislocationComponents": [
             {"label": label, "fromLayer": "ORACLE_REFERENCE", "toLayer": "VENUE"}
             for label in labels
@@ -275,7 +308,17 @@ def test_06_r2_economics_mismatch_fails_closed() -> None:
 
 
 _R7_EVIDENCE = {"attributionState": "NO_MATERIAL_DISLOCATION", "components": 4}
-_R3_EVIDENCE = {"status": "PASS", "observations": 4}
+_R3_EVIDENCE = {
+    "status": "PASS",
+    "observations": 4,
+    "asset": {
+        "assetUid": "0x" + "11" * 32,
+        "canonicalKey": "4663:0x" + "aa" * 20,
+        "symbol": "AAA",
+        "chainId": 4663,
+        "contractAddress": "0x" + "aa" * 20,
+    },
+}
 
 
 def _lineage() -> tuple[dict, dict]:
@@ -747,7 +790,16 @@ def test_36_caller_mutation_isolation() -> None:
                               r2_gap_evidence=raw2)
     upstream = {
         "r7CrossMarketEvidence": _make_r7_evidence(DEFAULT_R7_LABELS),
-        "r3LiquidityEvidence": {"status": "PASS"},
+        "r3LiquidityEvidence": {
+            "status": "PASS",
+            "asset": {
+                "assetUid": "0x" + "11" * 32,
+                "canonicalKey": KEY.canonical_id,
+                "symbol": "AAA",
+                "chainId": KEY.chain_id,
+                "contractAddress": KEY.contract_address,
+            },
+        },
     }
     snap = build_execution_simulation(
         economic_asset_uid=UID,
@@ -758,7 +810,7 @@ def test_36_caller_mutation_isolation() -> None:
         upstream_evidence=upstream,
         source_digests={
             "r7CrossMarketDigest": _r3_digest_for(upstream["r7CrossMarketEvidence"]),
-            "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+            "r3LiquidityDigest": _r3_digest_for(upstream["r3LiquidityEvidence"]),
         },
         generated_at=NOW,
     )
@@ -1093,14 +1145,8 @@ def test_f2_b6_valid_live_labels_still_pass() -> None:
         ],
         quote_evidence=rows,
         policy=policy(),
-        upstream_evidence={
-            "r7CrossMarketEvidence": _make_r7_evidence(live_labels),
-            "r3LiquidityEvidence": {"status": "PASS"},
-        },
-        source_digests={
-            "r7CrossMarketDigest": _r3_digest_for(_make_r7_evidence(live_labels)),
-            "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
-        },
+        upstream_evidence=_lineage_pair_for(live_labels),
+        source_digests=_lineage_digests_for(live_labels),
         synthetic=True,
         generated_at=NOW,
     )

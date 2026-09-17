@@ -154,6 +154,33 @@ jobs:
               ):
                   raise SystemExit(f"R8_BLOCKED: unknown provider cost treatment {treatment}")
 
+          # Correction B gates: semantic upstream lineage binding.
+          embedded_r7 = upstream.get("r7CrossMarketEvidence", {})
+          if embedded_r7.get("economicAssetUid") != data.get("economicAssetUid"):
+              raise SystemExit("R8_BLOCKED: embedded R7 economic UID differs from R8")
+          binding = embedded_r7.get("identityBinding", {})
+          r8_key = data.get("canonicalAssetKey", {})
+          key_hits = sum(
+              1 for k in binding.get("canonicalKeys", [])
+              if k.get("chainId") == r8_key.get("chainId")
+              and str(k.get("contractAddress", "")).lower() == str(r8_key.get("contractAddress", "")).lower()
+          )
+          if key_hits != 1:
+              raise SystemExit("R8_BLOCKED: R8 deployment not present exactly once in embedded R7 keys")
+          embedded_r3_asset = upstream.get("r3LiquidityEvidence", {}).get("asset", {})
+          if embedded_r3_asset.get("chainId") != r8_key.get("chainId") or str(
+              embedded_r3_asset.get("contractAddress", "")
+          ).lower() != str(r8_key.get("contractAddress", "")).lower():
+              raise SystemExit("R8_BLOCKED: embedded R3 asset belongs to another deployment")
+          embedded_ck = embedded_r3_asset.get("canonicalKey")
+          if embedded_ck is not None and embedded_ck != (
+              str(r8_key.get("chainId")) + ":" + str(r8_key.get("contractAddress"))
+          ):
+              raise SystemExit("R8_BLOCKED: embedded R3 canonicalKey disagrees with chain/address")
+          for component in embedded_r7.get("dislocationComponents", []):
+              if component.get("deltaBps") is None:
+                  raise SystemExit("R8_BLOCKED: R7 component missing deltaBps")
+
           # Boundaries and profit-language guard.
           boundaries = data.get("boundaries", {})
           if boundaries.get("crossMarketAuthority") != "R7_APPLIED":

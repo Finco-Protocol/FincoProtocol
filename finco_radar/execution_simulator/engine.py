@@ -565,32 +565,118 @@ def build_execution_simulation(
             "internal r7SnapshotDigest",
             ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
         )
-    derived_labels = {
-        component.get("label")
-        for component in embedded_r7.get("dislocationComponents", [])
-        if isinstance(component, Mapping) and component.get("label")
-    }
+    # Correction B: canonical label -> deltaBps mapping derived ONLY from the
+    # digest-verified embedded R7 evidence. Caller-supplied theoretical values
+    # are treated as redundant evidence requiring exact equality.
+    embedded_theoretical: dict[str, Decimal] = {}
+    for component in embedded_r7.get("dislocationComponents", []):
+        if not isinstance(component, Mapping):
+            continue
+        label = component.get("label")
+        if not label:
+            continue
+        raw = component.get("deltaBps")
+        embedded_theoretical[label] = (
+            Decimal(str(raw)) if raw is not None else None
+        )
+
+    # Correction B (1): the embedded R7 snapshot must belong to THIS economic
+    # asset and must list THIS canonical deployment exactly once.
+    embedded_r7_uid = embedded_r7.get("economicAssetUid")
+    if embedded_r7_uid != economic_asset_uid:
+        raise ExecutionSimulationError(
+            f"embedded R7 economicAssetUid {embedded_r7_uid} does not match the "
+            f"R8 economic asset UID {economic_asset_uid}",
+            ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+        )
+    identity_binding = embedded_r7.get("identityBinding") or {}
+    embedded_keys = identity_binding.get("canonicalKeys") or []
+    target_chain = canonical_asset_key.chain_id
+    target_address = canonical_asset_key.contract_address
+    key_matches = 0
+    for entry in embedded_keys:
+        if not isinstance(entry, Mapping):
+            continue
+        if (
+            entry.get("chainId") == target_chain
+            and str(entry.get("contractAddress", "")).lower()
+            == target_address
+        ):
+            key_matches += 1
+    if key_matches != 1:
+        raise ExecutionSimulationError(
+            f"embedded R7 canonical keys list this R8 deployment {key_matches} "
+            "times (expected exactly once)",
+            ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+        )
     for entered in scenarios:
         label = entered.r7_component_label
-        if label is not None and label not in derived_labels:
+        if label is not None and label not in embedded_theoretical:
             raise ExecutionSimulationError(
                 f"scenario r7_component_label not present in the embedded R7 "
                 f"evidence components: {label}",
                 ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
             )
     for theo_label in (theoretical_dislocations or {}):
-        if theo_label not in derived_labels:
+        if theo_label not in embedded_theoretical:
             raise ExecutionSimulationError(
                 f"theoretical dislocation label not present in the embedded R7 "
                 f"evidence components: {theo_label}",
                 ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
             )
 
+    # Correction B (3): bind the embedded R3 canonical deployment to R8. The
+    # R3 digest being cryptographically valid is not sufficient if it belongs
+    # to another asset; R3 assetUid is a different namespace from the R7/R8
+    # economic UID and is never compared to it.
+    embedded_r3 = embedded.get("r3LiquidityEvidence")
+    if isinstance(embedded_r3, Mapping):
+        asset_block = embedded_r3.get("asset")
+        if not isinstance(asset_block, Mapping):
+            raise ExecutionSimulationError(
+                "embedded R3 liquidity evidence is missing its canonical asset block",
+                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+            )
+        embedded_chain = asset_block.get("chainId")
+        embedded_address = str(asset_block.get("contractAddress", "")).lower()
+        if embedded_chain != canonical_asset_key.chain_id or (
+            embedded_address != canonical_asset_key.contract_address
+        ):
+            raise ExecutionSimulationError(
+                "embedded R3 liquidity evidence belongs to a different canonical "
+                f"deployment: {embedded_chain}:{embedded_address}",
+                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+            )
+        embedded_canonical_key = asset_block.get("canonicalKey")
+        if embedded_canonical_key is not None and (
+            str(embedded_canonical_key)
+            != canonical_asset_key.canonical_id
+        ):
+            raise ExecutionSimulationError(
+                "embedded R3 canonicalKey disagrees with its own chainId/"
+                "contractAddress pair",
+                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+            )
+
     results: list[ExecutionSimulationResult] = []
     for scenario in scenarios:
         row = _select_evidence(quote_evidence, scenario=scenario)
         label = scenario.r7_component_label
-        theo = (theoretical_dislocations or {}).get(label) if label else None
+        # Correction B (2): the theoretical value is DERIVED from the
+        # digest-verified embedded R7 evidence — never trusted from the
+        # caller. A caller-supplied value is treated as redundant evidence
+        # requiring exact Decimal equality with the embedded component.
+        theo = None
+        if label is not None and label in embedded_theoretical:
+            theo = embedded_theoretical[label]
+        supplied = (theoretical_dislocations or {}).get(label)
+        if supplied is not None:
+            if theo is None or supplied != theo:
+                raise ExecutionSimulationError(
+                    f"caller theoretical dislocation {supplied} does not equal "
+                    f"the embedded R7 component deltaBps {theo} for label {label}",
+                    ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+                )
         results.append(
             simulate_execution_scenario(
                 scenario=scenario,
