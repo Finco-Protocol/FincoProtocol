@@ -1,0 +1,319 @@
+name: Radar R8 Execution Simulator
+
+on:
+  push:
+    branches: [radar/r8-execution-simulator]
+    paths:
+      - "finco_radar/execution_simulator/**"
+      - "finco_radar/r8/**"
+      - "tests/test_radar_r8_execution_simulator.py"
+      - "docs/radar/r8_execution_simulator.md"
+      - ".github/workflows/radar_r8_execution_simulator.yml"
+  workflow_dispatch:
+
+jobs:
+  execution-simulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Radar test/runtime dependencies
+        run: python -m pip install -e . pytest httpx
+      - name: Run focused R8 tests (offline, deterministic)
+        run: pytest -q tests/test_radar_r8_execution_simulator.py
+      - name: Frozen-authority protected-path gate
+        run: |
+          python - <<'PY'
+          import subprocess
+          base = "1ffc8805167a3a6dc13d394b6627aaf31776ffa5"
+          frozen = [
+              "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
+              "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
+              "finco_radar/liquidity/", "finco_radar/r3/",
+              "finco_radar/reference_state/", "finco_radar/r4/",
+              "finco_radar/signals/", "finco_radar/history/", "finco_radar/r5/",
+              "finco_radar/r6/", "finco_radar/terminal/",
+              "finco_radar/cross_market/", "finco_radar/r7/",
+              "financial_engine/", "finco_core/", "finco_protocol/",
+          ]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", base, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [
+              path for path in changed
+              if any(path.startswith(prefix) for prefix in frozen)
+          ]
+          if violations:
+              raise SystemExit(f"R8_BLOCKED: frozen authority modified: {violations}")
+          print(f"R8_FROZEN_AUTHORITY_GATE_PASS changed={len(changed)} all_new_r8_paths")
+          PY
+      - name: Run R8 live execution-simulation proof
+        run: python -m finco_radar.r8.live_proof
+      - name: Require deterministic evidence, digest integrity and R8 economics invariants
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from decimal import Decimal
+          from pathlib import Path
+          from finco_radar.execution_simulator.contracts import verify_serialized_evidence
+
+          evidence_path = Path("artifacts/radar_r8_execution_simulator_evidence.json")
+          raw = evidence_path.read_bytes()
+          data = json.loads(raw.decode("utf-8"))
+          if data["status"] != "EXECUTION_SIMULATION_OK":
+              raise SystemExit(f"R8_BLOCKED: live proof not OK: {data}")
+          if data.get("schemaVersion") != "radar-r8-execution-simulator-v1":
+              raise SystemExit("R8_BLOCKED: schema version missing")
+          if data.get("phase") != "R8":
+              raise SystemExit("R8_BLOCKED: phase marker missing")
+          if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
+              raise SystemExit("R8_BLOCKED: git HEAD not recorded")
+
+          # Deterministic serialization: re-serialize parsed evidence with the
+          # canonical parameters — bytes must be identical to the file.
+          reserialized = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+          if reserialized.encode("utf-8") != raw:
+              raise SystemExit("R8_BLOCKED: evidence serialization is not byte-deterministic")
+
+          # Digest chain: file bytes == .sha256 file == manifest
+          # evidenceJsonSha256; embedded r8SnapshotDigest reconstructs.
+          file_digest = hashlib.sha256(raw).hexdigest()
+          sha_file = Path("artifacts/radar_r8_execution_simulator_evidence.sha256").read_text()
+          if file_digest != sha_file.split()[0]:
+              raise SystemExit("R8_BLOCKED: evidence file digest mismatch")
+          manifest = json.loads(
+              Path("artifacts/radar_r8_execution_simulator_manifest.json").read_text()
+          )
+          if manifest.get("evidenceJsonSha256") != file_digest:
+              raise SystemExit("R8_BLOCKED: manifest evidence digest mismatch")
+          if manifest.get("r8SnapshotDigest") != data.get("r8SnapshotDigest"):
+              raise SystemExit("R8_BLOCKED: manifest snapshot digest mismatch")
+          if manifest.get("gitHead") != data.get("gitHead"):
+              raise SystemExit("R8_BLOCKED: manifest gitHead mismatch")
+          if not verify_serialized_evidence(data):
+              raise SystemExit("R8_BLOCKED: r8SnapshotDigest does not reconstruct")
+
+          # Required core lineage: R7 and R3 source digests must be present
+          # and reconstruct over the embedded upstream evidence.
+          digests = data.get("sourceDigests", {})
+          upstream = data.get("upstreamEvidence", {})
+          for digest_name, evidence_key in (
+              ("r7CrossMarketDigest", "r7CrossMarketEvidence"),
+              ("r3LiquidityDigest", "r3LiquidityEvidence"),
+          ):
+              if not digests.get(digest_name):
+                  raise SystemExit(f"R8_BLOCKED: required {digest_name} missing")
+              embedded = upstream.get(evidence_key)
+              if embedded is None:
+                  raise SystemExit(f"R8_BLOCKED: embedded {evidence_key} missing")
+              recomputed = hashlib.sha256(
+                  json.dumps(embedded, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False).encode("utf-8")
+              ).hexdigest()
+              if recomputed != digests[digest_name]:
+                  raise SystemExit(f"R8_BLOCKED: {digest_name} does not reconstruct")
+
+          # NO-DOUBLE-COUNT gate (spec §4/§35): for every scenario the gross
+          # execution edge must equal the side-adjusted R2 gap within the same
+          # arithmetic-reconstruction tolerance the engine enforces (pure
+          # Decimal division-rounding residue, <= 1e-6 bps). R0/R3 size impact
+          # is diagnostic evidence and must never appear as an additional
+          # deduction — a whole-bps deviation means double counting.
+          for scenario in data["scenarios"]:
+              gap = Decimal(scenario["r2GapBps"])
+              gross = Decimal(scenario["grossExecutionEdgeBps"])
+              expected = -gap if scenario["scenario"]["side"] == "BUY" else gap
+              if abs(gross - expected) > Decimal("0.000001"):
+                  raise SystemExit(
+                      f"R8_BLOCKED: gross edge {gross} != side-adjusted R2 gap {expected}; "
+                      "double counting suspected"
+                  )
+              if scenario["netEdgeState"] == "PARTIAL":
+                  blockers = scenario["netEdgeBlockers"]
+                  if not blockers:
+                      raise SystemExit("R8_BLOCKED: PARTIAL net edge without typed blockers")
+                  if scenario["netExecutableEdgeBps"] is not None:
+                      raise SystemExit(
+                          "R8_BLOCKED: PARTIAL net edge must not carry a net value"
+                      )
+
+          # Cost-treatment boundary gate (spec §37/§38 semantics are enforced
+          # by focused tests; here we pin the live vocabulary).
+          for scenario in data["scenarios"]:
+              treatment = scenario["providerCost"]["treatment"]
+              if treatment not in (
+                  "EVIDENCE_ONLY_INCLUSION_UNRESOLVED",
+                  "SOURCE_PROVEN_INCLUDED",
+                  "SOURCE_PROVEN_EXCLUDED",
+              ):
+                  raise SystemExit(f"R8_BLOCKED: unknown provider cost treatment {treatment}")
+
+          # Correction B gates: semantic upstream lineage binding.
+          embedded_r7 = upstream.get("r7CrossMarketEvidence", {})
+          if embedded_r7.get("economicAssetUid") != data.get("economicAssetUid"):
+              raise SystemExit("R8_BLOCKED: embedded R7 economic UID differs from R8")
+          binding = embedded_r7.get("identityBinding", {})
+          r8_key = data.get("canonicalAssetKey", {})
+          key_hits = sum(
+              1 for k in binding.get("canonicalKeys", [])
+              if k.get("chainId") == r8_key.get("chainId")
+              and str(k.get("contractAddress", "")).lower() == str(r8_key.get("contractAddress", "")).lower()
+          )
+          if key_hits != 1:
+              raise SystemExit("R8_BLOCKED: R8 deployment not present exactly once in embedded R7 keys")
+          embedded_r3_asset = upstream.get("r3LiquidityEvidence", {}).get("asset", {})
+          if embedded_r3_asset.get("chainId") != r8_key.get("chainId") or str(
+              embedded_r3_asset.get("contractAddress", "")
+          ).lower() != str(r8_key.get("contractAddress", "")).lower():
+              raise SystemExit("R8_BLOCKED: embedded R3 asset belongs to another deployment")
+          embedded_ck = embedded_r3_asset.get("canonicalKey")
+          if embedded_ck is not None and embedded_ck != (
+              str(r8_key.get("chainId")) + ":" + str(r8_key.get("contractAddress"))
+          ):
+              raise SystemExit("R8_BLOCKED: embedded R3 canonicalKey disagrees with chain/address")
+          for component in embedded_r7.get("dislocationComponents", []):
+              if component.get("deltaBps") is None:
+                  raise SystemExit("R8_BLOCKED: R7 component missing deltaBps")
+
+          # Boundaries and profit-language guard.
+          boundaries = data.get("boundaries", {})
+          if boundaries.get("crossMarketAuthority") != "R7_APPLIED":
+              raise SystemExit("R8_BLOCKED: R7 cross-market authority not bound")
+          if boundaries.get("executionSimulatorAuthority") != "R8_APPLIED":
+              raise SystemExit("R8_BLOCKED: R8 authority not declared")
+          if boundaries.get("assetGraphAuthority") != "R9_NOT_YET_APPLIED":
+              raise SystemExit("R8_BLOCKED: R8 falsely claimed asset-graph authority")
+          if boundaries.get("modelAuthority") != "MODEL_NOT_YET_APPLIED":
+              raise SystemExit("R8_BLOCKED: R8 falsely claimed Model authority")
+          blob = json.dumps(data).lower()
+          for phrase in ("guaranteed profit", "risk-free", "realized pnl",
+                         "expected return", "certain arbitrage"):
+              if phrase in blob:
+                  raise SystemExit(f"R8_BLOCKED: forbidden profit language: {phrase}")
+
+          net_states = sorted({s["netEdgeState"] for s in data["scenarios"]})
+          print(
+              f"R8_EXECUTION_SIMULATOR_PASS uid={data['economicAssetUid']} "
+              f"scenarios={len(data['scenarios'])} netEdgeStates={net_states} "
+              f"digest={file_digest[:16]}"
+          )
+          PY
+      - name: Run frozen R7 cross-market regression
+        env:
+          RADAR_R7_EVIDENCE_PATH: artifacts/radar_r7_regression_on_r8.json
+          RADAR_R7_SHA256_PATH: artifacts/radar_r7_regression_on_r8.sha256
+          RADAR_R7_MANIFEST_PATH: artifacts/radar_r7_regression_manifest_on_r8.json
+        run: python -m finco_radar.r7.live_proof
+      - name: Require R7 regression PASS and digest integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r7_regression_on_r8.json").read_text())
+          if data["status"] != "CROSS_MARKET_OK":
+              raise SystemExit("R7_REGRESSION_BLOCKED: live proof not CROSS_MARKET_OK")
+          raw = Path("artifacts/radar_r7_regression_on_r8.json").read_bytes()
+          if hashlib.sha256(raw).hexdigest() != Path(
+              "artifacts/radar_r7_regression_on_r8.sha256"
+          ).read_text().split()[0]:
+              raise SystemExit("R7_REGRESSION_BLOCKED: evidence digest mismatch")
+          print("R7_REGRESSION_PASS")
+          PY
+      - name: Run frozen R6 terminal regression
+        run: python -m finco_radar.r6.live_proof
+      - name: Run frozen R5 signals/history regression
+        run: python -m finco_radar.r5.live_proof
+      - name: Require R5 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r5_signals_history_evidence.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R5_REGRESSION_BLOCKED: live proof not PASS")
+          print("R5_REGRESSION_PASS")
+          PY
+      - name: Run frozen R4 reference-state regression
+        run: python -m finco_radar.r4.live_proof
+      - name: Run frozen R3 liquidity regression
+        env:
+          RADAR_R3_EVIDENCE_PATH: artifacts/radar_r3_regression_on_r8.json
+        run: python -m finco_radar.r3.live_proof
+      - name: Require R3 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r3_regression_on_r8.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R3_REGRESSION_BLOCKED: live proof not PASS")
+          print("R3_REGRESSION_PASS")
+          PY
+      - name: Run frozen R2 GAP regression
+        env:
+          RADAR_R2_EVIDENCE_PATH: artifacts/radar_r2_regression_on_r8.json
+        run: python -m finco_radar.r2.live_proof
+      - name: Require R2 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r2_regression_on_r8.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R2_REGRESSION_BLOCKED: live proof not PASS")
+          print("R2_REGRESSION_PASS")
+          PY
+      - name: Run frozen R1 registry regression
+        env:
+          RADAR_R1_EVIDENCE_PATH: artifacts/radar_r1_regression_on_r8.json
+        run: python -m finco_radar.r1.live_proof
+      - name: Run frozen R0 quote regression
+        env:
+          RADAR_R0_EVIDENCE_PATH: artifacts/radar_r0_regression_on_r8.json
+        run: python -m finco_radar.r0.live_proof
+      - name: Require original R0 size-aware acceptance
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r0_regression_on_r8.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R0_REGRESSION_BLOCKED: live proof not PASS")
+          buy = Decimal(data["sizeImpactBps"]["BUY"])
+          sell = Decimal(data["sizeImpactBps"]["SELL"])
+          if buy == 0 and sell == 0:
+              raise SystemExit("R0_REGRESSION_BLOCKED: no size-dependent quote economics observed")
+          print(f"R0_SIZE_AWARE_REGRESSION_PASS BUY={buy}bps SELL={sell}bps")
+          PY
+      - name: Compile check
+        run: python -m compileall -q .
+      - name: Public safety scan
+        run: python tools/public_safety_scan.py
+      - name: Upload R8 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r8-execution-simulator-evidence
+          path: |
+            artifacts/radar_r8_execution_simulator_evidence.json
+            artifacts/radar_r8_execution_simulator_evidence.sha256
+            artifacts/radar_r8_execution_simulator_manifest.json
+            artifacts/radar_r7_regression_on_r8.json
+            artifacts/radar_r7_regression_on_r8.sha256
+            artifacts/radar_r7_regression_manifest_on_r8.json
+            artifacts/radar_r6_terminal_evidence.json
+            artifacts/radar_r6_terminal.html
+            artifacts/radar_r5_signals_history_evidence.json
+            artifacts/radar_r4_reference_state_evidence.json
+            artifacts/radar_r3_regression_on_r8.json
+            artifacts/radar_r2_regression_on_r8.json
+            artifacts/radar_r1_regression_on_r8.json
+            artifacts/radar_r0_regression_on_r8.json
+          if-no-files-found: error
