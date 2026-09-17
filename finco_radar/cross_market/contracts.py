@@ -660,11 +660,16 @@ class CrossMarketSnapshot:
         }
 
 
-def _deep_copy_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Fresh deep copy: serialized mutation must never mutate the source."""
+def _deep_copy_mapping(value: Any) -> Any:
+    """Fresh deep copy into plain JSON-compatible structures.
+
+    Serialized mutation must never mutate the source, and deep-frozen internal
+    structures (MappingProxyType over private dicts, tuple sequences) must
+    never leak into serialized output.
+    """
     if isinstance(value, Mapping):
         return {k: _deep_copy_mapping(v) for k, v in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return [_deep_copy_mapping(v) for v in value]
     return value
 

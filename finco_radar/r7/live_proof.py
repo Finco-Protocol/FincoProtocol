@@ -288,8 +288,10 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                     )
                     as_of = datetime.now(timezone.utc)
                     r4_evidence = r4.to_evidence_dict()
+                    r3_evidence = r3.to_evidence_dict()
                     source_digests = {
                         "r4ReferenceStateDigest": _canonical_digest(r4_evidence),
+                        "r3LiquidityDigest": _canonical_digest(r3_evidence),
                     }
                     live_disclosures = {
                         "underlyingSource": "UNDERLYING_SOURCE_UNAVAILABLE",
@@ -309,6 +311,7 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                         settlement=settlement_context,
                         upstream_evidence={
                             "r4ReferenceState": r4_evidence,
+                            "r3LiquidityEvidence": r3_evidence,
                             "r3LiquidityStatus": r3.status.value,
                         },
                         source_digests=source_digests,
