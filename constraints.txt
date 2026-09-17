@@ -17,7 +17,7 @@
 #   bcrypt 3.x uses cffi/C extensions; no cp312 wheels exist.
 #   bcrypt 4.x is Rust-based with cp312 wheels — use 4.2.0+.
 
-bcrypt==4.2.0
+bcrypt==5.0.0
 fastapi==0.136.1
 httpx==0.28.1
 itsdangerous==2.2.0
