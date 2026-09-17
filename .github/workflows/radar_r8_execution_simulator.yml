@@ -61,7 +61,7 @@ jobs:
           import hashlib, json
           from decimal import Decimal
           from pathlib import Path
-          from finco_radar.cross_market.contracts import verify_serialized_evidence
+          from finco_radar.execution_simulator.contracts import verify_serialized_evidence
 
           evidence_path = Path("artifacts/radar_r8_execution_simulator_evidence.json")
           raw = evidence_path.read_bytes()
