@@ -304,6 +304,31 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                     component_labels = {c.label for c in r7_snapshot.dislocation_components}
                     r7_digest = r7_snapshot.r7_snapshot_digest
 
+                    r2_evidence = {
+                        "gapSemantics": (
+                            "frozen R2 directional gap; BUY compares the "
+                            "multiplier-adjusted official ASK, SELL the BID"
+                        ),
+                        "gapObservations": [
+                            {
+                                "side": side.value,
+                                "notionalUsd": str(notional),
+                                "gapBps": str(gap.gap_bps),
+                            }
+                            for (side, notional), gap in _gap_by_slot(gap_observations).items()
+                        ],
+                    }
+                    r0_evidence = {
+                        "quoteSource": r3.lineage.quote_source,
+                        "quoteCount": len(quotes),
+                    }
+                    upstream_evidence = {
+                        "r7CrossMarketEvidence": r7_evidence,
+                        "r3LiquidityEvidence": r3.to_evidence_dict(),
+                        "r3LiquidityStatus": r3.status.value,
+                        "r2GapEvidence": r2_evidence,
+                        "r0QuoteEvidence": r0_evidence,
+                    }
                     snapshot = build_execution_simulation(
                         economic_asset_uid=asset.token_symbol,
                         canonical_asset_key=key,
@@ -314,37 +339,12 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                         theoretical_dislocations=theoretical,
                         r7_snapshot_digest=r7_digest,
                         r7_component_labels=component_labels,
-                        upstream_evidence={
-                            "r7CrossMarketEvidence": r7_evidence,
-                            "r3LiquidityEvidence": r3.to_evidence_dict(),
-                            "r2GapEvidence": {
-                                "gapSemantics": (
-                                    "frozen R2 directional gap; BUY compares the "
-                                    "multiplier-adjusted official ASK, SELL the BID"
-                                ),
-                                "gapObservations": [
-                                    {
-                                        "side": side.value,
-                                        "notionalUsd": str(notional),
-                                        "gapBps": str(gap.gap_bps),
-                                    }
-                                    for (side, notional), gap in _gap_by_slot(gap_observations).items()
-                                ],
-                            },
-                            "r0QuoteEvidence": {
-                                "quoteSource": r3.lineage.quote_source,
-                                "quoteCount": len(quotes),
-                            },
-                        },
+                        upstream_evidence=upstream_evidence,
                         source_digests={
                             "r7CrossMarketDigest": _canonical_digest(r7_evidence),
                             "r3LiquidityDigest": _canonical_digest(r3.to_evidence_dict()),
-                            "r2GapEvidenceDigest": _canonical_digest(
-                                upstream_evidence["r2GapEvidence"]
-                            ),
-                            "r0QuoteEvidenceDigest": _canonical_digest(
-                                upstream_evidence["r0QuoteEvidence"]
-                            ),
+                            "r2GapEvidenceDigest": _canonical_digest(r2_evidence),
+                            "r0QuoteEvidenceDigest": _canonical_digest(r0_evidence),
                         },
                         synthetic=False,
                         generated_at=datetime.now(timezone.utc),
