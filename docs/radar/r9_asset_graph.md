@@ -69,6 +69,62 @@ authorities do not exist yet.
 - Digest reconstruction is order-independent: nodes, edges and gaps are sorted
   before the digest is computed.
 
+### Correction A — lineage digest semantics (F1)
+
+Two different R7 checks coexist and must never be conflated:
+
+- `sourceDigests["r7CrossMarketDigest"]` = canonical SHA-256 of the COMPLETE
+  embedded `r7CrossMarketEvidence`, required to equal the digest declared by
+  the embedded R8 snapshot under `sourceDigests["r7CrossMarketDigest"]`;
+- the embedded R7 internal `r7SnapshotDigest` is verified independently with
+  the frozen R7 verifier.
+
+`sourceDigests["r8ExecutionSimulatorDigest"]` binds the embedded R8
+`r8SnapshotDigest` explicitly and is verified with the frozen R8 verifier.
+The R3 digest declared by R8 must also reconstruct over the embedded R3
+evidence.
+
+### Correction A — evidence lineage on edges (F2)
+
+Topology identity and evidence lineage are separate: `edge_id` is graph
+identity; `evidenceDigest` is the canonical digest of the exact upstream
+record proving the relationship — the R7 `identityBinding` for
+`REPRESENTED_BY`, the venue's exact observation rows for `QUOTED_ON`, the R7
+settlement block for `SETTLES_VIA`, the oracle observation for
+`REFERENCED_BY`/`OBSERVED_BY`, and the parent R8 snapshot digest (with the
+scenario identity retained in metadata) for `HAS_EXECUTION_EVIDENCE`.
+Changing only a source record preserves node and edge IDs but changes the
+`evidenceDigest` and the `r9SnapshotDigest`.
+
+### Correction A — canonical paths (F3)
+
+Every source-proven venue emits a real topology path
+`[economic, deployment, venue]` bound by `[REPRESENTED_BY, QUOTED_ON]`
+edges; the generic validator enforces `len(edge_ids) == len(node_ids) - 1`
+and exact consecutive connectivity, failing with
+`ASSET_GRAPH_TOPOLOGY_INVALID`. Serialized snapshot paths and the
+`canonical_asset_path()` query helper agree.
+
+### Correction A — duplicate/conflict rules (F4)
+
+Duplicate nodes with identical canonical semantics are idempotent (evidence
+references merge deterministically); any identity/authority conflict raises
+`ASSET_GRAPH_IDENTITY_MISMATCH`. Duplicate edges with equivalent semantics
+are idempotent; any conflict (relationship, endpoints, authority phase,
+source, evidence digest, metadata) raises `ASSET_GRAPH_TOPOLOGY_INVALID`.
+No first-write-wins, no last-write-wins.
+
+### Correction A — semantic R7/R8 binding (F5)
+
+After both frozen digest verifiers pass, R9 additionally requires: R8 and R7
+economic UIDs to be identical; the R8 canonical deployment to equal the R9
+deployment and to appear exactly once in the R7 `identityBinding`; the R7
+token layer to agree with the same `AssetKey`; and every R8 scenario to carry
+the canonical UID, the canonical deployment, and a `quoteSource` proven by
+the embedded R7 venue observations. Individually digest-valid but
+semantically incompatible snapshots are rejected with
+`ASSET_GRAPH_LINEAGE_MISMATCH`.
+
 ## Boundaries (what R9 is not)
 
 - No graph database, no generic arbitrary graph traversal — the graph is the
@@ -83,7 +139,7 @@ authorities do not exist yet.
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r9_asset_graph.py   # 66 offline deterministic tests
+pytest -q tests/test_radar_r9_asset_graph.py   # 96 offline deterministic tests
 python -m finco_radar.r9.live_proof            # live proof (re-runs the frozen
                                                # R1->R8 composition, adds no APIs)
 ```

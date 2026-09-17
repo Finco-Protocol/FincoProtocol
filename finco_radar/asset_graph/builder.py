@@ -2,16 +2,22 @@
 
 Consumes CrossMarketSnapshot + optional ExecutionSimulationSnapshot and
 produces a typed AssetGraphSnapshot with nodes, edges, gaps and paths.
+
+Correction A discipline:
+- topology identity (node_id/edge_id) and evidence lineage (evidence_digest)
+  are separate concepts; edge evidenceDigest is the canonical digest of the
+  exact upstream record proving the relationship, never the edge_id;
+- duplicate/conflicting inserts fail closed (no first/last-write-wins);
+- canonical paths are real topology paths validated edge-by-edge.
 """
 from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from decimal import Decimal
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from finco_radar.assets.contracts import AssetKey
-from finco_radar.cross_market.contracts import CrossMarketSnapshot
+from finco_radar.cross_market.contracts import CrossMarketSnapshot  # noqa: F401
 
 from .contracts import (
     SCHEMA_VERSION,
@@ -63,6 +69,42 @@ def _edge_id(rel: GraphRelationshipType, from_id: str, to_id: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def digest_record(record: Mapping) -> str:
+    """Canonical SHA-256 of the exact upstream record proving a relationship."""
+    return hashlib.sha256(canonical_evidence_bytes(record)).hexdigest()
+
+
+def _canonical_bytes_key(record: Mapping) -> bytes:
+    return canonical_evidence_bytes(record)
+
+
+def validate_path_structure(
+    node_ids: Sequence[str],
+    edge_ids: Sequence[str],
+    edges_by_id: Mapping[str, AssetGraphEdge],
+) -> None:
+    """Fail closed on any path whose edges do not exactly chain its nodes."""
+    if len(edge_ids) != len(node_ids) - 1:
+        raise AssetGraphError(
+            f"path has {len(node_ids)} nodes but {len(edge_ids)} edges "
+            "(expected exactly len(nodes) - 1 consecutive edges)",
+            AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID,
+        )
+    for i, edge_id in enumerate(edge_ids):
+        edge = edges_by_id.get(edge_id)
+        if edge is None:
+            raise AssetGraphError(
+                f"path references unknown edge {edge_id}",
+                AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID,
+            )
+        if edge.from_node_id != node_ids[i] or edge.to_node_id != node_ids[i + 1]:
+            raise AssetGraphError(
+                f"path edge {edge_id} connects {edge.from_node_id}->{edge.to_node_id} "
+                f"but the node sequence requires {node_ids[i]}->{node_ids[i + 1]}",
+                AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID,
+            )
+
+
 class AssetGraphBuilder:
     """Deterministic graph builder from frozen R7/R8 authority."""
 
@@ -86,20 +128,49 @@ class AssetGraphBuilder:
         self._add_economic_node()
         self._add_deployment_node()
 
+    # ------------------------------------------------------------------
+    # Fail-closed insert primitives (Correction A, F4)
+    # ------------------------------------------------------------------
     def _add_node(self, node: AssetGraphNode) -> None:
-        if node.node_id in self._node_index:
-            existing = self._node_index[node.node_id]
-            if existing.node_type is not node.node_type:
+        existing = self._node_index.get(node.node_id)
+        if existing is not None:
+            if (
+                existing.node_type is not node.node_type
+                or existing.economic_asset_uid != node.economic_asset_uid
+                or existing.canonical_asset_key != node.canonical_asset_key
+                or existing.source != node.source
+                or existing.source_identifier != node.source_identifier
+                or existing.display_label != node.display_label
+                or dict(existing.metadata) != dict(node.metadata)
+            ):
                 raise AssetGraphError(
-                    f"conflicting node types for {node.node_id}",
+                    f"conflicting node semantics for {node.node_id}",
                     AssetGraphStatus.ASSET_GRAPH_IDENTITY_MISMATCH,
                 )
+            merged = tuple(sorted(set(existing.evidence_refs) | set(node.evidence_refs)))
+            if merged != tuple(existing.evidence_refs):
+                object.__setattr__(existing, "evidence_refs", merged)
             return
         self._nodes.append(node)
         self._node_index[node.node_id] = node
 
     def _add_edge(self, edge: AssetGraphEdge) -> None:
-        if edge.edge_id in self._edge_index:
+        existing = self._edge_index.get(edge.edge_id)
+        if existing is not None:
+            if (
+                existing.relationship_type is not edge.relationship_type
+                or existing.from_node_id != edge.from_node_id
+                or existing.to_node_id != edge.to_node_id
+                or existing.authority_phase != edge.authority_phase
+                or existing.source != edge.source
+                or existing.evidence_digest != edge.evidence_digest
+                or dict(existing.metadata) != dict(edge.metadata)
+                or existing.observed_at != edge.observed_at
+            ):
+                raise AssetGraphError(
+                    f"conflicting edge semantics for {edge.edge_id}",
+                    AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID,
+                )
             return
         if edge.from_node_id not in self._node_index:
             raise AssetGraphError(
@@ -114,6 +185,9 @@ class AssetGraphBuilder:
         self._edges.append(edge)
         self._edge_index[edge.edge_id] = edge
 
+    # ------------------------------------------------------------------
+    # Seeded identity nodes
+    # ------------------------------------------------------------------
     def _add_economic_node(self) -> None:
         node_id = _economic_node_id(self._uid)
         self._add_node(AssetGraphNode(
@@ -137,7 +211,10 @@ class AssetGraphBuilder:
             display_label=f"{self._uid} on {self._key.chain_id}",
         ))
 
-    def add_represented_by_edge(self) -> None:
+    # ------------------------------------------------------------------
+    # Source-proven relationship edges (Correction A, F2)
+    # ------------------------------------------------------------------
+    def add_represented_by_edge(self, identity_evidence: Mapping) -> None:
         econ = _economic_node_id(self._uid)
         dep = _deployment_node_id(self._key)
         eid = _edge_id(GraphRelationshipType.REPRESENTED_BY, econ, dep)
@@ -148,10 +225,18 @@ class AssetGraphBuilder:
             to_node_id=dep,
             authority_phase="R7",
             source="R7_ECONOMIC_IDENTITY_BINDING",
-            evidence_digest=eid,
+            evidence_digest=digest_record(identity_evidence),
         ))
 
-    def add_quoted_on_edge(self, venue: str) -> None:
+    def add_quoted_on_edge(
+        self, venue: str, observations: Sequence[Mapping],
+    ) -> None:
+        if not observations:
+            raise AssetGraphError(
+                f"QUOTED_ON edge for {venue} requires at least one venue "
+                "observation record",
+                AssetGraphStatus.ASSET_GRAPH_INPUT_INVALID,
+            )
         venue_node_id = _venue_node_id(venue)
         dep = _deployment_node_id(self._key)
         eid = _edge_id(GraphRelationshipType.QUOTED_ON, dep, venue_node_id)
@@ -163,6 +248,12 @@ class AssetGraphBuilder:
                 source_identifier=venue,
                 display_label=venue,
             ))
+        # Exact source records, in canonical order: the digest covers every
+        # observation used, independent of caller iteration order.
+        record = {
+            "venue": venue,
+            "observations": sorted(observations, key=_canonical_bytes_key),
+        }
         self._add_edge(AssetGraphEdge(
             edge_id=eid,
             relationship_type=GraphRelationshipType.QUOTED_ON,
@@ -170,7 +261,7 @@ class AssetGraphBuilder:
             to_node_id=venue_node_id,
             authority_phase="R7",
             source="R7_VENUE_OBSERVATION",
-            evidence_digest=eid,
+            evidence_digest=digest_record(record),
         ))
 
     def add_settlement_node(self, source: str, symbol: str, chain_id: int, address: str) -> None:
@@ -184,7 +275,7 @@ class AssetGraphBuilder:
             metadata={"chainId": chain_id, "contractAddress": address},
         ))
 
-    def add_settles_via_edge(self, symbol: str) -> None:
+    def add_settles_via_edge(self, symbol: str, settlement_evidence: Mapping) -> None:
         dep = _deployment_node_id(self._key)
         node_id = _settlement_node_id("R0", symbol)
         eid = _edge_id(GraphRelationshipType.SETTLES_VIA, dep, node_id)
@@ -195,10 +286,13 @@ class AssetGraphBuilder:
             to_node_id=node_id,
             authority_phase="R0",
             source="R0_SETTLEMENT_REFERENCE",
-            evidence_digest=eid,
+            evidence_digest=digest_record(settlement_evidence),
         ))
 
-    def add_reference_nodes(self, reference_source: str, instrument: str) -> None:
+    def add_reference_nodes(
+        self, reference_source: str, instrument: str,
+        reference_observation: Mapping,
+    ) -> None:
         ri_id = _reference_instrument_node_id(reference_source, instrument)
         self._add_node(AssetGraphNode(
             node_id=ri_id,
@@ -216,6 +310,7 @@ class AssetGraphBuilder:
             source_identifier=reference_source,
             display_label=reference_source,
         ))
+        record_digest = digest_record(reference_observation)
         eid = _edge_id(GraphRelationshipType.REFERENCED_BY, _economic_node_id(self._uid), ri_id)
         self._add_edge(AssetGraphEdge(
             edge_id=eid,
@@ -224,7 +319,7 @@ class AssetGraphBuilder:
             to_node_id=ri_id,
             authority_phase="R4",
             source=reference_source,
-            evidence_digest=eid,
+            evidence_digest=record_digest,
         ))
         eid2 = _edge_id(GraphRelationshipType.OBSERVED_BY, ri_id, rs_id)
         self._add_edge(AssetGraphEdge(
@@ -234,17 +329,18 @@ class AssetGraphBuilder:
             to_node_id=rs_id,
             authority_phase="R4",
             source=reference_source,
-            evidence_digest=eid2,
+            evidence_digest=record_digest,
         ))
 
     def add_execution_evidence_edge(
         self, venue: str, side: str, notional: str,
         net_edge_state: str, r8_snapshot_digest: str,
     ) -> None:
+        """Parent evidence digest is the R8 snapshot; the scenario identity
+        (side x notional) is part of both the edge identity and the metadata,
+        so the binding stays deterministic and auditable."""
         dep = _deployment_node_id(self._key)
         venue_node = _venue_node_id(venue)
-        # Scenario identity (side x notional) is part of the edge identity:
-        # each R8 scenario is distinct evidence, never a duplicate edge.
         eid = hashlib.sha256(
             "|".join((
                 GraphRelationshipType.HAS_EXECUTION_EVIDENCE.value,
@@ -275,11 +371,15 @@ class AssetGraphBuilder:
             reason=reason,
         ))
 
+    # ------------------------------------------------------------------
+    # Snapshot assembly
+    # ------------------------------------------------------------------
     def build(
         self,
         *,
         generated_at: datetime,
-        r7_snapshot_digest: str,
+        r7_cross_market_digest: str,
+        r8_execution_simulator_digest: str | None = None,
         r3_liquidity_digest: str | None = None,
         upstream_evidence: dict | None = None,
         synthetic: bool = False,
@@ -306,7 +406,9 @@ class AssetGraphBuilder:
             "verificationAuthority": "R11_NOT_YET_APPLIED",
             "digitalTwinAuthority": "R12_NOT_YET_APPLIED",
         }
-        source_digests = {"r7CrossMarketDigest": r7_snapshot_digest}
+        source_digests = {"r7CrossMarketDigest": r7_cross_market_digest}
+        if r8_execution_simulator_digest:
+            source_digests["r8ExecutionSimulatorDigest"] = r8_execution_simulator_digest
         if r3_liquidity_digest:
             source_digests["r3LiquidityDigest"] = r3_liquidity_digest
         nodes = tuple(self._nodes)
@@ -314,22 +416,32 @@ class AssetGraphBuilder:
         gaps = tuple(self._gaps)
         econ_id = _economic_node_id(self._uid)
         dep_id = _deployment_node_id(self._key)
+        edges_by_id = {e.edge_id: e for e in edges}
+
+        # Canonical paths are real topology paths: economic -> deployment ->
+        # venue, backed by the REPRESENTED_BY edge and that venue's QUOTED_ON
+        # edge. One deterministic path per source-proven venue.
+        rep_edges = [
+            e for e in edges
+            if e.relationship_type is GraphRelationshipType.REPRESENTED_BY
+            and e.from_node_id == econ_id and e.to_node_id == dep_id
+        ]
+        quoted_edges = [
+            e for e in edges
+            if e.relationship_type is GraphRelationshipType.QUOTED_ON
+            and e.from_node_id == dep_id
+        ]
         paths: list[AssetGraphPath] = []
-        path_nodes = (econ_id, dep_id)
-        path_edges = ()
-        if self._edges:
-            quoted = [
-                e for e in edges
-                if e.relationship_type is GraphRelationshipType.QUOTED_ON
-            ]
-            if quoted:
-                path_edges = tuple(e.edge_id for e in quoted)
-        paths.append(AssetGraphPath(
-            path_id=f"canonical:{self._uid}",
-            path_type="ECONOMIC_ASSET→TOKEN_DEPLOYMENT→VENUE",
-            node_ids=path_nodes,
-            edge_ids=path_edges,
-        ))
+        if rep_edges:
+            for quoted in quoted_edges:
+                path = AssetGraphPath(
+                    path_id=f"canonical:{self._uid}:{quoted.to_node_id}",
+                    path_type="ECONOMIC_ASSET→TOKEN_DEPLOYMENT→VENUE",
+                    node_ids=(econ_id, dep_id, quoted.to_node_id),
+                    edge_ids=(rep_edges[0].edge_id, quoted.edge_id),
+                )
+                validate_path_structure(path.node_ids, path.edge_ids, edges_by_id)
+                paths.append(path)
         evidence = {
             "schemaVersion": SCHEMA_VERSION,
             "phase": PHASE,

@@ -125,9 +125,7 @@ jobs:
           if data["status"] != "ASSET_GRAPH_PARTIAL":
               raise SystemExit("R9_BLOCKED: gaps present but status is not ASSET_GRAPH_PARTIAL")
 
-          # No synthetic edges: the economic identity, deployment identity and
-          # venue identities must all be traceable to the embedded upstream
-          # R7/R8 evidence, never invented by the graph layer.
+          # Embedded upstream evidence must be present for lineage re-derivation.
           upstream = data.get("upstreamEvidence", {})
           r8 = upstream.get("r8ExecutionEvidence")
           r7 = (r8 or {}).get("upstreamEvidence", {}).get("r7CrossMarketEvidence")
@@ -135,54 +133,168 @@ jobs:
               raise SystemExit("R9_BLOCKED: embedded R8/R7 evidence missing")
           if data["economicAssetUid"] != r7.get("economicAssetUid"):
               raise SystemExit("R9_BLOCKED: economic UID not traceable to embedded R7 evidence")
-          token = (r7.get("layers") or {}).get("token") or {}
+          token_layer = (r7.get("layers") or {}).get("token") or {}
           dep_nodes = [n for n in data["nodes"]
                        if n["nodeType"] == "TOKEN_DEPLOYMENT"]
           if len(dep_nodes) != 1:
               raise SystemExit("R9_BLOCKED: expected exactly one token deployment node")
           dep = dep_nodes[0]
-          if dep.get("canonicalAssetKey", {}).get("chainId") != token.get("chainId") or str(
+          if dep.get("canonicalAssetKey", {}).get("chainId") != token_layer.get("chainId") or str(
               dep.get("canonicalAssetKey", {}).get("contractAddress", "")
-          ).lower() != str(token.get("contractAddress", "")).lower():
+          ).lower() != str(token_layer.get("contractAddress", "")).lower():
               raise SystemExit("R9_BLOCKED: deployment node not traceable to embedded R7 token layer")
-          r7_venues = {v.get("venue") for v in (r7.get("layers") or {}).get("venues") or []}
-          scenario_venues = {
-              s.get("scenario", {}).get("quoteSource") for s in r8.get("scenarios", [])
-          }
-          for node in data["nodes"]:
-              if node["nodeType"] == "VENUE" and node["sourceIdentifier"] not in (
-                  r7_venues | scenario_venues
-              ):
-                  raise SystemExit(
-                      f"R9_BLOCKED: venue {node['sourceIdentifier']} is a synthetic edge origin")
 
-          # Core lineage: R7 and R3 source digests must reconstruct; the
-          # embedded R8 evidence must reconstruct its own snapshot digest.
-          digests = data.get("sourceDigests", {})
-          if not digests.get("r7CrossMarketDigest"):
-              raise SystemExit("R9_BLOCKED: required r7CrossMarketDigest missing")
-          if not digests.get("r3LiquidityDigest"):
-              raise SystemExit("R9_BLOCKED: required r3LiquidityDigest missing")
-          if upstream.get("r8ExecutionDigest") != r8.get("r8SnapshotDigest"):
-              raise SystemExit("R9_BLOCKED: embedded R8 digest binding broken")
+          # Correction A (F2/F3): topology identity vs evidence lineage.
+          # Every edge must carry a source-backed evidenceDigest distinct
+          # from its graph edgeId, recomputable from the embedded records.
+          # (Duplicate/conflict rules are exercised by the focused suite
+          # run above; this live gate re-derives every evidence digest.)
+          if not data["paths"]:
+              raise SystemExit("R9_BLOCKED: no canonical paths in live evidence")
+          edge_by_id = {e["edgeId"]: e for e in data["edges"]}
+          for path in data["paths"]:
+              nodes_seq, edges_seq = path["nodeIds"], path["edgeIds"]
+              if len(edges_seq) != len(nodes_seq) - 1:
+                  raise SystemExit(
+                      f"R9_BLOCKED: path {path['pathId']} node/edge count invalid")
+              for i, eid in enumerate(edges_seq):
+                  edge = edge_by_id.get(eid)
+                  if edge is None:
+                      raise SystemExit(f"R9_BLOCKED: path references unknown edge {eid}")
+                  if edge["fromNodeId"] != nodes_seq[i] or edge["toNodeId"] != nodes_seq[i + 1]:
+                      raise SystemExit(
+                          f"R9_BLOCKED: path {path['pathId']} connectivity invalid")
+
+          def canonical_digest(payload):
+              return hashlib.sha256(
+                  json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False).encode("utf-8")
+              ).hexdigest()
+
+          r7_identity = r7.get("identityBinding") or {}
+          r7_settlement = (r7.get("layers") or {}).get("settlement")
+          r7_oracle = (r7.get("layers") or {}).get("oracleReference")
+          r7_rows_by_venue = {}
+          for row in (r7.get("layers") or {}).get("venues") or []:
+              r7_rows_by_venue.setdefault(row.get("venue"), []).append(row)
+          venue_node_to_name = {
+              n["nodeId"]: n["sourceIdentifier"]
+              for n in data["nodes"] if n["nodeType"] == "VENUE"
+          }
+          for edge in data["edges"]:
+              if edge["evidenceDigest"] == edge["edgeId"]:
+                  raise SystemExit(
+                      f"R9_BLOCKED: edge {edge['edgeId'][:12]} reuses its edgeId "
+                      "as evidenceDigest (evidence lineage not bound)")
+              rel, target = edge["relationshipType"], edge["toNodeId"]
+              if rel == "REPRESENTED_BY":
+                  expected = canonical_digest(r7_identity)
+              elif rel == "QUOTED_ON":
+                  venue_name = venue_node_to_name.get(target)
+                  rows = r7_rows_by_venue.get(venue_name)
+                  if not rows:
+                      raise SystemExit(
+                          f"R9_BLOCKED: QUOTED_ON edge {edge['edgeId'][:12]} has no "
+                          "embedded R7 venue observations")
+                  expected = canonical_digest({
+                      "venue": venue_name,
+                      "observations": sorted(rows, key=canonical_digest)})
+              elif rel == "SETTLES_VIA":
+                  if r7_settlement is None:
+                      raise SystemExit("R9_BLOCKED: SETTLES_VIA edge without embedded settlement evidence")
+                  expected = canonical_digest(r7_settlement)
+              elif rel in ("REFERENCED_BY", "OBSERVED_BY"):
+                  if r7_oracle is None:
+                      raise SystemExit("R9_BLOCKED: reference edge without embedded oracle observation")
+                  expected = canonical_digest(r7_oracle)
+              elif rel == "HAS_EXECUTION_EVIDENCE":
+                  expected = r8.get("r8SnapshotDigest")
+              else:
+                  raise SystemExit(f"R9_BLOCKED: unexpected relationship {rel}")
+              if edge["evidenceDigest"] != expected:
+                  raise SystemExit(
+                      f"R9_BLOCKED: {rel} edge {edge['edgeId'][:12]} evidenceDigest "
+                      "does not reconstruct from embedded upstream evidence")
+
+          # Correction A (F1): the R7 SOURCE digest is the canonical hash of
+          # the COMPLETE embedded R7 evidence and must equal the R8-declared
+          # digest; the internal r7SnapshotDigest and the R8 snapshot digest
+          # are separate, independently verified lineage checks.
           from finco_radar.execution_simulator.contracts import (
               verify_serialized_evidence as verify_r8,
           )
           from finco_radar.cross_market.contracts import (
               verify_serialized_evidence as verify_r7,
           )
+          digests = data.get("sourceDigests", {})
+          r7_source = canonical_digest(r7)
+          if digests.get("r7CrossMarketDigest") != r7_source:
+              raise SystemExit(
+                  "R9_BLOCKED: sourceDigests.r7CrossMarketDigest is not the "
+                  "canonical digest of the complete embedded R7 evidence")
+          if r7_source == r7.get("r7SnapshotDigest"):
+              raise SystemExit(
+                  "R9_BLOCKED: r7CrossMarketDigest equals the internal "
+                  "r7SnapshotDigest - digest semantics collapsed")
+          r8_declared_r7 = (r8.get("sourceDigests") or {}).get("r7CrossMarketDigest")
+          if r8_declared_r7 != r7_source:
+              raise SystemExit(
+                  "R9_BLOCKED: R9 R7 source digest differs from the R8-declared "
+                  "R7 source digest")
+          r8_digest = digests.get("r8ExecutionSimulatorDigest")
+          if not r8_digest:
+              raise SystemExit("R9_BLOCKED: r8ExecutionSimulatorDigest missing from sourceDigests")
+          if r8_digest != r8.get("r8SnapshotDigest"):
+              raise SystemExit("R9_BLOCKED: r8ExecutionSimulatorDigest does not bind the embedded R8 snapshot")
           if not verify_r8(r8):
               raise SystemExit("R9_BLOCKED: embedded R8 evidence does not reconstruct")
           if not verify_r7(r7):
               raise SystemExit("R9_BLOCKED: embedded R7 evidence does not reconstruct")
-          recomputed_r3 = hashlib.sha256(
-              json.dumps(
-                  r8.get("upstreamEvidence", {}).get("r3LiquidityEvidence"),
-                  sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-              ).encode("utf-8")
-          ).hexdigest()
-          if recomputed_r3 != digests["r3LiquidityDigest"]:
+          r3_embedded = (r8.get("upstreamEvidence") or {}).get("r3LiquidityEvidence")
+          r3_declared = (r8.get("sourceDigests") or {}).get("r3LiquidityDigest")
+          if not digests.get("r3LiquidityDigest") or r3_embedded is None:
+              raise SystemExit("R9_BLOCKED: required R3 lineage pair missing")
+          if canonical_digest(r3_embedded) != r3_declared or digests["r3LiquidityDigest"] != r3_declared:
               raise SystemExit("R9_BLOCKED: r3LiquidityDigest does not reconstruct")
+
+          # Correction A (F5): semantic R7/R8 identity binding after both
+          # frozen verifiers pass.
+          if data["economicAssetUid"] != r8.get("economicAssetUid") or (
+              data["economicAssetUid"] != r7.get("economicAssetUid")):
+              raise SystemExit("R9_BLOCKED: economic UID not identical across R9/R8/R7")
+          r9_key = next(
+              (n.get("canonicalAssetKey") for n in data["nodes"]
+               if n["nodeType"] == "TOKEN_DEPLOYMENT"), None)
+          if not r9_key:
+              raise SystemExit("R9_BLOCKED: no deployment node with a canonical AssetKey")
+          r8_key = r8.get("canonicalAssetKey") or {}
+          if (r8_key.get("chainId") != r9_key.get("chainId")
+              or str(r8_key.get("contractAddress", "")).lower()
+              != str(r9_key.get("contractAddress", "")).lower()):
+              raise SystemExit("R9_BLOCKED: R8 canonicalAssetKey differs from the R9 deployment")
+          token = (r7.get("layers") or {}).get("token") or {}
+          if (token.get("chainId") != r9_key.get("chainId")
+              or str(token.get("contractAddress", "")).lower()
+              != str(r9_key.get("contractAddress", "")).lower()):
+              raise SystemExit("R9_BLOCKED: R7 token layer differs from the R9 deployment")
+          key_hits = sum(
+              1 for k in r7_identity.get("canonicalKeys", [])
+              if k.get("chainId") == r9_key.get("chainId")
+              and str(k.get("contractAddress", "")).lower()
+              == str(r9_key.get("contractAddress", "")).lower())
+          if key_hits != 1:
+              raise SystemExit("R9_BLOCKED: R9 deployment not present exactly once in R7 identityBinding")
+          r7_venue_names = set(r7_rows_by_venue)
+          for scenario in r8.get("scenarios", []):
+              entry = scenario.get("scenario") or {}
+              if entry.get("economicAssetUid") != data["economicAssetUid"]:
+                  raise SystemExit("R9_BLOCKED: scenario UID differs from canonical economic UID")
+              if (entry.get("chainId") != r9_key.get("chainId")
+                  or str(entry.get("contractAddress", "")).lower()
+                  != str(r9_key.get("contractAddress", "")).lower()):
+                  raise SystemExit("R9_BLOCKED: scenario deployment differs from canonical deployment")
+              if entry.get("quoteSource") not in r7_venue_names:
+                  raise SystemExit("R9_BLOCKED: scenario quoteSource not proven by embedded R7 venue evidence")
 
           # Boundaries and profit-language guard.
           boundaries = data.get("boundaries", {})

@@ -3,6 +3,17 @@
 The graph never calls new APIs.  It re-runs the frozen R8 live composition
 (R1 -> R7 embedded by digest) and derives every node, edge and gap purely
 from the embedded R7 cross-market evidence plus the R8 scenario evidence.
+
+Correction A lineage discipline (F1/F5):
+- `sourceDigests["r7CrossMarketDigest"]` is the canonical SHA-256 of the
+  COMPLETE embedded r7CrossMarketEvidence and must equal the digest declared
+  by the embedded R8 snapshot — a different check from the R7 internal
+  `r7SnapshotDigest`, which is independently verified with the frozen R7
+  verifier;
+- `sourceDigests["r8ExecutionSimulatorDigest"]` binds the embedded R8
+  snapshot digest and is independently verified with the frozen R8 verifier;
+- semantic identity (economic UID, canonical deployment, scenario bindings)
+  must agree across R7/R8/R9 after both digest verifiers pass.
 """
 from __future__ import annotations
 
@@ -14,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from finco_radar.assets.contracts import AssetKey
-from finco_radar.asset_graph.builder import AssetGraphBuilder
+from finco_radar.asset_graph.builder import AssetGraphBuilder, digest_record
 from finco_radar.asset_graph.contracts import (
     AssetGraphError,
     AssetGraphStatus,
@@ -41,16 +52,17 @@ def _canonical_digest(payload: Any) -> str:
     ).hexdigest()
 
 
-def build_graph_from_upstream(
-    *,
-    r8_evidence: dict[str, Any],
-    git_head: str,
-    generated_at: datetime,
-) -> dict[str, Any]:
-    """Derive the R9 graph deterministically from frozen R7/R8 evidence dicts.
+def _lineage_failure(detail: str) -> AssetGraphError:
+    return AssetGraphError(detail, AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH)
 
-    Fail-closed: embedded upstream evidence must reconstruct its recorded
-    snapshot digests before any node or edge is derived from it.
+
+def _verify_upstream_lineage(
+    r8_evidence: dict[str, Any],
+) -> tuple[dict[str, Any], str, str, AssetKey]:
+    """Digest-level (frozen verifiers) + semantic-level (F5) lineage binding.
+
+    Returns (embedded r7 evidence, canonical R7 source digest, R8 snapshot
+    digest, canonical deployment key).
     """
     try:
         r7_evidence = r8_evidence["upstreamEvidence"]["r7CrossMarketEvidence"]
@@ -64,18 +76,52 @@ def build_graph_from_upstream(
             "embedded r7CrossMarketEvidence is not a mapping",
             AssetGraphStatus.ASSET_GRAPH_INPUT_INVALID,
         )
+
+    # F1: frozen internal-digest verifiers (independent of each other).
     if not verify_r8_evidence(r8_evidence):
-        raise AssetGraphError(
-            "embedded R8 evidence fails its r8SnapshotDigest reconstruction",
-            AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH,
+        raise _lineage_failure(
+            "embedded R8 evidence fails its r8SnapshotDigest reconstruction"
         )
     if not verify_r7_evidence(r7_evidence):
-        raise AssetGraphError(
-            "embedded R7 evidence fails its r7SnapshotDigest reconstruction",
-            AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH,
+        raise _lineage_failure(
+            "embedded R7 evidence fails its r7SnapshotDigest reconstruction"
+        )
+
+    # F1: the R7 SOURCE digest is the canonical hash of the complete embedded
+    # R7 evidence and must equal the digest declared by the embedded R8
+    # snapshot. Distinct from the internal r7SnapshotDigest verified above.
+    r7_source_digest = _canonical_digest(r7_evidence)
+    declared_r7_source = (r8_evidence.get("sourceDigests") or {}).get(
+        "r7CrossMarketDigest"
+    )
+    if declared_r7_source != r7_source_digest:
+        raise _lineage_failure(
+            "canonical digest of embedded r7CrossMarketEvidence "
+            f"({r7_source_digest}) does not equal the R8-declared "
+            f"r7CrossMarketDigest ({declared_r7_source})"
+        )
+
+    # F1: bind the R8 snapshot digest explicitly in R9 sourceDigests.
+    r8_snapshot_digest = r8_evidence.get("r8SnapshotDigest")
+    if not r8_snapshot_digest:
+        raise _lineage_failure("embedded R8 evidence carries no r8SnapshotDigest")
+
+    # F1 (completeness): the R3 source digest declared by R8 must reconstruct
+    # over the embedded R3 evidence.
+    r3_declared = (r8_evidence.get("sourceDigests") or {}).get("r3LiquidityDigest")
+    r3_embedded = (r8_evidence.get("upstreamEvidence") or {}).get("r3LiquidityEvidence")
+    if r3_declared is None or r3_embedded is None:
+        raise _lineage_failure("embedded R3 lineage pair missing")
+    if _canonical_digest(r3_embedded) != r3_declared:
+        raise _lineage_failure("r3LiquidityDigest does not reconstruct")
+
+    # ---- F5: semantic R7/R8 identity binding --------------------------
+    uid = r7_evidence.get("economicAssetUid")
+    if not uid or r8_evidence.get("economicAssetUid") != uid:
+        raise _lineage_failure(
+            "R8 economicAssetUid does not equal the embedded R7 economicAssetUid"
         )
     try:
-        uid = r7_evidence["economicAssetUid"]
         token_layer = r7_evidence["layers"]["token"]
         key = AssetKey(
             chain_id=int(token_layer["chainId"]),
@@ -86,19 +132,100 @@ def build_graph_from_upstream(
             "R7 evidence carries an unusable token identity layer",
             AssetGraphStatus.ASSET_GRAPH_INPUT_INVALID,
         ) from exc
+    r8_key = r8_evidence.get("canonicalAssetKey") or {}
+    if (
+        r8_key.get("chainId") != key.chain_id
+        or str(r8_key.get("contractAddress", "")).lower()
+        != key.contract_address.lower()
+    ):
+        raise _lineage_failure(
+            "R8 canonicalAssetKey does not equal the R9/R7 canonical deployment"
+        )
+    binding_keys = (
+        (r7_evidence.get("identityBinding") or {}).get("canonicalKeys") or []
+    )
+    key_hits = sum(
+        1 for k in binding_keys
+        if k.get("chainId") == key.chain_id
+        and str(k.get("contractAddress", "")).lower() == key.contract_address.lower()
+    )
+    if key_hits != 1:
+        raise _lineage_failure(
+            "R9 deployment appears "
+            f"{key_hits} times in the embedded R7 identityBinding (expected 1)"
+        )
+    if (
+        token_layer.get("chainId") != key.chain_id
+        or str(token_layer.get("contractAddress", "")).lower()
+        != key.contract_address.lower()
+    ):
+        raise _lineage_failure(
+            "R7 token layer disagrees with the canonical AssetKey"
+        )
+    venue_names = {
+        row.get("venue")
+        for row in (r7_evidence.get("layers") or {}).get("venues") or []
+    }
+    scenarios = r8_evidence.get("scenarios") or []
+    if not scenarios:
+        raise _lineage_failure(
+            "embedded R8 evidence carries no execution scenarios"
+        )
+    for scenario in scenarios:
+        entry = scenario.get("scenario") or {}
+        if entry.get("economicAssetUid") != uid:
+            raise _lineage_failure(
+                "R8 scenario economicAssetUid does not equal the canonical "
+                "economic UID"
+            )
+        if (
+            entry.get("chainId") != key.chain_id
+            or str(entry.get("contractAddress", "")).lower()
+            != key.contract_address.lower()
+        ):
+            raise _lineage_failure(
+                "R8 scenario canonicalAssetKey does not equal the canonical "
+                "deployment"
+            )
+        if entry.get("quoteSource") not in venue_names:
+            raise _lineage_failure(
+                f"R8 scenario quoteSource {entry.get('quoteSource')!r} is not "
+                "a venue observed in the embedded R7 evidence"
+            )
+    return r7_evidence, r7_source_digest, r8_snapshot_digest, key
+
+
+def build_graph_from_upstream(
+    *,
+    r8_evidence: dict[str, Any],
+    git_head: str,
+    generated_at: datetime,
+) -> dict[str, Any]:
+    """Derive the R9 graph deterministically from frozen R7/R8 evidence dicts.
+
+    Fail-closed: upstream evidence must reconstruct its recorded digests AND
+    agree semantically before any node or edge is derived from it.
+    """
+    r7_evidence, r7_source_digest, r8_snapshot_digest, key = (
+        _verify_upstream_lineage(r8_evidence)
+    )
+    uid = r7_evidence["economicAssetUid"]
     builder = AssetGraphBuilder(
         economic_asset_uid=uid, canonical_asset_key=key, git_head=git_head,
     )
-    builder.add_represented_by_edge()
+    builder.add_represented_by_edge(r7_evidence["identityBinding"])
 
-    # VENUE nodes + QUOTED_ON edges straight from R7 venue observations.
-    venue_names: set[str] = set()
-    for venue_row in r7_evidence["layers"]["venues"]:
-        venue_names.add(venue_row["venue"])
-        builder.add_quoted_on_edge(venue_row["venue"])
+    # VENUE nodes + QUOTED_ON edges from the exact R7 venue observation
+    # records (one edge per venue; the digest covers every observation row).
+    venue_rows = (r7_evidence["layers"] or {}).get("venues") or []
+    by_venue: dict[str, list[Mapping]] = {}
+    for row in venue_rows:
+        by_venue.setdefault(row["venue"], []).append(row)
+    for venue in sorted(by_venue):
+        builder.add_quoted_on_edge(venue, by_venue[venue])
 
     # Settlement context (R0 authority, carried through R7 evidence).
-    settlement = r7_evidence["layers"]["settlement"]
+    settlement = (r7_evidence["layers"] or {}).get("settlement")
     if settlement is not None:
         builder.add_settlement_node(
             source="R0",
@@ -106,29 +233,32 @@ def build_graph_from_upstream(
             chain_id=int(settlement["chainId"]),
             address=str(settlement["contractAddress"]),
         )
-        builder.add_settles_via_edge(settlement["settlementAssetSymbol"])
+        builder.add_settles_via_edge(
+            settlement["settlementAssetSymbol"], settlement,
+        )
 
-    # Reference instrument + source (R4 authority, carried through R7 evidence).
-    oracle = r7_evidence["layers"]["oracleReference"]
+    # Reference instrument + source (R4 authority, carried through R7
+    # evidence); the oracle observation record binds both edges.
+    oracle = (r7_evidence["layers"] or {}).get("oracleReference")
     if oracle is not None and oracle.get("instrument") and oracle.get("source"):
-        builder.add_reference_nodes(oracle["source"], oracle["instrument"])
+        builder.add_reference_nodes(
+            oracle["source"], oracle["instrument"], oracle,
+        )
 
-    # HAS_EXECUTION_EVIDENCE edges from the four R8 scenarios.
-    r8_digest = r8_evidence["r8SnapshotDigest"]
+    # HAS_EXECUTION_EVIDENCE edges from the R8 scenarios (parent evidence
+    # digest = R8 snapshot; scenario identity retained in metadata).
     for scenario in r8_evidence["scenarios"]:
-        quote_source = scenario["scenario"]["quoteSource"]
-        if quote_source not in venue_names:
-            builder.add_quoted_on_edge(quote_source)
+        entry = scenario["scenario"]
         builder.add_execution_evidence_edge(
-            venue=quote_source,
-            side=scenario["scenario"]["side"],
-            notional=scenario["scenario"]["requestedNotionalUsd"],
+            venue=entry["quoteSource"],
+            side=entry["side"],
+            notional=entry["requestedNotionalUsd"],
             net_edge_state=scenario["netEdgeState"],
-            r8_snapshot_digest=r8_digest,
+            r8_snapshot_digest=r8_snapshot_digest,
         )
 
     # Explicit graph gaps: absence of authority is evidence, never a synthetic edge.
-    underlying = r7_evidence["layers"]["underlying"]
+    underlying = (r7_evidence["layers"] or {}).get("underlying")
     if underlying is None or underlying.get("status") != "AVAILABLE":
         builder.add_gap(
             GraphGapKind.UNDERLYING_RELATIONSHIP_UNAVAILABLE,
@@ -136,7 +266,7 @@ def build_graph_from_upstream(
             source="R7_CROSS_MARKET_AUTHORITY",
             reason="no official underlying-market source exists for this asset",
         )
-    external_oracle = r7_evidence["layers"]["externalOracle"]
+    external_oracle = (r7_evidence["layers"] or {}).get("externalOracle")
     if external_oracle is None or external_oracle.get("status") != "AVAILABLE":
         builder.add_gap(
             GraphGapKind.EXTERNAL_ORACLE_UNAVAILABLE,
@@ -157,7 +287,7 @@ def build_graph_from_upstream(
         source="R4_REFERENCE_STATE_AUTHORITY",
         reason="corporate-action adapter produced no rows for this asset",
     )
-    if len(venue_names) < 2:
+    if len(by_venue) < 2:
         builder.add_gap(
             GraphGapKind.SECOND_VENUE_UNAVAILABLE,
             related_node_id=None,
@@ -165,16 +295,12 @@ def build_graph_from_upstream(
             reason="only one venue observation exists in the frozen R7 evidence",
         )
 
-    # r8ExecutionDigest travels inside upstreamEvidence so the recorded
-    # r9SnapshotDigest covers the complete R8 lineage without post-hoc edits.
     snapshot = builder.build(
         generated_at=generated_at,
-        r7_snapshot_digest=r7_evidence["r7SnapshotDigest"],
+        r7_cross_market_digest=r7_source_digest,
+        r8_execution_simulator_digest=r8_snapshot_digest,
         r3_liquidity_digest=r8_evidence["sourceDigests"]["r3LiquidityDigest"],
-        upstream_evidence={
-            "r8ExecutionEvidence": r8_evidence,
-            "r8ExecutionDigest": r8_digest,
-        },
+        upstream_evidence={"r8ExecutionEvidence": r8_evidence},
     )
     return snapshot.to_evidence_dict()
 
@@ -211,8 +337,12 @@ def main() -> int:
         "sourceDigests": evidence["sourceDigests"],
         "candidateAudit": audit,
         "note": (
-            "Graph nodes/edges are derived only from frozen R7/R8 evidence "
-            "embedded by digest; absent relationships are recorded as graph gaps."
+            "sourceDigests.r7CrossMarketDigest is the canonical digest of the "
+            "complete embedded R7 evidence (equality with the R8-declared "
+            "digest is enforced); the R7 internal r7SnapshotDigest and the R8 "
+            "snapshot digest are verified independently with the frozen "
+            "verifiers. Nodes/edges are derived only from that frozen "
+            "evidence; absent relationships are recorded as graph gaps."
         ),
     }
     Path(os.getenv("RADAR_R9_MANIFEST_PATH", MANIFEST_PATH)).write_text(

@@ -14,11 +14,18 @@ from decimal import Decimal
 
 import pytest
 
-from finco_radar.asset_graph.builder import AssetGraphBuilder
+from finco_radar.asset_graph.builder import (
+    AssetGraphBuilder,
+    digest_record,
+    validate_path_structure,
+)
 from finco_radar.asset_graph.contracts import (
     PHASE,
     SCHEMA_VERSION,
+    AssetGraphEdge,
+    AssetGraphEdge,
     AssetGraphError,
+    AssetGraphNode,
     AssetGraphSnapshot,
     AssetGraphStatus,
     GraphGapKind,
@@ -339,25 +346,70 @@ def test_c08_snapshot_upstream_evidence_deep_frozen():
     assert snapshot.upstream_evidence["r8"]["inner"] == (1, 2)
 
 
+IDENTITY_RECORD = {
+    "economicAssetUid": UID,
+    "canonicalKeys": [{"chainId": KEY.chain_id,
+                       "contractAddress": KEY.contract_address}],
+    "referenceIdentifiers": [UID],
+    "source": "SYNTHETIC_TEST_REGISTRY",
+}
+VENUE_OBSERVATION = {
+    "venue": VENUE,
+    "side": "BUY",
+    "notionalUsd": "100",
+    "price": "101",
+    "currency": "USD",
+    "observedAt": NOW.isoformat(),
+    "source": "R0_EXECUTION_QUOTE_VIA_R3_LIQUIDITY",
+    "chainId": KEY.chain_id,
+    "contractAddress": KEY.contract_address,
+    "gapBps": "100",
+    "routeSignature": "SYNTH:ROUTE",
+    "rawEvidence": {},
+}
+VENUE_B_OBSERVATION = dict(VENUE_OBSERVATION, venue=VENUE_B)
+SETTLEMENT_RECORD = {
+    "settlementAssetSymbol": "USDG",
+    "chainId": 4663,
+    "contractAddress": "0x" + "cc" * 20,
+    "settlementCurrency": "USD",
+    "transferRequired": None,
+    "authorityStatus": "CONTEXT_ONLY",
+    "resolved": True,
+}
+ORACLE_RECORD = {
+    "status": "AVAILABLE",
+    "source": "ROBINHOOD_RHJ",
+    "price": "100",
+    "currency": "USD",
+    "observedAt": NOW.isoformat(),
+    "instrument": UID,
+    "multiplier": "1",
+    "usable": True,
+    "assetUid": UID,
+    "assetKey": f"{KEY.chain_id}:{KEY.contract_address}",
+}
+
+
 def _simple_snapshot(upstream=None, gaps=()):
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_represented_by_edge()
+    builder.add_represented_by_edge(IDENTITY_RECORD)
     for kind, reason in gaps:
         builder.add_gap(kind, reason=reason)
     return builder.build(
-        generated_at=NOW, r7_snapshot_digest="d" * 64, upstream_evidence=upstream,
+        generated_at=NOW, r7_cross_market_digest="d" * 64, upstream_evidence=upstream,
     )
 
 
 def _populated_snapshot():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_represented_by_edge()
-    builder.add_quoted_on_edge(VENUE)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
     builder.add_settlement_node("R0", "USDG", 4663, "0x" + "cc" * 20)
-    builder.add_settles_via_edge("USDG")
-    builder.add_reference_nodes("ROBINHOOD_RHJ", UID)
+    builder.add_settles_via_edge("USDG", SETTLEMENT_RECORD)
+    builder.add_reference_nodes("ROBINHOOD_RHJ", UID, ORACLE_RECORD)
     builder.add_execution_evidence_edge(VENUE, "BUY", "100", "BLOCKED", R8_DIGEST)
-    return builder.build(generated_at=NOW, r7_snapshot_digest="d" * 64)
+    return builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
 
 
 def test_c09_verify_r9_snapshot_digest_accepts_valid_snapshot():
@@ -448,15 +500,15 @@ def test_b02_represented_by_edge_authority_r7():
 
 def test_b03_represented_by_idempotent():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_represented_by_edge()
-    builder.add_represented_by_edge()
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
     assert len(builder._edges) == 1
 
 
 def test_b04_quoted_on_creates_venue_node_and_edge():
     snapshot = _simple_snapshot()
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_quoted_on_edge(VENUE)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
     venues = [n for n in builder._nodes
               if n.node_type is GraphNodeType.VENUE]
     assert len(venues) == 1 and venues[0].source_identifier == VENUE
@@ -467,15 +519,15 @@ def test_b04_quoted_on_creates_venue_node_and_edge():
 
 def test_b05_quoted_on_idempotent():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_quoted_on_edge(VENUE)
-    builder.add_quoted_on_edge(VENUE)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
     assert len(builder._edges) == 1 and len(builder._nodes) == 3
 
 
 def test_b06_two_venues_two_edges():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_quoted_on_edge(VENUE)
-    builder.add_quoted_on_edge(VENUE_B)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    builder.add_quoted_on_edge(VENUE_B, [VENUE_B_OBSERVATION])
     assert len(builder._edges) == 2
     assert {e.to_node_id for e in builder._edges} != {builder._edges[0].to_node_id}
 
@@ -502,8 +554,8 @@ def test_b08_reference_nodes_create_edges():
 
 def test_b09_reference_nodes_idempotent():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_reference_nodes("SRC", "AAPL")
-    builder.add_reference_nodes("SRC", "AAPL")
+    builder.add_reference_nodes("SRC", "AAPL", ORACLE_RECORD)
+    builder.add_reference_nodes("SRC", "AAPL", ORACLE_RECORD)
     assert len(builder._nodes) == 4  # economic + deployment + RI + RS
     assert len(builder._edges) == 2
 
@@ -555,9 +607,9 @@ def test_b14_boundaries_record_r9_and_later_phases():
 
 def test_e01_nodes_and_edges_sorted_deterministically():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
-    builder.add_quoted_on_edge(VENUE_B)
-    builder.add_quoted_on_edge(VENUE)
-    snapshot = builder.build(generated_at=NOW, r7_snapshot_digest="d" * 64)
+    builder.add_quoted_on_edge(VENUE_B, [VENUE_B_OBSERVATION])
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    snapshot = builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
     node_keys = [(n.node_type.value, n.node_id) for n in snapshot.nodes]
     edge_keys = [(e.relationship_type.value, e.from_node_id, e.to_node_id,
                   e.edge_id) for e in snapshot.edges]
@@ -576,7 +628,7 @@ def test_e02_digest_stable_across_serialization_roundtrip():
 def test_e03_synthetic_flag_carried():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY,
                                 synthetic=True)
-    snapshot = builder.build(generated_at=NOW, r7_snapshot_digest="d" * 64)
+    snapshot = builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
     assert snapshot.synthetic is True
     assert snapshot.to_evidence_dict()["synthetic"] is True
 
@@ -584,7 +636,7 @@ def test_e03_synthetic_flag_carried():
 def test_e04_source_digests_include_r7_and_r3():
     builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
     snapshot = builder.build(
-        generated_at=NOW, r7_snapshot_digest="r7" * 32,
+        generated_at=NOW, r7_cross_market_digest="r7" * 32,
         r3_liquidity_digest="r3" * 32,
     )
     assert snapshot.source_digests["r7CrossMarketDigest"] == "r7" * 32
@@ -775,29 +827,39 @@ def test_l18_only_known_relationship_types_present():
 
 def test_l19_embedded_r8_evidence_digest_recorded():
     r8 = _r8_evidence()
-    evidence = build_graph_from_upstream(
-        r8_evidence=r8, git_head="head", generated_at=NOW)
-    assert evidence["upstreamEvidence"]["r8ExecutionDigest"] == (
+    evidence = _derive(r8)
+    # The R8 digest is typed in sourceDigests (not an untyped sibling).
+    assert evidence["sourceDigests"]["r8ExecutionSimulatorDigest"] == (
         r8["r8SnapshotDigest"])
-    assert evidence["sourceDigests"]["r7CrossMarketDigest"] == (
-        r8["upstreamEvidence"]["r7CrossMarketEvidence"]["r7SnapshotDigest"])
+    # The R7 source digest is the canonical hash of the COMPLETE embedded R7
+    # evidence, not its internal r7SnapshotDigest.
+    assert evidence["sourceDigests"]["r7CrossMarketDigest"] == _digest(
+        r8["upstreamEvidence"]["r7CrossMarketEvidence"])
 
 
-def test_l20_execution_edge_venue_not_in_r7_venues_is_still_wired():
-    r8 = _r8_evidence()
-    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
-    r7["layers"]["venues"] = []
+def _reseal_r7(r7: dict) -> dict:
     r7["r7SnapshotDigest"] = _digest(
         {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
-    r8["upstreamEvidence"]["r7CrossMarketDigest"] = _digest(r7)
+    return r7
+
+
+def _reseal_r8(r8: dict) -> dict:
+    r8["r8SnapshotDigest"] = _digest(
+        {k: v for k, v in r8.items() if k != "r8SnapshotDigest"})
+    return r8
+
+
+def _rebind_r7_in_r8(r8: dict) -> dict:
+    """After mutating embedded R7 evidence: refresh the R8-declared R7 source
+    digest and reseal the R8 snapshot, so ONLY the targeted check can fail."""
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
     r8["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
-    material = {k: v for k, v in r8.items() if k != "r8SnapshotDigest"}
-    r8["r8SnapshotDigest"] = _digest(material)
-    evidence = build_graph_from_upstream(
-        r8_evidence=r8, git_head="head", generated_at=NOW)
-    exec_edges = [e for e in evidence["edges"]
-                  if e["relationshipType"] == "HAS_EXECUTION_EVIDENCE"]
-    assert len(exec_edges) == 4
+    return _reseal_r8(r8)
+
+
+def _derive(r8):
+    return build_graph_from_upstream(r8_evidence=r8, git_head="head",
+                                     generated_at=NOW)
 
 
 # --------------------------------------------------------------------------
@@ -850,3 +912,389 @@ def test_q06_canonical_asset_path_present_and_absent():
     assert path.node_ids == (f"economic:{UID}", dep.node_id, venue.node_id)
     assert canonical_asset_path(snapshot, UID, "deployment:missing",
                                 venue.node_id) is None
+
+
+# --------------------------------------------------------------------------
+# Correction A - F1: R7/R8 lineage digest semantics
+# --------------------------------------------------------------------------
+
+def test_f1_01_correct_source_and_internal_digests_pass():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    evidence = _derive(r8)
+    # The R9 SOURCE digest is the canonical hash of the COMPLETE embedded R7
+    # evidence - deliberately different from its internal r7SnapshotDigest.
+    assert evidence["sourceDigests"]["r7CrossMarketDigest"] == _digest(r7)
+    assert evidence["sourceDigests"]["r7CrossMarketDigest"] != (
+        r7["r7SnapshotDigest"])
+
+
+def test_f1_02_wrong_canonical_source_digest_rejected():
+    r8 = _r8_evidence()
+    r8["sourceDigests"]["r7CrossMarketDigest"] = "0" * 64
+    _reseal_r8(r8)  # internal R8 digest consistent; source equality fails
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f1_03_wrong_internal_snapshot_digest_rejected():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    # Payload changes but the internal r7SnapshotDigest is NOT recomputed:
+    # the R7 source digest stays consistent, the internal verifier fails.
+    r7["attributionState"] = "TAMPERED"
+    _rebind_r7_in_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f1_04_r9_source_digest_equals_r8_declared_source_digest():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    evidence = _derive(r8)
+    assert evidence["sourceDigests"]["r7CrossMarketDigest"] == (
+        r8["sourceDigests"]["r7CrossMarketDigest"])
+    assert r8["sourceDigests"]["r7CrossMarketDigest"] == _digest(r7)
+
+
+def test_f1_05_missing_or_wrong_r8_snapshot_digest_rejected():
+    r8 = _r8_evidence()
+    r8.pop("r8SnapshotDigest")
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+    r8 = _r8_evidence()
+    r8["r8SnapshotDigest"] = "f" * 64
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f1_06_live_source_digests_reconstruct_independently():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    evidence = _derive(r8)
+    # R7 source digest: canonical hash of complete embedded evidence.
+    assert _digest(r7) == evidence["sourceDigests"]["r7CrossMarketDigest"]
+    # R7 internal snapshot digest: frozen R7 verifier.
+    assert verify_r7(r7) is True
+    # R8 snapshot digest: frozen R8 verifier + explicit sourceDigests binding.
+    assert verify_r8(r8) is True
+    assert evidence["sourceDigests"]["r8ExecutionSimulatorDigest"] == (
+        r8["r8SnapshotDigest"])
+
+
+# --------------------------------------------------------------------------
+# Correction A - F2: edge evidenceDigest binds actual authority evidence
+# --------------------------------------------------------------------------
+
+def test_f2_01_represented_by_digest_is_record_digest_not_edge_id():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    edge = builder._edges[0]
+    assert edge.evidence_digest == digest_record(IDENTITY_RECORD)
+    assert edge.evidence_digest != edge.edge_id
+
+
+def test_f2_02_quoted_on_digest_covers_exact_observations_order_independent():
+    row_a = dict(VENUE_OBSERVATION, notionalUsd="100")
+    row_b = dict(VENUE_OBSERVATION, notionalUsd="1000")
+    builder_a = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder_a.add_quoted_on_edge(VENUE, [row_a, row_b])
+    builder_b = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder_b.add_quoted_on_edge(VENUE, [row_b, row_a])
+    expected = digest_record(
+        {"venue": VENUE, "observations": sorted([row_a, row_b],
+                                                key=canonical_evidence_bytes)})
+    assert builder_a._edges[0].evidence_digest == expected
+    assert builder_b._edges[0].evidence_digest == expected
+
+
+def test_f2_03_settles_via_digest_is_settlement_record_digest():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_settlement_node("R0", "USDG", 4663, "0x" + "cc" * 20)
+    builder.add_settles_via_edge("USDG", SETTLEMENT_RECORD)
+    edge = [e for e in builder._edges
+            if e.relationship_type is GraphRelationshipType.SETTLES_VIA][0]
+    assert edge.evidence_digest == digest_record(SETTLEMENT_RECORD)
+    assert edge.evidence_digest != edge.edge_id
+
+
+def test_f2_04_reference_edges_digest_is_observation_record_digest():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_reference_nodes("ROBINHOOD_RHJ", UID, ORACLE_RECORD)
+    for rel in (GraphRelationshipType.REFERENCED_BY,
+                GraphRelationshipType.OBSERVED_BY):
+        edge = [e for e in builder._edges if e.relationship_type is rel][0]
+        assert edge.evidence_digest == digest_record(ORACLE_RECORD)
+        assert edge.evidence_digest != edge.edge_id
+
+
+def test_f2_05_evidence_change_moves_digests_not_topology():
+    snap_a = _populated_snapshot()
+    other_identity = dict(IDENTITY_RECORD, source="OTHER_REGISTRY")
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_represented_by_edge(other_identity)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    builder.add_settlement_node("R0", "USDG", 4663, "0x" + "cc" * 20)
+    builder.add_settles_via_edge("USDG", SETTLEMENT_RECORD)
+    builder.add_reference_nodes("ROBINHOOD_RHJ", UID, ORACLE_RECORD)
+    builder.add_execution_evidence_edge(VENUE, "BUY", "100", "BLOCKED", R8_DIGEST)
+    snap_b = builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
+    # Topology identity unchanged ...
+    assert [n.node_id for n in snap_a.nodes] == [n.node_id for n in snap_b.nodes]
+    assert [e.edge_id for e in snap_a.edges] == [e.edge_id for e in snap_b.edges]
+    # ... but evidence lineage moved.
+    def rep_of(snap):
+        return [e for e in snap.edges
+                if e.relationship_type is GraphRelationshipType.REPRESENTED_BY][0]
+    rep_a, rep_b = rep_of(snap_a), rep_of(snap_b)
+    assert rep_a.evidence_digest != rep_b.evidence_digest
+    assert snap_a.r9_snapshot_digest != snap_b.r9_snapshot_digest
+
+
+def test_f2_06_execution_edge_binds_parent_r8_digest_with_scenario_identity():
+    snapshot = _populated_snapshot()
+    edge = [e for e in snapshot.edges
+            if e.relationship_type is GraphRelationshipType.HAS_EXECUTION_EVIDENCE][0]
+    assert edge.evidence_digest == R8_DIGEST
+    assert edge.metadata["side"] == "BUY"
+    assert edge.metadata["notionalUsd"] == "100"
+
+
+# --------------------------------------------------------------------------
+# Correction A - F3: canonical paths are real topology paths
+# --------------------------------------------------------------------------
+
+def test_f3_01_one_venue_yields_single_three_node_two_edge_path():
+    snapshot = _populated_snapshot()
+    assert len(snapshot.paths) == 1
+    path = snapshot.paths[0]
+    assert len(path.node_ids) == 3 and len(path.edge_ids) == 2
+    edges = {e.edge_id: e for e in snapshot.edges}
+    validate_path_structure(path.node_ids, path.edge_ids, edges)
+
+
+def test_f3_02_two_venues_emit_two_deterministic_paths():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    builder.add_quoted_on_edge(VENUE_B, [VENUE_B_OBSERVATION])
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    snapshot = builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
+    assert len(snapshot.paths) == 2
+    ends = [p.node_ids[2] for p in snapshot.paths]
+    assert ends == sorted(ends) and len(set(ends)) == 2
+    assert [p.path_id for p in snapshot.paths] == sorted(
+        p.path_id for p in snapshot.paths)
+
+
+def test_f3_03_missing_represented_by_yields_no_canonical_path():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    snapshot = builder.build(generated_at=NOW, r7_cross_market_digest="d" * 64)
+    assert snapshot.paths == ()
+
+
+def test_f3_04_malformed_path_sequences_rejected():
+    edge = AssetGraphEdge(
+        edge_id="e1", relationship_type=GraphRelationshipType.QUOTED_ON,
+        from_node_id="a", to_node_id="b", authority_phase="R7",
+        source="s", evidence_digest="d",
+    )
+    edges = {"e1": edge}
+    with pytest.raises(AssetGraphError) as excinfo:
+        validate_path_structure(["a", "b"], [], edges)  # length mismatch
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+    with pytest.raises(AssetGraphError) as excinfo:
+        validate_path_structure(["a", "x"], ["e1"], edges)  # wrong connectivity
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+    with pytest.raises(AssetGraphError) as excinfo:
+        validate_path_structure(["a", "b"], ["missing"], edges)  # unknown edge
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+
+
+def test_f3_05_serialized_paths_validate_and_agree_with_query_helper():
+    snapshot = _populated_snapshot()
+    edges = {e.edge_id: e for e in snapshot.edges}
+    for path in snapshot.paths:
+        validate_path_structure(path.node_ids, path.edge_ids, edges)
+    dep = deployments_for_economic_asset(snapshot, UID)[0]
+    for venue in venues_for_deployment(snapshot, dep.node_id):
+        queried = canonical_asset_path(snapshot, UID, dep.node_id, venue.node_id)
+        serialized = [
+            p for p in snapshot.paths if p.node_ids[2] == venue.node_id]
+        assert len(serialized) == 1
+        assert queried is not None
+        assert (queried.node_ids, queried.edge_ids) == (
+            serialized[0].node_ids, serialized[0].edge_ids)
+
+
+# --------------------------------------------------------------------------
+# Correction A - F4: duplicate/conflict handling fails closed
+# --------------------------------------------------------------------------
+
+def test_f4_01_exact_duplicate_node_idempotent():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    # Seeded economic + deployment + exactly one venue node.
+    assert len(builder._nodes) == 3
+    assert len(builder._edges) == 1
+
+
+def test_f4_02_conflicting_node_identity_fails():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    existing = builder._node_index[f"economic:{UID}"]
+    with pytest.raises(AssetGraphError) as excinfo:
+        builder._add_node(AssetGraphNode(
+            node_id=existing.node_id,
+            node_type=existing.node_type,
+            source="ROGUE_AUTHORITY",
+            source_identifier=existing.source_identifier,
+            economic_asset_uid=existing.economic_asset_uid,
+            display_label=existing.display_label,
+        ))
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_IDENTITY_MISMATCH
+
+
+def test_f4_03_exact_duplicate_edge_idempotent():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    builder.add_representated_by_edge = None  # guard against typo-driven pass
+    builder2 = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder2.add_represented_by_edge(IDENTITY_RECORD)
+    builder2.add_represented_by_edge(IDENTITY_RECORD)
+    assert len(builder2._edges) == 1
+
+
+def test_f4_04_conflicting_edge_semantics_fail():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_represented_by_edge(IDENTITY_RECORD)
+    existing = builder._edges[0]
+    # Conflicting authority phase on the same deterministic edge id.
+    with pytest.raises(AssetGraphError) as excinfo:
+        builder._add_edge(AssetGraphEdge(
+            edge_id=existing.edge_id,
+            relationship_type=existing.relationship_type,
+            from_node_id=existing.from_node_id,
+            to_node_id=existing.to_node_id,
+            authority_phase="R0",
+            source=existing.source,
+            evidence_digest=existing.evidence_digest,
+        ))
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+    # Conflicting evidence lineage through the public API.
+    other_record = dict(IDENTITY_RECORD, source="OTHER_REGISTRY")
+    with pytest.raises(AssetGraphError) as excinfo:
+        builder.add_represented_by_edge(other_record)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+
+
+def test_f4_05_insertion_order_cannot_pick_a_conflict_survivor():
+    record_a = IDENTITY_RECORD
+    record_b = dict(IDENTITY_RECORD, source="OTHER_REGISTRY")
+    for first, second in ((record_a, record_b), (record_b, record_a)):
+        builder = AssetGraphBuilder(
+            economic_asset_uid=UID, canonical_asset_key=KEY)
+        builder.add_represented_by_edge(first)
+        with pytest.raises(AssetGraphError) as excinfo:
+            builder.add_represented_by_edge(second)
+        assert excinfo.value.status is (
+            AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID)
+
+
+def test_f4_06_conflicting_quoted_on_observations_fail():
+    builder = AssetGraphBuilder(economic_asset_uid=UID, canonical_asset_key=KEY)
+    builder.add_quoted_on_edge(VENUE, [VENUE_OBSERVATION])
+    tampered = dict(VENUE_OBSERVATION, price="999")
+    with pytest.raises(AssetGraphError) as excinfo:
+        builder.add_quoted_on_edge(VENUE, [tampered])
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_TOPOLOGY_INVALID
+
+
+# --------------------------------------------------------------------------
+# Correction A - F5: semantic R7/R8 identity binding
+# --------------------------------------------------------------------------
+
+def test_f5_01_uid_mismatch_between_r7_and_r8_rejected():
+    r8 = _r8_evidence()
+    r8["economicAssetUid"] = "EVIL"
+    _reseal_r8(r8)  # digest-valid, semantically wrong
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_02_deployment_mismatch_between_r8_and_r9_rejected():
+    r8 = _r8_evidence()
+    r8["canonicalAssetKey"] = {"chainId": 1, "contractAddress": "0x" + "ee" * 20}
+    _reseal_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_03_token_layer_disagreement_rejected():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    r7["layers"]["token"]["contractAddress"] = "0x" + "ee" * 20
+    _rebind_r7_in_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_04_deployment_not_exactly_once_in_binding_rejected():
+    r8 = _r8_evidence()
+    r7 = r8["upstreamEvidence"]["r7CrossMarketEvidence"]
+    r7["identityBinding"]["canonicalKeys"] = [
+        {"chainId": 137, "contractAddress": "0x" + "bb" * 20}]
+    _rebind_r7_in_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_05_scenario_quote_source_unknown_to_r7_rejected():
+    r8 = _r8_evidence()
+    r8["scenarios"][0]["scenario"]["quoteSource"] = "GHOST_VENUE"
+    _reseal_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_06_scenario_uid_mismatch_rejected():
+    r8 = _r8_evidence()
+    r8["scenarios"][0]["scenario"]["economicAssetUid"] = "EVIL"
+    _reseal_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_07_scenario_deployment_mismatch_rejected():
+    r8 = _r8_evidence()
+    r8["scenarios"][0]["scenario"]["contractAddress"] = "0x" + "ee" * 20
+    _reseal_r8(r8)
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
+
+
+def test_f5_08_individually_valid_digests_semantically_incompatible_rejected():
+    """The critical case: BOTH frozen verifiers pass - each snapshot
+    internally reconstructs - but the pair disagrees on identity. R9 must
+    reject the pair semantically."""
+    r7_evil = _rich_r7_evidence(uid="EVIL", key=OTHER_KEY)
+    assert verify_r7(r7_evil) is True  # internally consistent
+    r8 = _r8_evidence()
+    r8["upstreamEvidence"]["r7CrossMarketEvidence"] = r7_evil
+    r8["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7_evil)
+    _reseal_r8(r8)
+    assert verify_r8(r8) is True  # internally consistent
+    with pytest.raises(AssetGraphError) as excinfo:
+        _derive(r8)
+    assert excinfo.value.status is AssetGraphStatus.ASSET_GRAPH_LINEAGE_MISMATCH
