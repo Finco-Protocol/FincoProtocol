@@ -1,0 +1,412 @@
+name: Radar R10 Model Radar
+
+on:
+  push:
+    branches: [radar/r10-model-radar]
+    paths:
+      - "finco_radar/model_radar/**"
+      - "finco_radar/r10/**"
+      - "tests/test_radar_r10_model_radar.py"
+      - "docs/radar/r10_model_radar.md"
+      - ".github/workflows/radar_r10_model_radar.yml"
+  workflow_dispatch:
+
+jobs:
+  model-radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Radar test/runtime dependencies
+        run: python -m pip install -e . pytest httpx
+      - name: Run focused R10 tests (offline, deterministic)
+        run: pytest -q tests/test_radar_r10_model_radar.py
+      - name: Gate A - frozen R0-R9 production authority (vs R9 freeze anchor)
+        run: |
+          python - <<'PY'
+          import subprocess
+          anchor = "2fd7694334a628dd7737443a43c889739af68a57"
+          frozen = [
+              "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
+              "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
+              "finco_radar/liquidity/", "finco_radar/r3/",
+              "finco_radar/reference_state/", "finco_radar/r4/",
+              "finco_radar/signals/", "finco_radar/history/", "finco_radar/r5/",
+              "finco_radar/r6/", "finco_radar/terminal/",
+              "finco_radar/cross_market/", "finco_radar/r7/",
+              "finco_radar/execution_simulator/", "finco_radar/r8/",
+              "finco_radar/asset_graph/", "finco_radar/r9/",
+              "financial_engine/", "finco_core/", "finco_protocol/",
+          ]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", anchor, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [
+              path for path in changed
+              if any(path.startswith(prefix) for prefix in frozen)
+          ]
+          if violations:
+              raise SystemExit(f"R10_BLOCKED: frozen R0-R9 authority modified vs {anchor}: {violations}")
+          print(f"R10_GATE_A_PASS changed_vs_anchor={len(changed)} frozen_paths_untouched")
+          PY
+      - name: Gate B - R10 implementation scope only (vs implementation base)
+        run: |
+          python - <<'PY'
+          import subprocess
+          base = "a795a62aa640952cbad929ef2559ab3170741b02"
+          allowed_prefixes = (
+              "finco_radar/model_radar/", "finco_radar/r10/",
+              "tests/test_radar_r10_model_radar.py",
+              "docs/radar/r10_model_radar.md",
+              ".github/workflows/radar_r10_model_radar.yml",
+          )
+          positioning = (
+              "README.md", "docs/ROADMAP.md",
+              "docs/RWA_INFRASTRUCTURE.md", "pyproject.toml",
+          )
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", base, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          outside = [p for p in changed
+                     if not p.startswith(allowed_prefixes)]
+          touched_positioning = [p for p in changed if p in positioning]
+          if outside or touched_positioning:
+              raise SystemExit(
+                  f"R10_BLOCKED: changes outside R10 scope vs {base}: "
+                  f"outside={outside} positioning={touched_positioning}")
+          print(f"R10_GATE_B_PASS changed_vs_base={len(changed)} all_r10_paths")
+          PY
+      - name: Run R10 live model-radar proof (re-derives frozen R1-R9 chain, adds no APIs)
+        run: python -m finco_radar.r10.live_proof
+      - name: Require deterministic evidence, digest integrity and R10 invariants
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from finco_radar.model_radar.contracts import (
+              verify_serialized_r10_evidence,
+          )
+          from finco_radar.asset_graph.contracts import (
+              verify_serialized_r9_evidence,
+          )
+          from finco_radar.execution_simulator.contracts import (
+              verify_serialized_evidence as verify_r8,
+          )
+
+          evidence_path = Path("artifacts/radar_r10_model_radar_evidence.json")
+          raw = evidence_path.read_bytes()
+          data = json.loads(raw.decode("utf-8"))
+          if data["status"] not in ("MODEL_RADAR_OK", "MODEL_RADAR_PARTIAL"):
+              raise SystemExit(f"R10_BLOCKED: live proof not usable: {data['status']}")
+          if data.get("schemaVersion") != "radar-r10-model-radar-v1":
+              raise SystemExit("R10_BLOCKED: schema version missing")
+          if data.get("phase") != "R10":
+              raise SystemExit("R10_BLOCKED: phase marker missing")
+          if not data.get("gitHead") or data["gitHead"] == "UNKNOWN":
+              raise SystemExit("R10_BLOCKED: git HEAD not recorded")
+          if data.get("synthetic") is not False:
+              raise SystemExit("R10_BLOCKED: live proof marked synthetic")
+
+          reserialized = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+          if reserialized.encode("utf-8") != raw:
+              raise SystemExit("R10_BLOCKED: evidence serialization is not byte-deterministic")
+
+          file_digest = hashlib.sha256(raw).hexdigest()
+          sha_file = Path("artifacts/radar_r10_model_radar_evidence.sha256").read_text()
+          if file_digest != sha_file.split()[0]:
+              raise SystemExit("R10_BLOCKED: evidence file digest mismatch")
+          manifest = json.loads(
+              Path("artifacts/radar_r10_model_radar_manifest.json").read_text()
+          )
+          if manifest.get("evidenceJsonSha256") != file_digest:
+              raise SystemExit("R10_BLOCKED: manifest evidence digest mismatch")
+          if manifest.get("r10SnapshotDigest") != data.get("r10SnapshotDigest"):
+              raise SystemExit("R10_BLOCKED: manifest snapshot digest mismatch")
+          if manifest.get("gitHead") != data.get("gitHead"):
+              raise SystemExit("R10_BLOCKED: manifest gitHead mismatch")
+          if not verify_serialized_r10_evidence(data):
+              raise SystemExit("R10_BLOCKED: r10SnapshotDigest does not reconstruct")
+
+          # R9 lineage: canonical source digest of the COMPLETE embedded R9
+          # evidence + independent internal r9SnapshotDigest reconstruction
+          # (two distinct checks), then semantic economic binding.
+          def canonical_digest(payload):
+              return hashlib.sha256(
+                  json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False).encode("utf-8")
+              ).hexdigest()
+
+          digests = data.get("sourceDigests", {})
+          upstream = data.get("upstreamEvidence", {})
+          r9 = upstream.get("r9AssetGraphEvidence")
+          if r9 is None:
+              raise SystemExit("R10_BLOCKED: embedded r9AssetGraphEvidence missing")
+          r9_source = canonical_digest(r9)
+          if digests.get("r9AssetGraphDigest") != r9_source:
+              raise SystemExit("R10_BLOCKED: r9AssetGraphDigest is not the canonical digest of the complete embedded R9 evidence")
+          if r9_source == r9.get("r9SnapshotDigest"):
+              raise SystemExit("R10_BLOCKED: R9 source digest collapsed into internal snapshot digest")
+          if not verify_serialized_r9_evidence(r9):
+              raise SystemExit("R10_BLOCKED: embedded R9 evidence fails internal r9SnapshotDigest reconstruction")
+          if data.get("economicAssetUid") != r9.get("economicAssetUid"):
+              raise SystemExit("R10_BLOCKED: economic UID differs between R10 and embedded R9")
+          economic_nodes = [
+              n for n in r9.get("nodes", [])
+              if n.get("nodeType") == "ECONOMIC_ASSET"
+              and n.get("nodeId") == data.get("economicNodeId")
+          ]
+          if len(economic_nodes) != 1 or data.get("economicNodeId") != (
+              "economic:" + data.get("economicAssetUid", "")):
+              raise SystemExit("R10_BLOCKED: canonical economic node not present exactly once in R9")
+
+          # R8 lineage binding (source + snapshot digests reconstruct).
+          r8 = upstream.get("r8ExecutionEvidence")
+          if r8 is None:
+              raise SystemExit("R10_BLOCKED: embedded r8ExecutionEvidence missing")
+          if digests.get("r8ExecutionSimulatorDigest") != canonical_digest(r8):
+              raise SystemExit("R10_BLOCKED: r8ExecutionSimulatorDigest does not reconstruct")
+          if digests.get("r8SnapshotDigest") != r8.get("r8SnapshotDigest"):
+              raise SystemExit("R10_BLOCKED: r8SnapshotDigest binding broken")
+          if not verify_r8(r8):
+              raise SystemExit("R10_BLOCKED: embedded R8 evidence does not reconstruct")
+
+          # Live honesty: no fabricated model authority.
+          gap_kinds = {g["gapKind"] for g in data.get("gaps", [])}
+          if "MODEL_BINDING_UNAVAILABLE" not in gap_kinds:
+              raise SystemExit("R10_BLOCKED: live proof must declare MODEL_BINDING_UNAVAILABLE when no binding authority exists")
+          if data.get("modelBinding") is not None or data.get("modelEvidence") is not None:
+              raise SystemExit("R10_BLOCKED: fabricated model binding/evidence in live proof")
+          if data.get("referenceComparison") is not None or data.get("executionComparisons"):
+              raise SystemExit("R10_BLOCKED: comparisons require model evidence")
+
+          boundaries = data.get("boundaries", {})
+          if boundaries.get("modelAuthority") != "R10_APPLIED":
+              raise SystemExit("R10_BLOCKED: R10 model authority not declared")
+          if boundaries.get("assetGraphAuthority") != "R9_APPLIED":
+              raise SystemExit("R10_BLOCKED: R9 asset-graph authority not bound")
+          if boundaries.get("verificationAuthority") != "R11_NOT_YET_APPLIED":
+              raise SystemExit("R10_BLOCKED: R10 falsely claimed Verification authority")
+          if boundaries.get("digitalTwinAuthority") != "R12_NOT_YET_APPLIED":
+              raise SystemExit("R10_BLOCKED: R10 falsely claimed Digital-Twin authority")
+
+          blob = json.dumps(data).lower()
+          for phrase in ("guaranteed profit", "risk-free", "expected return",
+                         "certain arbitrage", "price target", "undervalued",
+                         "overvalued", "upside", "downside", "mispricing score"):
+              if phrase in blob:
+                  raise SystemExit(f"R10_BLOCKED: forbidden recommendation language: {phrase}")
+
+          print(
+              f"R10_MODEL_RADAR_PASS uid={data['economicAssetUid']} "
+              f"status={data['status']} gaps={sorted(gap_kinds)} "
+              f"digest={file_digest[:16]}"
+          )
+          PY
+      - name: Run synthetic fully-comparable R10 proof (offline, deterministic)
+        run: |
+          python - <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          sys.path.insert(0, "tests")
+          sys.path.insert(0, ".")
+          from test_radar_r10_model_radar import (
+              EXEC_PRICES, FULL, NOW, POLICY, UID, _bridge, _model,
+              _r8_evidence, _r9_evidence,
+          )
+          from finco_radar.model_radar.contracts import (
+              ComparabilityState, ModelRadarStatus,
+          )
+          r9 = _r9_evidence(**FULL)
+          snapshot = _bridge(
+              r9, model=_model(value=Decimal("100")),
+              r8=_r8_evidence(exec_prices=EXEC_PRICES),
+              now=datetime.now(timezone.utc))
+          assert snapshot.status is ModelRadarStatus.MODEL_RADAR_OK
+          assert snapshot.comparability.state is ComparabilityState.COMPARABLE
+          assert snapshot.reference_comparison.reference_vs_model_bps == Decimal("500")
+          assert len(snapshot.execution_comparisons) == 4
+          assert snapshot.model_evidence.synthetic is True
+          evidence = snapshot.to_evidence_dict()
+          from finco_radar.model_radar.contracts import verify_serialized_r10_evidence
+          assert verify_serialized_r10_evidence(evidence) is True
+          print(
+              "R10_SYNTHETIC_COMPARABLE_PASS refBps=500 "
+              f"execComparisons={len(snapshot.execution_comparisons)} "
+              f"digest={snapshot.r10_snapshot_digest[:16]} (synthetic=true, never live evidence)"
+          )
+          PY
+      - name: Run frozen R9 asset-graph regression
+        env:
+          RADAR_R9_EVIDENCE_PATH: artifacts/radar_r9_regression_on_r10.json
+          RADAR_R9_SHA256_PATH: artifacts/radar_r9_regression_on_r10.sha256
+          RADAR_R9_MANIFEST_PATH: artifacts/radar_r9_regression_manifest_on_r10.json
+        run: python -m finco_radar.r9.live_proof
+      - name: Require R9 regression PASS and digest integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from finco_radar.asset_graph.contracts import verify_serialized_r9_evidence
+          data = json.loads(Path("artifacts/radar_r9_regression_on_r10.json").read_text())
+          if data["status"] not in ("ASSET_GRAPH_OK", "ASSET_GRAPH_PARTIAL"):
+              raise SystemExit("R9_REGRESSION_BLOCKED: live proof not usable")
+          raw = Path("artifacts/radar_r9_regression_on_r10.json").read_bytes()
+          if hashlib.sha256(raw).hexdigest() != Path(
+              "artifacts/radar_r9_regression_on_r10.sha256"
+          ).read_text().split()[0]:
+              raise SystemExit("R9_REGRESSION_BLOCKED: evidence digest mismatch")
+          if not verify_serialized_r9_evidence(data):
+              raise SystemExit("R9_REGRESSION_BLOCKED: r9SnapshotDigest does not reconstruct")
+          print("R9_REGRESSION_PASS")
+          PY
+      - name: Run frozen R8 execution-simulator regression
+        env:
+          RADAR_R8_EVIDENCE_PATH: artifacts/radar_r8_regression_on_r10.json
+          RADAR_R8_SHA256_PATH: artifacts/radar_r8_regression_on_r10.sha256
+          RADAR_R8_MANIFEST_PATH: artifacts/radar_r8_regression_manifest_on_r10.json
+        run: python -m finco_radar.r8.live_proof
+      - name: Require R8 regression PASS and digest integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          from finco_radar.execution_simulator.contracts import verify_serialized_evidence
+          data = json.loads(Path("artifacts/radar_r8_regression_on_r10.json").read_text())
+          if data["status"] != "EXECUTION_SIMULATION_OK":
+              raise SystemExit("R8_REGRESSION_BLOCKED: live proof not EXECUTION_SIMULATION_OK")
+          raw = Path("artifacts/radar_r8_regression_on_r10.json").read_bytes()
+          if hashlib.sha256(raw).hexdigest() != Path(
+              "artifacts/radar_r8_regression_on_r10.sha256"
+          ).read_text().split()[0]:
+              raise SystemExit("R8_REGRESSION_BLOCKED: evidence digest mismatch")
+          if not verify_serialized_evidence(data):
+              raise SystemExit("R8_REGRESSION_BLOCKED: r8SnapshotDigest does not reconstruct")
+          print("R8_REGRESSION_PASS")
+          PY
+      - name: Run frozen R7 cross-market regression
+        env:
+          RADAR_R7_EVIDENCE_PATH: artifacts/radar_r7_regression_on_r10.json
+          RADAR_R7_SHA256_PATH: artifacts/radar_r7_regression_on_r10.sha256
+          RADAR_R7_MANIFEST_PATH: artifacts/radar_r7_regression_manifest_on_r10.json
+        run: python -m finco_radar.r7.live_proof
+      - name: Require R7 regression PASS and digest integrity
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r7_regression_on_r10.json").read_text())
+          if data["status"] != "CROSS_MARKET_OK":
+              raise SystemExit("R7_REGRESSION_BLOCKED: live proof not CROSS_MARKET_OK")
+          raw = Path("artifacts/radar_r7_regression_on_r10.json").read_bytes()
+          if hashlib.sha256(raw).hexdigest() != Path(
+              "artifacts/radar_r7_regression_on_r10.sha256"
+          ).read_text().split()[0]:
+              raise SystemExit("R7_REGRESSION_BLOCKED: evidence digest mismatch")
+          print("R7_REGRESSION_PASS")
+          PY
+      - name: Run frozen R6 terminal regression
+        run: python -m finco_radar.r6.live_proof
+      - name: Run frozen R5 signals/history regression
+        run: python -m finco_radar.r5.live_proof
+      - name: Require R5 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r5_signals_history_evidence.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R5_REGRESSION_BLOCKED: live proof not PASS")
+          print("R5_REGRESSION_PASS")
+          PY
+      - name: Run frozen R4 reference-state regression
+        run: python -m finco_radar.r4.live_proof
+      - name: Run frozen R3 liquidity regression
+        env:
+          RADAR_R3_EVIDENCE_PATH: artifacts/radar_r3_regression_on_r10.json
+        run: python -m finco_radar.r3.live_proof
+      - name: Require R3 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r3_regression_on_r10.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R3_REGRESSION_BLOCKED: live proof not PASS")
+          print("R3_REGRESSION_PASS")
+          PY
+      - name: Run frozen R2 GAP regression
+        env:
+          RADAR_R2_EVIDENCE_PATH: artifacts/radar_r2_regression_on_r10.json
+        run: python -m finco_radar.r2.live_proof
+      - name: Require R2 regression PASS
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r2_regression_on_r10.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R2_REGRESSION_BLOCKED: live proof not PASS")
+          print("R2_REGRESSION_PASS")
+          PY
+      - name: Run frozen R1 registry regression
+        env:
+          RADAR_R1_EVIDENCE_PATH: artifacts/radar_r1_regression_on_r10.json
+        run: python -m finco_radar.r1.live_proof
+      - name: Run frozen R0 quote regression
+        env:
+          RADAR_R0_EVIDENCE_PATH: artifacts/radar_r0_regression_on_r10.json
+        run: python -m finco_radar.r0.live_proof
+      - name: Require original R0 size-aware acceptance
+        run: |
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          data = json.loads(Path("artifacts/radar_r0_regression_on_r10.json").read_text())
+          if data["status"] != "PASS":
+              raise SystemExit("R0_REGRESSION_BLOCKED: live proof not PASS")
+          buy = Decimal(data["sizeImpactBps"]["BUY"])
+          sell = Decimal(data["sizeImpactBps"]["SELL"])
+          if buy == 0 and sell == 0:
+              raise SystemExit("R0_REGRESSION_BLOCKED: no size-dependent quote economics observed")
+          print(f"R0_SIZE_AWARE_REGRESSION_PASS BUY={buy}bps SELL={sell}bps")
+          PY
+      - name: Compile check
+        run: python -m compileall -q .
+      - name: Public safety scan
+        run: python tools/public_safety_scan.py
+      - name: Upload R10 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r10-model-radar-evidence
+          path: |
+            artifacts/radar_r10_model_radar_evidence.json
+            artifacts/radar_r10_model_radar_evidence.sha256
+            artifacts/radar_r10_model_radar_manifest.json
+            artifacts/radar_r9_regression_on_r10.json
+            artifacts/radar_r9_regression_on_r10.sha256
+            artifacts/radar_r9_regression_manifest_on_r10.json
+            artifacts/radar_r8_regression_on_r10.json
+            artifacts/radar_r8_regression_on_r10.sha256
+            artifacts/radar_r8_regression_manifest_on_r10.json
+            artifacts/radar_r7_regression_on_r10.json
+            artifacts/radar_r7_regression_on_r10.sha256
+            artifacts/radar_r7_regression_manifest_on_r10.json
+            artifacts/radar_r6_terminal_evidence.json
+            artifacts/radar_r6_terminal.html
+            artifacts/radar_r5_signals_history_evidence.json
+            artifacts/radar_r4_reference_state_evidence.json
+            artifacts/radar_r3_regression_on_r10.json
+            artifacts/radar_r2_regression_on_r10.json
+            artifacts/radar_r1_regression_on_r10.json
+            artifacts/radar_r0_regression_on_r10.json
+          if-no-files-found: error
