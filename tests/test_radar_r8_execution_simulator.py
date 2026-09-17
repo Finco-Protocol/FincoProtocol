@@ -105,7 +105,12 @@ def _make_r7_evidence(labels, uid: str = UID, key: AssetKey = KEY) -> dict:
             "source": "SYNTHETIC_TEST_REGISTRY",
         },
         "dislocationComponents": [
-            {"label": label, "fromLayer": "ORACLE_REFERENCE", "toLayer": "VENUE"}
+            {
+                "label": label,
+                "fromLayer": "ORACLE_REFERENCE",
+                "toLayer": "VENUE",
+                "deltaBps": "-16.20146584303593196445791843",
+            }
             for label in labels
         ],
         "attributionState": "MULTI_LAYER_DISLOCATION" if labels else "ATTRIBUTION_UNAVAILABLE",
@@ -128,17 +133,21 @@ def scenario(
     *,
     key: AssetKey = KEY,
     uid: str = UID,
-    label: str | None = "ORACLE_REFERENCE→VENUE[DEX:BUY:100]",
+    label: str | None = None,
+    quote_source: str = "LIFI_V1_QUOTE",
     mode: ExecutionMode = ExecutionMode.REFERENCE_RELATIVE,
 ) -> ExecutionScenario:
+    # Default label derived per side/notional so the four canonical scenarios
+    # always carry four DISTINCT deterministic R7 component labels.
+    derived_label = label or f"ORACLE_REFERENCE→VENUE[DEX:{side.value}:{notional}]"
     return ExecutionScenario(
         economic_asset_uid=uid,
         canonical_asset_key=key,
         side=side,
         requested_notional_usd=Decimal(notional),
-        quote_source="LIFI_V1_QUOTE",
+        quote_source=quote_source,
         execution_mode=mode,
-        r7_component_label=label,
+        r7_component_label=derived_label,
         as_of=NOW,
     )
 
@@ -158,6 +167,7 @@ def evidence(
     at: datetime = NOW,
     route: str | None = "SYNTH:ROUTE",
     route_changed: bool = False,
+    venue: str = "LIFI_V1_QUOTE",
 ) -> ScenarioQuoteEvidence:
     return ScenarioQuoteEvidence(
         side=side,
@@ -170,7 +180,7 @@ def evidence(
         reference_generated_at=at,
         settlement_observed_at=at,
         canonical_asset_key=key,
-        venue="LIFI_V1_QUOTE",
+        venue=venue,
         route_signature=route,
         route_changed=route_changed,
         provider_fee_usd=Decimal(fee) if fee is not None else None,
@@ -203,7 +213,12 @@ def build_snap(scenarios=None, rows=None, **overrides):
             scenario(QuoteSide.SELL, "1000"),
         ]
     )
-    labels = [s.r7_component_label for s in resolved if s.r7_component_label]
+    labels = [
+        s.r7_component_label
+        or f"ORACLE_REFERENCE→VENUE[DEX:{s.side.value}:{s.requested_notional_usd}]"
+        for s in resolved
+        if s.r7_component_label
+    ]
     r7_evidence = _make_r7_evidence(labels)
     lineage_up = {
         "r7CrossMarketEvidence": r7_evidence,
@@ -218,6 +233,7 @@ def build_snap(scenarios=None, rows=None, **overrides):
         canonical_asset_key=KEY,
         upstream_evidence=lineage_up,
         source_digests=lineage_digests,
+        r7_snapshot_digest=r7_evidence["r7SnapshotDigest"],
         scenarios=resolved,
         quote_evidence=rows if rows is not None else [
             evidence(QuoteSide.BUY, "100", token_amount="1", settlement="101", gap_bps="100",
@@ -323,18 +339,15 @@ _R3_EVIDENCE = {
 
 def _lineage() -> tuple[dict, dict]:
     """Consistent synthetic R7+R3 lineage for offline builds."""
+    r7_ev = _make_r7_evidence(DEFAULT_R7_LABELS)
     return (
         {
-            "r7CrossMarketEvidence": _R7_EVIDENCE,
+            "r7CrossMarketEvidence": r7_ev,
             "r3LiquidityEvidence": _R3_EVIDENCE,
         },
         {
-            "r7CrossMarketDigest": hashlib.sha256(json.dumps(
-                _R7_EVIDENCE, sort_keys=True, separators=(",", ":"),
-                ensure_ascii=False).encode("utf-8")).hexdigest(),
-            "r3LiquidityDigest": hashlib.sha256(json.dumps(
-                _R3_EVIDENCE, sort_keys=True, separators=(",", ":"),
-                ensure_ascii=False).encode("utf-8")).hexdigest(),
+            "r7CrossMarketDigest": _r3_digest_for(r7_ev),
+            "r3LiquidityDigest": _r3_digest_for(_R3_EVIDENCE),
         },
     )
 
@@ -1270,3 +1283,224 @@ def test_f3_b7_stale_settlement_timestamp_fails_closed() -> None:
     )
     assert ExecutionSimulationStatus.TIMING_INVALID in snap.timing_blockers
 
+
+
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F1 tests: snapshot identity and venue-exact selection
+# ---------------------------------------------------------------------------
+
+def test_f1_01_snapshot_uid_mismatch_fails_identity() -> None:
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid="MSFT",
+            canonical_asset_key=KEY,
+            scenarios=[scenario(uid="AAPL")],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={"r7CrossMarketEvidence": _make_r7_evidence(DEFAULT_R7_LABELS)},
+            source_digests={"r7CrossMarketDigest": _r3_digest_for(_make_r7_evidence(DEFAULT_R7_LABELS))},
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.IDENTITY_MISMATCH
+
+
+def test_f1_02_snapshot_key_mismatch_fails_identity() -> None:
+    other_key = AssetKey(4663, "0x" + "bb" * 20)
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=other_key,
+            scenarios=[scenario(key=KEY)],
+            quote_evidence=[evidence(key=KEY)],
+            policy=policy(),
+
+        upstream_evidence={"r7CrossMarketEvidence": _make_r7_evidence(DEFAULT_R7_LABELS)},
+        source_digests={"r7CrossMarketDigest": _r3_digest_for(_make_r7_evidence(DEFAULT_R7_LABELS))},
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.IDENTITY_MISMATCH
+
+
+def test_f1_03_scenario_quote_source_must_match_evidence_venue() -> None:
+    lineage_up, lineage_digests = _lineage()
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario(quote_source="OTHER_VENUE")],
+            quote_evidence=[evidence(venue="LIFI_V1_QUOTE")],
+            policy=policy(),
+            upstream_evidence=lineage_up,
+            source_digests=lineage_digests,
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.EXECUTION_QUOTE_UNAVAILABLE
+
+
+def test_f1_04_same_side_notional_different_venues_selects_exact_venue() -> None:
+    lineage_up, lineage_digests = _lineage()
+    snap = build_execution_simulation(
+        economic_asset_uid=UID,
+        canonical_asset_key=KEY,
+        scenarios=[scenario(quote_source="VENUE_B")],
+        quote_evidence=[
+            evidence(venue="VENUE_A"),
+            evidence(venue="VENUE_B", settlement="102", gap_bps="200"),
+        ],
+        policy=policy(),
+        upstream_evidence=lineage_up,
+        source_digests=lineage_digests,
+        synthetic=True,
+        generated_at=NOW,
+    )
+    assert snap.scenarios[0].quote_source == "VENUE_B"
+    assert snap.scenarios[0].gross_execution_edge_bps == Decimal("-200")
+
+
+def test_f1_05_reversed_input_order_produces_same_digest() -> None:
+    lineage_up, lineage_digests = _lineage()
+    common = dict(
+        economic_asset_uid=UID, canonical_asset_key=KEY,
+        policy=policy(), synthetic=True, generated_at=NOW,
+        upstream_evidence=lineage_up, source_digests=lineage_digests,
+    )
+    snap_a = build_execution_simulation(
+        economic_asset_uid=UID, canonical_asset_key=KEY,
+        scenarios=[scenario(QuoteSide.BUY, "100"), scenario(QuoteSide.BUY, "1000")],
+        quote_evidence=[
+            evidence(QuoteSide.BUY, "100"), evidence(QuoteSide.BUY, "1000",
+            token_amount="10", settlement="1020", gap_bps="200"),
+        ],
+        policy=policy(), synthetic=True, generated_at=NOW,
+        upstream_evidence=lineage_up, source_digests=lineage_digests,
+    )
+    snap_b = build_execution_simulation(
+        economic_asset_uid=UID, canonical_asset_key=KEY,
+        scenarios=list(reversed([scenario(QuoteSide.BUY, "100"),
+                                 scenario(QuoteSide.BUY, "1000")])),
+        quote_evidence=list(reversed([
+            evidence(QuoteSide.BUY, "100"), evidence(QuoteSide.BUY, "1000",
+            token_amount="10", settlement="1020", gap_bps="200"),
+        ])), policy=policy(), synthetic=True, generated_at=NOW,
+        upstream_evidence=lineage_up, source_digests=lineage_digests,
+    )
+    assert snap_a.r8_snapshot_digest == snap_b.r8_snapshot_digest
+
+
+def test_f1_06_serialized_quote_source_is_consumed_evidence_venue() -> None:
+    lineage_up, lineage_digests = _lineage()
+    snap = build_execution_simulation(
+        economic_asset_uid=UID,
+        canonical_asset_key=KEY,
+        scenarios=[scenario(quote_source="VENUE_X")],
+        quote_evidence=[evidence(venue="VENUE_X")],
+        policy=policy(),
+        upstream_evidence=lineage_up,
+        source_digests=lineage_digests,
+        synthetic=True,
+        generated_at=NOW,
+    )
+    serialized = snap.to_evidence_dict()["scenarios"][0]
+    assert serialized["scenario"]["quoteSource"] == "VENUE_X"
+
+
+def test_f4_b3_embedded_r7_matching_uid_and_key_passes() -> None:
+    snap = build_snap()
+    assert snap.status is ExecutionSimulationStatus.EXECUTION_SIMULATION_OK
+    assert snap.r7_cross_market_digest
+
+
+def test_f4_b7_embedded_r3_deployment_differs_fails_r3_lineage() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    other_key = AssetKey(137, "0x" + "dd" * 20)
+    other_r3_asset = {
+        "assetUid": UID,
+        "canonicalKey": other_key.canonical_id,
+        "symbol": "AAA",
+        "chainId": other_key.chain_id,
+        "contractAddress": other_key.contract_address,
+    }
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS", "asset": other_r3_asset},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for(
+                    {"status": "PASS", "asset": other_r3_asset}
+                ),
+            },
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R3_LINEAGE_MISMATCH
+
+
+def test_f4_b8_embedded_r3_chain_address_agree_passes() -> None:
+    r3_evidence = {
+        "status": "PASS",
+        "asset": {
+            "assetUid": UID,
+            "canonicalKey": f"{KEY.chain_id}:{KEY.contract_address}",
+            "symbol": "AAA",
+            "chainId": KEY.chain_id,
+            "contractAddress": KEY.contract_address,
+        },
+    }
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    snap = build_execution_simulation(
+        economic_asset_uid=UID,
+        canonical_asset_key=KEY,
+        scenarios=[scenario()],
+        quote_evidence=[evidence()],
+        policy=policy(),
+        upstream_evidence={
+            "r7CrossMarketEvidence": r7_evidence,
+            "r3LiquidityEvidence": r3_evidence,
+        },
+        source_digests={
+            "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+            "r3LiquidityDigest": _r3_digest_for(r3_evidence),
+        },
+        synthetic=True,
+        generated_at=NOW,
+    )
+    assert snap.status is ExecutionSimulationStatus.EXECUTION_SIMULATION_OK
+
+
+def test_f4_b9_embedded_r3_canonicalkey_disagrees_fails() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    r3_evidence = {
+        "status": "PASS",
+        "asset": {
+            "assetUid": UID,
+            "canonicalKey": "4663:0x" + "ff" * 20,
+            "symbol": "AAA",
+            "chainId": KEY.chain_id,
+            "contractAddress": KEY.contract_address,
+        },
+    }
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": r3_evidence,
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for(r3_evidence),
+            },
+            synthetic=True,
+            generated_at=NOW,
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R3_LINEAGE_MISMATCH

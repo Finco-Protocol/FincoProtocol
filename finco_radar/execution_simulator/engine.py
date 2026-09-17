@@ -569,16 +569,54 @@ def build_execution_simulation(
     # digest-verified embedded R7 evidence. Caller-supplied theoretical values
     # are treated as redundant evidence requiring exact equality.
     embedded_theoretical: dict[str, Decimal] = {}
-    for component in embedded_r7.get("dislocationComponents", []):
+    seen_labels: set[str] = set()
+    for component_index, component in enumerate(
+        embedded_r7.get("dislocationComponents", [])
+    ):
+        # Correction C (C2): digest-verified evidence is not automatically
+        # semantically valid — every component must carry a well-formed
+        # canonical economic field set, or R8 fails typed closed.
         if not isinstance(component, Mapping):
-            continue
+            raise ExecutionSimulationError(
+                f"embedded R7 dislocation component {component_index} must be "
+                "a mapping",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
         label = component.get("label")
-        if not label:
-            continue
+        if not isinstance(label, str) or not label.strip():
+            raise ExecutionSimulationError(
+                f"embedded R7 dislocation component {component_index} carries "
+                "an empty or malformed label",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
+        if label in seen_labels:
+            raise ExecutionSimulationError(
+                f"embedded R7 evidence contains duplicate dislocation component "
+                f"label {label}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
+        seen_labels.add(label)
         raw = component.get("deltaBps")
-        embedded_theoretical[label] = (
-            Decimal(str(raw)) if raw is not None else None
-        )
+        if raw is None:
+            raise ExecutionSimulationError(
+                f"embedded R7 dislocation component {label} is missing deltaBps",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
+        try:
+            value = Decimal(str(raw))
+        except (TypeError, ValueError) as exc:
+            raise ExecutionSimulationError(
+                f"embedded R7 dislocation component {label} carries a malformed "
+                f"deltaBps: {raw}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            ) from exc
+        if not value.is_finite():
+            raise ExecutionSimulationError(
+                f"embedded R7 dislocation component {label} carries a non-finite "
+                f"deltaBps: {raw}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
+        embedded_theoretical[label] = value
 
     # Correction B (1): the embedded R7 snapshot must belong to THIS economic
     # asset and must list THIS canonical deployment exactly once.
@@ -609,14 +647,6 @@ def build_execution_simulation(
             "times (expected exactly once)",
             ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
         )
-    for entered in scenarios:
-        label = entered.r7_component_label
-        if label is not None and label not in embedded_theoretical:
-            raise ExecutionSimulationError(
-                f"scenario r7_component_label not present in the embedded R7 "
-                f"evidence components: {label}",
-                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
-            )
     for theo_label in (theoretical_dislocations or {}):
         if theo_label not in embedded_theoretical:
             raise ExecutionSimulationError(
@@ -629,43 +659,72 @@ def build_execution_simulation(
     # R3 digest being cryptographically valid is not sufficient if it belongs
     # to another asset; R3 assetUid is a different namespace from the R7/R8
     # economic UID and is never compared to it.
+    #
+    # Correction C (C1): the R3 evidence payload itself must be a Mapping —
+    # a digest-valid list/string/scalar can never bypass semantic asset
+    # validation. The canonical asset block is mandatory with a well-formed
+    # chainId/contractAddress pair.
     embedded_r3 = embedded.get("r3LiquidityEvidence")
-    if isinstance(embedded_r3, Mapping):
-        asset_block = embedded_r3.get("asset")
-        if not isinstance(asset_block, Mapping):
+    if not isinstance(embedded_r3, Mapping):
+        raise ExecutionSimulationError(
+            "embedded R3 liquidity evidence must be a mapping; a digest-valid "
+            "non-mapping payload can never bind semantically to the R8 "
+            "canonical deployment",
+            ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+        )
+    asset_block = embedded_r3.get("asset")
+    if not isinstance(asset_block, Mapping):
+        raise ExecutionSimulationError(
+            "embedded R3 liquidity evidence is missing its canonical asset block",
+            ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+        )
+    embedded_chain = asset_block.get("chainId")
+    embedded_address = str(asset_block.get("contractAddress", "")).lower()
+    if embedded_chain != canonical_asset_key.chain_id or (
+        embedded_address != canonical_asset_key.contract_address
+    ):
+        raise ExecutionSimulationError(
+            "embedded R3 liquidity evidence belongs to a different canonical "
+            f"deployment: {embedded_chain}:{embedded_address}",
+            ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+        )
+    embedded_canonical_key = asset_block.get("canonicalKey")
+    if embedded_canonical_key is not None and (
+        str(embedded_canonical_key)
+        != canonical_asset_key.canonical_id
+    ):
+        raise ExecutionSimulationError(
+            "embedded R3 canonicalKey disagrees with its own chainId/"
+            "contractAddress pair",
+            ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+        )
+
+    # Selection pass: exact quote evidence must exist for every scenario
+    # (spec §5 — EXECUTION_QUOTE_UNAVAILABLE before any semantic validation).
+    selected: list[tuple[ExecutionScenario, ScenarioQuoteEvidence]] = []
+    for entered in scenarios:
+        selected.append((entered, _select_evidence(quote_evidence, scenario=entered)))
+
+    # Correction A (F2): the scenario's R7 component label must exist among
+    # the embedded (digest-verified) R7 dislocation components. Checked after
+    # evidence selection so a scenario without an exact executable quote
+    # reports EXECUTION_QUOTE_UNAVAILABLE, never a lineage error.
+    for entered, row in selected:
+        label = entered.r7_component_label
+        if label is not None and label not in embedded_theoretical:
             raise ExecutionSimulationError(
-                "embedded R3 liquidity evidence is missing its canonical asset block",
-                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
-            )
-        embedded_chain = asset_block.get("chainId")
-        embedded_address = str(asset_block.get("contractAddress", "")).lower()
-        if embedded_chain != canonical_asset_key.chain_id or (
-            embedded_address != canonical_asset_key.contract_address
-        ):
-            raise ExecutionSimulationError(
-                "embedded R3 liquidity evidence belongs to a different canonical "
-                f"deployment: {embedded_chain}:{embedded_address}",
-                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
-            )
-        embedded_canonical_key = asset_block.get("canonicalKey")
-        if embedded_canonical_key is not None and (
-            str(embedded_canonical_key)
-            != canonical_asset_key.canonical_id
-        ):
-            raise ExecutionSimulationError(
-                "embedded R3 canonicalKey disagrees with its own chainId/"
-                "contractAddress pair",
-                ExecutionSimulationStatus.R3_LINEAGE_MISMATCH,
+                f"scenario r7_component_label not present in the embedded R7 "
+                f"evidence components: {label}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
             )
 
     results: list[ExecutionSimulationResult] = []
-    for scenario in scenarios:
-        row = _select_evidence(quote_evidence, scenario=scenario)
-        label = scenario.r7_component_label
+    for entered, row in selected:
         # Correction B (2): the theoretical value is DERIVED from the
         # digest-verified embedded R7 evidence — never trusted from the
         # caller. A caller-supplied value is treated as redundant evidence
         # requiring exact Decimal equality with the embedded component.
+        label = entered.r7_component_label
         theo = None
         if label is not None and label in embedded_theoretical:
             theo = embedded_theoretical[label]
@@ -679,7 +738,7 @@ def build_execution_simulation(
                 )
         results.append(
             simulate_execution_scenario(
-                scenario=scenario,
+                scenario=entered,
                 quote_evidence=row,
                 settlement_adjustment=settlement_adjustment,
                 policy=policy,
