@@ -200,7 +200,7 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                         usable=r4.reference_usable,
                         # R7 economic-identity namespace (binding-checked); the
                         # canonical R1 hex UID travels in raw_evidence lineage.
-                        asset_uid=binding7.economic_asset_uid,
+                        asset_uid=economic_binding.economic_asset_uid,
                         asset_key=r4.canonical_key,
                         raw_evidence={"r1RegistryAssetUid": r4.asset_uid},
                     )
