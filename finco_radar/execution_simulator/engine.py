@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence
 
 from finco_radar.assets.contracts import AssetKey
@@ -604,7 +604,7 @@ def build_execution_simulation(
             )
         try:
             value = Decimal(str(raw))
-        except (TypeError, ValueError) as exc:
+        except (InvalidOperation, TypeError, ValueError) as exc:
             raise ExecutionSimulationError(
                 f"embedded R7 dislocation component {label} carries a malformed "
                 f"deltaBps: {raw}",

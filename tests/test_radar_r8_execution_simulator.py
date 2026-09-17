@@ -1504,3 +1504,94 @@ def test_f4_b9_embedded_r3_canonicalkey_disagrees_fails() -> None:
             generated_at=NOW,
         )
     assert excinfo.value.status is ExecutionSimulationStatus.R3_LINEAGE_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# Correction C — malformed deltaBps must fail typed (not raw InvalidOperation)
+# ---------------------------------------------------------------------------
+
+def test_cc_01_malformed_deltaBps_string_fails_typed() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    r7_evidence["dislocationComponents"][0]["deltaBps"] = "not-a-number"
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            synthetic=True,
+            generated_at=NOW,
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
+
+def test_cc_02_deltaBps_list_fails_typed() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    r7_evidence["dislocationComponents"][0]["deltaBps"] = [1, 2]
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            synthetic=True,
+            generated_at=NOW,
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
+
+def test_cc_03_decimal_InvalidOperation_never_escapes() -> None:
+    # Prove that Decimal("not-a-number") raises decimal.InvalidOperation,
+    # NOT ValueError — so catching only (TypeError, ValueError) would let it
+    # escape untyped. The engine must catch InvalidOperation explicitly.
+    from decimal import InvalidOperation as _InvOp
+
+    try:
+        Decimal("not-a-number")
+        raise AssertionError("Decimal('not-a-number') should have raised")
+    except _InvOp:
+        pass  # confirms the raw exception type is InvalidOperation
+    # The engine catches (InvalidOperation, TypeError, ValueError) and
+    # re-raises as typed ExecutionSimulationError.
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    r7_evidence["dislocationComponents"][0]["deltaBps"] = "not-a-number"
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+            },
+            synthetic=True,
+            generated_at=NOW,
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
