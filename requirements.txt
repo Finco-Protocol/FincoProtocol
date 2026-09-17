@@ -9,6 +9,6 @@ itsdangerous>=2.1.0
 bcrypt>=4.0.0
 pandas>=2.0.0
 openpyxl>=3.1.0
-numpy>=1.24.0
+numpy>=2.2.6
 python-docx>=1.1.0
 beautifulsoup4>=4.12.0
