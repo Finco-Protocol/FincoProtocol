@@ -46,6 +46,12 @@ NOW = datetime(2026, 9, 17, 12, 0, tzinfo=T)
 UID = "AAPL"
 KEY = AssetKey(4663, "0x" + "aa" * 20)
 THRESHOLD = Decimal("50")
+DEFAULT_R7_LABELS = [
+    "ORACLE_REFERENCE→VENUE[DEX:BUY:100]",
+    "ORACLE_REFERENCE→VENUE[DEX:BUY:1000]",
+    "ORACLE_REFERENCE→VENUE[DEX:SELL:100]",
+    "ORACLE_REFERENCE→VENUE[DEX:SELL:1000]",
+]
 
 
 def _r3_digest_for(evidence: dict) -> str:
@@ -55,6 +61,25 @@ def _r3_digest_for(evidence: dict) -> str:
         json.dumps(evidence, sort_keys=True, separators=(",", ":"),
                    ensure_ascii=False).encode("utf-8")
     ).hexdigest()
+
+
+def _make_r7_evidence(labels, uid: str = UID, key: AssetKey = KEY) -> dict:
+    """Synthetic embedded R7 evidence with a self-consistent internal digest."""
+    evidence = {
+        "schemaVersion": "radar-r7-cross-market-v1",
+        "phase": "R7",
+        "status": "CROSS_MARKET_OK",
+        "economicAssetUid": uid,
+        "canonicalAssetKey": {"chainId": key.chain_id, "contractAddress": key.contract_address},
+        "dislocationComponents": [
+            {"label": label, "fromLayer": "ORACLE_REFERENCE", "toLayer": "VENUE"}
+            for label in labels
+        ],
+        "attributionState": "MULTI_LAYER_DISLOCATION" if labels else "ATTRIBUTION_UNAVAILABLE",
+        "boundaries": {"crossMarketAuthority": "R7_APPLIED"},
+    }
+    evidence["r7SnapshotDigest"] = _r3_digest_for(evidence)
+    return evidence
 
 
 def policy() -> SimulationTimingPolicy:
@@ -135,16 +160,32 @@ def simulate(side=QuoteSide.BUY, ev=None, settlement_adj=None, notional="100", *
 
 
 def build_snap(scenarios=None, rows=None, **overrides):
-    lineage_up, lineage_digests = _lineage()
+    resolved = (
+        scenarios
+        if scenarios is not None
+        else [
+            scenario(QuoteSide.BUY, "100"),
+            scenario(QuoteSide.BUY, "1000"),
+            scenario(QuoteSide.SELL, "100"),
+            scenario(QuoteSide.SELL, "1000"),
+        ]
+    )
+    labels = [s.r7_component_label for s in resolved if s.r7_component_label]
+    r7_evidence = _make_r7_evidence(labels)
+    lineage_up = {
+        "r7CrossMarketEvidence": r7_evidence,
+        "r3LiquidityEvidence": _R3_EVIDENCE,
+    }
+    lineage_digests = {
+        "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+        "r3LiquidityDigest": _r3_digest_for(_R3_EVIDENCE),
+    }
     kwargs = dict(
         economic_asset_uid=UID,
         canonical_asset_key=KEY,
         upstream_evidence=lineage_up,
         source_digests=lineage_digests,
-        scenarios=scenarios if scenarios is not None else [
-            scenario(QuoteSide.BUY, "100"), scenario(QuoteSide.BUY, "1000"),
-            scenario(QuoteSide.SELL, "100"), scenario(QuoteSide.SELL, "1000"),
-        ],
+        scenarios=resolved,
         quote_evidence=rows if rows is not None else [
             evidence(QuoteSide.BUY, "100", token_amount="1", settlement="101", gap_bps="100",
                      route_changed=False),
@@ -256,14 +297,46 @@ def _lineage() -> tuple[dict, dict]:
 
 
 def build_sim(scenarios=None, rows=None, **overrides):
-    """Offline wrapper injecting consistent synthetic R7/R3 lineage."""
-    lineage_up, lineage_digests = _lineage()
+    """Offline wrapper injecting consistent synthetic R7/R3 lineage.
+
+    The embedded R7 evidence carries the scenario component labels and a
+    self-consistent internal r7SnapshotDigest, mirroring the live R7 output
+    shape that Correction A (F2) makes the sole label authority.
+    """
+    resolved_scenarios = (
+        scenarios
+        if scenarios is not None
+        else [
+            scenario(QuoteSide.BUY, "100"),
+            scenario(QuoteSide.BUY, "1000"),
+            scenario(QuoteSide.SELL, "100"),
+            scenario(QuoteSide.SELL, "1000"),
+        ]
+    )
+    # The embedded R7 evidence carries the CANONICAL default labels; a caller
+    # may override them to test label-acceptance paths explicitly. A fake
+    # scenario label that is not embedded must fail closed in the engine.
+    r7_labels = overrides.pop("r7_labels", None) or DEFAULT_R7_LABELS
+    r7_evidence = _make_r7_evidence(r7_labels)
+    lineage_up = {
+        "r7CrossMarketEvidence": r7_evidence,
+        "r3LiquidityEvidence": _R3_EVIDENCE,
+    }
+    lineage_digests = {
+        "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+        "r3LiquidityDigest": _r3_digest_for(_R3_EVIDENCE),
+    }
     overrides.setdefault("upstream_evidence", lineage_up)
     overrides.setdefault("source_digests", lineage_digests)
     overrides.setdefault("economic_asset_uid", UID)
     overrides.setdefault("canonical_asset_key", KEY)
-    overrides.setdefault("scenarios", scenarios if scenarios is not None else [])
-    overrides.setdefault("quote_evidence", rows if rows is not None else [])
+    overrides.setdefault("scenarios", resolved_scenarios)
+    overrides.setdefault("quote_evidence", rows if rows is not None else [
+        evidence(QuoteSide.BUY, "100"),
+        evidence(QuoteSide.BUY, "1000"),
+        evidence(QuoteSide.SELL, "100"),
+        evidence(QuoteSide.SELL, "1000"),
+    ])
     overrides.setdefault("policy", policy())
     overrides.setdefault("synthetic", True)
     overrides.setdefault("generated_at", NOW)
@@ -280,16 +353,11 @@ def test_07_canonical_asset_key_mismatch_fails() -> None:
     assert excinfo.value.status is ExecutionSimulationStatus.IDENTITY_MISMATCH
 
 
-def test_08_r7_component_not_in_snapshot_fails_closed() -> None:
+def test_f2_04_fake_component_label_fails_closed() -> None:
     with pytest.raises(ExecutionSimulationError) as excinfo:
-        build_execution_simulation(
-            economic_asset_uid=UID,
-            canonical_asset_key=KEY,
+        build_sim(
             scenarios=[scenario(label="ORACLE_REFERENCE→VENUE[UNKNOWN]")],
-            quote_evidence=[evidence()],
-            policy=policy(),
-            theoretical_dislocations={"ORACLE_REFERENCE→VENUE[UNKNOWN]": Decimal("10")},
-            r7_component_labels={"SOME_OTHER_LABEL"},
+            rows=[evidence()],
         )
     assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
 
@@ -476,7 +544,7 @@ def test_21_settlement_unresolved_prevents_complete_net_edge() -> None:
     )
     assert result.settlement_incremental_cost_usd is None
     assert result.net_edge_state is NetEdgeState.PARTIAL
-    assert ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE in result.net_edge_blockers
+    assert ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNRESOLVED in result.net_edge_blockers
 
 
 def test_22_stale_settlement_adjustment_fails_closed() -> None:
@@ -677,19 +745,19 @@ def test_36_caller_mutation_isolation() -> None:
     raw2 = {"gap": "original"}
     row = dataclasses.replace(evidence(QuoteSide.BUY), r0_quote_evidence=raw0,
                               r2_gap_evidence=raw2)
-    upstream = {"r3LiquidityEvidence": {"status": "PASS"}}
+    upstream = {
+        "r7CrossMarketEvidence": _make_r7_evidence(DEFAULT_R7_LABELS),
+        "r3LiquidityEvidence": {"status": "PASS"},
+    }
     snap = build_execution_simulation(
         economic_asset_uid=UID,
         canonical_asset_key=KEY,
         scenarios=[scenario()],
         quote_evidence=[row],
         policy=policy(),
-        upstream_evidence={
-            "r7CrossMarketEvidence": {"ok": True},
-            "r3LiquidityEvidence": {"status": "PASS"},
-        },
+        upstream_evidence=upstream,
         source_digests={
-            "r7CrossMarketDigest": _r3_digest_for({"ok": True}),
+            "r7CrossMarketDigest": _r3_digest_for(upstream["r7CrossMarketEvidence"]),
             "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
         },
         generated_at=NOW,
@@ -927,3 +995,232 @@ def test_source_proven_excluded_cost_deducted_once() -> None:
     assert result.net_executable_edge_usd == Decimal("0.785")
     assert result.net_executable_edge_bps == Decimal("78.5")
     assert result.net_edge_state is NetEdgeState.COMPLETE
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F2 tests: embedded R7 evidence as sole label authority
+# ---------------------------------------------------------------------------
+
+def test_f2_b1_valid_embedded_r7_evidence_accepted() -> None:
+    snap = build_snap()
+    evidence = snap.to_evidence_dict()
+    assert verify_serialized_evidence(evidence) is True
+    assert evidence["sourceDigests"]["r7CrossMarketDigest"]
+
+
+def test_f2_b2_invalid_internal_r7_digest_rejected() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    # Corrupt the internal R7 snapshot digest (outer R8 digest still valid).
+    r7_evidence["r7SnapshotDigest"] = "f" * 64
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+            },
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
+
+def test_f2_b3_supplied_r7_snapshot_digest_must_match_embedded() -> None:
+    r7_evidence = _make_r7_evidence(DEFAULT_R7_LABELS)
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            r7_snapshot_digest="e" * 64,  # differs from embedded internal digest
+            upstream_evidence={
+                "r7CrossMarketEvidence": r7_evidence,
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(r7_evidence),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+            },
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
+
+def test_f2_b5_theoretical_label_not_in_embedded_components_rejected() -> None:
+    with pytest.raises(ExecutionSimulationError) as excinfo:
+        build_execution_simulation(
+            economic_asset_uid=UID,
+            canonical_asset_key=KEY,
+            scenarios=[scenario()],
+            quote_evidence=[evidence()],
+            policy=policy(),
+            theoretical_dislocations={"VENUE→VENUE[FAKE]": Decimal("10")},
+            upstream_evidence={
+                "r7CrossMarketEvidence": _make_r7_evidence(DEFAULT_R7_LABELS),
+                "r3LiquidityEvidence": {"status": "PASS"},
+            },
+            source_digests={
+                "r7CrossMarketDigest": _r3_digest_for(_make_r7_evidence(DEFAULT_R7_LABELS)),
+                "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+            },
+        )
+    assert excinfo.value.status is ExecutionSimulationStatus.R7_LINEAGE_MISMATCH
+
+
+def test_f2_b6_valid_live_labels_still_pass() -> None:
+    live_labels = [
+        "ORACLE_REFERENCE→VENUE[LIFI_V1_QUOTE:BUY:100]",
+        "ORACLE_REFERENCE→VENUE[LIFI_V1_QUOTE:SELL:1000]",
+    ]
+    rows = [
+        evidence(QuoteSide.BUY, "100"),
+        evidence(QuoteSide.SELL, "1000", token_amount="10", settlement="990",
+                 gap_bps="-100"),
+    ]
+    snap = build_execution_simulation(
+        economic_asset_uid=UID,
+        canonical_asset_key=KEY,
+        scenarios=[
+            scenario(QuoteSide.BUY, "100", label=live_labels[0]),
+            scenario(QuoteSide.SELL, "1000", label=live_labels[1]),
+        ],
+        quote_evidence=rows,
+        policy=policy(),
+        upstream_evidence={
+            "r7CrossMarketEvidence": _make_r7_evidence(live_labels),
+            "r3LiquidityEvidence": {"status": "PASS"},
+        },
+        source_digests={
+            "r7CrossMarketDigest": _r3_digest_for(_make_r7_evidence(live_labels)),
+            "r3LiquidityDigest": _r3_digest_for({"status": "PASS"}),
+        },
+        synthetic=True,
+        generated_at=NOW,
+    )
+    assert snap.status is ExecutionSimulationStatus.EXECUTION_SIMULATION_OK
+
+
+# ---------------------------------------------------------------------------
+# Correction A — F3 tests: settlement/time fail-closed semantics
+# ---------------------------------------------------------------------------
+
+def test_f3_b1_unresolved_settlement_maps_to_unresolved_blocker() -> None:
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=settlement(SettlementAdjustmentState.UNRESOLVED),
+        policy=policy(),
+    )
+    assert (
+        ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNRESOLVED
+        in result.net_edge_blockers
+    )
+    assert result.net_edge_state is NetEdgeState.PARTIAL
+
+
+def test_f3_b2_unavailable_settlement_maps_to_unavailable_blocker() -> None:
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=settlement(SettlementAdjustmentState.UNAVAILABLE),
+        policy=policy(),
+    )
+    assert (
+        ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE
+        in result.net_edge_blockers
+    )
+
+
+def test_f3_b3_explicit_stale_settlement_maps_to_timing_invalid() -> None:
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=settlement(SettlementAdjustmentState.STALE),
+        policy=policy(),
+    )
+    assert (
+        ExecutionSimulationStatus.TIMING_INVALID in result.net_edge_blockers
+        or ExecutionSimulationStatus.TIMING_INVALID in result.timing_blockers
+    )
+    assert result.settlement_incremental_cost_usd is None
+
+
+def test_f3_b4_excluded_without_timestamp_cannot_deduct() -> None:
+    no_time = SettlementAdjustmentEvidence(
+        state=SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED,
+        source="SYNTHETIC_SETTLEMENT_AUTHORITY",
+        observed_at=None,
+        amount_usd=Decimal("0.05"),
+        currency="USD",
+        reason="no timing evidence",
+    )
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=no_time,
+        policy=policy(),
+    )
+    assert result.settlement_incremental_cost_usd is None
+    assert result.net_edge_state is NetEdgeState.PARTIAL
+
+
+def test_f3_b5_included_without_timestamp_cannot_authorize_complete() -> None:
+    no_time = SettlementAdjustmentEvidence(
+        state=SettlementAdjustmentState.SOURCE_PROVEN_INCLUDED,
+        source="SYNTHETIC_SETTLEMENT_AUTHORITY",
+        observed_at=None,
+        amount_usd=None,
+        currency=None,
+        reason="no timing evidence",
+    )
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=no_time,
+        policy=policy(),
+    )
+    assert result.net_edge_state is NetEdgeState.PARTIAL
+    assert result.net_executable_edge_bps is None
+
+
+def test_f3_b6_future_settlement_timestamp_fails_closed() -> None:
+    future = settlement(
+        SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED, amount="0.05",
+        at=NOW + timedelta(seconds=30),
+    )
+    result = simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=future,
+        policy=policy(),
+    )
+    assert ExecutionSimulationStatus.TIMING_INVALID in result.timing_blockers
+    assert result.net_edge_state is NetEdgeState.PARTIAL
+
+
+def test_f3_b7_stale_settlement_timestamp_fails_closed() -> None:
+    snap = build(
+        oracle_reference=oracle("250"),
+        venues=[venue("DEX_A", "250")],
+        settlement_adj=settlement(
+            SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED, amount="0.05",
+            at=NOW - timedelta(seconds=3600),
+        ),
+    ) if False else simulate_execution_scenario(
+        scenario=scenario(),
+        quote_evidence=evidence(),
+        settlement_adjustment=settlement(
+            SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED, amount="0.05",
+            at=NOW - timedelta(seconds=3600),
+        ),
+        policy=policy(),
+    )
+    assert ExecutionSimulationStatus.TIMING_INVALID in snap.timing_blockers
+

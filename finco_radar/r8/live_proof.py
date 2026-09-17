@@ -338,7 +338,6 @@ def _build_live_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
                         policy=r8_policy,
                         theoretical_dislocations=theoretical,
                         r7_snapshot_digest=r7_digest,
-                        r7_component_labels=component_labels,
                         upstream_evidence=upstream_evidence,
                         source_digests={
                             "r7CrossMarketDigest": _canonical_digest(r7_evidence),

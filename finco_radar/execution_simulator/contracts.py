@@ -173,6 +173,19 @@ class ExecutionScenario:
                 "requested notional must be positive and finite",
                 ExecutionSimulationStatus.NON_FINITE_ECONOMICS,
             )
+        # Correction A (F3): the evaluation instant is required and must be
+        # timezone-aware BEFORE any subtraction is attempted. None or naive
+        # values fail typed closed, never with a raw Python TypeError.
+        if self.as_of is None:
+            raise ExecutionSimulationError(
+                "scenario as_of is required",
+                ExecutionSimulationStatus.INPUT_INVALID,
+            )
+        if self.as_of.tzinfo is None:
+            raise ExecutionSimulationError(
+                "scenario as_of must be timezone-aware",
+                ExecutionSimulationStatus.TIMING_INVALID,
+            )
 
 
 @dataclass(frozen=True)

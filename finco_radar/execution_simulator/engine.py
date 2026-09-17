@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from decimal import Decimal
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.liquidity.contracts import CostTreatmentState
@@ -158,35 +158,71 @@ def resolve_settlement_adjustment(
             settlement_incremental_cost_usd=None,
             state=ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE,
         )
-    if adjustment.state is SettlementAdjustmentState.NOT_REQUIRED:
-        return SettlementResolution(
-            adjustment=adjustment,
-            settlement_incremental_cost_usd=Decimal(0),
-            state=ExecutionSimulationStatus.EXECUTION_SIMULATION_OK,
-        )
-    if adjustment.state is SettlementAdjustmentState.SOURCE_PROVEN_INCLUDED:
-        return SettlementResolution(
-            adjustment=adjustment,
-            settlement_incremental_cost_usd=Decimal(0),
-            state=ExecutionSimulationStatus.EXECUTION_SIMULATION_OK,
-        )
-    if adjustment.state is SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED:
+    # Correction A (F3): materially distinct causes never collapse.
+    #   UNRESOLVED  -> SETTLEMENT_ADJUSTMENT_UNRESOLVED
+    #   UNAVAILABLE -> SETTLEMENT_ADJUSTMENT_UNAVAILABLE
+    #   STALE       -> TIMING_INVALID
+    # Every state capable of resolving net economics (NOT_REQUIRED,
+    # SOURCE_PROVEN_INCLUDED, SOURCE_PROVEN_EXCLUDED) requires auditable
+    # timing evidence: a timezone-aware observed_at. A source-proven excluded
+    # adjustment with an amount but no valid timestamp must NOT authorize the
+    # deduction. A future or stale timestamp fails closed (TIMING_INVALID).
+    state = adjustment.state
+    resolving_timing = None
+    if state in (
+        SettlementAdjustmentState.NOT_REQUIRED,
+        SettlementAdjustmentState.SOURCE_PROVEN_INCLUDED,
+        SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED,
+    ):
+        if adjustment.observed_at is None:
+            return SettlementResolution(
+                adjustment=adjustment,
+                settlement_incremental_cost_usd=None,
+                state=ExecutionSimulationStatus.TIMING_INVALID,
+            )
+        _require_aware(adjustment.observed_at, "settlement adjustment observed_at")
+        age = Decimal(str((as_of - adjustment.observed_at).total_seconds()))
+        if age < 0 or age > policy.max_settlement_evidence_age_seconds:
+            return SettlementResolution(
+                adjustment=adjustment,
+                settlement_incremental_cost_usd=None,
+                state=ExecutionSimulationStatus.TIMING_INVALID,
+            )
+    if state is SettlementAdjustmentState.NOT_REQUIRED:
+        resolving_timing = Decimal(0)
+    elif state is SettlementAdjustmentState.SOURCE_PROVEN_INCLUDED:
+        resolving_timing = Decimal(0)
+    elif state is SettlementAdjustmentState.SOURCE_PROVEN_EXCLUDED:
         if adjustment.amount_usd is None:
             return SettlementResolution(
                 adjustment=adjustment,
                 settlement_incremental_cost_usd=None,
                 state=ExecutionSimulationStatus.COST_EVIDENCE_INCOMPLETE,
             )
+        resolving_timing = adjustment.amount_usd
+    elif state is SettlementAdjustmentState.UNAVAILABLE:
         return SettlementResolution(
             adjustment=adjustment,
-            settlement_incremental_cost_usd=adjustment.amount_usd,
-            state=ExecutionSimulationStatus.EXECUTION_SIMULATION_OK,
+            settlement_incremental_cost_usd=None,
+            state=ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE,
         )
-    # UNAVAILABLE / UNRESOLVED / STALE
+    elif state is SettlementAdjustmentState.STALE:
+        return SettlementResolution(
+            adjustment=adjustment,
+            settlement_incremental_cost_usd=None,
+            state=ExecutionSimulationStatus.TIMING_INVALID,
+        )
+    else:
+        # Unknown/forward state: conservative unresolved.
+        return SettlementResolution(
+            adjustment=adjustment,
+            settlement_incremental_cost_usd=None,
+            state=ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNRESOLVED,
+        )
     return SettlementResolution(
         adjustment=adjustment,
-        settlement_incremental_cost_usd=None,
-        state=ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE,
+        settlement_incremental_cost_usd=resolving_timing,
+        state=ExecutionSimulationStatus.EXECUTION_SIMULATION_OK,
     )
 
 
@@ -295,11 +331,9 @@ def simulate_execution_scenario(
             else provider.state
         )
     if settlement.settlement_incremental_cost_usd is None:
-        blockers.append(
-            ExecutionSimulationStatus.TIMING_INVALID
-            if settlement_timing_blockers
-            else ExecutionSimulationStatus.SETTLEMENT_ADJUSTMENT_UNAVAILABLE
-        )
+        # The resolver's typed status carries the materially distinct cause
+        # (UNRESOLVED / UNAVAILABLE / TIMING_INVALID) — never collapsed.
+        blockers.append(settlement.state)
     blockers.extend(timing_blockers)
 
     unique_blockers = tuple(
@@ -369,19 +403,50 @@ def _select_evidence(
     *,
     scenario: ExecutionScenario,
 ) -> ScenarioQuoteEvidence:
-    """Exact-match lookup. Never interpolated, never estimated."""
-    for row in evidence_rows:
-        if (
-            row.side is scenario.side
-            and row.requested_notional_usd == scenario.requested_notional_usd
-            and row.canonical_asset_key == scenario.canonical_asset_key
-        ):
-            return row
-    raise ExecutionSimulationError(
-        f"no exact executable quote evidence for {scenario.side.value} "
-        f"{scenario.requested_notional_usd} USD",
-        ExecutionSimulationStatus.EXECUTION_QUOTE_UNAVAILABLE,
-    )
+    """Exact-match lookup. Never interpolated, never estimated.
+
+    Correction A (F1): the venue/quote source is part of the evidence
+    identity. A scenario claiming venue/source B must never consume evidence
+    from venue/source A. Selection is deterministic: side + notional filter,
+    then exact venue match; a canonical-key conflict on the exact slot fails
+    closed with IDENTITY_MISMATCH instead of silently consuming foreign
+    evidence. With no exact match the result is EXECUTION_QUOTE_UNAVAILABLE.
+    """
+    same_side_notional = [
+        row
+        for row in evidence_rows
+        if row.side is scenario.side
+        and row.requested_notional_usd == scenario.requested_notional_usd
+    ]
+    if not same_side_notional:
+        raise ExecutionSimulationError(
+            f"no exact executable quote evidence for {scenario.side.value} "
+            f"{scenario.requested_notional_usd} USD",
+            ExecutionSimulationStatus.EXECUTION_QUOTE_UNAVAILABLE,
+        )
+    venue_matched = [
+        row for row in same_side_notional if row.venue == scenario.quote_source
+    ]
+    if not venue_matched:
+        raise ExecutionSimulationError(
+            f"no exact executable quote evidence from quote source "
+            f"{scenario.quote_source} for {scenario.side.value} "
+            f"{scenario.requested_notional_usd} USD",
+            ExecutionSimulationStatus.EXECUTION_QUOTE_UNAVAILABLE,
+        )
+    for row in venue_matched:
+        if row.canonical_asset_key != scenario.canonical_asset_key:
+            raise ExecutionSimulationError(
+                "evidence canonical asset key does not match the scenario "
+                "canonical asset key",
+                ExecutionSimulationStatus.IDENTITY_MISMATCH,
+            )
+    if len(venue_matched) > 1:
+        raise ExecutionSimulationError(
+            "ambiguous duplicate evidence rows for the same venue/side/notional",
+            ExecutionSimulationStatus.INPUT_INVALID,
+        )
+    return venue_matched[0]
 
 
 def build_execution_simulation(
@@ -394,7 +459,6 @@ def build_execution_simulation(
     policy: SimulationTimingPolicy,
     theoretical_dislocations: dict[str, Decimal] | None = None,
     r7_snapshot_digest: str | None = None,
-    r7_component_labels: set[str] | None = None,
     upstream_evidence: dict | None = None,
     source_digests: dict | None = None,
     synthetic: bool = False,
@@ -414,12 +478,20 @@ def build_execution_simulation(
                 "R7 snapshot digest must be non-empty when supplied",
                 ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
             )
-    if r7_component_labels is not None and theoretical_dislocations:
-        unknown = set(theoretical_dislocations) - set(r7_component_labels)
-        if unknown:
+
+    # Correction A (F1): snapshot-level identity binding for every scenario.
+    for entered in scenarios:
+        if entered.economic_asset_uid != economic_asset_uid:
             raise ExecutionSimulationError(
-                f"R7 component labels not present in the supplied R7 snapshot: {sorted(unknown)}",
-                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+                "scenario economic asset UID does not match the snapshot "
+                "economic asset UID",
+                ExecutionSimulationStatus.IDENTITY_MISMATCH,
+            )
+        if entered.canonical_asset_key != canonical_asset_key:
+            raise ExecutionSimulationError(
+                "scenario canonical asset key does not match the snapshot "
+                "canonical asset key",
+                ExecutionSimulationStatus.IDENTITY_MISMATCH,
             )
 
     embedded = upstream_evidence or {}
@@ -465,6 +537,53 @@ def build_execution_simulation(
             raise ExecutionSimulationError(
                 f"missing required upstream lineage: {digest_name} / {evidence_key}",
                 mismatch_status,
+            )
+
+    # Correction A (F2): the embedded (digest-bound) R7 evidence is the SOLE
+    # authority for component labels. Its own internal r7SnapshotDigest must
+    # reconstruct under the frozen R7 verifier, the supplied r7_snapshot_digest
+    # must equal it, and every scenario/theoretical label must exist among the
+    # embedded dislocation components. A fake label, a wrong internal digest or
+    # an inconsistent caller label set can never be legitimized by the outer
+    # r8SnapshotDigest.
+    embedded_r7 = embedded.get("r7CrossMarketEvidence")
+    from finco_radar.cross_market.contracts import verify_serialized_evidence as _verify_r7
+
+    if not isinstance(embedded_r7, Mapping) or not _verify_r7(embedded_r7):
+        raise ExecutionSimulationError(
+            "embedded R7 cross-market evidence does not reconstruct its own "
+            "r7SnapshotDigest",
+            ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+        )
+    embedded_r7_internal_digest = embedded_r7.get("r7SnapshotDigest")
+    if (
+        r7_snapshot_digest is not None
+        and r7_snapshot_digest != embedded_r7_internal_digest
+    ):
+        raise ExecutionSimulationError(
+            "supplied r7_snapshot_digest differs from the embedded R7 evidence's "
+            "internal r7SnapshotDigest",
+            ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+        )
+    derived_labels = {
+        component.get("label")
+        for component in embedded_r7.get("dislocationComponents", [])
+        if isinstance(component, Mapping) and component.get("label")
+    }
+    for entered in scenarios:
+        label = entered.r7_component_label
+        if label is not None and label not in derived_labels:
+            raise ExecutionSimulationError(
+                f"scenario r7_component_label not present in the embedded R7 "
+                f"evidence components: {label}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
+            )
+    for theo_label in (theoretical_dislocations or {}):
+        if theo_label not in derived_labels:
+            raise ExecutionSimulationError(
+                f"theoretical dislocation label not present in the embedded R7 "
+                f"evidence components: {theo_label}",
+                ExecutionSimulationStatus.R7_LINEAGE_MISMATCH,
             )
 
     results: list[ExecutionSimulationResult] = []
