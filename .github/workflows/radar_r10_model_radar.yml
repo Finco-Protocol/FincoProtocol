@@ -113,22 +113,6 @@ jobs:
               raise SystemExit("R10_BLOCKED: git HEAD not recorded")
           if data.get("synthetic") is not False:
               raise SystemExit("R10_BLOCKED: live proof marked synthetic")
-          # Correction B (G2): synthetic provenance cannot be laundered -
-          # every embedded causal lineage must also be non-synthetic.
-          r9_synth = r9.get("synthetic") if r9 else None
-          r8_synth = r8.get("synthetic") if r8 else None
-          r7_synth = (
-              (r8 or {}).get("upstreamEvidence", {})
-              .get("r7CrossMarketEvidence", {}).get("synthetic")
-              if r8 else None
-          )
-          if r9_synth is not False or r8_synth is not False or r7_synth is not False:
-              raise SystemExit(
-                  f"R10_BLOCKED: synthetic lineage in live proof: "
-                  f"r9={r9_synth} r8={r8_synth} r7={r7_synth}")
-          live_model = data.get("modelEvidence")
-          if live_model is not None and live_model.get("synthetic") is not False:
-              raise SystemExit("R10_BLOCKED: live model evidence must be non-synthetic")
 
           reserialized = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
           if reserialized.encode("utf-8") != raw:
@@ -192,6 +176,20 @@ jobs:
               raise SystemExit("R10_BLOCKED: r8SnapshotDigest binding broken")
           if not verify_r8(r8):
               raise SystemExit("R10_BLOCKED: embedded R8 evidence does not reconstruct")
+
+          # Correction B (G2): synthetic provenance cannot be laundered -
+          # every embedded causal lineage must also be non-synthetic.
+          r9_synth = r9.get("synthetic")
+          r8_synth = r8.get("synthetic")
+          r7_synth = (r8.get("upstreamEvidence") or {}).get(
+              "r7CrossMarketEvidence", {}).get("synthetic")
+          if r9_synth is not False or r8_synth is not False or r7_synth is not False:
+              raise SystemExit(
+                  f"R10_BLOCKED: synthetic lineage in live proof: "
+                  f"r9={r9_synth} r8={r8_synth} r7={r7_synth}")
+          live_model = data.get("modelEvidence")
+          if live_model is not None and live_model.get("synthetic") is not False:
+              raise SystemExit("R10_BLOCKED: live model evidence must be non-synthetic")
 
           # Live honesty: no fabricated model authority.
           gap_kinds = {g["gapKind"] for g in data.get("gaps", [])}
