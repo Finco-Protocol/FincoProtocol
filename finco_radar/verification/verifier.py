@@ -129,6 +129,7 @@ def verify_r10_evidence(
     git_head: str,
     freeze_anchor: str,
     freeze_tree: str,
+    content_envelope: Mapping[str, Any] | None = None,
 ) -> VerificationSnapshot:
     """Independently verify serialized R10 evidence and return the typed
     R11 verification snapshot.  Read-only: the subject evidence is embedded
@@ -182,6 +183,7 @@ def verify_r10_evidence(
                 fromlist=["R11_BOUNDARIES"]).R11_BOUNDARIES),
             "synthetic": derived_synthetic_flag(evidence),
             "freezeAnchor": freeze_anchor,
+            "contentEnvelope": plain(content_envelope) if content_envelope is not None else None,
         }
         digest = canonical_sha256(snapshot_evidence)
         snapshot_evidence["r11SnapshotDigest"] = digest
@@ -207,6 +209,7 @@ def verify_r10_evidence(
             boundaries=snapshot_evidence["boundaries"],
             synthetic=derived_synthetic_flag(evidence),
             freeze_anchor=freeze_anchor,
+            content_envelope=content_envelope,
             r11_snapshot_digest=digest,
         )
 

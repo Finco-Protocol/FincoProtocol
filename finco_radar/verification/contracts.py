@@ -172,7 +172,8 @@ class VerificationSnapshot:
     boundaries: Mapping[str, str]
     synthetic: bool
     freeze_anchor: str
-    r11_snapshot_digest: str
+    content_envelope: Mapping[str, Any] | None = None
+    r11_snapshot_digest: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_digests", deep_freeze(self.source_digests))
@@ -224,6 +225,10 @@ class VerificationSnapshot:
             "boundaries": dict(self.boundaries),
             "synthetic": self.synthetic,
             "freezeAnchor": self.freeze_anchor,
+            "contentEnvelope": (
+                plain(self.content_envelope)
+                if self.content_envelope is not None else None
+            ),
             "r11SnapshotDigest": self.r11_snapshot_digest,
         }
 

@@ -61,6 +61,26 @@ def main() -> int:
         synthetic=False,
     )
     subject_evidence = subject_snapshot.to_evidence_dict()
+    # Optional content-addressed envelope over the verified SUBJECT payload
+    # (frozen infrastructure, consumed read-only; NOT an on-chain claim and
+    # not the primary R11 authority).  Built BEFORE verification so it is
+    # part of the r11SnapshotDigest material - never appended post-hoc.
+    from finco_radar.verification.contracts import (
+        canonical_sha256 as _csha,
+    )
+    envelope = build_verification_envelope(subject_evidence)
+    envelope_dict = envelope.as_dict()
+    if envelope_dict["payloadSha256"] != _csha(subject_evidence):
+        raise RuntimeError("envelope payload binding inconsistent")
+    content_envelope = {
+        key: envelope_dict[key]
+        for key in ("schema", "canonicalization", "surface", "evidenceType",
+                    "authorityRefs", "payloadSha256", "contentAddress")
+    }
+    content_envelope["note"] = (
+        "frozen finco_protocol.verification.EvidenceEnvelope v1; "
+        "content-addressed only, NOT on-chain anchoring and NOT the "
+        "primary R11 authority")
 
     verification = verify_r10_evidence(
         evidence=subject_evidence,
@@ -68,28 +88,9 @@ def main() -> int:
         git_head=subject_evidence["gitHead"],
         freeze_anchor="7ffaf3b1e67dabb728314948e2a4e4c7ef30047a",
         freeze_tree="fba9d76d9dceee35d079563b115fdde90c40bd46",
+        content_envelope=content_envelope,
     )
     evidence = verification.to_evidence_dict()
-    subject_evidence = evidence["subjectEvidence"]
-    # Optional content-addressed envelope over the verified SUBJECT payload
-    # (frozen infrastructure, consumed read-only; NOT an on-chain claim and
-    # not the primary R11 authority).
-    envelope = build_verification_envelope(subject_evidence)
-    envelope_dict = envelope.as_dict()
-    if envelope_dict["payloadSha256"] != evidence["subjectEvidenceDigest"]:
-        raise RuntimeError("envelope payload binding inconsistent")
-    evidence["contentEnvelope"] = {
-        "schema": envelope_dict["schema"],
-        "canonicalization": envelope_dict["canonicalization"],
-        "surface": envelope_dict["surface"],
-        "evidenceType": envelope_dict["evidenceType"],
-        "authorityRefs": envelope_dict["authorityRefs"],
-        "payloadSha256": envelope_dict["payloadSha256"],
-        "contentAddress": envelope_dict["contentAddress"],
-        "note": ("frozen finco_protocol.verification.EvidenceEnvelope v1; "
-                 "content-addressed only, NOT on-chain anchoring and NOT "
-                 "the primary R11 authority"),
-    }
 
     first = json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=False)
     second = json.dumps(json.loads(first), indent=2, sort_keys=True,
