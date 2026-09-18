@@ -228,6 +228,174 @@ jobs:
         run: pytest -q tests/test_radar_r11_verification.py -k "adv or base or contract"
       - name: Run frozen R10 focused regression
         run: pytest -q tests/test_radar_r10_model_radar.py
+      - name: Correction A trust-boundary gate (freeze identity, missing-model gap, nested shapes, observation authority, comparability, execution index, R9 node, envelope binding)
+        run: |
+          python - <<'PY'
+          import copy as _copymod
+          import hashlib
+          import json
+          import sys
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          sys.path.insert(0, "tests")
+          sys.path.insert(0, ".")
+          from test_radar_r10_model_radar import (
+              FULL, NOW, POLICY, _chain, _live_chain, _model,
+          )
+          from finco_radar.model_radar.bridge import build_model_radar_snapshot
+          from finco_radar.verification.contracts import (
+              R10_FREEZE_ANCHOR, R10_FREEZE_TREE, VerificationStatus,
+          )
+          from finco_radar.verification.verifier import verify_r10_evidence
+
+          def fresh_no_model():
+              r9, r8 = _chain(**FULL)
+              return build_model_radar_snapshot(
+                  r9_evidence=r9, r8_evidence=r8, model_evidence=None,
+                  timing_policy=POLICY, now=NOW, git_head="gate",
+                  synthetic=False).to_evidence_dict()
+
+          def fresh_comparable():
+              r9, r8 = _chain(**FULL)
+              return build_model_radar_snapshot(
+                  r9_evidence=r9, r8_evidence=r8,
+                  model_evidence=_model(value=Decimal("100")),
+                  timing_policy=POLICY, now=NOW, git_head="gate",
+                  synthetic=False).to_evidence_dict()
+
+          def reseal_r10(subject):
+              subject["r10SnapshotDigest"] = hashlib.sha256(json.dumps(
+                  {k: v for k, v in subject.items()
+                   if k != "r10SnapshotDigest"},
+                  sort_keys=True, separators=(",", ":"),
+                  ensure_ascii=False).encode("utf-8")).hexdigest()
+              return subject
+
+          def v(subject, **kw):
+              args = dict(evidence=subject, generated_at=NOW, git_head="gate",
+                          freeze_anchor=R10_FREEZE_ANCHOR,
+                          freeze_tree=R10_FREEZE_TREE)
+              args.update(kw)
+              return verify_r10_evidence(**args)
+
+          # 1. wrong freeze anchor/tree cannot verify OK.
+          for wrong in ({"freeze_anchor": "f" * 64},
+                        {"freeze_tree": "f" * 64},
+                        {"freeze_anchor": "f" * 64, "freeze_tree": "f" * 64}):
+              snap = v(fresh_comparable(), **wrong)
+              assert snap.status is not VerificationStatus.VERIFICATION_OK
+              assert any(c.check_id == "FREEZE_IDENTITY"
+                         for c in snap.checks)
+
+          # 2. removed MODEL_BINDING_UNAVAILABLE cannot verify OK.
+          subject = fresh_no_model()
+          assert subject["status"] == "MODEL_RADAR_PARTIAL"
+          subject["gaps"] = []
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is VerificationStatus.VERIFICATION_FAILED
+          assert any(c.check_id == "HONEST_MISSING_MODEL"
+                     for c in snap.checks)
+
+          # 3. malformed nested shapes never leak raw exceptions.
+          def m_gaps(s):
+              s["gaps"] = "bad"
+          def m_nodes(s):
+              s["upstreamEvidence"]["r9AssetGraphEvidence"]["nodes"] = ["bad"]
+          def m_scen(s):
+              s["upstreamEvidence"]["r8ExecutionEvidence"]["scenarios"] = ["bad"]
+          for mutator in (m_gaps, m_nodes, m_scen):
+              subject = fresh_no_model()
+              mutator(subject)
+              reseal_r10(subject)
+              snap = v(subject)
+              assert snap.status is VerificationStatus.VERIFICATION_INPUT_INVALID, mutator
+
+          # 4. incomplete ModelEvidence observation authority cannot verify OK.
+          subject = fresh_comparable()
+          broken_model = dict(subject["modelEvidence"])
+          broken_output = dict(broken_model["outputEvidence"])
+          broken_output.pop("valuationAsOf")
+          broken_model["outputEvidence"] = broken_output
+          subject["modelEvidence"] = broken_model
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is VerificationStatus.VERIFICATION_FAILED
+          assert any(c.check_id == "MODEL_OBSERVATION_BINDINGS"
+                     for c in snap.checks)
+
+          # 5. mutated comparability gap structure cannot verify OK.
+          subject = fresh_comparable()
+          comp = dict(subject["comparability"])
+          comp["gaps"] = ["CURRENCY_MISMATCH"]
+          subject["comparability"] = comp
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is VerificationStatus.VERIFICATION_FAILED
+
+          # 6. reference modelValue mutation is detected.
+          subject = fresh_comparable()
+          reference = dict(subject["referenceComparison"])
+          reference["modelValue"] = "101"
+          subject["referenceComparison"] = reference
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is not VerificationStatus.VERIFICATION_OK
+
+          # 7. mutated r8ScenarioIndex is detected.
+          subject = fresh_comparable()
+          rows = _copymod.deepcopy(subject["executionComparisons"])
+          rows[0]["r8ScenarioIndex"] = 99
+          subject["executionComparisons"] = rows
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is not VerificationStatus.VERIFICATION_OK
+
+          # 8. duplicate R9 economic node is detected.
+          subject = fresh_comparable()
+          r9 = _copymod.deepcopy(
+              subject["upstreamEvidence"]["r9AssetGraphEvidence"])
+          econ = next(n for n in r9["nodes"]
+                      if n.get("nodeType") == "ECONOMIC_ASSET")
+          r9["nodes"].append(_copymod.deepcopy(econ))
+          subject["upstreamEvidence"]["r9AssetGraphEvidence"] = r9
+          r9["r9SnapshotDigest"] = hashlib.sha256(json.dumps(
+              {k: v for k, v in r9.items() if k != "r9SnapshotDigest"},
+              sort_keys=True, separators=(",", ":"),
+              ensure_ascii=False).encode("utf-8")).hexdigest()
+          reseal_r10(subject)
+          snap = v(subject)
+          assert snap.status is not VerificationStatus.VERIFICATION_OK
+
+          # 9. synthetic=0 is not an exact boolean at the model boundary.
+          try:
+              _model(value=Decimal("100"), synthetic=0)
+              raise SystemExit("A9_BLOCKED: synthetic=0 accepted")
+          except Exception as exc:
+              assert "exact boolean" in str(exc)
+
+          # 10. wrong contentEnvelope binding is detected.
+          subject = fresh_comparable()
+          envelope = {"schema": "finco.evidence-envelope.v1",
+                      "canonicalization": "FINCO_SORTED_JSON_V1",
+                      "surface": "finco_radar.r11.verification",
+                      "evidenceType": "radar-r10-subject-evidence",
+                      "authorityRefs": ["finco_radar.model_radar",
+                                        "finco_radar.r10"],
+                      "payloadSha256": "0" * 64,
+                      "contentAddress": "sha256:" + "0" * 64}
+          snap = v(subject, content_envelope=envelope)
+          assert snap.status is VerificationStatus.VERIFICATION_FAILED
+          assert any(c.check_id == "CONTENT_ENVELOPE_BINDING"
+                     for c in snap.checks)
+
+          print("R11_CORRECTION_A_GATE_PASS "
+                "freeze_identity=true missing_model_gap=true "
+                "nested_shapes_typed=true observation_authority=true "
+                "comparability_structure=true reference_binding=true "
+                "execution_index=true r9_node_unique=true "
+                "envelope_binding=true")
+          PY
       - name: Run frozen R9 asset-graph regression
         env:
           RADAR_R9_EVIDENCE_PATH: artifacts/radar_r9_regression_on_r11.json

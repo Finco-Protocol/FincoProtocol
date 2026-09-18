@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -22,6 +23,32 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "radar-r11-verification-v1"
 PHASE = "R11"
+
+# A1: the canonical R0-R10 freeze authority, pinned INSIDE R11 contracts.
+# Caller-supplied freeze values are claims to be verified against these
+# constants, never proof.
+R10_FREEZE_ANCHOR = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
+R10_FREEZE_TREE = "fba9d76d9dceee35d079563b115fdde90c40bd46"
+
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def require_sha256_shape(value: Any, name: str) -> None:
+    if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+        raise VerificationError(
+            f"{name} must be a lowercase 64-hex SHA-256 digest, got {value!r}",
+            VerificationStatus.VERIFICATION_INPUT_INVALID,
+        )
+
+
+def require_exact_bool(value: Any, name: str) -> None:
+    # A9: bool is an int subclass in Python - `in (True, False)` would
+    # accept 0/1.  Exact type identity is required.
+    if type(value) is not bool:
+        raise VerificationError(
+            f"{name} must be an exact boolean, got {value!r}",
+            VerificationStatus.VERIFICATION_INPUT_INVALID,
+        )
 
 
 class VerificationStatus(str, Enum):
@@ -119,9 +146,10 @@ class VerificationCheck:
     def __post_init__(self) -> None:
         if not isinstance(self.state, CheckState):
             raise VerificationError(
-                f"check {self.check_id} state must be a CheckState member")
-        if self.state is CheckState.PASS and not self.check_id.strip():
-            raise VerificationError("check_id must be non-empty")
+                f"check {self.check_id!r} state must be a CheckState member")
+        if not self.check_id.strip():
+            raise VerificationError(
+                "check_id must be non-empty for PASS, FAIL and UNAVAILABLE")
 
     def to_evidence_dict(self) -> dict[str, Any]:
         return {
@@ -179,12 +207,21 @@ class VerificationSnapshot:
         object.__setattr__(self, "source_digests", deep_freeze(self.source_digests))
         object.__setattr__(self, "subject_evidence", deep_freeze(self.subject_evidence))
         object.__setattr__(self, "boundaries", deep_freeze(self.boundaries))
-        if self.generated_at.tzinfo is None:
+        if not isinstance(self.status, VerificationStatus):
+            raise VerificationError(
+                f"status must be a VerificationStatus member, got "
+                f"{self.status!r}")
+        if self.generated_at.tzinfo is None or self.generated_at.tzinfo.utcoffset(
+            self.generated_at
+        ) is None:
             raise VerificationError("generated_at must be timezone-aware")
-        if self.synthetic not in (True, False):
-            raise VerificationError("synthetic must be an exact boolean")
-        if not self.r11_snapshot_digest:
-            raise VerificationError("r11_snapshot_digest is required")
+        require_exact_bool(self.synthetic, "synthetic")
+        if not isinstance(self.git_head, str) or not self.git_head.strip():
+            raise VerificationError("git_head must be non-empty")
+        require_sha256_shape(self.r11_snapshot_digest, "r11_snapshot_digest")
+        if self.subject_snapshot_digest is not None:
+            require_sha256_shape(self.subject_snapshot_digest,
+                                 "subject_snapshot_digest")
         # Canonical order was established by the builder BEFORE the digest;
         # here it is only validated, never mutated.
         check_ids = [c.check_id for c in self.checks]
@@ -244,8 +281,26 @@ def verify_r11_snapshot_digest(snapshot: VerificationSnapshot) -> bool:
 
 
 def verify_serialized_r11_evidence(evidence: Any) -> bool:
-    """Fail-closed tamper detection over serialized R11 evidence."""
-    if not isinstance(evidence, Mapping) or "r11SnapshotDigest" not in evidence:
+    """Fail-closed tamper detection over serialized R11 evidence.
+
+    A9: essential outer structural invariants are validated BEFORE the
+    digest comparison, so correctly re-hashing malformed R11 JSON never
+    verifies as valid serialized R11 evidence."""
+    if not isinstance(evidence, Mapping):
+        return False
+    if evidence.get("schemaVersion") != SCHEMA_VERSION:
+        return False
+    if evidence.get("phase") != PHASE:
+        return False
+    if evidence.get("status") not in {s.value for s in VerificationStatus}:
+        return False
+    if type(evidence.get("synthetic")) is not bool:
+        return False
+    if not isinstance(evidence.get("checks"), list) or not evidence["checks"]:
+        return False
+    if not isinstance(evidence.get("gitHead"), str) or not evidence["gitHead"]:
+        return False
+    if not isinstance(evidence.get("r11SnapshotDigest"), str):
         return False
     material = plain(evidence)
     recorded = material.pop("r11SnapshotDigest")

@@ -32,6 +32,8 @@ from finco_radar.execution_simulator.contracts import (
 from .contracts import (
     FROZEN_DIMENSIONS,
     PHASE,
+    R10_FREEZE_ANCHOR,
+    R10_FREEZE_TREE,
     R10_STATUSES,
     SCHEMA_VERSION,
     CheckState,
@@ -46,6 +48,31 @@ from .contracts import (
 )
 
 BPS_SCALE = Decimal(10000)
+
+# Frozen typed R10 ModelEngineAuthority vocabulary (mirrored read-only from
+# the frozen R10 contract for serialized verification).
+FROZEN_ENGINE_AUTHORITIES = {
+    "finco_core.sponsor.xnpv",
+    "finco_core.sponsor.xirr",
+    "financial_engine.orchestrator",
+}
+
+
+class _ShapeError(Exception):
+    """Internal typed shape failure; converted to a typed R11 status by the
+    verifier boundary - never allowed to escape raw."""
+
+
+def _mapping_or_fail(value: Any, name: str) -> Mapping:
+    if not isinstance(value, Mapping):
+        raise _ShapeError(f"{name} must be a mapping, got {type(value).__name__}")
+    return value
+
+
+def _sequence_or_fail(value: Any, name: str) -> list:
+    if not isinstance(value, list):
+        raise _ShapeError(f"{name} must be a list, got {type(value).__name__}")
+    return list(value)
 
 # The exact R10 authority-boundary contract R11 verifies (historical subject
 # values - never edited by R11).
@@ -133,8 +160,26 @@ def verify_r10_evidence(
 ) -> VerificationSnapshot:
     """Independently verify serialized R10 evidence and return the typed
     R11 verification snapshot.  Read-only: the subject evidence is embedded
-    verbatim and never mutated."""
+    verbatim and never mutated.
+
+    A1: ``freeze_anchor``/``freeze_tree`` are CALLER CLAIMS.  R11
+    independently knows the canonical R0-R10 freeze authority through the
+    pinned contract constants; the FREEZE_IDENTITY check requires exact
+    equality, and a mismatch prevents VERIFICATION_OK.  The R11 evidence
+    records the verified canonical values, never caller metadata."""
     collector = _Collector()
+    if freeze_anchor != R10_FREEZE_ANCHOR or freeze_tree != R10_FREEZE_TREE:
+        collector.fail(
+            "FREEZE_IDENTITY", VerificationGapKind.FREEZE_IDENTITY_MISMATCH,
+            "R11_VERIFIER",
+            f"claimed freeze authority (anchor={freeze_anchor!r}, "
+            f"tree={freeze_tree!r}) does not equal the pinned R0-R10 "
+            "freeze constants")
+    else:
+        collector.pass_(
+            "FREEZE_IDENTITY",
+            "claimed freeze authority matches the pinned R0-R10 freeze "
+            "constants")
     evidence = evidence if isinstance(evidence, Mapping) else {}
 
     subject_evidence_digest = canonical_sha256(evidence)
@@ -166,23 +211,28 @@ def verify_r10_evidence(
             "subjectGitHead": subject_git_head,
             "subjectSnapshotDigest": subject_snapshot_digest,
             "subjectEvidenceDigest": subject_evidence_digest,
-            "subjectAuthorityAnchor": freeze_anchor,
-            "subjectAuthorityTree": freeze_tree,
+            "subjectAuthorityAnchor": R10_FREEZE_ANCHOR,
+            "subjectAuthorityTree": R10_FREEZE_TREE,
             "economicAssetUid": uid,
             "economicNodeId": node,
             "subjectGaps": sorted(
-                (plain(evidence.get("gaps")) or []),
+                [plain(g) for g in (
+                    evidence.get("gaps") if isinstance(
+                        evidence.get("gaps"), list) else [])
+                 if isinstance(g, Mapping)],
                 key=lambda g: (g.get("gapKind", ""), g.get("source", ""),
                                g.get("reason", ""))),
             "checks": [c.to_evidence_dict() for c in checks],
             "verificationGaps": [g.to_evidence_dict() for g in gaps],
-            "sourceDigests": dict(evidence.get("sourceDigests") or {}),
+            "sourceDigests": (
+                dict(evidence["sourceDigests"]) if isinstance(
+                    evidence.get("sourceDigests"), Mapping) else {}),
             "subjectEvidence": plain(evidence),
             "boundaries": dict(__import__(
                 "finco_radar.verification.contracts",
                 fromlist=["R11_BOUNDARIES"]).R11_BOUNDARIES),
             "synthetic": derived_synthetic_flag(evidence),
-            "freezeAnchor": freeze_anchor,
+            "freezeAnchor": R10_FREEZE_ANCHOR,
             "contentEnvelope": plain(content_envelope) if content_envelope is not None else None,
         }
         digest = canonical_sha256(snapshot_evidence)
@@ -197,8 +247,8 @@ def verify_r10_evidence(
             subject_git_head=subject_git_head,
             subject_snapshot_digest=subject_snapshot_digest,
             subject_evidence_digest=subject_evidence_digest,
-            subject_authority_anchor=freeze_anchor,
-            subject_authority_tree=freeze_tree,
+            subject_authority_anchor=R10_FREEZE_ANCHOR,
+            subject_authority_tree=R10_FREEZE_TREE,
             economic_asset_uid=uid,
             economic_node_id=node,
             subject_gaps=tuple(snapshot_evidence["subjectGaps"]),
@@ -208,7 +258,7 @@ def verify_r10_evidence(
             subject_evidence=evidence,
             boundaries=snapshot_evidence["boundaries"],
             synthetic=derived_synthetic_flag(evidence),
-            freeze_anchor=freeze_anchor,
+            freeze_anchor=R10_FREEZE_ANCHOR,
             content_envelope=content_envelope,
             r11_snapshot_digest=digest,
         )
@@ -233,6 +283,48 @@ def verify_r10_evidence(
             "SUBJECT_IDENTITY", VerificationGapKind.UNSUPPORTED_SUBJECT_SCHEMA,
             "R11_VERIFIER",
             f"subject phase must be R10, got {evidence.get('phase')!r}")
+        return _finish(VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+    # ---- A3: strict nested-shape validation (typed, before any use) -------
+    def _mapping_field(container, key, name):
+        # present values must be mappings; absent values are handled by the
+        # lineage checks (never by falsy-swap defaults)
+        value = container.get(key)
+        if value is not None and not isinstance(value, Mapping):
+            raise _ShapeError(f"{name} must be a mapping")
+        return value
+
+    try:
+        gaps_shape = _sequence_or_fail(evidence.get("gaps"), "gaps")
+        for gap in gaps_shape:
+            _mapping_or_fail(gap, "gaps item")
+            for key in ("gapKind", "source", "reason"):
+                if key not in gap:
+                    raise _ShapeError(f"gaps item missing {key!r}")
+        _mapping_field(evidence, "sourceDigests", "sourceDigests")
+        upstream_shape = _mapping_field(evidence, "upstreamEvidence",
+                                        "upstreamEvidence") or {}
+        r9_shape = _mapping_field(upstream_shape, "r9AssetGraphEvidence",
+                                  "r9AssetGraphEvidence") or {}
+        _sequence_or_fail(r9_shape.get("nodes") or [], "R9 nodes")
+        for node_item in r9_shape.get("nodes") or []:
+            _mapping_or_fail(node_item, "R9 node")
+        r8_shape = _mapping_field(upstream_shape, "r8ExecutionEvidence",
+                                  "r8ExecutionEvidence") or {}
+        _mapping_field(r8_shape, "sourceDigests", "R8 sourceDigests")
+        _sequence_or_fail(r8_shape.get("scenarios") or [], "R8 scenarios")
+        for scenario in r8_shape.get("scenarios") or []:
+            _mapping_or_fail(scenario, "R8 scenario")
+            _mapping_or_fail(scenario.get("scenario") or {},
+                             "R8 scenario entry")
+        r8_upstream = _mapping_field(r8_shape, "upstreamEvidence",
+                                     "R8 upstreamEvidence") or {}
+        _mapping_field(r8_upstream, "r7CrossMarketEvidence",
+                       "r7CrossMarketEvidence")
+    except _ShapeError as exc:
+        collector.fail(
+            "SUBJECT_IDENTITY", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", f"malformed nested evidence shape: {exc}")
         return _finish(VerificationStatus.VERIFICATION_INPUT_INVALID)
 
     # ---- 1. subject identity ---------------------------------------------
@@ -366,17 +458,27 @@ def verify_r10_evidence(
                 "R9_SNAPSHOT_DIGEST", VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
                 "R11_VERIFIER", "internal R9 snapshot digest does not "
                 "reconstruct")
-        r9_uid = r9.get("economicAssetUid")
-        r9_node = r9.get("economicNodeId")
-        if r9_uid == uid and r9_node in (None, f"economic:{uid}"):
-            collector.pass_("R9_IDENTITY_CONSISTENCY")
+        # A8: identity is proven from the actual R9 GRAPH - exactly one
+        # ECONOMIC_ASSET node with the canonical node id and UID; a missing
+        # or non-canonical top-level economicNodeId is not sufficient proof.
+        economic_nodes = [
+            n for n in r9.get("nodes", [])
+            if isinstance(n, Mapping)
+            and n.get("nodeType") == "ECONOMIC_ASSET"
+            and n.get("nodeId") == f"economic:{uid}"
+            and n.get("economicAssetUid") == uid
+        ]
+        if len(economic_nodes) == 1:
+            collector.pass_(
+                "R9_IDENTITY_CONSISTENCY",
+                "exactly one canonical ECONOMIC_ASSET node in the R9 graph")
         else:
             collector.fail(
                 "R9_IDENTITY_CONSISTENCY",
                 VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
                 "R11_VERIFIER",
-                f"R9 identity (uid={r9_uid!r}, node={r9_node!r}) disagrees "
-                f"with R10 (uid={uid!r}, node={node!r})")
+                f"canonical R9 economic node appears "
+                f"{len(economic_nodes)} times (expected exactly once)")
 
     # ---- 5. R8 lineage ------------------------------------------------------
     if r8 is None:
@@ -498,6 +600,55 @@ def verify_r10_evidence(
             "historical subject boundary preserved "
             "(verificationAuthority = R11_NOT_YET_APPLIED)")
 
+    # ---- A10: optional content-envelope binding (secondary authority) -----
+    if content_envelope is not None:
+        envelope_problems = []
+        if content_envelope.get("schema") != "finco.evidence-envelope.v1":
+            envelope_problems.append(
+                f"envelope schema {content_envelope.get('schema')!r} is not "
+                "the frozen envelope schema")
+        if content_envelope.get("canonicalization") != "FINCO_SORTED_JSON_V1":
+            envelope_problems.append("envelope canonicalization missing")
+        if content_envelope.get("surface") != "finco_radar.r11.verification":
+            envelope_problems.append(
+                f"envelope surface {content_envelope.get('surface')!r} is "
+                "not the frozen R11 verification surface")
+        if content_envelope.get("evidenceType") != (
+            "radar-r10-subject-evidence"
+        ):
+            envelope_problems.append(
+                f"envelope evidenceType {content_envelope.get('evidenceType')!r} "
+                "is not the expected subject evidence type")
+        refs = content_envelope.get("authorityRefs")
+        if refs != ["finco_radar.model_radar", "finco_radar.r10"]:
+            envelope_problems.append(
+                f"envelope authorityRefs {refs!r} do not match the frozen "
+                "R10 authority refs")
+        if content_envelope.get("payloadSha256") != subject_evidence_digest:
+            envelope_problems.append(
+                "envelope payloadSha256 does not equal the "
+                "subjectEvidenceDigest")
+        content_address = content_envelope.get("contentAddress")
+        if content_address != ("sha256:"
+                               + str(content_envelope.get("payloadSha256"))):
+            envelope_problems.append(
+                "envelope contentAddress is not sha256:<payloadSha256>")
+        if envelope_problems:
+            collector.fail(
+                "CONTENT_ENVELOPE_BINDING",
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER", "; ".join(envelope_problems))
+        else:
+            collector.pass_(
+                "CONTENT_ENVELOPE_BINDING",
+                "optional content envelope binds exactly to the verified "
+                "subject payload")
+    else:
+        collector.unavailable(
+            "CONTENT_ENVELOPE_BINDING",
+            "no content envelope supplied (optional, secondary; the R11 "
+            "snapshot digest remains the primary authority)")
+
     # ---- 9/10. model evidence -------------------------------------------------
     model_evidence = evidence.get("modelEvidence") if isinstance(
         evidence.get("modelEvidence"), Mapping) else None
@@ -509,22 +660,50 @@ def verify_r10_evidence(
         g.get("gapKind") for g in (evidence.get("gaps") or [])
         if isinstance(g, Mapping)
     }
-
     honest_missing = "MODEL_BINDING_UNAVAILABLE" in subject_gap_kinds
+
+    # A2: evaluated on EVERY valid subject - the no-model state MUST declare
+    # MODEL_BINDING_UNAVAILABLE with the exact null/empty fields, and the
+    # frozen R10 status/gap coherence rules must hold.
+    no_model = model_evidence is None
+    coherence_problems = []
+    if no_model:
+        if "MODEL_BINDING_UNAVAILABLE" not in subject_gap_kinds:
+            coherence_problems.append(
+                "no-model state must declare MODEL_BINDING_UNAVAILABLE")
+        if (model_binding is not None or reference_comparison is not None
+                or execution_comparisons != []):
+            coherence_problems.append(
+                "no-model state must carry null binding/reference and no "
+                "execution comparisons")
+    else:
+        if "MODEL_BINDING_UNAVAILABLE" in subject_gap_kinds:
+            coherence_problems.append(
+                "MODEL_BINDING_UNAVAILABLE declared while model evidence "
+                "is present")
+    if subject_status == "MODEL_RADAR_OK" and evidence.get("gaps"):
+        coherence_problems.append(
+            "MODEL_RADAR_OK cannot carry unresolved subject gaps")
+    if subject_status == "MODEL_RADAR_PARTIAL" and not evidence.get("gaps"):
+        coherence_problems.append(
+            "MODEL_RADAR_PARTIAL requires at least one subject gap")
     if honest_missing:
         if (model_binding is None and model_evidence is None
                 and reference_comparison is None
                 and execution_comparisons == []):
-            collector.pass_(
-                "HONEST_MISSING_MODEL",
-                "declared MODEL_BINDING_UNAVAILABLE is consistent with "
-                "null model binding/evidence and no comparisons")
+            pass  # consistent; also enforced above when no_model
         else:
-            collector.fail(
-                "HONEST_MISSING_MODEL", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-                "R11_VERIFIER",
+            coherence_problems.append(
                 "declared MODEL_BINDING_UNAVAILABLE but fabricated model "
                 "fields or comparisons are present")
+    if coherence_problems:
+        collector.fail(
+            "HONEST_MISSING_MODEL", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(coherence_problems))
+    else:
+        collector.pass_(
+            "HONEST_MISSING_MODEL",
+            "subject status/gap coherence verified")
     if model_evidence is None and (model_binding is not None
                                    or reference_comparison is not None
                                    or execution_comparisons):
@@ -647,88 +826,140 @@ def derived_synthetic_flag(evidence: Mapping[str, Any]) -> bool:
     )
 
 
-def _verify_model_integrity(collector: _Collector, evidence: Mapping,
+def _verify_model_integrity(collector: "_Collector", evidence: Mapping,
                             model_evidence: Mapping) -> None:
-    """Check 10: independently rederive input/output/run digests and the
-    serialized observation bindings, from the documented R10 contract."""
+    """Check 10 (A4): independently verify the complete frozen serialized
+    ModelEvidence authority contract and rederive all digests."""
+    problems: list[str] = []
     input_evidence = model_evidence.get("inputEvidence")
     output_evidence = model_evidence.get("outputEvidence")
     declared_input = model_evidence.get("inputDigest")
     declared_output = model_evidence.get("outputDigest")
     declared_run = model_evidence.get("modelRunDigest")
-    problems = []
+
+    if model_evidence.get("engineAuthority") not in FROZEN_ENGINE_AUTHORITIES:
+        problems.append(
+            f"engineAuthority {model_evidence.get('engineAuthority')!r} is "
+            "not in the frozen typed authority vocabulary")
+    if type(model_evidence.get("synthetic")) is not bool:
+        problems.append("modelEvidence synthetic must be an exact boolean")
+    for field_name in ("modelId", "modelVersion", "economicAssetUid",
+                       "economicNodeId"):
+        value = model_evidence.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{field_name} must be a non-empty string")
+    uid = evidence.get("economicAssetUid")
+    if model_evidence.get("economicAssetUid") != uid:
+        problems.append("model economicAssetUid differs from the subject")
+    if model_evidence.get("economicNodeId") != f"economic:{uid}":
+        problems.append("model economicNodeId is not the canonical node")
+
     if not isinstance(input_evidence, Mapping) or not isinstance(
         output_evidence, Mapping
     ):
         problems.append("inputEvidence/outputEvidence missing or malformed")
-    else:
-        if declared_input != canonical_sha256(input_evidence):
-            problems.append("inputDigest does not rederive from inputEvidence")
-        if declared_output != canonical_sha256(output_evidence):
-            problems.append("outputDigest does not rederive from outputEvidence")
-        run_material = {
-            "modelId": model_evidence.get("modelId"),
-            "modelVersion": model_evidence.get("modelVersion"),
-            "engineAuthority": model_evidence.get("engineAuthority"),
-            "economicAssetUid": model_evidence.get("economicAssetUid"),
-            "economicNodeId": model_evidence.get("economicNodeId"),
-            "valuationAsOf": model_evidence.get("valuationAsOf"),
-            "valueKind": model_evidence.get("valueKind"),
-            "value": model_evidence.get("value"),
-            "currency": model_evidence.get("currency"),
-            "unitBasis": model_evidence.get("unitBasis"),
-            "unitMultiplier": model_evidence.get("unitMultiplier"),
-            "unitMultiplierBasis": model_evidence.get("unitMultiplierBasis"),
-            "inputDigest": declared_input,
-            "outputDigest": declared_output,
-        }
-        if declared_run != canonical_sha256(run_material):
-            problems.append("modelRunDigest does not rederive from the "
-                            "documented run material")
-        # observation bindings
-        for key, declared in (("value", model_evidence.get("value")),
-                              ("valueKind", model_evidence.get("valueKind")),
-                              ("currency", model_evidence.get("currency")),
-                              ("unitBasis", model_evidence.get("unitBasis"))):
-            if output_evidence.get(key) != declared:
+        collector.fail("MODEL_DIGESTS",
+                       VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                       "R11_VERIFIER", "; ".join(problems))
+        collector.fail("MODEL_OBSERVATION_BINDINGS",
+                       VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                       "R11_VERIFIER", "; ".join(problems))
+        return
+
+    if declared_input != canonical_sha256(input_evidence):
+        problems.append("inputDigest does not rederive from inputEvidence")
+    if declared_output != canonical_sha256(output_evidence):
+        problems.append("outputDigest does not rederive from outputEvidence")
+    run_material = {
+        "modelId": model_evidence.get("modelId"),
+        "modelVersion": model_evidence.get("modelVersion"),
+        "engineAuthority": model_evidence.get("engineAuthority"),
+        "economicAssetUid": model_evidence.get("economicAssetUid"),
+        "economicNodeId": model_evidence.get("economicNodeId"),
+        "valuationAsOf": model_evidence.get("valuationAsOf"),
+        "valueKind": model_evidence.get("valueKind"),
+        "value": model_evidence.get("value"),
+        "currency": model_evidence.get("currency"),
+        "unitBasis": model_evidence.get("unitBasis"),
+        "unitMultiplier": model_evidence.get("unitMultiplier"),
+        "unitMultiplierBasis": model_evidence.get("unitMultiplierBasis"),
+        "inputDigest": declared_input,
+        "outputDigest": declared_output,
+    }
+    if declared_run != canonical_sha256(run_material):
+        problems.append("modelRunDigest does not rederive from the "
+                        "documented run material")
+
+    for key, declared in (("value", str(model_evidence.get("value"))),
+                          ("valueKind", model_evidence.get("valueKind")),
+                          ("currency", model_evidence.get("currency")),
+                          ("unitBasis", model_evidence.get("unitBasis")),
+                          ("valuationAsOf",
+                           model_evidence.get("valuationAsOf"))):
+        if key not in output_evidence:
+            problems.append(f"output observation missing required key {key!r}")
+        elif output_evidence[key] != declared:
+            problems.append(
+                f"output observation {key} disagrees with the declared "
+                f"model field")
+    declared_multiplier = model_evidence.get("unitMultiplier")
+    declared_basis = model_evidence.get("unitMultiplierBasis")
+    if declared_multiplier is not None:
+        if str(input_evidence.get("unitMultiplier")) != str(
+            declared_multiplier
+        ):
+            problems.append(
+                "input authority unitMultiplier disagrees or is missing")
+        if input_evidence.get("unitMultiplierBasis") != declared_basis:
+            problems.append(
+                "input authority unitMultiplierBasis disagrees or is "
+                "missing")
+        for source_name, source in (("output", output_evidence),
+                                    ("input", input_evidence)):
+            if source.get("unitMultiplier") is not None and str(
+                source["unitMultiplier"]) != str(declared_multiplier):
                 problems.append(
-                    f"output observation {key} disagrees with the declared "
-                    f"model field")
-        if output_evidence.get("valuationAsOf") != model_evidence.get(
-            "valuationAsOf"
-        ) and "valuationAsOf" in output_evidence:
-            problems.append("output observation valuationAsOf disagrees "
-                            "with the declared valuation timestamp")
-        if model_evidence.get("unitMultiplier") is not None:
-            if str(input_evidence.get("unitMultiplier")) != str(
-                model_evidence.get("unitMultiplier")
+                    f"{source_name} unitMultiplier conflicts with the "
+                    "declared multiplier")
+            if source.get("unitMultiplierBasis") is not None and (
+                source["unitMultiplierBasis"] != declared_basis
             ):
-                problems.append("input authority unitMultiplier disagrees")
-            if input_evidence.get("unitMultiplierBasis") != (
-                model_evidence.get("unitMultiplierBasis")
-            ):
-                problems.append("input authority unitMultiplierBasis disagrees")
+                problems.append(
+                    f"{source_name} unitMultiplierBasis conflicts with the "
+                    "declared basis")
+    else:
+        if "unitMultiplier" in input_evidence or "unitMultiplierBasis" in (
+            input_evidence
+        ):
+            problems.append(
+                "input record carries multiplier authority that the "
+                "declared model evidence drops")
+        if "unitMultiplier" in output_evidence or "unitMultiplierBasis" in (
+            output_evidence
+        ):
+            problems.append(
+                "output-only multiplier claim without input authority")
+
     if problems:
-        collector.fail(
-            "MODEL_DIGESTS", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER", "; ".join(problems))
-        collector.fail(
-            "MODEL_OBSERVATION_BINDINGS",
-            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER", "; ".join(problems))
+        collector.fail("MODEL_DIGESTS",
+                       VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                       "R11_VERIFIER", "; ".join(problems))
+        collector.fail("MODEL_OBSERVATION_BINDINGS",
+                       VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                       "R11_VERIFIER", "; ".join(problems))
     else:
         collector.pass_(
-            "MODEL_DIGESTS",
-            "input/output/run digests independently rederived")
+            "MODEL_DIGESTS", "input/output/run digests independently "
+            "rederived from the serialized contract")
         collector.pass_(
             "MODEL_OBSERVATION_BINDINGS",
-            "serialized observation bindings match the declared model fields")
+            "serialized observation authority fully bound (value, kind, "
+            "currency, basis, valuationAsOf, multiplier policy)")
 
 
-def _verify_comparability(collector: _Collector,
+def _verify_comparability(collector: "_Collector",
                           comparability: Mapping | None) -> None:
-    """Check 11: structural comparability contract over the serialized
-    result (R10 selection logic is never re-run)."""
+    """Check 11 (A5): complete serialized comparability contract."""
     if comparability is None:
         collector.fail(
             "COMPARABILITY_CONTRACT",
@@ -743,26 +974,34 @@ def _verify_comparability(collector: _Collector,
             VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
             "R11_VERIFIER", "comparability dimensions missing/malformed")
         return
-    seen: dict[str, int] = {}
+    problems: list[str] = []
+    seen: dict[Any, int] = {}
+    failed: dict[Any, Any] = {}
     for entry in dimensions:
-        name = entry.get("dimension") if isinstance(entry, Mapping) else None
+        if not isinstance(entry, Mapping):
+            problems.append("non-mapping dimension result")
+            continue
+        name = entry.get("dimension")
         seen[name] = seen.get(name, 0) + 1
-    duplicates = sorted(k for k, v in seen.items() if v > 1)
+        ok = entry.get("ok")
+        if type(ok) is not bool:
+            problems.append(f"dimension {name!r} ok is not an exact boolean")
+            continue
+        gap_kind = entry.get("gapKind")
+        if ok and gap_kind is not None:
+            problems.append(f"dimension {name!r} is ok but carries a gap")
+        if not ok and (gap_kind is None or not isinstance(gap_kind, str)):
+            problems.append(
+                f"dimension {name!r} failed without a typed gap kind")
+        if not ok and isinstance(gap_kind, str):
+            failed[name] = gap_kind
+    duplicates = sorted(str(k) for k, v in seen.items() if v > 1)
     missing = [d for d in FROZEN_DIMENSIONS if d not in seen]
     unknown = [k for k in seen if k not in FROZEN_DIMENSIONS]
     if duplicates or missing or unknown:
-        collector.fail(
-            "COMPARABILITY_CONTRACT",
-            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER",
+        problems.append(
             f"dimension set invalid: duplicated={duplicates} "
             f"missing={missing} unknown={unknown}")
-        return
-    failed = {
-        entry["dimension"]: entry.get("gapKind")
-        for entry in dimensions
-        if entry.get("ok") is not True
-    }
     state = comparability.get("state")
     consistent = True
     if state == "COMPARABLE" and failed:
@@ -776,28 +1015,46 @@ def _verify_comparability(collector: _Collector,
     elif state not in ("COMPARABLE", "PARTIALLY_COMPARABLE", "NOT_COMPARABLE"):
         consistent = False
     if not consistent:
+        problems.append(
+            f"comparability state {state!r} inconsistent with the "
+            f"serialized dimension results")
+    declared_gaps = comparability.get("gaps")
+    expected_gaps = sorted(failed.values())
+    if declared_gaps != expected_gaps:
+        problems.append(
+            f"serialized comparability.gaps {declared_gaps!r} does not "
+            f"equal the failed dimensions' gap kinds {expected_gaps!r}")
+    if problems:
         collector.fail(
             "COMPARABILITY_CONTRACT",
             VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER",
-            f"comparability state {state!r} inconsistent with the "
-            f"serialized dimension results")
+            "R11_VERIFIER", "; ".join(problems))
         return
     collector.pass_(
         "COMPARABILITY_CONTRACT",
-        "exactly the seven frozen dimensions, one result each, state "
-        "consistent")
+        "exactly the seven frozen dimensions, one exact-boolean result "
+        "each, state consistent, serialized gaps mirror failed dimensions")
 
 
 def _verify_reference_arithmetic(
-    collector: _Collector, model_evidence: Mapping,
+    collector: "_Collector", model_evidence: Mapping,
     reference_comparison: Mapping, r7: Mapping | None,
 ) -> None:
-    """Check 12: independent Decimal recomputation of the reference
-    deviation plus traceability to the embedded R7 reference source."""
-    problems = []
+    """Check 12 (A6): independent Decimal recomputation with full binding
+    of every serialized reference field to the embedded R7 authority."""
+    problems: list[str] = []
+    oracle = {}
+    if r7 is not None:
+        oracle = (r7.get("layers") or {}).get("oracleReference") or {}
     try:
+        declared_bound_value = _decimal(
+            reference_comparison.get("modelValue"))
         model_value = _decimal(model_evidence.get("value"))
+        if declared_bound_value != model_value:
+            problems.append(
+                "referenceComparison.modelValue does not equal "
+                "modelEvidence.value")
+            model_value = declared_bound_value
         reference_price = _decimal(reference_comparison.get("referencePrice"))
         declared_minus = _decimal(
             reference_comparison.get("referenceMinusModelValue"))
@@ -810,35 +1067,66 @@ def _verify_reference_arithmetic(
             "R11_VERIFIER",
             f"reference comparison arithmetic reconstruction failed: {exc}")
         return
-    try:
-        expected_minus = reference_price - model_value
-        expected_bps = (reference_price / model_value - 1) * BPS_SCALE
-        if expected_minus != declared_minus:
-            problems.append("referenceMinusModelValue does not recompute")
-        if expected_bps != declared_bps:
-            problems.append("referenceVsModelBps does not recompute")
-        if model_value <= 0 or not model_value.is_finite():
-            problems.append("model value must be positive and finite")
-        if not reference_price.is_finite():
-            problems.append("reference price must be finite")
-        if (not _tz_aware(reference_comparison.get("modelObservedAt"))
-                or not _tz_aware(reference_comparison.get(
-                    "referenceObservedAt"))):
-            problems.append("comparison timestamps must be timezone-aware")
-        if r7 is not None:
-            oracle = (r7.get("layers") or {}).get("oracleReference") or {}
-            if (oracle.get("price") is not None
-                    and _decimal(oracle["price"]) != reference_price):
-                problems.append("reference price does not trace to the "
-                                "embedded R7 oracle observation")
-            if (oracle.get("source") is not None
-                    and reference_comparison.get("referenceSource")
-                    not in (None, oracle.get("source"))):
-                problems.append("reference source does not trace to the "
-                                "embedded R7 oracle source")
-    except (decimal.InvalidOperation, TypeError, ValueError, KeyError,
-            AttributeError, IndexError) as exc:
-        problems.append(f"arithmetic reconstruction failed: {exc}")
+    if not model_value.is_finite():
+        problems.append("model denominator must be finite")
+        collector.fail(
+            "REFERENCE_ARITHMETIC",
+            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(problems))
+        return
+    if model_value <= 0:
+        problems.append("model denominator must be positive and finite "
+                        "(checked before division)")
+        collector.fail(
+            "REFERENCE_ARITHMETIC",
+            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(problems))
+        return
+    if not reference_price.is_finite() or reference_price <= 0:
+        problems.append("reference price must be positive and finite")
+        collector.fail(
+            "REFERENCE_ARITHMETIC",
+            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(problems))
+        return
+    expected_minus = reference_price - model_value
+    expected_bps = (reference_price / model_value - 1) * BPS_SCALE
+    if expected_minus != declared_minus:
+        problems.append("referenceMinusModelValue does not recompute")
+    if expected_bps != declared_bps:
+        problems.append("referenceVsModelBps does not recompute")
+    if (not _tz_aware(reference_comparison.get("modelObservedAt"))
+            or not _tz_aware(reference_comparison.get("referenceObservedAt"))):
+        problems.append("comparison timestamps must be timezone-aware")
+    if not oracle:
+        problems.append("no embedded R7 oracle reference exists")
+    else:
+        if oracle.get("price") is None:
+            problems.append("embedded R7 oracle price missing")
+        elif _decimal(oracle["price"]) != reference_price:
+            problems.append(
+                "reference price does not trace to the embedded R7 oracle "
+                "price")
+        if not oracle.get("source"):
+            problems.append("embedded R7 oracle source missing")
+        elif reference_comparison.get("referenceSource") != oracle.get(
+            "source"
+        ):
+            problems.append(
+                "reference source does not trace to the embedded R7 oracle "
+                "source")
+        if not oracle.get("observedAt"):
+            problems.append("embedded R7 oracle observedAt missing")
+        elif reference_comparison.get("referenceObservedAt") != oracle.get(
+            "observedAt"
+        ):
+            problems.append(
+                "reference observed timestamp does not equal the embedded "
+                "R7 oracle observedAt")
+    declared_model_at = reference_comparison.get("modelObservedAt")
+    if declared_model_at != model_evidence.get("valuationAsOf"):
+        problems.append(
+            "modelObservedAt does not equal the model valuation timestamp")
     if problems:
         collector.fail(
             "REFERENCE_ARITHMETIC", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
@@ -847,32 +1135,67 @@ def _verify_reference_arithmetic(
         collector.pass_(
             "REFERENCE_ARITHMETIC",
             "referenceMinusModelValue and referenceVsModelBps independently "
-            "recompute in exact Decimal and trace to the embedded R7 source")
+            "recompute in exact Decimal and bind exactly to the embedded "
+            "R7 oracle authority")
 
 
 def _verify_execution_rows(
-    collector: _Collector, model_evidence: Mapping, rows: list,
+    collector: "_Collector", model_evidence: Mapping, rows: list,
     r8: Mapping | None,
 ) -> None:
-    """Checks 13/14: independent per-row arithmetic recomputation and
-    source binding to the corresponding embedded R8 scenario."""
+    """Checks 13/14 (A7): independent per-row arithmetic plus full
+    canonical scenario binding including r8ScenarioIndex, duplicate
+    detection, USD currency authority and scenario deployment identity."""
     problems: list[str] = []
-    scenarios_by_key: dict[tuple, Mapping] = {}
-    for scenario in (r8 or {}).get("scenarios", []):
+    scenarios = (r8 or {}).get("scenarios") or []
+    canonical: list[tuple[tuple, Mapping]] = []
+    seen_keys: dict[tuple, int] = {}
+    for scenario in scenarios:
         entry = scenario.get("scenario") or {}
-        key = (entry.get("side"), str(entry.get("requestedNotionalUsd")),
+        key = (entry.get("side"),
+               str(entry.get("requestedNotionalUsd")),
                entry.get("quoteSource"))
-        scenarios_by_key[key] = scenario
+        if key in seen_keys:
+            problems.append(
+                "duplicate/ambiguous R8 scenario identity "
+                f"(side={key[0]!r}, notional={key[1]!r}, "
+                f"venue={key[2]!r})")
+        seen_keys[key] = seen_keys.get(key, 0) + 1
+        try:
+            notional = _decimal(key[1])
+            require_positive = notional > 0 and notional.is_finite()
+        except (decimal.InvalidOperation, TypeError, ValueError):
+            notional = Decimal(0)
+            require_positive = False
+        if not require_positive:
+            problems.append(
+                f"R8 scenario requestedNotionalUsd {key[1]!r} must be "
+                "positive and finite")
+        canonical.append((key, scenario))
+    canonical.sort(key=lambda item: (item[0][0], _safe_notional(item[0][1]),
+                                     item[0][2]))
+    canonical_index = {item[0]: i for i, item in enumerate(canonical)}
+    r8_key = (r8 or {}).get("canonicalAssetKey") or {}
     model_value = None
     for position, row in enumerate(rows):
         label = f"row[{position}]"
         if not isinstance(row, Mapping):
             problems.append(f"{label}: not a mapping")
             continue
+        key = (row.get("side"), str(row.get("requestedNotionalUsd")),
+               row.get("quoteSource"))
+        scenario = None
+        if seen_keys.get(key, 0) == 1:
+            scenario = seen_lookup(canonical, key)
         try:
             if model_value is None:
                 model_value = _decimal(model_evidence.get("value"))
             model_value_row = _decimal(row.get("modelValue"))
+            if model_value_row != model_value:
+                problems.append(
+                    f"{label}: comparison model value differs from the "
+                    "declared model value")
+                model_value_row = model_value
             execution_price = _decimal(row.get("executionPrice"))
             declared_minus = _decimal(row.get("executionMinusModelValue"))
             declared_bps = _decimal(row.get("executionVsModelBps"))
@@ -881,68 +1204,96 @@ def _verify_execution_rows(
             problems.append(
                 f"{label}: arithmetic reconstruction failed: {exc}")
             continue
-        try:
-            expected_minus = execution_price - model_value_row
-            expected_bps = (execution_price / model_value_row - 1) * BPS_SCALE
-            if expected_minus != declared_minus:
-                problems.append(f"{label}: executionMinusModelValue does "
-                                "not recompute")
-            if expected_bps != declared_bps:
-                problems.append(f"{label}: executionVsModelBps does not "
-                                "recompute")
-            if execution_price <= 0 or not execution_price.is_finite():
-                problems.append(f"{label}: execution price must be positive "
-                                "and finite")
-        except (decimal.InvalidOperation, TypeError, ValueError, KeyError,
-                AttributeError, IndexError) as exc:
-            problems.append(f"{label}: arithmetic reconstruction failed: {exc}")
+        if not model_value_row.is_finite():
+            problems.append(
+                f"{label}: model denominator must be finite")
             continue
-        # source binding
-        key = (row.get("side"), str(row.get("requestedNotionalUsd")),
-               row.get("quoteSource"))
-        scenario = scenarios_by_key.get(key)
+        if model_value_row <= 0:
+            problems.append(
+                f"{label}: model denominator must be positive and finite "
+                "(checked before division)")
+            continue
+        if not execution_price.is_finite():
+            problems.append(
+                f"{label}: execution price must be finite")
+            continue
+        if execution_price <= 0:
+            problems.append(
+                f"{label}: execution price must be positive and finite")
+            continue
+        expected_minus = execution_price - model_value_row
+        expected_bps = (execution_price / model_value_row - 1) * BPS_SCALE
+        if expected_minus != declared_minus:
+            problems.append(f"{label}: executionMinusModelValue does not "
+                            "recompute")
+        if expected_bps != declared_bps:
+            problems.append(f"{label}: executionVsModelBps does not "
+                            "recompute")
+        if row.get("executionCurrency") != "USD":
+            problems.append(
+                f"{label}: execution currency must be USD per frozen R8 "
+                "executionPriceUsdPerToken semantics")
         if scenario is None:
             problems.append(
-                f"{label}: no embedded R8 scenario matches "
-                f"(side={row.get('side')!r}, "
-                f"notional={row.get('requestedNotionalUsd')!r}, "
-                f"venue={row.get('quoteSource')!r})")
+                f"{label}: no unique embedded R8 scenario matches "
+                f"(side={key[0]!r}, notional={key[1]!r}, "
+                f"venue={key[2]!r})")
             continue
         entry = scenario.get("scenario") or {}
-        r2 = (scenario.get("upstreamEvidence") or {}).get("r2GapEvidence") or {}
+        r2 = (scenario.get("upstreamEvidence") or {}).get(
+            "r2GapEvidence") or {}
         source_price = r2.get("executionPriceUsdPerToken")
         if source_price is None or _decimal(source_price) != execution_price:
             problems.append(
                 f"{label}: execution price does not trace to the embedded "
                 "R8 scenario executionPriceUsdPerToken")
         if row.get("r8NetEdgeState") != scenario.get("netEdgeState"):
-            problems.append(f"{label}: R8 net-edge state not carried verbatim")
-        if row.get("executionCurrency") != "USD":
             problems.append(
-                f"{label}: execution currency must be USD per frozen R8 "
-                "executionPriceUsdPerToken semantics")
+                f"{label}: R8 net-edge state not carried verbatim")
+        declared_index = row.get("r8ScenarioIndex")
+        expected_index = canonical_index.get(key)
+        if declared_index != expected_index:
+            problems.append(
+                f"{label}: r8ScenarioIndex {declared_index!r} does not "
+                f"identify the canonically ordered scenario "
+                f"(expected {expected_index!r})")
         quote_at = scenario.get("quoteObservedAt")
-        if (row.get("executionObservedAt") is not None
-                and quote_at is not None
-                and row["executionObservedAt"] != quote_at):
+        if quote_at is None:
             problems.append(
-                f"{label}: execution timestamp does not trace to the R8 "
+                f"{label}: embedded R8 scenario carries no quoteObservedAt")
+        elif row.get("executionObservedAt") != quote_at:
+            problems.append(
+                f"{label}: execution timestamp does not equal the R8 "
                 "scenario quoteObservedAt")
-        if model_value_row != model_value:
+        if (entry.get("chainId") != r8_key.get("chainId")
+                or str(entry.get("contractAddress", "")).lower()
+                != str(r8_key.get("contractAddress", "")).lower()):
             problems.append(
-                f"{label}: comparison model value differs from the "
-                "declared model value")
+                f"{label}: scenario deployment identity disagrees with the "
+                "canonical R8 deployment")
     if problems:
-        collector.fail(
-            "EXECUTION_ARITHMETIC", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER",
-            "; ".join(p for p in problems if "recompute" in p))
-        collector.fail(
-            "EXECUTION_SOURCE_BINDING",
-            VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
-            "R11_VERIFIER",
-            "; ".join(p for p in problems if "recompute" not in p)
-            or "execution source binding inconsistent")
+        arithmetic = [p for p in problems if "recompute" in p]
+        binding = [p for p in problems if "recompute" not in p]
+        if arithmetic:
+            collector.fail(
+                "EXECUTION_ARITHMETIC",
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER", "; ".join(arithmetic))
+        else:
+            collector.pass_(
+                "EXECUTION_ARITHMETIC",
+                "every present execution row recomputes independently in "
+                "exact Decimal")
+        if binding:
+            collector.fail(
+                "EXECUTION_SOURCE_BINDING",
+                VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
+                "R11_VERIFIER", "; ".join(binding))
+        else:
+            collector.pass_(
+                "EXECUTION_SOURCE_BINDING",
+                "every execution row binds to its canonical embedded R8 "
+                "scenario")
     else:
         collector.pass_(
             "EXECUTION_ARITHMETIC",
@@ -951,5 +1302,41 @@ def _verify_execution_rows(
             "deduction")
         collector.pass_(
             "EXECUTION_SOURCE_BINDING",
-            "every execution row traces to its embedded R8 scenario "
-            "(identity, price, timestamp, USD currency, net-edge state)")
+            "every execution row binds to its canonical embedded R8 "
+            "scenario (identity, index, price, timestamp, USD currency, "
+            "net-edge state, deployment)")
+
+
+def _safe_notional(raw: str) -> Decimal:
+    try:
+        return _decimal(raw)
+    except (decimal.InvalidOperation, TypeError, ValueError):
+        return Decimal(0)
+
+
+def seen_lookup(canonical, key):
+    for k, scenario in canonical:
+        if k == key:
+            return scenario
+    return None
+
+
+def derived_synthetic_flag(evidence: Mapping[str, Any]) -> bool:
+    """I/D derivation: R11 synthetic is exactly the OR of the verified
+    causal chain - no caller override exists."""
+    if evidence.get("synthetic") is True:
+        return True
+    upstream = evidence.get("upstreamEvidence") if isinstance(
+        evidence.get("upstreamEvidence"), Mapping) else {}
+    r9 = upstream.get("r9AssetGraphEvidence") if isinstance(
+        upstream.get("r9AssetGraphEvidence"), Mapping) else {}
+    r8 = upstream.get("r8ExecutionEvidence") if isinstance(
+        upstream.get("r8ExecutionEvidence"), Mapping) else {}
+    r7 = (r8.get("upstreamEvidence") or {}).get("r7CrossMarketEvidence")
+    return bool(
+        r9.get("synthetic") is True
+        or r8.get("synthetic") is True
+        or (isinstance(r7, Mapping) and r7.get("synthetic") is True)
+    )
+
+
