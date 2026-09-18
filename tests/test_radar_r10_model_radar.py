@@ -2809,6 +2809,46 @@ def test_ca_i3_06_r7_observed_at_malformed_typed_via_chain():
     assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
 
 
+def test_ca_j1_missing_r7_observed_at_fails_typed_never_keyerror():
+    """J1: a digest-valid AVAILABLE oracle observation with the observedAt
+    key entirely removed must fail with ModelRadarError +
+    MODEL_RADAR_INPUT_INVALID.  A raw KeyError must never escape."""
+    r9, r8 = _chain(**FULL)
+
+    def _strip_observed_at(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"].pop("observedAt", None)
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+    r9_stripped, r8_stripped = _chain(**FULL, mutate_r8=_strip_observed_at)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9_stripped, model=_model(value=Decimal("100")),
+                r8=r8_stripped)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+    assert not isinstance(excinfo.value, KeyError)
+
+
+def test_ca_j1_b_missing_r7_observed_at_cannot_pass_via_oracle_layer():
+    """The bridge must not silently treat the oracle as unavailable or
+    substitute another timestamp: the typed failure is mandatory."""
+    r9, _ = _chain(**FULL)
+
+    def _strip(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"].pop("observedAt", None)
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+    r9_stripped, _ = _chain(**FULL, mutate_r8=_strip)
+    try:
+        _bridge(r9_stripped, model=_model(value=Decimal("100")))
+        raise AssertionError("missing observedAt must not be accepted")
+    except ModelRadarError as exc:
+        assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+        assert "observedAt" in str(exc)
+
+
 # --------------------------------------------------------------------------
 # Correction D - I4: exact boolean synthetic contract
 # --------------------------------------------------------------------------

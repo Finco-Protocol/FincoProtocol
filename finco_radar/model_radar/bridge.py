@@ -341,8 +341,12 @@ def _market_context_from_r9(
             source="R9_ASSET_GRAPH_AUTHORITY",
             reason="R9 oracle-reference layer is not an available reference",
         )
+    # J1: the serialized value crosses the canonical typed boundary without
+    # direct-key access that could raise a raw KeyError first - a missing
+    # observedAt on an AVAILABLE oracle observation is a typed
+    # MODEL_RADAR_INPUT_INVALID, never a raw parsing/access exception.
     oracle_observed_at = datetime_from_evidence(
-        oracle["observedAt"], "R7 oracle observedAt")
+        oracle.get("observedAt"), "R7 oracle observedAt")
     oracle_multiplier = oracle.get("multiplier")
     token_multiplier = token.get("multiplier")
     reference_price = decimal_from_evidence(

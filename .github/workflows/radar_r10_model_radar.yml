@@ -515,11 +515,39 @@ jobs:
               except ModelRadarError as exc:
                   assert exc.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
 
+          # J1: full-chain missing R7 oracle observedAt fails typed, never
+          # raw KeyError, and no timestamp fallback is introduced.
+          def _j1_strip(e):
+              r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+              r7["layers"]["oracleReference"].pop("observedAt", None)
+              r7["r7SnapshotDigest"] = __import__("hashlib").sha256(
+                  __import__("json").dumps(
+                      {k: v for k, v in r7.items() if k != "r7SnapshotDigest"},
+                      sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode()).hexdigest()
+              e["sourceDigests"]["r7CrossMarketDigest"] = (
+                  __import__("hashlib").sha256(
+                      __import__("json").dumps(
+                          r7, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=False).encode()).hexdigest())
+          r9_j1s, r8_j1s = _chain(**FULL, mutate_r8=_j1_strip)
+          try:
+              build_model_radar_snapshot(
+                  r9_evidence=r9_j1s, r8_evidence=r8_j1s,
+                  model_evidence=_model(value=Decimal("100")),
+                  timing_policy=POLICY, now=NOW, git_head="gate")
+              raise SystemExit("J1_BLOCKED: missing observedAt accepted")
+          except ModelRadarError as exc:
+              assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID, exc.status
+          except KeyError as exc:
+              raise SystemExit(f"J1_BLOCKED: raw KeyError escaped: {exc}")
+
           print("R10_CORRECTION_D_I1_I6_GATE_PASS "
                 "execution_currency_authority=true hidden_fx_absent=true "
                 "execution_skew_scoped=true datetime_boundary_typed=true "
                 "synthetic_exact_boolean=true context_positive_reference=true "
-                "output_only_multiplier_rejected=true")
+                "output_only_multiplier_rejected=true "
+                "missing_r7_observed_at_typed=true")
           PY
       - name: Run frozen R9 asset-graph regression
         env:
