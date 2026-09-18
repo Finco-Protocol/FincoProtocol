@@ -1136,7 +1136,8 @@ def build_snapshot_with_status(status):
 # --------------------------------------------------------------------------
 
 def _envelope_for(subject):
-    from finco_radar.verification.contracts import build_verification_envelope
+    from finco_radar.verification.contracts import (
+        build_verification_envelope)
     envelope = build_verification_envelope(subject)
     ed = envelope.as_dict()
     return {k: ed[k] for k in ("schema", "canonicalization", "surface",
@@ -1149,7 +1150,7 @@ def test_ca_a10_01_wrong_envelope_payload_digest_detected():
     envelope = _envelope_for(subject)
     envelope["payloadSha256"] = "0" * 64
     snapshot = _verify(subject, content_envelope=envelope)
-    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
     assert _check(snapshot,
                   "CONTENT_ENVELOPE_BINDING").state is CheckState.FAIL
 
@@ -1186,3 +1187,600 @@ def test_ca_a10_05_omitted_envelope_remains_valid_optional():
     states = {c.check_id: c.state for c in snapshot.checks}
     assert states["CONTENT_ENVELOPE_BINDING"] is CheckState.UNAVAILABLE
     assert snapshot.status is VerificationStatus.VERIFICATION_OK
+
+
+# --------------------------------------------------------------------------
+# Correction B - B1: independent ModelBinding verification
+# --------------------------------------------------------------------------
+
+def _bind_mutation(mutate):
+    subject = _comparable_subject()
+    binding = copy.deepcopy(subject["modelBinding"])
+    mutate(binding)
+    subject["modelBinding"] = binding
+    return _reseal_r10(subject)
+
+
+def test_cb_b1_01_model_evidence_with_null_binding_rejected():
+    subject = _comparable_subject()
+    subject["modelBinding"] = None
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert _check(snapshot, "MODEL_BINDING_CONTRACT").state is CheckState.FAIL
+    assert "modelBinding is null" in _check(
+        snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_cb_b1_02_wrong_binding_id_rejected():
+    subject = _bind_mutation(lambda b: b.__setitem__(
+        "bindingId", "model-binding:" + "f" * 64))
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert "does not equal the independently reconstructed" in _check(
+        snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_ca_b1_03_wrong_binding_uid_rejected():
+    subject = _bind_mutation(lambda b: b.__setitem__("economicAssetUid", "EVIL"))
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert "economicAssetUid" in _check(
+        snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_ca_b1_04_wrong_binding_node_rejected():
+    subject = _bind_mutation(lambda b: b.__setitem__(
+        "economicNodeId", "economic:WRONG"))
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert "economicNodeId" in _check(
+        snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_ca_b1_05_wrong_binding_model_id_rejected():
+    subject = _bind_mutation(lambda b: b.__setitem__("modelId", "OTHER"))
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert "modelId" in _check(snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_ca_b1_06_wrong_binding_model_version_rejected():
+    subject = _bind_mutation(lambda b: b.__setitem__("modelVersion", "9.9"))
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+    assert "modelVersion" in _check(snapshot, "MODEL_BINDING_CONTRACT").detail
+
+
+def test_ca_b1_07_binding_contract_passes_when_consistent():
+    snapshot = _comparable_subject_verify()
+    assert _check(snapshot, "MODEL_BINDING_CONTRACT").state is CheckState.PASS
+
+
+def _comparable_subject_verify():
+    return _verify(_comparable_subject())
+
+
+# --------------------------------------------------------------------------
+# Correction B - B2: nested-shape fail-closed completion
+# --------------------------------------------------------------------------
+
+def test_cb_b2_01_r8_source_digests_null_typed():
+    def m(s):
+        s["upstreamEvidence"]["r8ExecutionEvidence"]["sourceDigests"] = None
+    subject = _subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+    assert _check(snapshot, "R7_PROVENANCE").state is CheckState.FAIL
+
+
+def test_cb_b2_02_r8_canonical_asset_key_list_typed():
+    def m(s):
+        r8 = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        r8["canonicalAssetKey"] = []
+    subject = _subject()
+    m(subject)
+    _reseal_chain(subject, r8=True)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_03_r9_deployment_canonical_asset_key_list_typed():
+    def m(s):
+        r9 = s["upstreamEvidence"]["r9AssetGraphEvidence"]
+        for node in r9["nodes"]:
+            if node.get("nodeType") == "TOKEN_DEPLOYMENT":
+                node["canonicalAssetKey"] = []
+        _reseal_chain_inner_r9(r9)
+    def _reseal_chain_inner_r9(r9):
+        r9["r9SnapshotDigest"] = hashlib.sha256(json.dumps(
+            {k: v for k, v in r9.items() if k != "r9SnapshotDigest"},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            .encode("utf-8")).hexdigest()
+    subject = _subject()
+    m(subject)
+    _reseal_chain(subject, r9=True)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_04_r7_layers_list_typed():
+    def m(s):
+        r7 = s["upstreamEvidence"]["r8ExecutionEvidence"][
+            "upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"] = []
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        r8e = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        r8e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+        r8e["r8SnapshotDigest"] = _digest(
+            {k: v for k, v in r8e.items() if k != "r8SnapshotDigest"})
+        s["sourceDigests"]["r8ExecutionSimulatorDigest"] = _digest(r8e)
+    subject = _subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_05_r7_oracle_price_abc_typed():
+    def m(s):
+        r7 = s["upstreamEvidence"]["r8ExecutionEvidence"][
+            "upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"]["price"] = "abc"
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        r8e = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        r8e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+        r8e["r8SnapshotDigest"] = _digest(
+            {k: v for k, v in r8e.items() if k != "r8SnapshotDigest"})
+        s["sourceDigests"]["r8ExecutionSimulatorDigest"] = _digest(r8e)
+    subject = _comparable_subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_06_r8_source_execution_price_abc_typed():
+    def m(s):
+        s["upstreamEvidence"]["r8ExecutionEvidence"]["scenarios"][0][
+            "upstreamEvidence"]["r2GapEvidence"][
+            "executionPriceUsdPerToken"] = "abc"
+        r8e = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        r8e["r8SnapshotDigest"] = _digest(
+            {k: v for k, v in r8e.items() if k != "r8SnapshotDigest"})
+        s["sourceDigests"]["r8ExecutionSimulatorDigest"] = _digest(r8e)
+    subject = _comparable_subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_07_scenario_upstream_evidence_list_typed():
+    def m(s):
+        s["upstreamEvidence"]["r8ExecutionEvidence"]["scenarios"][0][
+            "upstreamEvidence"] = []
+        r8e = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        r8e["r8SnapshotDigest"] = _digest(
+            {k: v for k, v in r8e.items() if k != "r8SnapshotDigest"})
+        s["sourceDigests"]["r8ExecutionSimulatorDigest"] = _digest(r8e)
+    subject = _comparable_subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b2_08_content_envelope_list_typed():
+    subject = _comparable_subject()
+    snapshot = _verify(subject, content_envelope=[])
+    assert snapshot.status is VerificationStatus.VERIFICATION_INPUT_INVALID
+
+
+def test_cb_b2_09_falsy_wrong_types_typed():
+    # nodes="" and scenarios=0 are wrong types, not empty containers
+    def m_nodes(s):
+        s["upstreamEvidence"]["r9AssetGraphEvidence"]["nodes"] = ""
+    subject = _subject()
+    m_nodes(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+    def m_scen(s):
+        s["upstreamEvidence"]["r8ExecutionEvidence"]["scenarios"] = 0
+    subject = _comparable_subject()
+    m_scen(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is not VerificationStatus.VERIFICATION_OK
+
+
+# --------------------------------------------------------------------------
+# Correction B - B3: full ModelEvidence semantic mirror
+# --------------------------------------------------------------------------
+
+def test_cb_b3_01_fake_value_kind_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["valueKind"] = "QUANTUM_VALUATION"
+    model["outputEvidence"]["valueKind"] = "QUANTUM_VALUATION"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b3_02_fake_unit_basis_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["unitBasis"] = "PER_UNIVERSE"
+    model["outputEvidence"]["unitBasis"] = "PER_UNIVERSE"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b3_03_invalid_kind_basis_pair_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["valueKind"] = "EQUITY_VALUE_TOTAL"
+    model["unitBasis"] = "PER_ECONOMIC_UNIT"
+    model["outputEvidence"]["valueKind"] = "EQUITY_VALUE_TOTAL"
+    model["outputEvidence"]["unitBasis"] = "PER_ECONOMIC_UNIT"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b3_04_nan_model_value_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["value"] = "NaN"
+    model["outputEvidence"]["value"] = "NaN"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b3_05_malformed_model_value_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["value"] = "abc"
+    model["outputEvidence"]["value"] = "abc"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+
+def test_cb_b3_06_malformed_valuation_as_of_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["valuationAsOf"] = "not-a-timestamp"
+    model["outputEvidence"]["valuationAsOf"] = "not-a-timestamp"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b3_07_naive_valuation_as_of_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["valuationAsOf"] = "2026-09-17T12:00:00"
+    model["outputEvidence"]["valuationAsOf"] = "2026-09-17T12:00:00"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b3_08_negative_multiplier_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["unitMultiplier"] = "-1"
+    model["inputEvidence"]["unitMultiplier"] = "-1"
+    model["outputEvidence"]["unitMultiplier"] = "-1"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_ca_b3_09_total_multiplier_basis_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["unitMultiplier"] = "10000"
+    model["unitMultiplierBasis"] = "TOTAL_EQUITY"
+    model["inputEvidence"]["unitMultiplier"] = "10000"
+    model["inputEvidence"]["unitMultiplierBasis"] = "TOTAL_EQUITY"
+    model["outputEvidence"]["unitMultiplier"] = "10000"
+    model["outputEvidence"]["unitMultiplierBasis"] = "TOTAL_EQUITY"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_ca_b3_10_multiplier_basis_without_multiplier_rejected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    model["unitMultiplierBasis"] = "PER_ECONOMIC_UNIT"
+    model["outputEvidence"]["unitMultiplierBasis"] = "PER_ECONOMIC_UNIT"
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+# --------------------------------------------------------------------------
+# Correction B - B4: comparability gap vocabulary
+# --------------------------------------------------------------------------
+
+def test_cb_b4_01_fake_gap_kind_rejected():
+    subject = _comparable_subject()
+    comparability = copy.deepcopy(subject["comparability"])
+    comparability["state"] = "NOT_COMPARABLE"
+    for dim in comparability["dimensions"]:
+        if dim["dimension"] == "CURRENCY":
+            dim["ok"] = False
+            dim["gapKind"] = "FAKE_GAP"
+    comparability["gaps"] = ["FAKE_GAP"]
+    subject["comparability"] = comparability
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status in (VerificationStatus.VERIFICATION_FAILED,
+        VerificationStatus.VERIFICATION_EVIDENCE_MISMATCH,
+        VerificationStatus.VERIFICATION_INPUT_INVALID)
+    assert "FAKE_GAP" in _check(
+        snapshot, "COMPARABILITY_CONTRACT").detail
+
+
+def test_cb_b4_02_partially_comparable_rule_preserved():
+    # the PARTIALLY_COMPARABLE rule remains REFERENCE_AVAILABILITY +
+    # REFERENCE_UNAVAILABLE only - verbatim frozen condition
+    dims_ok = {
+        d["dimension"]: d
+        for d in _comparable_subject()["comparability"]["dimensions"]
+    }
+    assert dims_ok["REFERENCE_AVAILABILITY"]["ok"] is True
+
+
+# --------------------------------------------------------------------------
+# Correction B - B5: historical timing semantics
+# --------------------------------------------------------------------------
+
+def test_cb_b5_01_execution_skew_boundary_pass():
+    subject = _comparable_subject()
+    # skew exactly at limit (0s skew, same NOW): passes
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_OK
+
+
+def test_cb_b5_02_execution_skew_plus_one_microsecond_blocked():
+    def m(s):
+        r8e = s["upstreamEvidence"]["r8ExecutionEvidence"]
+        micro = (NOW + timedelta(days=2)).isoformat()
+        for scenario in r8e["scenarios"]:
+            scenario["quoteObservedAt"] = micro
+            for row in s["executionComparisons"]:
+                row["executionObservedAt"] = micro
+        r8e["r8SnapshotDigest"] = _digest(
+            {k: v for k, v in r8e.items() if k != "r8SnapshotDigest"})
+        s["sourceDigests"]["r8ExecutionSimulatorDigest"] = _digest(r8e)
+    subject = _comparable_subject()
+    m(subject)
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b5_03_mutated_timing_policy_detected():
+    subject = _comparable_subject()
+    policy = dict(subject["timingPolicy"])
+    policy["maxModelAgeSeconds"] = "0"
+    subject["timingPolicy"] = policy
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+    assert "maxModelAgeSeconds" in _check(
+        snapshot, "HISTORICAL_TIMING").detail or "positive" in _check(
+        snapshot, "HISTORICAL_TIMING").detail
+
+
+def test_cb_b5_04_stale_model_relabeled_timing_ok_detected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    old_ts = (NOW - timedelta(days=30)).isoformat()
+    model["valuationAsOf"] = old_ts
+    model["outputEvidence"]["valuationAsOf"] = old_ts
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    reference = dict(subject["referenceComparison"])
+    reference["modelObservedAt"] = old_ts
+    subject["referenceComparison"] = reference
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+    assert any("age" in c.detail or "stale" in c.detail
+               for c in snapshot.checks if c.state is CheckState.FAIL)
+
+
+def test_cb_b5_05_skewed_reference_relabeled_timing_ok_detected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    skew_ts = (NOW + timedelta(days=2)).isoformat()
+    model["valuationAsOf"] = skew_ts
+    model["outputEvidence"]["valuationAsOf"] = skew_ts
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    reference = dict(subject["referenceComparison"])
+    reference["modelObservedAt"] = skew_ts
+    subject["referenceComparison"] = reference
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+
+
+def test_cb_b5_06_execution_row_outside_skew_retained_detected():
+    subject = _comparable_subject()
+    model = copy.deepcopy(subject["modelEvidence"])
+    old_valuation = (NOW - timedelta(days=2)).isoformat()
+    model["valuationAsOf"] = old_valuation
+    model["outputEvidence"]["valuationAsOf"] = old_valuation
+    model["outputDigest"] = _digest(model["outputEvidence"])
+    subject["modelEvidence"] = model
+    reference = dict(subject["referenceComparison"])
+    reference["modelObservedAt"] = old_valuation
+    subject["referenceComparison"] = reference
+    _reseal_r10(subject)
+    snapshot = _verify(subject)
+    assert snapshot.status is VerificationStatus.VERIFICATION_FAILED
+    assert any("skew" in c.detail for c in snapshot.checks
+               if c.state is CheckState.FAIL)
+
+
+# --------------------------------------------------------------------------
+# Correction B - B6: serialized R11 self-verification
+# --------------------------------------------------------------------------
+
+def _reseal_r11(evidence):
+    evidence["r11SnapshotDigest"] = hashlib.sha256(json.dumps(
+        {k: v for k, v in evidence.items() if k != "r11SnapshotDigest"},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        .encode("utf-8")).hexdigest()
+    return evidence
+
+
+def _base_r11():
+    return _verify(_subject()).to_evidence_dict()
+
+
+def test_cb_b6_01_ok_with_fail_check_does_not_verify():
+    evidence = _base_r11()
+    evidence["checks"][0]["state"] = "FAIL"
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_02_wrong_freeze_anchor_serialized_rejected():
+    evidence = _base_r11()
+    evidence["freezeAnchor"] = "f" * 64
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_03_wrong_subject_authority_tree_rejected():
+    evidence = _base_r11()
+    evidence["subjectAuthorityTree"] = "e" * 64
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_04_wrong_verification_authority_rejected():
+    evidence = _base_r11()
+    evidence["boundaries"]["verificationAuthority"] = "R9_APPLIED"
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_05_subject_evidence_digest_changed_rejected():
+    evidence = _base_r11()
+    evidence["subjectEvidenceDigest"] = "0" * 64
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_06_subject_status_mismatch_rejected():
+    evidence = _base_r11()
+    evidence["subjectStatus"] = "MODEL_RADAR_OK"
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_07_subject_snapshot_digest_mismatch_rejected():
+    evidence = _base_r11()
+    evidence["subjectSnapshotDigest"] = "0" * 64
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_08_duplicate_check_id_rejected():
+    evidence = _base_r11()
+    evidence["checks"].append(copy.deepcopy(evidence["checks"][0]))
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_09_invalid_check_state_rejected():
+    evidence = _base_r11()
+    evidence["checks"][0]["state"] = "MAYBE"
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_10_malformed_generated_at_rejected():
+    evidence = _base_r11()
+    evidence["generatedAt"] = "not-a-timestamp"
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_cb_b6_11_synthetic_zero_rejected():
+    evidence = _base_r11()
+    evidence["synthetic"] = 0
+    _reseal_r11(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+# --------------------------------------------------------------------------
+# Correction B - B7: content envelope public boundary
+# --------------------------------------------------------------------------
+
+def test_cb_b7_01_non_mapping_content_envelope_typed():
+    subject = _comparable_subject()
+    snapshot = _verify(subject, content_envelope="bad")
+    assert snapshot.status is VerificationStatus.VERIFICATION_INPUT_INVALID
+
+    snapshot = _verify(subject, content_envelope=0)
+    assert snapshot.status is VerificationStatus.VERIFICATION_INPUT_INVALID

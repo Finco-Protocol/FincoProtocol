@@ -18,6 +18,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+
+# CheckState is re-exported for the serialized verifier
+
 from types import MappingProxyType
 from typing import Any, Mapping
 
@@ -29,6 +32,31 @@ PHASE = "R11"
 # constants, never proof.
 R10_FREEZE_ANCHOR = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
 R10_FREEZE_TREE = "fba9d76d9dceee35d079563b115fdde90c40bd46"
+
+# B3/B4: frozen R10 serialized vocabularies, mirrored read-only for
+# independent verification.
+R10_VALUE_KINDS = {
+    "VALUE_PER_ECONOMIC_UNIT", "EQUITY_VALUE_TOTAL",
+    "ENTERPRISE_VALUE_TOTAL", "NAV_TOTAL", "PROJECT_NPV_TOTAL",
+    "NON_PRICE_METRIC",
+}
+R10_UNIT_BASES = {
+    "PER_SHARE", "PER_TOKEN_CLAIM", "PER_ECONOMIC_UNIT",
+    "TOTAL_EQUITY", "TOTAL_ENTERPRISE", "TOTAL_PROJECT",
+}
+R10_PER_UNIT_BASES = {"PER_SHARE", "PER_TOKEN_CLAIM", "PER_ECONOMIC_UNIT"}
+R10_TOTAL_BASES = {"TOTAL_EQUITY", "TOTAL_ENTERPRISE", "TOTAL_PROJECT"}
+R10_GAP_KINDS = {
+    "MODEL_SOURCE_AUTHORITY_UNAVAILABLE", "MODEL_BINDING_UNAVAILABLE",
+    "MODEL_INPUT_UNAVAILABLE", "MODEL_OUTPUT_UNAVAILABLE",
+    "MODEL_VALUE_UNAVAILABLE",
+    "MODEL_DISCOUNT_RATE_AUTHORITY_UNAVAILABLE", "VALUE_KIND_MISMATCH",
+    "UNIT_BASIS_UNAVAILABLE", "UNIT_BASIS_MISMATCH",
+    "MULTIPLIER_UNAVAILABLE", "CURRENCY_UNAVAILABLE", "CURRENCY_MISMATCH",
+    "FX_AUTHORITY_UNAVAILABLE", "MODEL_TIMING_UNAVAILABLE", "MODEL_STALE",
+    "TIMING_SKEW_INVALID", "REFERENCE_UNAVAILABLE",
+    "EXECUTION_EVIDENCE_UNAVAILABLE", "MODEL_VALUE_NONPOSITIVE",
+}
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -49,6 +77,18 @@ def require_exact_bool(value: Any, name: str) -> None:
             f"{name} must be an exact boolean, got {value!r}",
             VerificationStatus.VERIFICATION_INPUT_INVALID,
         )
+
+
+R11_BOUNDARIES = {
+    "registryAuthority": "R1_APPLIED",
+    "referenceAuthority": "R4_APPLIED",
+    "crossMarketAuthority": "R7_APPLIED",
+    "executionSimulatorAuthority": "R8_APPLIED",
+    "assetGraphAuthority": "R9_APPLIED",
+    "modelAuthority": "R10_APPLIED",
+    "verificationAuthority": "R11_APPLIED",
+    "digitalTwinAuthority": "R12_NOT_YET_APPLIED",
+}
 
 
 class VerificationStatus(str, Enum):
@@ -281,11 +321,11 @@ def verify_r11_snapshot_digest(snapshot: VerificationSnapshot) -> bool:
 
 
 def verify_serialized_r11_evidence(evidence: Any) -> bool:
-    """Fail-closed tamper detection over serialized R11 evidence.
-
-    A9: essential outer structural invariants are validated BEFORE the
-    digest comparison, so correctly re-hashing malformed R11 JSON never
-    verifies as valid serialized R11 evidence."""
+    """B6: fail-closed serialized R11 self-verification.  Validates the
+    serialized R11 CONTRACT - outer identity, freeze authority, outer
+    boundaries, subject binding, check contract, status/check consistency -
+    and only then reconstructs the digest.  A correctly re-hashed malformed
+    outer artifact must NOT pass."""
     if not isinstance(evidence, Mapping):
         return False
     if evidence.get("schemaVersion") != SCHEMA_VERSION:
@@ -296,9 +336,98 @@ def verify_serialized_r11_evidence(evidence: Any) -> bool:
         return False
     if type(evidence.get("synthetic")) is not bool:
         return False
-    if not isinstance(evidence.get("checks"), list) or not evidence["checks"]:
-        return False
     if not isinstance(evidence.get("gitHead"), str) or not evidence["gitHead"]:
+        return False
+    generated_at = evidence.get("generatedAt")
+    if not isinstance(generated_at, str):
+        return False
+    try:
+        parsed = datetime.fromisoformat(generated_at)
+    except (ValueError, TypeError):
+        return False
+    if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+        return False
+    if evidence.get("freezeAnchor") != R10_FREEZE_ANCHOR:
+        return False
+    if evidence.get("subjectAuthorityAnchor") != R10_FREEZE_ANCHOR:
+        return False
+    if evidence.get("subjectAuthorityTree") != R10_FREEZE_TREE:
+        return False
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, Mapping):
+        return False
+    if boundaries.get("modelAuthority") != "R10_APPLIED":
+        return False
+    if boundaries.get("verificationAuthority") != "R11_APPLIED":
+        return False
+    if boundaries.get("digitalTwinAuthority") != "R12_NOT_YET_APPLIED":
+        return False
+    subject = evidence.get("subjectEvidence")
+    if not isinstance(subject, Mapping):
+        return False
+    if evidence.get("subjectEvidenceDigest") != canonical_sha256(subject):
+        return False
+    if evidence.get("subjectPhase") != subject.get("phase"):
+        return False
+    if evidence.get("subjectStatus") != subject.get("status"):
+        return False
+    if evidence.get("subjectGitHead") != subject.get("gitHead"):
+        return False
+    if evidence.get("subjectSnapshotDigest") != subject.get(
+        "r10SnapshotDigest"
+    ):
+        return False
+    if evidence.get("economicAssetUid") != subject.get("economicAssetUid"):
+        return False
+    if evidence.get("economicNodeId") != subject.get("economicNodeId"):
+        return False
+    subject_gaps = sorted(
+        (plain(g) for g in (subject.get("gaps") or [])
+         if isinstance(g, Mapping)),
+        key=lambda g: (g.get("gapKind", ""), g.get("source", ""),
+                       g.get("reason", "")))
+    if evidence.get("subjectGaps") != subject_gaps:
+        return False
+    source_digests = evidence.get("sourceDigests")
+    if not isinstance(source_digests, Mapping):
+        return False
+    if source_digests != subject.get("sourceDigests"):
+        return False
+    checks = evidence.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return False
+    check_ids = []
+    fail_count = 0
+    for check in checks:
+        if not isinstance(check, Mapping):
+            return False
+        check_id = check.get("checkId")
+        if not isinstance(check_id, str) or not check_id.strip():
+            return False
+        check_ids.append(check_id)
+        if check.get("state") not in {st.value for st in CheckState}:
+            return False
+        if check.get("state") == "FAIL":
+            fail_count += 1
+    if len(check_ids) != len(set(check_ids)):
+        return False
+    if check_ids != sorted(check_ids):
+        return False
+    status = evidence.get("status")
+    if status == "VERIFICATION_OK" and fail_count > 0:
+        return False
+    if status in ("VERIFICATION_FAILED", "VERIFICATION_INPUT_INVALID",
+                  "VERIFICATION_EVIDENCE_MISMATCH") and fail_count == 0:
+        return False
+    verification_gaps = evidence.get("verificationGaps")
+    if not isinstance(verification_gaps, list):
+        return False
+    for gap in verification_gaps:
+        if not isinstance(gap, Mapping):
+            return False
+        if gap.get("gapKind") not in {g.value for g in VerificationGapKind}:
+            return False
+    if status == "VERIFICATION_OK" and verification_gaps:
         return False
     if not isinstance(evidence.get("r11SnapshotDigest"), str):
         return False
@@ -307,30 +436,14 @@ def verify_serialized_r11_evidence(evidence: Any) -> bool:
     return recorded == canonical_sha256(material)
 
 
-def build_verification_envelope(evidence: Mapping[str, Any]) -> Any:
-    """Optional content-addressed envelope over the verified subject,
-    produced with the FROZEN finco_protocol verification infrastructure
-    read-only.  Content-addressed only: NOT on-chain anchoring, NOT the
-    primary R11 authority (the R11 snapshot digest is)."""
+def build_verification_envelope(subject_evidence: Mapping[str, Any]) -> Any:
+    """Build an optional content-addressed envelope over the verified
+    subject using the frozen finco_protocol infrastructure (read-only).
+    NOT on-chain anchoring and NOT the primary R11 authority."""
     from finco_protocol.verification.envelope import build_evidence_envelope
     return build_evidence_envelope(
         surface="finco_radar.r11.verification",
         evidence_type="radar-r10-subject-evidence",
-        payload=plain(evidence),
-        authority_refs=(
-            "finco_radar.model_radar",
-            "finco_radar.r10",
-        ),
+        payload=plain(subject_evidence),
+        authority_refs=("finco_radar.model_radar", "finco_radar.r10"),
     )
-
-
-R11_BOUNDARIES = {
-    "registryAuthority": "R1_APPLIED",
-    "referenceAuthority": "R4_APPLIED",
-    "crossMarketAuthority": "R7_APPLIED",
-    "executionSimulatorAuthority": "R8_APPLIED",
-    "assetGraphAuthority": "R9_APPLIED",
-    "modelAuthority": "R10_APPLIED",
-    "verificationAuthority": "R11_APPLIED",
-    "digitalTwinAuthority": "R12_NOT_YET_APPLIED",
-}

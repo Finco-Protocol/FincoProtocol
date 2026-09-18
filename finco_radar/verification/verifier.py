@@ -34,7 +34,12 @@ from .contracts import (
     PHASE,
     R10_FREEZE_ANCHOR,
     R10_FREEZE_TREE,
+    R10_GAP_KINDS,
+    R10_PER_UNIT_BASES,
     R10_STATUSES,
+    R10_TOTAL_BASES,
+    R10_UNIT_BASES,
+    R10_VALUE_KINDS,
     SCHEMA_VERSION,
     CheckState,
     VerificationCheck,
@@ -56,6 +61,13 @@ FROZEN_ENGINE_AUTHORITIES = {
     "finco_core.sponsor.xirr",
     "financial_engine.orchestrator",
 }
+
+
+def _decimal_seconds(delta):
+    micros = (Decimal(delta.days) * Decimal(86400) * Decimal(10 ** 6)
+              + Decimal(delta.seconds) * Decimal(10 ** 6)
+              + Decimal(delta.microseconds))
+    return micros / Decimal(10 ** 6)
 
 
 class _ShapeError(Exception):
@@ -82,6 +94,18 @@ EXPECTED_SUBJECT_BOUNDARIES = {
     "verificationAuthority": "R11_NOT_YET_APPLIED",
     "digitalTwinAuthority": "R12_NOT_YET_APPLIED",
 }
+
+
+def __decimal_seconds(delta):
+    micros = (Decimal(delta.days) * Decimal(86400) * Decimal(10 ** 6)
+              + Decimal(delta.seconds) * Decimal(10 ** 6)
+              + Decimal(delta.microseconds))
+    return micros / Decimal(10 ** 6)
+
+
+def _r11_boundaries():
+    from .contracts import R11_BOUNDARIES
+    return dict(R11_BOUNDARIES)
 
 
 class _Collector:
@@ -145,8 +169,41 @@ def _tz_aware(value: Any) -> bool:
     return parsed.tzinfo is not None and parsed.tzinfo.utcoffset(parsed) is not None
 
 
-def _decimal(value: Any) -> Decimal:
-    return Decimal(str(value))
+def _decimal(value: Any, field_name: str = "value") -> Decimal:
+    """B2: the single canonical typed numeric parser for every serialized
+    value consumed by R11.  Malformed source values ("abc", None, wrong
+    types) and non-finite results (NaN / Infinity) raise _ShapeError, which
+    the check-level typed handling converts to R11 failures - a raw
+    decimal.InvalidOperation / DivisionByZero never escapes."""
+    if isinstance(value, bool) or value is None:
+        raise _ShapeError(f"{field_name} is not a number: {value!r}")
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise _ShapeError(f"{field_name} must be finite: {value!r}")
+        return value
+    if isinstance(value, (int, str)):
+        try:
+            converted = Decimal(value)
+        except (decimal.InvalidOperation, ValueError, TypeError) as exc:
+            raise _ShapeError(
+                f"{field_name} is not a parsable number: {value!r}") from exc
+        if not converted.is_finite():
+            raise _ShapeError(
+                f"{field_name} must be finite (NaN/Infinity rejected)")
+        return converted
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise _ShapeError(f"{field_name} must be finite: {value!r}")
+        return Decimal(repr(value))
+    raise _ShapeError(
+        f"{field_name} has unsupported type {type(value).__name__}")
+
+
+def _mapping_field(container: Mapping, key: str, name: str) -> Mapping:
+    value = container.get(key)
+    if value is not None and not isinstance(value, Mapping):
+        raise _ShapeError(f"{name} must be a mapping")
+    return value
 
 
 def verify_r10_evidence(
@@ -228,9 +285,7 @@ def verify_r10_evidence(
                 dict(evidence["sourceDigests"]) if isinstance(
                     evidence.get("sourceDigests"), Mapping) else {}),
             "subjectEvidence": plain(evidence),
-            "boundaries": dict(__import__(
-                "finco_radar.verification.contracts",
-                fromlist=["R11_BOUNDARIES"]).R11_BOUNDARIES),
+            "boundaries": dict(_r11_boundaries()),
             "synthetic": derived_synthetic_flag(evidence),
             "freezeAnchor": R10_FREEZE_ANCHOR,
             "contentEnvelope": plain(content_envelope) if content_envelope is not None else None,
@@ -403,16 +458,14 @@ def verify_r10_evidence(
     # ---- lineage extraction ------------------------------------------------
     upstream = evidence.get("upstreamEvidence") if isinstance(
         evidence.get("upstreamEvidence"), Mapping) else {}
-    r9 = upstream.get("r9AssetGraphEvidence") if isinstance(
-        upstream.get("r9AssetGraphEvidence"), Mapping) else None
-    r8 = upstream.get("r8ExecutionEvidence") if isinstance(
-        upstream.get("r8ExecutionEvidence"), Mapping) else None
-    r7 = (
-        (r8 or {}).get("upstreamEvidence", {}).get("r7CrossMarketEvidence")
-        if isinstance((r8 or {}).get("upstreamEvidence"), Mapping) else None
-    )
-    if not isinstance(r7, Mapping):
-        r7 = None
+    r9_raw = upstream.get("r9AssetGraphEvidence")
+    r9 = r9_raw if isinstance(r9_raw, Mapping) else None
+    r8_raw = upstream.get("r8ExecutionEvidence")
+    r8 = r8_raw if isinstance(r8_raw, Mapping) else None
+    r8_upstream = r8.get("upstreamEvidence") if isinstance(
+        r8, Mapping) and isinstance(r8.get("upstreamEvidence"), Mapping) else {}
+    r7_raw = r8_upstream.get("r7CrossMarketEvidence")
+    r7 = r7_raw if isinstance(r7_raw, Mapping) else None
     declared = evidence.get("sourceDigests") if isinstance(
         evidence.get("sourceDigests"), Mapping) else {}
 
@@ -516,7 +569,8 @@ def verify_r10_evidence(
         r8_key = r8.get("canonicalAssetKey") or {}
         deployment_nodes = [
             n for n in (r9 or {}).get("nodes", [])
-            if n.get("nodeType") == "TOKEN_DEPLOYMENT"
+            if isinstance(n, Mapping)
+            and n.get("nodeType") == "TOKEN_DEPLOYMENT"
         ]
         matching = [
             n for n in deployment_nodes
@@ -546,10 +600,12 @@ def verify_r10_evidence(
             "R11_VERIFIER", "embedded R7 lineage missing")
     else:
         r7_source = canonical_sha256(r7)
-        declared_r7 = (r8 or {}).get("sourceDigests", {}).get(
-            "r7CrossMarketDigest")
+        r8_declared = _mapping_field(r8, "sourceDigests",
+                                     "R8 sourceDigests")
+        declared_r7 = (r8_declared or {}).get("r7CrossMarketDigest")
         internal_ok = (
             isinstance(r7.get("r7SnapshotDigest"), str)
+            and isinstance(r7.get("layers"), Mapping)
             and r7["r7SnapshotDigest"] == canonical_sha256(plain(_material(r7)))
         )
         if declared_r7 == r7_source and internal_ok:
@@ -600,7 +656,18 @@ def verify_r10_evidence(
             "historical subject boundary preserved "
             "(verificationAuthority = R11_NOT_YET_APPLIED)")
 
-    # ---- A10: optional content-envelope binding (secondary authority) -----
+    # ---- A10/B7: optional content-envelope binding (secondary authority) ---
+    if content_envelope is not None and not isinstance(
+        content_envelope, Mapping
+    ):
+        # B7: non-mapping envelope is a typed public-boundary failure
+        collector.fail(
+            "CONTENT_ENVELOPE_BINDING",
+            VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER",
+            f"content envelope must be a mapping, got "
+            f"{type(content_envelope).__name__}")
+        return _finish(VerificationStatus.VERIFICATION_INPUT_INVALID)
     if content_envelope is not None:
         envelope_problems = []
         if content_envelope.get("schema") != "finco.evidence-envelope.v1":
@@ -717,7 +784,8 @@ def verify_r10_evidence(
                         "subject gaps preserved verbatim and consistent")
 
     if model_evidence is None:
-        for optional in ("MODEL_DIGESTS", "MODEL_OBSERVATION_BINDINGS",
+        for optional in ("MODEL_BINDING_CONTRACT", "MODEL_DIGESTS",
+                         "MODEL_OBSERVATION_BINDINGS",
                          "COMPARABILITY_CONTRACT", "REFERENCE_ARITHMETIC",
                          "EXECUTION_ARITHMETIC", "EXECUTION_SOURCE_BINDING"):
             collector.unavailable(
@@ -726,6 +794,57 @@ def verify_r10_evidence(
                 "integrity authority not applicable (verified consistent "
                 "with the declared MODEL_BINDING_UNAVAILABLE state)")
     else:
+        # B1: independent ModelBinding verification.  The frozen R10
+        # binding identity is reconstructed locally from the documented
+        # canonical material; the frozen ModelBinding constructor is NOT
+        # the primary proof.
+        binding = model_binding if isinstance(model_binding, Mapping) else None
+        binding_problems = []
+        if binding is None:
+            binding_problems.append(
+                "modelEvidence present but modelBinding is null")
+        else:
+            if binding.get("economicAssetUid") != uid:
+                binding_problems.append(
+                    f"binding economicAssetUid {binding.get('economicAssetUid')!r} "
+                    f"!= subject {uid!r}")
+            if binding.get("economicNodeId") != f"economic:{uid}":
+                binding_problems.append(
+                    f"binding economicNodeId "
+                    f"{binding.get('economicNodeId')!r} is not canonical")
+            if binding.get("modelId") != model_evidence.get("modelId"):
+                binding_problems.append(
+                    "binding modelId differs from modelEvidence modelId")
+            if binding.get("modelVersion") != (
+                model_evidence.get("modelVersion")
+            ):
+                binding_problems.append(
+                    "binding modelVersion differs from modelEvidence "
+                    "modelVersion")
+            binding_material = {
+                "economicAssetUid": uid,
+                "economicNodeId": f"economic:{uid}",
+                "modelId": model_evidence.get("modelId"),
+                "modelVersion": model_evidence.get("modelVersion"),
+            }
+            expected_binding_id = "model-binding:" + canonical_sha256(
+                binding_material)
+            if binding.get("bindingId") != expected_binding_id:
+                binding_problems.append(
+                    f"bindingId {binding.get('bindingId')!r} does not "
+                    f"equal the independently reconstructed "
+                    f"{expected_binding_id!r}")
+        if binding_problems:
+            collector.fail(
+                "MODEL_BINDING_CONTRACT",
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER", "; ".join(binding_problems))
+        else:
+            collector.pass_(
+                "MODEL_BINDING_CONTRACT",
+                "binding identity independently reconstructed "
+                "(model-binding:<sha256>) and exactly bound to the subject "
+                "economic identity and model evidence")
         _verify_model_integrity(collector, evidence, model_evidence)
         comparability = evidence.get("comparability") if isinstance(
             evidence.get("comparability"), Mapping) else None
@@ -764,24 +883,145 @@ def verify_r10_evidence(
             timestamp_fields.append(
                 (f"executionComparisons.executionObservedAt",
                  row.get("executionObservedAt")))
-    missing = sorted(name for name, value in timestamp_fields if value is None)
-    bad_timestamps = sorted(name for name, value in timestamp_fields
-                            if value is not None and not _tz_aware(value))
-    timing_problems = []
-    if missing:
-        timing_problems.append(f"required subject timestamps missing: {missing}")
-    if bad_timestamps:
-        timing_problems.append(
-            f"subject timestamps must be timezone-aware: {bad_timestamps}")
-    if timing_problems:
-        collector.fail(
-            "HISTORICAL_TIMING", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-            "R11_VERIFIER", "; ".join(timing_problems))
-    else:
-        collector.pass_(
-            "HISTORICAL_TIMING",
-            "serialized subject timestamps are internally consistent and "
-            "timezone-aware; no new R11 freshness policy applied")
+        missing = sorted(name for name, value in timestamp_fields if value is None)
+        bad_timestamps = sorted(name for name, value in timestamp_fields
+                                if value is not None and not _tz_aware(value))
+        timing_problems = []
+        if missing:
+            timing_problems.append(f"required subject timestamps missing: {missing}")
+        if bad_timestamps:
+            timing_problems.append(
+                f"subject timestamps must be timezone-aware: {bad_timestamps}")
+
+        # B5: historical timing semantics, using ONLY subject production-time
+        # authority (no R11 wall clock).
+        policy = evidence.get("timingPolicy") if isinstance(
+            evidence.get("timingPolicy"), Mapping) else {}
+        max_age_raw = policy.get("maxModelAgeSeconds")
+        max_skew_raw = policy.get("maxModelMarketSkewSeconds")
+        for name, raw in (("maxModelAgeSeconds", max_age_raw),
+                          ("maxModelMarketSkewSeconds", max_skew_raw)):
+            try:
+                value = _decimal(raw, f"timingPolicy.{name}")
+                if value <= 0:
+                    timing_problems.append(
+                        f"timingPolicy.{name} must be strictly positive")
+            except _ShapeError as exc:
+                timing_problems.append(str(exc))
+
+        generated_at_subject = None
+        raw_generated = evidence.get("generatedAt")
+        if isinstance(raw_generated, str):
+            try:
+                generated_at_subject = datetime.fromisoformat(raw_generated)
+            except (ValueError, TypeError):
+                pass
+        model_evidence_hist = evidence.get("modelEvidence") if isinstance(
+            evidence.get("modelEvidence"), Mapping) else None
+
+        def _timing_dimension_entry():
+            comparability = evidence.get("comparability") if isinstance(
+                evidence.get("comparability"), Mapping) else None
+            if comparability is None:
+                return None
+            dims = comparability.get("dimensions") if isinstance(
+                comparability.get("dimensions"), list) else []
+            for entry in dims:
+                if isinstance(entry, Mapping) and entry.get(
+                    "dimension"
+                ) == "TIMING":
+                    return entry
+            return None
+
+        max_age = None
+        max_skew = None
+        try:
+            if max_age_raw is not None:
+                max_age = _decimal(max_age_raw, "maxModelAgeSeconds")
+            if max_skew_raw is not None:
+                max_skew = _decimal(max_skew_raw, "maxModelMarketSkewSeconds")
+        except _ShapeError:
+            pass
+
+        if model_evidence_hist is not None and generated_at_subject is not None:
+            raw_valuation = model_evidence_hist.get("valuationAsOf")
+            if isinstance(raw_valuation, str):
+                try:
+                    valuation = datetime.fromisoformat(raw_valuation)
+                except (ValueError, TypeError):
+                    valuation = None
+                if valuation is not None and valuation.tzinfo is not None:
+                    if valuation > generated_at_subject:
+                        timing_problems.append(
+                            "model valuationAsOf is future relative to subject "
+                            "production authority")
+                    elif max_age is not None:
+                        age = _decimal_seconds(generated_at_subject - valuation)
+                        timing_dim = _timing_dimension_entry()
+                        timing_ok = (timing_dim is not None
+                                     and timing_dim.get("ok") is True)
+                        if age > max_age and timing_ok:
+                            timing_problems.append(
+                                f"model age {age}s exceeds policy {max_age}s "
+                                "but the serialized TIMING dimension is marked "
+                                "ok (stale model relabeled)")
+
+        if (model_evidence_hist is not None and reference_comparison is not None
+                and generated_at_subject is not None):
+            raw_valuation = model_evidence_hist.get("valuationAsOf")
+            raw_ref_at = reference_comparison.get("referenceObservedAt")
+            if isinstance(raw_valuation, str) and isinstance(raw_ref_at, str):
+                try:
+                    valuation = datetime.fromisoformat(raw_valuation)
+                    ref_at = datetime.fromisoformat(raw_ref_at)
+                except (ValueError, TypeError):
+                    valuation = ref_at = None
+                if (valuation is not None and ref_at is not None
+                        and valuation.tzinfo is not None
+                        and ref_at.tzinfo is not None and max_skew is not None):
+                    skew = _decimal_seconds(abs(valuation - ref_at))
+                    timing_dim = _timing_dimension_entry()
+                    timing_ok = (timing_dim is not None
+                                 and timing_dim.get("ok") is True)
+                    if skew > max_skew and timing_ok:
+                        timing_problems.append(
+                            f"model/reference skew {skew}s exceeds "
+                            f"maxModelMarketSkewSeconds {max_skew}s but the "
+                            "serialized TIMING dimension is marked ok")
+
+        for row in execution_comparisons or []:
+            if not isinstance(row, Mapping):
+                continue
+            raw_exec_at = row.get("executionObservedAt")
+            if (model_evidence_hist is not None and isinstance(raw_exec_at, str)
+                    and isinstance(
+                        model_evidence_hist.get("valuationAsOf"), str)
+                    and max_skew is not None):
+                try:
+                    exec_at = datetime.fromisoformat(raw_exec_at)
+                    valuation = datetime.fromisoformat(
+                        model_evidence_hist["valuationAsOf"])
+                except (ValueError, TypeError):
+                    continue
+                if exec_at.tzinfo is None or valuation.tzinfo is None:
+                    continue
+                skew = _decimal_seconds(abs(valuation - exec_at))
+                if skew > max_skew:
+                    timing_problems.append(
+                        f"execution row {row.get('side')}/"
+                        f"{row.get('requestedNotionalUsd')} retained outside "
+                        f"skew policy (skew {skew}s > {max_skew}s)")
+
+        if timing_problems:
+            collector.fail(
+                "HISTORICAL_TIMING", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER", "; ".join(timing_problems))
+        else:
+            collector.pass_(
+                "HISTORICAL_TIMING",
+                "historical timing semantics verified against subject "
+                "production-time authority; no R11 wall-clock freshness "
+                "applied")
 
     # ---- status ------------------------------------------------------------------
     checks = collector.ordered_checks()
@@ -993,8 +1233,13 @@ def _verify_comparability(collector: "_Collector",
         if not ok and (gap_kind is None or not isinstance(gap_kind, str)):
             problems.append(
                 f"dimension {name!r} failed without a typed gap kind")
-        if not ok and isinstance(gap_kind, str):
-            failed[name] = gap_kind
+        elif not ok and isinstance(gap_kind, str):
+            if gap_kind not in R10_GAP_KINDS:
+                problems.append(
+                    f"dimension {name!r} gapKind {gap_kind!r} is not in the "
+                    "frozen R10 gap-kind vocabulary")
+            else:
+                failed[name] = gap_kind
     duplicates = sorted(str(k) for k, v in seen.items() if v > 1)
     missing = [d for d in FROZEN_DIMENSIONS if d not in seen]
     unknown = [k for k in seen if k not in FROZEN_DIMENSIONS]
@@ -1049,7 +1294,8 @@ def _verify_reference_arithmetic(
     try:
         declared_bound_value = _decimal(
             reference_comparison.get("modelValue"))
-        model_value = _decimal(model_evidence.get("value"))
+        model_value = _decimal(model_evidence.get("value"),
+                               "modelEvidence.value")
         if declared_bound_value != model_value:
             problems.append(
                 "referenceComparison.modelValue does not equal "
@@ -1060,8 +1306,8 @@ def _verify_reference_arithmetic(
             reference_comparison.get("referenceMinusModelValue"))
         declared_bps = _decimal(
             reference_comparison.get("referenceVsModelBps"))
-    except (decimal.InvalidOperation, TypeError, ValueError, KeyError,
-            AttributeError, IndexError) as exc:
+    except (_ShapeError, decimal.InvalidOperation, TypeError, ValueError,
+            KeyError, AttributeError, IndexError) as exc:
         collector.fail(
             "REFERENCE_ARITHMETIC", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
             "R11_VERIFIER",
@@ -1101,28 +1347,32 @@ def _verify_reference_arithmetic(
     if not oracle:
         problems.append("no embedded R7 oracle reference exists")
     else:
-        if oracle.get("price") is None:
-            problems.append("embedded R7 oracle price missing")
-        elif _decimal(oracle["price"]) != reference_price:
-            problems.append(
-                "reference price does not trace to the embedded R7 oracle "
-                "price")
-        if not oracle.get("source"):
-            problems.append("embedded R7 oracle source missing")
-        elif reference_comparison.get("referenceSource") != oracle.get(
-            "source"
-        ):
-            problems.append(
-                "reference source does not trace to the embedded R7 oracle "
-                "source")
-        if not oracle.get("observedAt"):
-            problems.append("embedded R7 oracle observedAt missing")
-        elif reference_comparison.get("referenceObservedAt") != oracle.get(
-            "observedAt"
-        ):
-            problems.append(
-                "reference observed timestamp does not equal the embedded "
-                "R7 oracle observedAt")
+        try:
+            if oracle.get("price") is None:
+                problems.append("embedded R7 oracle price missing")
+            elif _decimal(oracle["price"],
+                          "R7 oracle price") != reference_price:
+                problems.append(
+                    "reference price does not trace to the embedded R7 "
+                    "oracle price")
+            if not oracle.get("source"):
+                problems.append("embedded R7 oracle source missing")
+            elif reference_comparison.get("referenceSource") != oracle.get(
+                "source"
+            ):
+                problems.append(
+                    "reference source does not trace to the embedded R7 "
+                    "oracle source")
+            if not oracle.get("observedAt"):
+                problems.append("embedded R7 oracle observedAt missing")
+            elif reference_comparison.get("referenceObservedAt") != oracle.get(
+                "observedAt"
+            ):
+                problems.append(
+                    "reference observed timestamp does not equal the "
+                    "embedded R7 oracle observedAt")
+        except _ShapeError as exc:
+            problems.append(f"oracle binding reconstruction failed: {exc}")
     declared_model_at = reference_comparison.get("modelObservedAt")
     if declared_model_at != model_evidence.get("valuationAsOf"):
         problems.append(
@@ -1189,21 +1439,26 @@ def _verify_execution_rows(
             scenario = seen_lookup(canonical, key)
         try:
             if model_value is None:
-                model_value = _decimal(model_evidence.get("value"))
-            model_value_row = _decimal(row.get("modelValue"))
-            if model_value_row != model_value:
-                problems.append(
-                    f"{label}: comparison model value differs from the "
-                    "declared model value")
-                model_value_row = model_value
-            execution_price = _decimal(row.get("executionPrice"))
-            declared_minus = _decimal(row.get("executionMinusModelValue"))
-            declared_bps = _decimal(row.get("executionVsModelBps"))
-        except (decimal.InvalidOperation, TypeError, ValueError, KeyError,
-                AttributeError, IndexError) as exc:
+                model_value = _decimal(model_evidence.get("value"),
+                                       "modelEvidence.value")
+            model_value_row = _decimal(row.get("modelValue"),
+                                       "comparison modelValue")
+            execution_price = _decimal(row.get("executionPrice"),
+                                       "comparison executionPrice")
+            declared_minus = _decimal(row.get("executionMinusModelValue"),
+                                      "executionMinusModelValue")
+            declared_bps = _decimal(row.get("executionVsModelBps"),
+                                    "executionVsModelBps")
+        except (_ShapeError, decimal.InvalidOperation, TypeError, ValueError,
+                KeyError, AttributeError, IndexError) as exc:
             problems.append(
                 f"{label}: arithmetic reconstruction failed: {exc}")
             continue
+        if model_value_row != model_value:
+            problems.append(
+                f"{label}: comparison model value differs from the "
+                "declared model value")
+            model_value_row = model_value
         if not model_value_row.is_finite():
             problems.append(
                 f"{label}: model denominator must be finite")
@@ -1240,13 +1495,37 @@ def _verify_execution_rows(
                 f"venue={key[2]!r})")
             continue
         entry = scenario.get("scenario") or {}
-        r2 = (scenario.get("upstreamEvidence") or {}).get(
-            "r2GapEvidence") or {}
-        source_price = r2.get("executionPriceUsdPerToken")
-        if source_price is None or _decimal(source_price) != execution_price:
+        scenario_upstream = scenario.get("upstreamEvidence")
+        if scenario_upstream is not None and not isinstance(
+            scenario_upstream, Mapping
+        ):
             problems.append(
-                f"{label}: execution price does not trace to the embedded "
-                "R8 scenario executionPriceUsdPerToken")
+                f"{label}: R8 scenario upstreamEvidence must be a mapping")
+            continue
+        r2 = scenario_upstream.get("r2GapEvidence") if (
+            isinstance(scenario_upstream, Mapping)) else None
+        if r2 is not None and not isinstance(r2, Mapping):
+            problems.append(
+                f"{label}: R8 scenario r2GapEvidence must be a mapping")
+            continue
+        source_price = r2.get("executionPriceUsdPerToken") if (
+            isinstance(r2, Mapping)) else None
+        try:
+            if source_price is None:
+                problems.append(
+                    f"{label}: R8 scenario carries no "
+                    "executionPriceUsdPerToken source value")
+                continue
+            if _decimal(source_price, "R8 executionPriceUsdPerToken") != (
+                execution_price
+            ):
+                problems.append(
+                    f"{label}: execution price does not trace to the "
+                    "embedded R8 scenario executionPriceUsdPerToken")
+                continue
+        except _ShapeError as exc:
+            problems.append(f"{label}: {exc}")
+            continue
         if row.get("r8NetEdgeState") != scenario.get("netEdgeState"):
             problems.append(
                 f"{label}: R8 net-edge state not carried verbatim")
