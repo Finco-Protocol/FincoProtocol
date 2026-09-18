@@ -30,6 +30,10 @@ SHA256_PATH = "artifacts/radar_r12_digital_twin_evidence.sha256"
 MANIFEST_PATH = "artifacts/radar_r12_digital_twin_manifest.json"
 
 
+R10_MAX_MODEL_AGE_SECONDS = Decimal("900")
+R10_MAX_MODEL_MARKET_SKEW_SECONDS = Decimal("300")
+
+
 def main() -> int:
     r8_evidence, audit = _build_r8_live_snapshot()
     r9_evidence = build_r9_evidence(
