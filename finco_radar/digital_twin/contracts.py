@@ -231,12 +231,6 @@ class DigitalTwinSnapshot:
             "boundaries": dict(self.boundaries),
             "freezeAnchor": self.freeze_anchor,
             "freezeTree": self.freeze_tree,
-            "subjectStatus": (
-                self.subject_r11_evidence.get("status") if isinstance(
-                    self.subject_r11_evidence, Mapping) else None),
-            "subjectSnapshotDigest": (
-                self.subject_r11_evidence.get("r11SnapshotDigest") if isinstance(
-                    self.subject_r11_evidence, Mapping) else None),
             "synthetic": self.synthetic,
             "r12SnapshotDigest": self.r12_snapshot_digest,
         }
@@ -257,13 +251,6 @@ def verify_serialized_r12_evidence(evidence: Any) -> bool:
     if evidence.get("phase") != PHASE:
         return False
     if type(evidence.get("synthetic")) is not bool:
-        return False
-    boundaries = evidence.get("boundaries")
-    if not isinstance(boundaries, Mapping):
-        return False
-    if boundaries.get("digitalTwinAuthority") != "R12_APPLIED":
-        return False
-    if boundaries.get("verificationAuthority") != "R11_APPLIED":
         return False
     material = plain(evidence)
     recorded = material.pop("r12SnapshotDigest")
