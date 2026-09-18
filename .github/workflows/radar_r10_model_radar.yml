@@ -225,10 +225,14 @@ jobs:
               ComparabilityState, ModelRadarStatus,
           )
           r9 = _r9_evidence(**FULL)
+          # The synthetic proof uses the deterministic fixture clock (NOW):
+          # a real wall-clock now would legitimately age the fixture model
+          # past the timing policy, which is live-proof behaviour and not
+          # what this offline mathematics proof exercises.
           snapshot = _bridge(
               r9, model=_model(value=Decimal("100")),
               r8=_r8_evidence(exec_prices=EXEC_PRICES),
-              now=datetime.now(timezone.utc))
+              now=NOW)
           assert snapshot.status is ModelRadarStatus.MODEL_RADAR_OK
           assert snapshot.comparability.state is ComparabilityState.COMPARABLE
           assert snapshot.reference_comparison.reference_vs_model_bps == Decimal("500")
