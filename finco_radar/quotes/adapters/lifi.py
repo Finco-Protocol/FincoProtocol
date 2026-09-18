@@ -117,7 +117,7 @@ class LifiExecutionQuoteAdapter:
             return self._failure(
                 request,
                 QuoteStatus.QUOTE_SOURCE_ERROR,
-                f"malformed quote response: {type(exc).__name__}",
+                f"exact-input binding mismatch: {exc}",
                 quoted_at,
                 input_asset=input_asset,
                 output_asset=output_asset,
@@ -153,12 +153,55 @@ class LifiExecutionQuoteAdapter:
         output_asset: AssetRef,
     ) -> ExecutionQuote:
         estimate = payload["estimate"]
+        action = payload["action"]
         raw_in = int(estimate["fromAmount"])
         raw_out = int(estimate["toAmount"])
-        response_input = payload["action"]["fromToken"]
-        response_output = payload["action"]["toToken"]
+        response_input = action["fromToken"]
+        response_output = action["toToken"]
         input_decimals = int(response_input["decimals"])
         output_decimals = int(response_output["decimals"])
+
+        # -- A2/A3: chain binding — every provider chain field must match the
+        # requested canonical chain.  A response for a different chain is
+        # evidence for a different trade and must never produce QUOTE_OK.
+        expected_chain = request.token.chain_id
+        from_chain_id = action.get("fromChainId")
+        from_token_chain_id = response_input.get("chainId")
+        to_chain_id = action.get("toChainId")
+        to_token_chain_id = response_output.get("chainId")
+
+        for field_label, raw_value in (
+            ("action.fromChainId", from_chain_id),
+            ("fromToken.chainId", from_token_chain_id),
+            ("action.toChainId", to_chain_id),
+            ("toToken.chainId", to_token_chain_id),
+        ):
+            if raw_value is None:
+                raise ValueError(
+                    f"provider response field {field_label} is missing; "
+                    "chain binding is required for exact-input authority"
+                )
+            if int(raw_value) != expected_chain:
+                raise ValueError(
+                    f"provider response field {field_label}={raw_value} does "
+                    f"not match requested chain {expected_chain}"
+                )
+
+        # -- A1: exact input amount binding — the provider-reported input
+        # amount must equal the exact normalized raw amount submitted.
+        requested_raw = params.get("fromAmount") or ""
+        provider_raw = estimate.get("fromAmount")
+        if provider_raw is None:
+            raise ValueError(
+                "provider response estimate.fromAmount is missing; "
+                "input amount binding is required for exact-input authority"
+            )
+        if str(provider_raw) != requested_raw:
+            raise ValueError(
+                f"provider input amount {provider_raw} does not equal the "
+                f"exact amount submitted {requested_raw}; this response "
+                "evidences a different trade"
+            )
 
         if response_input["address"].lower() != input_asset.contract_address:
             raise ValueError("provider input asset does not match requested address")
