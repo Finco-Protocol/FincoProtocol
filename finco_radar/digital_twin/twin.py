@@ -282,13 +282,21 @@ def build_digital_twin(
             detail="serialized comparability state"))
 
     # Synthetic derivation
+    r10_upstream = r10.get("upstreamEvidence") if isinstance(
+        r10.get("upstreamEvidence"), Mapping) else {}
+    r9 = r10_upstream.get("r9AssetGraphEvidence") if isinstance(
+        r10_upstream.get("r9AssetGraphEvidence"), Mapping) else {}
+    r8 = r10_upstream.get("r8ExecutionEvidence") if isinstance(
+        r10_upstream.get("r8ExecutionEvidence"), Mapping) else {}
+    r7 = (r8.get("upstreamEvidence") or {}).get("r7CrossMarketEvidence") if (
+        isinstance(r8.get("upstreamEvidence"), Mapping)) else {}
     derived_synthetic = bool(
         synthetic
         or r11_evidence.get("synthetic") is True
         or r10.get("synthetic") is True
         or r9.get("synthetic") is True
-        or (r8.get("synthetic") is True)
-        or (r7.get("synthetic") is True)
+        or r8.get("synthetic") is True
+        or r7.get("synthetic") is True
     )
 
     # Source digests (from R11)
