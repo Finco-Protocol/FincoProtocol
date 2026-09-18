@@ -203,10 +203,47 @@ owns those).
 - **F7** — discovery returns model evidence (typed tuple), not a binding;
   timing arithmetic is exact Decimal (no float seconds).
 
+## Correction B (independent review)
+
+- **G1** — model **source authority** is separate from evidence integrity
+  and economic binding.  `engine_authority` must be an exact typed
+  `ModelEngineAuthority` (`finco_core.sponsor.xnpv`, `finco_core.sponsor.xirr`,
+  `financial_engine.orchestrator`); a digest-valid, UID-matching,
+  non-synthetic caller-built `ModelEvidence` is rejected with the typed
+  `MODEL_SOURCE_AUTHORITY_UNAVAILABLE` gap — nothing is published, nothing
+  is compared.  Non-synthetic model evidence may only enter through the
+  discovery/source-authority adapter; since no source-proven live binding
+  exists, non-synthetic comparison remains unavailable.
+- **G2** — the published `synthetic` state is **derived** from causal
+  evidence (model evidence + embedded R9/R8/R7 flags), never from an
+  independent caller boolean; synthetic lineage cannot be laundered into a
+  non-synthetic snapshot.  The CI live gate independently asserts
+  non-synthetic R10/R9/R8/R7 (and any future live model evidence).
+- **G3** — comparison-critical fields (`value`, `valueKind`, `currency`,
+  `unitBasis`, and multiplier/valuation timestamp wherever declared as
+  authority) must be **exactly equal** to the authoritative serialized
+  output/input observation; two caller-asserted versions of the model value
+  cannot exist.
+- **G4** — `ModelComparability` validates semantic consistency: ok⇔no gap,
+  failed⇔typed gap, `COMPARABLE` iff all seven ok, `PARTIALLY_COMPARABLE`
+  reserved for reference-only unavailability, `NOT_COMPARABLE` requires at
+  least one failure.
+- **G5** — every Decimal boundary is finite and typed-fail-closed:
+  `decimal_from_authority`, model value, unit multiplier, timing policy,
+  market multipliers, reference and execution prices.  NaN/Infinity (Decimal
+  or string) and malformed strings produce typed R10 errors, never raw
+  `InvalidOperation`.
+- **G6** — the kind × basis matrix is closed at construction:
+  `VALUE_PER_ECONOMIC_UNIT` requires a PER_UNIT basis; TOTAL kinds require
+  their exact TOTAL basis; an equity total cannot declare a token-claim
+  multiplier basis.  No combination can reach COMPARABLE and then fail in
+  normalization.
+- **G7** — PR metadata updated to current counts and state.
+
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r10_model_radar.py   # 116 offline deterministic tests
+pytest -q tests/test_radar_r10_model_radar.py   # 156 offline deterministic tests
 python -m finco_radar.r10.live_proof            # live proof (re-runs the frozen
                                                 # R1->R9 chain, adds no APIs)
 ```

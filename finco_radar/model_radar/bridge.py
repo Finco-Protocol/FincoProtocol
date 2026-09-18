@@ -57,6 +57,7 @@ from .contracts import (
     TOTAL_BASES,
     _plain,
     digest_payload,
+    require_finite_decimal,
 )
 
 R10_BOUNDARIES = {
@@ -290,6 +291,12 @@ def _resolve_deployment(
     }
 
 
+def _finite(raw, name: str) -> Decimal:
+    value = Decimal(str(raw))
+    require_finite_decimal(value, name)
+    return value
+
+
 def _market_context_from_r9(
     r9_evidence: Mapping[str, Any],
 ) -> tuple[MarketComparabilityContext, ModelRadarGap | None]:
@@ -329,18 +336,20 @@ def _market_context_from_r9(
     from datetime import datetime as _dt
     oracle_multiplier = oracle.get("multiplier")
     token_multiplier = token.get("multiplier")
+    reference_price = Decimal(str(oracle["price"]))
+    require_finite_decimal(reference_price, "R7 oracle reference price")
     context = MarketComparabilityContext(
-        reference_price=Decimal(str(oracle["price"])),
+        reference_price=reference_price,
         reference_currency=oracle.get("currency"),
         reference_source=oracle.get("source"),
         reference_observed_at=_dt.fromisoformat(oracle["observedAt"]),
         market_unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM,
         conversion_multiplier=(
-            Decimal(str(oracle_multiplier))
+            _finite(oracle_multiplier, "R7 oracle multiplier")
             if oracle_multiplier is not None else None
         ),
         token_multiplier=(
-            Decimal(str(token_multiplier))
+            _finite(token_multiplier, "R7 token multiplier")
             if token_multiplier is not None else None
         ),
     )
@@ -379,9 +388,11 @@ def _execution_comparisons_and_gaps(
                 ),
             ))
             continue
+        execution_price = Decimal(str(raw_price))
+        require_finite_decimal(execution_price, "R8 execution price")
         comparisons.append(compute_execution_comparison(
             model_value_per_unit=comparable_value,
-            execution_price=Decimal(str(raw_price)),
+            execution_price=execution_price,
             side=entry.get("side", ""),
             requested_notional_usd=str(entry.get("requestedNotionalUsd", "")),
             quote_source=entry.get("quoteSource", ""),
@@ -413,12 +424,35 @@ def build_model_radar_snapshot(
     gaps: list[ModelRadarGap] = []
     binding: ModelBinding | None = None
 
+    if model_evidence is not None and model_evidence.synthetic is not True:
+        # G1: a caller-built, digest-valid, non-synthetic model observation
+        # is NOT live model authority.  Non-synthetic model evidence may only
+        # enter through the discovery/source-authority adapter; since no
+        # source-proven live binding exists, non-synthetic comparison stays
+        # unavailable.  Fail closed with a typed gap, publish nothing.
+        gaps.append(ModelRadarGap(
+            gap_kind=ModelRadarGapKind.MODEL_SOURCE_AUTHORITY_UNAVAILABLE,
+            source="R10_MODEL_AUTHORITY_DISCOVERY",
+            reason=(
+                "non-synthetic model evidence was supplied directly by the "
+                "caller; it did not come through an allowed frozen FINCO "
+                "model-authority path and is therefore not model authority"
+            ),
+        ))
+        gaps.append(ModelRadarGap(
+            gap_kind=ModelRadarGapKind.MODEL_BINDING_UNAVAILABLE,
+            source="R10_MODEL_AUTHORITY_DISCOVERY",
+            reason="no source-proven model binding exists for this asset",
+        ))
+        model_evidence = None
     if model_evidence is None:
         # F7a: discovery yields evidence (or a typed gap); the binding is a
         # separate resolved step.
         discovered, discovered_gap = discover_model_evidence(uid)
         if discovered is None:
-            gaps.append(discovered_gap)
+            if not any(g.gap_kind is ModelRadarGapKind.MODEL_BINDING_UNAVAILABLE
+                       for g in gaps):
+                gaps.append(discovered_gap)
         else:
             model_evidence = discovered
 
@@ -502,6 +536,17 @@ def build_model_radar_snapshot(
         ModelRadarStatus.MODEL_RADAR_OK
         if not gaps else ModelRadarStatus.MODEL_RADAR_PARTIAL
     )
+    # G2: the published synthetic state is DERIVED from causal evidence, so
+    # synthetic model/lineage inputs can never be laundered into a
+    # non-synthetic snapshot (and a live snapshot cannot claim synthetic).
+    derived_synthetic = bool(
+        synthetic
+        or (model_evidence is not None and model_evidence.synthetic)
+        or bool(r9_evidence.get("synthetic"))
+        or bool(r8_evidence.get("synthetic"))
+        or bool((r8_evidence.get("upstreamEvidence") or {})
+                .get("r7CrossMarketEvidence", {}).get("synthetic"))
+    )
     evidence = {
         "schemaVersion": SCHEMA_VERSION,
         "phase": PHASE,
@@ -533,7 +578,7 @@ def build_model_radar_snapshot(
         },
         "boundaries": dict(R10_BOUNDARIES),
         "timingPolicy": timing_policy.to_evidence_dict(),
-        "synthetic": synthetic,
+        "synthetic": derived_synthetic,
     }
     digest = digest_payload(evidence)
     evidence["r10SnapshotDigest"] = digest
@@ -554,6 +599,6 @@ def build_model_radar_snapshot(
         upstream_evidence=evidence["upstreamEvidence"],
         boundaries=R10_BOUNDARIES,
         timing_policy=timing_policy,
-        synthetic=synthetic,
+        synthetic=derived_synthetic,
         r10_snapshot_digest=digest,
     )

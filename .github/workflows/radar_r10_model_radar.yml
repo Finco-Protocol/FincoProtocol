@@ -113,6 +113,22 @@ jobs:
               raise SystemExit("R10_BLOCKED: git HEAD not recorded")
           if data.get("synthetic") is not False:
               raise SystemExit("R10_BLOCKED: live proof marked synthetic")
+          # Correction B (G2): synthetic provenance cannot be laundered -
+          # every embedded causal lineage must also be non-synthetic.
+          r9_synth = r9.get("synthetic") if r9 else None
+          r8_synth = r8.get("synthetic") if r8 else None
+          r7_synth = (
+              (r8 or {}).get("upstreamEvidence", {})
+              .get("r7CrossMarketEvidence", {}).get("synthetic")
+              if r8 else None
+          )
+          if r9_synth is not False or r8_synth is not False or r7_synth is not False:
+              raise SystemExit(
+                  f"R10_BLOCKED: synthetic lineage in live proof: "
+                  f"r9={r9_synth} r8={r8_synth} r7={r7_synth}")
+          live_model = data.get("modelEvidence")
+          if live_model is not None and live_model.get("synthetic") is not False:
+              raise SystemExit("R10_BLOCKED: live model evidence must be non-synthetic")
 
           reserialized = json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
           if reserialized.encode("utf-8") != raw:
@@ -276,6 +292,54 @@ jobs:
               "modelInput/Output/RunDigests independently reconstructed "
               f"digest={snapshot.r10_snapshot_digest[:16]} (synthetic=true, never live evidence)"
           )
+          PY
+      - name: Correction B G1 gate - digest-valid arbitrary non-synthetic model evidence cannot produce a live comparable R10 snapshot
+        run: |
+          python - <<'PY'
+          import sys
+          from decimal import Decimal
+          from datetime import datetime, timezone
+          sys.path.insert(0, "tests")
+          sys.path.insert(0, ".")
+          from test_radar_r10_model_radar import (
+              FULL, NOW, POLICY, _chain, _live_chain, _model,
+          )
+          from finco_radar.model_radar.contracts import (
+              ModelRadarGapKind, ModelRadarStatus,
+          )
+          r9, r8 = _live_chain(**FULL)
+          # Fully digest-valid, UID-matching, exact typed engine authority,
+          # non-synthetic: still NOT model authority when caller-supplied.
+          snapshot = build = None
+          from finco_radar.model_radar.bridge import build_model_radar_snapshot
+          model = _model(value=Decimal("100"), synthetic=False)
+          assert model.synthetic is False
+          snapshot = build_model_radar_snapshot(
+              r9_evidence=r9, r8_evidence=r8, model_evidence=model,
+              timing_policy=POLICY, now=NOW, git_head="gate", synthetic=False)
+          assert snapshot.status is not ModelRadarStatus.MODEL_RADAR_OK, snapshot.status
+          kinds = {g.gap_kind for g in snapshot.gaps}
+          assert ModelRadarGapKind.MODEL_SOURCE_AUTHORITY_UNAVAILABLE in kinds
+          assert snapshot.reference_comparison is None
+          assert snapshot.execution_comparisons == ()
+          assert snapshot.to_evidence_dict()["modelEvidence"] is None
+
+          # G2: synthetic evidence cannot be relabeled non-synthetic.
+          synth_snapshot = build_model_radar_snapshot(
+              r9_evidence=r9, r8_evidence=r8,
+              model_evidence=_model(value=Decimal("100"), synthetic=True),
+              timing_policy=POLICY, now=NOW, git_head="gate", synthetic=False)
+          assert synth_snapshot.synthetic is True
+
+          # G2: synthetic lineage cannot be laundered either.
+          r9_s, r8_s = _chain(**FULL)
+          laundered = build_model_radar_snapshot(
+              r9_evidence=r9_s, r8_evidence=r8_s, model_evidence=None,
+              timing_policy=POLICY, now=NOW, git_head="gate", synthetic=False)
+          assert laundered.synthetic is True
+          print("R10_CORRECTION_B_G1_G2_GATE_PASS "
+                "arbitrary_non_synthetic_rejected=true "
+                "synthetic_laundering_blocked=true")
           PY
       - name: Run frozen R9 asset-graph regression
         env:

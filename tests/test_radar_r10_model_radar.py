@@ -46,6 +46,7 @@ from finco_radar.model_radar.contracts import (
     ComparabilityDimensionResult,
     ComparabilityState,
     ModelBinding,
+    ModelComparability,
     ModelEvidence,
     ModelRadarError,
     ModelRadarGap,
@@ -164,6 +165,7 @@ def _rich_r7(uid=UID, key=KEY, oracle_price="105",
         ],
         "attributionState": "MULTI_LAYER_DISLOCATION",
         "boundaries": {"crossMarketAuthority": "R7_APPLIED"},
+        "synthetic": True,
     }
     evidence["r7SnapshotDigest"] = _digest(
         {k: v for k, v in evidence.items() if k != "r7SnapshotDigest"})
@@ -303,27 +305,31 @@ def _model(**over):
     })
     value = over.pop("value", Decimal("100"))
     kind = over.pop("value_kind", ModelValueKind.VALUE_PER_ECONOMIC_UNIT)
+    currency = over.pop("currency", "USD")
+    basis = over.pop("unit_basis", ModelUnitBasis.PER_ECONOMIC_UNIT)
     output_evidence = over.pop("output_evidence", {
         "valueKind": kind.value, "value": str(value),
+        "currency": currency, "unitBasis": basis.value,
     })
     return ModelEvidence(
         model_id=over.pop("model_id", "FINCO-SYNTH-PROJECT-MODEL"),
         model_version=over.pop("model_version", "1.0.0"),
-        engine_authority=over.pop("engine_authority", "financial_engine"),
+        engine_authority=over.pop(
+            "engine_authority", "financial_engine.orchestrator"),
         economic_asset_uid=uid,
         economic_node_id=over.pop("economic_node_id", f"economic:{uid}"),
         valuation_as_of=over.pop("valuation_as_of", NOW),
         value_kind=kind,
         value=value,
-        currency=over.pop("currency", "USD"),
-        unit_basis=over.pop("unit_basis", ModelUnitBasis.PER_ECONOMIC_UNIT),
+        currency=currency,
+        unit_basis=basis,
         input_digest=digest_payload(input_evidence),
         output_digest=digest_payload(output_evidence),
         input_evidence=input_evidence,
         output_evidence=output_evidence,
         unit_multiplier=over.pop("unit_multiplier", None),
         unit_multiplier_basis=over.pop("unit_multiplier_basis", None),
-        synthetic=True,
+        synthetic=over.pop("synthetic", True),
     )
 
 
@@ -336,6 +342,20 @@ def _bridge(r9, model=None, r8=None, *, now=NOW, synthetic=True):
 
 
 FULL = dict(oracle_price="105", exec_prices=EXEC_PRICES)
+
+
+def _live_chain(**over):
+    """A fully NON-synthetic-marked causal chain: the R8 engine output and
+    its embedded R7 lineage are flipped to synthetic=False with all internal
+    digests resealed, then R9 is derived from exactly that chain."""
+    def _non_synth(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["synthetic"] = False
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+        e["synthetic"] = False
+    return _chain(mutate_r8=_non_synth, **over)
 
 
 # --------------------------------------------------------------------------
@@ -363,7 +383,11 @@ def test_03_ticker_alone_cannot_bind():
     with pytest.raises(ModelRadarError) as excinfo:
         resolve_model_binding(
             model_evidence=_model(uid="EVIL",
-                                  output_evidence={"symbol": UID, "value": "1"}),
+                                  output_evidence={"symbol": UID,
+                                                   "value": "100",
+                                                   "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+                                                   "currency": "USD",
+                                                   "unitBasis": "PER_ECONOMIC_UNIT"}),
             r9_lineage={"economic_asset_uid": UID,
                         "economic_node_id": f"economic:{UID}"},
         )
@@ -546,7 +570,10 @@ def test_18_xirr_non_price_comparable():
 def test_19_dscr_non_price_comparable():
     snapshot = _bridge(_r9_evidence(), model=_model(
         value=Decimal("1.4"), value_kind=ModelValueKind.NON_PRICE_METRIC,
-        output_evidence={"metric": "DSCR", "value": "1.4"}))
+        currency="USD", unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+        output_evidence={"metric": "DSCR", "value": "1.4",
+                         "valueKind": "NON_PRICE_METRIC", "currency": "USD",
+                         "unitBasis": "PER_ECONOMIC_UNIT"}))
     assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
     assert snapshot.reference_comparison is None
     assert snapshot.execution_comparisons == ()
@@ -1446,16 +1473,21 @@ def test_ca_f3_05_reordered_supplied_r8_cannot_bypass_binding():
 def _stale_input_model():
     input_evidence = {"cashFlows": ["-100", "110"]}
     return ModelEvidence(
-        model_id="M", model_version="1", engine_authority="e",
+        model_id="M", model_version="1",
+        engine_authority="financial_engine.orchestrator",
         economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
         valuation_as_of=NOW,
         value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
         value=Decimal("100"), currency="USD",
         unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
         input_digest=digest_payload(input_evidence),
-        output_digest=digest_payload({"v": "100"}),
+        output_digest=digest_payload({
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"}),
         input_evidence=input_evidence,
-        output_evidence={"v": "100"},
+        output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"},
         synthetic=True,
     )
 
@@ -1472,7 +1504,9 @@ def test_ca_f4_02_mutated_output_evidence_stale_digest_rejected():
     model = _stale_input_model()
     with pytest.raises(ModelRadarError) as excinfo:
         ModelEvidence(
-            **{**model.__dict__, "output_evidence": {"v": "hacked"}})
+            **{**model.__dict__, "output_evidence": {
+                "value": "999", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+                "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"}})
     assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
 
 
@@ -1686,3 +1720,383 @@ def test_ca_f7b_decimal_timing_no_float_conversion():
     assert decimal_seconds(timedelta(seconds=0.3)) == Decimal("0.3")
     assert decimal_seconds(timedelta(days=1, microseconds=1)) == Decimal(
         "86400.000001")
+
+
+# --------------------------------------------------------------------------
+# Correction B - G1: caller-supplied evidence is not live model authority
+# --------------------------------------------------------------------------
+
+def test_ca_g1_01_digest_valid_non_synthetic_caller_evidence_rejected():
+    """Digest-valid, UID-matching, plausible-authority, non-synthetic
+    caller-built evidence must NOT become live model authority."""
+    r9, r8 = _live_chain(**FULL)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100"),
+                                        synthetic=False),
+                       r8=r8, synthetic=False)
+    assert snapshot.status is not ModelRadarStatus.MODEL_RADAR_OK
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+    kinds = {g.gap_kind for g in snapshot.gaps}
+    assert ModelRadarGapKind.MODEL_SOURCE_AUTHORITY_UNAVAILABLE in kinds
+    assert ModelRadarGapKind.MODEL_BINDING_UNAVAILABLE in kinds
+    assert snapshot.model_evidence is None
+    assert snapshot.model_binding is None
+    assert snapshot.reference_comparison is None
+    assert snapshot.execution_comparisons == ()
+    assert snapshot.to_evidence_dict()["modelEvidence"] is None
+
+
+def test_ca_g1_02_arbitrary_engine_authority_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(engine_authority="e")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g1_03_plausible_but_nonspecific_authority_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(engine_authority="financial_engine")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g1_04_exact_typed_authority_accepted():
+    model = _model(engine_authority="finco_core.sponsor.xnpv")
+    assert model.engine_authority == "finco_core.sponsor.xnpv"
+
+
+def test_ca_g1_05_never_discovered_model_identity_not_authority():
+    """A caller-created model id/version was never discovered by model
+    authority; non-synthetic it cannot produce a comparable snapshot."""
+    r9, r8 = _live_chain(**FULL)
+    snapshot = _bridge(r9, model=_model(
+        model_id="NEVER-DISCOVERED-MODEL", model_version="9.9",
+        synthetic=False), r8=r8, synthetic=False)
+    assert snapshot.status is not ModelRadarStatus.MODEL_RADAR_OK
+    assert snapshot.reference_comparison is None
+
+
+def test_ca_g1_06_rejection_is_typed_gap_not_raw_crash():
+    r9, r8 = _live_chain(**FULL)
+    snapshot = _bridge(r9, model=_model(synthetic=False), r8=r8,
+                       synthetic=False)
+    evidence = snapshot.to_evidence_dict()
+    assert evidence["status"] == "MODEL_RADAR_PARTIAL"
+    assert any(g["gapKind"] == "MODEL_SOURCE_AUTHORITY_UNAVAILABLE"
+               for g in evidence["gaps"])
+
+
+# --------------------------------------------------------------------------
+# Correction B - G2: synthetic provenance cannot be laundered
+# --------------------------------------------------------------------------
+
+def test_ca_g2_01_synthetic_model_cannot_publish_non_synthetic():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(synthetic=True), r8=r8,
+                       synthetic=False)
+    assert snapshot.synthetic is True
+    assert snapshot.to_evidence_dict()["synthetic"] is True
+
+
+def test_ca_g2_02_synthetic_r9_lineage_cannot_be_laundered():
+    r9, r8 = _chain(**FULL)
+    r9["synthetic"] = True
+    _reseal_r9(r9)
+    snapshot = _bridge(r9, model=None, r8=r8, synthetic=False)
+    assert snapshot.synthetic is True
+
+
+def test_ca_g2_03_synthetic_r8_lineage_cannot_be_laundered():
+    r9, r8 = _chain(**FULL)
+    assert r8["synthetic"] is True  # fixture R8 is engine-synthetic
+    snapshot = _bridge(r9, model=None, r8=r8, synthetic=False)
+    assert snapshot.synthetic is True
+
+
+def test_ca_g2_04_synthetic_r7_lineage_cannot_be_laundered():
+    r9, r8 = _chain(**FULL)
+    assert (r8["upstreamEvidence"]["r7CrossMarketEvidence"]["synthetic"]
+            is True)
+    snapshot = _bridge(r9, model=None, r8=r8, synthetic=False)
+    assert snapshot.synthetic is True
+
+
+def test_ca_g2_05_non_synthetic_chain_stays_non_synthetic():
+    r9, r8 = _live_chain(**FULL)
+    snapshot = _bridge(r9, model=None, r8=r8, synthetic=False)
+    assert snapshot.synthetic is False
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+
+def test_ca_g2_06_synthetic_comparable_proof_remains_synthetic():
+    assert _full_snapshot().synthetic is True
+
+
+# --------------------------------------------------------------------------
+# Correction B - G3: output observation binds comparison-critical fields
+# --------------------------------------------------------------------------
+
+def test_ca_g3_01_output_value_mismatch_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value=Decimal("101"), output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_02_output_value_kind_mismatch_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               output_evidence={
+                   "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+                   "currency": "USD", "unitBasis": "TOTAL_EQUITY"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_03_output_currency_mismatch_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(currency="EUR", output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_04_output_unit_basis_mismatch_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(unit_basis=ModelUnitBasis.PER_SHARE, output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_05_output_multiplier_disagreement_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("10000"),
+               unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+               output_evidence={
+                   "value": "1000000",
+                   "valueKind": "EQUITY_VALUE_TOTAL", "currency": "USD",
+                   "unitBasis": "TOTAL_EQUITY", "unitMultiplier": "5"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_06_input_multiplier_disagreement_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("10000"),
+               unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+               input_evidence={"unitMultiplier": "7"},
+               output_evidence={
+                   "value": "1000000",
+                   "valueKind": "EQUITY_VALUE_TOTAL", "currency": "USD",
+                   "unitBasis": "TOTAL_EQUITY", "unitMultiplier": "10000"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_07_valuation_timestamp_disagreement_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT",
+            "valuationAsOf": "2020-01-01T00:00:00+00:00"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_g3_08_missing_observation_keys_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(output_evidence={"value": "100"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+# --------------------------------------------------------------------------
+# Correction B - G4: comparability state consistency
+# --------------------------------------------------------------------------
+
+def _all_ok_dimensions():
+    return [ComparabilityDimensionResult(dimension=d, ok=True)
+            for d in ComparabilityDimension]
+
+
+def test_ca_g4_01_comparable_with_failed_dimension_rejected():
+    dims = _all_ok_dimensions()
+    dims[1] = ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.VALUE_KIND, ok=False,
+        gap_kind=ModelRadarGapKind.VALUE_KIND_MISMATCH, detail="x")
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.COMPARABLE,
+                           dimensions=dims)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g4_02_failed_dimension_without_gap_rejected():
+    dims = _all_ok_dimensions()
+    dims[1] = ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.VALUE_KIND, ok=False, detail="x")
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.NOT_COMPARABLE,
+                           dimensions=dims)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g4_03_ok_dimension_with_gap_rejected():
+    dims = _all_ok_dimensions()
+    dims[0] = ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.ECONOMIC_IDENTITY, ok=True,
+        gap_kind=ModelRadarGapKind.CURRENCY_MISMATCH)
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.COMPARABLE,
+                           dimensions=dims)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g4_04_not_comparable_with_all_ok_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.NOT_COMPARABLE,
+                           dimensions=_all_ok_dimensions())
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g4_05_partial_with_unauthorized_failure_rejected():
+    dims = _all_ok_dimensions()
+    dims[1] = ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.VALUE_KIND, ok=False,
+        gap_kind=ModelRadarGapKind.VALUE_KIND_MISMATCH, detail="x")
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.PARTIALLY_COMPARABLE,
+                           dimensions=dims)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g4_06_partial_reserved_for_reference_only_failure():
+    dims = _all_ok_dimensions()
+    dims[6] = ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.REFERENCE_AVAILABILITY, ok=False,
+        gap_kind=ModelRadarGapKind.REFERENCE_UNAVAILABLE, detail="no ref")
+    comparability = ModelComparability(
+        state=ComparabilityState.PARTIALLY_COMPARABLE, dimensions=dims)
+    assert comparability.state is ComparabilityState.PARTIALLY_COMPARABLE
+
+
+# --------------------------------------------------------------------------
+# Correction B - G5: finite Decimal boundaries
+# --------------------------------------------------------------------------
+
+def test_ca_g5_01_decimal_authority_nonfinite_strings_rejected():
+    for bad in ("NaN", "Infinity", "-Infinity"):
+        with pytest.raises(ModelRadarError):
+            decimal_from_authority(bad)
+        with pytest.raises(ModelRadarError):
+            decimal_from_authority(Decimal(bad))
+
+
+def test_ca_g5_02_decimal_authority_malformed_string_typed():
+    with pytest.raises(ModelRadarError) as excinfo:
+        decimal_from_authority("abc")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g5_03_model_value_nan_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value=Decimal("NaN"))
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g5_04_unit_multiplier_infinity_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("Infinity"),
+               unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g5_05_timing_policy_nan_rejected():
+    with pytest.raises(ModelRadarError):
+        ModelRadarTimingPolicy(max_model_age_seconds=Decimal("NaN"),
+                               max_model_market_skew_seconds=Decimal("1"))
+
+
+def test_ca_g5_06_market_multiplier_nan_rejected():
+    with pytest.raises(ModelRadarError):
+        MarketComparabilityContext(
+            reference_price=Decimal("105"), reference_currency="USD",
+            reference_source="R7", reference_observed_at=NOW,
+            market_unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM,
+            conversion_multiplier=Decimal("NaN"),
+            token_multiplier=Decimal("2"))
+
+
+def test_ca_g5_07_execution_price_nonfinite_typed_error():
+    def _nan_price(e):
+        row = e["scenarios"][0]["upstreamEvidence"]["r2GapEvidence"]
+        row["executionPriceUsdPerToken"] = "NaN"
+    r9, r8 = _chain(**FULL, mutate_r8=_nan_price)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_g5_08_reference_price_infinity_typed_error():
+    def _inf_oracle(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"]["price"] = "Infinity"
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+    r9, r8 = _chain(mutate_r8=_inf_oracle)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=None, r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+# --------------------------------------------------------------------------
+# Correction B - G6: complete kind x basis matrix
+# --------------------------------------------------------------------------
+
+def test_ca_g6_01_value_per_unit_with_total_equity_rejected():
+    with pytest.raises(ModelRadarError):
+        _model(unit_basis=ModelUnitBasis.TOTAL_EQUITY)
+
+
+def test_ca_g6_02_value_per_unit_with_total_enterprise_rejected():
+    with pytest.raises(ModelRadarError):
+        _model(unit_basis=ModelUnitBasis.TOTAL_ENTERPRISE)
+
+
+def test_ca_g6_03_value_per_unit_with_total_project_rejected():
+    with pytest.raises(ModelRadarError):
+        _model(unit_basis=ModelUnitBasis.TOTAL_PROJECT)
+
+
+def test_ca_g6_04_equity_total_with_per_unit_basis_rejected():
+    with pytest.raises(ModelRadarError):
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT)
+
+
+def test_ca_g6_05_equity_total_with_token_claim_multiplier_basis_rejected():
+    with pytest.raises(ModelRadarError):
+        _model(value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("10"),
+               unit_multiplier_basis=ModelUnitBasis.PER_TOKEN_CLAIM)
+
+
+def test_ca_g6_06_no_comparable_then_crash_path():
+    """Every constructible COMPARABLE pair must survive model_value_per_unit
+    without a later normalization error."""
+    for model in (
+        _model(value=Decimal("100")),
+        _model(unit_basis=ModelUnitBasis.PER_SHARE),
+        _model(unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM),
+        _model(value=Decimal("1000000"),
+               value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("10000"),
+               unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT),
+    ):
+        r9, r8 = _chain(**FULL)
+        snapshot = _bridge(r9, model=model, r8=r8)
+        if snapshot.comparability.state is ComparabilityState.COMPARABLE:
+            model_value_per_unit(snapshot.model_evidence)  # must not raise

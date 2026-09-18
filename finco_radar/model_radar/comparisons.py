@@ -44,6 +44,7 @@ from .contracts import (
     PER_UNIT_BASES,
     TOTAL_BASES,
     _require_aware,
+    require_finite_decimal,
 )
 
 BPS_SCALE = Decimal(10000)
@@ -97,6 +98,11 @@ class MarketComparabilityContext:
                 "market unit basis must be a PER_UNIT basis",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
+        for name, value in (("conversion_multiplier", self.conversion_multiplier),
+                            ("token_multiplier", self.token_multiplier),
+                            ("reference_price", self.reference_price)):
+            if value is not None:
+                require_finite_decimal(value, name)
 
 
 def _ok(dimension: ComparabilityDimension) -> ComparabilityDimensionResult:
@@ -439,6 +445,8 @@ def compute_reference_comparison(
     """
     from .contracts import ReferenceComparison
 
+    require_finite_decimal(model_value_per_unit, "model value per unit")
+    require_finite_decimal(reference_price, "reference price")
     if model_value_per_unit <= 0:
         raise ModelRadarError(
             "model value must be strictly positive for bps comparison",
@@ -479,6 +487,8 @@ def compute_execution_comparison(
     """
     from .contracts import ExecutionComparison
 
+    require_finite_decimal(model_value_per_unit, "model value per unit")
+    require_finite_decimal(execution_price, "execution price")
     if model_value_per_unit <= 0:
         raise ModelRadarError(
             "model value must be strictly positive for bps comparison",

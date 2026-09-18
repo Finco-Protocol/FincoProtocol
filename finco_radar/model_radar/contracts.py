@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import decimal
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -36,7 +37,17 @@ class ModelRadarStatus(str, Enum):
     MODEL_RADAR_EVIDENCE_MISMATCH = "MODEL_RADAR_EVIDENCE_MISMATCH"
 
 
+class ModelEngineAuthority(str, Enum):
+    """Exact typed frozen FINCO model-authority identifiers (G1).  An
+    engine_authority string that is not one of these members is not frozen
+    FINCO model authority, no matter how plausible it looks."""
+    FINCO_CORE_XNPV = "finco_core.sponsor.xnpv"
+    FINCO_CORE_XIRR = "finco_core.sponsor.xirr"
+    FINANCIAL_ENGINE_ORCHESTRATOR = "financial_engine.orchestrator"
+
+
 class ModelRadarGapKind(str, Enum):
+    MODEL_SOURCE_AUTHORITY_UNAVAILABLE = "MODEL_SOURCE_AUTHORITY_UNAVAILABLE"
     MODEL_BINDING_UNAVAILABLE = "MODEL_BINDING_UNAVAILABLE"
     MODEL_INPUT_UNAVAILABLE = "MODEL_INPUT_UNAVAILABLE"
     MODEL_OUTPUT_UNAVAILABLE = "MODEL_OUTPUT_UNAVAILABLE"
@@ -138,6 +149,22 @@ def _plain(value: Any) -> Any:
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
+def require_finite_decimal(value, name: str) -> None:
+    """G5: every numeric authority must be a finite Decimal.  NaN/Infinity
+    (Decimal or string form) are typed R10 errors, never silent inputs."""
+    if not isinstance(value, decimal.Decimal):
+        raise ModelRadarError(
+            f"{name} must be a Decimal, got {type(value).__name__}",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
+    if not value.is_finite():
+        raise ModelRadarError(
+            f"{name} must be finite (got {value}); NaN/Infinity are never "
+            "admitted into R10 arithmetic",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
+
+
 def require_sha256_shape(digest: str, name: str) -> None:
     if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
         raise ModelRadarError(
@@ -160,8 +187,6 @@ def decimal_from_authority(value: Any, *, field_name: str = "value") -> Decimal:
     textual representation.  Frozen model functions may return Python float:
     the authoritative value is preserved through str() text, never through
     Decimal(binary_float)."""
-    if isinstance(value, Decimal):
-        return value
     if isinstance(value, bool) or value is None:
         raise ModelRadarError(
             f"model authority {field_name} is not a number",
@@ -176,12 +201,29 @@ def decimal_from_authority(value: Any, *, field_name: str = "value") -> Decimal:
         return Decimal(repr(value))
     if isinstance(value, (int, str)):
         try:
-            return Decimal(value)
-        except Exception as exc:
+            converted = Decimal(value)
+        except decimal.InvalidOperation as exc:
             raise ModelRadarError(
-                f"model authority {field_name} is not a usable number: {value!r}",
+                f"model authority {field_name} is not a usable number: "
+                f"{value!r}",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             ) from exc
+        except Exception as exc:
+            raise ModelRadarError(
+                f"model authority {field_name} is not a usable number: "
+                f"{value!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            ) from exc
+        if not converted.is_finite():
+            raise ModelRadarError(
+                f"model authority {field_name} must be finite (got {value}); "
+                "NaN/Infinity are never admitted",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
+        return converted
+    if isinstance(value, decimal.Decimal):
+        require_finite_decimal(value, f"model authority {field_name}")
+        return value
     raise ModelRadarError(
         f"model authority {field_name} has unsupported type {type(value).__name__}",
         ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
@@ -298,6 +340,69 @@ class ModelEvidence:
                 "the denominator is never inferred",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
+        if isinstance(self.engine_authority, str):
+            try:
+                object.__setattr__(
+                    self, "engine_authority",
+                    ModelEngineAuthority(self.engine_authority))
+            except ValueError as exc:
+                raise ModelRadarError(
+                    f"engine_authority {self.engine_authority!r} is not an "
+                    "exact typed frozen FINCO model-authority identifier "
+                    "(ModelEngineAuthority)",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                ) from exc
+        if not isinstance(self.engine_authority, ModelEngineAuthority):
+            raise ModelRadarError(
+                f"engine_authority {self.engine_authority!r} is not an exact "
+                "typed frozen FINCO model-authority identifier "
+                "(ModelEngineAuthority)",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        require_finite_decimal(self.value, "model value")
+        # G6: closed kind x basis coherence matrix at construction time.
+        if self.value_kind is ModelValueKind.VALUE_PER_ECONOMIC_UNIT:
+            if self.unit_basis not in PER_UNIT_BASES:
+                raise ModelRadarError(
+                    "VALUE_PER_ECONOMIC_UNIT requires a PER_UNIT basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.EQUITY_VALUE_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_EQUITY:
+                raise ModelRadarError(
+                    "EQUITY_VALUE_TOTAL requires the TOTAL_EQUITY basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            if (self.unit_multiplier_basis is ModelUnitBasis.PER_TOKEN_CLAIM):
+                raise ModelRadarError(
+                    "an equity total cannot declare a per-token-claim "
+                    "multiplier basis: no ownership/token-claim bridge "
+                    "authority exists in v1",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.ENTERPRISE_VALUE_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_ENTERPRISE:
+                raise ModelRadarError(
+                    "ENTERPRISE_VALUE_TOTAL requires the TOTAL_ENTERPRISE "
+                    f"basis; got {self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.PROJECT_NPV_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_PROJECT:
+                raise ModelRadarError(
+                    "PROJECT_NPV_TOTAL requires the TOTAL_PROJECT basis; "
+                    f"got {self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.NAV_TOTAL:
+            if self.unit_basis not in TOTAL_BASES:
+                raise ModelRadarError(
+                    "NAV_TOTAL requires a TOTAL unit basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
         if not isinstance(self.value_kind, ModelValueKind):
             raise ModelRadarError(
                 "model value_kind must be a closed ModelValueKind member",
@@ -309,7 +414,71 @@ class ModelEvidence:
                 "the denominator is never inferred",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
+        if isinstance(self.engine_authority, str):
+            try:
+                object.__setattr__(
+                    self, "engine_authority",
+                    ModelEngineAuthority(self.engine_authority))
+            except ValueError as exc:
+                raise ModelRadarError(
+                    f"engine_authority {self.engine_authority!r} is not an "
+                    "exact typed frozen FINCO model-authority identifier "
+                    "(ModelEngineAuthority)",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                ) from exc
+        if not isinstance(self.engine_authority, ModelEngineAuthority):
+            raise ModelRadarError(
+                f"engine_authority {self.engine_authority!r} is not an exact "
+                "typed frozen FINCO model-authority identifier "
+                "(ModelEngineAuthority)",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        require_finite_decimal(self.value, "model value")
+        # G6: closed kind x basis coherence matrix at construction time.
+        if self.value_kind is ModelValueKind.VALUE_PER_ECONOMIC_UNIT:
+            if self.unit_basis not in PER_UNIT_BASES:
+                raise ModelRadarError(
+                    "VALUE_PER_ECONOMIC_UNIT requires a PER_UNIT basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.EQUITY_VALUE_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_EQUITY:
+                raise ModelRadarError(
+                    "EQUITY_VALUE_TOTAL requires the TOTAL_EQUITY basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            if (self.unit_multiplier_basis is ModelUnitBasis.PER_TOKEN_CLAIM):
+                raise ModelRadarError(
+                    "an equity total cannot declare a per-token-claim "
+                    "multiplier basis: no ownership/token-claim bridge "
+                    "authority exists in v1",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.ENTERPRISE_VALUE_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_ENTERPRISE:
+                raise ModelRadarError(
+                    "ENTERPRISE_VALUE_TOTAL requires the TOTAL_ENTERPRISE "
+                    f"basis; got {self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.PROJECT_NPV_TOTAL:
+            if self.unit_basis is not ModelUnitBasis.TOTAL_PROJECT:
+                raise ModelRadarError(
+                    "PROJECT_NPV_TOTAL requires the TOTAL_PROJECT basis; "
+                    f"got {self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.value_kind is ModelValueKind.NAV_TOTAL:
+            if self.unit_basis not in TOTAL_BASES:
+                raise ModelRadarError(
+                    "NAV_TOTAL requires a TOTAL unit basis; got "
+                    f"{self.unit_basis.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
         if self.unit_multiplier is not None:
+            require_finite_decimal(self.unit_multiplier, "unit_multiplier")
             if self.unit_multiplier <= 0:
                 raise ModelRadarError(
                     "unit multiplier must be positive when source-proven",
@@ -344,6 +513,68 @@ class ModelEvidence:
                 "outputEvidence",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
+        # G3: the declared comparison-critical fields must be exactly the
+        # authoritative serialized output observation; two independently
+        # caller-asserted versions of the model value can never exist.
+        output = _plain(self.output_evidence)
+        for key in ("value", "valueKind", "currency", "unitBasis"):
+            if key not in output:
+                raise ModelRadarError(
+                    f"model output observation is missing the "
+                    f"comparison-critical key {key!r}",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+        if output["value"] != str(self.value):
+            raise ModelRadarError(
+                f"model output observation value {output['value']!r} does "
+                f"not equal the declared model value {str(self.value)!r}",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if output["valueKind"] != self.value_kind.value:
+            raise ModelRadarError(
+                f"model output observation valueKind {output['valueKind']!r} "
+                f"does not equal the declared valueKind "
+                f"{self.value_kind.value!r}",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if output["currency"] != self.currency:
+            raise ModelRadarError(
+                f"model output observation currency {output['currency']!r} "
+                f"does not equal the declared currency {self.currency!r}",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if output["unitBasis"] != self.unit_basis.value:
+            raise ModelRadarError(
+                f"model output observation unitBasis {output['unitBasis']!r} "
+                f"does not equal the declared unitBasis "
+                f"{self.unit_basis.value!r}",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        # Multiplier/valuation timestamp are bound wherever they are
+        # declared as authority (output or input); disagreement fails.
+        for source_name, source in (("output", output),
+                                    ("input", _plain(self.input_evidence))):
+            if source.get("unitMultiplier") is not None and str(
+                source["unitMultiplier"]
+            ) != (
+                str(self.unit_multiplier)
+                if self.unit_multiplier is not None else None
+            ):
+                raise ModelRadarError(
+                    f"model {source_name} observation unitMultiplier "
+                    f"{source['unitMultiplier']!r} does not equal the "
+                    f"declared unit multiplier",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+            if source.get("valuationAsOf") is not None and str(
+                source["valuationAsOf"]
+            ) != self.valuation_as_of.isoformat():
+                raise ModelRadarError(
+                    f"model {source_name} observation valuationAsOf "
+                    f"{source['valuationAsOf']!r} does not equal the "
+                    "declared valuation timestamp",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
         if self.value_original_representation == "":
             object.__setattr__(
                 self, "value_original_representation", str(self.value))
@@ -453,6 +684,43 @@ class ModelComparability:
                 f"per dimension; missing={missing} duplicated={duplicates}",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
+        # G4: semantic consistency between records and declared state.
+        for result in self.dimensions:
+            if result.ok and result.gap_kind is not None:
+                raise ModelRadarError(
+                    f"dimension {result.dimension.value} is ok but carries "
+                    f"gap {result.gap_kind.value}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            if not result.ok and result.gap_kind is None:
+                raise ModelRadarError(
+                    f"dimension {result.dimension.value} failed without a "
+                    "typed gap kind",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        failed = {
+            result.dimension for result in self.dimensions if not result.ok
+        }
+        if self.state is ComparabilityState.COMPARABLE and failed:
+            raise ModelRadarError(
+                "COMPARABLE state with failed dimensions: "
+                f"{sorted(d.value for d in failed)}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
+        if self.state is ComparabilityState.PARTIALLY_COMPARABLE:
+            unauthorized = failed - {ComparabilityDimension.REFERENCE_AVAILABILITY}
+            if not failed or unauthorized:
+                raise ModelRadarError(
+                    "PARTIALLY_COMPARABLE is reserved for reference-only "
+                    f"unavailability; unauthorized failures: "
+                    f"{sorted(d.value for d in unauthorized or failed)}",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        if self.state is ComparabilityState.NOT_COMPARABLE and not failed:
+            raise ModelRadarError(
+                "NOT_COMPARABLE state with all seven dimensions ok",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
         object.__setattr__(
             self, "dimensions",
             tuple(sorted(self.dimensions, key=lambda d: d.dimension.value)))
@@ -540,7 +808,8 @@ class ModelRadarTimingPolicy:
     def __post_init__(self) -> None:
         for name in ("max_model_age_seconds", "max_model_market_skew_seconds"):
             value = getattr(self, name)
-            if not isinstance(value, Decimal) or value <= 0:
+            require_finite_decimal(value, name)
+            if value <= 0:
                 raise ModelRadarError(
                     f"{name} must be a positive Decimal",
                     ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
