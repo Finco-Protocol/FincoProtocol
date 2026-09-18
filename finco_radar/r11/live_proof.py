@@ -79,8 +79,8 @@ def main() -> int:
     }
     content_envelope["note"] = (
         "frozen finco_protocol.verification.EvidenceEnvelope v1; "
-        "content-addressed only, NOT on-chain anchoring and NOT the "
-        "primary R11 authority")
+        "content-addressed only; this is not a blockchain anchoring "
+        "claim and not the primary R11 authority")
 
     verification = verify_r10_evidence(
         evidence=subject_evidence,

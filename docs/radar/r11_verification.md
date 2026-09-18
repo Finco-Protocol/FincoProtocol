@@ -21,8 +21,7 @@ serializable; and explicit about unresolved authority.
 deterministic contract and lineage."**
 
 **It does NOT mean: "the valuation, reference price or market outcome is
-objectively true."** R11 is not attestation, not notarization, not on-chain
-anchoring, and not a verification protocol in the cryptographic-trust sense.
+objectively true."** R11 is not attestation, not notarization, not a blockchain-anchoring claim, and not a verification protocol in the cryptographic-trust sense.
 
 ## What R11 does NOT verify
 
@@ -104,7 +103,7 @@ freshness policy is applied.
 The optional envelope uses the frozen
 `finco_protocol.verification.EvidenceEnvelope` read-only, bound to the
 subject payload (`payloadSha256 == subjectEvidenceDigest`).  It is
-content-addressed only — **not on-chain anchoring** — and the R11 snapshot
+content-addressed only — **not a blockchain-anchoring claim** — and the R11 snapshot
 digest remains the primary R11 authority.
 
 ## Synthetic provenance
