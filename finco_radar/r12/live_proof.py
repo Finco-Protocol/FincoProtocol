@@ -18,10 +18,12 @@ from finco_radar.r8.live_proof import _build_live_snapshot as _build_r8_live_sna
 from finco_radar.r9.live_proof import (
     build_graph_from_upstream as build_r9_evidence,
 )
-from finco_radar.r11.live_proof import (
-    R10_MAX_MODEL_AGE_SECONDS, R10_MAX_MODEL_MARKET_SKEW_SECONDS,
+from finco_radar.r9.live_proof import (
+    build_graph_from_upstream as build_r9_evidence,
 )
 from finco_radar.verification.verifier import verify_r10_evidence
+from finco_radar.model_radar.bridge import build_model_radar_snapshot
+from finco_radar.model_radar.contracts import ModelRadarTimingPolicy
 
 EVIDENCE_PATH = "artifacts/radar_r12_digital_twin_evidence.json"
 SHA256_PATH = "artifacts/radar_r12_digital_twin_evidence.sha256"
@@ -31,7 +33,7 @@ MANIFEST_PATH = "artifacts/radar_r12_digital_twin_manifest.json"
 def main() -> int:
     from finco_radar.r11.live_proof import build_graph_from_upstream
     r8_evidence, audit = _build_r8_live_snapshot()
-    r9_evidence = build_graph_from_upstream(
+    r9_evidence = build_r9_evidence(
         r8_evidence=r8_evidence,
         git_head=r8_evidence["gitHead"],
         generated_at=datetime.now(timezone.utc),
@@ -50,12 +52,11 @@ def main() -> int:
     )
     subject_evidence = subject.to_evidence_dict()
 
-    from finco_radar.verification.verifier import verify_r10_evidence
     verification = verify_r10_evidence(
         evidence=subject_evidence,
         generated_at=datetime.now(timezone.utc),
         git_head=subject_evidence["gitHead"],
-        freeze_anchor="97030e6164b66dc942c9d005a1f2f4ba169ca81b",
+        freeze_anchor="7ffaf3b1e67dabb728314948e2a4e4c7ef30047a",
         freeze_tree="fba9d76d9dceee35d079563b115fdde90c40bd46",
     )
     r11_evidence = verification.to_evidence_dict()
