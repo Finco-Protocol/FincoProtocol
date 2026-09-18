@@ -429,6 +429,16 @@ def verify_serialized_r11_evidence(evidence: Any) -> bool:
             return False
     if status == "VERIFICATION_OK" and verification_gaps:
         return False
+    # C5: VERIFICATION_PARTIAL requires zero FAIL checks and at least one
+    # VERIFICATION_AUTHORITY_UNAVAILABLE gap
+    if status == "VERIFICATION_PARTIAL":
+        if fail_count > 0:
+            return False
+        if not any(
+            g.get("gapKind") == "VERIFICATION_AUTHORITY_UNAVAILABLE"
+            for g in verification_gaps if isinstance(g, Mapping)
+        ):
+            return False
     if not isinstance(evidence.get("r11SnapshotDigest"), str):
         return False
     material = plain(evidence)

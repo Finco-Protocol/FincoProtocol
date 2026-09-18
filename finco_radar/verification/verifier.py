@@ -75,6 +75,66 @@ class _ShapeError(Exception):
     verifier boundary - never allowed to escape raw."""
 
 
+def _required_mapping(container: Any, name: str) -> Mapping:
+    """C1: required mapping - absent/null/wrong-type are all typed errors."""
+    if not isinstance(container, Mapping):
+        raise _ShapeError(f"{name} must be a mapping, got {type(container).__name__}")
+    return container
+
+
+def _optional_mapping(value: Any, name: str) -> "Mapping | None":
+    """C1: optional mapping - present null and wrong-type are typed errors;
+    only genuine absence returns None."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise _ShapeError(f"{name} must be a mapping or absent, got {type(value).__name__}")
+    return value
+
+
+def _optional_sequence(value: Any, name: str) -> "list | None":
+    """C1: optional sequence - present null and wrong-type are typed errors."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise _ShapeError(f"{name} must be a list or absent, got {type(value).__name__}")
+    return value
+
+
+def _safe_str(value: Any, name: str) -> str:
+    """C1: typed scalar extraction - non-string is a typed error."""
+    if not isinstance(value, str):
+        raise _ShapeError(f"{name} must be a string, got {type(value).__name__}")
+    return value
+
+
+def _total_derived_synthetic(evidence: Any) -> bool:
+    """C1: total derived synthetic flag - never throws on malformed input.
+    Consumes only pre-validated causal structures; defensively inspects
+    types without calling methods on unvalidated values."""
+    if not isinstance(evidence, Mapping):
+        return False
+    if evidence.get("synthetic") is True:
+        return True
+    upstream = evidence.get("upstreamEvidence")
+    if not isinstance(upstream, Mapping):
+        return False
+    r9 = upstream.get("r9AssetGraphEvidence")
+    if isinstance(r9, Mapping) and r9.get("synthetic") is True:
+        return True
+    r8 = upstream.get("r8ExecutionEvidence")
+    if not isinstance(r8, Mapping):
+        return False
+    if r8.get("synthetic") is True:
+        return True
+    r8_upstream = r8.get("upstreamEvidence")
+    if isinstance(r8_upstream, Mapping):
+        r7 = r8_upstream.get("r7CrossMarketEvidence")
+        if isinstance(r7, Mapping) and r7.get("synthetic") is True:
+            return True
+    return False
+
+
 def _mapping_or_fail(value: Any, name: str) -> Mapping:
     if not isinstance(value, Mapping):
         raise _ShapeError(f"{name} must be a mapping, got {type(value).__name__}")
@@ -277,8 +337,12 @@ def verify_r10_evidence(
                     evidence.get("gaps") if isinstance(
                         evidence.get("gaps"), list) else [])
                  if isinstance(g, Mapping)],
-                key=lambda g: (g.get("gapKind", ""), g.get("source", ""),
-                               g.get("reason", ""))),
+                key=lambda g: (str(g.get("gapKind") or ""),
+                               str(g.get("source") or ""),
+                               str(g.get("reason") or ""))) if any(
+                    isinstance(g, Mapping) for g in (
+                        evidence.get("gaps") or []
+                        if isinstance(evidence.get("gaps"), list) else [])) else [],
             "checks": [c.to_evidence_dict() for c in checks],
             "verificationGaps": [g.to_evidence_dict() for g in gaps],
             "sourceDigests": (
@@ -286,7 +350,7 @@ def verify_r10_evidence(
                     evidence.get("sourceDigests"), Mapping) else {}),
             "subjectEvidence": plain(evidence),
             "boundaries": dict(_r11_boundaries()),
-            "synthetic": derived_synthetic_flag(evidence),
+            "synthetic": _total_derived_synthetic(evidence),
             "freezeAnchor": R10_FREEZE_ANCHOR,
             "contentEnvelope": plain(content_envelope) if content_envelope is not None else None,
         }
@@ -312,7 +376,7 @@ def verify_r10_evidence(
             source_digests=snapshot_evidence["sourceDigests"],
             subject_evidence=evidence,
             boundaries=snapshot_evidence["boundaries"],
-            synthetic=derived_synthetic_flag(evidence),
+            synthetic=_total_derived_synthetic(evidence),
             freeze_anchor=R10_FREEZE_ANCHOR,
             content_envelope=content_envelope,
             r11_snapshot_digest=digest,
@@ -342,45 +406,76 @@ def verify_r10_evidence(
 
     # ---- A3: strict nested-shape validation (typed, before any use) -------
     def _mapping_field(container, key, name):
-        # present values must be mappings; absent values are handled by the
-        # lineage checks (never by falsy-swap defaults)
         value = container.get(key)
         if value is not None and not isinstance(value, Mapping):
-            raise _ShapeError(f"{name} must be a mapping")
+            raise _ShapeError(f"{name} must be a mapping, got {type(value).__name__}")
         return value
 
+    def _sequence_field(container, key, name):
+        value = container.get(key)
+        if value is not None and not isinstance(value, list):
+            raise _ShapeError(f"{name} must be a list, got {type(value).__name__}")
+        return value if value is not None else []
+
     try:
-        gaps_shape = _sequence_or_fail(evidence.get("gaps"), "gaps")
-        for gap in gaps_shape:
+        _sequence_or_fail(evidence.get("gaps"), "gaps")
+        for gap in (evidence.get("gaps") or []):
             _mapping_or_fail(gap, "gaps item")
             for key in ("gapKind", "source", "reason"):
                 if key not in gap:
                     raise _ShapeError(f"gaps item missing {key!r}")
         _mapping_field(evidence, "sourceDigests", "sourceDigests")
         upstream_shape = _mapping_field(evidence, "upstreamEvidence",
-                                        "upstreamEvidence") or {}
+                                        "upstreamEvidence")
+        if upstream_shape is None:
+            upstream_shape = {}
         r9_shape = _mapping_field(upstream_shape, "r9AssetGraphEvidence",
-                                  "r9AssetGraphEvidence") or {}
-        _sequence_or_fail(r9_shape.get("nodes") or [], "R9 nodes")
-        for node_item in r9_shape.get("nodes") or []:
-            _mapping_or_fail(node_item, "R9 node")
+                                  "r9AssetGraphEvidence")
+        if r9_shape is not None:
+            _sequence_field(r9_shape, "nodes", "R9 nodes")
+            for node_item in r9_shape.get("nodes") or []:
+                _mapping_or_fail(node_item, "R9 node")
         r8_shape = _mapping_field(upstream_shape, "r8ExecutionEvidence",
-                                  "r8ExecutionEvidence") or {}
-        _mapping_field(r8_shape, "sourceDigests", "R8 sourceDigests")
-        _sequence_or_fail(r8_shape.get("scenarios") or [], "R8 scenarios")
-        for scenario in r8_shape.get("scenarios") or []:
-            _mapping_or_fail(scenario, "R8 scenario")
-            _mapping_or_fail(scenario.get("scenario") or {},
-                             "R8 scenario entry")
-        r8_upstream = _mapping_field(r8_shape, "upstreamEvidence",
-                                     "R8 upstreamEvidence") or {}
-        _mapping_field(r8_upstream, "r7CrossMarketEvidence",
-                       "r7CrossMarketEvidence")
+                                  "r8ExecutionEvidence")
+        if r8_shape is not None:
+            _mapping_field(r8_shape, "sourceDigests", "R8 sourceDigests")
+            _sequence_field(r8_shape, "scenarios", "R8 scenarios")
+            for scenario in r8_shape.get("scenarios") or []:
+                _mapping_or_fail(scenario, "R8 scenario")
+                _mapping_or_fail(scenario.get("scenario") or {},
+                                 "R8 scenario entry")
+            r8_upstream = _mapping_field(r8_shape, "upstreamEvidence",
+                                         "R8 upstreamEvidence")
+            if r8_upstream is not None:
+                _mapping_field(r8_upstream, "r7CrossMarketEvidence",
+                               "r7CrossMarketEvidence")
     except _ShapeError as exc:
         collector.fail(
             "SUBJECT_IDENTITY", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
             "R11_VERIFIER", f"malformed nested evidence shape: {exc}")
         return _finish(VerificationStatus.VERIFICATION_INPUT_INVALID)
+
+    # ---- C2: subject generatedAt must be valid and tz-aware ----------------
+    raw_generated = evidence.get("generatedAt")
+    generated_at_problems = []
+    if not isinstance(raw_generated, str) or not raw_generated.strip():
+        generated_at_problems.append(
+            f"subject generatedAt must be a non-empty string, got {raw_generated!r}")
+    else:
+        try:
+            gen_parsed = datetime.fromisoformat(raw_generated)
+        except (ValueError, TypeError):
+            gen_parsed = None
+        if gen_parsed is None:
+            generated_at_problems.append(
+                f"subject generatedAt is not a parsable ISO timestamp: {raw_generated!r}")
+        elif gen_parsed.tzinfo is None or gen_parsed.tzinfo.utcoffset(gen_parsed) is None:
+            generated_at_problems.append(
+                "subject generatedAt must be timezone-aware")
+    if generated_at_problems:
+        collector.fail(
+            "SUBJECT_IDENTITY", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(generated_at_problems))
 
     # ---- 1. subject identity ---------------------------------------------
     problems = []
@@ -456,18 +551,19 @@ def verify_r10_evidence(
             "no recorded digest to cross-check")
 
     # ---- lineage extraction ------------------------------------------------
-    upstream = evidence.get("upstreamEvidence") if isinstance(
-        evidence.get("upstreamEvidence"), Mapping) else {}
-    r9_raw = upstream.get("r9AssetGraphEvidence")
-    r9 = r9_raw if isinstance(r9_raw, Mapping) else None
-    r8_raw = upstream.get("r8ExecutionEvidence")
-    r8 = r8_raw if isinstance(r8_raw, Mapping) else None
-    r8_upstream = r8.get("upstreamEvidence") if isinstance(
-        r8, Mapping) and isinstance(r8.get("upstreamEvidence"), Mapping) else {}
-    r7_raw = r8_upstream.get("r7CrossMarketEvidence")
-    r7 = r7_raw if isinstance(r7_raw, Mapping) else None
-    declared = evidence.get("sourceDigests") if isinstance(
-        evidence.get("sourceDigests"), Mapping) else {}
+    upstream = _optional_mapping(evidence.get("upstreamEvidence"),
+                                 "upstreamEvidence") or {}
+    r9 = _optional_mapping(upstream.get("r9AssetGraphEvidence"),
+                           "r9AssetGraphEvidence")
+    r8 = _optional_mapping(upstream.get("r8ExecutionEvidence"),
+                           "r8ExecutionEvidence")
+    r8_upstream = _optional_mapping(
+        r8.get("upstreamEvidence") if isinstance(r8, Mapping) else None,
+        "R8 upstreamEvidence") or {}
+    r7 = _optional_mapping(r8_upstream.get("r7CrossMarketEvidence"),
+                           "r7CrossMarketEvidence")
+    declared = _optional_mapping(evidence.get("sourceDigests"),
+                                 "sourceDigests") or {}
 
     # ---- 4. R9 lineage ------------------------------------------------------
     if r9 is None:
@@ -566,32 +662,54 @@ def verify_r10_evidence(
                 "R8_SNAPSHOT_DIGEST", VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
                 "R11_VERIFIER", "internal R8 snapshot digest does not "
                 "reconstruct")
-        r8_key = r8.get("canonicalAssetKey") or {}
-        deployment_nodes = [
-            n for n in (r9 or {}).get("nodes", [])
-            if isinstance(n, Mapping)
-            and n.get("nodeType") == "TOKEN_DEPLOYMENT"
-        ]
-        matching = [
-            n for n in deployment_nodes
-            if (n.get("canonicalAssetKey") or {}).get("chainId")
-            == r8_key.get("chainId")
-            and str((n.get("canonicalAssetKey") or {}).get(
-                "contractAddress", "")).lower()
-            == str(r8_key.get("contractAddress", "")).lower()
-        ]
-        if r8.get("economicAssetUid") == uid and len(matching) == 1:
-            collector.pass_(
-                "R8_DEPLOYMENT_LINEAGE",
-                "embedded R8 deployment is the deployment used by R9/R10 "
-                "(exactly once among R9 deployment nodes)")
-        else:
+        # C4: R10 top-level canonicalAssetKey must be a valid mapping with
+        # exact chainId/contractAddress and must agree with the R8/R9
+        # deployment lineage.
+        r10_key = evidence.get("canonicalAssetKey") if isinstance(
+            evidence.get("canonicalAssetKey"), Mapping) else None
+        r8_key = r8.get("canonicalAssetKey") if isinstance(
+            r8.get("canonicalAssetKey"), Mapping) else None
+        if r10_key is None or r8_key is None:
             collector.fail(
                 "R8_DEPLOYMENT_LINEAGE",
-                VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
                 "R11_VERIFIER",
-                "embedded R8 economic/deployment lineage disagrees with "
-                "R9/R10")
+                "R10 canonicalAssetKey or R8 canonicalAssetKey is missing "
+                "or not a mapping")
+        elif r10_key.get("chainId") != r8_key.get("chainId") or str(
+            r10_key.get("contractAddress", "")
+        ).lower() != str(r8_key.get("contractAddress", "")).lower():
+            collector.fail(
+                "R8_DEPLOYMENT_LINEAGE",
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER",
+                "R10 canonicalAssetKey disagrees with the embedded R8 "
+                "canonical deployment")
+        else:
+            deployment_nodes = [
+                n for n in (r9 or {}).get("nodes", [])
+                if isinstance(n, Mapping)
+                and n.get("nodeType") == "TOKEN_DEPLOYMENT"
+                and isinstance(n.get("canonicalAssetKey"), Mapping)
+            ]
+            matching = [
+                n for n in deployment_nodes
+                if n["canonicalAssetKey"].get("chainId") == r8_key.get("chainId")
+                and str(n["canonicalAssetKey"].get("contractAddress", "")).lower()
+                == str(r8_key.get("contractAddress", "")).lower()
+            ]
+            if r8.get("economicAssetUid") == uid and len(matching) == 1:
+                collector.pass_(
+                    "R8_DEPLOYMENT_LINEAGE",
+                    "R10 canonicalAssetKey, embedded R8 deployment and R9 "
+                    "deployment node all agree (exactly once)")
+            else:
+                collector.fail(
+                    "R8_DEPLOYMENT_LINEAGE",
+                    VerificationGapKind.SOURCE_LINEAGE_MISMATCH,
+                    "R11_VERIFIER",
+                    "embedded R8 economic/deployment lineage disagrees "
+                    "with R9/R10")
 
     # ---- 6. R7 provenance ----------------------------------------------------
     if r7 is None:
@@ -600,9 +718,9 @@ def verify_r10_evidence(
             "R11_VERIFIER", "embedded R7 lineage missing")
     else:
         r7_source = canonical_sha256(r7)
-        r8_declared = _mapping_field(r8, "sourceDigests",
-                                     "R8 sourceDigests")
-        declared_r7 = (r8_declared or {}).get("r7CrossMarketDigest")
+        r8_declared = r8.get("sourceDigests") if isinstance(
+            r8.get("sourceDigests"), Mapping) else {}
+        declared_r7 = r8_declared.get("r7CrossMarketDigest")
         internal_ok = (
             isinstance(r7.get("r7SnapshotDigest"), str)
             and isinstance(r7.get("layers"), Mapping)
@@ -883,139 +1001,241 @@ def verify_r10_evidence(
             timestamp_fields.append(
                 (f"executionComparisons.executionObservedAt",
                  row.get("executionObservedAt")))
-        missing = sorted(name for name, value in timestamp_fields if value is None)
-        bad_timestamps = sorted(name for name, value in timestamp_fields
-                                if value is not None and not _tz_aware(value))
-        timing_problems = []
-        if missing:
-            timing_problems.append(f"required subject timestamps missing: {missing}")
-        if bad_timestamps:
-            timing_problems.append(
-                f"subject timestamps must be timezone-aware: {bad_timestamps}")
+    missing = sorted(name for name, value in timestamp_fields if value is None)
+    bad_timestamps = sorted(name for name, value in timestamp_fields
+                            if value is not None and not _tz_aware(value))
+    timing_problems = []
+    if missing:
+        timing_problems.append(f"required subject timestamps missing: {missing}")
+    if bad_timestamps:
+        timing_problems.append(
+            f"subject timestamps must be timezone-aware: {bad_timestamps}")
 
-        # B5: historical timing semantics, using ONLY subject production-time
-        # authority (no R11 wall clock).
-        policy = evidence.get("timingPolicy") if isinstance(
-            evidence.get("timingPolicy"), Mapping) else {}
-        max_age_raw = policy.get("maxModelAgeSeconds")
-        max_skew_raw = policy.get("maxModelMarketSkewSeconds")
-        for name, raw in (("maxModelAgeSeconds", max_age_raw),
-                          ("maxModelMarketSkewSeconds", max_skew_raw)):
-            try:
-                value = _decimal(raw, f"timingPolicy.{name}")
-                if value <= 0:
-                    timing_problems.append(
-                        f"timingPolicy.{name} must be strictly positive")
-            except _ShapeError as exc:
-                timing_problems.append(str(exc))
+    # B5: historical timing semantics, using ONLY subject production-time
+    # authority (no R11 wall clock).
+    policy = evidence.get("timingPolicy") if isinstance(
+        evidence.get("timingPolicy"), Mapping) else {}
+    max_age_raw = policy.get("maxModelAgeSeconds")
+    max_skew_raw = policy.get("maxModelMarketSkewSeconds")
+    for name, raw in (("maxModelAgeSeconds", max_age_raw),
+                      ("maxModelMarketSkewSeconds", max_skew_raw)):
+        try:
+            value = _decimal(raw, f"timingPolicy.{name}")
+            if value <= 0:
+                timing_problems.append(
+                    f"timingPolicy.{name} must be strictly positive")
+        except _ShapeError as exc:
+            timing_problems.append(str(exc))
 
-        generated_at_subject = None
-        raw_generated = evidence.get("generatedAt")
-        if isinstance(raw_generated, str):
+    generated_at_subject = None
+    raw_generated = evidence.get("generatedAt")
+    if isinstance(raw_generated, str):
+        try:
+            generated_at_subject = datetime.fromisoformat(raw_generated)
+        except (ValueError, TypeError):
+            pass
+    model_evidence_hist = evidence.get("modelEvidence") if isinstance(
+        evidence.get("modelEvidence"), Mapping) else None
+
+    def _timing_dimension_entry():
+        comparability = evidence.get("comparability") if isinstance(
+            evidence.get("comparability"), Mapping) else None
+        if comparability is None:
+            return None
+        dims = comparability.get("dimensions") if isinstance(
+            comparability.get("dimensions"), list) else []
+        for entry in dims:
+            if isinstance(entry, Mapping) and entry.get(
+                "dimension"
+            ) == "TIMING":
+                return entry
+        return None
+
+    max_age = None
+    max_skew = None
+    try:
+        if max_age_raw is not None:
+            max_age = _decimal(max_age_raw, "maxModelAgeSeconds")
+        if max_skew_raw is not None:
+            max_skew = _decimal(max_skew_raw, "maxModelMarketSkewSeconds")
+    except _ShapeError:
+        pass
+
+    if model_evidence_hist is not None and generated_at_subject is not None:
+        raw_valuation = model_evidence_hist.get("valuationAsOf")
+        if isinstance(raw_valuation, str):
             try:
-                generated_at_subject = datetime.fromisoformat(raw_generated)
+                valuation = datetime.fromisoformat(raw_valuation)
             except (ValueError, TypeError):
-                pass
-        model_evidence_hist = evidence.get("modelEvidence") if isinstance(
-            evidence.get("modelEvidence"), Mapping) else None
+                valuation = None
+            if valuation is not None and valuation.tzinfo is not None:
+                if valuation > generated_at_subject:
+                    timing_problems.append(
+                        "model valuationAsOf is future relative to subject "
+                        "production authority")
+                elif max_age is not None:
+                    age = _decimal_seconds(generated_at_subject - valuation)
+                    timing_dim = _timing_dimension_entry()
+                    timing_ok = (timing_dim is not None
+                                 and timing_dim.get("ok") is True)
+                    if age > max_age and timing_ok:
+                        timing_problems.append(
+                            f"model age {age}s exceeds policy {max_age}s "
+                            "but the serialized TIMING dimension is marked "
+                            "ok (stale model relabeled)")
 
-        def _timing_dimension_entry():
-            comparability = evidence.get("comparability") if isinstance(
-                evidence.get("comparability"), Mapping) else None
-            if comparability is None:
-                return None
+    if (model_evidence_hist is not None and reference_comparison is not None
+            and generated_at_subject is not None):
+        raw_valuation = model_evidence_hist.get("valuationAsOf")
+        raw_ref_at = reference_comparison.get("referenceObservedAt")
+        if isinstance(raw_valuation, str) and isinstance(raw_ref_at, str):
+            try:
+                valuation = datetime.fromisoformat(raw_valuation)
+                ref_at = datetime.fromisoformat(raw_ref_at)
+            except (ValueError, TypeError):
+                valuation = ref_at = None
+            if (valuation is not None and ref_at is not None
+                    and valuation.tzinfo is not None
+                    and ref_at.tzinfo is not None and max_skew is not None):
+                skew = _decimal_seconds(abs(valuation - ref_at))
+                timing_dim = _timing_dimension_entry()
+                timing_ok = (timing_dim is not None
+                             and timing_dim.get("ok") is True)
+                if skew > max_skew and timing_ok:
+                    timing_problems.append(
+                        f"model/reference skew {skew}s exceeds "
+                        f"maxModelMarketSkewSeconds {max_skew}s but the "
+                        "serialized TIMING dimension is marked ok")
+
+    for row in execution_comparisons or []:
+        if not isinstance(row, Mapping):
+            continue
+        raw_exec_at = row.get("executionObservedAt")
+        if (model_evidence_hist is not None and isinstance(raw_exec_at, str)
+                and isinstance(
+                    model_evidence_hist.get("valuationAsOf"), str)
+                and max_skew is not None):
+            try:
+                exec_at = datetime.fromisoformat(raw_exec_at)
+                valuation = datetime.fromisoformat(
+                    model_evidence_hist["valuationAsOf"])
+            except (ValueError, TypeError):
+                continue
+            if exec_at.tzinfo is None or valuation.tzinfo is None:
+                continue
+            skew = _decimal_seconds(abs(valuation - exec_at))
+            if skew > max_skew:
+                timing_problems.append(
+                    f"execution row {row.get('side')}/"
+                    f"{row.get('requestedNotionalUsd')} retained outside "
+                    f"skew policy (skew {skew}s > {max_skew}s)")
+
+    if timing_problems:
+        collector.fail(
+            "HISTORICAL_TIMING", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+            "R11_VERIFIER", "; ".join(timing_problems))
+        return
+
+    # C2: bidirectional verification of the serialized TIMING dimension
+    model_hist = evidence.get("modelEvidence") if isinstance(
+        evidence.get("modelEvidence"), Mapping) else None
+    if model_hist is not None:
+        expected_ok = True
+        expected_gap = None
+        raw_val = model_hist.get("valuationAsOf")
+        raw_gen = evidence.get("generatedAt")
+        if isinstance(raw_val, str) and isinstance(raw_gen, str):
+            try:
+                val_dt = datetime.fromisoformat(raw_val)
+                gen_dt = datetime.fromisoformat(raw_gen)
+            except (ValueError, TypeError):
+                val_dt = gen_dt = None
+            if (val_dt is not None and gen_dt is not None
+                    and max_age is not None):
+                age = _decimal_seconds(gen_dt - val_dt)
+                if age > max_age:
+                    expected_ok = False
+                    expected_gap = "MODEL_STALE"
+                elif (reference_comparison is not None
+                      and isinstance(reference_comparison, Mapping)
+                      and max_skew is not None):
+                    raw_ref = reference_comparison.get("referenceObservedAt")
+                    if isinstance(raw_ref, str):
+                        try:
+                            ref_dt = datetime.fromisoformat(raw_ref)
+                        except (ValueError, TypeError):
+                            ref_dt = None
+                        if ref_dt is not None and ref_dt.tzinfo is not None:
+                            skew = _decimal_seconds(abs(val_dt - ref_dt))
+                            if skew > max_skew:
+                                expected_ok = False
+                                expected_gap = "TIMING_SKEW_INVALID"
+        comparability = evidence.get("comparability") if isinstance(
+            evidence.get("comparability"), Mapping) else None
+        timing_dim = None
+        if isinstance(comparability, Mapping):
             dims = comparability.get("dimensions") if isinstance(
                 comparability.get("dimensions"), list) else []
             for entry in dims:
                 if isinstance(entry, Mapping) and entry.get(
                     "dimension"
                 ) == "TIMING":
-                    return entry
-            return None
-
-        max_age = None
-        max_skew = None
-        try:
-            if max_age_raw is not None:
-                max_age = _decimal(max_age_raw, "maxModelAgeSeconds")
-            if max_skew_raw is not None:
-                max_skew = _decimal(max_skew_raw, "maxModelMarketSkewSeconds")
-        except _ShapeError:
-            pass
-
-        if model_evidence_hist is not None and generated_at_subject is not None:
-            raw_valuation = model_evidence_hist.get("valuationAsOf")
-            if isinstance(raw_valuation, str):
-                try:
-                    valuation = datetime.fromisoformat(raw_valuation)
-                except (ValueError, TypeError):
-                    valuation = None
-                if valuation is not None and valuation.tzinfo is not None:
-                    if valuation > generated_at_subject:
-                        timing_problems.append(
-                            "model valuationAsOf is future relative to subject "
-                            "production authority")
-                    elif max_age is not None:
-                        age = _decimal_seconds(generated_at_subject - valuation)
-                        timing_dim = _timing_dimension_entry()
-                        timing_ok = (timing_dim is not None
-                                     and timing_dim.get("ok") is True)
-                        if age > max_age and timing_ok:
-                            timing_problems.append(
-                                f"model age {age}s exceeds policy {max_age}s "
-                                "but the serialized TIMING dimension is marked "
-                                "ok (stale model relabeled)")
-
-        if (model_evidence_hist is not None and reference_comparison is not None
-                and generated_at_subject is not None):
-            raw_valuation = model_evidence_hist.get("valuationAsOf")
-            raw_ref_at = reference_comparison.get("referenceObservedAt")
-            if isinstance(raw_valuation, str) and isinstance(raw_ref_at, str):
-                try:
-                    valuation = datetime.fromisoformat(raw_valuation)
-                    ref_at = datetime.fromisoformat(raw_ref_at)
-                except (ValueError, TypeError):
-                    valuation = ref_at = None
-                if (valuation is not None and ref_at is not None
-                        and valuation.tzinfo is not None
-                        and ref_at.tzinfo is not None and max_skew is not None):
-                    skew = _decimal_seconds(abs(valuation - ref_at))
-                    timing_dim = _timing_dimension_entry()
-                    timing_ok = (timing_dim is not None
-                                 and timing_dim.get("ok") is True)
-                    if skew > max_skew and timing_ok:
-                        timing_problems.append(
-                            f"model/reference skew {skew}s exceeds "
-                            f"maxModelMarketSkewSeconds {max_skew}s but the "
-                            "serialized TIMING dimension is marked ok")
-
+                    timing_dim = entry
+                    break
+        if timing_dim is not None:
+            serialized_ok = timing_dim.get("ok")
+            serialized_gap = timing_dim.get("gapKind")
+            if serialized_ok != expected_ok or serialized_gap != expected_gap:
+                collector.fail(
+                    "HISTORICAL_TIMING",
+                    VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                    "R11_VERIFIER",
+                    f"serialized TIMING dimension (ok={serialized_ok!r}, "
+                    f"gapKind={serialized_gap!r}) does not match the "
+                    f"independently reconstructed result "
+                    f"(ok={expected_ok!r}, gapKind={expected_gap!r})")
+                return
+        if not expected_ok:
+            collector.fail(
+                "HISTORICAL_TIMING",
+                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                "R11_VERIFIER",
+                f"independently reconstructed timing gap: {expected_gap}")
+            return
+        # Per-execution-row skew
         for row in execution_comparisons or []:
             if not isinstance(row, Mapping):
                 continue
-            raw_exec_at = row.get("executionObservedAt")
-            if (model_evidence_hist is not None and isinstance(raw_exec_at, str)
-                    and isinstance(
-                        model_evidence_hist.get("valuationAsOf"), str)
-                    and max_skew is not None):
-                try:
-                    exec_at = datetime.fromisoformat(raw_exec_at)
-                    valuation = datetime.fromisoformat(
-                        model_evidence_hist["valuationAsOf"])
-                except (ValueError, TypeError):
-                    continue
-                if exec_at.tzinfo is None or valuation.tzinfo is None:
-                    continue
-                skew = _decimal_seconds(abs(valuation - exec_at))
+            raw_exec = row.get("executionObservedAt")
+            if not isinstance(raw_exec, str) or not isinstance(
+                model_hist.get("valuationAsOf"), str
+            ):
+                continue
+            try:
+                exec_dt = datetime.fromisoformat(raw_exec)
+                val_dt = datetime.fromisoformat(model_hist["valuationAsOf"])
+            except (ValueError, TypeError):
+                continue
+            if exec_dt.tzinfo is None or val_dt.tzinfo is None:
+                continue
+            if max_skew is not None:
+                skew = _decimal_seconds(abs(val_dt - exec_dt))
                 if skew > max_skew:
-                    timing_problems.append(
-                        f"execution row {row.get('side')}/"
-                        f"{row.get('requestedNotionalUsd')} retained outside "
-                        f"skew policy (skew {skew}s > {max_skew}s)")
+                    collector.fail(
+                        "HISTORICAL_TIMING",
+                        VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
+                        "R11_VERIFIER",
+                        f"execution row skew {skew}s exceeds policy "
+                        f"{max_skew}s")
+                    return
 
-        if timing_problems:
-            collector.fail(
-                "HISTORICAL_TIMING", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-                "R11_VERIFIER", "; ".join(timing_problems))
+    # C3: no-model subjects get HISTORICAL_TIMING as UNAVAILABLE
+    if "HISTORICAL_TIMING" not in collector.checks:
+        if model_evidence is None:
+            collector.unavailable(
+                "HISTORICAL_TIMING",
+                "no model timing authority to verify; HISTORICAL_TIMING is "
+                "explicitly not applicable for this subject")
         else:
             collector.pass_(
                 "HISTORICAL_TIMING",
@@ -1047,23 +1267,8 @@ def _material(evidence: Mapping[str, Any]) -> dict[str, Any]:
     return material
 
 
-def derived_synthetic_flag(evidence: Mapping[str, Any]) -> bool:
-    """I/D derivation: R11 synthetic is exactly the OR of the verified
-    causal chain - no caller override exists."""
-    if evidence.get("synthetic") is True:
-        return True
-    upstream = evidence.get("upstreamEvidence") if isinstance(
-        evidence.get("upstreamEvidence"), Mapping) else {}
-    r9 = upstream.get("r9AssetGraphEvidence") if isinstance(
-        upstream.get("r9AssetGraphEvidence"), Mapping) else {}
-    r8 = upstream.get("r8ExecutionEvidence") if isinstance(
-        upstream.get("r8ExecutionEvidence"), Mapping) else {}
-    r7 = (r8.get("upstreamEvidence") or {}).get("r7CrossMarketEvidence")
-    return bool(
-        r9.get("synthetic") is True
-        or r8.get("synthetic") is True
-        or (isinstance(r7, Mapping) and r7.get("synthetic") is True)
-    )
+# C1: derived_synthetic_flag is now the total _total_derived_synthetic
+derived_synthetic_flag = _total_derived_synthetic
 
 
 def _verify_model_integrity(collector: "_Collector", evidence: Mapping,
@@ -1397,33 +1602,48 @@ def _verify_execution_rows(
     canonical scenario binding including r8ScenarioIndex, duplicate
     detection, USD currency authority and scenario deployment identity."""
     problems: list[str] = []
-    scenarios = (r8 or {}).get("scenarios") or []
+    scenarios = _sequence_or_fail(
+        (r8 or {}).get("scenarios"), "R8 scenarios") if isinstance(
+        (r8 or {}).get("scenarios"), list) else []
     canonical: list[tuple[tuple, Mapping]] = []
     seen_keys: dict[tuple, int] = {}
     for scenario in scenarios:
-        entry = scenario.get("scenario") or {}
-        key = (entry.get("side"),
-               str(entry.get("requestedNotionalUsd")),
-               entry.get("quoteSource"))
+        if not isinstance(scenario, Mapping):
+            problems.append("non-mapping R8 scenario")
+            continue
+        entry = scenario.get("scenario")
+        if not isinstance(entry, Mapping):
+            problems.append("non-mapping R8 scenario entry")
+            continue
+        # C1: typed scalar extraction for sort/hash safety
+        raw_side = entry.get("side")
+        raw_notional = entry.get("requestedNotionalUsd")
+        raw_venue = entry.get("quoteSource")
+        if not isinstance(raw_side, str) or not raw_side.strip():
+            problems.append(f"R8 scenario side must be a non-empty string")
+            continue
+        if not isinstance(raw_venue, str) or not raw_venue.strip():
+            problems.append(f"R8 scenario quoteSource must be non-empty")
+            continue
+        try:
+            notional = _decimal(raw_notional, "requestedNotionalUsd")
+            if notional <= 0 or not notional.is_finite():
+                problems.append(
+                    f"R8 scenario requestedNotionalUsd must be positive "
+                    f"and finite")
+                continue
+        except _ShapeError as exc:
+            problems.append(f"R8 scenario notional: {exc}")
+            continue
+        key = (raw_side, str(notional), raw_venue)
         if key in seen_keys:
             problems.append(
                 "duplicate/ambiguous R8 scenario identity "
                 f"(side={key[0]!r}, notional={key[1]!r}, "
                 f"venue={key[2]!r})")
         seen_keys[key] = seen_keys.get(key, 0) + 1
-        try:
-            notional = _decimal(key[1])
-            require_positive = notional > 0 and notional.is_finite()
-        except (decimal.InvalidOperation, TypeError, ValueError):
-            notional = Decimal(0)
-            require_positive = False
-        if not require_positive:
-            problems.append(
-                f"R8 scenario requestedNotionalUsd {key[1]!r} must be "
-                "positive and finite")
         canonical.append((key, scenario))
-    canonical.sort(key=lambda item: (item[0][0], _safe_notional(item[0][1]),
-                                     item[0][2]))
+    canonical.sort(key=lambda item: (item[0][0], item[0][1], item[0][2]))
     canonical_index = {item[0]: i for i, item in enumerate(canonical)}
     r8_key = (r8 or {}).get("canonicalAssetKey") or {}
     model_value = None
@@ -1600,22 +1820,7 @@ def seen_lookup(canonical, key):
     return None
 
 
-def derived_synthetic_flag(evidence: Mapping[str, Any]) -> bool:
-    """I/D derivation: R11 synthetic is exactly the OR of the verified
-    causal chain - no caller override exists."""
-    if evidence.get("synthetic") is True:
-        return True
-    upstream = evidence.get("upstreamEvidence") if isinstance(
-        evidence.get("upstreamEvidence"), Mapping) else {}
-    r9 = upstream.get("r9AssetGraphEvidence") if isinstance(
-        upstream.get("r9AssetGraphEvidence"), Mapping) else {}
-    r8 = upstream.get("r8ExecutionEvidence") if isinstance(
-        upstream.get("r8ExecutionEvidence"), Mapping) else {}
-    r7 = (r8.get("upstreamEvidence") or {}).get("r7CrossMarketEvidence")
-    return bool(
-        r9.get("synthetic") is True
-        or r8.get("synthetic") is True
-        or (isinstance(r7, Mapping) and r7.get("synthetic") is True)
-    )
+# C1: derived_synthetic_flag is now the total _total_derived_synthetic
+derived_synthetic_flag = _total_derived_synthetic
 
 
