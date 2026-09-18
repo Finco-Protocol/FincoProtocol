@@ -241,9 +241,39 @@ jobs:
           evidence = snapshot.to_evidence_dict()
           from finco_radar.model_radar.contracts import verify_serialized_r10_evidence
           assert verify_serialized_r10_evidence(evidence) is True
+
+          # F4: independently re-derive the model digests from the SERIALIZED
+          # evidence - never trusting the object constructor alone.
+          import hashlib
+          me = evidence["modelEvidence"]
+          def cd(payload):
+              return hashlib.sha256(
+                  json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=False).encode("utf-8")
+              ).hexdigest()
+          assert me["inputDigest"] == cd(me["inputEvidence"])
+          assert me["outputDigest"] == cd(me["outputEvidence"])
+          run_material = {
+              "modelId": me["modelId"],
+              "modelVersion": me["modelVersion"],
+              "engineAuthority": me["engineAuthority"],
+              "economicAssetUid": me["economicAssetUid"],
+              "economicNodeId": me["economicNodeId"],
+              "valuationAsOf": me["valuationAsOf"],
+              "valueKind": me["valueKind"],
+              "value": me["value"],
+              "currency": me["currency"],
+              "unitBasis": me["unitBasis"],
+              "unitMultiplier": me["unitMultiplier"],
+              "unitMultiplierBasis": me.get("unitMultiplierBasis"),
+              "inputDigest": me["inputDigest"],
+              "outputDigest": me["outputDigest"],
+          }
+          assert me["modelRunDigest"] == cd(run_material)
           print(
               "R10_SYNTHETIC_COMPARABLE_PASS refBps=500 "
               f"execComparisons={len(snapshot.execution_comparisons)} "
+              "modelInput/Output/RunDigests independently reconstructed "
               f"digest={snapshot.r10_snapshot_digest[:16]} (synthetic=true, never live evidence)"
           )
           PY

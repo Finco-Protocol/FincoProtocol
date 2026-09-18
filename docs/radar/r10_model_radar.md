@@ -166,10 +166,47 @@ on-chain proof, or verification protocol (R11 owns those).  No streaming
 model updates, autonomous refresh, event bus, or digital-twin state (R12
 owns those).
 
+## Correction A (independent review)
+
+- **F1** — a closed `ModelValueKind × ModelUnitBasis` normalization authority:
+  `NON_PRICE_METRIC`, `ENTERPRISE_VALUE_TOTAL`, `PROJECT_NPV_TOTAL` and
+  `NAV_TOTAL` are never market-price comparable in v1 — with or without a
+  multiplier (no EV→equity or NPV→ownership bridge exists).  Only
+  `EQUITY_VALUE_TOTAL` on `TOTAL_EQUITY` may normalize, and only with a
+  source-proven multiplier that declares its PER_UNIT denominator basis
+  (`unitMultiplierBasis`).
+- **F2** — the market denominator is explicit: frozen R7/R8 authority
+  observes USD **per token claim**.  A model value on another PER_UNIT basis
+  converts only through the exact frozen R7 oracle multiplier, proven equal
+  to the R7 token multiplier, applied exactly once.  Missing or disagreeing
+  multipliers fail closed (`UNIT_BASIS_MISMATCH` / `MULTIPLIER_UNAVAILABLE`);
+  there is no implicit multiplier = 1 anywhere.
+- **F3** — R8 execution evidence is derived causally from the R9 evidence
+  (`upstreamEvidence.r8ExecutionEvidence`).  An explicitly supplied R8 must
+  be canonically identical to the embedded one; the R8 deployment must be
+  the deployment present exactly once among the R9 deployment nodes (never
+  an arbitrary first node), scenario deployments must agree, and every
+  scenario quote source must be proven by the R9 QUOTED_ON topology.
+- **F4** — model evidence digests are self-verifying: `inputDigest` and
+  `outputDigest` must equal the canonical digests of the embedded evidence,
+  a supplied `modelRunDigest` must equal the computed one, and all digests
+  must be 64-hex SHA-256.  CI independently re-derives them from serialized
+  evidence.
+- **F5** — a completed comparability evaluation contains exactly one result
+  per each of the seven dimensions (missing/duplicate/unknown fail closed).
+  FX absence is a snapshot gap, never a duplicated CURRENCY dimension.
+- **F6** — execution comparisons and gaps are canonicalized before the
+  `r10SnapshotDigest` material is built (never mutated after hashing); the
+  scenario index is assigned after canonical `(side, notional, venue)`
+  ordering; engine-level scenario reordering yields byte-identical evidence
+  and identical digests.
+- **F7** — discovery returns model evidence (typed tuple), not a binding;
+  timing arithmetic is exact Decimal (no float seconds).
+
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r10_model_radar.py   # 84 offline deterministic tests
+pytest -q tests/test_radar_r10_model_radar.py   # 116 offline deterministic tests
 python -m finco_radar.r10.live_proof            # live proof (re-runs the frozen
                                                 # R1->R9 chain, adds no APIs)
 ```

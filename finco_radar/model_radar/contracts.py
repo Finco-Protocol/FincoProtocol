@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -132,6 +133,17 @@ def _plain(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
     return value
+
+
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def require_sha256_shape(digest: str, name: str) -> None:
+    if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
+        raise ModelRadarError(
+            f"{name} must be a lowercase 64-hex SHA-256 digest, got {digest!r}",
+            ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+        )
 
 
 def canonical_evidence_bytes(evidence: Any) -> bytes:
@@ -261,6 +273,7 @@ class ModelEvidence:
     input_evidence: Mapping[str, Any] = field(default_factory=dict)
     output_evidence: Mapping[str, Any] = field(default_factory=dict)
     unit_multiplier: Decimal | None = None
+    unit_multiplier_basis: "ModelUnitBasis | None" = None
     value_original_representation: str = ""
     synthetic: bool = False
 
@@ -296,19 +309,55 @@ class ModelEvidence:
                 "the denominator is never inferred",
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
-        if not self.input_digest.strip() or not self.output_digest.strip():
+        if self.unit_multiplier is not None:
+            if self.unit_multiplier <= 0:
+                raise ModelRadarError(
+                    "unit multiplier must be positive when source-proven",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            if self.unit_multiplier_basis is None or not isinstance(
+                self.unit_multiplier_basis, ModelUnitBasis
+            ) or self.unit_multiplier_basis not in PER_UNIT_BASES:
+                raise ModelRadarError(
+                    "a source-proven unit multiplier must declare the exact "
+                    "per-unit basis it counts (PER_UNIT basis); it is never "
+                    "inferred",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+        elif self.unit_multiplier_basis is not None:
             raise ModelRadarError(
-                "model input/output digests are required",
+                "unit multiplier basis supplied without a unit multiplier",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
+        # F4: digests are self-verifying, never caller-asserted.
+        require_sha256_shape(self.input_digest, "input_digest")
+        require_sha256_shape(self.output_digest, "output_digest")
+        if self.input_digest != digest_payload(_plain(self.input_evidence)):
+            raise ModelRadarError(
+                "input_digest does not equal the canonical digest of "
+                "inputEvidence",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if self.output_digest != digest_payload(_plain(self.output_evidence)):
+            raise ModelRadarError(
+                "output_digest does not equal the canonical digest of "
+                "outputEvidence",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
         if self.value_original_representation == "":
             object.__setattr__(
                 self, "value_original_representation", str(self.value))
-        object.__setattr__(
-            self,
-            "model_run_digest",
-            self.model_run_digest or self._compute_run_digest(),
-        )
+        computed = self._compute_run_digest()
+        if self.model_run_digest:
+            require_sha256_shape(self.model_run_digest, "model_run_digest")
+            if self.model_run_digest != computed:
+                raise ModelRadarError(
+                    "supplied model_run_digest does not equal the "
+                    "deterministically computed run digest",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+        else:
+            object.__setattr__(self, "model_run_digest", computed)
 
     def _compute_run_digest(self) -> str:
         material = {
@@ -325,6 +374,10 @@ class ModelEvidence:
             "unitMultiplier": (
                 str(self.unit_multiplier)
                 if self.unit_multiplier is not None else None
+            ),
+            "unitMultiplierBasis": (
+                self.unit_multiplier_basis.value
+                if self.unit_multiplier_basis is not None else None
             ),
             "inputDigest": self.input_digest,
             "outputDigest": self.output_digest,
@@ -346,6 +399,10 @@ class ModelEvidence:
             "unitMultiplier": (
                 str(self.unit_multiplier)
                 if self.unit_multiplier is not None else None
+            ),
+            "unitMultiplierBasis": (
+                self.unit_multiplier_basis.value
+                if self.unit_multiplier_basis is not None else None
             ),
             "valueOriginalRepresentation": self.value_original_representation,
             "inputDigest": self.input_digest,
@@ -379,6 +436,23 @@ class ModelComparability:
     dimensions: tuple[ComparabilityDimensionResult, ...]
 
     def __post_init__(self) -> None:
+        required = {d for d in ComparabilityDimension}
+        seen: dict[ComparabilityDimension, int] = {}
+        for result in self.dimensions:
+            if not isinstance(result.dimension, ComparabilityDimension):
+                raise ModelRadarError(
+                    "unknown comparability dimension",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            seen[result.dimension] = seen.get(result.dimension, 0) + 1
+        duplicates = sorted(d.value for d, count in seen.items() if count > 1)
+        missing = sorted(d.value for d in required if d not in seen)
+        if duplicates or missing:
+            raise ModelRadarError(
+                "comparability evaluation must contain exactly one result "
+                f"per dimension; missing={missing} duplicated={duplicates}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
         object.__setattr__(
             self, "dimensions",
             tuple(sorted(self.dimensions, key=lambda d: d.dimension.value)))
@@ -526,14 +600,25 @@ class ModelRadarSnapshot:
                 "r10_snapshot_digest is required",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
-        comparisons = tuple(sorted(
-            self.execution_comparisons,
-            key=lambda c: (c.side, Decimal(c.requested_notional_usd), c.quote_source),
-        ))
-        object.__setattr__(self, "execution_comparisons", comparisons)
-        gaps = tuple(sorted(
-            self.gaps, key=lambda g: (g.gap_kind.value, g.source, g.reason)))
-        object.__setattr__(self, "gaps", gaps)
+        comparison_keys = [
+            (c.side, Decimal(c.requested_notional_usd), c.quote_source)
+            for c in self.execution_comparisons
+        ]
+        if comparison_keys != sorted(comparison_keys):
+            raise ModelRadarError(
+                "execution comparisons must be supplied in canonical "
+                "(side, notional, venue) order; canonicalization happens "
+                "before the snapshot digest, never after",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        gap_keys = [
+            (g.gap_kind.value, g.source, g.reason) for g in self.gaps
+        ]
+        if gap_keys != sorted(gap_keys):
+            raise ModelRadarError(
+                "gaps must be supplied in canonical order",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
 
     def to_evidence_dict(self) -> dict[str, Any]:
         return {

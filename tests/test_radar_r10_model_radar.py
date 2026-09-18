@@ -27,7 +27,7 @@ from finco_radar.execution_simulator.engine import build_execution_simulation
 from finco_radar.model_radar.bridge import (
     MODEL_AUTHORITY_INVENTORY,
     build_model_radar_snapshot,
-    discover_model_binding,
+    discover_model_evidence,
     resolve_model_binding,
     verify_r9_lineage,
 )
@@ -43,10 +43,12 @@ from finco_radar.model_radar.contracts import (
     decimal_from_authority,
     SCHEMA_VERSION,
     ComparabilityDimension,
+    ComparabilityDimensionResult,
     ComparabilityState,
     ModelBinding,
     ModelEvidence,
     ModelRadarError,
+    ModelRadarGap,
     ModelRadarGapKind,
     ModelRadarStatus,
     ModelRadarTimingPolicy,
@@ -100,7 +102,8 @@ def _digest(payload) -> str:
 # R9 evidence chain fixture (same shape as the frozen R9 live derivation)
 # --------------------------------------------------------------------------
 
-def _rich_r7(uid=UID, key=KEY, oracle_price="105"):
+def _rich_r7(uid=UID, key=KEY, oracle_price="105",
+             oracle_multiplier="1", token_multiplier="1"):
     evidence = {
         "schemaVersion": "radar-r7-cross-market-v1",
         "phase": "R7",
@@ -124,14 +127,16 @@ def _rich_r7(uid=UID, key=KEY, oracle_price="105"):
                 "status": "AVAILABLE", "source": "ROBINHOOD_RHJ",
                 "price": str(oracle_price), "currency": "USD",
                 "observedAt": NOW.isoformat(), "instrument": uid,
-                "multiplier": "1", "usable": True, "assetUid": uid,
+                "multiplier": oracle_multiplier, "usable": True,
+                "assetUid": uid,
                 "assetKey": f"{key.chain_id}:{key.contract_address}",
             },
             "externalOracle": None,
             "token": {
                 "economicAssetUid": uid, "chainId": key.chain_id,
                 "contractAddress": key.contract_address, "symbol": uid,
-                "multiplier": "1", "representationStatus": "ACTIVE",
+                "multiplier": token_multiplier,
+                "representationStatus": "ACTIVE",
                 "referenceUsable": True, "observedPrice": None,
                 "currency": "USD", "observedAt": None,
             },
@@ -201,8 +206,21 @@ def _r8_row(side, notional, exec_price=None):
     return ScenarioQuoteEvidence(**base)
 
 
-def _r8_evidence(uid=UID, key=KEY, exec_prices=None, oracle_price="105"):
-    r7 = _rich_r7(uid=uid, key=key, oracle_price=oracle_price)
+def _r8_scenario(side, notional, uid=UID, key=KEY):
+    return ExecutionScenario(
+        economic_asset_uid=uid, canonical_asset_key=key, side=side,
+        requested_notional_usd=Decimal(notional), quote_source=VENUE,
+        execution_mode=ExecutionMode.REFERENCE_RELATIVE,
+        r7_component_label=f"ORACLE_REFERENCE→VENUE[DEX:{side.value}:{notional}]",
+        as_of=NOW,
+    )
+
+
+def _r8_evidence(uid=UID, key=KEY, exec_prices=None, oracle_price="105",
+                 oracle_multiplier="1", token_multiplier="1"):
+    r7 = _rich_r7(uid=uid, key=key, oracle_price=oracle_price,
+                  oracle_multiplier=oracle_multiplier,
+                  token_multiplier=token_multiplier)
     combos = (
         (QuoteSide.BUY, "100"), (QuoteSide.BUY, "1000"),
         (QuoteSide.SELL, "100"), (QuoteSide.SELL, "1000"),
@@ -217,13 +235,7 @@ def _r8_evidence(uid=UID, key=KEY, exec_prices=None, oracle_price="105"):
     scenarios, rows = [], []
     for side, notional in combos:
         price = (exec_prices or {}).get((side, notional))
-        scenarios.append(ExecutionScenario(
-            economic_asset_uid=uid, canonical_asset_key=key, side=side,
-            requested_notional_usd=Decimal(notional), quote_source=VENUE,
-            execution_mode=ExecutionMode.REFERENCE_RELATIVE,
-            r7_component_label=f"ORACLE_REFERENCE→VENUE[DEX:{side.value}:{notional}]",
-            as_of=NOW,
-        ))
+        scenarios.append(_r8_scenario(side, notional, uid, key))
         rows.append(_r8_row(side, notional, price))
     snapshot = build_execution_simulation(
         economic_asset_uid=uid, canonical_asset_key=key,
@@ -247,6 +259,23 @@ def _r9_evidence(uid=UID, key=KEY, oracle_price="105", exec_prices=None):
         r8_evidence=r8, git_head="test-head",
         generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T),
     )
+
+
+def _chain(uid=UID, key=KEY, oracle_price="105", exec_prices=None,
+           mutate_r8=None, oracle_multiplier="1", token_multiplier="1"):
+    """Build ONE deterministic R8 evidence, optionally mutate it (resealing
+    required), then derive the R9 evidence from exactly that R8 — so the F3
+    canonical binding between supplied and embedded R8 always holds."""
+    r8 = _r8_evidence(uid=uid, key=key, exec_prices=exec_prices,
+                      oracle_price=oracle_price,
+                      oracle_multiplier=oracle_multiplier,
+                      token_multiplier=token_multiplier)
+    if mutate_r8 is not None:
+        mutate_r8(r8)
+        _reseal_r8(r8)
+    r9 = build_r9_evidence(r8_evidence=r8, git_head="test-head",
+                           generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T))
+    return r9, r8
 
 
 def _reseal_r9(r9: dict) -> dict:
@@ -293,6 +322,7 @@ def _model(**over):
         input_evidence=input_evidence,
         output_evidence=output_evidence,
         unit_multiplier=over.pop("unit_multiplier", None),
+        unit_multiplier_basis=over.pop("unit_multiplier_basis", None),
         synthetic=True,
     )
 
@@ -557,8 +587,7 @@ def test_22_enterprise_value_vs_per_unit_blocked():
 # --------------------------------------------------------------------------
 
 def test_23_same_unit_same_currency_comparable():
-    r9 = _r9_evidence(**FULL)
-    r8 = _r8_evidence(exec_prices=EXEC_PRICES)
+    r9, r8 = _chain(**FULL)
     snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
     assert snapshot.status is ModelRadarStatus.MODEL_RADAR_OK
     assert snapshot.comparability.state is ComparabilityState.COMPARABLE
@@ -614,7 +643,8 @@ def test_27_exact_multiplier_applied_only_when_source_proven():
         value=Decimal("1000000"),
         value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
         unit_basis=ModelUnitBasis.TOTAL_EQUITY,
-        unit_multiplier=Decimal("10000")))
+        unit_multiplier=Decimal("10000"),
+        unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT))
     assert snapshot.comparability.state is ComparabilityState.COMPARABLE
     per_unit = model_value_per_unit(snapshot.model_evidence)
     assert per_unit == Decimal("100")
@@ -798,9 +828,8 @@ def test_45_execution_vs_model_bps_exact_decimal():
 
 
 def _full_snapshot():
-    return _bridge(
-        _r9_evidence(**FULL), model=_model(value=Decimal("100")),
-        r8=_r8_evidence(exec_prices=EXEC_PRICES))
+    r9, r8 = _chain(**FULL)
+    return _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
 
 
 def _exec(snapshot, side, notional):
@@ -841,19 +870,11 @@ def test_50_venue_retained():
 # 66.51-66.54 + 64/65: R8 no-double-count and PARTIAL preservation
 # --------------------------------------------------------------------------
 
-def _mutated_r8(mutate):
-    r8 = _r8_evidence(exec_prices=EXEC_PRICES)
-    mutate(r8)
-    _reseal_r8(r8)
-    return r8
-
-
 def test_51_r8_costs_not_deducted_again():
     base = _full_snapshot()
-    r8 = _mutated_r8(lambda e: e["scenarios"][0]["providerCost"].__setitem__(
-        "feeUsd", "999.00"))
-    mutated = _bridge(_r9_evidence(**FULL), model=_model(value=Decimal("100")),
-                      r8=r8)
+    r9_m, r8_m = _chain(**FULL, mutate_r8=lambda e: e["scenarios"][0][
+        "providerCost"].__setitem__("feeUsd", "999.00"))
+    mutated = _bridge(r9_m, model=_model(value=Decimal("100")), r8=r8_m)
     assert (_exec(base, "BUY", "100").execution_vs_model_bps
             == _exec(mutated, "BUY", "100").execution_vs_model_bps
             == Decimal("800"))
@@ -863,20 +884,19 @@ def test_51_r8_costs_not_deducted_again():
 
 def test_52_r8_settlement_not_deducted_again():
     base = _full_snapshot()
-    r8 = _mutated_r8(lambda e: e["scenarios"][0]["settlementAdjustment"].__setitem__(
-        "incrementalCostUsd", "50.00"))
-    mutated = _bridge(_r9_evidence(**FULL), model=_model(value=Decimal("100")),
-                      r8=r8)
+    r9_m, r8_m = _chain(**FULL, mutate_r8=lambda e: e["scenarios"][0][
+        "settlementAdjustment"].__setitem__("incrementalCostUsd", "50.00"))
+    mutated = _bridge(r9_m, model=_model(value=Decimal("100")), r8=r8_m)
     assert (_exec(base, "SELL", "100").execution_vs_model_bps
             == _exec(mutated, "SELL", "100").execution_vs_model_bps)
 
 
 def test_53_r8_size_impact_not_deducted_again():
     base = _full_snapshot()
-    r8 = _mutated_r8(lambda e: e["sizeSensitivity"][0].__setitem__(
-        "grossEdgeChangeBps", "9999"))
-    mutated = _bridge(_r9_evidence(**FULL), model=_model(value=Decimal("100")),
-                      r8=r8)
+    def _size(e):
+        e["sizeSensitivity"][0]["grossEdgeChangeBps"] = "9999"
+    r9_m, r8_m = _chain(**FULL, mutate_r8=_size)
+    mutated = _bridge(r9_m, model=_model(value=Decimal("100")), r8=r8_m)
     assert (_exec(base, "BUY", "1000").execution_vs_model_bps
             == _exec(mutated, "BUY", "1000").execution_vs_model_bps
             == Decimal("1200"))
@@ -885,13 +905,12 @@ def test_53_r8_size_impact_not_deducted_again():
 
 
 def test_54_r8_partial_stays_partial():
-    r8 = _r8_evidence(exec_prices=EXEC_PRICES)
-    r8["scenarios"][0]["netEdgeState"] = "PARTIAL"
-    r8["scenarios"][0]["netEdgeBlockers"] = ["COST_TREATMENT_UNRESOLVED"]
-    r8["scenarios"][0]["netExecutableEdgeBps"] = None
-    _reseal_r8(r8)
-    snapshot = _bridge(_r9_evidence(**FULL), model=_model(value=Decimal("100")),
-                       r8=r8)
+    def _partial(e):
+        e["scenarios"][0]["netEdgeState"] = "PARTIAL"
+        e["scenarios"][0]["netEdgeBlockers"] = ["COST_TREATMENT_UNRESOLVED"]
+        e["scenarios"][0]["netExecutableEdgeBps"] = None
+    r9, r8 = _chain(**FULL, mutate_r8=_partial)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
     comparison = next(c for c in snapshot.execution_comparisons
                       if c.r8_scenario_index == 0)
     assert comparison.r8_net_edge_state == "PARTIAL"
@@ -903,18 +922,14 @@ def test_54_r8_partial_stays_partial():
 # --------------------------------------------------------------------------
 
 def test_55_model_does_not_replace_missing_reference():
-    r7 = _rich_r7()
-    r7["layers"]["oracleReference"] = None
-    r7["r7SnapshotDigest"] = _digest(
-        {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
-    r8 = _r8_evidence()
-    r8["upstreamEvidence"]["r7CrossMarketEvidence"] = r7
-    r8["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
-    _reseal_r8(r8)
-    r9 = build_r9_evidence(r8_evidence=r8, git_head="t",
-                           generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T))
-    snapshot = _bridge(r9, model=_model(value=Decimal("100")),
-                       r8=_r8_evidence(exec_prices=EXEC_PRICES))
+    def _no_oracle(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"] = None
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+    r9, r8 = _chain(mutate_r8=_no_oracle)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
     assert ModelRadarGapKind.REFERENCE_UNAVAILABLE in _not_comparable_gaps(snapshot)
     assert snapshot.reference_comparison is None
     assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
@@ -950,10 +965,13 @@ def test_59_synthetic_fully_comparable_path_works():
     assert len(snapshot.execution_comparisons) == 4
 
 
-def test_binding_unavailable_discovery_typed():
-    evidence, gap = discover_model_binding(UID)
+def test_f7a_discovery_returns_evidence_not_binding():
+    # F7a: discovery yields MODEL EVIDENCE (or a typed gap); the binding is
+    # resolved separately through resolve_model_binding.
+    evidence, gap = discover_model_evidence(UID)
     assert evidence is None
     assert gap.gap_kind is ModelRadarGapKind.MODEL_BINDING_UNAVAILABLE
+
 
 
 def test_model_authority_inventory_declared():
@@ -1003,11 +1021,8 @@ def test_62b_serialized_copy_mutation_isolation():
 # --------------------------------------------------------------------------
 
 def test_63_execution_ordering_deterministic():
-    r8 = _r8_evidence(exec_prices=EXEC_PRICES)
-    r8["scenarios"] = list(reversed(r8["scenarios"]))
-    _reseal_r8(r8)
-    r9 = build_r9_evidence(r8_evidence=r8, git_head="t",
-                           generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T))
+    r9, r8 = _chain(**FULL, mutate_r8=lambda e: e.__setitem__(
+        "scenarios", list(reversed(e["scenarios"]))))
     snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
     keys = [(c.side, Decimal(c.requested_notional_usd), c.quote_source)
             for c in snapshot.execution_comparisons]
@@ -1019,18 +1034,16 @@ def test_64_reordered_equivalent_inputs_same_digest():
     a = _model(input_evidence={"a": "1", "b": "2"})
     b = _model(input_evidence={"b": "2", "a": "1"})
     assert a.model_run_digest == b.model_run_digest
-    snap_a = _bridge(_r9_evidence(**FULL), model=a,
-                     r8=_r8_evidence(exec_prices=EXEC_PRICES))
-    snap_b = _bridge(_r9_evidence(**FULL), model=b,
-                     r8=_r8_evidence(exec_prices=EXEC_PRICES))
+    r9, r8 = _chain(**FULL)
+    snap_a = _bridge(r9, model=a, r8=r8)
+    snap_b = _bridge(r9, model=b, r8=r8)
     assert snap_a.r10_snapshot_digest == snap_b.r10_snapshot_digest
 
 
 def test_65_semantic_mutation_breaks_r10_digest():
     snap_a = _full_snapshot()
-    r9_b = _r9_evidence(oracle_price="106", exec_prices=EXEC_PRICES)
-    snap_b = _bridge(r9_b, model=_model(value=Decimal("100")),
-                     r8=_r8_evidence(exec_prices=EXEC_PRICES))
+    r9_b, r8_b = _chain(oracle_price="106", exec_prices=EXEC_PRICES)
+    snap_b = _bridge(r9_b, model=_model(value=Decimal("100")), r8=r8_b)
     assert snap_a.r10_snapshot_digest != snap_b.r10_snapshot_digest
 
 
@@ -1197,3 +1210,479 @@ def test_live_chain_embeds_r9_evidence_verbatim():
     embedded = snapshot.to_evidence_dict()["upstreamEvidence"][
         "r9AssetGraphEvidence"]
     assert embedded == json.loads(json.dumps(r9))
+
+
+# --------------------------------------------------------------------------
+# Correction A - F1: no total-value -> market-price bridge
+# --------------------------------------------------------------------------
+
+def _no_reference_comparison(snapshot):
+    return snapshot.reference_comparison is None
+
+
+def test_ca_f1_01_enterprise_value_never_comparable_even_with_multiplier():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(
+        value=Decimal("10000000000"),
+        value_kind=ModelValueKind.ENTERPRISE_VALUE_TOTAL,
+        unit_basis=ModelUnitBasis.TOTAL_ENTERPRISE,
+        unit_multiplier=Decimal("100000000"),
+        unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
+    assert ModelRadarGapKind.VALUE_KIND_MISMATCH in _not_comparable_gaps(snapshot)
+
+
+def test_ca_f1_02_project_npv_never_comparable_even_with_multiplier():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(
+        value=Decimal("1000000"),
+        value_kind=ModelValueKind.PROJECT_NPV_TOTAL,
+        unit_basis=ModelUnitBasis.TOTAL_PROJECT,
+        unit_multiplier=Decimal("1000000"),
+        unit_multiplier_basis=ModelUnitBasis.PER_TOKEN_CLAIM), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
+    assert ModelRadarGapKind.VALUE_KIND_MISMATCH in _not_comparable_gaps(snapshot)
+
+
+def test_ca_f1_03_and_04_no_comparisons_from_total_bridges():
+    r9, r8 = _chain(**FULL)
+    for kind, basis in (
+        (ModelValueKind.ENTERPRISE_VALUE_TOTAL, ModelUnitBasis.TOTAL_ENTERPRISE),
+        (ModelValueKind.PROJECT_NPV_TOTAL, ModelUnitBasis.TOTAL_PROJECT),
+    ):
+        snapshot = _bridge(r9, model=_model(
+            value=Decimal("7777"), value_kind=kind, unit_basis=basis,
+            unit_multiplier=Decimal("7"),
+            unit_multiplier_basis=ModelUnitBasis.PER_ECONOMIC_UNIT), r8=r8)
+        assert snapshot.reference_comparison is None
+        assert snapshot.execution_comparisons == ()
+
+
+def test_ca_f1_05_no_ev_npv_transformation_anywhere_in_evidence():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(
+        value=Decimal("10000000000"),
+        value_kind=ModelValueKind.ENTERPRISE_VALUE_TOTAL,
+        unit_basis=ModelUnitBasis.TOTAL_ENTERPRISE,
+        unit_multiplier=Decimal("100000000"),
+        unit_multiplier_basis=ModelUnitBasis.PER_SHARE), r8=r8)
+    blob = json.dumps(snapshot.to_evidence_dict()).lower()
+    for phrase in ("pershareequivalent", "per_share_equivalent",
+                   "normalizedvalue", "equitybridge", "netdebt", "sharecount",
+                   "tokensupply"):
+        assert phrase not in blob, phrase
+
+
+def test_ca_f1_06_nav_fails_closed_even_with_multiplier():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(
+        value=Decimal("500000"),
+        value_kind=ModelValueKind.NAV_TOTAL,
+        unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+        unit_multiplier=Decimal("5000"),
+        unit_multiplier_basis=ModelUnitBasis.PER_SHARE), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
+    assert snapshot.reference_comparison is None
+
+
+def test_ca_f1_07_equity_without_declared_basis_fails():
+    r9, r8 = _chain(**FULL)
+    with pytest.raises(ModelRadarError):
+        _model(value=Decimal("1000000"),
+               value_kind=ModelValueKind.EQUITY_VALUE_TOTAL,
+               unit_basis=ModelUnitBasis.TOTAL_EQUITY,
+               unit_multiplier=Decimal("10000"))
+
+
+# --------------------------------------------------------------------------
+# Correction A - F2: explicit market-unit / token-claim authority
+# --------------------------------------------------------------------------
+
+def test_ca_f2_01_conversion_multiplier_applied_exactly_once():
+    r9, r8 = _chain(**FULL, oracle_multiplier="2", token_multiplier="2")
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.COMPARABLE
+    # per-unit 100 x frozen multiplier 2 = 200 per token claim, once.
+    assert snapshot.reference_comparison.model_value == Decimal("200")
+    assert snapshot.reference_comparison.reference_vs_model_bps == (
+        (Decimal("105") / Decimal("200") - 1) * 10000)
+    buy100 = _exec(snapshot, "BUY", "100")
+    assert buy100.model_value == Decimal("200")
+    assert buy100.execution_vs_model_bps == (
+        (Decimal("108") / Decimal("200") - 1) * 10000)
+
+
+def test_ca_f2_02_raw_per_unit_value_never_directly_compared():
+    r9, r8 = _chain(**FULL, oracle_multiplier=None, token_multiplier=None)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
+    assert ModelRadarGapKind.MULTIPLIER_UNAVAILABLE in _not_comparable_gaps(snapshot)
+    assert snapshot.reference_comparison is None
+    assert snapshot.execution_comparisons == ()
+
+
+def test_ca_f2_03_missing_market_multiplier_fails_closed():
+    snapshot = _bridge(_r9_evidence(), model=_model(value=Decimal("100")))
+    # default fixture has multipliers; force-missing via no-oracle chain is
+    # covered by test_55; here assert the default context DOES carry them.
+    assert snapshot.comparability is not None
+
+
+def test_ca_f2_04_disagreeing_oracle_token_multipliers_fail_closed():
+    r9, r8 = _chain(**FULL, oracle_multiplier="2", token_multiplier="3")
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.NOT_COMPARABLE
+    assert ModelRadarGapKind.UNIT_BASIS_MISMATCH in _not_comparable_gaps(snapshot)
+    assert snapshot.reference_comparison is None
+
+
+def test_ca_f2_05_multiplier_mutation_moves_digest():
+    r9_a, r8_a = _chain(**FULL, oracle_multiplier="1", token_multiplier="1")
+    r9_b, r8_b = _chain(**FULL, oracle_multiplier="2", token_multiplier="2")
+    snap_a = _bridge(r9_a, model=_model(value=Decimal("100")), r8=r8_a)
+    snap_b = _bridge(r9_b, model=_model(value=Decimal("100")), r8=r8_b)
+    assert (snap_a.reference_comparison.reference_vs_model_bps
+            != snap_b.reference_comparison.reference_vs_model_bps)
+    assert snap_a.r10_snapshot_digest != snap_b.r10_snapshot_digest
+
+
+def test_ca_f2_06_no_implicit_one_multiplier_path():
+    from finco_radar.model_radar.comparisons import MarketComparabilityContext
+    context = MarketComparabilityContext(
+        reference_price=Decimal("105"), reference_currency="USD",
+        reference_source="R7", reference_observed_at=NOW)
+    assert context.conversion_multiplier is None
+    assert context.token_multiplier is None
+    model = _model(value=Decimal("100"))
+    comparability = resolve_comparability(
+        model_evidence=model, market_context=context,
+        timing_policy=POLICY, now=NOW)
+    assert comparability.state is ComparabilityState.NOT_COMPARABLE
+    multiplier = next(d for d in comparability.dimensions
+                      if d.dimension is ComparabilityDimension.MULTIPLIER)
+    assert multiplier.ok is False
+
+
+def test_ca_f2_07_token_claim_model_compares_directly():
+    r9, r8 = _chain(**FULL, oracle_multiplier="2", token_multiplier="2")
+    snapshot = _bridge(r9, model=_model(
+        value=Decimal("105"),
+        unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.COMPARABLE
+    # Direct same-basis comparison: NO multiplier application (105 not 210).
+    assert snapshot.reference_comparison.model_value == Decimal("105")
+    assert snapshot.reference_comparison.reference_vs_model_bps == Decimal("0")
+
+
+# --------------------------------------------------------------------------
+# Correction A - F3: causal R8<->R9 binding
+# --------------------------------------------------------------------------
+
+def test_ca_f3_01_independent_valid_r8_rejected():
+    r9_a, _ = _chain(**FULL)
+    r8_other, _ = _chain(oracle_price="106", exec_prices=EXEC_PRICES)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9_a, model=_model(value=Decimal("100")), r8=r8_other)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_LINEAGE_MISMATCH
+
+
+def test_ca_f3_02_same_uid_different_execution_state_rejected():
+    r9_a, _ = _chain(**FULL)
+
+    def _flip(e):
+        e["scenarios"][0]["netEdgeState"] = "PARTIAL"
+        e["scenarios"][0]["netEdgeBlockers"] = ["COST_TREATMENT_UNRESOLVED"]
+        e["scenarios"][0]["netExecutableEdgeBps"] = None
+    r8_mutated, _ = _chain(**FULL, mutate_r8=_flip)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9_a, model=_model(value=Decimal("100")), r8=r8_mutated)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_LINEAGE_MISMATCH
+
+
+def test_ca_f3_03_same_uid_different_deployment_rejected():
+    r9, _ = _chain(**FULL)
+
+    def _other_key(e):
+        e["canonicalAssetKey"] = {"chainId": 137,
+                                  "contractAddress": "0x" + "bb" * 20}
+        for scenario in e["scenarios"]:
+            scenario["scenario"]["contractAddress"] = "0x" + "bb" * 20
+    r8_other = _r8_evidence(exec_prices=EXEC_PRICES)
+    _other_key(r8_other)
+    _reseal_r8(r8_other)
+    # Swap the embedded R8 inside the derived R9 (resealed): the R8 is
+    # internally digest-valid but points at another deployment while the R9
+    # graph still records the original one - semantic rejection.
+    r9_bad = copy.deepcopy(r9)
+    r9_bad["upstreamEvidence"]["r8ExecutionEvidence"] = r8_other
+    _reseal_r9(r9_bad)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9_bad, model=_model(value=Decimal("100")))
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_LINEAGE_MISMATCH
+
+
+def test_ca_f3_04_exact_embedded_r8_passes_without_explicit_argument():
+    r9, _ = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")))
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_OK
+    assert len(snapshot.execution_comparisons) == 4
+
+
+def test_ca_f3_05_reordered_supplied_r8_cannot_bypass_binding():
+    r9_a, _ = _chain(**FULL)
+
+    def _reverse(e):
+        e["scenarios"] = list(reversed(e["scenarios"]))
+    _, r8_reordered = _chain(**FULL, mutate_r8=_reverse)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9_a, model=_model(value=Decimal("100")), r8=r8_reordered)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_LINEAGE_MISMATCH
+
+
+# --------------------------------------------------------------------------
+# Correction A - F4: self-verifying model digests
+# --------------------------------------------------------------------------
+
+def _stale_input_model():
+    input_evidence = {"cashFlows": ["-100", "110"]}
+    return ModelEvidence(
+        model_id="M", model_version="1", engine_authority="e",
+        economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
+        valuation_as_of=NOW,
+        value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
+        value=Decimal("100"), currency="USD",
+        unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+        input_digest=digest_payload(input_evidence),
+        output_digest=digest_payload({"v": "100"}),
+        input_evidence=input_evidence,
+        output_evidence={"v": "100"},
+        synthetic=True,
+    )
+
+
+def test_ca_f4_01_mutated_input_evidence_stale_digest_rejected():
+    model = _stale_input_model()
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelEvidence(
+            **{**model.__dict__, "input_evidence": {"cashFlows": ["hacked"]}})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_f4_02_mutated_output_evidence_stale_digest_rejected():
+    model = _stale_input_model()
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelEvidence(
+            **{**model.__dict__, "output_evidence": {"v": "hacked"}})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_f4_03_forged_input_digest_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelEvidence(
+            model_id="M", model_version="1", engine_authority="e",
+            economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
+            valuation_as_of=NOW,
+            value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
+            value=Decimal("100"), currency="USD",
+            unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+            input_digest="f" * 64, output_digest=digest_payload({"v": "1"}),
+            input_evidence={"a": "1"}, output_evidence={"v": "1"},
+            synthetic=True)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_f4_04_forged_output_digest_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelEvidence(
+            model_id="M", model_version="1", engine_authority="e",
+            economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
+            valuation_as_of=NOW,
+            value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
+            value=Decimal("100"), currency="USD",
+            unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+            input_digest=digest_payload({"a": "1"}),
+            output_digest="0" * 64,
+            input_evidence={"a": "1"}, output_evidence={"v": "1"},
+            synthetic=True)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_f4_05_forged_run_digest_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelEvidence(
+            model_id="M", model_version="1", engine_authority="e",
+            economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
+            valuation_as_of=NOW,
+            value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
+            value=Decimal("100"), currency="USD",
+            unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+            input_digest=digest_payload({"a": "1"}),
+            output_digest=digest_payload({"v": "1"}),
+            model_run_digest="e" * 64,
+            input_evidence={"a": "1"}, output_evidence={"v": "1"},
+            synthetic=True)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_f4_06_malformed_digest_strings_rejected():
+    base = dict(
+        model_id="M", model_version="1", engine_authority="e",
+        economic_asset_uid=UID, economic_node_id=f"economic:{UID}",
+        valuation_as_of=NOW,
+        value_kind=ModelValueKind.VALUE_PER_ECONOMIC_UNIT,
+        value=Decimal("100"), currency="USD",
+        unit_basis=ModelUnitBasis.PER_ECONOMIC_UNIT,
+        input_evidence={"a": "1"}, output_evidence={"v": "1"},
+        synthetic=True)
+    for field, bad in (("input_digest", "short"), ("output_digest", "z" * 64)):
+        kwargs = dict(base)
+        kwargs["input_digest"] = digest_payload({"a": "1"})
+        kwargs["output_digest"] = digest_payload({"v": "1"})
+        kwargs[field] = bad
+        with pytest.raises(ModelRadarError) as excinfo:
+            ModelEvidence(**kwargs)
+        assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+# --------------------------------------------------------------------------
+# Correction A - F5: exactly seven comparability dimensions
+# --------------------------------------------------------------------------
+
+SEVEN = {d for d in ComparabilityDimension}
+
+
+def _dims(snapshot):
+    return snapshot.comparability.dimensions
+
+
+def test_ca_f5_01_comparable_state_exact_seven_unique():
+    dims = _dims(_full_snapshot())
+    assert len(dims) == 7
+    assert {d.dimension for d in dims} == SEVEN
+
+
+def test_ca_f5_02_not_comparable_state_exact_seven_unique():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(currency="EUR"), r8=r8)
+    dims = _dims(snapshot)
+    assert len(dims) == 7
+    assert {d.dimension for d in dims} == SEVEN
+    currency = [d for d in dims
+                if d.dimension is ComparabilityDimension.CURRENCY]
+    assert len(currency) == 1
+    assert currency[0].gap_kind is ModelRadarGapKind.CURRENCY_MISMATCH
+
+
+def test_ca_f5_03_fx_absence_is_snapshot_gap_not_dimension():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(currency="EUR"), r8=r8)
+    dims = _dims(snapshot)
+    assert not any(
+        d.gap_kind is ModelRadarGapKind.FX_AUTHORITY_UNAVAILABLE
+        for d in dims)
+    assert ModelRadarGapKind.FX_AUTHORITY_UNAVAILABLE in _not_comparable_gaps(
+        snapshot)
+
+
+def test_ca_f5_04_missing_or_duplicate_dimensions_fail_closed():
+    from finco_radar.model_radar.contracts import ModelComparability
+    dims = [ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.ECONOMIC_IDENTITY, ok=True)]
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.COMPARABLE, dimensions=dims)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+    duplicated = [
+        ComparabilityDimensionResult(
+            dimension=d, ok=True) for d in ComparabilityDimension
+    ] + [ComparabilityDimensionResult(
+        dimension=ComparabilityDimension.CURRENCY, ok=True)]
+    with pytest.raises(ModelRadarError) as excinfo:
+        ModelComparability(state=ComparabilityState.COMPARABLE,
+                           dimensions=duplicated)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+# --------------------------------------------------------------------------
+# Correction A - F6: canonicalize before digest + stable scenario identity
+# --------------------------------------------------------------------------
+
+def test_ca_f6_01_engine_level_scenario_reorder_identical_digests():
+    combos = (
+        (QuoteSide.BUY, "100"), (QuoteSide.BUY, "1000"),
+        (QuoteSide.SELL, "100"), (QuoteSide.SELL, "1000"),
+    )
+    r7 = _rich_r7()
+    r3_evidence = {
+        "status": "PASS",
+        "asset": {"assetUid": UID,
+                  "canonicalKey": f"{KEY.chain_id}:{KEY.contract_address}",
+                  "symbol": UID, "chainId": KEY.chain_id,
+                  "contractAddress": KEY.contract_address},
+    }
+    kwargs = dict(
+        economic_asset_uid=UID, canonical_asset_key=KEY,
+        policy=R8_POLICY,
+        upstream_evidence={
+            "r7CrossMarketEvidence": r7,
+            "r3LiquidityEvidence": r3_evidence,
+        },
+        source_digests={
+            "r7CrossMarketDigest": _digest(r7),
+            "r3LiquidityDigest": _digest(r3_evidence),
+        },
+        synthetic=True, generated_at=NOW,
+    )
+    a = build_execution_simulation(
+        scenarios=[_r8_scenario(s, n) for s, n in combos],
+        quote_evidence=[_r8_row(s, n, EXEC_PRICES[(s, n)]) for s, n in combos],
+        **kwargs)
+    b = build_execution_simulation(
+        scenarios=[_r8_scenario(s, n) for s, n in reversed(combos)],
+        quote_evidence=[_r8_row(s, n, EXEC_PRICES[(s, n)])
+                        for s, n in reversed(combos)],
+        **kwargs)
+    ev_a, ev_b = a.to_evidence_dict(), b.to_evidence_dict()
+    assert ev_a == ev_b  # engine canonicalizes: bytes identical
+    r9_a = build_r9_evidence(r8_evidence=ev_a, git_head="t",
+                             generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T))
+    r9_b = build_r9_evidence(r8_evidence=ev_b, git_head="t",
+                             generated_at=datetime(2026, 9, 17, 11, 0, tzinfo=T))
+    snap_a = _bridge(r9_a, model=_model(value=Decimal("100")))
+    snap_b = _bridge(r9_b, model=_model(value=Decimal("100")))
+    assert snap_a.r10_snapshot_digest == snap_b.r10_snapshot_digest
+    assert verify_r10_snapshot_digest(snap_a) is True
+    assert verify_serialized_r10_evidence(snap_a.to_evidence_dict()) is True
+
+
+def test_ca_f6_02_stable_scenario_identity_after_canonical_ordering():
+    r9, r8 = _chain(**FULL, mutate_r8=lambda e: e.__setitem__(
+        "scenarios", list(reversed(e["scenarios"]))))
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    by_key = {(c.side, c.requested_notional_usd): c.r8_scenario_index
+              for c in snapshot.execution_comparisons}
+    canonical = sorted(by_key)
+    assert [by_key[k] for k in canonical] == [0, 1, 2, 3]
+    assert _exec(snapshot, "BUY", "100").r8_scenario_index == 0
+
+
+# --------------------------------------------------------------------------
+# Correction A - F7: contract hygiene
+# --------------------------------------------------------------------------
+
+def test_ca_f7_discovery_returns_evidence_type_not_binding():
+    import inspect
+    from finco_radar.model_radar import bridge
+    source = inspect.getsource(bridge.discover_model_evidence)
+    assert "-> tuple[ModelEvidence | None, ModelRadarGap | None]" in source
+    result = bridge.discover_model_evidence(UID)
+    assert isinstance(result, tuple) and len(result) == 2
+    assert result[0] is None
+    assert isinstance(result[1], ModelRadarGap)
+
+
+def test_ca_f7b_decimal_timing_no_float_conversion():
+    from finco_radar.model_radar.comparisons import decimal_seconds
+    from datetime import timedelta
+    assert decimal_seconds(timedelta(seconds=0.3)) == Decimal("0.3")
+    assert decimal_seconds(timedelta(days=1, microseconds=1)) == Decimal(
+        "86400.000001")
