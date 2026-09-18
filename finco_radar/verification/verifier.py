@@ -721,9 +721,13 @@ def verify_r10_evidence(
         r8_declared = r8.get("sourceDigests") if isinstance(
             r8.get("sourceDigests"), Mapping) else {}
         declared_r7 = r8_declared.get("r7CrossMarketDigest")
+        oracle_ref = None
+        if isinstance(r7.get("layers"), Mapping):
+            oracle_ref = r7["layers"].get("oracleReference")
         internal_ok = (
             isinstance(r7.get("r7SnapshotDigest"), str)
             and isinstance(r7.get("layers"), Mapping)
+            and (oracle_ref is None or isinstance(oracle_ref, Mapping))
             and r7["r7SnapshotDigest"] == canonical_sha256(plain(_material(r7)))
         )
         if declared_r7 == r7_source and internal_ok:
@@ -985,263 +989,236 @@ def verify_r10_evidence(
                 "EXECUTION_SOURCE_BINDING",
                 "no execution comparisons in subject")
 
-    # ---- 16. historical timing semantics ---------------------------------------
-    timestamp_fields = []
-    if reference_comparison is not None and isinstance(
-        reference_comparison, Mapping
-    ):
-        timestamp_fields.append(
-            ("referenceComparison.modelObservedAt",
-             reference_comparison.get("modelObservedAt")))
-        timestamp_fields.append(
-            ("referenceComparison.referenceObservedAt",
-             reference_comparison.get("referenceObservedAt")))
-    for row in execution_comparisons or []:
-        if isinstance(row, Mapping):
-            timestamp_fields.append(
-                (f"executionComparisons.executionObservedAt",
-                 row.get("executionObservedAt")))
-    missing = sorted(name for name, value in timestamp_fields if value is None)
-    bad_timestamps = sorted(name for name, value in timestamp_fields
-                            if value is not None and not _tz_aware(value))
-    timing_problems = []
-    if missing:
-        timing_problems.append(f"required subject timestamps missing: {missing}")
-    if bad_timestamps:
-        timing_problems.append(
-            f"subject timestamps must be timezone-aware: {bad_timestamps}")
+    # ---- 16. canonical historical timing verification (B.2) ---------------
+    # One canonical routine: validate timing inputs, reconstruct the frozen
+    # R10 TIMING result from embedded R7 oracle evidence, compare with the
+    # serialized TIMING dimension, validate execution-row timing.
+    #
+    # Authorities (never R11 wall clock):
+    # - production time: subject generatedAt
+    # - model timestamp: modelEvidence.valuationAsOf
+    # - reference observation: embedded R7 layers.oracleReference.observedAt
+    # - policy: subject timingPolicy fields
+    #
+    # referenceComparison is OUTPUT, not timing authority.  It may be null
+    # precisely because the TIMING dimension made the subject non-comparable.
 
-    # B5: historical timing semantics, using ONLY subject production-time
-    # authority (no R11 wall clock).
+    model_hist = evidence.get("modelEvidence") if isinstance(
+        evidence.get("modelEvidence"), Mapping) else None
+    subject_gaps_kinds = {
+        g.get("gapKind") for g in (evidence.get("gaps") or [])
+        if isinstance(g, Mapping)
+    }
+    no_model = model_hist is None
+
+    timing_problems: list[str] = []
+
+    # -- parse timing policy (required, finite, positive) -------------------
     policy = evidence.get("timingPolicy") if isinstance(
         evidence.get("timingPolicy"), Mapping) else {}
-    max_age_raw = policy.get("maxModelAgeSeconds")
-    max_skew_raw = policy.get("maxModelMarketSkewSeconds")
-    for name, raw in (("maxModelAgeSeconds", max_age_raw),
-                      ("maxModelMarketSkewSeconds", max_skew_raw)):
+    max_age = None
+    max_skew = None
+    for pname, raw in (("maxModelAgeSeconds", policy.get("maxModelAgeSeconds")),
+                       ("maxModelMarketSkewSeconds",
+                        policy.get("maxModelMarketSkewSeconds"))):
         try:
-            value = _decimal(raw, f"timingPolicy.{name}")
-            if value <= 0:
-                timing_problems.append(
-                    f"timingPolicy.{name} must be strictly positive")
+            parsed = _decimal(raw, f"timingPolicy.{pname}")
+            if parsed <= 0:
+                timing_problems.append(f"timingPolicy.{pname} must be > 0")
+            elif pname == "maxModelAgeSeconds":
+                max_age = parsed
+            else:
+                max_skew = parsed
         except _ShapeError as exc:
             timing_problems.append(str(exc))
 
-    generated_at_subject = None
-    raw_generated = evidence.get("generatedAt")
-    if isinstance(raw_generated, str):
+    # -- parse production time (subject generatedAt) -------------------------
+    generated_dt = None
+    raw_gen = evidence.get("generatedAt")
+    if isinstance(raw_gen, str):
         try:
-            generated_at_subject = datetime.fromisoformat(raw_generated)
+            generated_dt = datetime.fromisoformat(raw_gen)
         except (ValueError, TypeError):
             pass
-    model_evidence_hist = evidence.get("modelEvidence") if isinstance(
-        evidence.get("modelEvidence"), Mapping) else None
+    if generated_dt is None or generated_dt.tzinfo is None:
+        timing_problems.append(
+            f"subject generatedAt must be a timezone-aware ISO timestamp, "
+            f"got {raw_gen!r}")
 
-    def _timing_dimension_entry():
-        comparability = evidence.get("comparability") if isinstance(
-            evidence.get("comparability"), Mapping) else None
-        if comparability is None:
-            return None
+    # -- parse model valuationAsOf (required when model exists) --------------
+    model_valuation_dt = None
+    if model_hist is not None:
+        raw_val = model_hist.get("valuationAsOf")
+        if isinstance(raw_val, str):
+            try:
+                model_valuation_dt = datetime.fromisoformat(raw_val)
+            except (ValueError, TypeError):
+                pass
+        if model_valuation_dt is None or model_valuation_dt.tzinfo is None:
+            timing_problems.append(
+                f"model valuationAsOf must be a timezone-aware ISO "
+                f"timestamp, got {raw_val!r}")
+        elif generated_dt is not None and model_valuation_dt > generated_dt:
+            timing_problems.append(
+                "model valuationAsOf is future relative to subject "
+                "production authority")
+
+    # -- parse R7 oracle reference observation --------------------------------
+    r7 = None
+    if isinstance(upstream, Mapping):
+        raw_r8 = upstream.get("r8ExecutionEvidence")
+        if isinstance(raw_r8, Mapping):
+            r8_up = raw_r8.get("upstreamEvidence")
+            if isinstance(r8_up, Mapping):
+                raw_r7 = r8_up.get("r7CrossMarketEvidence")
+                if isinstance(raw_r7, Mapping):
+                    r7 = raw_r7
+    oracle = None
+    oracle_observed_dt = None
+    if isinstance(r7, Mapping):
+        layers = r7.get("layers")
+        if isinstance(layers, Mapping):
+            raw_oracle = layers.get("oracleReference")
+            if isinstance(raw_oracle, Mapping):
+                oracle = raw_oracle
+                raw_obs = oracle.get("observedAt")
+                if isinstance(raw_obs, str):
+                    try:
+                        oracle_observed_dt = datetime.fromisoformat(raw_obs)
+                    except (ValueError, TypeError):
+                        pass
+    # When model evidence is present and an available R7 oracle exists,
+    # a missing/malformed oracle observedAt is a timing authority failure.
+    if model_hist is not None and oracle is not None and (
+        oracle.get("status") == "AVAILABLE"
+    ):
+        if not isinstance(raw_obs := oracle.get("observedAt"), str):
+            timing_problems.append(
+                "R7 oracle observedAt missing or malformed; required for "
+                "historical timing reconstruction")
+        elif oracle_observed_dt is None:
+            timing_problems.append(
+                f"R7 oracle observedAt {raw_obs!r} is not a parsable "
+                "timestamp")
+
+    # -- reconstruct expected TIMING dimension --------------------------------
+    expected_ok = True
+    expected_gap = None
+    if model_hist is not None and not timing_problems:
+        # 1. future model → invalid
+        if model_valuation_dt is not None and generated_dt is not None:
+            if model_valuation_dt.tzinfo is None:
+                timing_problems.append("model valuationAsOf is naive")
+            elif model_valuation_dt > generated_dt:
+                pass  # already added as timing_problems above
+            # 2. age check
+            elif max_age is not None:
+                age = _decimal_seconds(generated_dt - model_valuation_dt)
+                if age > max_age:
+                    expected_ok = False
+                    expected_gap = "MODEL_STALE"
+                # 3. reference skew check (using R7 oracle observedAt)
+                elif (oracle_observed_dt is not None
+                      and oracle_observed_dt.tzinfo is not None
+                      and max_skew is not None):
+                    skew = _decimal_seconds(
+                        abs(model_valuation_dt - oracle_observed_dt))
+                    if skew > max_skew:
+                        expected_ok = False
+                        expected_gap = "TIMING_SKEW_INVALID"
+
+    # -- compare expected vs serialized TIMING dimension (bidirectional) -----
+    comparability = evidence.get("comparability") if isinstance(
+        evidence.get("comparability"), Mapping) else None
+    timing_dim = None
+    if isinstance(comparability, Mapping):
         dims = comparability.get("dimensions") if isinstance(
             comparability.get("dimensions"), list) else []
         for entry in dims:
             if isinstance(entry, Mapping) and entry.get(
                 "dimension"
             ) == "TIMING":
-                return entry
-        return None
+                timing_dim = entry
+                break
 
-    max_age = None
-    max_skew = None
-    try:
-        if max_age_raw is not None:
-            max_age = _decimal(max_age_raw, "maxModelAgeSeconds")
-        if max_skew_raw is not None:
-            max_skew = _decimal(max_skew_raw, "maxModelMarketSkewSeconds")
-    except _ShapeError:
-        pass
+    if model_hist is not None and timing_dim is not None:
+        serialized_ok = timing_dim.get("ok")
+        serialized_gap = timing_dim.get("gapKind")
+        if serialized_ok != expected_ok or serialized_gap != expected_gap:
+            # Bidirectional: stale/fresh and skew/ok in both directions
+            timing_problems.append(
+                f"serialized TIMING dimension (ok={serialized_ok!r}, "
+                f"gapKind={serialized_gap!r}) does not match the "
+                f"independently reconstructed result from embedded R7 "
+                f"oracle evidence (ok={expected_ok!r}, "
+                f"gapKind={expected_gap!r})")
+        elif not expected_ok and expected_gap:
+            # The independently reconstructed result IS a gap; require the
+            # serialized dimension to carry the same gapKind.
+            timing_problems.append(
+                f"serialized TIMING dimension marked ok but independent "
+                f"reconstruction yields {expected_gap}")
+            expected_ok = False
 
-    if model_evidence_hist is not None and generated_at_subject is not None:
-        raw_valuation = model_evidence_hist.get("valuationAsOf")
-        if isinstance(raw_valuation, str):
-            try:
-                valuation = datetime.fromisoformat(raw_valuation)
-            except (ValueError, TypeError):
-                valuation = None
-            if valuation is not None and valuation.tzinfo is not None:
-                if valuation > generated_at_subject:
-                    timing_problems.append(
-                        "model valuationAsOf is future relative to subject "
-                        "production authority")
-                elif max_age is not None:
-                    age = _decimal_seconds(generated_at_subject - valuation)
-                    timing_dim = _timing_dimension_entry()
-                    timing_ok = (timing_dim is not None
-                                 and timing_dim.get("ok") is True)
-                    if age > max_age and timing_ok:
-                        timing_problems.append(
-                            f"model age {age}s exceeds policy {max_age}s "
-                            "but the serialized TIMING dimension is marked "
-                            "ok (stale model relabeled)")
-
-    if (model_evidence_hist is not None and reference_comparison is not None
-            and generated_at_subject is not None):
-        raw_valuation = model_evidence_hist.get("valuationAsOf")
-        raw_ref_at = reference_comparison.get("referenceObservedAt")
-        if isinstance(raw_valuation, str) and isinstance(raw_ref_at, str):
-            try:
-                valuation = datetime.fromisoformat(raw_valuation)
-                ref_at = datetime.fromisoformat(raw_ref_at)
-            except (ValueError, TypeError):
-                valuation = ref_at = None
-            if (valuation is not None and ref_at is not None
-                    and valuation.tzinfo is not None
-                    and ref_at.tzinfo is not None and max_skew is not None):
-                skew = _decimal_seconds(abs(valuation - ref_at))
-                timing_dim = _timing_dimension_entry()
-                timing_ok = (timing_dim is not None
-                             and timing_dim.get("ok") is True)
-                if skew > max_skew and timing_ok:
-                    timing_problems.append(
-                        f"model/reference skew {skew}s exceeds "
-                        f"maxModelMarketSkewSeconds {max_skew}s but the "
-                        "serialized TIMING dimension is marked ok")
-
-    for row in execution_comparisons or []:
-        if not isinstance(row, Mapping):
-            continue
-        raw_exec_at = row.get("executionObservedAt")
-        if (model_evidence_hist is not None and isinstance(raw_exec_at, str)
-                and isinstance(
-                    model_evidence_hist.get("valuationAsOf"), str)
-                and max_skew is not None):
-            try:
-                exec_at = datetime.fromisoformat(raw_exec_at)
-                valuation = datetime.fromisoformat(
-                    model_evidence_hist["valuationAsOf"])
-            except (ValueError, TypeError):
+    # -- execution row timing ------------------------------------------------
+    execution_comparisons = evidence.get("executionComparisons") if isinstance(
+        evidence.get("executionComparisons"), list) else []
+    if model_hist is not None and max_skew is not None:
+        for row in execution_comparisons:
+            if not isinstance(row, Mapping):
                 continue
-            if exec_at.tzinfo is None or valuation.tzinfo is None:
-                continue
-            skew = _decimal_seconds(abs(valuation - exec_at))
-            if skew > max_skew:
+            raw_exec = row.get("executionObservedAt")
+            if not isinstance(raw_exec, str):
                 timing_problems.append(
                     f"execution row {row.get('side')}/"
-                    f"{row.get('requestedNotionalUsd')} retained outside "
-                    f"skew policy (skew {skew}s > {max_skew}s)")
+                    f"{row.get('requestedNotionalUsd')} carries no "
+                    "executionObservedAt")
+                continue
+            try:
+                exec_dt = datetime.fromisoformat(raw_exec)
+            except (ValueError, TypeError):
+                timing_problems.append(
+                    f"execution row {row.get('side')}/"
+                    f"{row.get('requestedNotionalUsd')} has malformed "
+                    f"executionObservedAt {raw_exec!r}")
+                continue
+            if exec_dt.tzinfo is None:
+                timing_problems.append(
+                    f"execution row {row.get('side')}/"
+                    f"{row.get('requestedNotionalUsd')} has naive "
+                    "executionObservedAt")
+                continue
+            if model_valuation_dt is not None and exec_dt > generated_dt:
+                timing_problems.append(
+                    f"execution row {row.get('side')}/"
+                    f"{row.get('requestedNotionalUsd')} has future "
+                    "executionObservedAt")
+                continue
+            if model_valuation_dt is not None and model_valuation_dt.tzinfo is not None:
+                skew = _decimal_seconds(
+                    abs(model_valuation_dt - exec_dt))
+                if skew > max_skew:
+                    timing_problems.append(
+                        f"execution row {row.get('side')}/"
+                        f"{row.get('requestedNotionalUsd')} retained "
+                        f"outside skew policy (skew {skew}s > {max_skew}s)")
 
+    # -- emit exactly one HISTORICAL_TIMING check -----------------------------
     if timing_problems:
         collector.fail(
             "HISTORICAL_TIMING", VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
             "R11_VERIFIER", "; ".join(timing_problems))
-        return
-
-    # C2: bidirectional verification of the serialized TIMING dimension
-    model_hist = evidence.get("modelEvidence") if isinstance(
-        evidence.get("modelEvidence"), Mapping) else None
-    if model_hist is not None:
-        expected_ok = True
-        expected_gap = None
-        raw_val = model_hist.get("valuationAsOf")
-        raw_gen = evidence.get("generatedAt")
-        if isinstance(raw_val, str) and isinstance(raw_gen, str):
-            try:
-                val_dt = datetime.fromisoformat(raw_val)
-                gen_dt = datetime.fromisoformat(raw_gen)
-            except (ValueError, TypeError):
-                val_dt = gen_dt = None
-            if (val_dt is not None and gen_dt is not None
-                    and max_age is not None):
-                age = _decimal_seconds(gen_dt - val_dt)
-                if age > max_age:
-                    expected_ok = False
-                    expected_gap = "MODEL_STALE"
-                elif (reference_comparison is not None
-                      and isinstance(reference_comparison, Mapping)
-                      and max_skew is not None):
-                    raw_ref = reference_comparison.get("referenceObservedAt")
-                    if isinstance(raw_ref, str):
-                        try:
-                            ref_dt = datetime.fromisoformat(raw_ref)
-                        except (ValueError, TypeError):
-                            ref_dt = None
-                        if ref_dt is not None and ref_dt.tzinfo is not None:
-                            skew = _decimal_seconds(abs(val_dt - ref_dt))
-                            if skew > max_skew:
-                                expected_ok = False
-                                expected_gap = "TIMING_SKEW_INVALID"
-        comparability = evidence.get("comparability") if isinstance(
-            evidence.get("comparability"), Mapping) else None
-        timing_dim = None
-        if isinstance(comparability, Mapping):
-            dims = comparability.get("dimensions") if isinstance(
-                comparability.get("dimensions"), list) else []
-            for entry in dims:
-                if isinstance(entry, Mapping) and entry.get(
-                    "dimension"
-                ) == "TIMING":
-                    timing_dim = entry
-                    break
-        if timing_dim is not None:
-            serialized_ok = timing_dim.get("ok")
-            serialized_gap = timing_dim.get("gapKind")
-            if serialized_ok != expected_ok or serialized_gap != expected_gap:
-                collector.fail(
-                    "HISTORICAL_TIMING",
-                    VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-                    "R11_VERIFIER",
-                    f"serialized TIMING dimension (ok={serialized_ok!r}, "
-                    f"gapKind={serialized_gap!r}) does not match the "
-                    f"independently reconstructed result "
-                    f"(ok={expected_ok!r}, gapKind={expected_gap!r})")
-                return
-        if not expected_ok:
-            collector.fail(
-                "HISTORICAL_TIMING",
-                VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-                "R11_VERIFIER",
-                f"independently reconstructed timing gap: {expected_gap}")
-            return
-        # Per-execution-row skew
-        for row in execution_comparisons or []:
-            if not isinstance(row, Mapping):
-                continue
-            raw_exec = row.get("executionObservedAt")
-            if not isinstance(raw_exec, str) or not isinstance(
-                model_hist.get("valuationAsOf"), str
-            ):
-                continue
-            try:
-                exec_dt = datetime.fromisoformat(raw_exec)
-                val_dt = datetime.fromisoformat(model_hist["valuationAsOf"])
-            except (ValueError, TypeError):
-                continue
-            if exec_dt.tzinfo is None or val_dt.tzinfo is None:
-                continue
-            if max_skew is not None:
-                skew = _decimal_seconds(abs(val_dt - exec_dt))
-                if skew > max_skew:
-                    collector.fail(
-                        "HISTORICAL_TIMING",
-                        VerificationGapKind.SUBJECT_CONTRACT_MISMATCH,
-                        "R11_VERIFIER",
-                        f"execution row skew {skew}s exceeds policy "
-                        f"{max_skew}s")
-                    return
-
-    # C3: no-model subjects get HISTORICAL_TIMING as UNAVAILABLE
-    if "HISTORICAL_TIMING" not in collector.checks:
-        if model_evidence is None:
-            collector.unavailable(
-                "HISTORICAL_TIMING",
-                "no model timing authority to verify; HISTORICAL_TIMING is "
-                "explicitly not applicable for this subject")
-        else:
-            collector.pass_(
-                "HISTORICAL_TIMING",
-                "historical timing semantics verified against subject "
-                "production-time authority; no R11 wall-clock freshness "
-                "applied")
+    elif no_model:
+        collector.unavailable(
+            "HISTORICAL_TIMING",
+            "no model timing authority to verify; HISTORICAL_TIMING is "
+            "explicitly not applicable for this subject")
+    else:
+        collector.pass_(
+            "HISTORICAL_TIMING",
+            "historical timing semantics independently reconstructed from "
+            "embedded R7 oracle evidence; no R11 wall-clock freshness "
+            "applied")
 
     # ---- status ------------------------------------------------------------------
     checks = collector.ordered_checks()
@@ -1643,7 +1620,8 @@ def _verify_execution_rows(
                 f"venue={key[2]!r})")
         seen_keys[key] = seen_keys.get(key, 0) + 1
         canonical.append((key, scenario))
-    canonical.sort(key=lambda item: (item[0][0], item[0][1], item[0][2]))
+    canonical.sort(key=lambda item: (str(item[0][0]), str(item[0][1]),
+                                     str(item[0][2])))
     canonical_index = {item[0]: i for i, item in enumerate(canonical)}
     r8_key = (r8 or {}).get("canonicalAssetKey") or {}
     model_value = None
