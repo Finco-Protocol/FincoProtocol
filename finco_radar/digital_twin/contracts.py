@@ -26,6 +26,10 @@ PHASE = "R12"
 R11_VERIFIED_ANCHOR = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
 R11_VERIFIED_TREE = "fba9d76d9dceee35d079563b115fdde90c40bd46"
 # The R0-R11 freeze anchor (the R11 merge commit that R12 builds from)
+# R10 authority verified by R11 (historical claim inside R11 evidence)
+R10_FREEZE_ANCHOR = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
+R10_FREEZE_TREE = "fba9d76d9dceee35d079563b115fdde90c40bd46"
+# R11 authority consumed by R12 (the R11 merge commit)
 R11_FREEZE_ANCHOR = "97030e6164b66dc942c9d005a1f2f4ba169ca81b"
 R11_FREEZE_TREE = "348fa9bd465bdf0e8c5b2a1b22d0f65ba8cef37a"
 
@@ -247,6 +251,13 @@ def verify_serialized_r12_evidence(evidence: Any) -> bool:
     if evidence.get("phase") != PHASE:
         return False
     if type(evidence.get("synthetic")) is not bool:
+        return False
+    boundaries = evidence.get("boundaries")
+    if not isinstance(boundaries, Mapping):
+        return False
+    if boundaries.get("digitalTwinAuthority") != "R12_APPLIED":
+        return False
+    if boundaries.get("verificationAuthority") != "R11_APPLIED":
         return False
     material = plain(evidence)
     recorded = material.pop("r12SnapshotDigest")

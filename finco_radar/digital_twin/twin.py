@@ -94,15 +94,6 @@ def build_digital_twin(
             f"({reconstructed[:16]} != {recorded_digest[:16]})",
             DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # Frozen R11 serialized verifier as secondary cross-check
-    from finco_radar.verification.contracts import (
-        verify_serialized_r11_evidence,
-    )
-    if not verify_serialized_r11_evidence(r11_evidence):
-        raise TwinError(
-            "frozen R11 verifier cross-check failed",
-            DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
-
     # Freeze authority handshake
     from finco_radar.verification.contracts import (
         R10_FREEZE_ANCHOR, R10_FREEZE_TREE,
@@ -118,13 +109,24 @@ def build_digital_twin(
             "freeze tree",
             DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # R11 status must be VERIFICATION_OK
+    # R11 status must be VERIFICATION_OK (checked before frozen verifier
+    # cross-check so a resealed status mutation produces the specific
+    # VERIFICATION_REJECTED status, not a generic EVIDENCE_MISMATCH)
     r11_status = r11_evidence.get("status")
     if r11_status != "VERIFICATION_OK":
         raise TwinError(
             f"R11 status is {r11_status!r}, not VERIFICATION_OK; R12 "
             "cannot construct an authoritative twin",
             DigitalTwinStatus.DIGITAL_TWIN_VERIFICATION_REJECTED)
+
+    # Frozen R11 serialized verifier as secondary cross-check
+    from finco_radar.verification.contracts import (
+        verify_serialized_r11_evidence,
+    )
+    if not verify_serialized_r11_evidence(r11_evidence):
+        raise TwinError(
+            "frozen R11 verifier cross-check failed",
+            DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
     # Economic identity
     uid = r11_evidence.get("economicAssetUid")
