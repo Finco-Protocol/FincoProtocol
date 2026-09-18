@@ -209,6 +209,34 @@ def decimal_from_evidence(value: Any, field_name: str = "value") -> Decimal:
     )
 
 
+def datetime_from_evidence(value: Any, field_name: str) -> datetime:
+    """I3: the single canonical parser for every timestamp parsed from
+    serialized evidence.  Requires a string representation, catches
+    ValueError/TypeError, requires timezone awareness, and raises typed R10
+    errors (INPUT_INVALID for malformed values, TIMING_INVALID for naive
+    timestamps) - raw datetime parsing exceptions never leak."""
+    if not isinstance(value, str) or not value.strip():
+        raise ModelRadarError(
+            f"{field_name} must be a timestamp string in the source "
+            f"evidence, got {value!r}",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (ValueError, TypeError) as exc:
+        raise ModelRadarError(
+            f"{field_name} is not a parsable ISO timestamp in the source "
+            f"evidence: {value!r}",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        ) from exc
+    if parsed.tzinfo is None or parsed.tzinfo.utcoffset(parsed) is None:
+        raise ModelRadarError(
+            f"{field_name} must be timezone-aware (got naive {value!r})",
+            ModelRadarStatus.MODEL_RADAR_TIMING_INVALID,
+        )
+    return parsed
+
+
 def require_positive_decimal(value, name: str) -> None:
     """H3: positive-domain authorities fail at the boundary, never after a
     nominally COMPARABLE resolution."""
@@ -407,6 +435,14 @@ class ModelEvidence:
                     "(ModelEngineAuthority)",
                     ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
                 ) from exc
+        if self.synthetic is not True and self.synthetic is not False:
+            # I4: synthetic provenance is an exact Python boolean at the
+            # model boundary; 0/1/"false"/"true"/None are typed errors.
+            raise ModelRadarError(
+                f"synthetic must be an exact boolean, got "
+                f"{self.synthetic!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
         if not isinstance(self.engine_authority, ModelEngineAuthority):
             raise ModelRadarError(
                 f"engine_authority {self.engine_authority!r} is not an exact "
@@ -481,6 +517,14 @@ class ModelEvidence:
                     "(ModelEngineAuthority)",
                     ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
                 ) from exc
+        if self.synthetic is not True and self.synthetic is not False:
+            # I4: synthetic provenance is an exact Python boolean at the
+            # model boundary; 0/1/"false"/"true"/None are typed errors.
+            raise ModelRadarError(
+                f"synthetic must be an exact boolean, got "
+                f"{self.synthetic!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
         if not isinstance(self.engine_authority, ModelEngineAuthority):
             raise ModelRadarError(
                 f"engine_authority {self.engine_authority!r} is not an exact "
@@ -697,6 +741,19 @@ class ModelEvidence:
                 "model input authority declares a unit multiplier but the "
                 "evidence carries none; a source authority cannot be "
                 "silently dropped",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        # I6: symmetric H1 closure - output evidence must not independently
+        # carry multiplier semantics when no input-authoritative multiplier
+        # exists.  Such claims are never silently discarded.
+        if self.unit_multiplier is None and (
+            "unitMultiplier" in output or "unitMultiplierBasis" in output
+        ):
+            raise ModelRadarError(
+                "model output observation declares multiplier semantics "
+                "(unitMultiplier/unitMultiplierBasis) but no "
+                "input-authoritative multiplier exists; an output-only "
+                "multiplier claim is not model authority",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
         if self.value_original_representation == "":
@@ -925,6 +982,20 @@ class ExecutionComparison:
     quote_source: str
     r8_net_edge_state: str
     r8_scenario_index: int
+    execution_currency: str = "USD"
+    execution_observed_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        # I1: no execution row may omit its currency authority.
+        if not self.execution_currency or not isinstance(
+            self.execution_currency, str
+        ):
+            raise ModelRadarError(
+                "execution comparison must carry explicit execution currency",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
+        if self.execution_observed_at is not None:
+            _require_aware(self.execution_observed_at, "execution_observed_at")
 
     def to_evidence_dict(self) -> dict[str, Any]:
         return {
@@ -932,6 +1003,11 @@ class ExecutionComparison:
             "executionPrice": str(self.execution_price),
             "executionMinusModelValue": str(self.execution_minus_model_value),
             "executionVsModelBps": str(self.execution_vs_model_bps),
+            "executionCurrency": self.execution_currency,
+            "executionObservedAt": (
+                self.execution_observed_at.isoformat()
+                if self.execution_observed_at is not None else None
+            ),
             "side": self.side,
             "requestedNotionalUsd": self.requested_notional_usd,
             "quoteSource": self.quote_source,

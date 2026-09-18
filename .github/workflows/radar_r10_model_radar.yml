@@ -422,6 +422,105 @@ jobs:
                 "missing_provenance_rejected=true "
                 "malformed_market_decimal_typed=true")
           PY
+      - name: Correction D I1-I6 gate - execution currency authority, execution timing, datetime boundary, synthetic booleans, context positivity, output-only multiplier
+        run: |
+          python - <<'PY'
+          import sys
+          from datetime import datetime, timedelta, timezone
+          from decimal import Decimal
+          sys.path.insert(0, "tests")
+          sys.path.insert(0, ".")
+          from test_radar_r10_model_radar import (
+              FULL, NOW, POLICY, _chain, _live_chain, _model,
+          )
+          from finco_radar.model_radar.bridge import build_model_radar_snapshot
+          from finco_radar.model_radar.comparisons import MarketComparabilityContext
+          from finco_radar.model_radar.contracts import (
+              ModelRadarError, ModelRadarGapKind, ModelRadarStatus,
+              ModelUnitBasis, datetime_from_evidence,
+          )
+
+          # I1: EUR model + EUR reference can never be directly compared
+          # with USD execution evidence; no hidden FX appears.
+          r9, r8 = _chain(**FULL, oracle_currency="EUR")
+          snapshot = build_model_radar_snapshot(
+              r9_evidence=r9, r8_evidence=r8,
+              model_evidence=_model(value=Decimal("100"), currency="EUR"),
+              timing_policy=POLICY, now=NOW, git_head="gate")
+          assert snapshot.reference_comparison is not None
+          assert len(snapshot.execution_comparisons) == 0
+          kinds = {g.gap_kind for g in snapshot.gaps}
+          assert ModelRadarGapKind.CURRENCY_MISMATCH in kinds
+          assert ModelRadarGapKind.FX_AUTHORITY_UNAVAILABLE in kinds
+          blob = repr(snapshot.to_evidence_dict()["executionComparisons"])
+          assert "EUR" not in blob
+          assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+          # I2: model-vs-execution skew outside policy suppresses only the
+          # skewed scenario; the reference comparison survives.
+          def m(e):
+              e["scenarios"][0]["quoteObservedAt"] = (
+                  (NOW - timedelta(seconds=301)).isoformat())
+          r9b, r8b = _chain(**FULL, mutate_r8=m)
+          snapshot2 = build_model_radar_snapshot(
+              r9_evidence=r9b, r8_evidence=r8b,
+              model_evidence=_model(value=Decimal("100")),
+              timing_policy=POLICY, now=NOW, git_head="gate")
+          assert len(snapshot2.execution_comparisons) == 3
+          assert snapshot2.reference_comparison is not None
+          assert any(g.gap_kind is ModelRadarGapKind.TIMING_SKEW_INVALID
+                     for g in snapshot2.gaps)
+
+          # I3: malformed execution/reference timestamps fail typed closed.
+          for bad in ("abc", "2026-09-17T12:00:00"):
+              try:
+                  datetime_from_evidence(bad, "x")
+                  raise SystemExit(f"I3_BLOCKED: {bad!r} accepted")
+              except ModelRadarError as exc:
+                  expected = (ModelRadarStatus.MODEL_RADAR_TIMING_INVALID
+                              if bad.startswith("2026")
+                              else ModelRadarStatus.MODEL_RADAR_INPUT_INVALID)
+                  assert exc.status is expected, bad
+
+          # I4: malformed ModelEvidence synthetic provenance fails.
+          for bad in (0, 1, "false", "true", None):
+              try:
+                  _model(synthetic=bad)
+                  raise SystemExit(f"I4_BLOCKED: {bad!r} accepted")
+              except ModelRadarError as exc:
+                  assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+          # I5: context reference price positive domain.
+          for bad in (Decimal("0"), Decimal("-1")):
+              try:
+                  MarketComparabilityContext(
+                      reference_price=bad, reference_currency="USD",
+                      reference_source="R7", reference_observed_at=NOW)
+                  raise SystemExit("I5_BLOCKED: non-positive reference accepted")
+              except ModelRadarError as exc:
+                  assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+          # I6: output-only multiplier authority fails.
+          for extra in ({"unitMultiplier": "5"},
+                        {"unitMultiplierBasis": "PER_SHARE"},
+                        {"unitMultiplier": "5",
+                         "unitMultiplierBasis": "PER_SHARE"}):
+              try:
+                  _model(output_evidence={
+                      "value": "100",
+                      "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+                      "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT",
+                      "valuationAsOf": NOW.isoformat(), **extra})
+                  raise SystemExit("I6_BLOCKED: output-only multiplier accepted")
+              except ModelRadarError as exc:
+                  assert exc.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+          print("R10_CORRECTION_D_I1_I6_GATE_PASS "
+                "execution_currency_authority=true hidden_fx_absent=true "
+                "execution_skew_scoped=true datetime_boundary_typed=true "
+                "synthetic_exact_boolean=true context_positive_reference=true "
+                "output_only_multiplier_rejected=true")
+          PY
       - name: Run frozen R9 asset-graph regression
         env:
           RADAR_R9_EVIDENCE_PATH: artifacts/radar_r9_regression_on_r10.json

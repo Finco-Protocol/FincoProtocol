@@ -40,6 +40,7 @@ from finco_radar.model_radar.comparisons import (
 )
 from finco_radar.model_radar.contracts import (
     PHASE,
+    datetime_from_evidence,
     decimal_from_authority,
     SCHEMA_VERSION,
     ComparabilityDimension,
@@ -104,7 +105,8 @@ def _digest(payload) -> str:
 # --------------------------------------------------------------------------
 
 def _rich_r7(uid=UID, key=KEY, oracle_price="105",
-             oracle_multiplier="1", token_multiplier="1"):
+             oracle_multiplier="1", token_multiplier="1",
+             oracle_currency="USD"):
     evidence = {
         "schemaVersion": "radar-r7-cross-market-v1",
         "phase": "R7",
@@ -126,7 +128,7 @@ def _rich_r7(uid=UID, key=KEY, oracle_price="105",
                    "observedAt": None},
             "oracleReference": {
                 "status": "AVAILABLE", "source": "ROBINHOOD_RHJ",
-                "price": str(oracle_price), "currency": "USD",
+                "price": str(oracle_price), "currency": oracle_currency,
                 "observedAt": NOW.isoformat(), "instrument": uid,
                 "multiplier": oracle_multiplier, "usable": True,
                 "assetUid": uid,
@@ -219,10 +221,12 @@ def _r8_scenario(side, notional, uid=UID, key=KEY):
 
 
 def _r8_evidence(uid=UID, key=KEY, exec_prices=None, oracle_price="105",
-                 oracle_multiplier="1", token_multiplier="1"):
+                 oracle_multiplier="1", token_multiplier="1",
+                 oracle_currency="USD"):
     r7 = _rich_r7(uid=uid, key=key, oracle_price=oracle_price,
                   oracle_multiplier=oracle_multiplier,
-                  token_multiplier=token_multiplier)
+                  token_multiplier=token_multiplier,
+                  oracle_currency=oracle_currency)
     combos = (
         (QuoteSide.BUY, "100"), (QuoteSide.BUY, "1000"),
         (QuoteSide.SELL, "100"), (QuoteSide.SELL, "1000"),
@@ -264,14 +268,16 @@ def _r9_evidence(uid=UID, key=KEY, oracle_price="105", exec_prices=None):
 
 
 def _chain(uid=UID, key=KEY, oracle_price="105", exec_prices=None,
-           mutate_r8=None, oracle_multiplier="1", token_multiplier="1"):
+           mutate_r8=None, oracle_multiplier="1", token_multiplier="1",
+           oracle_currency="USD"):
     """Build ONE deterministic R8 evidence, optionally mutate it (resealing
     required), then derive the R9 evidence from exactly that R8 — so the F3
     canonical binding between supplied and embedded R8 always holds."""
     r8 = _r8_evidence(uid=uid, key=key, exec_prices=exec_prices,
                       oracle_price=oracle_price,
                       oracle_multiplier=oracle_multiplier,
-                      token_multiplier=token_multiplier)
+                      token_multiplier=token_multiplier,
+                      oracle_currency=oracle_currency)
     if mutate_r8 is not None:
         mutate_r8(r8)
         _reseal_r8(r8)
@@ -2598,3 +2604,290 @@ def test_ca_h4_06_positive_reference_only_partial_still_passes():
             ComparabilityDimension.REFERENCE_AVAILABILITY:
                 ModelRadarGapKind.REFERENCE_UNAVAILABLE}))
     assert comparability.state is ComparabilityState.PARTIALLY_COMPARABLE
+
+
+# --------------------------------------------------------------------------
+# Correction D - I1: independent execution currency authority
+# --------------------------------------------------------------------------
+
+def test_ca_i1_01_usd_usd_usd_passes_with_currency_authority():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_OK
+    assert snapshot.reference_comparison is not None
+    assert len(snapshot.execution_comparisons) == 4
+    for row in snapshot.execution_comparisons:
+        evidence = row.to_evidence_dict()
+        assert evidence["executionCurrency"] == "USD"
+        assert evidence["executionObservedAt"] is not None
+
+
+def test_ca_i1_02_eur_model_eur_reference_usd_execution_split():
+    """Model EUR + reference EUR stays reference-comparable; the USD
+    execution comparison is suppressed with typed currency incompatibility
+    and the snapshot remains PARTIAL."""
+    r9, r8 = _chain(**FULL, oracle_currency="EUR")
+    snapshot = _bridge(r9, model=_model(value=Decimal("100"),
+                                        currency="EUR"), r8=r8)
+    assert snapshot.comparability.state is ComparabilityState.COMPARABLE
+    assert snapshot.reference_comparison is not None
+    assert snapshot.execution_comparisons == ()
+    kinds = {g.gap_kind for g in snapshot.gaps}
+    assert ModelRadarGapKind.CURRENCY_MISMATCH in kinds
+    assert ModelRadarGapKind.FX_AUTHORITY_UNAVAILABLE in kinds
+    sources = {g.source for g in snapshot.gaps}
+    assert "R8_EXECUTION_SIMULATOR_AUTHORITY" in sources
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+
+def test_ca_i1_03_eur_model_usd_reference_blocked():
+    r9, r8 = _chain(**FULL)  # reference is USD
+    snapshot = _bridge(r9, model=_model(value=Decimal("100"),
+                                        currency="EUR"), r8=r8)
+    assert snapshot.reference_comparison is None
+    assert snapshot.execution_comparisons == ()
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+
+def test_ca_i1_04_usd_model_eur_reference_blocked_conservatively():
+    """v1 requires reference authority before any execution comparison; a
+    failed reference comparison is never bypassed via execution evidence."""
+    r9, r8 = _chain(**FULL, oracle_currency="EUR")
+    snapshot = _bridge(r9, model=_model(value=Decimal("100"),
+                                        currency="USD"), r8=r8)
+    assert snapshot.reference_comparison is None
+    assert snapshot.execution_comparisons == ()
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+
+def test_ca_i1_05_stablecoin_is_not_implicit_usd():
+    r9, r8 = _chain(**FULL)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100"),
+                                        currency="USDC"), r8=r8)
+    kinds = {g.gap_kind for g in snapshot.gaps}
+    assert ModelRadarGapKind.CURRENCY_MISMATCH in kinds
+    assert snapshot.execution_comparisons == ()
+    assert snapshot.reference_comparison is None
+
+
+def test_ca_i1_06_no_execution_row_omits_currency_authority():
+    snapshot = _full_snapshot()
+    for row in snapshot.to_evidence_dict()["executionComparisons"]:
+        assert row["executionCurrency"] == "USD"
+        assert row["executionObservedAt"]
+
+
+# --------------------------------------------------------------------------
+# Correction D - I2: execution timing authority
+# --------------------------------------------------------------------------
+
+def test_ca_i2_01_execution_skew_exact_boundary_passes():
+    def m(e):
+        for scenario in e["scenarios"]:
+            scenario["quoteObservedAt"] = (
+                (NOW - timedelta(seconds=300)).isoformat())
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert len(snapshot.execution_comparisons) == 4
+
+
+def test_ca_i2_02_execution_skew_plus_one_microsecond_blocked():
+    skewed = (NOW - timedelta(seconds=300, microseconds=1)).isoformat()
+
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = skewed
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert len(snapshot.execution_comparisons) == 3
+    assert any(g.gap_kind is ModelRadarGapKind.TIMING_SKEW_INVALID
+               for g in snapshot.gaps)
+
+
+def test_ca_i2_03_missing_quote_observed_at_typed_gap():
+    def m(e):
+        for scenario in e["scenarios"]:
+            scenario.pop("quoteObservedAt", None)
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.execution_comparisons == ()
+    assert any(g.gap_kind is ModelRadarGapKind.EXECUTION_EVIDENCE_UNAVAILABLE
+               for g in snapshot.gaps)
+
+
+def test_ca_i2_04_malformed_quote_observed_at_typed_error():
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = "abc"
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i2_05_naive_quote_timestamp_typed_timing_error():
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = (
+            (NOW - timedelta(seconds=10)).replace(tzinfo=None).isoformat())
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_TIMING_INVALID
+
+
+def test_ca_i2_06_future_quote_timestamp_typed_timing_error():
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = (
+            (NOW + timedelta(seconds=10)).isoformat())
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_TIMING_INVALID
+
+
+def test_ca_i2_07_one_stale_scenario_does_not_suppress_three_valid():
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = (
+            (NOW - timedelta(seconds=301)).isoformat())
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert len(snapshot.execution_comparisons) == 3
+    assert snapshot.reference_comparison is not None
+
+
+def test_ca_i2_08_reference_survives_execution_only_timing_failure():
+    def m(e):
+        e["scenarios"][0]["quoteObservedAt"] = (
+            (NOW - timedelta(seconds=301)).isoformat())
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    snapshot = _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert snapshot.reference_comparison is not None
+    assert snapshot.reference_comparison.reference_vs_model_bps == Decimal("500")
+    assert snapshot.status is ModelRadarStatus.MODEL_RADAR_PARTIAL
+
+
+# --------------------------------------------------------------------------
+# Correction D - I3: canonical typed datetime boundary
+# --------------------------------------------------------------------------
+
+def test_ca_i3_01_abc_timestamp_typed():
+    with pytest.raises(ModelRadarError) as excinfo:
+        datetime_from_evidence("abc", "field")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i3_02_missing_timestamp_typed():
+    with pytest.raises(ModelRadarError) as excinfo:
+        datetime_from_evidence(None, "field")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i3_03_naive_iso_timestamp_timing_invalid():
+    with pytest.raises(ModelRadarError) as excinfo:
+        datetime_from_evidence("2026-09-17T12:00:00", "field")
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_TIMING_INVALID
+
+
+def test_ca_i3_04_valid_utc_accepted():
+    parsed = datetime_from_evidence("2026-09-17T12:00:00+00:00", "field")
+    assert parsed.utcoffset().total_seconds() == 0
+
+
+def test_ca_i3_05_valid_non_utc_offset_accepted():
+    parsed = datetime_from_evidence("2026-09-17T14:00:00+02:00", "field")
+    assert parsed.utcoffset().total_seconds() == 7200
+
+
+def test_ca_i3_06_r7_observed_at_malformed_typed_via_chain():
+    def m(e):
+        r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+        r7["layers"]["oracleReference"]["observedAt"] = "abc"
+        r7["r7SnapshotDigest"] = _digest(
+            {k: v for k, v in r7.items() if k != "r7SnapshotDigest"})
+        e["sourceDigests"]["r7CrossMarketDigest"] = _digest(r7)
+    r9, r8 = _chain(**FULL, mutate_r8=m)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=_model(value=Decimal("100")), r8=r8)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+# --------------------------------------------------------------------------
+# Correction D - I4: exact boolean synthetic contract
+# --------------------------------------------------------------------------
+
+def test_ca_i4_01_model_synthetic_non_boolean_rejected():
+    for bad in (0, 1, "false", "true", None):
+        with pytest.raises(ModelRadarError) as excinfo:
+            _model(synthetic=bad)
+        assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i4_02_builder_synthetic_argument_exact_boolean():
+    r9, r8 = _chain(**FULL)
+    with pytest.raises(ModelRadarError) as excinfo:
+        _bridge(r9, model=None, r8=r8, synthetic=1)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i4_03_integer_synthetic_model_cannot_become_live_snapshot():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(synthetic=1)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+# --------------------------------------------------------------------------
+# Correction D - I5: context positive reference price
+# --------------------------------------------------------------------------
+
+def test_ca_i5_01_zero_reference_price_rejected_at_context():
+    with pytest.raises(ModelRadarError) as excinfo:
+        MarketComparabilityContext(
+            reference_price=Decimal("0"), reference_currency="USD",
+            reference_source="R7", reference_observed_at=NOW)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i5_02_negative_reference_price_rejected_at_context():
+    with pytest.raises(ModelRadarError) as excinfo:
+        MarketComparabilityContext(
+            reference_price=Decimal("-1"), reference_currency="USD",
+            reference_source="R7", reference_observed_at=NOW)
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+
+def test_ca_i5_03_positive_finite_reference_price_valid():
+    context = MarketComparabilityContext(
+        reference_price=Decimal("105"), reference_currency="USD",
+        reference_source="R7", reference_observed_at=NOW)
+    assert context.reference_price == Decimal("105")
+
+
+# --------------------------------------------------------------------------
+# Correction D - I6: output-only multiplier claims fail closed
+# --------------------------------------------------------------------------
+
+def test_ca_i6_01_output_only_multiplier_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT",
+            "valuationAsOf": NOW.isoformat(), "unitMultiplier": "5"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_i6_02_output_only_multiplier_basis_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT",
+            "valuationAsOf": NOW.isoformat(),
+            "unitMultiplierBasis": "PER_SHARE"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH
+
+
+def test_ca_i6_03_output_only_both_multiplier_fields_rejected():
+    with pytest.raises(ModelRadarError) as excinfo:
+        _model(output_evidence={
+            "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+            "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT",
+            "valuationAsOf": NOW.isoformat(), "unitMultiplier": "5",
+            "unitMultiplierBasis": "PER_SHARE"})
+    assert excinfo.value.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH

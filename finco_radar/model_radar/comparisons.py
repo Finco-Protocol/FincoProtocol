@@ -110,6 +110,14 @@ class MarketComparabilityContext:
                     f"{name} must be strictly positive (got {value})",
                     ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
                 )
+        # I5: a present reference price is strictly positive in the public
+        # contract - no COMPARABLE-then-arithmetic-error path exists.
+        if self.reference_price is not None and self.reference_price <= 0:
+            raise ModelRadarError(
+                f"reference_price must be strictly positive when present "
+                f"(got {self.reference_price})",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
 
 
 def _ok(dimension: ComparabilityDimension) -> ComparabilityDimensionResult:
@@ -486,11 +494,15 @@ def compute_execution_comparison(
     quote_source: str,
     r8_net_edge_state: str,
     r8_scenario_index: int,
+    execution_currency: str = "USD",
+    execution_observed_at: "datetime | None" = None,
 ):
     """executionMinusModelValue and executionVsModelBps in exact Decimal.
 
     Identical sign semantics for BUY and SELL; `side` stays descriptive
     metadata.  R8 economics are consumed, never recomputed or deducted.
+    I1: every execution row carries its own explicit currency authority and
+    observation timestamp; no row may omit them.
     """
     from .contracts import ExecutionComparison
 
@@ -518,4 +530,6 @@ def compute_execution_comparison(
         quote_source=quote_source,
         r8_net_edge_state=r8_net_edge_state,
         r8_scenario_index=r8_scenario_index,
+        execution_currency=execution_currency,
+        execution_observed_at=execution_observed_at,
     )

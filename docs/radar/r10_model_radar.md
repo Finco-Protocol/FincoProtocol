@@ -240,10 +240,27 @@ owns those).
   normalization.
 - **G7** — PR metadata updated to current counts and state.
 
+## Correction C (independent review)
+
+- **H1** — every comparison-critical field is source-bound: `valuationAsOf` is REQUIRED in the output observation (drives age/skew/staleness) and must equal the declared timestamp; `unitMultiplier` AND `unitMultiplierBasis` are input-(policy-)authoritative with exact equality and output-conflict checks; a declared-null model with input multiplier authority fails closed.
+- **H2** — synthetic provenance is exact-boolean per causal layer (R9/R8/R7): missing, null, `"false"`, `0` or malformed flags are typed `MODEL_RADAR_INPUT_INVALID`, never interpreted as live authority.
+- **H3** — one canonical typed parser `decimal_from_evidence()` for all market/execution/notional numerics; positive-domain enforced at the boundary (multipliers > 0, AVAILABLE reference price > 0, execution price > 0, notional > 0).
+- **H4** — `PARTIALLY_COMPARABLE` requires exactly one failed dimension — `REFERENCE_AVAILABILITY` with `REFERENCE_UNAVAILABLE`; runtime enum validation for state/dimension/gap kinds.
+
+## Correction D (final authority closure)
+
+- **I1** — execution comparability is independently currency-qualified.  Frozen R8 semantics make the execution currency exactly USD (`executionPriceUsdPerToken`); a model whose comparable-value currency differs has its execution comparison suppressed with typed `CURRENCY_MISMATCH` + `FX_AUTHORITY_UNAVAILABLE` (scoped to R8 execution authority) while a valid same-currency reference comparison survives.  Every execution row carries `executionCurrency` and `executionObservedAt`.  Stablecoin-like currencies are not implicitly USD; no hidden FX anywhere.
+- **I2** — each R8 scenario carries its own `quoteObservedAt` timing authority: parsed through the typed datetime boundary, required timezone-aware, never in the future, and model-vs-execution skew must be within `max_model_market_skew_seconds`.  Skew suppresses only that scenario (`TIMING_SKEW_INVALID`); a valid reference comparison survives; R7 reference timestamps are never substituted.
+- **I3** — one canonical typed datetime boundary `datetime_from_evidence()` for all serialized market timestamps (R7 oracle `observedAt`, R8 `quoteObservedAt`): malformed → `INPUT_INVALID`, naive → `TIMING_INVALID`, valid UTC/non-UTC offsets accepted.
+- **I4** — `ModelEvidence.synthetic` and the public `build_model_radar_snapshot(synthetic=...)` argument must be exact Python booleans; `0`/`1`/`"false"`/`"true"`/`None` are typed errors, so discovered evidence can never carry malformed provenance.
+- **I5** — `MarketComparabilityContext` requires a strictly positive reference price when present: no COMPARABLE-then-arithmetic-error path.
+- **I6** — output-only multiplier claims (`unitMultiplier`/`unitMultiplierBasis` in the output observation without input-authoritative multiplier) fail with `MODEL_RADAR_EVIDENCE_MISMATCH`; output claims are never silently discarded.
+- **I7** — documentation/metadata freeze hygiene (this section; current counts below).
+
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r10_model_radar.py   # 156 offline deterministic tests
+pytest -q tests/test_radar_r10_model_radar.py   # 217 offline deterministic tests
 python -m finco_radar.r10.live_proof            # live proof (re-runs the frozen
                                                 # R1->R9 chain, adds no APIs)
 ```

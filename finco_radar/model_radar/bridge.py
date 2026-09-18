@@ -36,6 +36,7 @@ from finco_radar.execution_simulator.contracts import (
 from .comparisons import (
     MarketComparabilityContext,
     compute_execution_comparison,
+    decimal_seconds,
     compute_reference_comparison,
     model_value_per_unit,
     resolve_comparability,
@@ -43,6 +44,7 @@ from .comparisons import (
 from .contracts import (
     PHASE,
     SCHEMA_VERSION,
+    datetime_from_evidence,
     ComparabilityDimension,
     ComparabilityState,
     ModelBinding,
@@ -339,7 +341,8 @@ def _market_context_from_r9(
             source="R9_ASSET_GRAPH_AUTHORITY",
             reason="R9 oracle-reference layer is not an available reference",
         )
-    from datetime import datetime as _dt
+    oracle_observed_at = datetime_from_evidence(
+        oracle["observedAt"], "R7 oracle observedAt")
     oracle_multiplier = oracle.get("multiplier")
     token_multiplier = token.get("multiplier")
     reference_price = decimal_from_evidence(
@@ -349,7 +352,7 @@ def _market_context_from_r9(
         reference_price=reference_price,
         reference_currency=oracle.get("currency"),
         reference_source=oracle.get("source"),
-        reference_observed_at=_dt.fromisoformat(oracle["observedAt"]),
+        reference_observed_at=oracle_observed_at,
         market_unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM,
         conversion_multiplier=(
             _positive(oracle_multiplier, "R7 oracle multiplier")
@@ -363,13 +366,33 @@ def _market_context_from_r9(
     return context, None
 
 
+# Frozen R8 semantics: executionPriceUsdPerToken is a USD price per token
+# claim.  The execution currency derives from this frozen field semantics,
+# never from a caller label and never from the R7 reference currency.
+R8_EXECUTION_CURRENCY = "USD"
+
+
 def _execution_comparisons_and_gaps(
     *,
     comparable_value: Decimal,
+    comparable_currency: str,
+    model_valuation_as_of: datetime,
+    timing_policy: "ModelRadarTimingPolicy",
+    now: datetime,
     r8_evidence: Mapping[str, Any],
 ) -> tuple[list, list[ModelRadarGap]]:
     """F6: scenarios are ordered canonically before indexing; comparison
-    rows therefore never depend on caller order."""
+    rows therefore never depend on caller order.
+
+    I1: execution comparability is independently currency-qualified - the
+    comparable-value currency must equal the frozen R8 execution currency
+    (USD).  A mismatch suppresses only the execution comparison and records
+    typed CURRENCY_MISMATCH + FX_AUTHORITY_UNAVAILABLE; a valid same-currency
+    reference comparison is never invalidated by it.
+
+    I2: each scenario carries its own quoteObservedAt authority.  Malformed/
+    naive/future timestamps are typed errors; skew beyond policy suppresses
+    only that scenario with TIMING_SKEW_INVALID."""
     scenarios = list(r8_evidence.get("scenarios", []))
     for scenario in scenarios:
         notional_raw = (scenario.get("scenario") or {}).get(
@@ -388,6 +411,8 @@ def _execution_comparisons_and_gaps(
     gaps: list[ModelRadarGap] = []
     for index, scenario in enumerate(scenarios):
         entry = scenario.get("scenario") or {}
+        scenario_label = (
+            f"{entry.get('side')}/{entry.get('requestedNotionalUsd')}")
         r2_evidence = (scenario.get("upstreamEvidence") or {}).get(
             "r2GapEvidence") or {}
         raw_price = r2_evidence.get("executionPriceUsdPerToken")
@@ -396,10 +421,63 @@ def _execution_comparisons_and_gaps(
                 gap_kind=ModelRadarGapKind.EXECUTION_EVIDENCE_UNAVAILABLE,
                 source="R8_EXECUTION_SIMULATOR_AUTHORITY",
                 reason=(
-                    "R8 scenario "
-                    f"{entry.get('side')}/{entry.get('requestedNotionalUsd')} "
+                    f"R8 scenario {scenario_label} "
                     "carries no exact execution price per token; R10 never "
                     "re-derives R8 economics"
+                ),
+            ))
+            continue
+        # I1: independent execution currency qualification.
+        if comparable_currency.upper() != R8_EXECUTION_CURRENCY:
+            gaps.append(ModelRadarGap(
+                gap_kind=ModelRadarGapKind.CURRENCY_MISMATCH,
+                source="R8_EXECUTION_SIMULATOR_AUTHORITY",
+                reason=(
+                    f"model comparable-value currency {comparable_currency} "
+                    "differs from the frozen R8 execution currency "
+                    f"{R8_EXECUTION_CURRENCY} (executionPriceUsdPerToken) "
+                    f"for scenario {scenario_label}"
+                ),
+            ))
+            gaps.append(ModelRadarGap(
+                gap_kind=ModelRadarGapKind.FX_AUTHORITY_UNAVAILABLE,
+                source="R8_EXECUTION_SIMULATOR_AUTHORITY",
+                reason="no FX authority exists for the model-to-execution "
+                       "currency pair; no implicit conversion is applied",
+            ))
+            continue
+        # I2: execution observations carry their own timing authority.
+        raw_quote_at = scenario.get("quoteObservedAt")
+        if raw_quote_at is None:
+            gaps.append(ModelRadarGap(
+                gap_kind=ModelRadarGapKind.EXECUTION_EVIDENCE_UNAVAILABLE,
+                source="R8_EXECUTION_SIMULATOR_AUTHORITY",
+                reason=(
+                    f"R8 scenario {scenario_label} carries no "
+                    "quoteObservedAt; execution timing cannot be qualified"
+                ),
+            ))
+            continue
+        quote_observed_at = datetime_from_evidence(
+            raw_quote_at, "R8 scenario quoteObservedAt")
+        if quote_observed_at > now:
+            raise ModelRadarError(
+                f"R8 scenario {scenario_label} quoteObservedAt is in the "
+                "future relative to the comparison authority",
+                ModelRadarStatus.MODEL_RADAR_TIMING_INVALID,
+            )
+        skew = decimal_seconds(
+            abs(model_valuation_as_of - quote_observed_at))
+        if skew > timing_policy.max_model_market_skew_seconds:
+            gaps.append(ModelRadarGap(
+                gap_kind=ModelRadarGapKind.TIMING_SKEW_INVALID,
+                source="R8_EXECUTION_SIMULATOR_AUTHORITY",
+                reason=(
+                    f"model-vs-execution skew {skew}s exceeds "
+                    "max_model_market_skew_seconds "
+                    f"{timing_policy.max_model_market_skew_seconds}s for "
+                    f"scenario {scenario_label}; only this scenario is "
+                    "suppressed"
                 ),
             ))
             continue
@@ -414,6 +492,8 @@ def _execution_comparisons_and_gaps(
             quote_source=entry.get("quoteSource", ""),
             r8_net_edge_state=scenario.get("netEdgeState", ""),
             r8_scenario_index=index,
+            execution_currency=R8_EXECUTION_CURRENCY,
+            execution_observed_at=quote_observed_at,
         ))
     comparisons.sort(key=lambda c: (
         c.side, Decimal(c.requested_notional_usd), c.quote_source))
@@ -431,6 +511,12 @@ def build_model_radar_snapshot(
     synthetic: bool = False,
 ) -> ModelRadarSnapshot:
     """Deterministic R10 snapshot, or typed fail-closed errors."""
+    if synthetic is not True and synthetic is not False:
+        # I4: the public synthetic claim is an exact boolean or nothing.
+        raise ModelRadarError(
+            f"synthetic argument must be an exact boolean, got {synthetic!r}",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
     lineage = verify_r9_lineage(r9_evidence)
     uid = lineage["economic_asset_uid"]
     node_id = lineage["economic_node_id"]
@@ -532,7 +618,12 @@ def build_model_radar_snapshot(
                         market_context.reference_observed_at or now),
                 )
             exec_comparisons, exec_gaps = _execution_comparisons_and_gaps(
-                comparable_value=comparable_value, r8_evidence=r8_evidence)
+                comparable_value=comparable_value,
+                comparable_currency=model_evidence.currency,
+                model_valuation_as_of=model_evidence.valuation_as_of,
+                timing_policy=timing_policy,
+                now=now,
+                r8_evidence=r8_evidence)
             execution_comparisons.extend(exec_comparisons)
             gaps.extend(exec_gaps)
 
