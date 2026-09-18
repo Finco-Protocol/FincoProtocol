@@ -113,9 +113,23 @@ R11 synthetic state is DERIVED as the OR of the verified causal chain
 synthetic evidence into a non-synthetic verification result is impossible,
 and no caller override exists.
 
+## Correction A (verification trust-boundary closure)
+
+- **A1** — the R0–R10 freeze authority (`R10_FREEZE_ANCHOR` / `R10_FREEZE_TREE`) is pinned as an immutable contract constant; caller freeze values are claims verified by the `FREEZE_IDENTITY` check, and the evidence records verified canonical values.
+- **A2** — `HONEST_MISSING_MODEL` is evaluated on every subject: the no-model state must declare `MODEL_BINDING_UNAVAILABLE`; `MODEL_RADAR_OK` cannot carry gaps; `MODEL_RADAR_PARTIAL` requires at least one.
+- **A3** — strict nested-shape validation (`_mapping_or_fail` / `_sequence_or_fail`, no falsy-swap defaults): malformed gaps, sourceDigests, R9 nodes, R8 scenarios or upstream containers produce `VERIFICATION_INPUT_INVALID`, never raw exceptions.
+- **A4** — the complete serialized `ModelEvidence` authority contract is mirrored: exact typed engine-authority vocabulary, exact-boolean synthetic, non-empty identity fields bound to the subject, all five output-observation bindings, and the full multiplier policy (input authority required when declared; output-only or input-dropped claims rejected).
+- **A5** — the comparability contract additionally requires exact-boolean `ok` values, `ok`↔gap pairing, and serialized `comparability.gaps` to mirror the failed dimensions.
+- **A6** — reference verification binds `modelValue`, reference price, source and `referenceObservedAt` exactly to the embedded R7 oracle observation and `modelObservedAt` to the valuation timestamp.
+- **A7** — execution rows bind `r8ScenarioIndex` to the canonical `(side, notional, venue)` ordering; duplicate scenario identities are detected; `quoteObservedAt` existence and exact timestamp binding are enforced; scenario deployment identity must match the canonical R8 deployment.
+- **A8** — R9 identity is proven from the actual graph: exactly one canonical `ECONOMIC_ASSET` node.
+- **A9** — exact-boolean outer contracts (type identity, not int aliasing), typed status enum, tz-aware `generatedAt`, SHA-256 digest shapes, and `verify_serialized_r11_evidence` validating outer invariants before digest comparison.
+- **A10** — `CONTENT_ENVELOPE_BINDING` (24th check): frozen schema/canonicalization/surface/evidenceType/authorityRefs, `payloadSha256 == subjectEvidenceDigest`, `contentAddress = sha256:<payloadSha256>`; optional and secondary.
+- **A11** — PR metadata/provenance corrected.
+
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r11_verification.py   # 40 offline deterministic tests
+pytest -q tests/test_radar_r11_verification.py   # 90 offline deterministic tests
 python -m finco_radar.r11.live_proof             # live subject + verification
 ```
