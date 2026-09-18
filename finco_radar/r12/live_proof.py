@@ -113,7 +113,7 @@ def main() -> int:
     print(json.dumps({
         "status": evidence["status"],
         "twinId": evidence["twinId"],
-        "subjectStatus": evidence["subjectStatus"],
+        "subjectStatus": evidence["subjectR11Evidence"].get("status"),
         "subjectGaps": subject_gaps,
         "digest": digest,
         "evidence": str(evidence_path),

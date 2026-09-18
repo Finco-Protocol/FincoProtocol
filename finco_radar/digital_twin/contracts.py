@@ -231,6 +231,12 @@ class DigitalTwinSnapshot:
             "boundaries": dict(self.boundaries),
             "freezeAnchor": self.freeze_anchor,
             "freezeTree": self.freeze_tree,
+            "subjectStatus": (
+                self.subject_r11_evidence.get("status") if isinstance(
+                    self.subject_r11_evidence, Mapping) else None),
+            "subjectSnapshotDigest": (
+                self.subject_r11_evidence.get("r11SnapshotDigest") if isinstance(
+                    self.subject_r11_evidence, Mapping) else None),
             "synthetic": self.synthetic,
             "r12SnapshotDigest": self.r12_snapshot_digest,
         }
