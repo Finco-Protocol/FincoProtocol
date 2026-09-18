@@ -127,9 +127,20 @@ and no caller override exists.
 - **A10** — `CONTENT_ENVELOPE_BINDING` (24th check): frozen schema/canonicalization/surface/evidenceType/authorityRefs, `payloadSha256 == subjectEvidenceDigest`, `contentAddress = sha256:<payloadSha256>`; optional and secondary.
 - **A11** — PR metadata/provenance corrected.
 
+## Correction B (final verification contract closure)
+
+- **B1** — independent ModelBinding verification: the frozen binding identity is reconstructed locally (`model-binding:<sha256>` from canonical material) and exactly verified against UID/node/modelId/modelVersion.
+- **B2** — typed `_decimal` parser for ALL serialized numerics; no falsy-swap defaults for nested containers; absent vs null vs wrong type distinguished.
+- **B3** — full frozen ModelEvidence semantic mirror: closed valueKind/unitBasis vocabularies, kind × basis coherence matrix, finite positive multiplier, tz-aware valuationAsOf, valueOriginalRepresentation required.
+- **B4** — failed comparability dimension gapKind must be in the frozen R10 ModelRadarGapKind vocabulary.
+- **B5** — HISTORICAL_TIMING verifies model age/skew against the subject's production-time authority (no R11 wall clock).
+- **B6** — serialized R11 self-verification validates outer identity/freeze/boundaries/subject binding/check contract/status consistency before digest comparison.
+- **B7** — non-Mapping content envelope typed-rejected at the public boundary.
+- **B8** — PR metadata updated to current counts/state.
+
 ## Reproduction commands
 
 ```bash
-pytest -q tests/test_radar_r11_verification.py   # 90 offline deterministic tests
+pytest -q tests/test_radar_r11_verification.py   # 136 offline deterministic tests
 python -m finco_radar.r11.live_proof             # live subject + verification
 ```
