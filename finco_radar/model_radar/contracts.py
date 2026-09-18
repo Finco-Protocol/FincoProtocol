@@ -165,6 +165,61 @@ def require_finite_decimal(value, name: str) -> None:
         )
 
 
+def decimal_from_evidence(value: Any, field_name: str = "value") -> Decimal:
+    """H3: the single canonical parser for every numeric value parsed from
+    serialized evidence.  Accepts allowed numeric source types, converts
+    through the textual representation, catches decimal.InvalidOperation,
+    rejects NaN / +Infinity / -Infinity, and always returns a finite Decimal
+    or raises ModelRadarError(MODEL_RADAR_INPUT_INVALID)."""
+    if isinstance(value, Decimal):
+        require_finite_decimal(value, field_name)
+        return value
+    if isinstance(value, bool) or value is None:
+        raise ModelRadarError(
+            f"{field_name} is not a number in the source evidence",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            raise ModelRadarError(
+                f"{field_name} is not finite in the source evidence",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
+        return Decimal(repr(value))
+    if isinstance(value, (int, str)):
+        try:
+            converted = Decimal(value)
+        except decimal.InvalidOperation as exc:
+            raise ModelRadarError(
+                f"{field_name} is not a parsable number in the source "
+                f"evidence: {value!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            ) from exc
+        except Exception as exc:
+            raise ModelRadarError(
+                f"{field_name} is not a parsable number in the source "
+                f"evidence: {value!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            ) from exc
+        require_finite_decimal(converted, field_name)
+        return converted
+    raise ModelRadarError(
+        f"{field_name} has unsupported type {type(value).__name__}",
+        ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+    )
+
+
+def require_positive_decimal(value, name: str) -> None:
+    """H3: positive-domain authorities fail at the boundary, never after a
+    nominally COMPARABLE resolution."""
+    require_finite_decimal(value, name)
+    if value <= 0:
+        raise ModelRadarError(
+            f"{name} must be strictly positive (got {value})",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
+
+
 def require_sha256_shape(digest: str, name: str) -> None:
     if not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest):
         raise ModelRadarError(
@@ -513,10 +568,23 @@ class ModelEvidence:
                 "outputEvidence",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
-        # G3: the declared comparison-critical fields must be exactly the
+        # G3/H1: the declared comparison-critical fields must be exactly the
         # authoritative serialized output observation; two independently
         # caller-asserted versions of the model value can never exist.
+        #
+        # H1 authority policy (deterministic, no "present anywhere"):
+        # - valuationAsOf: authoritative location is the OUTPUT observation;
+        #   it is REQUIRED (it drives model age, skew and staleness) and
+        #   must exactly equal the declared valuation timestamp.  If the
+        #   input record also declares it, both must agree.
+        # - unitMultiplier / unitMultiplierBasis: authoritative location is
+        #   the INPUT (model policy) record; whenever a multiplier is
+        #   declared, both fields MUST exist there with exact equality, and
+        #   if the output record also declares them both must agree.  When
+        #   no multiplier is declared, an input-record multiplier is a
+        #   dropped source authority and fails closed.
         output = _plain(self.output_evidence)
+        source_input = _plain(self.input_evidence)
         for key in ("value", "valueKind", "currency", "unitBasis"):
             if key not in output:
                 raise ModelRadarError(
@@ -550,31 +618,87 @@ class ModelEvidence:
                 f"{self.unit_basis.value!r}",
                 ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
             )
-        # Multiplier/valuation timestamp are bound wherever they are
-        # declared as authority (output or input); disagreement fails.
-        for source_name, source in (("output", output),
-                                    ("input", _plain(self.input_evidence))):
-            if source.get("unitMultiplier") is not None and str(
-                source["unitMultiplier"]
-            ) != (
-                str(self.unit_multiplier)
-                if self.unit_multiplier is not None else None
+        # valuationAsOf: mandatory output-observation authority.
+        if "valuationAsOf" not in output:
+            raise ModelRadarError(
+                "model output observation carries no valuationAsOf; the "
+                "valuation timestamp authority is missing",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if output["valuationAsOf"] != self.valuation_as_of.isoformat():
+            raise ModelRadarError(
+                f"model output observation valuationAsOf "
+                f"{output['valuationAsOf']!r} does not equal the declared "
+                f"valuation timestamp {self.valuation_as_of.isoformat()!r}",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        if source_input.get("valuationAsOf") is not None and str(
+            source_input["valuationAsOf"]
+        ) != self.valuation_as_of.isoformat():
+            raise ModelRadarError(
+                f"model input record valuationAsOf "
+                f"{source_input['valuationAsOf']!r} conflicts with the "
+                "authoritative output-observation valuation timestamp",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
+        # unitMultiplier / unitMultiplierBasis: input (policy) authority.
+        if self.unit_multiplier is not None:
+            if "unitMultiplier" not in source_input:
+                raise ModelRadarError(
+                    "declared unit multiplier has no source-proven "
+                    "unitMultiplier in the model input authority record",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+            if str(source_input["unitMultiplier"]) != str(self.unit_multiplier):
+                raise ModelRadarError(
+                    f"model input authority unitMultiplier "
+                    f"{source_input['unitMultiplier']!r} does not equal the "
+                    f"declared unit multiplier {str(self.unit_multiplier)!r}",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+            if "unitMultiplierBasis" not in source_input:
+                raise ModelRadarError(
+                    "declared unit multiplier has no source-proven "
+                    "unitMultiplierBasis in the model input authority record",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+            if source_input["unitMultiplierBasis"] != (
+                self.unit_multiplier_basis.value
             ):
                 raise ModelRadarError(
-                    f"model {source_name} observation unitMultiplier "
-                    f"{source['unitMultiplier']!r} does not equal the "
-                    f"declared unit multiplier",
+                    f"model input authority unitMultiplierBasis "
+                    f"{source_input['unitMultiplierBasis']!r} does not equal "
+                    f"the declared basis "
+                    f"{self.unit_multiplier_basis.value!r}",
                     ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
                 )
-            if source.get("valuationAsOf") is not None and str(
-                source["valuationAsOf"]
-            ) != self.valuation_as_of.isoformat():
+            if output.get("unitMultiplier") is not None and str(
+                output["unitMultiplier"]
+            ) != str(self.unit_multiplier):
                 raise ModelRadarError(
-                    f"model {source_name} observation valuationAsOf "
-                    f"{source['valuationAsOf']!r} does not equal the "
-                    "declared valuation timestamp",
+                    f"model output observation unitMultiplier "
+                    f"{output['unitMultiplier']!r} conflicts with the "
+                    "input-authoritative unit multiplier",
                     ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
                 )
+            if output.get("unitMultiplierBasis") is not None and output[
+                "unitMultiplierBasis"
+            ] != self.unit_multiplier_basis.value:
+                raise ModelRadarError(
+                    f"model output observation unitMultiplierBasis "
+                    f"{output['unitMultiplierBasis']!r} conflicts with the "
+                    "input-authoritative multiplier basis",
+                    ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+                )
+        elif "unitMultiplier" in source_input or "unitMultiplierBasis" in (
+            source_input
+        ):
+            raise ModelRadarError(
+                "model input authority declares a unit multiplier but the "
+                "evidence carries none; a source authority cannot be "
+                "silently dropped",
+                ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH,
+            )
         if self.value_original_representation == "":
             object.__setattr__(
                 self, "value_original_representation", str(self.value))
@@ -667,12 +791,28 @@ class ModelComparability:
     dimensions: tuple[ComparabilityDimensionResult, ...]
 
     def __post_init__(self) -> None:
+        # H4: runtime enum validation before any .value access - malformed
+        # public contract construction fails typed, never AttributeError.
+        if not isinstance(self.state, ComparabilityState):
+            raise ModelRadarError(
+                f"comparability state must be a ComparabilityState member, "
+                f"got {self.state!r}",
+                ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+            )
         required = {d for d in ComparabilityDimension}
         seen: dict[ComparabilityDimension, int] = {}
         for result in self.dimensions:
             if not isinstance(result.dimension, ComparabilityDimension):
                 raise ModelRadarError(
                     "unknown comparability dimension",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
+            if result.gap_kind is not None and not isinstance(
+                result.gap_kind, ModelRadarGapKind
+            ):
+                raise ModelRadarError(
+                    f"dimension {result.dimension.value} carries a "
+                    f"non-enum gap kind {result.gap_kind!r}",
                     ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
                 )
             seen[result.dimension] = seen.get(result.dimension, 0) + 1
@@ -699,7 +839,8 @@ class ModelComparability:
                     ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
                 )
         failed = {
-            result.dimension for result in self.dimensions if not result.ok
+            result.dimension: result.gap_kind
+            for result in self.dimensions if not result.ok
         }
         if self.state is ComparabilityState.COMPARABLE and failed:
             raise ModelRadarError(
@@ -708,12 +849,15 @@ class ModelComparability:
                 ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
             )
         if self.state is ComparabilityState.PARTIALLY_COMPARABLE:
-            unauthorized = failed - {ComparabilityDimension.REFERENCE_AVAILABILITY}
-            if not failed or unauthorized:
+            # H4: the exact v1 soft-partial condition is precisely one
+            # failed dimension - REFERENCE_AVAILABILITY carrying
+            # REFERENCE_UNAVAILABLE.  Nothing else is authorized.
+            if failed != {ComparabilityDimension.REFERENCE_AVAILABILITY:
+                          ModelRadarGapKind.REFERENCE_UNAVAILABLE}:
                 raise ModelRadarError(
-                    "PARTIALLY_COMPARABLE is reserved for reference-only "
-                    f"unavailability; unauthorized failures: "
-                    f"{sorted(d.value for d in unauthorized or failed)}",
+                    "PARTIALLY_COMPARABLE requires exactly one failed "
+                    "dimension: REFERENCE_AVAILABILITY with "
+                    f"REFERENCE_UNAVAILABLE; got {failed}",
                     ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
                 )
         if self.state is ComparabilityState.NOT_COMPARABLE and not failed:

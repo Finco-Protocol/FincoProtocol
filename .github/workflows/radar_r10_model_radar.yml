@@ -339,6 +339,89 @@ jobs:
                 "arbitrary_non_synthetic_rejected=true "
                 "synthetic_laundering_blocked=true")
           PY
+      - name: Correction C H1-H4 gate - unbound valuation/multiplier authority, missing synthetic provenance, malformed market Decimal
+        run: |
+          python - <<'PY'
+          import sys
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          sys.path.insert(0, "tests")
+          sys.path.insert(0, ".")
+          from test_radar_r10_model_radar import (
+              FULL, NOW, POLICY, _chain, _chain_provenance_strip,
+              _equity_with_input, _model, _unbound_basis_model,
+          )
+          from finco_radar.model_radar.bridge import build_model_radar_snapshot
+          from finco_radar.model_radar.comparisons import MarketComparabilityContext
+          from finco_radar.model_radar.contracts import (
+              ModelRadarError, ModelRadarStatus, ModelUnitBasis,
+          )
+
+          # H1: unbound valuationAsOf and unbound multiplier authority.
+          for label, build in (
+              ("unbound valuationAsOf",
+               lambda: _model(output_evidence={
+                   "value": "100", "valueKind": "VALUE_PER_ECONOMIC_UNIT",
+                   "currency": "USD", "unitBasis": "PER_ECONOMIC_UNIT"})),
+              ("unbound unitMultiplier",
+               lambda: _equity_with_input()),
+              ("unbound unitMultiplierBasis",
+               lambda: _unbound_basis_model()),
+          ):
+              try:
+                  build()
+                  raise SystemExit(f"H1_BLOCKED: {label} did not fail closed")
+              except ModelRadarError as exc:
+                  assert exc.status is ModelRadarStatus.MODEL_RADAR_EVIDENCE_MISMATCH, label
+
+          # H2: missing synthetic provenance on each causal layer.
+          for layer in ("r9", "r8", "r7"):
+              r9 = _chain_provenance_strip(layer)
+              try:
+                  build_model_radar_snapshot(
+                      r9_evidence=r9, timing_policy=POLICY,
+                      now=datetime.now(timezone.utc), git_head="gate")
+                  raise SystemExit(f"H2_BLOCKED: missing {layer} synthetic did not fail closed")
+              except ModelRadarError as exc:
+                  assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID, layer
+
+          # H3: malformed market Decimal input is typed, never raw.
+          def _oracle_price_abc(e):
+              r7 = e["upstreamEvidence"]["r7CrossMarketEvidence"]
+              r7["layers"]["oracleReference"]["price"] = "abc"
+              r7["r7SnapshotDigest"] = __import__("hashlib").sha256(
+                  __import__("json").dumps(
+                      {k: v for k, v in r7.items() if k != "r7SnapshotDigest"},
+                      sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode()).hexdigest()
+              e["sourceDigests"]["r7CrossMarketDigest"] = __import__("hashlib").sha256(
+                  __import__("json").dumps(r7, sort_keys=True,
+                                           separators=(",", ":"),
+                                           ensure_ascii=False).encode()).hexdigest()
+          r9, r8 = _chain(**FULL, mutate_r8=_oracle_price_abc)
+          try:
+              build_model_radar_snapshot(
+                  r9_evidence=r9, r8_evidence=r8, timing_policy=POLICY,
+                  now=datetime.now(timezone.utc), git_head="gate")
+              raise SystemExit("H3_BLOCKED: malformed oracle price did not fail closed")
+          except ModelRadarError as exc:
+              assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+          try:
+              MarketComparabilityContext(
+                  reference_price=Decimal("105"), reference_currency="USD",
+                  reference_source="R7", reference_observed_at=NOW,
+                  market_unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM,
+                  conversion_multiplier=Decimal("0"),
+                  token_multiplier=Decimal("2"))
+              raise SystemExit("H3_BLOCKED: zero conversion multiplier did not fail closed")
+          except ModelRadarError as exc:
+              assert exc.status is ModelRadarStatus.MODEL_RADAR_INPUT_INVALID
+
+          print("R10_CORRECTION_C_H1_H4_GATE_PASS "
+                "unbound_valuation_and_multiplier_rejected=true "
+                "missing_provenance_rejected=true "
+                "malformed_market_decimal_typed=true")
+          PY
       - name: Run frozen R9 asset-graph regression
         env:
           RADAR_R9_EVIDENCE_PATH: artifacts/radar_r9_regression_on_r10.json

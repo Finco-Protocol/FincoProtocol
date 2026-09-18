@@ -56,8 +56,9 @@ from .contracts import (
     ModelUnitBasis,
     TOTAL_BASES,
     _plain,
+    decimal_from_evidence,
     digest_payload,
-    require_finite_decimal,
+    require_positive_decimal,
 )
 
 R10_BOUNDARIES = {
@@ -292,8 +293,13 @@ def _resolve_deployment(
 
 
 def _finite(raw, name: str) -> Decimal:
-    value = Decimal(str(raw))
-    require_finite_decimal(value, name)
+    """H3: every market-source numeric crosses the canonical typed parser."""
+    return decimal_from_evidence(raw, name)
+
+
+def _positive(raw, name: str) -> Decimal:
+    value = decimal_from_evidence(raw, name)
+    require_positive_decimal(value, name)
     return value
 
 
@@ -336,8 +342,9 @@ def _market_context_from_r9(
     from datetime import datetime as _dt
     oracle_multiplier = oracle.get("multiplier")
     token_multiplier = token.get("multiplier")
-    reference_price = Decimal(str(oracle["price"]))
-    require_finite_decimal(reference_price, "R7 oracle reference price")
+    reference_price = decimal_from_evidence(
+        oracle["price"], "R7 oracle reference price")
+    require_positive_decimal(reference_price, "R7 oracle reference price")
     context = MarketComparabilityContext(
         reference_price=reference_price,
         reference_currency=oracle.get("currency"),
@@ -345,11 +352,11 @@ def _market_context_from_r9(
         reference_observed_at=_dt.fromisoformat(oracle["observedAt"]),
         market_unit_basis=ModelUnitBasis.PER_TOKEN_CLAIM,
         conversion_multiplier=(
-            _finite(oracle_multiplier, "R7 oracle multiplier")
+            _positive(oracle_multiplier, "R7 oracle multiplier")
             if oracle_multiplier is not None else None
         ),
         token_multiplier=(
-            _finite(token_multiplier, "R7 token multiplier")
+            _positive(token_multiplier, "R7 token multiplier")
             if token_multiplier is not None else None
         ),
     )
@@ -364,9 +371,17 @@ def _execution_comparisons_and_gaps(
     """F6: scenarios are ordered canonically before indexing; comparison
     rows therefore never depend on caller order."""
     scenarios = list(r8_evidence.get("scenarios", []))
+    for scenario in scenarios:
+        notional_raw = (scenario.get("scenario") or {}).get(
+            "requestedNotionalUsd")
+        require_positive_decimal(
+            decimal_from_evidence(notional_raw, "R8 requestedNotionalUsd"),
+            "R8 requestedNotionalUsd")
     scenarios.sort(key=lambda s: (
         (s.get("scenario") or {}).get("side", ""),
-        Decimal(str((s.get("scenario") or {}).get("requestedNotionalUsd", "0"))),
+        decimal_from_evidence(
+            (s.get("scenario") or {}).get("requestedNotionalUsd"),
+            "R8 requestedNotionalUsd"),
         (s.get("scenario") or {}).get("quoteSource", ""),
     ))
     comparisons = []
@@ -388,8 +403,9 @@ def _execution_comparisons_and_gaps(
                 ),
             ))
             continue
-        execution_price = Decimal(str(raw_price))
-        require_finite_decimal(execution_price, "R8 execution price")
+        execution_price = decimal_from_evidence(
+            raw_price, "R8 execution price")
+        require_positive_decimal(execution_price, "R8 execution price")
         comparisons.append(compute_execution_comparison(
             model_value_per_unit=comparable_value,
             execution_price=execution_price,
@@ -536,16 +552,36 @@ def build_model_radar_snapshot(
         ModelRadarStatus.MODEL_RADAR_OK
         if not gaps else ModelRadarStatus.MODEL_RADAR_PARTIAL
     )
-    # G2: the published synthetic state is DERIVED from causal evidence, so
-    # synthetic model/lineage inputs can never be laundered into a
-    # non-synthetic snapshot (and a live snapshot cannot claim synthetic).
+    # G2/H2: the published synthetic state is DERIVED from causal evidence
+    # using EXACT boolean provenance.  Missing / null / "false" / 0 /
+    # malformed flags are never interpreted as live/non-synthetic authority:
+    # they are typed input errors.
+    def _provenance(value):
+        if value is True:
+            return "TRUE"
+        if value is False:
+            return "FALSE"
+        return "MALFORMED"
+
+    r7_lineage = (r8_evidence.get("upstreamEvidence") or {}).get(
+        "r7CrossMarketEvidence", {})
+    provenance = {
+        "r9": _provenance(r9_evidence.get("synthetic")),
+        "r8": _provenance(r8_evidence.get("synthetic")),
+        "r7": _provenance(r7_lineage.get("synthetic")),
+    }
+    malformed = sorted(k for k, v in provenance.items() if v == "MALFORMED")
+    if malformed:
+        raise ModelRadarError(
+            "causal evidence layers carry missing/malformed synthetic "
+            f"provenance for {malformed}; non-synthetic authority requires "
+            "the exact boolean false",
+            ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+        )
     derived_synthetic = bool(
         synthetic
         or (model_evidence is not None and model_evidence.synthetic)
-        or bool(r9_evidence.get("synthetic"))
-        or bool(r8_evidence.get("synthetic"))
-        or bool((r8_evidence.get("upstreamEvidence") or {})
-                .get("r7CrossMarketEvidence", {}).get("synthetic"))
+        or "TRUE" in provenance.values()
     )
     evidence = {
         "schemaVersion": SCHEMA_VERSION,

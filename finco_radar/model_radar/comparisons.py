@@ -103,6 +103,13 @@ class MarketComparabilityContext:
                             ("reference_price", self.reference_price)):
             if value is not None:
                 require_finite_decimal(value, name)
+        for name in ("conversion_multiplier", "token_multiplier"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ModelRadarError(
+                    f"{name} must be strictly positive (got {value})",
+                    ModelRadarStatus.MODEL_RADAR_INPUT_INVALID,
+                )
 
 
 def _ok(dimension: ComparabilityDimension) -> ComparabilityDimensionResult:
