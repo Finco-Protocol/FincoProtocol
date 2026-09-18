@@ -31,7 +31,6 @@ MANIFEST_PATH = "artifacts/radar_r12_digital_twin_manifest.json"
 
 
 def main() -> int:
-    from finco_radar.r11.live_proof import build_graph_from_upstream
     r8_evidence, audit = _build_r8_live_snapshot()
     r9_evidence = build_r9_evidence(
         r8_evidence=r8_evidence,
