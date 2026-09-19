@@ -85,6 +85,22 @@
   {% endif %}
 </section>
 
+<section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Settlement context</h2>
+  {% if view.settlement.configured %}
+  <dl class="kv">
+    <dt>Configured</dt><dd><span class="state-available">YES</span></dd>
+    <dt>State</dt><dd>{{ view.settlement.state }}</dd>
+    <dt>Source / methodology</dt><dd>{{ view.settlement.source }}</dd>
+    <dt>Chain / contract</dt><dd>{{ view.settlement.chainId }} — <span class="mono">{{ view.settlement.contractAddress }}</span></dd>
+    <dt>USD per settlement asset</dt><dd class="mono">{{ view.settlement.usdPerAsset }}</dd>
+  </dl>
+  {% else %}
+  <p class="state-unavailable">NOT CONFIGURED{% if view.settlement.reason %} — {{ view.settlement.reason }}{% endif %}</p>
+  <p class="muted small">Execution quotes require an explicitly configured settlement reference and taker routing context; nothing is assumed.</p>
+  {% endif %}
+</section>
+
 <section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>GAP</h2>
   {% if view.gap.available %}
