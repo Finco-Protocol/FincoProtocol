@@ -567,10 +567,11 @@ def test_p3_23_historical_snapshot_keeps_original_evidence(
     snapshot_id = _snapshot_ids(refresh.text)[0]
     monkeypatch.setenv("RADAR_V1_SETTLEMENT_USD_PER_ASSET", "1.5")
     historical = c.get(f"/radar/snapshot/{snapshot_id}").text
+    assert 'data-panel="settlement"' in historical
     settlement_panel = historical[
         historical.find('data-panel="settlement"'):
         historical.find('data-panel="gap"')]
-    assert "OPERATOR_CONFIGURED_REFERENCE" in settlement_panel,         f"settlement panel: {settlement_panel}"
+    assert "OPERATOR_CONFIGURED_REFERENCE" in settlement_panel
     assert "0.9998" in settlement_panel  # original preserved evidence
     assert ">1.5<" not in historical
 
