@@ -72,3 +72,37 @@ Evidence Inspector — that
 `document.documentElement.scrollWidth <= window.innerWidth` (+2 px
 rounding), with a 1440 px desktop non-regression pass, against the real
 `main_web.app` served by uvicorn.
+
+
+## Correction A — lifecycle/admission exactly-once + canonical deadline authority
+
+- **A1 lifecycle/admission protocol** — admission (capacity acquire +
+  executor submit) is serialized against `close()` through
+  `_lifecycle_lock`; once closure begins no new work is admitted into a
+  shutting-down executor (typed `SERVICE_CLOSED` result, raw
+  `RuntimeError` never escapes), and a submit failure after admission
+  releases the slot exactly once.  Admitted work is never cancelled
+  (shutdown without cancelling queued items), so every admitted slot has
+  exactly one owner (its worker) and exactly one release path (the
+  worker's finally) — no leak, no double release (pinned by
+  BoundedSemaphore over-release detection and free-capacity assertions
+  across every lifecycle path).
+- **A2 canonical deadline authority** — `_resolve_deadline_outcome` is
+  the ONE production deadline decision path (the split-brain helper is
+  gone).  The worker publishes its envelope into a per-provider holder
+  BEFORE Future completion; the coordinator uses the Future only for
+  waiting.  Completed providers: `completed_mono <= limiting` accepts
+  (even when publication is late); `> limiting` times out.  Still-running
+  providers: deadline reached → TIMEOUT (`decision == limiting` included).
+  Classification: budget-limiting → `TOTAL_BUDGET_EXHAUSTED`, else
+  `PER_PROVIDER_TIMEOUT`; exact equal-deadline tie →
+  `TOTAL_BUDGET_EXHAUSTED` (pinned in production-path tests).
+- **A3 heartbeat proof repair** — heartbeat latency is now measured from
+  a timestamp captured BEFORE either request can block the loop, with a
+  sensitivity control proving the harness detects a deliberately
+  blocking route.
+- **Test hygiene** — N03/N04 fixtures call `service.close()`, reset the
+  injected Radar service, stop uvicorn and close the browser.
+- **Governance** — workflow Gate B is now a real scope gate (changes vs
+  `aca6308` must stay within authorized Post-R12 surfaces); Gate A
+  (frozen R0–R12) unchanged.

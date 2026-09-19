@@ -107,24 +107,42 @@ class _Flight:
         self.error: "BaseException | None" = None
 
 
-def _deadline_outcome(provider_deadline: float, total_deadline: float,
-                      completed_mono: "float | None",
-                      decision_mono: float) -> "tuple[bool, str | None]":
-    """N02: the authoritative deadline decision for one provider result.
+def _resolve_deadline_outcome(
+    envelope: "ProviderExecutionOutcome | None",
+    provider_deadline: float, total_deadline: float,
+    decision_mono: float,
+) -> "tuple[bool, str | None]":
+    """A2/section 5: THE one canonical production deadline-decision path.
 
-    Returns ``(timed_out, error_class)``.  The decision compares the
-    WORKER-CAPTURED completion time against the limiting deadline
-    (``min(provider_deadline, total_deadline)``) — never the coordinator's
-    observation time and never ``future.done()`` alone.  A still-running
-    provider is timed out at its limiting deadline; the classification
-    names the deadline that was actually limiting."""
+    Returns ``(timed_out, error_class)``.  Worker-captured completion time
+    (inside the envelope) is the sole authority for completed providers;
+    Future publication timing, ``future.done()`` and coordinator
+    collection order are scheduling details only.
+
+    - Completed provider: ``completed_mono <= limiting_deadline`` (where
+      ``limiting = min(provider_deadline, total_deadline)``) means the
+      deadline itself did not invalidate the result; ``>`` means timeout.
+      Completed exactly AT the deadline is accepted.
+    - Still-running provider: at the limiting deadline it is a TIMEOUT.
+      ``decision_mono == limiting_deadline`` while still running is a
+      timeout — a still-running-at-decision provider is a different state
+      from a completed-at-deadline one.
+    - Classification names the deadline that was actually limiting.  For
+      the exact tie ``provider_deadline == total_deadline`` the reviewed
+      contract is preserved: ``TOTAL_BUDGET_EXHAUSTED``."""
     limiting = min(provider_deadline, total_deadline)
-    effective = completed_mono if completed_mono is not None else decision_mono
-    if effective <= limiting:
-        return (False, None)
-    return (True,
-            "TOTAL_BUDGET_EXHAUSTED" if total_deadline <= provider_deadline
-            else "PER_PROVIDER_TIMEOUT")
+    timeout_code = (
+        "TOTAL_BUDGET_EXHAUSTED" if total_deadline <= provider_deadline
+        else "PER_PROVIDER_TIMEOUT")
+    if envelope is not None:
+        # Completed provider: the worker-captured completion time decides.
+        if envelope.completed_mono <= limiting:
+            return (False, None)
+        return (True, timeout_code)
+    # Still-running provider at the decision point: deadline reached.
+    if decision_mono >= limiting:
+        return (True, timeout_code)
+    return (False, None)
 
 
 class AcquisitionService:
@@ -165,19 +183,39 @@ class AcquisitionService:
             thread_name_prefix="radar-provider")
         self._provider_capacity = threading.BoundedSemaphore(
             max(1, self._config.max_concurrent_providers))
+        # A1 lifecycle/admission protocol: ``_lifecycle_lock`` serializes
+        # admission (capacity acquire + executor submit) against
+        # ``close()`` so a concurrent close can never produce an
+        # ambiguous admitted-but-shutdown state; ``_closed`` flips before
+        # the pool shuts down.
+        self._lifecycle_lock = threading.RLock()
         self._closed = False
 
     def close(self) -> None:
-        """Release the service-owned provider executor.  Idempotent.
+        """A1: release the service-owned provider executor.  Idempotent.
 
-        Already-running provider callables CANNOT be force-killed in
-        Python; shutdown() stops accepting new work and cancels pending
-        (not-yet-started) items.  Bounded admission (the capacity
-        semaphore) continues to guarantee that in-flight work cannot
-        accumulate beyond the configured capacity."""
-        if getattr(self, "_provider_pool", None) is not None:
-            self._provider_pool.shutdown(wait=False, cancel_futures=True)
+        Admission/submission is serialized against closure through
+        ``_lifecycle_lock``: once ``_closed`` is set, no new provider work
+        is admitted into a shutting-down executor, so a concurrent close
+        can never leak a capacity slot or leak a raw executor
+        ``RuntimeError``.  Admitted work is NEVER cancelled before its
+        worker takes ownership (``shutdown`` is called WITHOUT
+        ``cancel_futures``) — every admitted slot has exactly one owner
+        (its worker) and exactly one release path (the worker's finally),
+        so no slot can leak or double-release.  Already-running Python
+        provider callables cannot be force-killed and keep their slot
+        until natural completion."""
+        with self._lifecycle_lock:
+            if self._closed:
+                return
+            self._closed = True
+            pool = getattr(self, "_provider_pool", None)
             self._provider_pool = None
+        if pool is not None:
+            # No cancel_futures: admitted work is never cancelled before
+            # its worker starts; queued work drains and releases its
+            # capacity exactly once through the worker's finally.
+            pool.shutdown(wait=False)
 
     # ------------------------------------------------------------------
     # read path — network-free (P14)
@@ -345,126 +383,176 @@ class AcquisitionService:
                     error_class="SERVICE_CLOSED"))
             return results
 
-        futures: "dict[str, Any]" = {}
+        futures: "dict[str, Any] | None" = None
+        holders: "dict[str, dict]" = {}
         provider_deadlines: "dict[str, float]" = {}
         if names:
             dispatch_mono = self._monotonic()
             for name in names:
                 if name in missing:
                     continue
-                # N01 bounded admission: non-blocking capacity check;
-                # exhausted capacity fails closed instead of queueing.
-                if not self._provider_capacity.acquire(blocking=False):
-                    continue
-                futures[name] = pool.submit(
-                    self._run_provider_work, name, request,
-                    dispatch_mono)
-                provider_deadlines[name] = dispatch_mono + per_timeout
-            for name in names:
-                if name in missing:
-                    results.append(ProviderResult(
-                        provider=name,
-                        state=ProviderResultState.PROVIDER_ERROR,
-                        elapsed_ms=0.0,
-                        error_class="PROVIDER_NOT_CONFIGURED"))
-                    self._events.record(AcquisitionEvent(
-                        event="acquisition.provider_result",
-                        correlation_id=correlation_id,
-                        request_fingerprint=fingerprint,
-                        provider=name,
-                        result_state="PROVIDER_ERROR",
-                        error_class="PROVIDER_NOT_CONFIGURED"))
-                    continue
-                if name not in futures:
-                    results.append(ProviderResult(
-                        provider=name,
-                        state=ProviderResultState.TIMEOUT,
-                        elapsed_ms=0.0,
-                        error_class="PROVIDER_CAPACITY_EXHAUSTED"))
-                    self._events.record(AcquisitionEvent(
-                        event="acquisition.provider_result",
-                        correlation_id=correlation_id,
-                        request_fingerprint=fingerprint,
-                        provider=name,
-                        result_state="TIMEOUT",
-                        error_class="PROVIDER_CAPACITY_EXHAUSTED"))
-                    continue
-                future = futures[name]
-                now = self._monotonic()
-                limiting_deadline = min(provider_deadlines[name],
-                                        total_deadline)
-                envelope = None
-                timed_out = False
-                timeout_code = None
-                if future.done():
-                    # N02: the envelope carries the worker-captured
-                    # completion time; the deadline decision below uses it
-                    # (not future.done()) to accept or reject.
-                    envelope = future.result()
-                else:
-                    remaining = limiting_deadline - now
-                    if remaining <= 0:
-                        timed_out = True
-                        timeout_code = (
-                            "TOTAL_BUDGET_EXHAUSTED"
-                            if total_deadline <= provider_deadlines[name]
-                            else "PER_PROVIDER_TIMEOUT")
-                    else:
-                        try:
-                            envelope = future.result(timeout=remaining)
-                        except FutureTimeoutError:
-                            timed_out = True
-                            timeout_code = (
-                                "TOTAL_BUDGET_EXHAUSTED"
-                                if total_deadline <= provider_deadlines[name]
-                                else "PER_PROVIDER_TIMEOUT")
-                if timed_out:
-                    # N01: capacity stays held for still-running work;
-                    # N02: the elapsed value is the authoritative deadline
-                    # decision time, never delayed coordinator collection.
-                    decision_mono = self._monotonic()
-                    results.append(ProviderResult(
-                        provider=name,
-                        state=ProviderResultState.TIMEOUT,
-                        elapsed_ms=round(
-                            (decision_mono - dispatch_mono) * 1000, 3),
-                        error_class=timeout_code))
-                else:
-                    # N02: the worker-captured completion time (inside the
-                    # envelope) decides — a completion after the limiting
-                    # deadline is a TIMEOUT even when future.done().
-                    completed = envelope.completed_mono
-                    if completed > limiting_deadline:
-                        budget_limited = (
-                            total_deadline <= provider_deadlines[name])
+                holder: dict = {}
+                # A1: admission (capacity acquire) + executor submit are
+                # serialized against close() through the lifecycle lock,
+                # so an admitted slot always lands on a live executor and
+                # has exactly one owner (its worker) and exactly one
+                # release path (the worker's finally).
+                with self._lifecycle_lock:
+                    if self._closed or self._provider_pool is None:
+                        results.append(ProviderResult(
+                            provider=name,
+                            state=ProviderResultState.PROVIDER_ERROR,
+                            elapsed_ms=0.0,
+                            error_class="SERVICE_CLOSED"))
+                        self._events.record(AcquisitionEvent(
+                            event="acquisition.provider_result",
+                            correlation_id=correlation_id,
+                            request_fingerprint=fingerprint,
+                            provider=name,
+                            result_state="PROVIDER_ERROR",
+                            error_class="SERVICE_CLOSED"))
+                        continue
+                    # N01 bounded admission: non-blocking capacity check;
+                    # exhausted capacity fails closed instead of queueing.
+                    if not self._provider_capacity.acquire(blocking=False):
                         results.append(ProviderResult(
                             provider=name,
                             state=ProviderResultState.TIMEOUT,
-                            elapsed_ms=round(
-                                (completed - dispatch_mono) * 1000, 3),
-                            error_class=(
-                                "TOTAL_BUDGET_EXHAUSTED" if budget_limited
-                                else "PER_PROVIDER_TIMEOUT")))
-                    else:
-                        results.append(self._classify_envelope(
-                            name, envelope))
-                result = results[-1]
+                            elapsed_ms=0.0,
+                            error_class="PROVIDER_CAPACITY_EXHAUSTED"))
+                        self._events.record(AcquisitionEvent(
+                            event="acquisition.provider_result",
+                            correlation_id=correlation_id,
+                            request_fingerprint=fingerprint,
+                            provider=name,
+                            result_state="TIMEOUT",
+                            error_class="PROVIDER_CAPACITY_EXHAUSTED"))
+                        continue
+                    try:
+                        future = self._provider_pool.submit(
+                            self._run_provider_work, name, request,
+                            dispatch_mono, holder)
+                    except RuntimeError:
+                        # A1 submit failure after admission (executor shut
+                        # down concurrently): release the slot EXACTLY ONCE
+                        # here and fail closed with a typed result — no raw
+                        # executor exception may escape.
+                        self._provider_capacity.release()
+                        results.append(ProviderResult(
+                            provider=name,
+                            state=ProviderResultState.PROVIDER_ERROR,
+                            elapsed_ms=0.0,
+                            error_class="SERVICE_CLOSED"))
+                        self._events.record(AcquisitionEvent(
+                            event="acquisition.provider_result",
+                            correlation_id=correlation_id,
+                            request_fingerprint=fingerprint,
+                            provider=name,
+                            result_state="PROVIDER_ERROR",
+                            error_class="SERVICE_CLOSED"))
+                        continue
+                futures = futures or {}
+                futures[name] = future
+                holders[name] = holder
+                provider_deadlines[name] = dispatch_mono + per_timeout
+        else:
+            futures = {}
+        for name in names:
+            if name in missing:
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.PROVIDER_ERROR,
+                    elapsed_ms=0.0,
+                    error_class="PROVIDER_NOT_CONFIGURED"))
                 self._events.record(AcquisitionEvent(
                     event="acquisition.provider_result",
                     correlation_id=correlation_id,
                     request_fingerprint=fingerprint,
-                    provider=result.provider,
-                    result_state=result.state.value,
-                    elapsed_ms=result.elapsed_ms,
-                    error_class=result.error_class))
+                    provider=name,
+                    result_state="PROVIDER_ERROR",
+                    error_class="PROVIDER_NOT_CONFIGURED"))
+                continue
+            if name not in provider_deadlines:
+                # admission failed closed above and already recorded
+                continue
+            future = futures[name]
+            holder = holders[name]
+            provider_deadline = provider_deadlines[name]
+            limiting_deadline = min(provider_deadline, total_deadline)
+            # A2: scheduling only — the Future/FutureTimeoutError is used
+            # to WAIT, never to decide the deadline outcome.  The worker
+            # publishes its envelope into the holder BEFORE Future
+            # completion, so coordinator collection timing cannot hide an
+            # on-time completion or manufacture one for a late one.
+            envelope = holder.get("outcome")
+            if envelope is None:
+                # Wait AT MOST until the limiting deadline.  A waiter may
+                # wake slightly EARLY (platform timer granularity), so the
+                # loop re-checks: the coordinator may never declare a
+                # timeout before the limiting deadline has actually passed.
+                while True:
+                    now = self._monotonic()
+                    remaining = limiting_deadline - now
+                    if remaining <= 0:
+                        break
+                    try:
+                        future.result(timeout=remaining)
+                    except FutureTimeoutError:
+                        pass
+                    envelope = holder.get("outcome")
+                    if envelope is not None:
+                        break
+            # A2/section 5: ONE canonical production deadline authority.
+            timed_out, timeout_code = _resolve_deadline_outcome(
+                envelope, provider_deadline, total_deadline,
+                self._monotonic())
+            if not timed_out and envelope is None:
+                # defensive fail-closed: waiting ended before the limiting
+                # deadline without a published outcome (must not occur in
+                # production flow — never fabricate a result)
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.INVALID_RESPONSE,
+                    elapsed_ms=round(
+                        (self._monotonic() - dispatch_mono) * 1000, 3),
+                    error_class="OUTCOME_NOT_CAPTURED"))
+            elif timed_out:
+                # N01: capacity stays held for still-running work; N02:
+                # elapsed is the authoritative deadline boundary for
+                # still-running work, the actual completion interval for
+                # late completions — never delayed coordinator collection.
+                effective_mono = (
+                    envelope.completed_mono if envelope is not None
+                    else self._monotonic())
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.TIMEOUT,
+                    elapsed_ms=round(
+                        (effective_mono - dispatch_mono) * 1000, 3),
+                    error_class=timeout_code))
+            else:
+                results.append(self._classify_envelope(name, envelope))
+            result = results[-1]
+            self._events.record(AcquisitionEvent(
+                event="acquisition.provider_result",
+                correlation_id=correlation_id,
+                request_fingerprint=fingerprint,
+                provider=result.provider,
+                result_state=result.state.value,
+                elapsed_ms=result.elapsed_ms,
+                error_class=result.error_class))
         return results
 
     def _run_provider_work(self, name: str, request: AcquisitionRequest,
-                           dispatch_mono: float) -> ProviderExecutionOutcome:
-        """Worker-side execution envelope (N02): runs one provider
+                           dispatch_mono: float,
+                           holder: dict) -> ProviderExecutionOutcome:
+        """Worker-side execution envelope (N02/A1): runs one provider
         callable, captures the completion monotonic time IMMEDIATELY on
-        return/raise, and releases the service capacity slot only when
-        the real work is finished (never on coordinator timeout)."""
+        return/raise, publishes the envelope into the per-provider holder
+        BEFORE Future completion (so coordinator waiting time can never
+        decide the deadline outcome), and releases the service capacity
+        slot exactly once when the real work finishes (never on
+        coordinator timeout)."""
         completed_mono = None
         observation = None
         error = None
@@ -474,9 +562,7 @@ class AcquisitionService:
         except BaseException as exc:  # noqa: BLE001 - captured in envelope
             completed_mono = self._monotonic()
             error = exc
-        finally:
-            self._provider_capacity.release()
-        return ProviderExecutionOutcome(
+        envelope = ProviderExecutionOutcome(
             provider=name,
             dispatch_mono=dispatch_mono,
             completed_mono=completed_mono
@@ -484,6 +570,15 @@ class AcquisitionService:
             observation=observation,
             error=error,
         )
+        # A2: publication into the holder happens BEFORE the Future
+        # completes (the executor sets the Future result only after this
+        # callable returns), so the completion authority is independent
+        # of Future publication timing.
+        holder["outcome"] = envelope
+        # A1: exactly-once capacity release — the slot's single owner is
+        # this worker and its single release path is this finally.
+        self._provider_capacity.release()
+        return envelope
 
     def _classify_envelope(self, name: str,
                            envelope: ProviderExecutionOutcome) -> ProviderResult:

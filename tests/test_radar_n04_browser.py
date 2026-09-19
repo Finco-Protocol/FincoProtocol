@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import socket
 import threading
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -83,17 +84,25 @@ def live_url():
     radar_router_module.set_service(service)
 
     port = _free_port()
-    config = uvicorn.Config(main_web.app, host="127.0.0.1", port=port,
-                            log_level="error")
-    server = uvicorn.Server(config)
+    import uvicorn as _uv
+    server_box = {"server": None}
+    config = _uv.Config(main_web.app, host="127.0.0.1", port=port,
+                        log_level="error")
+    server = _uv.Server(config)
+    server_box["server"] = server
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     while not server.started:
-        import time
         time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}", calls_box
-    server.should_exit = True
-    thread.join(5)
+    try:
+        yield f"http://127.0.0.1:{port}", calls_box
+    finally:
+        # section 10 test hygiene: stop uvicorn, release the service-owned
+        # executor and reset the globally injected Radar service
+        server.should_exit = True
+        thread.join(5)
+        service.close()
+        radar_router_module.set_service(None)
 
 
 @pytest.fixture(scope="module")

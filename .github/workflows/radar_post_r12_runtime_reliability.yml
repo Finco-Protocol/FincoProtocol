@@ -54,14 +54,33 @@ jobs:
           print(f"RUNTIME_GATE_A_PASS changed_vs_anchor={len(changed)} "
                 "frozen_paths_untouched")
           PY
-      - name: Gate B — P1 runtime semantics preserved where contracts require
+      - name: Gate B — Correction A scope gate (authorized Post-R12 surfaces only, vs aca6308)
         run: |
           python - <<'PY'
           import subprocess
-          # N01/N02 authorize app/radar_runtime changes on this branch;
-          # frozen authority below stays enforced by Gate A.
-          print("RUNTIME_GATE_B_PASS: N01/N02 authorize radar_runtime "
-                "changes on this branch; frozen R0-R12 enforced by Gate A")
+          base = "aca630821ae64dba55c35ae12ae5c48401b6aa67"
+          authorized = (
+              "app/radar_runtime/",      # N01/N02 runtime mechanics
+              "app/radar_ui/",           # N03 route offload
+              "app/templates/radar/",    # N04 presentation, if needed
+              "static/radar/",           # N04 CSS, if needed
+              "tests/test_radar_",       # reliability/UI/runtime tests
+              "docs/radar/",             # runtime reliability docs
+              ".github/workflows/radar_post_r12_",
+              "main_web.py",             # composition wiring, if needed
+          )
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", base, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          outside = [p for p in changed
+                     if not p.startswith(authorized)]
+          if outside:
+              raise SystemExit(
+                  f"RUNTIME_GATE_B_BLOCKED: changes outside authorized "
+                  f"Post-R12 surfaces vs {base}: {outside}")
+          print(f"RUNTIME_GATE_B_PASS changed_vs_base={len(changed)} "
+                "all_authorized_surfaces")
           PY
       - name: Runtime reliability tests (N01/N02 + lifecycle)
         run: pytest -q tests/test_radar_runtime_reliability.py
