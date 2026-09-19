@@ -65,9 +65,33 @@ html, body.radar {
   padding-bottom: 6px;
 }
 
-.kv { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 3px 16px; margin: 0; }
-.kv dt { color: var(--radar-muted); }
-.kv dd { margin: 0; overflow-wrap: anywhere; }
+/* N04: long unbroken identifiers (snapshot IDs, fingerprints, digests)
+   must wrap inside their panel instead of overflowing the document. */
+.kv {
+  display: grid;
+  grid-template-columns: minmax(0, 170px) minmax(0, 1fr);
+  gap: 3px 16px;
+  margin: 0;
+}
+.kv dt { color: var(--radar-muted); min-width: 0; overflow-wrap: anywhere; }
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.panel, .radar-main, .radar-topbar {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.provider-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 
 .mono { font-family: var(--radar-mono); font-size: 0.95em; }
 .big { font-size: 1.25em; color: var(--radar-teal); }

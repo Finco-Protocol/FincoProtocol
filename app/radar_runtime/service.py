@@ -82,6 +82,20 @@ class ServiceConfig:
         )
 
 
+@dataclass(frozen=True)
+class ProviderExecutionOutcome:
+    """N02: internal execution envelope produced INSIDE the provider
+    worker.  ``completed_mono`` is captured immediately when the provider
+    callable returns/raises, so the coordinator's collection time can
+    never decide whether a provider met its deadline."""
+
+    provider: str
+    dispatch_mono: float
+    completed_mono: float
+    observation: "Any" = None
+    error: "BaseException | None" = None
+
+
 class _Flight:
     """One in-flight acquisition shared by single-flight waiters (P7)."""
 
@@ -91,6 +105,69 @@ class _Flight:
         self.done = threading.Event()
         self.snapshot: "AcquisitionSnapshot | None" = None
         self.error: "BaseException | None" = None
+
+
+class _ProviderExecutionState:
+    """B1: observable worker-completion authority for one provider call.
+
+    The worker publishes the minimal authoritative completion state —
+    ``completed`` flag, ``completed_mono``, and the captured
+    observation/error — ATOMICALLY (under ``lock``, followed by
+    ``completed_event.set()``) at the SAME worker boundary where
+    ``completed_mono`` is captured, i.e. immediately when the provider
+    callable returns/raises.  The full envelope publication (and Future
+    completion) may happen any time later without affecting the deadline
+    decision: the coordinator reads the completion marker, not the
+    Future.  Explicit Lock/Event synchronization defines the visibility
+    contract; no reliance on incidental dict atomicity."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.completed_event = threading.Event()
+        self.envelope_event = threading.Event()
+        self.completed = False
+        self.completed_mono: "float | None" = None
+        self.observation: "Any" = None
+        self.error: "BaseException | None" = None
+        self.envelope: "ProviderExecutionOutcome | None" = None
+
+
+def _resolve_deadline_outcome(
+    state_completed: bool,
+    completed_mono: "float | None",
+    provider_deadline: float, total_deadline: float,
+    decision_mono: float,
+) -> "tuple[bool, str | None]":
+    """A2/B1: THE one canonical production deadline-decision path.
+
+    Returns ``(timed_out, error_class)``.  ``state_completed`` reflects
+    the worker-published completion marker; ``completed_mono`` is the
+    worker-captured completion time.  Future publication timing,
+    ``future.done()`` and coordinator collection order are scheduling
+    details only.
+
+    - Completed provider: ``completed_mono <= limiting_deadline`` (where
+      ``limiting = min(provider_deadline, total_deadline)``) means the
+      deadline itself did not invalidate the result — including
+      ``completed_mono == limiting_deadline``; ``>`` means timeout.
+    - Still-running provider (no completion marker at decision time): the
+      decision point is at/after the limiting deadline, so it is a
+      TIMEOUT — ``decision_mono == limiting_deadline`` while still
+      running is a different state from a completed-at-deadline one.
+    - Classification names the deadline that was actually limiting.  For
+      the exact tie ``provider_deadline == total_deadline`` the reviewed
+      contract is preserved: ``TOTAL_BUDGET_EXHAUSTED``."""
+    limiting = min(provider_deadline, total_deadline)
+    timeout_code = (
+        "TOTAL_BUDGET_EXHAUSTED" if total_deadline <= provider_deadline
+        else "PER_PROVIDER_TIMEOUT")
+    if state_completed:
+        if completed_mono is not None and completed_mono <= limiting:
+            return (False, None)
+        return (True, timeout_code)
+    if decision_mono >= limiting:
+        return (True, timeout_code)
+    return (False, None)
 
 
 class AcquisitionService:
@@ -117,6 +194,53 @@ class AcquisitionService:
         self._monotonic = monotonic or time.monotonic
         self._inflight: "dict[str, _Flight]" = {}
         self._inflight_lock = threading.Lock()
+        # N01: ONE service-owned provider execution pool with bounded
+        # admission.  ``max_concurrent_providers`` bounds the WHOLE
+        # service, not each acquisition.  Capacity (the bounded
+        # semaphore) is held from dispatch until the provider callable
+        # actually returns/raises inside the worker — coordinator
+        # timeouts NEVER release capacity for still-running work, so
+        # repeated timed-out acquisitions cannot accumulate active
+        # threads.  The executor queue therefore never grows beyond the
+        # admitted work items.
+        self._provider_pool = ThreadPoolExecutor(
+            max_workers=max(1, self._config.max_concurrent_providers),
+            thread_name_prefix="radar-provider")
+        self._provider_capacity = threading.BoundedSemaphore(
+            max(1, self._config.max_concurrent_providers))
+        # A1 lifecycle/admission protocol: ``_lifecycle_lock`` serializes
+        # admission (capacity acquire + executor submit) against
+        # ``close()`` so a concurrent close can never produce an
+        # ambiguous admitted-but-shutdown state; ``_closed`` flips before
+        # the pool shuts down.
+        self._lifecycle_lock = threading.RLock()
+        self._closed = False
+
+    def close(self) -> None:
+        """A1: release the service-owned provider executor.  Idempotent.
+
+        Admission/submission is serialized against closure through
+        ``_lifecycle_lock``: once ``_closed`` is set, no new provider work
+        is admitted into a shutting-down executor, so a concurrent close
+        can never leak a capacity slot or leak a raw executor
+        ``RuntimeError``.  Admitted work is NEVER cancelled before its
+        worker takes ownership (``shutdown`` is called WITHOUT
+        ``cancel_futures``) — every admitted slot has exactly one owner
+        (its worker) and exactly one release path (the worker's finally),
+        so no slot can leak or double-release.  Already-running Python
+        provider callables cannot be force-killed and keep their slot
+        until natural completion."""
+        with self._lifecycle_lock:
+            if self._closed:
+                return
+            self._closed = True
+            pool = getattr(self, "_provider_pool", None)
+            self._provider_pool = None
+        if pool is not None:
+            # No cancel_futures: admitted work is never cancelled before
+            # its worker starts; queued work drains and releases its
+            # capacity exactly once through the worker's finally.
+            pool.shutdown(wait=False)
 
     # ------------------------------------------------------------------
     # read path — network-free (P14)
@@ -249,127 +373,258 @@ class AcquisitionService:
         self, request: AcquisitionRequest, correlation_id: str,
         fingerprint: str, started_mono: float,
     ) -> "list[ProviderResult]":
-        """Run the requested provider acquisitions in a bounded pool (P11).
+        """Run the requested provider acquisitions against the SERVICE-OWNED
+        bounded pool (N01) with worker-side completion capture (N02).
 
-        A1 timeout authority — DISPATCH-START semantics: every provider's
-        deadline is fixed once at submission (``dispatch_mono +
-        per_provider_timeout``) and is NEVER reset.  The coordinator waits
-        on each provider's REMAINING window (bounded additionally by the
-        independent total acquisition budget), so processing order can
-        never extend a provider's allowed timeout.  ``elapsed_ms`` is
-        measured from dispatch, reflecting the provider's actual bounded
-        execution/wait interval rather than coordinator processing time.
-
-        Providers are independent observations; one slow/failed provider
-        never fabricates or discards another's preserved evidence (P5)."""
+        - ``max_concurrent_providers`` bounds the WHOLE service: capacity
+          (a bounded semaphore) is acquired before dispatch and released
+          only when the provider callable actually returns/raises inside
+          the worker.  Coordinator timeouts NEVER release capacity for
+          still-running work.
+        - When no capacity is available the provider fails closed with
+          the stable typed result ``PROVIDER_CAPACITY_EXHAUSTED`` —
+          never an unbounded queue and never an indefinite block.
+        - N02: the worker records its completion monotonic time
+          immediately; ``completed_mono`` vs the immutable deadlines
+          (provider window, total budget) decides TIMEOUT vs success —
+          never the coordinator's observation order.
+        - Providers are independent observations; one slow/failed
+          provider never fabricates or discards another's preserved
+          evidence (P5)."""
         names = sorted(request.sources)
         missing = [n for n in names if n not in self._providers]
         results: "list[ProviderResult]" = []
         per_timeout = self._config.per_provider_timeout_seconds
         total_deadline = started_mono + self._config.total_budget_seconds
 
-        futures = {}
+        pool = getattr(self, "_provider_pool", None)
+        if pool is None:
+            # closed service: every provider fails closed
+            for name in names:
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.PROVIDER_ERROR,
+                    elapsed_ms=0.0,
+                    error_class="SERVICE_CLOSED"))
+            return results
+
+        futures: "dict[str, Any] | None" = None
+        states: "dict[str, _ProviderExecutionState]" = {}
+        provider_deadlines: "dict[str, float]" = {}
         if names:
-            workers = min(len(names),
-                          max(1, self._config.max_concurrent_providers))
-            pool = ThreadPoolExecutor(max_workers=workers,
-                                      thread_name_prefix="radar-acq")
-            try:
-                dispatch_mono = self._monotonic()
-                provider_deadlines: "dict[str, float]" = {}
-                for name in names:
-                    if name in missing:
-                        continue
-                    futures[name] = pool.submit(
-                        self._providers[name], request)
-                    provider_deadlines[name] = dispatch_mono + per_timeout
-                for name in names:
-                    if name in missing:
+            dispatch_mono = self._monotonic()
+            for name in names:
+                if name in missing:
+                    continue
+                state = _ProviderExecutionState()
+                # A1: admission (capacity acquire) + executor submit are
+                # serialized against close() through the lifecycle lock,
+                # so an admitted slot always lands on a live executor and
+                # has exactly one owner (its worker) and exactly one
+                # release path (the worker's finally).
+                with self._lifecycle_lock:
+                    if self._closed or self._provider_pool is None:
                         results.append(ProviderResult(
                             provider=name,
                             state=ProviderResultState.PROVIDER_ERROR,
                             elapsed_ms=0.0,
-                            error_class="PROVIDER_NOT_CONFIGURED"))
+                            error_class="SERVICE_CLOSED"))
                         self._events.record(AcquisitionEvent(
                             event="acquisition.provider_result",
                             correlation_id=correlation_id,
                             request_fingerprint=fingerprint,
                             provider=name,
                             result_state="PROVIDER_ERROR",
-                            error_class="PROVIDER_NOT_CONFIGURED"))
+                            error_class="SERVICE_CLOSED"))
                         continue
-                    future = futures[name]
-                    now = self._monotonic()
-                    wait = min(provider_deadlines[name], total_deadline) - now
-                    if not future.done() and wait <= 0:
-                        # A1/P10: the provider's fixed window or the total
-                        # budget has elapsed while still in flight — record
-                        # the typed timeout instead of blocking or granting
-                        # a fresh window.
-                        future.cancel()
-                        budget_limited = (
-                            total_deadline <= provider_deadlines[name])
+                    # N01 bounded admission: non-blocking capacity check;
+                    # exhausted capacity fails closed instead of queueing.
+                    if not self._provider_capacity.acquire(blocking=False):
                         results.append(ProviderResult(
                             provider=name,
                             state=ProviderResultState.TIMEOUT,
-                            elapsed_ms=round(
-                                (now - dispatch_mono) * 1000, 3),
-                            error_class=(
-                                "TOTAL_BUDGET_EXHAUSTED" if budget_limited
-                                else "PER_PROVIDER_TIMEOUT")))
-                    else:
-                        # Completed observations are taken immediately
-                        # (a finished result is never discarded because
-                        # coordinator processing consumed its window);
-                        # otherwise wait only the REMAINING bounded time.
-                        wait_arg = 0 if future.done() else wait
-                        try:
-                            observation = future.result(timeout=wait_arg)
-                            results.append(self._classify_success(
-                                name, dispatch_mono, observation))
-                        except FutureTimeoutError:
-                            # B1: classify by the deadline that actually
-                            # constrained this wait — never by processing
-                            # order, and neither deadline is reset.
-                            budget_limited = (
-                                total_deadline <= provider_deadlines[name])
-                            results.append(ProviderResult(
-                                provider=name,
-                                state=ProviderResultState.TIMEOUT,
-                                elapsed_ms=round(
-                                    (self._monotonic() - dispatch_mono)
-                                    * 1000, 3),
-                                error_class=(
-                                    "TOTAL_BUDGET_EXHAUSTED" if budget_limited
-                                    else "PER_PROVIDER_TIMEOUT")))
-                        except Exception as exc:  # transport boundary failure
-                            results.append(ProviderResult(
-                                provider=name,
-                                state=ProviderResultState.TRANSPORT_ERROR,
-                                elapsed_ms=round(
-                                    (self._monotonic() - dispatch_mono)
-                                    * 1000, 3),
-                                error_class=type(exc).__name__))
-                    result = results[-1]
-                    self._events.record(AcquisitionEvent(
-                        event="acquisition.provider_result",
-                        correlation_id=correlation_id,
-                        request_fingerprint=fingerprint,
-                        provider=result.provider,
-                        result_state=result.state.value,
-                        elapsed_ms=result.elapsed_ms,
-                        error_class=result.error_class))
-            finally:
-                # Bounded shutdown: pending/lingering work is cancelled;
-                # timeouts already recorded preserve honest partial state.
-                pool.shutdown(wait=False, cancel_futures=True)
+                            elapsed_ms=0.0,
+                            error_class="PROVIDER_CAPACITY_EXHAUSTED"))
+                        self._events.record(AcquisitionEvent(
+                            event="acquisition.provider_result",
+                            correlation_id=correlation_id,
+                            request_fingerprint=fingerprint,
+                            provider=name,
+                            result_state="TIMEOUT",
+                            error_class="PROVIDER_CAPACITY_EXHAUSTED"))
+                        continue
+                    try:
+                        future = self._provider_pool.submit(
+                            self._run_provider_work, name, request,
+                            dispatch_mono, state)
+                    except RuntimeError:
+                        # A1 submit failure after admission (executor shut
+                        # down concurrently): release the slot EXACTLY ONCE
+                        # here and fail closed with a typed result — no raw
+                        # executor exception may escape.
+                        self._provider_capacity.release()
+                        results.append(ProviderResult(
+                            provider=name,
+                            state=ProviderResultState.PROVIDER_ERROR,
+                            elapsed_ms=0.0,
+                            error_class="SERVICE_CLOSED"))
+                        self._events.record(AcquisitionEvent(
+                            event="acquisition.provider_result",
+                            correlation_id=correlation_id,
+                            request_fingerprint=fingerprint,
+                            provider=name,
+                            result_state="PROVIDER_ERROR",
+                            error_class="SERVICE_CLOSED"))
+                        continue
+                futures = futures or {}
+                futures[name] = future
+                states[name] = state
+                provider_deadlines[name] = dispatch_mono + per_timeout
+        else:
+            futures = {}
+        for name in names:
+            if name in missing:
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.PROVIDER_ERROR,
+                    elapsed_ms=0.0,
+                    error_class="PROVIDER_NOT_CONFIGURED"))
+                self._events.record(AcquisitionEvent(
+                    event="acquisition.provider_result",
+                    correlation_id=correlation_id,
+                    request_fingerprint=fingerprint,
+                    provider=name,
+                    result_state="PROVIDER_ERROR",
+                    error_class="PROVIDER_NOT_CONFIGURED"))
+                continue
+            if name not in provider_deadlines:
+                # admission failed closed above and already recorded
+                continue
+            future = futures[name]
+            state = states[name]
+            provider_deadline = provider_deadlines[name]
+            limiting_deadline = min(provider_deadline, total_deadline)
+            # A2/B1: scheduling only — the coordinator waits on the
+            # worker-published completion EVENT until the limiting
+            # deadline; Future publication timing is never consulted for
+            # the deadline decision.
+            if not state.completed_event.is_set():
+                # wait AT MOST until the limiting deadline; a waiter may
+                # wake slightly early (platform timer granularity), so the
+                # loop re-checks instead of deciding before the deadline
+                while not state.completed_event.is_set():
+                    now = self._monotonic()
+                    remaining = limiting_deadline - now
+                    if remaining <= 0:
+                        break
+                    state.completed_event.wait(remaining)
+            # B1/section 5: ONE canonical production deadline authority.
+            timed_out, timeout_code = _resolve_deadline_outcome(
+                state.completed, state.completed_mono, provider_deadline,
+                total_deadline, self._monotonic())
+            if timed_out:
+                # B2: still-running work is timed out AT the limiting
+                # deadline (elapsed = limiting - dispatch, immune to
+                # coordinator processing delay); completed-late work
+                # keeps its actual completion interval.
+                effective_mono = (
+                    state.completed_mono if state.completed
+                    else limiting_deadline)
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.TIMEOUT,
+                    elapsed_ms=round(
+                        (effective_mono - dispatch_mono) * 1000, 3),
+                    error_class=timeout_code))
+            elif state.completed:
+                # B1.1/B1.3: the callable completed on time — classify the
+                # genuine captured outcome regardless of publication delay
+                # (SUCCESS / PROVIDER_ERROR / INVALID_RESPONSE /
+                # TRANSPORT_ERROR according to the actual result).
+                elapsed = round(
+                    (state.completed_mono - dispatch_mono) * 1000, 3)
+                results.append(self._classify_observation(
+                    name, elapsed, state.observation, state.error))
+            else:
+                # B1/section 6 defensive fail-closed: completion was
+                # authoritatively signaled but no observation can ever be
+                # obtained (invariant violation) — typed, never fabricated
+                results.append(ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.INVALID_RESPONSE,
+                    elapsed_ms=round(
+                        (self._monotonic() - dispatch_mono) * 1000, 3),
+                    error_class="OUTCOME_NOT_CAPTURED"))
+            result = results[-1]
+            self._events.record(AcquisitionEvent(
+                event="acquisition.provider_result",
+                correlation_id=correlation_id,
+                request_fingerprint=fingerprint,
+                provider=result.provider,
+                result_state=result.state.value,
+                elapsed_ms=result.elapsed_ms,
+                error_class=result.error_class))
         return results
 
-    def _classify_success(
-        self, name: str, dispatch_mono: float,
-        observation: Any,
-    ) -> ProviderResult:
-        elapsed = round((self._monotonic() - dispatch_mono) * 1000, 3)
+    def _run_provider_work(self, name: str, request: AcquisitionRequest,
+                           dispatch_mono: float,
+                           state: "_ProviderExecutionState") -> ProviderExecutionOutcome:
+        """Worker-side execution (N02/B1): runs one provider callable and
+        publishes the authoritative completion state ATOMICALLY at the
+        capture boundary — ``completed_mono``, the captured
+        observation/error and the completed marker become observable to
+        the coordinator in the same synchronized block, BEFORE envelope
+        construction, capacity release and Future completion.  A worker
+        descheduled after the callable returned therefore can never hide
+        an on-time completion from the deadline decision.
+
+        The capacity slot is released exactly once by this worker, after
+        the completion marker is observable."""
+        try:
+            observation = self._providers[name](request)
+            completed_mono = self._monotonic()
+            error = None
+        except BaseException as exc:  # noqa: BLE001 - captured in state
+            completed_mono = self._monotonic()
+            observation = None
+            error = exc
+        # B1: authoritative completion publication at the capture boundary
+        with state.lock:
+            state.completed_mono = completed_mono
+            state.observation = observation
+            state.error = error
+            state.completed = True
+            state.completed_event.set()
+        # A1: exactly-once capacity release — the slot's single owner is
+        # this worker and its single release path is here, after the
+        # completion marker is observable.
+        self._provider_capacity.release()
+        # Envelope publication follows; it is bookkeeping only (the
+        # Future result is not the deadline authority) and may be
+        # arbitrarily delayed without affecting outcomes.
+        envelope = ProviderExecutionOutcome(
+            provider=name,
+            dispatch_mono=dispatch_mono,
+            completed_mono=completed_mono,
+            observation=observation,
+            error=error,
+        )
+        with state.lock:
+            state.envelope = envelope
+            state.envelope_event.set()
+        return envelope
+
+    def _classify_observation(self, name: str, elapsed: float,
+                              observation: "Any",
+                              error: "BaseException | None") -> ProviderResult:
+        """Classify a captured provider observation into a typed
+        provider result (P5/P12 vocabulary; A2/A3 rules preserved)."""
+        if error is not None:
+            return ProviderResult(
+                provider=name, state=ProviderResultState.TRANSPORT_ERROR,
+                elapsed_ms=elapsed,
+                error_class=type(error).__name__)
+        observation = observation
         if not isinstance(observation, Mapping):
             return ProviderResult(
                 provider=name, state=ProviderResultState.INVALID_RESPONSE,
@@ -382,15 +637,12 @@ class AcquisitionService:
                 error_class="OBSERVED_AT_MALFORMED")
         declared_error = observation.get("error")
         evidence = observation.get("evidence")
-        # B3: classify the provider error field explicitly.
-        # - absent or None  -> valid no-error
-        # - non-empty str   -> declared provider failure (PROVIDER_ERROR
-        #   with the closed code PROVIDER_DECLARED_ERROR; the raw
-        #   provider-controlled text is never logged)
-        # - anything else   -> INVALID_RESPONSE with the stable code
-        #   ERROR_FIELD_MALFORMED — never ignored because evidence happens
-        #   to be valid, and the raw malformed value is never logged or
-        #   stringified
+        # B3: classify the provider error field explicitly — absent/None is
+        # valid no-error; a non-empty string is a declared provider failure
+        # (PROVIDER_ERROR with the closed code PROVIDER_DECLARED_ERROR; the
+        # raw provider-controlled text is never logged); anything else is
+        # INVALID_RESPONSE with the stable code ERROR_FIELD_MALFORMED —
+        # never ignored because evidence happens to be valid.
         if declared_error is not None:
             if (not isinstance(declared_error, str)
                     or not declared_error.strip()):
