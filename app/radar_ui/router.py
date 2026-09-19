@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Form, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -91,7 +92,10 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             context={"view": None, "error": f"INVALID_REQUEST: {exc}"},
             status_code=200,
         )
-    snapshot = get_service().acquire(request_obj)
+    # N03: the blocking acquisition is offloaded to Starlette's worker
+    # threadpool so the ASGI event loop stays responsive (a lightweight
+    # heartbeat route completes while the provider call runs).
+    snapshot = await run_in_threadpool(get_service().acquire, request_obj)
     if request.headers.get("HX-Request", "").lower() == "true":
         # HTMX path: swap in the snapshot-bound panel fragment.
         return _templates.TemplateResponse(

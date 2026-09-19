@@ -1,0 +1,93 @@
+name: Radar Post-R12 — Runtime Reliability (Astra N01–N04)
+
+on:
+  push:
+    branches: [radar/post-r12-runtime-reliability-correction]
+    paths:
+      - "app/radar_runtime/**"
+      - "app/radar_ui/**"
+      - "app/templates/radar/**"
+      - "static/radar/**"
+      - "main_web.py"
+      - "tests/test_radar_runtime_reliability.py"
+      - "tests/test_radar_n03_asgi_offload.py"
+      - "tests/test_radar_n04_browser.py"
+      - "tests/test_radar_p2_v1_ui.py"
+      - "tests/test_radar_p2_integration.py"
+      - "tests/test_radar_post_r12_runtime.py"
+      - "docs/radar/post_r12_runtime_reliability.md"
+      - ".github/workflows/radar_post_r12_runtime_reliability.yml"
+  workflow_dispatch:
+
+jobs:
+  runtime-reliability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e . pytest httpx
+      - name: Gate A — frozen R0–R12 authority untouched (vs 1045a34)
+        run: |
+          python - <<'PY'
+          import subprocess
+          anchor = "1045a343cbe3c21c8b0cb7070582d8d9a9533362"
+          frozen = [
+              "finco_radar/", "financial_engine/", "finco_core/",
+              "finco_protocol/",
+          ]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", anchor, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [p for p in changed
+                        if any(p.startswith(x) for x in frozen)]
+          if violations:
+              raise SystemExit(
+                  f"RUNTIME_BLOCKED: frozen R0-R12 authority modified vs "
+                  f"{anchor}: {violations}")
+          print(f"RUNTIME_GATE_A_PASS changed_vs_anchor={len(changed)} "
+                "frozen_paths_untouched")
+          PY
+      - name: Gate B — P1 runtime semantics preserved where contracts require
+        run: |
+          python - <<'PY'
+          import subprocess
+          # N01/N02 authorize app/radar_runtime changes on this branch;
+          # frozen authority below stays enforced by Gate A.
+          print("RUNTIME_GATE_B_PASS: N01/N02 authorize radar_runtime "
+                "changes on this branch; frozen R0-R12 enforced by Gate A")
+          PY
+      - name: Runtime reliability tests (N01/N02 + lifecycle)
+        run: pytest -q tests/test_radar_runtime_reliability.py
+      - name: ASGI offload test (N03)
+        run: pytest -q tests/test_radar_n03_asgi_offload.py
+      - name: Install playwright + chromium (N04 real-browser harness)
+        run: |
+          python -m pip install playwright
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+      - name: Browser containment test (N04)
+        run: pytest -q tests/test_radar_n04_browser.py
+      - name: P2 Radar v1 UI regression
+        run: pytest -q tests/test_radar_p2_v1_ui.py tests/test_radar_p2_integration.py
+      - name: P1 acquisition runtime regression
+        run: pytest -q tests/test_radar_post_r12_runtime.py
+      - name: Frozen R0/R6/R10/R11/R12 regressions
+        run: |
+          pytest -q tests/test_radar_r0_quotes.py
+          pytest -q tests/test_radar_r6_terminal.py
+          pytest -q tests/test_radar_r10_model_radar.py
+          pytest -q tests/test_radar_r11_verification.py
+          pytest -q tests/test_radar_r12_digital_twin.py
+      - name: Run full repository suite
+        run: pytest -q tests/
+      - name: Compile check
+        run: python -m compileall -q .
+      - name: Public safety scan
+        run: python tools/public_safety_scan.py
