@@ -90,8 +90,9 @@ jobs:
           RADAR_R11_SHA256_PATH: artifacts/radar_r11_subject_on_r12.sha256
           RADAR_R11_MANIFEST_PATH: artifacts/radar_r11_subject_manifest_on_r12.json
         run: python -m finco_radar.r11.live_proof
-      - name: Run R12 live Digital Twin proof
+      - name: Run R12 live Digital Twin proof (consumes the canonical R11 artifact)
         env:
+          RADAR_R11_EVIDENCE_PATH: artifacts/radar_r11_subject_on_r12.json
           RADAR_R12_EVIDENCE_PATH: artifacts/radar_r12_digital_twin_evidence.json
           RADAR_R12_SHA256_PATH: artifacts/radar_r12_digital_twin_evidence.sha256
           RADAR_R12_MANIFEST_PATH: artifacts/radar_r12_digital_twin_manifest.json
@@ -137,12 +138,29 @@ jobs:
           if manifest.get("r12SnapshotDigest") != data.get("r12SnapshotDigest"):
               raise SystemExit("R12_BLOCKED: manifest snapshot digest mismatch")
           if not verify_serialized_r12_evidence(data):
-              raise SystemExit("R12_BLOCKED: r12SnapshotDigest does not reconstruct")
+              raise SystemExit("R12_BLOCKED: serialized R12 replay verification failed")
           subject = data.get("subjectR11Evidence")
           if not isinstance(subject, dict) or subject.get("status") != "VERIFICATION_OK":
               raise SystemExit("R12_BLOCKED: subject R11 status not VERIFICATION_OK")
           if data.get("economicAssetUid") != subject.get("economicAssetUid"):
               raise SystemExit("R12_BLOCKED: economic UID mismatch between R12 and R11")
+          if data.get("economicNodeId") != subject.get("economicNodeId"):
+              raise SystemExit("R12_BLOCKED: economic node mismatch between R12 and R11")
+          if manifest.get("r11SnapshotDigest") != subject.get("r11SnapshotDigest"):
+              raise SystemExit("R12_BLOCKED: manifest R11 snapshot digest lineage mismatch")
+          r10_binding = subject.get("subjectSnapshotDigest")
+          if manifest.get("r10SnapshotDigest") != r10_binding:
+              raise SystemExit("R12_BLOCKED: manifest R10 snapshot digest lineage mismatch")
+          if r10_binding != subject.get("subjectEvidence", {}).get("r10SnapshotDigest"):
+              raise SystemExit("R12_BLOCKED: R10 snapshot digest binding mismatch")
+          if manifest.get("gitHead") != data.get("gitHead"):
+              raise SystemExit("R12_BLOCKED: manifest gitHead mismatch")
+          if manifest.get("failedCheckCount") != sum(
+                  1 for c in subject.get("checks", []) if c.get("state") == "FAIL"):
+              raise SystemExit("R12_BLOCKED: manifest failedCheckCount not recomputed")
+          if manifest.get("unavailableCheckCount") != sum(
+                  1 for c in subject.get("checks", []) if c.get("state") == "UNAVAILABLE"):
+              raise SystemExit("R12_BLOCKED: manifest unavailableCheckCount not recomputed")
           boundaries = data.get("boundaries", {})
           if boundaries.get("digitalTwinAuthority") != "R12_APPLIED":
               raise SystemExit("R12_BLOCKED: R12 authority not declared")

@@ -17,6 +17,7 @@ from finco_radar.verification.contracts import (
 )
 
 from .contracts import (
+    MANDATORY_COMPONENT_IDS,
     ComponentId,
     ComponentState,
     DigitalTwinSnapshot,
@@ -31,7 +32,6 @@ from .contracts import (
     TwinGap,
     TwinGapKind,
     canonical_sha256,
-    deep_freeze,
     plain,
     stable_twin_id,
 )
@@ -62,17 +62,69 @@ def _extract_component(
     )
 
 
+def _require_mapping(container: Any, name: str) -> Mapping:
+    """A9: authority-bearing structures must be Mappings — absent/null and
+    wrong types are typed failures, never falsy-swapped defaults."""
+    if not isinstance(container, Mapping):
+        raise TwinError(
+            f"{name} must be a mapping, got {type(container).__name__}",
+            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+    return container
+
+
+def _require_sequence(container: Any, name: str) -> list:
+    if not isinstance(container, list):
+        raise TwinError(
+            f"{name} must be a list, got {type(container).__name__}",
+            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+    return container
+
+
+def _optional_mapping(container: Any, name: str) -> "Mapping | None":
+    if container is None:
+        return None
+    if not isinstance(container, Mapping):
+        raise TwinError(
+            f"{name} must be a mapping or absent, got "
+            f"{type(container).__name__}",
+            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+    return container
+
+
+def _require_str(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TwinError(
+            f"{name} must be a non-empty string, got {value!r}",
+            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+    return value
+
+
+def _exact_bool(value: Any, name: str) -> None:
+    """A8: upstream synthetic flags are contract-required exact booleans;
+    truthy coercion (bool(value)) would launder \"false\"/1/[]/{} into
+    authority and is rejected."""
+    if type(value) is not bool:
+        raise TwinError(
+            f"{name} must be an exact boolean, got {value!r}",
+            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+
+
 def build_digital_twin(
     *,
     r11_evidence: Mapping[str, Any],
     generated_at: datetime,
     git_head: str,
-    synthetic: bool = False,
 ) -> DigitalTwinSnapshot:
     """Build a deterministic Digital Twin from verified R11 evidence.
 
-    R12 consumes only R11 evidence whose status is VERIFICATION_OK.
-    The caller must NOT fabricate model authority.
+    This is the ONE canonical R12 composition authority.  R12 consumes
+    only R11 evidence whose status is VERIFICATION_OK and that passes the
+    corrected canonical R11 serialized verifier.  Model authority is never
+    fabricated: MODEL_STATE is composed exclusively from verified R10
+    model evidence.
+
+    A8: synthetic state is DERIVED from the verified causal chain
+    (R11/R10/R9/R8/R7); there is NO caller-controlled synthetic override.
     """
     if not isinstance(r11_evidence, Mapping) or not r11_evidence:
         raise TwinError(
@@ -94,10 +146,8 @@ def build_digital_twin(
             f"({reconstructed[:16]} != {recorded_digest[:16]})",
             DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # Freeze authority handshake
-    from finco_radar.verification.contracts import (
-        R10_FREEZE_ANCHOR, R10_FREEZE_TREE,
-    )
+    # Freeze authority handshake (the historical R10 authority R11
+    # verified against — separate from the R11 authority consumed here).
     if r11_evidence.get("freezeAnchor") != R10_FREEZE_ANCHOR:
         raise TwinError(
             "R11 evidence freezeAnchor does not match the R0-R10 freeze "
@@ -109,9 +159,9 @@ def build_digital_twin(
             "freeze tree",
             DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # R11 status must be VERIFICATION_OK (checked before frozen verifier
-    # cross-check so a resealed status mutation produces the specific
-    # VERIFICATION_REJECTED status, not a generic EVIDENCE_MISMATCH)
+    # R11 status must be VERIFICATION_OK (checked before the canonical
+    # serialized verifier cross-check so a resealed status mutation
+    # produces the specific VERIFICATION_REJECTED status).
     r11_status = r11_evidence.get("status")
     if r11_status != "VERIFICATION_OK":
         raise TwinError(
@@ -119,131 +169,186 @@ def build_digital_twin(
             "cannot construct an authoritative twin",
             DigitalTwinStatus.DIGITAL_TWIN_VERIFICATION_REJECTED)
 
-    # Frozen R11 serialized verifier as secondary cross-check
-    from finco_radar.verification.contracts import (
-        verify_serialized_r11_evidence,
-    )
+    # The corrected canonical R11 serialized verification authority
+    # (R11 Correction A, PR #32) — no local R11 re-implementation.
     if not verify_serialized_r11_evidence(r11_evidence):
         raise TwinError(
-            "frozen R11 verifier cross-check failed",
+            "canonical R11 serialized verification failed",
             DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # Economic identity
-    uid = r11_evidence.get("economicAssetUid")
-    node = r11_evidence.get("economicNodeId")
-    if not uid or not node:
-        raise TwinError(
-            "R11 evidence carries no economic identity",
-            DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
-
+    # Economic identity (validated by the R11 verifier; re-checked here
+    # as composition inputs).
+    uid = _require_str(r11_evidence.get("economicAssetUid"),
+                       "economicAssetUid")
+    node = _require_str(r11_evidence.get("economicNodeId"),
+                        "economicNodeId")
     twin_id = stable_twin_id(uid, node)
 
-    # Extract upstream R10 subject evidence
-    r10 = r11_evidence.get("subjectEvidence") if isinstance(
-        r11_evidence.get("subjectEvidence"), Mapping) else {}
+    # Exact R11/R10 digest lineage (A4): the R11 observation consumed is
+    # bound by digest, not merely by economic identity.
+    subject_snapshot_digest = r11_evidence.get("subjectSnapshotDigest")
+    if not isinstance(subject_snapshot_digest, str) or (
+        not subject_snapshot_digest
+    ):
+        raise TwinError(
+            "R11 evidence carries no subjectSnapshotDigest binding",
+            DigitalTwinStatus.DIGITAL_TWIN_EVIDENCE_MISMATCH)
 
-    # Component states
+    # ---- A9: explicit fail-closed extraction of every authority-bearing
+    # container consumed by composition (no `or {}` / `or []` fallbacks).
+    r10 = _require_mapping(r11_evidence.get("subjectEvidence"),
+                           "subjectEvidence")
+    source_digests = _require_mapping(r11_evidence.get("sourceDigests"),
+                                      "sourceDigests")
+    for key, value in source_digests.items():
+        if not isinstance(value, str):
+            raise TwinError(
+                f"sourceDigests.{key} must be a string",
+                DigitalTwinStatus.DIGITAL_TWIN_INPUT_INVALID)
+    upstream = _require_mapping(r10.get("upstreamEvidence"),
+                                "subjectEvidence.upstreamEvidence")
+    r9 = _require_mapping(upstream.get("r9AssetGraphEvidence"),
+                          "r9AssetGraphEvidence")
+    r8 = _require_mapping(upstream.get("r8ExecutionEvidence"),
+                          "r8ExecutionEvidence")
+    r8_source_digests = _require_mapping(r8.get("sourceDigests"),
+                                         "r8 sourceDigests")
+    r8_upstream = _require_mapping(r8.get("upstreamEvidence"),
+                                   "r8 upstreamEvidence")
+    r7 = _require_mapping(r8_upstream.get("r7CrossMarketEvidence"),
+                          "r7CrossMarketEvidence")
+    layers = _require_mapping(r7.get("layers"), "r7 layers")
+    oracle = _optional_mapping(layers.get("oracleReference"),
+                               "r7 oracleReference")
+    scenarios = _require_sequence(r8.get("scenarios"), "r8 scenarios")
+    r10_gaps = _require_sequence(r10.get("gaps"), "subject gaps")
+    for gap in r10_gaps:
+        _require_mapping(gap, "subject gap member")
+    r10_key = _require_mapping(r10.get("canonicalAssetKey"),
+                               "canonicalAssetKey")
+    model_evidence = _optional_mapping(r10.get("modelEvidence"),
+                                       "modelEvidence")
+    comparability = _optional_mapping(r10.get("comparability"),
+                                      "comparability")
+    checks = _require_sequence(r11_evidence.get("checks"), "r11 checks")
+    for check in checks:
+        _require_mapping(check, "r11 check member")
+
+    # ---- A8: synthetic state derived ONLY from the verified causal
+    # chain; every upstream flag must be an exact boolean.
+    _exact_bool(r11_evidence.get("synthetic"), "r11 synthetic")
+    _exact_bool(r10.get("synthetic"), "r10 synthetic")
+    _exact_bool(r9.get("synthetic"), "r9 synthetic")
+    _exact_bool(r8.get("synthetic"), "r8 synthetic")
+    _exact_bool(r7.get("synthetic"), "r7 synthetic")
+    derived_synthetic = bool(
+        r11_evidence.get("synthetic") is True
+        or r10.get("synthetic") is True
+        or r9.get("synthetic") is True
+        or r8.get("synthetic") is True
+        or r7.get("synthetic") is True
+    )
+
+    # ---- Composition ------------------------------------------------------
     components: list[TwinComponent] = []
     twin_gaps: list[TwinGap] = []
     upstream_gaps: list[dict] = []
 
-    # Preserve upstream R10 gaps verbatim
-    for gap in r10.get("gaps") or []:
-        if isinstance(gap, Mapping):
-            upstream_gaps.append(dict(gap))
+    # Preserve upstream R10 gaps verbatim, separately from R12-owned gaps.
+    for gap in r10_gaps:
+        upstream_gaps.append(dict(gap))
 
-    # IDENTITY_GRAPH — always available from verified R11/R9
+    r9_digest = source_digests.get("r9AssetGraphDigest")
+    r8_digest = source_digests.get("r8ExecutionSimulatorDigest")
+    r7_digest = r8_source_digests.get("r7CrossMarketDigest")
+
+    # IDENTITY_GRAPH — always available from the verified R9 graph.
     components.append(TwinComponent(
-        component_id="IDENTITY_GRAPH", state=ComponentState.AVAILABLE,
-        source_phase="R9", source_digest=r11_evidence.get(
-            "sourceDigests", {}).get("r9AssetGraphDigest", ""),
+        component_id=ComponentId.IDENTITY_GRAPH,
+        state=ComponentState.AVAILABLE,
+        source_phase="R9",
+        source_digest=_require_str(r9_digest,
+                                   "sourceDigests.r9AssetGraphDigest"),
         detail="verified R9 asset graph identity"))
 
-    # DEPLOYMENT_STATE — available if canonical deployment exists
-    r10_key = r10.get("canonicalAssetKey") if isinstance(
-        r10.get("canonicalAssetKey"), Mapping) else None
-    deployment_state = r10_key
-    if r10_key:
-        components.append(TwinComponent(
-            component_id="DEPLOYMENT_STATE", state=ComponentState.AVAILABLE,
-            source_phase="R10",
-            source_digest=r11_evidence.get("sourceDigests", {}).get(
-                "r8ExecutionSimulatorDigest", ""),
-            detail="canonical deployment from verified R8/R9 lineage"))
-    else:
-        components.append(TwinComponent(
-            component_id="DEPLOYMENT_STATE", state=ComponentState.UNAVAILABLE,
-            source_phase="R10", source_digest="",
-            detail="no canonical deployment in verified lineage"))
-        twin_gaps.append(TwinGap(
-            gap_kind=TwinGapKind.DEPLOYMENT_COMPONENT_UNAVAILABLE,
-            source="R12_DIGITAL_TWIN", reason="no canonical deployment"))
-
-    # VERIFICATION_STATE — always available from verified R11
+    # DEPLOYMENT_STATE — canonical deployment from the verified lineage.
+    deployment_state = dict(r10_key)
     components.append(TwinComponent(
-        component_id="VERIFICATION_STATE", state=ComponentState.AVAILABLE,
+        component_id=ComponentId.DEPLOYMENT_STATE,
+        state=ComponentState.AVAILABLE,
+        source_phase="R10",
+        source_digest=_require_str(r8_digest,
+                                   "sourceDigests.r8ExecutionSimulatorDigest"),
+        detail="canonical deployment from verified R8/R9 lineage"))
+
+    # VERIFICATION_STATE — always available from the verified R11
+    # observation (bound by its exact snapshot digest, A4).
+    components.append(TwinComponent(
+        component_id=ComponentId.VERIFICATION_STATE,
+        state=ComponentState.AVAILABLE,
         source_phase="R11",
         source_digest=recorded_digest,
         detail="R11 verification authority"))
 
-    # REFERENCE_STATE — from R7 oracle in the verified chain
-    r7 = (r10.get("upstreamEvidence") or {}).get(
-        "r8ExecutionEvidence", {}).get(
-        "upstreamEvidence", {}).get("r7CrossMarketEvidence", {})
-    oracle = (r7.get("layers") or {}).get("oracleReference") or {}
-    if oracle.get("status") == "AVAILABLE" and oracle.get("price"):
+    # REFERENCE_STATE — from the verified R7 oracle in the causal chain.
+    if oracle is not None and oracle.get("status") == "AVAILABLE" and (
+        oracle.get("price") is not None
+    ):
         reference_state = {
             "source": oracle.get("source"),
             "observedAt": oracle.get("observedAt"),
             "currency": oracle.get("currency"),
             "price": oracle.get("price"),
-            "sourceDigest": r11_evidence.get("sourceDigests", {}).get(
-                "r7CrossMarketDigest", ""),
+            "sourceDigest": _require_str(
+                r7_digest, "r8 sourceDigests.r7CrossMarketDigest"),
         }
         components.append(TwinComponent(
-            component_id="REFERENCE_STATE", state=ComponentState.AVAILABLE,
+            component_id=ComponentId.REFERENCE_STATE,
+            state=ComponentState.AVAILABLE,
             source_phase="R7",
-            source_digest=r11_evidence.get("sourceDigests", {}).get(
-                "r7CrossMarketDigest", ""),
+            source_digest=_require_str(
+                r7_digest, "r8 sourceDigests.r7CrossMarketDigest"),
             detail="verified R7 oracle reference"))
     else:
         reference_state = None
         components.append(TwinComponent(
-            component_id="REFERENCE_STATE", state=ComponentState.UNAVAILABLE,
+            component_id=ComponentId.REFERENCE_STATE,
+            state=ComponentState.UNAVAILABLE,
             source_phase="R7", source_digest="",
             detail="R7 oracle reference not available"))
         twin_gaps.append(TwinGap(
             gap_kind=TwinGapKind.REFERENCE_COMPONENT_UNAVAILABLE,
             source="R12_DIGITAL_TWIN", reason="no R7 oracle reference"))
 
-    # EXECUTION_STATE — from verified R8 scenarios
-    r8_scenarios = (r10.get("upstreamEvidence") or {}).get(
-        "r8ExecutionEvidence", {}).get("scenarios") or []
-    if r8_scenarios:
+    # EXECUTION_STATE — from the verified R8 scenarios.
+    if len(scenarios) > 0:
         execution_state = {
-            "scenarioCount": len(r8_scenarios),
-            "sourceDigest": r11_evidence.get("sourceDigests", {}).get(
-                "r8ExecutionSimulatorDigest", ""),
+            "scenarioCount": len(scenarios),
+            "sourceDigest": _require_str(
+                r8_digest,
+                "sourceDigests.r8ExecutionSimulatorDigest"),
         }
         components.append(TwinComponent(
-            component_id="EXECUTION_STATE", state=ComponentState.AVAILABLE,
+            component_id=ComponentId.EXECUTION_STATE,
+            state=ComponentState.AVAILABLE,
             source_phase="R8",
-            source_digest=r11_evidence.get("sourceDigests", {}).get(
-                "r8ExecutionSimulatorDigest", ""),
-            detail=f"{len(r8_scenarios)} verified R8 scenarios"))
+            source_digest=_require_str(
+                r8_digest,
+                "sourceDigests.r8ExecutionSimulatorDigest"),
+            detail=f"{len(scenarios)} verified R8 scenarios"))
     else:
         execution_state = None
         components.append(TwinComponent(
-            component_id="EXECUTION_STATE", state=ComponentState.UNAVAILABLE,
+            component_id=ComponentId.EXECUTION_STATE,
+            state=ComponentState.UNAVAILABLE,
             source_phase="R8", source_digest="",
             detail="no verified R8 execution scenarios"))
         twin_gaps.append(TwinGap(
             gap_kind=TwinGapKind.EXECUTION_COMPONENT_UNAVAILABLE,
             source="R12_DIGITAL_TWIN", reason="no R8 execution evidence"))
 
-    # MODEL_STATE — from verified R10 model evidence only
-    model_evidence = r10.get("modelEvidence")
-    model_binding = r10.get("modelBinding")
+    # MODEL_STATE — composed ONLY from verified R10 model evidence; never
+    # fabricated when the model authority is absent.
     if model_evidence is not None:
         model_state = {
             "modelId": model_evidence.get("modelId"),
@@ -252,19 +357,23 @@ def build_digital_twin(
             "value": model_evidence.get("value"),
             "currency": model_evidence.get("currency"),
             "unitBasis": model_evidence.get("unitBasis"),
-            "sourceDigest": r11_evidence.get("sourceDigests", {}).get(
-                "modelRunDigest", ""),
+            "sourceDigest": _require_str(
+                source_digests.get("modelRunDigest"),
+                "sourceDigests.modelRunDigest"),
         }
         components.append(TwinComponent(
-            component_id="MODEL_STATE", state=ComponentState.AVAILABLE,
+            component_id=ComponentId.MODEL_STATE,
+            state=ComponentState.AVAILABLE,
             source_phase="R10",
-            source_digest=r11_evidence.get("sourceDigests", {}).get(
-                "modelRunDigest", ""),
+            source_digest=_require_str(
+                source_digests.get("modelRunDigest"),
+                "sourceDigests.modelRunDigest"),
             detail="verified R10 model evidence"))
     else:
         model_state = None
         components.append(TwinComponent(
-            component_id="MODEL_STATE", state=ComponentState.UNAVAILABLE,
+            component_id=ComponentId.MODEL_STATE,
+            state=ComponentState.UNAVAILABLE,
             source_phase="R10", source_digest="",
             detail="no model binding in verified R10 evidence"))
         twin_gaps.append(TwinGap(
@@ -272,64 +381,51 @@ def build_digital_twin(
             source="R12_DIGITAL_TWIN",
             reason="no model binding in the verified R10 subject"))
 
-    # COMPARABILITY_STATE — optional
-    comparability = r10.get("comparability")
+    # COMPARABILITY_STATE — optional; present only when the verified R10
+    # subject carries canonical comparability authority.
     if comparability is not None:
         components.append(TwinComponent(
-            component_id="COMPARABILITY_STATE",
+            component_id=ComponentId.COMPARABILITY_STATE,
             state=ComponentState.AVAILABLE,
-            source_phase="R10", source_digest="",
+            source_phase="R10",
+            source_digest=subject_snapshot_digest,
             detail="serialized comparability state"))
 
-    # Synthetic derivation
-    r10_upstream = r10.get("upstreamEvidence") if isinstance(
-        r10.get("upstreamEvidence"), Mapping) else {}
-    r9 = r10_upstream.get("r9AssetGraphEvidence") if isinstance(
-        r10_upstream.get("r9AssetGraphEvidence"), Mapping) else {}
-    r8 = r10_upstream.get("r8ExecutionEvidence") if isinstance(
-        r10_upstream.get("r8ExecutionEvidence"), Mapping) else {}
-    r7 = (r8.get("upstreamEvidence") or {}).get("r7CrossMarketEvidence") if (
-        isinstance(r8.get("upstreamEvidence"), Mapping)) else {}
-    derived_synthetic = bool(
-        synthetic
-        or r11_evidence.get("synthetic") is True
-        or r10.get("synthetic") is True
-        or r9.get("synthetic") is True
-        or r8.get("synthetic") is True
-        or r7.get("synthetic") is True
-    )
-
-    # Source digests (from R11)
-    source_digests = dict(r11_evidence.get("sourceDigests") or {})
-
-    # Boundaries
-    boundaries = dict(R12_BOUNDARIES)
-
-    # Sort canonical orderings
+    # ---- Canonical orderings ----------------------------------------------
     components.sort(key=lambda c: c.component_id)
     twin_gaps.sort(key=lambda g: (g.gap_kind.value, g.source, g.reason))
     upstream_gaps.sort(key=lambda g: (g.get("gapKind", ""),
                                       g.get("source", ""),
                                       g.get("reason", "")))
 
-    # Determine status
-    if not twin_gaps:
+    # ---- A7: status represents COMPOSITION COMPLETENESS only --------------
+    # DIGITAL_TWIN_OK requires every mandatory component AVAILABLE and zero
+    # R12-owned gaps; otherwise the twin is honestly PARTIAL with typed
+    # R12 gaps.  Upstream R10/R11 gaps remain separately preserved.
+    mandatory_states = {
+        c.component_id: c.state for c in components
+        if c.component_id in MANDATORY_COMPONENT_IDS
+    }
+    if (not twin_gaps
+            and all(state is ComponentState.AVAILABLE
+                    for state in mandatory_states.values())):
         status = DigitalTwinStatus.DIGITAL_TWIN_OK
     else:
         status = DigitalTwinStatus.DIGITAL_TWIN_PARTIAL
 
-    # Build evidence and digest
+    # ---- A10: verification block recomputed from the exact consumed R11
+    # evidence — never trusted from serialized claims, never hardcoded.
+    failed_check_count = sum(
+        1 for check in checks if check.get("state") == "FAIL")
+    unavailable_check_count = sum(
+        1 for check in checks if check.get("state") == "UNAVAILABLE")
     verification_block = {
         "status": r11_status,
         "r11SnapshotDigest": recorded_digest,
-        "subjectR10SnapshotDigest": r10.get("r10SnapshotDigest", ""),
+        "subjectR10SnapshotDigest": subject_snapshot_digest,
         "freezeAnchor": R11_FREEZE_ANCHOR,
-        "failedCheckCount": sum(
-            1 for c in r11_evidence.get("checks", [])
-            if isinstance(c, Mapping) and c.get("state") == "FAIL"),
-        "unavailableCheckCount": sum(
-            1 for c in r11_evidence.get("checks", [])
-            if isinstance(c, Mapping) and c.get("state") == "UNAVAILABLE"),
+        "failedCheckCount": failed_check_count,
+        "unavailableCheckCount": unavailable_check_count,
     }
 
     evidence = {
@@ -346,13 +442,13 @@ def build_digital_twin(
         "referenceState": reference_state,
         "executionState": execution_state,
         "modelState": model_state,
-        "comparabilityState": r10.get("comparability"),
+        "comparabilityState": comparability,
         "verification": verification_block,
         "upstreamGaps": upstream_gaps,
         "twinGaps": [g.to_evidence_dict() for g in twin_gaps],
-        "sourceDigests": source_digests,
+        "sourceDigests": dict(source_digests),
         "subjectR11Evidence": plain(r11_evidence),
-        "boundaries": boundaries,
+        "boundaries": dict(R12_BOUNDARIES),
         "freezeAnchor": R11_FREEZE_ANCHOR,
         "freezeTree": R11_FREEZE_TREE,
         "synthetic": derived_synthetic,
@@ -372,13 +468,13 @@ def build_digital_twin(
         reference_state=reference_state,
         execution_state=execution_state,
         model_state=model_state,
-        comparability_state=r10.get("comparability"),
+        comparability_state=comparability,
         verification=verification_block,
         upstream_gaps=tuple(upstream_gaps),
         twin_gaps=tuple(twin_gaps),
-        source_digests=source_digests,
+        source_digests=dict(source_digests),
         subject_r11_evidence=r11_evidence,
-        boundaries=boundaries,
+        boundaries=dict(R12_BOUNDARIES),
         freeze_anchor=R11_FREEZE_ANCHOR,
         freeze_tree=R11_FREEZE_TREE,
         synthetic=derived_synthetic,
