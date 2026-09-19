@@ -307,15 +307,16 @@ class AcquisitionService:
                         # the typed timeout instead of blocking or granting
                         # a fresh window.
                         future.cancel()
+                        budget_limited = (
+                            total_deadline <= provider_deadlines[name])
                         results.append(ProviderResult(
                             provider=name,
                             state=ProviderResultState.TIMEOUT,
                             elapsed_ms=round(
                                 (now - dispatch_mono) * 1000, 3),
                             error_class=(
-                                "PER_PROVIDER_TIMEOUT"
-                                if provider_deadlines[name] <= now
-                                else "TOTAL_BUDGET_EXHAUSTED")))
+                                "TOTAL_BUDGET_EXHAUSTED" if budget_limited
+                                else "PER_PROVIDER_TIMEOUT")))
                     else:
                         # Completed observations are taken immediately
                         # (a finished result is never discarded because
@@ -327,13 +328,20 @@ class AcquisitionService:
                             results.append(self._classify_success(
                                 name, dispatch_mono, observation))
                         except FutureTimeoutError:
+                            # B1: classify by the deadline that actually
+                            # constrained this wait — never by processing
+                            # order, and neither deadline is reset.
+                            budget_limited = (
+                                total_deadline <= provider_deadlines[name])
                             results.append(ProviderResult(
                                 provider=name,
                                 state=ProviderResultState.TIMEOUT,
                                 elapsed_ms=round(
                                     (self._monotonic() - dispatch_mono)
                                     * 1000, 3),
-                                error_class="PER_PROVIDER_TIMEOUT"))
+                                error_class=(
+                                    "TOTAL_BUDGET_EXHAUSTED" if budget_limited
+                                    else "PER_PROVIDER_TIMEOUT")))
                         except Exception as exc:  # transport boundary failure
                             results.append(ProviderResult(
                                 provider=name,
@@ -374,10 +382,22 @@ class AcquisitionService:
                 error_class="OBSERVED_AT_MALFORMED")
         declared_error = observation.get("error")
         evidence = observation.get("evidence")
-        # A3: provider-controlled raw error text NEVER becomes error_class
-        # (or any structured-log field) — a stable closed internal code is
-        # used instead.
-        if isinstance(declared_error, str) and declared_error.strip():
+        # B3: classify the provider error field explicitly.
+        # - absent or None  -> valid no-error
+        # - non-empty str   -> declared provider failure (PROVIDER_ERROR
+        #   with the closed code PROVIDER_DECLARED_ERROR; the raw
+        #   provider-controlled text is never logged)
+        # - anything else   -> INVALID_RESPONSE with the stable code
+        #   ERROR_FIELD_MALFORMED — never ignored because evidence happens
+        #   to be valid, and the raw malformed value is never logged or
+        #   stringified
+        if declared_error is not None:
+            if (not isinstance(declared_error, str)
+                    or not declared_error.strip()):
+                return ProviderResult(
+                    provider=name,
+                    state=ProviderResultState.INVALID_RESPONSE,
+                    elapsed_ms=elapsed, error_class="ERROR_FIELD_MALFORMED")
             if isinstance(evidence, Mapping):
                 try:
                     ensure_canonical_evidence(evidence)

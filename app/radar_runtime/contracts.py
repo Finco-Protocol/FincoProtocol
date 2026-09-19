@@ -248,6 +248,47 @@ class AcquisitionRequest:
     def __hash__(self) -> int:
         return hash(self.fingerprint)
 
+    @classmethod
+    def from_payload(cls, payload: Any) -> "AcquisitionRequest":
+        """B4: the ONE canonical reconstruction/validation path for
+        persisted request payloads.  Persisted request data must satisfy
+        the exact same contract as live construction (schema version,
+        exact positive integer chainId, non-empty contractAddress,
+        BUY/SELL direction, non-empty duplicate-free provider sources,
+        strict ASCII raw amounts, optional economic identity, canonical
+        providerConfig container) — then the canonical fingerprint is
+        derived from the reconstructed request."""
+        if not isinstance(payload, Mapping):
+            raise RuntimeContractError(
+                "request payload must be a mapping, got "
+                f"{type(payload).__name__}")
+        if payload.get("schemaVersion") != SCHEMA_VERSION:
+            raise RuntimeContractError(
+                f"unsupported request schema version "
+                f"{payload.get('schemaVersion')!r}")
+        sources = payload.get("sources")
+        if not isinstance(sources, list):
+            raise RuntimeContractError(
+                "request payload sources must be a list, got "
+                f"{type(sources).__name__}")
+        provider_config = payload.get("providerConfig")
+        if provider_config is not None and not isinstance(
+            provider_config, Mapping
+        ):
+            raise RuntimeContractError(
+                "request payload providerConfig must be a mapping or None")
+        return cls(
+            chain_id=payload.get("chainId"),
+            contract_address=payload.get("contractAddress"),
+            direction=payload.get("direction"),
+            sources=tuple(sources),
+            purpose=payload.get("purpose"),
+            raw_amount=payload.get("rawAmount"),
+            notional_usd=payload.get("notionalUsd"),
+            economic_asset_uid=payload.get("economicAssetUid"),
+            provider_config=provider_config,
+        )
+
 
 @dataclass(frozen=True)
 class ProviderResult:
@@ -276,7 +317,16 @@ class ProviderResult:
                 f"{self.elapsed_ms!r}")
         if self.evidence is not None and not isinstance(self.evidence, Mapping):
             raise RuntimeContractError("evidence must be a mapping or None")
-        if self.evidence is not None:
+        # B2: SUCCESS requires canonical evidence — a SUCCESS result with
+        # no evidence or with malformed evidence is a typed contract
+        # violation, never silently downgraded or fabricated as {}.
+        if self.state is ProviderResultState.SUCCESS:
+            if self.evidence is None:
+                raise RuntimeContractError(
+                    "EVIDENCE_REQUIRED_FOR_SUCCESS: a SUCCESS provider "
+                    "result must carry canonical evidence")
+            ensure_canonical_evidence(self.evidence)
+        elif self.evidence is not None:
             # A2: evidence must satisfy the shared canonical contract so
             # SUCCESS evidence and snapshot serialization cannot disagree.
             ensure_canonical_evidence(self.evidence)
@@ -322,15 +372,14 @@ class AcquisitionSnapshot:
         # A5: content addressing alone is not enough for the durable read
         # contract — internally related claims must agree.
         request_payload = plain(self.request)
-        if request_payload.get("schemaVersion") != SCHEMA_VERSION:
-            raise RuntimeContractError(
-                "embedded request payload has unsupported schema version "
-                f"{request_payload.get('schemaVersion')!r}")
-        # A5 request fingerprint: full recomputation from the embedded
-        # canonical request payload — prefix-only checks are not accepted.
-        recomputed_fingerprint = REQUEST_FINGERPRINT_PREFIX + (
-            canonical_sha256(request_payload))
-        if self.request_fingerprint != recomputed_fingerprint:
+        # B4/A5: the embedded request payload must satisfy the actual
+        # AcquisitionRequest contract through the ONE canonical
+        # reconstruction path (same rules as live construction), and its
+        # canonical fingerprint must equal the recorded one.  Content
+        # addressing alone is not enough: a fingerprint computed over a
+        # contract-violating payload is still rejected.
+        request_obj = AcquisitionRequest.from_payload(request_payload)
+        if self.request_fingerprint != request_obj.fingerprint:
             raise RuntimeContractError(
                 "request_fingerprint does not recompute from the embedded "
                 "canonical request payload")
@@ -456,9 +505,15 @@ class AcquisitionSnapshot:
             if not isinstance(item, Mapping):
                 raise RuntimeContractError(
                     "provider payload member must be a mapping")
+            # B5: persisted enum conversions are typed at the durable
+            # boundary — no raw Enum ValueError may escape.
+            state_raw = item.get("state")
+            if state_raw not in {s.value for s in ProviderResultState}:
+                raise RuntimeContractError(
+                    f"unknown provider result state {state_raw!r}")
             providers.append(ProviderResult(
                 provider=item.get("provider"),
-                state=ProviderResultState(item.get("state")),
+                state=ProviderResultState(state_raw),
                 elapsed_ms=item.get("elapsedMs"),
                 evidence=item.get("evidence"),
                 observed_at=item.get("observedAt"),

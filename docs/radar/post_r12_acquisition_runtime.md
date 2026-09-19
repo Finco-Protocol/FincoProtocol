@@ -91,7 +91,29 @@ app/radar_runtime/
 ## Provider wiring
 
 Provider callables receive the immutable `AcquisitionRequest` and return
-`{"evidence": <Mapping>, "observedAt": <str|None>}` (or
-`{"error": "<typed provider failure>"}`).  Wiring to the frozen R0–R12
-adapters happens in the composition root at integration time; this
-package imports zero `finco_radar` modules (enforced by test).
+`{"evidence": <Mapping>, "observedAt": <str|None>}`.  The `error` field
+is classified explicitly: absent/`None` is a valid no-error response; a
+non-empty string is a declared provider failure (result `PROVIDER_ERROR`,
+closed internal code `PROVIDER_DECLARED_ERROR` — the raw provider text is
+never logged); anything else is `INVALID_RESPONSE` with the stable code
+`ERROR_FIELD_MALFORMED`.  `SUCCESS` requires canonical `evidence` (the
+shared canonical contract also rejects sets, bytes, arbitrary objects,
+non-string mapping keys and non-finite floats as
+`INVALID_RESPONSE`/`EVIDENCE_NOT_CANONICAL`).  Wiring to the frozen
+R0–R12 adapters happens in the composition root at integration time;
+this package imports zero `finco_radar` modules (enforced by test).
+
+## Correction B — final runtime contract closure
+
+- **B1** — timeout classification is deadline-based: `TOTAL_BUDGET_EXHAUSTED`
+  exactly when the total-budget deadline is the limiting one,
+  `PER_PROVIDER_TIMEOUT` otherwise; dispatch-start deadlines are never
+  reset and classification never depends on processing order.
+- **B2** — `SUCCESS` requires canonical `evidence` (no `None`, no
+  malformed payload, no fabricated `{}`), enforced at live construction
+  and at persisted `from_payload()` reconstruction alike.
+- **B4** — persisted request payloads are validated through the ONE
+  canonical `AcquisitionRequest.from_payload()` path (same rules as live
+  construction) before the recorded fingerprint is accepted.
+- **B5** — persisted provider-state conversions raise the typed
+  `RuntimeContractError`, never a raw Enum `ValueError`.

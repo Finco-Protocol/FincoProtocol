@@ -5,6 +5,7 @@ Deterministic, offline.  No live network anywhere.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -18,6 +19,7 @@ from app.radar_runtime.cache import AcquisitionCache
 from app.radar_runtime.contracts import (
     AcquisitionRequest,
     AcquisitionState,
+    ProviderResult,
     ProviderResultState,
     RadarRuntimeError,
     RuntimeContractError,
@@ -533,8 +535,7 @@ def test_ca_timeout_04_total_budget_still_caps_operation():
     assert wall < 1.5, "total budget must cap the whole operation"
     for provider in snapshot.providers:
         assert provider.state is ProviderResultState.TIMEOUT
-        assert provider.error_class in ("TOTAL_BUDGET_EXHAUSTED",
-                                        "PER_PROVIDER_TIMEOUT")
+        assert provider.error_class == "TOTAL_BUDGET_EXHAUSTED"
     assert snapshot.state is AcquisitionState.UNAVAILABLE
 
 
@@ -715,3 +716,161 @@ def test_ca_consistency_18_honest_payloads_still_reconstruct():
     rebuilt = AcquisitionSnapshot.from_payload(snapshot.to_payload())
     assert rebuilt.snapshot_id == snapshot.snapshot_id
     assert rebuilt.state is AcquisitionState.COMPLETE
+
+
+# ==========================================================================
+# Correction B — final runtime contract closure (B1-B5)
+
+def _digest(payload) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                     separators=(",", ":"),
+                                     ensure_ascii=False)
+                          .encode("utf-8")).hexdigest()
+# ==========================================================================
+
+def test_cb_timeout_01_budget_limited_is_total_budget_exhausted():
+    # B1: when the total budget is the limiting deadline, the wait expires
+    # because of THAT deadline — never misclassified as the provider's.
+    service, _ = _slow_service(("a", "b"), per_provider=5.0, total=0.25)
+    snapshot = service.acquire(_request(sources=("a", "b")))
+    for provider in snapshot.providers:
+        assert provider.state is ProviderResultState.TIMEOUT
+        assert provider.error_class == "TOTAL_BUDGET_EXHAUSTED"
+        assert provider.error_class != "PER_PROVIDER_TIMEOUT"
+
+
+def test_cb_timeout_02_provider_limited_is_per_provider_timeout():
+    # B1: the provider-window-limited case keeps exactly
+    # PER_PROVIDER_TIMEOUT.
+    service, _ = _slow_service(("a", "b"), per_provider=TIMEOUT_WINDOW,
+                               total=10.0)
+    snapshot = service.acquire(_request(sources=("a", "b")))
+    for provider in snapshot.providers:
+        assert provider.state is ProviderResultState.TIMEOUT
+        assert provider.error_class == "PER_PROVIDER_TIMEOUT"
+        assert provider.error_class != "TOTAL_BUDGET_EXHAUSTED"
+
+
+def test_cb_timeout_03_classification_is_deadline_based_not_order_based():
+    # Mixed request: the fast provider succeeds, the slow ones expire.
+    # Each timeout code is determined by its own deadline comparison,
+    # independent of the coordinator's processing order.
+    def fast(request):
+        return {"evidence": {"ok": True}}
+
+    service, _ = _slow_service(("a", "zslow", "fast"),
+                               per_provider=TIMEOUT_WINDOW, total=0.35)
+    service._providers["fast"] = fast
+    snapshot = service.acquire(_request(sources=("a", "zslow", "fast")))
+    by_name = {p.provider: p for p in snapshot.providers}
+    assert by_name["fast"].state is ProviderResultState.SUCCESS
+    for name in ("a", "zslow"):
+        assert by_name[name].state is ProviderResultState.TIMEOUT
+        assert by_name[name].error_class == "PER_PROVIDER_TIMEOUT"
+
+
+def test_cb_evidence_04_success_requires_canonical_evidence():
+    # B2: SUCCESS + evidence=None -> typed contract violation
+    with pytest.raises(RuntimeContractError):
+        ProviderResult(provider="lifi", state=ProviderResultState.SUCCESS,
+                       elapsed_ms=1.0, evidence=None)
+    # SUCCESS + malformed evidence -> typed contract violation
+    with pytest.raises(RuntimeContractError):
+        ProviderResult(provider="lifi", state=ProviderResultState.SUCCESS,
+                       elapsed_ms=1.0, evidence={"bad": {1, 2}})
+    # SUCCESS + canonical Mapping -> valid (empty Mapping is canonical)
+    ProviderResult(provider="lifi", state=ProviderResultState.SUCCESS,
+                   elapsed_ms=1.0, evidence={})
+
+
+def test_cb_evidence_05_persisted_success_without_evidence_rejected():
+    # B2: a COMPLETE persisted snapshot with a SUCCESS provider carrying
+    # no evidence must be impossible.
+    def mutate(payload):
+        payload["providers"][0]["evidence"] = None
+        payload["providers"][0]["state"] = "SUCCESS"
+        payload["providers"][1]["evidence"] = None
+        payload["providers"][1]["state"] = "SUCCESS"
+        payload["state"] = "COMPLETE"
+
+    with pytest.raises(RuntimeContractError):
+        _forged(mutate)
+
+
+def test_cb_error_field_06_malformed_error_field_fails_closed():
+    bad_values = (
+        {"unexpected": "shape"}, ["x"], 5, True, 1.5, b"x", "", "   ")
+    for bad in bad_values:
+        service = _service({"lifi": lambda r, bad=bad: {
+            "error": bad, "evidence": {"price": "1"}}})
+        snapshot = service.acquire(_request())
+        provider = snapshot.providers[0]
+        assert provider.state is ProviderResultState.INVALID_RESPONSE, bad
+        assert provider.error_class == "ERROR_FIELD_MALFORMED"
+        assert provider.state is not ProviderResultState.SUCCESS
+        blob = json.dumps(service._events.records)
+        assert "unexpected" not in blob  # raw malformed value never logged
+
+
+def test_cb_error_field_07_absent_or_none_error_is_valid_no_error():
+    for no_error in ({"evidence": {"price": "1"}},
+                     {"error": None, "evidence": {"price": "1"}}):
+        service = _service({"lifi": lambda r, n=no_error: n})
+        snapshot = service.acquire(_request())
+        assert snapshot.providers[0].state is ProviderResultState.SUCCESS
+        assert snapshot.providers[0].error_class is None
+
+
+def test_cb_request_08_persisted_request_contract_enforced():
+    # B4: a persisted request payload carrying a fingerprint recomputed
+    # over its own (contract-violating) content is still rejected —
+    # from_payload applies the live construction contract, not just
+    # content hashing.
+    def forged(mutator):
+        payload = _two_provider_snapshot().to_payload()
+        mutator(payload["request"])
+        payload["requestFingerprint"] = "acq-req:" + _digest(
+            payload["request"])
+        return AcquisitionSnapshot.from_payload(payload)
+
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(direction="SIDEWAYS"))
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(rawAmount=" 1000"))
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(sources=["lifi", "lifi",
+                                                      "oracle"]))
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(chainId="4663"))
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(notionalUsd="1e3"))
+    with pytest.raises(RuntimeContractError):
+        forged(lambda request: request.update(schemaVersion="other-v9"))
+
+
+def test_cb_request_09_honest_persisted_request_reconstructs():
+    snapshot = _two_provider_snapshot()
+    request_payload = snapshot.to_payload()["request"]
+    request = AcquisitionRequest.from_payload(request_payload)
+    assert request.fingerprint == snapshot.request_fingerprint
+    assert request.chain_id == 4663
+    assert request.direction == "BUY"
+    assert request.sources == ("lifi", "oracle")
+
+
+def test_cb_state_10_unknown_persisted_provider_state_typed_rejection():
+    def mutate(payload):
+        payload["providers"][0]["state"] = "MADE_UP_STATE"
+
+    with pytest.raises(RuntimeContractError) as excinfo:
+        _forged(mutate)
+    assert type(excinfo.value) is RuntimeContractError  # not a raw ValueError
+
+
+def test_cb_state_11_missing_provider_state_typed_rejection():
+    def mutate(payload):
+        del payload["providers"][0]["state"]
+
+    with pytest.raises(RuntimeContractError) as excinfo:
+        _forged(mutate)
+    assert type(excinfo.value) is RuntimeContractError
