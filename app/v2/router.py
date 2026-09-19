@@ -583,6 +583,20 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     # at the bottom of the sheet so PARTIAL fields are never silently filtered out.
     opex_summary_fields = [f for f in opex_fields if f["section_id"] == "summary"]
 
+    # F06 — competing OPEX display authority. The registry field
+    # opex.summary.total_y1 is a persisted "display anchor" (snapshot scalar
+    # opex_y1_keur) seeded once at project creation and never recomputed by
+    # any OPEX mutation. Rendering that stale scalar on the same sheet as the
+    # live KPI strip and grand total presents two competing "Total OPEX Y1"
+    # authorities. The registry declares this field DERIVED from the per-line
+    # OpexItems, so its displayed value is the live OpexViewModel Y1 total —
+    # the identical number the sheet's dominant authority (KPI strip + grand
+    # total row) already renders. Presentation only: the persisted anchor and
+    # every engine input are untouched.
+    for _summary_field in opex_summary_fields:
+        if _summary_field["field_id"] == "opex.summary.total_y1":
+            _summary_field["value"] = opex_vm.y1_total_opex
+
     return {
         "opex_vm": opex_vm,
         "opex_sheet_groups": opex_sheet_groups,
