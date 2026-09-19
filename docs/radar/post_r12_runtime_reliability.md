@@ -106,3 +106,32 @@ rounding), with a 1440 px desktop non-regression pass, against the real
 - **Governance** — workflow Gate B is now a real scope gate (changes vs
   `aca6308` must stay within authorized Post-R12 surfaces); Gate A
   (frozen R0–R12) unchanged.
+
+
+## Correction B — observable completion authority + elapsed_ms (B1/B2)
+
+- **B1 observable completion authority** — the worker publishes the
+  minimal authoritative completion state (``completed`` flag,
+  ``completed_mono``, captured observation/error) ATOMICALLY at the same
+  worker boundary where ``completed_mono`` is captured — via an explicit
+  ``Lock`` + ``Event`` (``_ProviderExecutionState``), with the Event set
+  inside the synchronized block.  Envelope construction/Future
+  completion may be arbitrarily delayed without affecting outcomes:
+  completed-on-time work keeps its genuine classification even when its
+  publication is delayed past the deadline (deterministic
+  delayed-publication test on the real production path); completed-late
+  work remains ``TIMEOUT`` even when its publication is already visible.
+- **One canonical authority** — ``_resolve_deadline_outcome`` (extended
+  signature: completion marker + completed_mono) is the single
+  production decision path; the coordinator's wait loop may never decide
+  before the limiting deadline (early platform wake-ups re-check).
+- **B2 elapsed_ms** — still-running timeouts report the limiting
+  deadline itself (``limiting - dispatch``), immune to coordinator
+  processing delay; completed-late providers report their genuine
+  dispatch → completion interval.  Both pinned through the production
+  path with deterministic scripted clocks.
+- **Bounded caller latency** — the acquisition never waits beyond the
+  limiting deadline for publication; an invariant-violating
+  completed-marker-without-observable-outcome fails closed as
+  ``INVALID_RESPONSE`` / ``OUTCOME_NOT_CAPTURED`` (typed, never
+  fabricated).

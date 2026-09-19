@@ -21,12 +21,12 @@ from app.radar_runtime.snapshot_store import SnapshotStore
 NOW = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
 
 
-def _request(raw_amount: str) -> AcquisitionRequest:
+def _request(raw_amount: str, sources: "tuple[str, ...]" = ("lifi",)) -> AcquisitionRequest:
     return AcquisitionRequest(
         chain_id=4663,
         contract_address="0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         direction="BUY",
-        sources=("lifi",),
+        sources=sources,
         raw_amount=raw_amount,
     )
 
@@ -37,6 +37,17 @@ def _make_service(provider, *, capacity=1, per_provider=0.15, total=10.0):
                            max_concurrent_providers=capacity)
     return AcquisitionService(
         SnapshotStore(":memory:"), {"lifi": provider}, config=config,
+        clock=lambda: NOW,
+    )
+
+
+def _make_service_multi(providers, *, capacity=4, per_provider=0.15,
+                        total=10.0):
+    config = ServiceConfig(per_provider_timeout_seconds=per_provider,
+                           total_budget_seconds=total,
+                           max_concurrent_providers=capacity)
+    return AcquisitionService(
+        SnapshotStore(":memory:"), providers, config=config,
         clock=lambda: NOW,
     )
 
@@ -228,103 +239,63 @@ def test_n01_04_bounded_admission_keeps_pool_queue_bounded():
 # N02 — worker-side completion time decides deadlines
 # --------------------------------------------------------------------------
 
-def test_n02_01_late_done_future_still_times_out_and_on_time_kept():
-    """Deterministic A2 controls through the REAL production deadline
-    authority path (holder publication + _resolve_deadline_outcome),
-    using a pre-completed Future for scheduling and a pinned monotonic
-    clock (dispatch t=100.20, provider window 0.15 -> limiting 100.35):
+def test_n02_01_publication_delay_preserves_on_time_completion():
+    """B1.1 mandatory adversarial test on the REAL production path (no
+    fake submit, no pre-populated holder):
 
-    - late:      worker captured completion at t=100.60 (AFTER the
-      deadline); the Future is already done when collected -> must be
-      TIMEOUT / PER_PROVIDER_TIMEOUT, never laundered into SUCCESS by
-      future.done()
-    - on_time:   worker captured completion at t=100.30 (BEFORE the
-      deadline); the genuine result must be preserved
-    - still-running: no outcome ever published, clock already at/past
-      the deadline -> TIMEOUT (still-running-at-deadline is a different
-      state from completed-at-deadline)."""
-    from concurrent.futures import Future
-    import queue
-    from app.radar_runtime.service import ProviderExecutionOutcome
+    1. the real worker begins and the provider callable returns well
+       before the limiting deadline;
+    2. the worker records the authoritative completed_mono;
+    3. the test deliberately blocks subsequent outcome publication
+       (envelope construction) until AFTER the deadline by patching the
+       envelope carrier;
+    4. the coordinator passes the deadline;
+    5. publication is released.
 
-    def run_case(completed_mono, *, populate=True, clock_t=100.20,
-                 future_completes=True):
+    Final classification must be the genuine SUCCESS — never TIMEOUT
+    merely because envelope publication happened late.  (Fails against
+    Correction A HEAD 0477713, where publication lived in the holder
+    after envelope construction.)"""
+    from app.radar_runtime import service as svc
+
+    publication_gate = threading.Event()
+    real_outcome_cls = svc.ProviderExecutionOutcome
+
+    class DelayedPublicationOutcome(real_outcome_cls):
+        """Blocks envelope construction (publication) until released —
+        the coordinator must pass the limiting deadline while publication
+        is pending, with the completion marker already observable."""
+
+        def __init__(self, *args, **kwargs):
+            publication_gate.wait(5)
+            super().__init__(*args, **kwargs)
+
+    svc.ProviderExecutionOutcome = DelayedPublicationOutcome
+
+    def release_after_deadline():
+        time.sleep(0.3)  # > the 0.2 s limiting deadline
+        publication_gate.set()
+
+    releaser = threading.Thread(target=release_after_deadline, daemon=True)
+    releaser.start()
+    try:
         service = _make_service(
-            lambda r: (_ for _ in ()).throw(AssertionError("must not run")),
-            capacity=1, per_provider=0.15)
-        envelope = ProviderExecutionOutcome(
-            provider="lifi", dispatch_mono=100.20,
-            completed_mono=completed_mono,
-            observation={"evidence": {"x": 1}})
-        done = Future()
-        done.set_result(envelope)
-        never = Future()  # simulates publication not yet observable
-
-        class FakePool:
-            _shutdown = False
-            _work_queue = queue.Queue()
-
-            def submit(self, fn, *args):
-                # args[-1] is the per-provider publication holder the
-                # production worker would populate before Future completion
-                if populate:
-                    args[-1]["outcome"] = envelope
-                return done if future_completes else never
-
-            def shutdown(self, *a, **k):
-                pass
-
-        service._provider_pool = FakePool()
-        clock = {"t": clock_t}
-        service._monotonic = lambda: clock["t"]
+            lambda r: {"evidence": {"genuine": True}},
+            capacity=1, per_provider=0.2, total=5.0)
         snapshot = service.acquire(_request("100"))
-        service.close()
-        return snapshot.providers[0]
+    finally:
+        publication_gate.set()
+        svc.ProviderExecutionOutcome = real_outcome_cls
+    releaser.join(5)
 
-    late = run_case(100.60)      # completed AFTER the 100.35 deadline
-    assert late.state is ProviderResultState.TIMEOUT
-    assert late.error_class == "PER_PROVIDER_TIMEOUT"
-
-    on_time = run_case(100.30)   # completed BEFORE the deadline
-    assert on_time.state is ProviderResultState.SUCCESS
-    assert on_time.evidence == {"x": 1}
-
-    # still-running past the deadline (no outcome published, publication
-    # never observable): TIMEOUT.  The clock is already past the limiting
-    # deadline so the coordinator decides immediately without waiting.
-    # the fake clock ADVANCES 0.05 s per _monotonic() call (dispatch
-    # happens at its current value; the deadline is dispatch + window), so
-    # the coordinator's wait loop terminates exactly at the deadline
-    adv = {"t": 100.36}
-
-    def advancing_clock():
-        adv["t"] += 0.05
-        return adv["t"]
-
-    service = _make_service(
-        lambda r: (_ for _ in ()).throw(AssertionError("must not run")),
-        capacity=1, per_provider=0.15)
-    never_future = Future()  # publication never becomes observable
-    holder_box = {}
-
-    class NeverPool:
-        _shutdown = False
-        _work_queue = queue.Queue()
-
-        def submit(self, fn, *args):
-            holder_box["h"] = args[-1]
-            return never_future
-
-        def shutdown(self, *a, **k):
-            pass
-
-    service._provider_pool = NeverPool()
-    service._monotonic = advancing_clock
-    never = service.acquire(_request("100")).providers[0]
-    assert holder_box["h"].get("outcome") is None  # never published
+    provider = snapshot.providers[0]
+    assert provider.state is ProviderResultState.SUCCESS
+    assert provider.error_class is None
+    assert provider.evidence == {"genuine": True}
+    # elapsed reflects the real dispatch -> completion interval, not the
+    # delayed publication window
+    assert provider.elapsed_ms < 400
     service.close()
-    assert never.state is ProviderResultState.TIMEOUT
-    assert never.error_class == "PER_PROVIDER_TIMEOUT"
 
 
 def test_n02_02_total_budget_late_completion_is_budget_exhausted():
@@ -371,14 +342,7 @@ def test_lifecycle_close_is_idempotent_and_shuts_executor_down():
 
 # --------------------------------------------------------------------------
 
-def _make_service_multi(providers, *, per_provider=0.15, total=5.0):
-    config = ServiceConfig(per_provider_timeout_seconds=per_provider,
-                           total_budget_seconds=total,
-                           max_concurrent_providers=4)
-    return AcquisitionService(
-        SnapshotStore(":memory:"), providers, config=config,
-        clock=lambda: NOW,
-    )
+
 
 
 # --------------------------------------------------------------------------
@@ -387,43 +351,43 @@ def _make_service_multi(providers, *, per_provider=0.15, total=5.0):
 
 def test_n02_deadline_outcome_pure_decisions():
     """Unit-pin the ONE canonical production deadline authority
-    (_resolve_deadline_outcome) across every boundary case."""
-    from app.radar_runtime.service import _resolve_deadline_outcome, ProviderExecutionOutcome
+    (_resolve_deadline_outcome) across every boundary case (B1.2-B1.5).
+    The production collection path calls this same function."""
+    from app.radar_runtime.service import _resolve_deadline_outcome
 
-    def env(completed):
-        return ProviderExecutionOutcome(
-            provider="lifi", dispatch_mono=100.0, completed_mono=completed,
-            observation={"evidence": {}})
-
-    # completed within both deadlines -> not timed out (even if the
-    # coordinator decision happens much later)
-    assert _resolve_deadline_outcome(env(100.10), 100.15, 105.0, 110.0) == (
+    # B1.1/B1.3: completed within the deadline -> accepted (even when the
+    # decision happens much later than completion)
+    assert _resolve_deadline_outcome(True, 100.10, 100.15, 105.0, 110.0) == (
         False, None)
-    # completed exactly AT the deadline -> accepted
-    assert _resolve_deadline_outcome(env(100.15), 100.15, 105.0, 110.0) == (
+    # B1.3: completed exactly AT the deadline -> accepted
+    assert _resolve_deadline_outcome(True, 100.15, 100.15, 105.0, 110.0) == (
         False, None)
-    # completed after the provider window (provider limiting)
-    timed_out, code = _resolve_deadline_outcome(env(100.22), 100.15, 105.0,
+    # B1.2: completed after the provider window (provider limiting)
+    timed_out, code = _resolve_deadline_outcome(True, 100.22, 100.15, 105.0,
                                                 110.0)
     assert (timed_out, code) == (True, "PER_PROVIDER_TIMEOUT")
-    # completed after the total budget (budget limiting)
-    timed_out, code = _resolve_deadline_outcome(env(100.60), 102.0, 100.25,
+    # B1.2: completed after the total budget (budget limiting)
+    timed_out, code = _resolve_deadline_outcome(True, 100.60, 102.0, 100.25,
                                                 110.0)
     assert (timed_out, code) == (True, "TOTAL_BUDGET_EXHAUSTED")
-    # still running: decision before the limiting deadline -> keep waiting
-    assert _resolve_deadline_outcome(None, 102.0, 105.0, 100.30) == (
+    # B1.4: still running, decision BEFORE the limiting deadline -> keep
+    # waiting (production waits until the deadline before deciding)
+    assert _resolve_deadline_outcome(False, None, 102.0, 105.0, 100.30) == (
         False, None)
-    # still running exactly AT the limiting deadline -> TIMEOUT
-    timed_out, code = _resolve_deadline_outcome(None, 102.0, 100.25, 100.25)
+    # B1.4: still running exactly AT the limiting deadline -> TIMEOUT
+    timed_out, code = _resolve_deadline_outcome(False, None, 102.0, 100.25,
+                                                100.25)
     assert (timed_out, code) == (True, "TOTAL_BUDGET_EXHAUSTED")
-    # still running after the provider window -> PER_PROVIDER_TIMEOUT
-    timed_out, code = _resolve_deadline_outcome(None, 100.15, 105.0, 100.16)
+    # B1.4: still running after the provider window -> PER_PROVIDER_TIMEOUT
+    timed_out, code = _resolve_deadline_outcome(False, None, 100.15, 105.0,
+                                                100.16)
     assert (timed_out, code) == (True, "PER_PROVIDER_TIMEOUT")
-    # exact equal-deadline tie preserves the reviewed contract
-    timed_out, code = _resolve_deadline_outcome(env(100.40), 100.25, 100.25,
+    # B1.5: exact equal-deadline tie preserves the reviewed contract
+    timed_out, code = _resolve_deadline_outcome(True, 100.40, 100.25, 100.25,
                                                 110.0)
     assert (timed_out, code) == (True, "TOTAL_BUDGET_EXHAUSTED")
-    timed_out, code = _resolve_deadline_outcome(None, 100.25, 100.25, 100.25)
+    timed_out, code = _resolve_deadline_outcome(False, None, 100.25, 100.25,
+                                                100.25)
     assert (timed_out, code) == (True, "TOTAL_BUDGET_EXHAUSTED")
 
 
@@ -483,17 +447,17 @@ def test_ca_a1_02_submit_after_shutdown_never_raises_raw_runtimeerror():
     assert _capacity_value(service) == 2
 
 
-def test_ca_a1_03_admitted_work_is_never_cancelled_before_worker_start():
-    """Design contract (option A): admitted provider Futures are NEVER
-    cancelled — close() shuts the pool down WITHOUT cancel_futures, so
-    every admitted slot is owned by its worker and released exactly once
-    when the real work finishes."""
+def test_ca_a1_03_close_does_not_cancel_and_service_stays_typed():
+    """Design contract (option A) narrowed to what it behaviorally
+    proves: close() never cancels provider work (source-pinned), a
+    post-close acquisition is typed SERVICE_CLOSED, and the pool drained
+    whatever was admitted before closure."""
     import inspect
     from app.radar_runtime import service as svc
     close_src = inspect.getsource(svc.AcquisitionService.close)
     assert "cancel_futures=True" not in close_src
     # behavioral proof: work admitted before close still runs to
-    # completion and releases its capacity slot exactly once
+    # completion and the pool drained it
     state = {"executions": 0}
 
     def provider(request):
@@ -601,4 +565,194 @@ def test_ca_a1_07_double_release_is_structurally_impossible():
     assert any(p.state is ProviderResultState.SUCCESS
                for p in snapshot.providers)
     assert _capacity_value(service) == 1
+    service.close()
+
+
+# ==========================================================================
+# Correction B — B1 counter-test, boundaries, order independence, B2
+# ==========================================================================
+
+def test_cb_b1_counter_late_completion_via_production_path():
+    """Section 8 counter-test on the real production path: the provider
+    callable remains running through the limiting deadline; completion
+    and immediate publication occur only afterward.  The final state must
+    remain TIMEOUT with the exact classification."""
+    service = _make_service(
+        lambda r: (time.sleep(0.35),
+                   {"evidence": {"late": True}})[1],
+        capacity=1, per_provider=0.2, total=5.0)
+    snapshot = service.acquire(_request("100"))
+    provider = snapshot.providers[0]
+    assert provider.state is ProviderResultState.TIMEOUT
+    assert provider.error_class == "PER_PROVIDER_TIMEOUT"
+    assert provider.evidence is None  # genuine late completion: no result
+    service.close()
+
+
+def test_cb_b1_boundary_completed_at_deadline_accepted_production_path():
+    """B1.3 via the real production path: the provider callable returns
+    and the worker captures completed_mono EXACTLY at the limiting
+    deadline (deterministic scripted clock) — accepted as completed, not
+    timeout."""
+    clock = {"t": 100.20}
+
+    def provider(request):
+        # the callable completes exactly at the limiting deadline
+        clock["t"] = 100.35  # dispatch 100.20 + window 0.15
+        return {"evidence": {"boundary": True}}
+
+    service = _make_service(provider, capacity=1, per_provider=0.15,
+                            total=5.0)
+    service._monotonic = lambda: clock["t"]
+    snapshot = service.acquire(_request("100"))
+    provider_result = snapshot.providers[0]
+    assert provider_result.state is ProviderResultState.SUCCESS
+    assert provider_result.error_class is None
+    # elapsed = completed_mono - dispatch = exactly the window
+    assert provider_result.elapsed_ms == 150.0
+    service.close()
+
+
+def test_cb_b1_boundary_still_running_at_deadline_production_path():
+    """B1.4 via the real production path: no completion marker exists at
+    the limiting deadline (the provider blocks until the clock is exactly
+    at the deadline, then keeps blocking) — still-running-at-deadline is
+    a TIMEOUT, distinct from completed-at-deadline."""
+    release = threading.Event()
+
+    def provider(request):
+        clock["t"] = 100.36  # decisively past the 0.15 s deadline
+        release.wait(5)
+        return {"evidence": {"never": True}}
+
+    clock = {"t": 100.20}
+    service = _make_service(provider, capacity=1, per_provider=0.15,
+                            total=5.0)
+    service._monotonic = lambda: clock["t"]
+    snapshot = service.acquire(_request("100"))
+    provider_result = snapshot.providers[0]
+    assert provider_result.state is ProviderResultState.TIMEOUT
+    assert provider_result.error_class == "PER_PROVIDER_TIMEOUT"
+    release.set()
+    service.close()
+
+
+def test_cb_b2_elapsed_still_running_uses_limiting_deadline():
+    """B2/section 9-10: multi-provider delayed-coordinator proof.  Both
+    providers are still running at their limiting deadline (0.20 s); the
+    coordinator processes the first, then the second at ~0.23 s — the
+    persisted elapsed_ms must equal the limiting deadline (200 ms), not
+    the delayed coordinator time."""
+    gate = threading.Event()
+    calls: list = []
+
+    def slow(request):
+        calls.append(request)
+        gate.wait(5)
+        return {"evidence": {}}
+
+    service = _make_service_multi(
+        {name: slow for name in ("a", "b")},
+        capacity=2, per_provider=0.2, total=10.0)
+    snapshot = service.acquire(_request("100", sources=("a", "b")))
+    gate.set()
+    for provider in snapshot.providers:
+        assert provider.state is ProviderResultState.TIMEOUT
+        # elapsed == limiting deadline - dispatch, NOT the coordinator time
+        assert provider.elapsed_ms == 200.0
+    service.close()
+
+
+def test_cb_b2_elapsed_late_completed_uses_actual_completion():
+    """B2 via the REAL production path with a deterministic scripted
+    clock: the provider callable completes at t=100.50 — AFTER its
+    limiting deadline (dispatch 100.20 + window 0.15 = 100.35) — and the
+    worker publishes immediately.  Outcome: TIMEOUT /
+    PER_PROVIDER_TIMEOUT with elapsed_ms == the genuine dispatch ->
+    completion interval (300 ms), preserving real lateness."""
+    clock = {"t": 100.20}
+
+    def provider(request):
+        clock["t"] = 100.50  # completion AFTER the 100.35 deadline
+        return {"evidence": {"late": True}}
+
+    service = _make_service(provider, capacity=1, per_provider=0.15,
+                            total=5.0)
+    service._monotonic = lambda: clock["t"]
+    snapshot = service.acquire(_request("100"))
+    provider_result = snapshot.providers[0]
+    assert provider_result.state is ProviderResultState.TIMEOUT
+    assert provider_result.error_class == "PER_PROVIDER_TIMEOUT"
+    assert provider_result.elapsed_ms == 300.0  # actual completion interval
+    service.close()
+
+
+def test_cb_b2_boundary_completed_at_deadline_elapsed():
+    """B1.3 via the real production path: the callable completes exactly
+    AT the limiting deadline (clock set to dispatch + window) — accepted
+    as completed, elapsed == exactly the window."""
+    clock = {"t": 100.20}
+
+    def provider(request):
+        clock["t"] = 100.20 + 0.15  # exactly the limiting deadline
+        return {"evidence": {"boundary": True}}
+
+    service = _make_service(provider, capacity=1, per_provider=0.15,
+                            total=5.0)
+    service._monotonic = lambda: clock["t"]
+    snapshot = service.acquire(_request("100"))
+    provider_result = snapshot.providers[0]
+    assert provider_result.state is ProviderResultState.SUCCESS
+    assert provider_result.error_class is None
+    assert provider_result.elapsed_ms == 150.0
+    service.close()
+
+
+def test_cb_b2_boundary_still_running_at_deadline_elapsed():
+    """B1.4 via the real production path: no completion marker at the
+    limiting deadline (the provider advances the clock to the deadline
+    and keeps running) — TIMEOUT, and elapsed_ms == the limiting deadline
+    (150 ms), NOT the still-running provider's later completion."""
+    release = threading.Event()
+
+    def provider(request):
+        clock["t"] = 100.20 + 0.15  # deadline reached; still running
+        release.wait(5)
+        return {"evidence": {"never": True}}
+
+    clock = {"t": 100.20}
+    service = _make_service(provider, capacity=1, per_provider=0.15,
+                            total=5.0)
+    service._monotonic = lambda: clock["t"]
+    snapshot = service.acquire(_request("100"))
+    provider_result = snapshot.providers[0]
+    assert provider_result.state is ProviderResultState.TIMEOUT
+    assert provider_result.error_class == "PER_PROVIDER_TIMEOUT"
+    # still running at deadline: elapsed == the limiting deadline itself
+    assert provider_result.elapsed_ms == 150.0
+    release.set()
+    service.close()
+
+
+def test_cb_b1_coordinator_order_independence_multi_provider():
+    """B1.6: three providers with mixed outcomes dispatched together —
+    processing order must not change any outcome (one blocks past the
+    window and times out; two complete on time)."""
+    def first_slow(request):
+        time.sleep(0.35)  # > the 0.15 s window
+        return {"evidence": {"name": "first"}}
+
+    providers = {
+        "first": first_slow,
+        "second": lambda r: {"evidence": {"name": "second"}},
+        "third": lambda r: {"evidence": {"name": "third"}},
+    }
+    service = _make_service_multi(providers, per_provider=0.15, total=5.0)
+    snapshot = service.acquire(
+        _request("100", sources=tuple(sorted(providers))))
+    states = {p.provider: p for p in snapshot.providers}
+    assert states["first"].state is ProviderResultState.TIMEOUT
+    assert states["first"].error_class == "PER_PROVIDER_TIMEOUT"
+    assert states["second"].state is ProviderResultState.SUCCESS
+    assert states["third"].state is ProviderResultState.SUCCESS
     service.close()
