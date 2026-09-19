@@ -267,6 +267,13 @@ app.include_router(_v2_capex_router, prefix="/v2/capex")
 from app.v2.opex_router import opex_router as _v2_opex_router
 app.include_router(_v2_opex_router, prefix="/v2/opex")
 
+# -- FINCO Radar v1 (Post-R12 P2) — narrow read-only Radar surface ------------
+# Read-only product UI over the frozen R0-R12 authority and the canonical
+# P1 acquisition runtime. One refresh -> one immutable snapshot_id; all
+# panels and the Evidence Inspector reference that exact snapshot.
+from app.radar_ui.router import router as _radar_router
+app.include_router(_radar_router)
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""

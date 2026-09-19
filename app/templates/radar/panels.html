@@ -1,0 +1,98 @@
+{% if error %}
+<section class="panel panel-error"><h2>Snapshot</h2><p class="state-unavailable">{{ error }}</p></section>
+{% else %}
+<section class="panel panel-snapshot" data-panel="snapshot" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Snapshot</h2>
+  <dl class="kv">
+    <dt>snapshot_id</dt><dd class="mono">{{ view.snapshot_id }}</dd>
+    <dt>Acquisition state</dt><dd><span class="state-{{ view.state|lower }}">{{ view.state }}</span> <span class="muted">{{ view.state_label }}</span></dd>
+    <dt>Acquired (started)</dt><dd>{{ view.startedAt }}</dd>
+    <dt>Completed</dt><dd>{{ view.completedAt }}</dd>
+    <dt>Providers</dt>
+    <dd>
+      {% for p in view.providers %}
+      <div class="provider-row" data-panel="provider-state" data-snapshot-id="{{ view.snapshot_id }}">
+        {{ p.provider }} — <span class="state-{{ p.state|lower }}">{{ p.state }}</span>
+        {% if p.errorClass %}<span class="muted">[{{ p.errorClass }}]</span>{% endif %}
+        <span class="muted small">{{ p.elapsedMs }} ms</span>
+      </div>
+      {% endfor %}
+    </dd>
+  </dl>
+</section>
+
+<section class="panel panel-reference" data-panel="reference" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Reference</h2>
+  {% if view.reference.available %}
+  <dl class="kv">
+    <dt>Reference price</dt>
+    <dd class="mono big">
+      <a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/reference.price" hx-get="/radar/inspector/{{ view.snapshot_id }}/reference.price" hx-target="#radar-inspector" hx-swap="innerHTML">{{ view.reference.fields.price }}</a>
+    </dd>
+    <dt>Bid / Ask</dt><dd class="mono">{{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}</dd>
+    <dt>Source</dt><dd><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/reference.source">{{ view.reference.fields.source }}</a></dd>
+    <dt>Observed / source time</dt><dd>{{ view.reference.fields.observedAt }}</dd>
+    <dt>Availability</dt><dd><span class="state-available">AVAILABLE</span> <span class="muted">{{ view.reference.phase }}</span></dd>
+  </dl>
+  {% else %}
+  <p class="state-unavailable">UNAVAILABLE{% if view.reference.reason %} — {{ view.reference.reason }}{% endif %}</p>
+  <p class="muted small">{{ view.reference.phase }}</p>
+  {% endif %}
+</section>
+
+<section class="panel panel-execution" data-panel="execution" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Execution</h2>
+  {% if view.execution.available %}
+  <dl class="kv">
+    <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd }}</dd>
+    <dt>Status</dt>
+    <dd><span class="state-available"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.status" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.status" hx-target="#radar-inspector">{{ view.execution.fields.status }}</a></span></dd>
+    <dt>Expected output (raw)</dt>
+    <dd class="mono"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.rawAmountOut" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.rawAmountOut" hx-target="#radar-inspector">{{ view.execution.fields.rawAmountOut }}</a></dd>
+    {% if view.execution.fields.effectivePrice %}
+    <dt>Effective price</dt>
+    <dd class="mono"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.effectivePrice" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.effectivePrice" hx-target="#radar-inspector">{{ view.execution.fields.effectivePrice }}</a></dd>
+    {% endif %}
+    <dt>Provider / source</dt><dd>{{ view.execution.fields.source }}</dd>
+    <dt>Quote time</dt><dd>{{ view.execution.fields.quotedAt }}</dd>
+  </dl>
+  {% else %}
+  <p class="state-unavailable">UNAVAILABLE{% if view.execution.reason %} — {{ view.execution.reason }}{% endif %}</p>
+  <p class="muted small">{{ view.execution.phase }}</p>
+  {% endif %}
+</section>
+
+<section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>GAP</h2>
+  {% if view.gap.available %}
+  <dl class="kv">
+    <dt>Directional GAP</dt>
+    <dd class="mono big"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/gap.gapBps" hx-get="/radar/inspector/{{ view.snapshot_id }}/gap.gapBps" hx-target="#radar-inspector">{{ view.gap.fields.gapBps }} bps</a></dd>
+    <dt>GAP to midpoint (neutral)</dt><dd class="mono">{{ view.gap.fields.gapToMidBps }} bps</dd>
+    <dt>Source</dt><dd>{{ view.gap.fields.source }}</dd>
+    <dt>Quoted at</dt><dd>{{ view.gap.fields.quotedAt }}</dd>
+    <dt>Authority</dt><dd><span class="muted">{{ view.gap.phase }} — consumed, not recomputed</span></dd>
+  </dl>
+  {% else %}
+  <p class="state-unavailable">UNAVAILABLE{% if view.gap.reason %} — {{ view.gap.reason }}{% endif %}</p>
+  <p class="muted small">{{ view.gap.phase }}</p>
+  {% endif %}
+</section>
+
+<section class="panel panel-freshness" data-panel="freshness" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Freshness / availability</h2>
+  <dl class="kv">
+    <dt>Reference observed</dt><dd>{{ view.freshness.referenceObservedAt or 'UNAVAILABLE' }}</dd>
+    <dt>Quote time</dt><dd>{{ view.freshness.quoteTime or 'UNAVAILABLE' }}</dd>
+    <dt>GAP quoted</dt><dd>{{ view.freshness.gapQuotedAt or 'UNAVAILABLE' }}</dd>
+    <dt>Acquisition completed</dt><dd>{{ view.freshness.completedAt }}</dd>
+  </dl>
+  <p class="muted small">Independent source times and availability states — never collapsed into a single badge. Composition time does not refresh source evidence.</p>
+</section>
+
+<section class="panel panel-inspector-host" data-panel="inspector" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Evidence Inspector</h2>
+  <p class="muted small">Click any number, state or source above. LINEAGE: NUMBER → SOURCE → DERIVATION → LINEAGE → EVIDENCE → VERIFICATION — always from snapshot <span class="mono">{{ view.snapshot_id }}</span>.</p>
+  <div id="radar-inspector" class="inspector-host"><p class="muted">Select a field to inspect its lineage.</p></div>
+</section>
+{% endif %}

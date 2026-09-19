@@ -1,0 +1,72 @@
+{% if error %}
+<section class="inspector-error"><p class="state-unavailable">{{ error }}</p></section>
+{% else %}
+<div class="inspector" data-snapshot-id="{{ inspector.snapshotId }}" data-field="{{ inspector.field }}">
+  <h3>Evidence Inspector — {{ inspector.label }}</h3>
+
+  <div class="inspector-stage stage-number">
+    <h4>NUMBER</h4>
+    {% if inspector.number.available %}
+    <p class="mono big">{{ inspector.number.value }}</p>
+    {% else %}
+    <p class="state-unavailable">UNAVAILABLE</p>
+    {% endif %}
+  </div>
+
+  <div class="inspector-stage stage-source">
+    <h4>SOURCE</h4>
+    <dl class="kv">
+      <dt>Provider</dt><dd>{{ inspector.source.provider }}</dd>
+      <dt>Provider state</dt><dd>{{ inspector.source.providerState }}</dd>
+      <dt>Owning authority phase</dt><dd>{{ inspector.source.phase }}</dd>
+      <dt>Observed at</dt><dd>{{ inspector.source.observedAt or 'UNAVAILABLE' }}</dd>
+    </dl>
+  </div>
+
+  <div class="inspector-stage stage-derivation">
+    <h4>DERIVATION</h4>
+    <p>{{ inspector.derivation }}</p>
+  </div>
+
+  <div class="inspector-stage stage-lineage">
+    <h4>LINEAGE</h4>
+    <dl class="kv">
+      {% for row in inspector.lineage %}
+      <dt>{{ row.label }}</dt><dd class="mono">{{ row.value }}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+
+  <div class="inspector-stage stage-evidence">
+    <h4>EVIDENCE</h4>
+    {% if inspector.evidence.digest %}
+    <p class="mono small">evidence digest: {{ inspector.evidence.digest }}</p>
+    {% endif %}
+    {% if inspector.evidence.providerPayload %}
+    <pre class="evidence-payload mono">{{ inspector.evidence.providerPayload | tojson }}</pre>
+    {% else %}
+    <p class="state-unavailable">UNAVAILABLE — no preserved provider evidence for this result</p>
+    {% endif %}
+  </div>
+
+  <div class="inspector-stage stage-verification">
+    <h4>VERIFICATION</h4>
+    {% if inspector.verification.state == 'UNAVAILABLE' %}
+    <p class="state-unavailable">UNAVAILABLE — {{ inspector.verification.reason }}</p>
+    {% else %}
+    <p>{{ inspector.verification.state }}</p>
+    {% endif %}
+  </div>
+
+  {% if inspector.gaps %}
+  <div class="inspector-stage stage-gaps">
+    <h4>GAPS</h4>
+    {% for gap in inspector.gaps %}
+    <p class="state-unavailable">{{ gap.gapKind }} — {{ gap.reason }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="muted small">{{ inspector.readOnly }} · snapshot <span class="mono">{{ inspector.snapshotId }}</span> · fingerprint <span class="mono">{{ inspector.requestFingerprint }}</span></p>
+</div>
+{% endif %}
