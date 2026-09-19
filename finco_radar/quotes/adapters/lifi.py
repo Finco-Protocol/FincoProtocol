@@ -376,6 +376,32 @@ def _require_exact_raw_amount(
             "a different trade")
 
 
+def _validate_raw_amount(value: Any, name: str) -> str:
+    """D2: nested raw amounts must be valid per the LI.FI contract.
+    Rejects missing/null, bool, float, list, dict, malformed strings,
+    signed/fractional strings; accepts exact int or decimal-digit string."""
+    if value is None:
+        raise ValueError(f"provider response field {name} must be present "
+                         "per the LI.FI provider contract")
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must not be a boolean")
+    if isinstance(value, float):
+        raise ValueError(f"{name} must not be a float")
+    if isinstance(value, (list, dict)):
+        raise ValueError(f"{name} must not be {type(value).__name__}")
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped != value:
+            raise ValueError(f"{name} has whitespace padding: {value!r}")
+        if not stripped.isdigit():
+            raise ValueError(
+                f"{name}={value!r} is not a valid unsigned decimal-digit string")
+        return stripped
+    raise ValueError(f"{name} has unsupported type {type(value).__name__}")
+
+
 def _extract_route(payload: Mapping[str, Any]) -> list[RouteLeg]:
     """C1: malformed route steps/entries produce typed errors, never skipped."""
     steps = payload.get("includedSteps")
@@ -402,13 +428,25 @@ def _extract_route(payload: Mapping[str, Any]) -> list[RouteLeg]:
             raise ValueError("includedSteps member has non-mapping fromToken")
         if not isinstance(to_token, Mapping):
             raise ValueError("includedSteps member has non-mapping toToken")
+        # D1: nested token addresses must be non-empty strings
+        for tok_label, tok_obj in (("fromToken", from_token), ("toToken", to_token)):
+            addr = tok_obj.get("address")
+            if not isinstance(addr, str) or not addr.strip():
+                raise ValueError(
+                    f"includedSteps member {tok_label}.address must be a "
+                    f"non-empty string, got {addr!r}")
+        # D2: nested raw amounts must be valid
+        from_amt_raw = estimate.get("fromAmount")
+        to_amt_raw = estimate.get("toAmount")
+        from_amt = _validate_raw_amount(from_amt_raw, "includedSteps estimate.fromAmount")
+        to_amt = _validate_raw_amount(to_amt_raw, "includedSteps estimate.toAmount")
         route.append(
             RouteLeg(
                 tool=str(step.get("tool") or payload.get("tool") or "UNKNOWN"),
-                from_asset=str(from_token.get("address") or ""),
-                to_asset=str(to_token.get("address") or ""),
-                from_amount_raw=(str(estimate["fromAmount"]) if estimate.get("fromAmount") is not None else None),
-                to_amount_raw=(str(estimate["toAmount"]) if estimate.get("toAmount") is not None else None),
+                from_asset=from_token["address"],
+                to_asset=to_token["address"],
+                from_amount_raw=from_amt,
+                to_amount_raw=to_amt,
             )
         )
     if not route:
@@ -420,13 +458,17 @@ def _extract_route(payload: Mapping[str, Any]) -> list[RouteLeg]:
             estimate = {}
         from_token = action.get("fromToken")
         to_token = action.get("toToken")
+        from_addr = str(from_token.get("address") or "") if isinstance(from_token, Mapping) else ""
+        to_addr = str(to_token.get("address") or "") if isinstance(to_token, Mapping) else ""
+        from_amt = str(estimate["fromAmount"]) if isinstance(estimate.get("fromAmount"), (str, int)) else None
+        to_amt = str(estimate["toAmount"]) if isinstance(estimate.get("toAmount"), (str, int)) else None
         route.append(
             RouteLeg(
                 tool=str(payload.get("tool") or "UNKNOWN"),
-                from_asset=str(from_token.get("address") or "") if isinstance(from_token, Mapping) else "",
-                to_asset=str(to_token.get("address") or "") if isinstance(to_token, Mapping) else "",
-                from_amount_raw=(str(estimate["fromAmount"]) if isinstance(estimate.get("fromAmount"), (str, int)) else None),
-                to_amount_raw=(str(estimate["toAmount"]) if isinstance(estimate.get("toAmount"), (str, int)) else None),
+                from_asset=from_addr,
+                to_asset=to_addr,
+                from_amount_raw=from_amt,
+                to_amount_raw=to_amt,
             )
         )
     return route
