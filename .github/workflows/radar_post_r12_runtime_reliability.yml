@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: python -m pip install -e . pytest httpx
+        run: python -m pip install -e . pytest httpx uvicorn playwright
       - name: Gate A — frozen R0–R12 authority untouched (vs 1045a34)
         run: |
           python - <<'PY'
@@ -67,9 +67,8 @@ jobs:
         run: pytest -q tests/test_radar_runtime_reliability.py
       - name: ASGI offload test (N03)
         run: pytest -q tests/test_radar_n03_asgi_offload.py
-      - name: Install playwright + chromium (N04 real-browser harness)
+      - name: Install chromium (N04 real-browser harness)
         run: |
-          python -m pip install playwright
           python -m playwright install chromium
           python -m playwright install-deps chromium
       - name: Browser containment test (N04)
