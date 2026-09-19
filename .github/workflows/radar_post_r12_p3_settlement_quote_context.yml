@@ -1,0 +1,88 @@
+name: Radar Post-R12 P3 — Settlement + Quote Context
+
+on:
+  push:
+    branches: [radar/post-r12-p3-settlement-quote-context]
+    paths:
+      - "app/radar_ui/**"
+      - "app/templates/radar/**"
+      - "static/radar/**"
+      - "main_web.py"
+      - "tests/test_radar_p3_settlement_quote_context.py"
+      - "tests/test_radar_p2_v1_ui.py"
+      - "tests/test_radar_p2_integration.py"
+      - "tests/test_radar_post_r12_runtime.py"
+      - "docs/radar/post_r12_p3_settlement_quote_context.md"
+      - ".github/workflows/radar_post_r12_p3_settlement_quote_context.yml"
+  workflow_dispatch:
+
+jobs:
+  radar-p3-settlement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e . pytest httpx
+      - name: Gate A — frozen R0–R12 authority untouched (vs 1045a34)
+        run: |
+          python - <<'PY'
+          import subprocess
+          anchor = "1045a343cbe3c21c8b0cb7070582d8d9a9533362"
+          frozen = [
+              "finco_radar/", "financial_engine/", "finco_core/",
+              "finco_protocol/",
+          ]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", anchor, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [p for p in changed
+                        if any(p.startswith(x) for x in frozen)]
+          if violations:
+              raise SystemExit(
+                  f"POST_R12_P3_BLOCKED: frozen R0-R12 authority modified "
+                  f"vs {anchor}: {violations}")
+          print(f"POST_R12_P3_GATE_A_PASS changed_vs_anchor={len(changed)} "
+                "frozen_paths_untouched")
+          PY
+      - name: Gate B — P1 acquisition runtime core untouched (vs d8c471b)
+        run: |
+          python - <<'PY'
+          import subprocess
+          base = "d8c471b9e5a591db52a78837a788f8e53647bb53"
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", base, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [p for p in changed
+                        if p.startswith("app/radar_runtime/")]
+          if violations:
+              raise SystemExit(
+                  f"POST_R12_P3_BLOCKED: P1 runtime core modified vs "
+                  f"{base}: {violations}")
+          print(f"POST_R12_P3_GATE_B_PASS changed_vs_base={len(changed)} "
+                "p1_runtime_untouched")
+          PY
+      - name: Focused P3 settlement/quote-context tests
+        run: pytest -q tests/test_radar_p3_settlement_quote_context.py
+      - name: P2 Radar v1 UI regression
+        run: pytest -q tests/test_radar_p2_v1_ui.py tests/test_radar_p2_integration.py
+      - name: P1 acquisition runtime regression
+        run: pytest -q tests/test_radar_post_r12_runtime.py
+      - name: Frozen R0/R2/R6 regressions
+        run: |
+          pytest -q tests/test_radar_r0_quotes.py
+          pytest -q tests/test_radar_r2_gap.py
+          pytest -q tests/test_radar_r6_terminal.py
+      - name: Run full repository suite
+        run: pytest -q tests/
+      - name: Compile check
+        run: python -m compileall -q .
+      - name: Public safety scan
+        run: python tools/public_safety_scan.py

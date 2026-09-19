@@ -33,6 +33,13 @@ from app.radar_runtime.contracts import (
 )
 from app.radar_runtime.service import AcquisitionService, ServiceConfig
 from app.radar_runtime.snapshot_store import SnapshotStore
+from app.radar_ui.quote_context import (
+    QuoteContext,
+    SettlementContextError,
+    build_settlement_reference,
+    quote_taker_address,
+    resolve_quote_context,
+)
 
 PROVIDER_NAME = "radar-core"
 
@@ -58,8 +65,6 @@ def configured_sources() -> "tuple[str, ...]":
         s.strip() for s in
         os.getenv("RADAR_V1_EXTRA_SOURCES", "").split(",") if s.strip())
     return (PROVIDER_NAME,) + _CONFIGURED_EXTRA_SOURCES + env_extra
-
-DEFAULT_SETTLEMENT_RESOLVER_UNAVAILABLE = "SETTLEMENT_RESOLVER_NOT_WIRED"
 
 REFERENCE_IDENTITY_MISMATCH = "REFERENCE_IDENTITY_MISMATCH"
 
@@ -115,7 +120,13 @@ def build_request(direction: str, size: str) -> AcquisitionRequest:
 
     Only the reviewed quote directions (BUY/SELL) and the two sized
     notional controls ($100 / $1,000) supported by the frozen Radar path
-    are accepted (P4); everything else is a typed rejection."""
+    are accepted (P4); everything else is a typed rejection.
+
+    P5/P6: the read-only quote context (settlement identity/value/state +
+    taker routing address) is resolved HERE and bound into the P1 request
+    fingerprint material — the provider callable consumes exactly this
+    material, so any context change changes the acquisition identity and
+    there is no config split-brain."""
     asset = asset_config()
     if direction not in DIRECTIONS:
         raise RuntimeContractError(
@@ -123,6 +134,8 @@ def build_request(direction: str, size: str) -> AcquisitionRequest:
     if size not in SIZES:
         raise RuntimeContractError(
             f"size must be one of {list(SIZES)}, got {size!r}")
+    quote_context = resolve_quote_context(
+        expected_chain_id=asset["chainId"])
     return AcquisitionRequest(
         chain_id=asset["chainId"],
         contract_address=asset["contractAddress"],
@@ -131,6 +144,7 @@ def build_request(direction: str, size: str) -> AcquisitionRequest:
         purpose="radar-v1-panel",
         notional_usd=size,
         economic_asset_uid=asset["economicAssetUid"],
+        provider_config={"radarCore": quote_context.fingerprint_material()},
     )
 
 
@@ -250,25 +264,51 @@ def composition_radar_source(
 
         # -- execution: frozen R0 quote authority for the requested side/size
         try:
-            if settlement_resolver is None:
+            # P5/P6: the settlement/taker context comes from the
+            # fingerprint-bound request material — never re-read from a
+            # different configuration source.
+            quote_context = QuoteContext.from_material(
+                (request.provider_config or {}).get("radarCore"))
+            if quote_context.problems:
                 evidence["execution"] = _unavailable(
-                    DEFAULT_SETTLEMENT_RESOLVER_UNAVAILABLE)
+                    quote_context.problems[0])
             elif reference_authority is None:
                 evidence["execution"] = _unavailable("REFERENCE_UNAVAILABLE")
             else:
+                # P3: frozen SettlementReference built from the bound
+                # context; chain/usable validation fails closed BEFORE
+                # LI.FI is invoked.
+                settlement_authority = build_settlement_reference(
+                    quote_context, expected_chain_id=request.chain_id)
+                taker_address = quote_taker_address(quote_context)
+                evidence["settlement"] = {
+                    "configured": True,
+                    "chainId": settlement_authority.asset.chain_id,
+                    "contractAddress":
+                        settlement_authority.asset.contract_address,
+                    "state": settlement_authority.state.value,
+                    "source": settlement_authority.source,
+                    "symbol": settlement_authority.asset.symbol,
+                    "usdPerAsset": str(settlement_authority.usd_per_asset),
+                }
                 quote_adapter = (quote_adapter_factory or (lambda: (
                     LifiExecutionQuoteAdapter(client=httpx.Client(
                         base_url="https://li.quest", timeout=10.0)))))()
                 try:
+                    # P7: the frozen QuoteRequest is constructed with ALL
+                    # required arguments, including the validated public
+                    # taker routing address.  Quote-only: any transaction
+                    # payload fields remain inert evidence.
                     quote_authority = quote_adapter.quote(QuoteRequest(
                         token=AssetRef(
                             request.chain_id, request.contract_address,
                             symbol=config["symbol"],
                             decimals=config["decimals"]),
-                        settlement=settlement_resolver(),
+                        settlement=settlement_authority,
                         side=(QuoteSide.BUY if request.direction == "BUY"
                               else QuoteSide.SELL),
                         requested_notional_usd=Decimal(request.notional_usd),
+                        taker_address=taker_address,
                         token_sizing_reference_usd=(
                             reference_authority.token_midpoint_usd_per_token
                             if request.direction == "SELL" else None),
@@ -298,13 +338,19 @@ def composition_radar_source(
                         if quote_authority.normalized_amount_out is not None
                         else None),
                     "effectivePrice": (
-                        str(quote_authority.effective_price)
-                        if getattr(quote_authority, "effective_price", None)
+                        str(quote_authority.effective_output_per_input)
+                        if quote_authority.effective_output_per_input
                         is not None else None),
                     "source": quote_authority.source,
                     "quotedAt": quote_authority.quoted_at.isoformat(),
                     "unavailableReason": quote_authority.unavailable_reason,
                 }
+        except SettlementContextError as exc:
+            # P3: typed fail-closed settlement context reason
+            evidence["settlement"] = {
+                "configured": False, "reason": str(exc),
+            }
+            evidence["execution"] = _unavailable(str(exc))
         except Exception as exc:  # noqa: BLE001 - explicit section state
             evidence["execution"] = _unavailable(type(exc).__name__)
 

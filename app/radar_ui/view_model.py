@@ -81,6 +81,33 @@ def build_radar_view(snapshot) -> dict[str, Any]:
     reference = _section(evidence, "reference")
     execution = _section(evidence, "execution")
     gap = _section(evidence, "gap")
+    # P9: settlement context evidence — configured vs unavailable with the
+    # stable fail-closed reason; safe identity only.
+    settlement_raw = evidence.get("settlement")
+    if isinstance(settlement_raw, Mapping) and settlement_raw.get(
+        "configured"
+    ) is True:
+        settlement = {
+            "configured": True,
+            "state": settlement_raw.get("state"),
+            "source": settlement_raw.get("source"),
+            "chainId": settlement_raw.get("chainId"),
+            "contractAddress": settlement_raw.get("contractAddress"),
+            "usdPerAsset": settlement_raw.get("usdPerAsset"),
+            "reason": None,
+        }
+    else:
+        settlement = {
+            "configured": False,
+            "state": None,
+            "source": None,
+            "chainId": None,
+            "contractAddress": None,
+            "usdPerAsset": None,
+            "reason": (settlement_raw.get("reason")
+                       if isinstance(settlement_raw, Mapping) else None)
+                       or "SETTLEMENT_NOT_CONFIGURED",
+        }
 
     return {
         "snapshot_id": snapshot.snapshot_id,
@@ -111,6 +138,7 @@ def build_radar_view(snapshot) -> dict[str, Any]:
             **gap,
             "phase": "R2 — frozen directional GAP authority",
         },
+        "settlement": settlement,
         "freshness": {
             "referenceObservedAt": reference["fields"].get("observedAt"),
             "quoteTime": execution["fields"].get("quotedAt"),
