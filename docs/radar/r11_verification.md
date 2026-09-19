@@ -138,6 +138,35 @@ and no caller override exists.
 - **B7** — non-Mapping content envelope typed-rejected at the public boundary.
 - **B8** — PR metadata updated to current counts/state.
 
+## Correction A — serialized verification authority closure (F02)
+
+Core rule: **CONTENT_INTEGRITY != VERIFICATION_AUTHORITY**.
+
+Serialized R11 ingest (`verify_serialized_r11_evidence`) accepts an
+untrusted artifact only after BOTH layers hold:
+
+1. **Serialized/content integrity** — exact schema, phase, typed status,
+   timezone-aware `generatedAt`, pinned freeze authority, boundary
+   contract, embedded-subject binding
+   (`subjectSnapshotDigest == subjectEvidence.r10SnapshotDigest`),
+   explicit Mapping/list validation (no truthiness normalization), and
+   `r11SnapshotDigest` reconstruction.  This layer alone proves nothing
+   about verification authority.
+2. **Canonical semantic verification replay** — the canonical owning
+   verifier (`verify_r10_evidence`) is replayed against the embedded
+   subject under the serialized authority inputs; the artifact must EQUAL
+   the replay output exactly (required check set with no missing,
+   duplicate, invented or reordered checks; recomputed failed/unavailable
+   counts; recomputed overall status; recomputed `r11SnapshotDigest`).
+   Live generation and serialized ingest therefore share ONE authority.
+
+`verify_r11_snapshot_digest` is documented as INTEGRITY-ONLY (checksum
+proof, never semantic authority).  A resealed object that passes every
+hash but fails the canonical semantic verification is rejected; the
+adversarial resealed matrix (`test_adv_f02_*`) recomputes every affected
+digest after each mutation and still fails all 16 cases, while canonical
+live and full-model fixtures verify.
+
 ## Reproduction commands
 
 ```bash

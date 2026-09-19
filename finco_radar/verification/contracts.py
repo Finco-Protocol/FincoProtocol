@@ -317,15 +317,53 @@ def compute_verification_digest(snapshot: VerificationSnapshot) -> str:
 
 
 def verify_r11_snapshot_digest(snapshot: VerificationSnapshot) -> bool:
+    """INTEGRITY-ONLY helper (Correction A / A6): proves exclusively that the
+    snapshot's canonical content still reconstructs its recorded
+    ``r11SnapshotDigest``.  It is a checksum/consistency proof and must
+    NEVER be treated as semantic verification authority — content
+    integrity is not verification authority (CONTENT_INTEGRITY !=
+    VERIFICATION_AUTHORITY).  The owning semantic authority is
+    :func:`finco_radar.verification.verifier.verify_r10_evidence`."""
     return compute_verification_digest(snapshot) == snapshot.r11_snapshot_digest
 
 
 def verify_serialized_r11_evidence(evidence: Any) -> bool:
-    """B6: fail-closed serialized R11 self-verification.  Validates the
-    serialized R11 CONTRACT - outer identity, freeze authority, outer
-    boundaries, subject binding, check contract, status/check consistency -
-    and only then reconstructs the digest.  A correctly re-hashed malformed
-    outer artifact must NOT pass."""
+    """Fail-closed serialized R11 ingest — Correction A (F02 closure).
+
+    Two mandatory layers; a serialized artifact is accepted only when BOTH
+    hold:
+
+    1. **Serialized/content integrity** — exact R11 schema, phase, typed
+       status, timezone-aware ``generatedAt``, pinned freeze authority,
+       boundary contract, embedded-subject binding (``subjectSnapshotDigest
+       == subjectEvidence.r10SnapshotDigest``), explicit Mapping/list
+       validation, and ``r11SnapshotDigest`` reconstruction.  This layer
+       alone proves NOTHING about verification authority.
+
+    2. **Canonical semantic verification replay** — the canonical owning
+       verifier :func:`finco_radar.verification.verifier.verify_r10_evidence`
+       is replayed against the embedded R10 subject under the serialized
+       authority inputs (generatedAt, gitHead, contentEnvelope, pinned
+       freeze constants).  The serialized artifact must EQUAL the replayed
+       authority output exactly: same required check set (no missing,
+       duplicate, invented or reordered checks; canonical states and
+       details), recomputed failed/unavailable counts, recomputed overall
+       status, and the recomputed ``r11SnapshotDigest``.  A resealed object
+       that passes every hash but fails — or would verify differently
+       under — the canonical semantic verification is rejected.
+
+    No raw exception escapes this public boundary; every rejection is the
+    typed ``False`` verification result."""
+    try:
+        return _verify_serialized_r11_evidence_impl(evidence)
+    except Exception:
+        # A5: fail-closed public boundary — AttributeError/TypeError/
+        # KeyError/ValueError/IndexError from malformed untrusted input
+        # must never escape; the typed failure result is False.
+        return False
+
+
+def _verify_serialized_r11_evidence_impl(evidence: Any) -> bool:
     if not isinstance(evidence, Mapping):
         return False
     if evidence.get("schemaVersion") != SCHEMA_VERSION:
@@ -381,9 +419,15 @@ def verify_serialized_r11_evidence(evidence: Any) -> bool:
         return False
     if evidence.get("economicNodeId") != subject.get("economicNodeId"):
         return False
+    raw_subject_gaps = subject.get("gaps")
+    if raw_subject_gaps is None:
+        raw_subject_gaps = []
+    if not isinstance(raw_subject_gaps, list):
+        return False
+    if any(not isinstance(g, Mapping) for g in raw_subject_gaps):
+        return False
     subject_gaps = sorted(
-        (plain(g) for g in (subject.get("gaps") or [])
-         if isinstance(g, Mapping)),
+        (plain(g) for g in raw_subject_gaps),
         key=lambda g: (g.get("gapKind", ""), g.get("source", ""),
                        g.get("reason", "")))
     if evidence.get("subjectGaps") != subject_gaps:
@@ -441,9 +485,26 @@ def verify_serialized_r11_evidence(evidence: Any) -> bool:
             return False
     if not isinstance(evidence.get("r11SnapshotDigest"), str):
         return False
-    material = plain(evidence)
-    recorded = material.pop("r11SnapshotDigest")
-    return recorded == canonical_sha256(material)
+    # ---- Correction A (F02): canonical semantic verification replay --------
+    # The integrity checks above are NOT verification authority.  The
+    # canonical owning verifier is replayed against the embedded subject
+    # under the serialized authority inputs; the serialized artifact must
+    # be exactly what that replay independently produces (check set,
+    # check states/details, gap set, status, and the r11SnapshotDigest
+    # over that material).  Content integrity != verification authority.
+    content_envelope = evidence.get("contentEnvelope")
+    if content_envelope is not None and not isinstance(content_envelope, Mapping):
+        return False
+    from .verifier import verify_r10_evidence
+    replay = verify_r10_evidence(
+        evidence=subject,
+        generated_at=parsed,
+        git_head=evidence["gitHead"],
+        freeze_anchor=R10_FREEZE_ANCHOR,
+        freeze_tree=R10_FREEZE_TREE,
+        content_envelope=content_envelope,
+    )
+    return replay.to_evidence_dict() == plain(evidence)
 
 
 def build_verification_envelope(subject_evidence: Mapping[str, Any]) -> Any:
