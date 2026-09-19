@@ -629,11 +629,16 @@ def test_p3_26_quote_context_imports_no_private_proof_helpers():
 
 def test_p3_27_frozen_settlement_contract_untouched():
     # the frozen SettlementReference/QuoteRequest contracts must not have
-    # been modified by this correction
-    from pathlib import Path
+    # been modified by this correction.  Skipped in shallow checkouts that
+    # cannot resolve the base commit (the P3 CI gate enforces this with a
+    # full checkout instead).
     import subprocess
-    changed = subprocess.run(
-        ["git", "diff", "--name-only",
-         "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
-        capture_output=True, text=True, check=True).stdout.splitlines()
+    from pathlib import Path
+    try:
+        changed = subprocess.run(
+            ["git", "diff", "--name-only",
+             "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.splitlines()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pytest.skip("base commit unavailable in shallow checkout")
     assert not [p for p in changed if p.startswith("finco_radar/")]
