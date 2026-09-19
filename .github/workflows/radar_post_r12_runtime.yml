@@ -1,0 +1,71 @@
+name: Radar Post-R12 Acquisition Runtime
+
+on:
+  push:
+    branches: [radar/post-r12-acquisition-runtime]
+    paths:
+      - "app/radar_runtime/**"
+      - "tests/test_radar_post_r12_runtime.py"
+      - "docs/radar/post_r12_acquisition_runtime.md"
+      - ".github/workflows/radar_post_r12_runtime.yml"
+  pull_request:
+    paths:
+      - "app/radar_runtime/**"
+      - "tests/test_radar_post_r12_runtime.py"
+      - ".github/workflows/radar_post_r12_runtime.yml"
+  workflow_dispatch:
+
+jobs:
+  acquisition-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -e . pytest httpx
+      - name: Gate — frozen R0–R12 authority untouched (vs 1045a34)
+        run: |
+          python - <<'PY'
+          import subprocess
+          anchor = "1045a343cbe3c21c8b0cb7070582d8d9a9533362"
+          frozen = [
+              "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
+              "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
+              "finco_radar/liquidity/", "finco_radar/r3/",
+              "finco_radar/reference_state/", "finco_radar/r4/",
+              "finco_radar/signals/", "finco_radar/history/",
+              "finco_radar/r5/", "finco_radar/r6/", "finco_radar/terminal/",
+              "finco_radar/cross_market/", "finco_radar/r7/",
+              "finco_radar/execution_simulator/", "finco_radar/r8/",
+              "finco_radar/asset_graph/", "finco_radar/r9/",
+              "finco_radar/model_radar/", "finco_radar/r10/",
+              "finco_radar/verification/", "finco_radar/r11/",
+              "finco_radar/digital_twin/", "finco_radar/r12/",
+              "financial_engine/", "finco_core/", "finco_protocol/",
+          ]
+          changed = subprocess.run(
+              ["git", "diff", "--name-only", anchor, "HEAD"],
+              capture_output=True, text=True, check=True,
+          ).stdout.splitlines()
+          violations = [p for p in changed
+                        if any(p.startswith(x) for x in frozen)]
+          if violations:
+              raise SystemExit(
+                  f"POST_R12_BLOCKED: frozen R0-R12 authority modified vs "
+                  f"{anchor}: {violations}")
+          print(f"POST_R12_GATE_PASS changed_vs_anchor={len(changed)} "
+                "frozen_paths_untouched")
+          PY
+      - name: Acquisition runtime focused tests
+        run: pytest -q tests/test_radar_post_r12_runtime.py
+      - name: Run full repository suite (frozen R0-R12 regression)
+        run: pytest -q tests/
+      - name: Compile check
+        run: python -m compileall -q .
+      - name: Public safety scan
+        run: python tools/public_safety_scan.py
