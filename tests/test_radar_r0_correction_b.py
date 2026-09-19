@@ -186,14 +186,14 @@ def test_cb_b4_fee_costs_scalar_member_rejected():
     def m(p):
         p["estimate"]["feeCosts"] = [42]
     q = _adapter(_mutated(m)).quote(_request(QuoteSide.BUY))
-    assert q.status is QuoteStatus.QUOTE_OK  # malformed optional cost skipped gracefully
+    assert q.status is not QuoteStatus.QUOTE_OK
 
 
 def test_cb_b4_included_steps_scalar_member_rejected():
     def m(p):
         p["includedSteps"] = ["not-a-mapping"]
     q = _adapter(_mutated(m)).quote(_request(QuoteSide.BUY))
-    assert q.status is QuoteStatus.QUOTE_OK  # malformed optional route step skipped gracefully
+    assert q.status is not QuoteStatus.QUOTE_OK
 
 
 def test_cb_b4_transaction_request_null_is_ok():
