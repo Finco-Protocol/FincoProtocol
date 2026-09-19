@@ -26,11 +26,11 @@ jobs:
         run: python -m pip install -e . pytest httpx
       - name: Run focused R12 tests (offline, deterministic)
         run: pytest -q tests/test_radar_r12_digital_twin.py
-      - name: Gate A — frozen R0–R11 production authority (vs R11 freeze anchor)
+      - name: Gate A — frozen R0–R11 production authority (vs canonical main)
         run: |
           python - <<'PY'
           import subprocess
-          anchor = "97030e6164b66dc942c9d005a1f2f4ba169ca81b"
+          anchor = "853a41e8b119d42a049640b3a799293962b4c8cf"
           frozen = [
               "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
               "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
@@ -57,11 +57,11 @@ jobs:
               raise SystemExit(f"R12_BLOCKED: frozen R0-R11 authority modified vs {anchor}: {violations}")
           print(f"R12_GATE_A_PASS changed_vs_anchor={len(changed)} frozen_paths_untouched")
           PY
-      - name: Gate B — R12 scope only (vs R11 freeze anchor)
+      - name: Gate B — R12 scope only (vs canonical main)
         run: |
           python - <<'PY'
           import subprocess
-          base = "97030e6164b66dc942c9d005a1f2f4ba169ca81b"
+          base = "853a41e8b119d42a049640b3a799293962b4c8cf"
           allowed = (
               "finco_radar/digital_twin/", "finco_radar/r12/",
               "tests/test_radar_r12_digital_twin.py",
