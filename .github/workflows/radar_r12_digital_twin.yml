@@ -30,7 +30,7 @@ jobs:
         run: |
           python - <<'PY'
           import subprocess
-          anchor = "853a41e8b119d42a049640b3a799293962b4c8cf"
+          anchor = "537d255e8443f3f603a42a6dee856cc0de04e8cc"
           frozen = [
               "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
               "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
@@ -61,7 +61,7 @@ jobs:
         run: |
           python - <<'PY'
           import subprocess
-          base = "853a41e8b119d42a049640b3a799293962b4c8cf"
+          base = "537d255e8443f3f603a42a6dee856cc0de04e8cc"
           allowed = (
               "finco_radar/digital_twin/", "finco_radar/r12/",
               "tests/test_radar_r12_digital_twin.py",
