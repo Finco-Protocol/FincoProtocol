@@ -2,7 +2,8 @@ name: Radar R11 Verification Authority
 
 on:
   push:
-    branches: [radar/r11-verification-authority]
+    branches: [radar/r11-verification-authority,
+                radar/r11-serialized-verification-correction]
     paths:
       - "finco_radar/verification/**"
       - "finco_radar/r11/**"
@@ -26,11 +27,11 @@ jobs:
         run: python -m pip install -e . pytest httpx
       - name: Run focused R11 tests (offline, deterministic)
         run: pytest -q tests/test_radar_r11_verification.py
-      - name: Gate A - frozen R0-R10 production authority (vs R10 freeze anchor)
+      - name: Gate A - frozen R0-R10 production authority (vs R11 code authority)
         run: |
           python - <<'PY'
           import subprocess
-          anchor = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
+          anchor = "fc4a778c853e737fcddf2b6b4852c875f1297948"
           frozen = [
               "finco_radar/quotes/", "finco_radar/r0/", "finco_radar/assets/",
               "finco_radar/r1/", "finco_radar/gap/", "finco_radar/r2/",
@@ -56,11 +57,11 @@ jobs:
               raise SystemExit(f"R11_BLOCKED: frozen R0-R10 authority modified vs {anchor}: {violations}")
           print(f"R11_GATE_A_PASS changed_vs_anchor={len(changed)} frozen_paths_untouched")
           PY
-      - name: Gate B - R11 scope only (vs R10 freeze anchor)
+      - name: Gate B - R11 scope only (vs R11 code authority)
         run: |
           python - <<'PY'
           import subprocess
-          base = "7ffaf3b1e67dabb728314948e2a4e4c7ef30047a"
+          base = "fc4a778c853e737fcddf2b6b4852c875f1297948"
           allowed_prefixes = (
               "finco_radar/verification/", "finco_radar/r11/",
               "tests/test_radar_r11_verification.py",
