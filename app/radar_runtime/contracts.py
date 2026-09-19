@@ -134,20 +134,22 @@ def _require_raw_amount(value: Any, name: str) -> "str | None":
     return value
 
 
-def ensure_canonical_evidence(value: Any, _depth: int = 0) -> None:
-    """A2: the single shared contract deciding whether provider evidence
-    can enter the canonical snapshot serialization.  SUCCESS evidence and
-    canonical snapshot construction therefore cannot disagree.
+def ensure_canonical_value(value: Any, _depth: int = 0) -> None:
+    """C1/A2: THE single shared canonical-JSON value-domain validator.
 
-    Accepts exactly the canonical JSON value domain: None, exact bool,
-    int, finite float, str, list/tuple, Mapping with str keys.  Rejects
-    sets, bytes, arbitrary objects, non-string mapping keys, unsupported
-    containers, non-finite floats and excessive nesting with the stable
-    internal code ``EVIDENCE_NOT_CANONICAL``.  Never stringifies or
-    partially drops malformed content — the whole evidence is rejected."""
+    Accepts exactly the canonical JSON value domain used for fingerprints
+    and snapshot serialization: None, exact bool, int, finite float, str,
+    list/tuple, Mapping with string keys only.  Rejects sets, bytes,
+    arbitrary objects, non-string mapping keys, unsupported containers,
+    non-finite floats and excessive nesting with the stable internal code
+    ``NOT_CANONICAL_VALUE``.  Never stringifies or partially drops
+    malformed content — the whole container is rejected.  Both provider
+    evidence (A2) and ``providerConfig`` (C1) are fingerprint/snapshot
+    authority material and must pass this one validator; there is no
+    second divergent canonical validator."""
     if _depth > MAX_EVIDENCE_DEPTH:
         raise RuntimeContractError(
-            "EVIDENCE_NOT_CANONICAL: nesting exceeds the canonical depth "
+            "NOT_CANONICAL_VALUE: nesting exceeds the canonical depth "
             "bound")
     if value is None or isinstance(value, bool) or isinstance(value, str):
         return
@@ -156,22 +158,28 @@ def ensure_canonical_evidence(value: Any, _depth: int = 0) -> None:
     if isinstance(value, float):
         if not math.isfinite(value):
             raise RuntimeContractError(
-                "EVIDENCE_NOT_CANONICAL: non-finite float")
+                "NOT_CANONICAL_VALUE: non-finite float")
         return
     if isinstance(value, (list, tuple)):
         for item in value:
-            ensure_canonical_evidence(item, _depth + 1)
+            ensure_canonical_value(item, _depth + 1)
         return
     if isinstance(value, Mapping):
         for key, item in value.items():
             if not isinstance(key, str):
                 raise RuntimeContractError(
-                    "EVIDENCE_NOT_CANONICAL: non-string mapping key")
-            ensure_canonical_evidence(item, _depth + 1)
+                    "NOT_CANONICAL_VALUE: non-string mapping key")
+            ensure_canonical_value(item, _depth + 1)
         return
     raise RuntimeContractError(
-        "EVIDENCE_NOT_CANONICAL: unsupported type "
+        "NOT_CANONICAL_VALUE: unsupported type "
         f"{type(value).__name__}")
+
+
+def ensure_canonical_evidence(value: Any, _depth: int = 0) -> None:
+    """A2: evidence-specific entry point to the shared canonical-value
+    validator — a naming alias, not a second validator."""
+    ensure_canonical_value(value, _depth)
 
 
 @dataclass(frozen=True)
@@ -215,6 +223,12 @@ class AcquisitionRequest:
             if not isinstance(self.provider_config, Mapping):
                 raise RuntimeContractError(
                     "provider_config must be a mapping")
+            # C1: providerConfig is fingerprint authority material — the
+            # entire nested structure must satisfy the shared canonical
+            # JSON value domain BEFORE any fingerprint serialization.
+            # Malformed values raise the typed RuntimeContractError; they
+            # are never stringified or silently dropped.
+            ensure_canonical_value(self.provider_config)
             object.__setattr__(
                 self, "provider_config", deep_freeze(self.provider_config))
         object.__setattr__(self, "fingerprint", self._compute_fingerprint())

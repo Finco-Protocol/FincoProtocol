@@ -103,6 +103,19 @@ non-string mapping keys and non-finite floats as
 R0–R12 adapters happens in the composition root at integration time;
 this package imports zero `finco_radar` modules (enforced by test).
 
+## Correction C — provider config canonicality closure
+
+`providerConfig` is fingerprint authority material: the entire nested
+structure is validated against the ONE shared canonical-JSON value
+domain (`ensure_canonical_value`, also used for provider evidence)
+inside `AcquisitionRequest.__post_init__`, BEFORE fingerprint
+serialization.  Sets, bytes, arbitrary objects, non-string mapping
+keys, non-finite floats and excessive nesting raise the typed
+`RuntimeContractError` at both the live and the persisted
+`AcquisitionRequest.from_payload()` boundaries.  Fingerprint
+determinism: mapping-key order is insignificant; list order and any
+nested value difference are significant.
+
 ## Correction B — final runtime contract closure
 
 - **B1** — timeout classification is deadline-based: `TOTAL_BUDGET_EXHAUSTED`

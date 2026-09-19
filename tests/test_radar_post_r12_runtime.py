@@ -874,3 +874,93 @@ def test_cb_state_11_missing_provider_state_typed_rejection():
     with pytest.raises(RuntimeContractError) as excinfo:
         _forged(mutate)
     assert type(excinfo.value) is RuntimeContractError
+
+
+# ==========================================================================
+# Correction C — provider config canonicality closure (C1-C4)
+# ==========================================================================
+
+def test_cc_live_01_malformed_nested_provider_config_rejected():
+    class Opaque:
+        pass
+
+    bad_configs = (
+        {"nested": {1, 2}},           # set
+        {"blob": b"\x00"},            # bytes
+        {"obj": Opaque()},            # arbitrary object
+        {1: "non-string-key"},        # non-string mapping key
+        {"x": float("nan")},          # NaN
+        {"x": float("inf")},          # +Infinity
+        {"x": float("-inf")},         # -Infinity
+    )
+    for bad in bad_configs:
+        with pytest.raises(RuntimeContractError):
+            _request(provider_config=bad)
+
+
+def test_cc_live_02_excessive_nesting_rejected():
+    deep = {"leaf": True}
+    for _ in range(100):
+        deep = {"level": deep}
+    with pytest.raises(RuntimeContractError):
+        _request(provider_config=deep)
+
+
+def test_cc_live_03_valid_nested_config_fingerprints():
+    config = {
+        "nested": {"a": {"b": "c"}},
+        "list": [1, 2, 3],
+        "tuple": ("x", "y"),
+        "flag": True,
+        "count": 7,
+        "ratio": 0.5,
+        "note": "text",
+        "missing": None,
+    }
+    request = _request(provider_config=config)
+    assert request.fingerprint.startswith("acq-req:")
+    # same semantic payload -> same fingerprint
+    assert _request(provider_config=config).fingerprint == request.fingerprint
+
+
+def test_cc_persisted_04_malformed_provider_config_rejected_on_ingest():
+    class Opaque:
+        pass
+
+    bad_values = (
+        {"bad": {1, 2}},
+        {"bad": b"\x00"},
+        {"bad": Opaque()},
+        {1: "non-string-key"},
+        {"x": float("nan")},
+        {"x": float("inf")},
+    )
+    for bad in bad_values:
+        payload = _two_provider_snapshot().to_payload()["request"]
+        payload["providerConfig"] = bad
+        with pytest.raises(RuntimeContractError):
+            AcquisitionRequest.from_payload(payload)
+
+
+def test_cc_persisted_05_non_mapping_provider_config_rejected_on_ingest():
+    payload = _two_provider_snapshot().to_payload()["request"]
+    payload["providerConfig"] = "not-a-mapping"
+    with pytest.raises(RuntimeContractError):
+        AcquisitionRequest.from_payload(payload)
+
+
+def test_cc_fingerprint_06_determinism_and_sensitivity():
+    # key ORDER must not change the fingerprint (canonical JSON sorts keys)
+    a = _request(provider_config={"a": 1, "b": {"c": 2}})
+    b = _request(provider_config={"b": {"c": 2}, "a": 1})
+    assert a.fingerprint == b.fingerprint
+    # changing any nested value changes the fingerprint
+    changed = _request(provider_config={"a": 1, "b": {"c": 3}})
+    assert changed.fingerprint != a.fingerprint
+    # list ordering remains significant
+    list_one = _request(provider_config={"order": [1, 2]})
+    list_two = _request(provider_config={"order": [2, 1]})
+    assert list_one.fingerprint != list_two.fingerprint
+    # adding a member changes the fingerprint
+    added = _request(provider_config={"a": 1, "b": {"c": 2}, "d": True})
+    assert added.fingerprint != a.fingerprint
