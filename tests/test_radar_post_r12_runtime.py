@@ -458,3 +458,260 @@ def test_p16_25_runtime_imports_zero_frozen_authority_modules():
                 module = node.module or ""
                 assert not module.startswith("finco"), (
                     f"{path}: imports frozen authority {module}")
+
+
+# ==========================================================================
+# Correction A — runtime contract hardening (A1-A5)
+# ==========================================================================
+
+from app.radar_runtime.contracts import (
+    AcquisitionSnapshot,
+    ensure_canonical_evidence,
+)
+
+TIMEOUT_WINDOW = 0.2      # per-provider timeout for adversarial timing tests
+SLOW_SLEEP = 2.0          # materially longer than the window
+
+
+def _slow_service(sources, *, per_provider=TIMEOUT_WINDOW,
+                  total=10.0, sleep=SLOW_SLEEP):
+    calls: list = []
+
+    def slow(request):
+        calls.append(request)
+        time.sleep(sleep)
+        return {"evidence": {"raw": {"price": "1"}}}
+
+    service = _service(
+        {name: slow for name in sources},
+        config=ServiceConfig(per_provider_timeout_seconds=per_provider,
+                             total_budget_seconds=total,
+                             max_concurrent_providers=4))
+    return service, calls
+
+
+def test_ca_timeout_01_two_simultaneous_slow_providers_both_timeout():
+    service, calls = _slow_service(("a", "b"))
+    snapshot = service.acquire(_request(sources=("a", "b")))
+    states = {p.provider: p.state for p in snapshot.providers}
+    assert states == {"a": ProviderResultState.TIMEOUT,
+                      "b": ProviderResultState.TIMEOUT}
+    assert len(calls) == 2  # both actually dispatched concurrently
+
+
+def test_ca_timeout_02_second_provider_gets_no_fresh_window():
+    service, _ = _slow_service(("a", "b"))
+    snapshot = service.acquire(_request(sources=("a", "b")))
+    by_name = {p.provider: p for p in snapshot.providers}
+    # dispatch-start deadlines: both must time out within ~one window plus
+    # scheduling jitter; a fresh full window after waiting for the first
+    # provider would push B to >= 2 * TIMEOUT_WINDOW.
+    assert by_name["a"].elapsed_ms < (TIMEOUT_WINDOW * 1000) * 1.9
+    assert by_name["b"].elapsed_ms < (TIMEOUT_WINDOW * 1000) * 1.9
+
+
+def test_ca_timeout_03_elapsed_reflects_bounded_execution_not_wait_order():
+    def fast(request):
+        return {"evidence": {"ok": True}}
+
+    service, _ = _slow_service(("a", "b", "fast"))
+    service._providers["fast"] = fast
+    snapshot = service.acquire(_request(sources=("a", "b", "fast")))
+    by_name = {p.provider: p for p in snapshot.providers}
+    assert by_name["fast"].state is ProviderResultState.SUCCESS
+    # processing order must never reset any provider's window
+    for name in ("a", "b"):
+        assert by_name[name].state is ProviderResultState.TIMEOUT
+        assert by_name[name].elapsed_ms < (TIMEOUT_WINDOW * 1000) * 1.9
+
+
+def test_ca_timeout_04_total_budget_still_caps_operation():
+    service, _ = _slow_service(("a", "b"), per_provider=5.0, total=0.25)
+    started = time.monotonic()
+    snapshot = service.acquire(_request(sources=("a", "b")))
+    wall = time.monotonic() - started
+    assert wall < 1.5, "total budget must cap the whole operation"
+    for provider in snapshot.providers:
+        assert provider.state is ProviderResultState.TIMEOUT
+        assert provider.error_class in ("TOTAL_BUDGET_EXHAUSTED",
+                                        "PER_PROVIDER_TIMEOUT")
+    assert snapshot.state is AcquisitionState.UNAVAILABLE
+
+
+# -- A2: canonical nested provider evidence --------------------------------
+
+def test_ca_evidence_05_nested_set_is_invalid_response():
+    service = _service({"lifi": lambda r: {"evidence": {"nested": {1, 2}}}})
+    snapshot = service.acquire(_request())
+    assert snapshot.providers[0].state is ProviderResultState.INVALID_RESPONSE
+    assert snapshot.providers[0].error_class == "EVIDENCE_NOT_CANONICAL"
+    assert snapshot.state is AcquisitionState.UNAVAILABLE
+    assert snapshot.providers[0].evidence is None  # never stringified
+
+
+def test_ca_evidence_06_nested_bytes_is_invalid_response():
+    service = _service({"lifi": lambda r: {"evidence": {"blob": b"\x00"}}})
+    snapshot = service.acquire(_request())
+    assert snapshot.providers[0].state is ProviderResultState.INVALID_RESPONSE
+    assert snapshot.providers[0].error_class == "EVIDENCE_NOT_CANONICAL"
+
+
+def test_ca_evidence_07_arbitrary_object_is_invalid_response():
+    class Opaque:
+        pass
+
+    service = _service({"lifi": lambda r: {"evidence": {"obj": Opaque()}}})
+    snapshot = service.acquire(_request())
+    assert snapshot.providers[0].state is ProviderResultState.INVALID_RESPONSE
+    assert snapshot.providers[0].error_class == "EVIDENCE_NOT_CANONICAL"
+
+
+def test_ca_evidence_08_invalid_mapping_key_is_invalid_response():
+    service = _service({"lifi": lambda r: {"evidence": {1: "v"}}})
+    snapshot = service.acquire(_request())
+    assert snapshot.providers[0].state is ProviderResultState.INVALID_RESPONSE
+    assert snapshot.providers[0].error_class == "EVIDENCE_NOT_CANONICAL"
+
+
+def test_ca_evidence_09_multilevel_malformation_fails_closed_but_persists():
+    def bad(request):
+        return {"evidence": {"a": {"b": [{"c": {"d": {"ok": 1,
+                                                      "bad": set()}}}]}}}
+
+    store = SnapshotStore(":memory:")
+    service = _service({"lifi": bad}, store=store)
+    snapshot = service.acquire(_request())
+    assert snapshot.providers[0].state is ProviderResultState.INVALID_RESPONSE
+    assert snapshot.providers[0].error_class == "EVIDENCE_NOT_CANONICAL"
+    # the overall acquisition snapshot still constructs and persists
+    # (the service already persisted it; the ledger stays append-only)
+    assert store.put(snapshot) == "existing"
+    assert store.get(snapshot.snapshot_id).snapshot_id == snapshot.snapshot_id
+
+
+# -- A3: provider-declared errors are secret-safe --------------------------
+
+def test_ca_logging_10_provider_declared_error_never_leaks_text():
+    service = _service({"lifi": lambda r: {
+        "error": "Authorization: Bearer SUPER-SECRET-TOKEN"}})
+    snapshot = service.acquire(_request())
+    provider = snapshot.providers[0]
+    assert provider.state is ProviderResultState.PROVIDER_ERROR
+    assert provider.error_class == "PROVIDER_DECLARED_ERROR"
+    blob = json.dumps(service._events.records)
+    assert "SUPER-SECRET-TOKEN" not in blob
+    assert "Authorization" not in blob
+    assert "Bearer" not in blob
+
+
+# -- A4: exact ASCII raw-amount contract ------------------------------------
+
+def test_ca_amount_11_whitespace_and_signed_forms_rejected():
+    for bad in (" 1000 ", "1000 ", " 1000", "+1000", "-1000", "1.0",
+                "1e3", "", "1 000"):
+        with pytest.raises(RuntimeContractError):
+            _request(raw_amount=bad)
+
+
+def test_ca_amount_12_unicode_digit_forms_rejected():
+    for bad in ("١٢٣", "¹²³", "一二三"):
+        with pytest.raises(RuntimeContractError):
+            _request(raw_amount=bad)
+
+
+def test_ca_amount_13_numeric_types_rejected_and_ascii_preserved_exactly():
+    for bad in (1000, 10.5, True, [1000], {"raw": 1}, 0):
+        with pytest.raises(RuntimeContractError):
+            _request(raw_amount=bad)
+    request = _request(raw_amount="0001000")  # accepted verbatim
+    assert request.raw_amount == "0001000"
+    assert request.payload()["rawAmount"] == "0001000"
+    assert request.fingerprint == _request(raw_amount="0001000").fingerprint
+    assert request.fingerprint != _request(raw_amount="1000").fingerprint
+
+
+# -- A5: persisted snapshot semantic consistency ----------------------------
+
+def _two_provider_snapshot():
+    service = _service({"lifi": _ok_provider(), "oracle": _ok_provider()})
+    return service.acquire(_request(sources=("lifi", "oracle")))
+
+
+def _forged(mutator):
+    payload = _two_provider_snapshot().to_payload()
+    mutator(payload)
+    return AcquisitionSnapshot.from_payload(payload)
+
+
+def test_ca_consistency_14_wrong_request_fingerprint_rejected():
+    def mutate(payload):
+        payload["requestFingerprint"] = "acq-req:" + "0" * 64
+
+    with pytest.raises(RuntimeContractError):
+        _forged(mutate)
+
+
+def test_ca_consistency_15_identity_mismatch_rejected():
+    def chain(payload):
+        payload["chainId"] = 1  # not fingerprint material -> isolates check
+    with pytest.raises(RuntimeContractError):
+        _forged(chain)
+
+    def address(payload):
+        payload["contractAddress"] = "0x" + "9" * 40
+    with pytest.raises(RuntimeContractError):
+        _forged(address)
+
+    with_uid = AcquisitionService(
+        SnapshotStore(":memory:"),
+        {"lifi": _ok_provider()},
+        config=ServiceConfig(per_provider_timeout_seconds=2.0,
+                             total_budget_seconds=5.0,
+                             max_concurrent_providers=2),
+        event_logger=RuntimeEventLogger(), clock=lambda: NOW,
+    ).acquire(_request(economic_asset_uid="AAPL"))
+    payload = with_uid.to_payload()
+    payload["economicAssetUid"] = "MSFT"
+    with pytest.raises(RuntimeContractError):
+        AcquisitionSnapshot.from_payload(payload)
+
+
+def test_ca_consistency_16_provider_set_mismatch_rejected():
+    def missing(payload):
+        payload["providers"] = [p for p in payload["providers"]
+                                if p["provider"] != "oracle"]
+    with pytest.raises(RuntimeContractError):
+        _forged(missing)
+
+    def duplicate(payload):
+        payload["providers"].append(dict(payload["providers"][0]))
+    with pytest.raises(RuntimeContractError):
+        _forged(duplicate)
+
+    def invented(payload):
+        payload["providers"].append({
+            "provider": "invented", "state": "SUCCESS", "elapsedMs": 1.0,
+            "evidence": {"a": 1}, "observedAt": None, "errorClass": None})
+    with pytest.raises(RuntimeContractError):
+        _forged(invented)
+
+
+def test_ca_consistency_17_forged_aggregate_state_rejected():
+    def forged_complete(payload):
+        payload["providers"][1]["state"] = "TIMEOUT"
+        payload["providers"][1]["errorClass"] = "PER_PROVIDER_TIMEOUT"
+        payload["state"] = "COMPLETE"
+    with pytest.raises(RuntimeContractError):
+        _forged(forged_complete)
+
+    def forged_partial(payload):
+        payload["state"] = "PARTIAL"  # every provider SUCCESS in fixture
+    with pytest.raises(RuntimeContractError):
+        _forged(forged_partial)
+
+
+def test_ca_consistency_18_honest_payloads_still_reconstruct():
+    snapshot = _two_provider_snapshot()
+    rebuilt = AcquisitionSnapshot.from_payload(snapshot.to_payload())
+    assert rebuilt.snapshot_id == snapshot.snapshot_id
+    assert rebuilt.state is AcquisitionState.COMPLETE

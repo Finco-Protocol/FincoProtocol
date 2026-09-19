@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -32,6 +34,12 @@ REQUEST_FINGERPRINT_PREFIX = "acq-req:"
 SNAPSHOT_ID_PREFIX = "acq-snap:"
 
 DIRECTIONS = frozenset({"BUY", "SELL"})
+
+# A4: exact ASCII decimal-digit raw amounts only.
+_RAW_AMOUNT_RE = re.compile(r"[0-9]+")
+
+# A2: maximum canonical evidence nesting depth.
+MAX_EVIDENCE_DEPTH = 64
 
 
 class RadarRuntimeError(ValueError):
@@ -112,17 +120,58 @@ def _require_nonempty_str(value: Any, name: str) -> str:
 
 
 def _require_raw_amount(value: Any, name: str) -> "str | None":
-    """Exact requested raw amount: preserved verbatim, never rounded.
-    Decimal-digit strings only; None means not requested."""
+    """A4: exact raw amount representation.  None permitted where optional;
+    otherwise EXACT ASCII decimal digits only (``[0-9]+``).  No whitespace
+    tolerance (never .strip()-normalized), no signs, no decimals, no
+    exponents, no Unicode digit forms, no numeric types.  The accepted
+    string is preserved exactly as provided."""
     if value is None:
         return None
-    if not isinstance(value, str) or not value.strip() or (
-        not value.strip().isdigit()
-    ):
+    if not isinstance(value, str) or not _RAW_AMOUNT_RE.fullmatch(value):
         raise RuntimeContractError(
-            f"{name} must be a decimal-digit raw-amount string or None, "
+            f"{name} must be an exact ASCII decimal-digit string or None, "
             f"got {value!r}")
     return value
+
+
+def ensure_canonical_evidence(value: Any, _depth: int = 0) -> None:
+    """A2: the single shared contract deciding whether provider evidence
+    can enter the canonical snapshot serialization.  SUCCESS evidence and
+    canonical snapshot construction therefore cannot disagree.
+
+    Accepts exactly the canonical JSON value domain: None, exact bool,
+    int, finite float, str, list/tuple, Mapping with str keys.  Rejects
+    sets, bytes, arbitrary objects, non-string mapping keys, unsupported
+    containers, non-finite floats and excessive nesting with the stable
+    internal code ``EVIDENCE_NOT_CANONICAL``.  Never stringifies or
+    partially drops malformed content — the whole evidence is rejected."""
+    if _depth > MAX_EVIDENCE_DEPTH:
+        raise RuntimeContractError(
+            "EVIDENCE_NOT_CANONICAL: nesting exceeds the canonical depth "
+            "bound")
+    if value is None or isinstance(value, bool) or isinstance(value, str):
+        return
+    if isinstance(value, int):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise RuntimeContractError(
+                "EVIDENCE_NOT_CANONICAL: non-finite float")
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            ensure_canonical_evidence(item, _depth + 1)
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise RuntimeContractError(
+                    "EVIDENCE_NOT_CANONICAL: non-string mapping key")
+            ensure_canonical_evidence(item, _depth + 1)
+        return
+    raise RuntimeContractError(
+        "EVIDENCE_NOT_CANONICAL: unsupported type "
+        f"{type(value).__name__}")
 
 
 @dataclass(frozen=True)
@@ -227,6 +276,10 @@ class ProviderResult:
                 f"{self.elapsed_ms!r}")
         if self.evidence is not None and not isinstance(self.evidence, Mapping):
             raise RuntimeContractError("evidence must be a mapping or None")
+        if self.evidence is not None:
+            # A2: evidence must satisfy the shared canonical contract so
+            # SUCCESS evidence and snapshot serialization cannot disagree.
+            ensure_canonical_evidence(self.evidence)
         if self.observed_at is not None:
             _require_nonempty_str(self.observed_at, "observed_at")
         if self.error_class is not None:
@@ -264,17 +317,37 @@ class AcquisitionSnapshot:
     economic_asset_uid: "str | None" = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_fingerprint, str) or (
-            not self.request_fingerprint.startswith(
-                REQUEST_FINGERPRINT_PREFIX)
-        ):
-            raise RuntimeContractError(
-                "request_fingerprint must be a canonical acquisition "
-                "request fingerprint")
         if not isinstance(self.request, Mapping):
             raise RuntimeContractError("request must be a mapping")
+        # A5: content addressing alone is not enough for the durable read
+        # contract — internally related claims must agree.
+        request_payload = plain(self.request)
+        if request_payload.get("schemaVersion") != SCHEMA_VERSION:
+            raise RuntimeContractError(
+                "embedded request payload has unsupported schema version "
+                f"{request_payload.get('schemaVersion')!r}")
+        # A5 request fingerprint: full recomputation from the embedded
+        # canonical request payload — prefix-only checks are not accepted.
+        recomputed_fingerprint = REQUEST_FINGERPRINT_PREFIX + (
+            canonical_sha256(request_payload))
+        if self.request_fingerprint != recomputed_fingerprint:
+            raise RuntimeContractError(
+                "request_fingerprint does not recompute from the embedded "
+                "canonical request payload")
         _require_exact_int(self.chain_id, "chain_id")
         _require_nonempty_str(self.contract_address, "contract_address")
+        # A5 identity consistency (exact contract semantics).
+        if self.chain_id != request_payload.get("chainId"):
+            raise RuntimeContractError(
+                "snapshot chain_id disagrees with the embedded request")
+        if self.contract_address != request_payload.get("contractAddress"):
+            raise RuntimeContractError(
+                "snapshot contract_address disagrees with the embedded "
+                "request")
+        if self.economic_asset_uid != request_payload.get("economicAssetUid"):
+            raise RuntimeContractError(
+                "snapshot economic_asset_uid disagrees with the embedded "
+                "request")
         for name in ("started_at", "completed_at"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -296,6 +369,39 @@ class AcquisitionSnapshot:
             if not isinstance(result, ProviderResult):
                 raise RuntimeContractError(
                     "providers members must be ProviderResult instances")
+        # A5 provider-set consistency: results correspond EXACTLY to the
+        # requested providers — none missing, none duplicated, none
+        # invented — in the payload's canonical (sorted) order.
+        sources = request_payload.get("sources")
+        if not isinstance(sources, list):
+            raise RuntimeContractError(
+                "embedded request payload sources must be a list")
+        names = [result.provider for result in self.providers]
+        if len(set(names)) != len(names):
+            raise RuntimeContractError(
+                "provider results must not contain duplicates")
+        if sorted(names) != sorted(sources):
+            raise RuntimeContractError(
+                "provider results must correspond exactly to the requested "
+                "provider set")
+        if names != sorted(names):
+            raise RuntimeContractError(
+                "provider results must be in canonical (sorted) order")
+        # A5 overall-state consistency: the serialized acquisition state
+        # must equal the state recomputed from the provider results.
+        successful = sum(
+            1 for result in self.providers
+            if result.state is ProviderResultState.SUCCESS)
+        if successful == len(self.providers) and successful > 0:
+            expected_state = AcquisitionState.COMPLETE
+        elif successful > 0:
+            expected_state = AcquisitionState.PARTIAL
+        else:
+            expected_state = AcquisitionState.UNAVAILABLE
+        if self.state is not expected_state:
+            raise RuntimeContractError(
+                f"snapshot state {self.state.value!r} disagrees with the "
+                f"recomputed acquisition state {expected_state.value!r}")
         if not isinstance(self.runtime_metadata, Mapping):
             raise RuntimeContractError("runtime_metadata must be a mapping")
         object.__setattr__(self, "request", deep_freeze(self.request))

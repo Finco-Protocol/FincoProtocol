@@ -34,7 +34,9 @@ from .contracts import (
     AcquisitionState,
     ProviderResult,
     ProviderResultState,
+    RuntimeContractError,
     SnapshotNotFoundError,
+    ensure_canonical_evidence,
 )
 from .observability import AcquisitionEvent, RuntimeEventLogger
 from .snapshot_store import SnapshotStore
@@ -248,13 +250,23 @@ class AcquisitionService:
         fingerprint: str, started_mono: float,
     ) -> "list[ProviderResult]":
         """Run the requested provider acquisitions in a bounded pool (P11).
+
+        A1 timeout authority — DISPATCH-START semantics: every provider's
+        deadline is fixed once at submission (``dispatch_mono +
+        per_provider_timeout``) and is NEVER reset.  The coordinator waits
+        on each provider's REMAINING window (bounded additionally by the
+        independent total acquisition budget), so processing order can
+        never extend a provider's allowed timeout.  ``elapsed_ms`` is
+        measured from dispatch, reflecting the provider's actual bounded
+        execution/wait interval rather than coordinator processing time.
+
         Providers are independent observations; one slow/failed provider
         never fabricates or discards another's preserved evidence (P5)."""
         names = sorted(request.sources)
         missing = [n for n in names if n not in self._providers]
         results: "list[ProviderResult]" = []
         per_timeout = self._config.per_provider_timeout_seconds
-        budget_deadline = started_mono + self._config.total_budget_seconds
+        total_deadline = started_mono + self._config.total_budget_seconds
 
         futures = {}
         if names:
@@ -263,11 +275,14 @@ class AcquisitionService:
             pool = ThreadPoolExecutor(max_workers=workers,
                                       thread_name_prefix="radar-acq")
             try:
+                dispatch_mono = self._monotonic()
+                provider_deadlines: "dict[str, float]" = {}
                 for name in names:
                     if name in missing:
                         continue
                     futures[name] = pool.submit(
                         self._providers[name], request)
+                    provider_deadlines[name] = dispatch_mono + per_timeout
                 for name in names:
                     if name in missing:
                         results.append(ProviderResult(
@@ -284,29 +299,39 @@ class AcquisitionService:
                             error_class="PROVIDER_NOT_CONFIGURED"))
                         continue
                     future = futures[name]
-                    remaining_budget = budget_deadline - self._monotonic()
-                    wait = min(per_timeout, remaining_budget)
-                    provider_started = self._monotonic()
-                    if wait <= 0:
-                        # P10: total acquisition budget exhausted — record
-                        # the typed timeout instead of blocking forever.
+                    now = self._monotonic()
+                    wait = min(provider_deadlines[name], total_deadline) - now
+                    if not future.done() and wait <= 0:
+                        # A1/P10: the provider's fixed window or the total
+                        # budget has elapsed while still in flight — record
+                        # the typed timeout instead of blocking or granting
+                        # a fresh window.
                         future.cancel()
                         results.append(ProviderResult(
                             provider=name,
                             state=ProviderResultState.TIMEOUT,
-                            elapsed_ms=0.0,
-                            error_class="TOTAL_BUDGET_EXHAUSTED"))
+                            elapsed_ms=round(
+                                (now - dispatch_mono) * 1000, 3),
+                            error_class=(
+                                "PER_PROVIDER_TIMEOUT"
+                                if provider_deadlines[name] <= now
+                                else "TOTAL_BUDGET_EXHAUSTED")))
                     else:
+                        # Completed observations are taken immediately
+                        # (a finished result is never discarded because
+                        # coordinator processing consumed its window);
+                        # otherwise wait only the REMAINING bounded time.
+                        wait_arg = 0 if future.done() else wait
                         try:
-                            observation = future.result(timeout=wait)
+                            observation = future.result(timeout=wait_arg)
                             results.append(self._classify_success(
-                                name, provider_started, observation))
+                                name, dispatch_mono, observation))
                         except FutureTimeoutError:
                             results.append(ProviderResult(
                                 provider=name,
                                 state=ProviderResultState.TIMEOUT,
                                 elapsed_ms=round(
-                                    (self._monotonic() - provider_started)
+                                    (self._monotonic() - dispatch_mono)
                                     * 1000, 3),
                                 error_class="PER_PROVIDER_TIMEOUT"))
                         except Exception as exc:  # transport boundary failure
@@ -314,7 +339,7 @@ class AcquisitionService:
                                 provider=name,
                                 state=ProviderResultState.TRANSPORT_ERROR,
                                 elapsed_ms=round(
-                                    (self._monotonic() - provider_started)
+                                    (self._monotonic() - dispatch_mono)
                                     * 1000, 3),
                                 error_class=type(exc).__name__))
                     result = results[-1]
@@ -333,10 +358,10 @@ class AcquisitionService:
         return results
 
     def _classify_success(
-        self, name: str, provider_started: float,
+        self, name: str, dispatch_mono: float,
         observation: Any,
     ) -> ProviderResult:
-        elapsed = round((self._monotonic() - provider_started) * 1000, 3)
+        elapsed = round((self._monotonic() - dispatch_mono) * 1000, 3)
         if not isinstance(observation, Mapping):
             return ProviderResult(
                 provider=name, state=ProviderResultState.INVALID_RESPONSE,
@@ -349,16 +374,33 @@ class AcquisitionService:
                 error_class="OBSERVED_AT_MALFORMED")
         declared_error = observation.get("error")
         evidence = observation.get("evidence")
+        # A3: provider-controlled raw error text NEVER becomes error_class
+        # (or any structured-log field) — a stable closed internal code is
+        # used instead.
         if isinstance(declared_error, str) and declared_error.strip():
+            if isinstance(evidence, Mapping):
+                try:
+                    ensure_canonical_evidence(evidence)
+                except RuntimeContractError:
+                    evidence = None  # malformed evidence rejected wholesale
             return ProviderResult(
                 provider=name, state=ProviderResultState.PROVIDER_ERROR,
-                elapsed_ms=elapsed,
-                evidence=evidence if isinstance(evidence, Mapping) else None,
-                observed_at=observed_at, error_class=declared_error)
+                elapsed_ms=elapsed, evidence=evidence,
+                observed_at=observed_at,
+                error_class="PROVIDER_DECLARED_ERROR")
         if not isinstance(evidence, Mapping):
             return ProviderResult(
                 provider=name, state=ProviderResultState.INVALID_RESPONSE,
                 elapsed_ms=elapsed, error_class="EVIDENCE_MISSING_OR_MALFORMED")
+        # A2: the entire nested evidence must satisfy the shared canonical
+        # contract before SUCCESS — non-canonical values become a typed
+        # INVALID_RESPONSE with the stable EVIDENCE_NOT_CANONICAL code.
+        try:
+            ensure_canonical_evidence(evidence)
+        except RuntimeContractError:
+            return ProviderResult(
+                provider=name, state=ProviderResultState.INVALID_RESPONSE,
+                elapsed_ms=elapsed, error_class="EVIDENCE_NOT_CANONICAL")
         return ProviderResult(
             provider=name, state=ProviderResultState.SUCCESS,
             elapsed_ms=elapsed, evidence=evidence,
