@@ -6,7 +6,7 @@
 
   <div class="inspector-stage stage-number">
     <h4>NUMBER</h4>
-    {% if inspector.number.available %}
+    {% if inspector.number.fieldValueAvailable %}
     <p class="mono big">{{ inspector.number.value }}</p>
     {% else %}
     <p class="state-unavailable">UNAVAILABLE</p>

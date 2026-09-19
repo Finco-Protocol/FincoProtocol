@@ -61,6 +61,23 @@ verification state — which reports `UNAVAILABLE` honestly because the P1
 acquisition snapshot does not carry R11 verification.  Nothing is
 invented.
 
+## Correction B — final UI contract closure
+
+- **HTMX licensing** — the vendored `htmx.min.js` (v1.9.12) carries the
+  correct upstream `0BSD` license metadata (`htmx.min.js.LICENSE`);
+  version identity is test-pinned.
+- **Uniform Inspector-link contract** — every `.inspector-link` is
+  rendered by one shared template macro with identical `href`, `hx-get`
+  (equal to `href`), `hx-target="#radar-inspector"` and
+  `hx-swap="innerHTML"`; an exhaustive attribute-level test follows every
+  link and proves zero reacquisition.
+- **Section vs field availability** — the Inspector separates section
+  availability from field-value availability: a non-OK execution quote
+  still shows its frozen `status` (e.g. `INSUFFICIENT_LIQUIDITY`) in the
+  NUMBER stage, while the exact `unavailableReason` is preserved in the
+  GAPS stage.  A missing field value renders `UNAVAILABLE` and is never
+  synthesized.
+
 ## Read-only safety (P11)
 
 No wallet connect, approve, swap, order submission, signing or custody

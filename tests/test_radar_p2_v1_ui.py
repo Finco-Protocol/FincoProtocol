@@ -629,3 +629,113 @@ def test_ca6_11_execution_unavailable_reason_fidelity(make_client):
     inspector = c.get(f"/radar/inspector/{snapshot_id}/execution.status").text
     assert "INSUFFICIENT_LIQUIDITY" in inspector
     assert "SOME_TYPED_REASON" in inspector
+
+
+# ==========================================================================
+# Correction B — final UI contract closure (B1-B5)
+# ==========================================================================
+
+def test_cb_license_01_htmx_version_and_0bsd_metadata():
+    js = Path("static/radar/vendor/htmx.min.js").read_text(encoding="utf-8")
+    assert "1.9.12" in js  # vendored version identity
+    license_path = Path("static/radar/vendor/htmx.min.js.LICENSE")
+    assert license_path.exists()
+    license_text = license_path.read_text(encoding="utf-8")
+    assert "htmx.org v1.9.12" in license_text
+    assert "SPDX-License-Identifier: 0BSD" in license_text
+    assert "0BSD" in license_text
+    assert "BSD 2-Clause" not in license_text  # incorrect claim removed
+
+
+def _inspector_stages(inspector_html: str) -> dict:
+    stages: dict = {}
+    parts = inspector_html.split('<div class="inspector-stage ')
+    for part in parts[1:]:
+        stage_name = part.split('"', 1)[0]
+        stages[stage_name] = part
+    return stages
+
+
+def _unavailable_execution_snapshot(make_client, calls: list) -> str:
+    evidence = {
+        "reference": {"available": True, "price": "101.25",
+                      "observedAt": "2026-09-19T11:59:00+00:00"},
+        "execution": {"available": False, "side": "BUY",
+                      "notionalUsd": "100",
+                      "status": "INSUFFICIENT_LIQUIDITY",
+                      "unavailableReason": "SOME_TYPED_REASON",
+                      "source": "LIFI_V1_QUOTE",
+                      "quotedAt": "2026-09-19T11:58:00+00:00"},
+        "gap": {"available": False,
+                "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    service = _build_service(
+        calls, providers={"radar-core": _fake_core(calls, evidence=evidence)})
+    c = make_client(service)
+    page = c.post("/radar/refresh", data={"direction": "BUY",
+                                          "size": "100"},
+                  headers={"HX-Request": "true"}).text
+    return _snapshot_ids(page)[0], c
+
+
+def test_cb_number_02_execution_status_in_stage_number_not_unavailable(
+    make_client):
+    calls: list = []
+    snapshot_id, c = _unavailable_execution_snapshot(make_client, calls)
+    inspector = c.get(
+        f"/radar/inspector/{snapshot_id}/execution.status").text
+    stages = _inspector_stages(inspector)
+    assert "INSUFFICIENT_LIQUIDITY" in stages["stage-number"]
+    # UNAVAILABLE must not replace the known frozen status in NUMBER
+    assert '<p class="state-unavailable">UNAVAILABLE</p>' not in stages[
+        "stage-number"]
+    assert "UNAVAILABLE" not in stages["stage-number"]
+
+
+def test_cb_reason_03_typed_reason_preserved_in_gap_stage(make_client):
+    calls: list = []
+    snapshot_id, c = _unavailable_execution_snapshot(make_client, calls)
+    inspector = c.get(
+        f"/radar/inspector/{snapshot_id}/execution.status").text
+    stages = _inspector_stages(inspector)
+    assert "SOME_TYPED_REASON" in stages["stage-gaps"]
+    assert "SECTION_UNAVAILABLE" in stages["stage-gaps"]
+    # the reason belongs to the gap stage, not the NUMBER stage
+    assert "SOME_TYPED_REASON" not in stages["stage-number"]
+
+
+def test_cb_links_04_every_inspector_link_full_interaction_contract(
+    make_client):
+    calls: list = []
+    c = make_client(_build_service(calls))
+    page = c.post("/radar/refresh", data={"direction": "BUY",
+                                          "size": "100"},
+                  headers={"HX-Request": "true"}).text
+    snapshot_id = _snapshot_ids(page)[0]
+    anchors = re.findall(
+        r'<a class="inspector-link" ([^>]*)>(.*?)</a>', page)
+    assert anchors, "panels must render inspector links"
+    fields = set()
+    for attrs, _text in anchors:
+        def attr(name):
+            match = re.search(name + r'="([^"]+)"', attrs)
+            assert match is not None, f"{name} missing on {attrs}"
+            return match.group(1)
+        href = attr("href")
+        hx_get = attr("hx-get")
+        assert href == hx_get
+        assert attr("hx-target") == "#radar-inspector"
+        assert attr("hx-swap") == "innerHTML"
+        assert snapshot_id in href
+        field = href.rsplit("/", 1)[1]
+        fields.add(field)
+        response = c.get(href)
+        assert response.status_code == 200
+        assert "UNKNOWN_FIELD" not in response.text
+        assert snapshot_id in response.text
+        assert len(calls) == 1  # following links never reacquires
+    assert "reference.source" in fields
+    # the macro guarantees the contract on every link; no bare links remain
+    bare = re.findall(r'<a class="inspector-link" href="[^"]*"(?![^>]*hx-get)',
+                      page)
+    assert not bare

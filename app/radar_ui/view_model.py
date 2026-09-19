@@ -256,19 +256,25 @@ def build_inspector_view(snapshot, field_id: str) -> "dict[str, Any] | None":
         return None
     label, phase, section_key, value_key, derivation = field_labels[field_id]
 
-    # NUMBER
+    # B3: section availability (whether the authority section/result is
+    # economically available) is DISTINCT from field-value availability
+    # (whether the clicked field itself has a known authoritative value).
+    # A non-OK execution quote is a section-unavailable result whose
+    # frozen STATUS is still a known authority value and MUST be shown in
+    # the NUMBER stage — never replaced by UNAVAILABLE.
     if section_key is None:
         value = payload.get("state")
-        available = True
+        section_available = True
         reason = None
     else:
         section = sections[section_key]
-        available = section["available"]
+        section_available = section["available"]
         reason = section["reason"]
         value = section["fields"].get(value_key)
+    field_value_available = value is not None
 
     gaps: list[dict[str, str]] = []
-    if not available:
+    if not section_available:
         gaps.append({"gapKind": "SECTION_UNAVAILABLE",
                      "reason": reason or "NOT_PROVIDED_BY_ACQUISITION"})
 
@@ -289,7 +295,12 @@ def build_inspector_view(snapshot, field_id: str) -> "dict[str, Any] | None":
     return {
         "field": field_id,
         "label": label,
-        "number": {"value": value, "available": available},
+        "number": {
+            "value": value,
+            "fieldValueAvailable": field_value_available,
+            "sectionAvailable": section_available,
+            "reason": reason,
+        },
         "source": {
             "provider": common["provider"],
             "providerState": common["providerState"],

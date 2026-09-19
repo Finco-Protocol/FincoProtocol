@@ -1,6 +1,11 @@
 {% if error %}
 <section class="panel panel-error"><h2>Snapshot</h2><p class="state-unavailable">{{ error }}</p></section>
 {% else %}
+
+{% macro inspector_link(snapshot_id, field, text) -%}
+<a class="inspector-link" href="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-get="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-target="#radar-inspector" hx-swap="innerHTML">{{ text }}</a>
+{%- endmacro %}
+
 <section class="panel panel-identity" data-panel="identity" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Identity</h2>
   <dl class="kv">
@@ -38,10 +43,10 @@
   <dl class="kv">
     <dt>Reference price</dt>
     <dd class="mono big">
-      <a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/reference.price" hx-get="/radar/inspector/{{ view.snapshot_id }}/reference.price" hx-target="#radar-inspector" hx-swap="innerHTML">{{ view.reference.fields.price }}</a>
+      {{ inspector_link(view.snapshot_id, "reference.price", view.reference.fields.price) }}
     </dd>
     <dt>Bid / Ask</dt><dd class="mono">{{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}</dd>
-    <dt>Source</dt><dd><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/reference.source">{{ view.reference.fields.source }}</a></dd>
+    <dt>Source</dt><dd>{{ inspector_link(view.snapshot_id, "reference.source", view.reference.fields.source) }}</dd>
     <dt>Observed / source time</dt><dd>{{ view.reference.fields.observedAt }}</dd>
     <dt>Availability</dt><dd><span class="state-available">AVAILABLE</span> <span class="muted">{{ view.reference.phase }}</span></dd>
   </dl>
@@ -57,12 +62,12 @@
   <dl class="kv">
     <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd }}</dd>
     <dt>Status</dt>
-    <dd><span class="state-available"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.status" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.status" hx-target="#radar-inspector">{{ view.execution.fields.status }}</a></span></dd>
+    <dd><span class="state-available">{{ inspector_link(view.snapshot_id, "execution.status", view.execution.fields.status) }}</span></dd>
     <dt>Expected output (raw)</dt>
-    <dd class="mono"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.rawAmountOut" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.rawAmountOut" hx-target="#radar-inspector">{{ view.execution.fields.rawAmountOut }}</a></dd>
+    <dd class="mono">{{ inspector_link(view.snapshot_id, "execution.rawAmountOut", view.execution.fields.rawAmountOut) }}</dd>
     {% if view.execution.fields.effectivePrice %}
     <dt>Effective price</dt>
-    <dd class="mono"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/execution.effectivePrice" hx-get="/radar/inspector/{{ view.snapshot_id }}/execution.effectivePrice" hx-target="#radar-inspector">{{ view.execution.fields.effectivePrice }}</a></dd>
+    <dd class="mono">{{ inspector_link(view.snapshot_id, "execution.effectivePrice", view.execution.fields.effectivePrice) }}</dd>
     {% endif %}
     <dt>Provider / source</dt><dd>{{ view.execution.fields.source }}</dd>
     <dt>Quote time</dt><dd>{{ view.execution.fields.quotedAt }}</dd>
@@ -85,7 +90,7 @@
   {% if view.gap.available %}
   <dl class="kv">
     <dt>Directional GAP</dt>
-    <dd class="mono big"><a class="inspector-link" href="/radar/inspector/{{ view.snapshot_id }}/gap.gapBps" hx-get="/radar/inspector/{{ view.snapshot_id }}/gap.gapBps" hx-target="#radar-inspector">{{ view.gap.fields.gapBps }} bps</a></dd>
+    <dd class="mono big">{{ inspector_link(view.snapshot_id, "gap.gapBps", view.gap.fields.gapBps ~ " bps") }}</dd>
     <dt>GAP to midpoint (neutral)</dt><dd class="mono">{{ view.gap.fields.gapToMidBps }} bps</dd>
     <dt>Source</dt><dd>{{ view.gap.fields.source }}</dd>
     <dt>Quoted at</dt><dd>{{ view.gap.fields.quotedAt }}</dd>
