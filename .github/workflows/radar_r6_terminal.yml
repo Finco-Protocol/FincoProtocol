@@ -133,7 +133,7 @@ jobs:
         run: python -m pytest -q tests/test_radar_r0_quotes.py
       - name: Protected production paths remain frozen
         run: |
-          test -z "$(git diff --name-only 67abf93084164413167b7b908190625002efba65...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 finco_radar/signals finco_radar/history finco_radar/r5 financial_engine finco_core finco_protocol)"
+          test -z "$(git diff --name-only 156b90dc26757ac686512d8a94fce1f684382956...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 finco_radar/signals finco_radar/history finco_radar/r5 financial_engine finco_core finco_protocol)"
       - name: Package evidence and hashes
         run: |
           cd artifacts

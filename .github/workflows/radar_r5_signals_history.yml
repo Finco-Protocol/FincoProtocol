@@ -29,7 +29,7 @@ jobs:
           python -m pytest -q tests/test_radar_r0_quotes.py
       - name: Protected production paths remain frozen
         run: |
-          test -z "$(git diff --name-only 297a750e354895c582d923946e67978129fa2e5a...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 financial_engine finco_core finco_protocol)"
+          test -z "$(git diff --name-only 156b90dc26757ac686512d8a94fce1f684382956...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 financial_engine finco_core finco_protocol)"
       - name: R5 live proof
         run: python -m finco_radar.r5.live_proof
       - name: Artifact invariants

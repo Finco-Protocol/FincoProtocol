@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import decimal
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
@@ -117,7 +118,7 @@ class LifiExecutionQuoteAdapter:
             return self._failure(
                 request,
                 QuoteStatus.QUOTE_SOURCE_ERROR,
-                f"malformed quote response: {type(exc).__name__}",
+                f"exact-input binding mismatch: {exc}",
                 quoted_at,
                 input_asset=input_asset,
                 output_asset=output_asset,
@@ -152,13 +153,48 @@ class LifiExecutionQuoteAdapter:
         input_asset: AssetRef,
         output_asset: AssetRef,
     ) -> ExecutionQuote:
-        estimate = payload["estimate"]
-        raw_in = int(estimate["fromAmount"])
-        raw_out = int(estimate["toAmount"])
-        response_input = payload["action"]["fromToken"]
-        response_output = payload["action"]["toToken"]
-        input_decimals = int(response_input["decimals"])
-        output_decimals = int(response_output["decimals"])
+        # -- C2: root shape validation before any .get() access
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                f"provider response root must be a JSON object, "
+                f"got {type(payload).__name__}")
+
+        # -- structural validation: every provider-controlled container must
+        # be a Mapping before any .get() call (B4).
+        estimate = _require_mapping(payload.get("estimate"), "estimate")
+        action = _require_mapping(payload.get("action"), "action")
+        response_input = _require_mapping(action.get("fromToken"), "action.fromToken")
+        response_output = _require_mapping(action.get("toToken"), "action.toToken")
+
+        # -- C3: token addresses must be strings before .lower()
+        for label, token_obj in (("fromToken", response_input), ("toToken", response_output)):
+            addr = token_obj.get("address")
+            if not isinstance(addr, str) or not addr.strip():
+                raise ValueError(
+                    f"provider response {label}.address must be a non-empty "
+                    f"string, got {addr!r}")
+
+        raw_in = _strict_int(estimate.get("fromAmount"), "estimate.fromAmount")
+        raw_out = _strict_int(estimate.get("toAmount"), "estimate.toAmount")
+        input_decimals = _strict_int(response_input.get("decimals"), "fromToken.decimals")
+        output_decimals = _strict_int(response_output.get("decimals"), "toToken.decimals")
+
+        # -- C4/A2/A3: strict chain binding — integer-only, no bool, no
+        # float, no string, no None.  Exact equality with requested chain.
+        expected_chain = request.token.chain_id
+        for field_label, container, key in (
+            ("action.fromChainId", action, "fromChainId"),
+            ("fromToken.chainId", response_input, "chainId"),
+            ("action.toChainId", action, "toChainId"),
+            ("toToken.chainId", response_output, "chainId"),
+        ):
+            _require_exact_chain_int(container.get(key), field_label, expected_chain)
+
+        # -- B2/A1: strict exact-input amount binding
+        requested_raw = params.get("fromAmount") or ""
+        _require_exact_raw_amount(
+            estimate.get("fromAmount"), requested_raw,
+            "estimate.fromAmount")
 
         if response_input["address"].lower() != input_asset.contract_address:
             raise ValueError("provider input asset does not match requested address")
@@ -168,9 +204,10 @@ class LifiExecutionQuoteAdapter:
             raise ValueError("provider decimals do not match canonical request metadata")
 
         route = tuple(_extract_route(payload))
-        transaction = payload.get("transactionRequest") or {}
-        fee_cost_usd = _sum_usd_costs(estimate.get("feeCosts") or [])
-        gas_cost_usd = _sum_usd_costs(estimate.get("gasCosts") or [])
+        transaction = _require_mapping(
+            payload.get("transactionRequest") or {}, "transactionRequest")
+        fee_cost_usd = _sum_usd_costs(_require_sequence(estimate.get("feeCosts"), "feeCosts") if estimate.get("feeCosts") is not None else [])
+        gas_cost_usd = _sum_usd_costs(_require_sequence(estimate.get("gasCosts"), "gasCosts") if estimate.get("gasCosts") is not None else [])
         evidence = QuoteEvidence(
             request_params=dict(params),
             response_fields={
@@ -256,14 +293,115 @@ class LifiExecutionQuoteAdapter:
         )
 
 
+def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
+    """B4: required Mapping — absent/null/wrong-type are typed errors."""
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            f"provider response field {name} must be a mapping, "
+            f"got {type(value).__name__}")
+    return value
+
+
+def _require_sequence(value: Any, name: str) -> list:
+    """B4: required list — absent/null/wrong-type are typed errors."""
+    if not isinstance(value, list):
+        raise ValueError(
+            f"provider response field {name} must be a list, "
+            f"got {type(value).__name__}")
+    return value
+
+
+def _strict_int(value: Any, name: str) -> int:
+    """B2: strict integer — no bool, no float, no None, no string coercion.
+    Only exact Python int (or string of decimal digits per LI.FI contract)."""
+    if isinstance(value, bool):
+        raise ValueError(f"provider response field {name} must not be a boolean")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    raise ValueError(
+        f"provider response field {name}={value!r} is not a valid integer "
+        "in the LI.FI provider contract")
+
+
+def _require_exact_chain_int(value: Any, name: str, expected: int) -> None:
+    """C4: chain IDs must be exact Python int (excluding bool).  No string,
+    float, bool, or None accepted.  Exact equality with requested chain."""
+    if isinstance(value, bool):
+        raise ValueError(
+            f"provider response field {name} must not be a boolean")
+    if not isinstance(value, int):
+        raise ValueError(
+            f"provider response field {name} must be an integer per the "
+            f"LI.FI contract, got {type(value).__name__} ({value!r})")
+    if value != expected:
+        raise ValueError(
+            f"provider response field {name}={value} does not match "
+            f"requested chain {expected}")
+
+
+def _require_exact_chain(value: Any, name: str, expected: int) -> None:
+    """C4 (superseded by _require_exact_chain_int): kept for backwards compat."""
+    _require_exact_chain_int(value, name, expected)
+
+
+def _require_exact_raw_amount(
+    value: Any, requested_raw: str, name: str,
+) -> None:
+    """B2: strict exact-input amount binding.  The provider must return a
+    string of decimal digits exactly equal to the submitted raw amount.
+    Rejects numeric JSON integers, floats, booleans, None, whitespace,
+    signed values, fractional values, and off-by-one."""
+    if value is None:
+        raise ValueError(
+            f"provider response field {name} is missing; "
+            "input amount binding is required for exact-input authority")
+    if not isinstance(value, str):
+        raise ValueError(
+            f"provider response field {name} must be a string per the "
+            f"LI.FI contract, got {type(value).__name__} ({value!r})")
+    if value != value.strip():
+        raise ValueError(
+            f"provider response field {name} has whitespace padding: "
+            f"{value!r}")
+    if not value.isdigit():
+        raise ValueError(
+            f"provider response field {name}={value!r} is not a valid "
+            "unsigned decimal-digit string")
+    if value != requested_raw:
+        raise ValueError(
+            f"provider input amount {value} does not equal the exact "
+            f"amount submitted {requested_raw}; this response evidences "
+            "a different trade")
+
+
 def _extract_route(payload: Mapping[str, Any]) -> list[RouteLeg]:
-    steps = payload.get("includedSteps") or []
+    """C1: malformed route steps/entries produce typed errors, never skipped."""
+    steps = payload.get("includedSteps")
+    if steps is None:
+        steps = []
+    if not isinstance(steps, list):
+        raise ValueError(
+            f"provider response includedSteps must be a list, got {type(steps).__name__}")
     route: list[RouteLeg] = []
     for step in steps:
-        action = step.get("action") or {}
-        estimate = step.get("estimate") or {}
-        from_token = action.get("fromToken") or {}
-        to_token = action.get("toToken") or {}
+        if not isinstance(step, Mapping):
+            raise ValueError(
+                f"provider response includedSteps member must be a mapping, "
+                f"got {type(step).__name__}")
+        action = step.get("action")
+        if not isinstance(action, Mapping):
+            raise ValueError("includedSteps member has non-mapping action")
+        estimate = step.get("estimate")
+        if not isinstance(estimate, Mapping):
+            raise ValueError("includedSteps member has non-mapping estimate")
+        from_token = action.get("fromToken")
+        to_token = action.get("toToken")
+        if not isinstance(from_token, Mapping):
+            raise ValueError("includedSteps member has non-mapping fromToken")
+        if not isinstance(to_token, Mapping):
+            raise ValueError("includedSteps member has non-mapping toToken")
         route.append(
             RouteLeg(
                 tool=str(step.get("tool") or payload.get("tool") or "UNKNOWN"),
@@ -274,21 +412,33 @@ def _extract_route(payload: Mapping[str, Any]) -> list[RouteLeg]:
             )
         )
     if not route:
-        action = payload.get("action") or {}
-        estimate = payload.get("estimate") or {}
+        action = payload.get("action")
+        if not isinstance(action, Mapping):
+            action = {}
+        estimate = payload.get("estimate")
+        if not isinstance(estimate, Mapping):
+            estimate = {}
+        from_token = action.get("fromToken")
+        to_token = action.get("toToken")
         route.append(
             RouteLeg(
                 tool=str(payload.get("tool") or "UNKNOWN"),
-                from_asset=str((action.get("fromToken") or {}).get("address") or ""),
-                to_asset=str((action.get("toToken") or {}).get("address") or ""),
-                from_amount_raw=(str(estimate["fromAmount"]) if estimate.get("fromAmount") is not None else None),
-                to_amount_raw=(str(estimate["toAmount"]) if estimate.get("toAmount") is not None else None),
+                from_asset=str(from_token.get("address") or "") if isinstance(from_token, Mapping) else "",
+                to_asset=str(to_token.get("address") or "") if isinstance(to_token, Mapping) else "",
+                from_amount_raw=(str(estimate["fromAmount"]) if isinstance(estimate.get("fromAmount"), (str, int)) else None),
+                to_amount_raw=(str(estimate["toAmount"]) if isinstance(estimate.get("toAmount"), (str, int)) else None),
             )
         )
     return route
 
 
-def _sum_usd_costs(costs: list[Mapping[str, Any]]) -> Decimal | None:
+def _sum_usd_costs(costs: list) -> Decimal | None:
+    """C1: malformed cost members produce typed errors, never silently skipped."""
+    for cost in costs:
+        if not isinstance(cost, Mapping):
+            raise ValueError(
+                f"provider response cost entry must be a mapping, "
+                f"got {type(cost).__name__}")
     total = Decimal("0")
     seen = False
     for cost in costs:

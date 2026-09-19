@@ -55,8 +55,10 @@ def payload(from_address: str, to_address: str, from_amount: int, to_amount: int
         "type": "lifi",
         "tool": "mock-dex",
         "action": {
-            "fromToken": {"address": from_address, "decimals": from_decimals},
-            "toToken": {"address": to_address, "decimals": to_decimals},
+            "fromChainId": 4663,
+            "toChainId": 4663,
+            "fromToken": {"address": from_address, "decimals": from_decimals, "chainId": 4663},
+            "toToken": {"address": to_address, "decimals": to_decimals, "chainId": 4663},
         },
         "estimate": {
             "fromAmount": str(from_amount),
