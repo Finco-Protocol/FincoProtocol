@@ -1,6 +1,17 @@
 {% if error %}
 <section class="panel panel-error"><h2>Snapshot</h2><p class="state-unavailable">{{ error }}</p></section>
 {% else %}
+<section class="panel panel-identity" data-panel="identity" data-snapshot-id="{{ view.snapshot_id }}">
+  <h2>Identity</h2>
+  <dl class="kv">
+    <dt>Asset / economic UID</dt><dd>{% if view.identity.economicAssetUid %}{{ view.identity.economicAssetUid }}{% else %}<span class="state-unavailable">UNAVAILABLE</span>{% endif %}</dd>
+    <dt>Chain</dt><dd>{{ view.identity.chainId }}</dd>
+    <dt>Contract</dt><dd class="mono">{{ view.identity.contractAddress }}</dd>
+    {% if view.identity.symbol %}<dt>Symbol</dt><dd>{{ view.identity.symbol }} <span class="muted">(from snapshot evidence)</span></dd>{% endif %}
+    <dt>Snapshot</dt><dd class="mono">{{ view.snapshot_id }}</dd>
+  </dl>
+</section>
+
 <section class="panel panel-snapshot" data-panel="snapshot" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Snapshot</h2>
   <dl class="kv">
@@ -58,6 +69,13 @@
   </dl>
   {% else %}
   <p class="state-unavailable">UNAVAILABLE{% if view.execution.reason %} — {{ view.execution.reason }}{% endif %}</p>
+  {% if view.execution.fields.status %}
+  <dl class="kv">
+    <dt>Status</dt><dd>{{ view.execution.fields.status }}</dd>
+    {% if view.execution.fields.source %}<dt>Provider / source</dt><dd>{{ view.execution.fields.source }}</dd>{% endif %}
+    {% if view.execution.fields.quotedAt %}<dt>Quote time</dt><dd>{{ view.execution.fields.quotedAt }}</dd>{% endif %}
+  </dl>
+  {% endif %}
   <p class="muted small">{{ view.execution.phase }}</p>
   {% endif %}
 </section>

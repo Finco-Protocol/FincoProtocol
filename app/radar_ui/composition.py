@@ -61,6 +61,41 @@ def configured_sources() -> "tuple[str, ...]":
 
 DEFAULT_SETTLEMENT_RESOLVER_UNAVAILABLE = "SETTLEMENT_RESOLVER_NOT_WIRED"
 
+REFERENCE_IDENTITY_MISMATCH = "REFERENCE_IDENTITY_MISMATCH"
+
+
+class ReferenceIdentityMismatch(RuntimeContractError):
+    """A3: the frozen registry/reference authority did not resolve to the
+    EXACT requested canonical identity (economic UID + chain + contract
+    deployment).  The reference section fails closed."""
+
+
+def bind_reference_identity(asset_record, key, *, economic_asset_uid: str,
+                            chain_id: int, contract_address: str) -> None:
+    """A3: prove the resolved registry asset/deployment IS the requested
+    canonical identity before any reference authority becomes AVAILABLE.
+
+    Uses the frozen canonical identity semantics (exact economic UID
+    equality; exact chain equality; case-insensitive EVM contract address
+    equality matching the frozen deployment normalization).  Ticker
+    equality alone is never sufficient.  Raises
+    :class:`ReferenceIdentityMismatch` on any mismatch."""
+    resolved_uid = getattr(asset_record, "asset_uid", None)
+    if resolved_uid != economic_asset_uid:
+        raise ReferenceIdentityMismatch(
+            f"registry asset uid {resolved_uid!r} != requested "
+            f"economic uid {economic_asset_uid!r}")
+    resolved_chain = getattr(key, "chain_id", None)
+    if resolved_chain != chain_id:
+        raise ReferenceIdentityMismatch(
+            f"resolved deployment chain {resolved_chain!r} != requested "
+            f"chain {chain_id!r}")
+    resolved_address = str(getattr(key, "contract_address", ""))
+    if resolved_address.lower() != str(contract_address).lower():
+        raise ReferenceIdentityMismatch(
+            f"resolved deployment contract {resolved_address!r} != "
+            f"requested contract {contract_address!r}")
+
 
 def asset_config() -> dict[str, Any]:
     """The ONE canonical configured Radar v1 asset (P3)."""
@@ -173,10 +208,26 @@ def composition_radar_source(
                 key = asset_record.deployment_for_chain(request.chain_id)
                 if key is None:
                     raise RuntimeError("canonical deployment unavailable")
+                # A3: bind the resolved registry asset/deployment to the
+                # EXACT requested canonical identity before the reference
+                # may become AVAILABLE.
+                bind_reference_identity(
+                    asset_record, key,
+                    economic_asset_uid=request.economic_asset_uid,
+                    chain_id=request.chain_id,
+                    contract_address=request.contract_address)
                 binding_row, price_row = registry.fetch_bound_reference(
                     registry_snapshot, key)
                 reference_authority = build_bound_reference_price(
                     asset_record, binding_row, price_row)
+                # The preserved evidence identity represents the BOUND
+                # snapshot identity, never a mixture with config.
+                evidence["asset"] = {
+                    "symbol": asset_record.token_symbol,
+                    "economicAssetUid": asset_record.asset_uid,
+                    "chainId": key.chain_id,
+                    "contractAddress": key.contract_address,
+                }
                 evidence["reference"] = {
                     "available": True,
                     "symbol": reference_authority.symbol,
@@ -191,6 +242,9 @@ def composition_radar_source(
                 close = getattr(registry, "close", None)
                 if callable(close):
                     close()
+        except ReferenceIdentityMismatch:
+            # A3: stable closed composition reason for identity mismatch
+            evidence["reference"] = _unavailable(REFERENCE_IDENTITY_MISMATCH)
         except Exception as exc:  # noqa: BLE001 - explicit section state
             evidence["reference"] = _unavailable(type(exc).__name__)
 

@@ -92,11 +92,27 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             status_code=200,
         )
     snapshot = get_service().acquire(request_obj)
-    context = _panels_context(snapshot)
+    if request.headers.get("HX-Request", "").lower() == "true":
+        # HTMX path: swap in the snapshot-bound panel fragment.
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/panels.html",
+            context=_panels_context(snapshot),
+        )
+    # A1: progressive fallback — a normal HTML POST returns the full
+    # Radar page for the resulting snapshot; correctness never depends
+    # on JavaScript.
     return _templates.TemplateResponse(
         request=request,
-        name="radar/panels.html",
-        context=context,
+        name="radar/index.html",
+        context={
+            "asset": composition.asset_config(),
+            "sizes": composition.SIZES,
+            "directions": composition.DIRECTIONS,
+            "view": view_model.build_radar_view(snapshot),
+            "load_error": None,
+            "snapshot_id": snapshot.snapshot_id,
+        },
     )
 
 

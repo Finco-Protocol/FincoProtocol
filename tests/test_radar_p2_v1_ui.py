@@ -128,7 +128,8 @@ def test_ui_05_one_refresh_exactly_one_acquisition(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert len(calls) == 1
 
@@ -137,7 +138,8 @@ def test_ui_06_response_binds_exactly_one_snapshot_id(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     ids = _snapshot_ids(response.text)
     assert len(ids) >= 1
     assert len(set(ids)) == 1
@@ -147,7 +149,8 @@ def test_ui_07_all_panels_carry_the_same_snapshot_id(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     panel_ids = re.findall(r'data-snapshot-id="(acq-snap:[0-9a-f]{64})"',
                            response.text)
     panels = re.findall(r'data-panel="([a-z-]+)"', response.text)
@@ -191,7 +194,8 @@ def test_ui_10_changing_snapshot_id_changes_displayed_evidence(make_client):
     small = c.post("/radar/refresh", data={"direction": "BUY",
                                            "size": "100"}).text
     large = c.post("/radar/refresh", data={"direction": "SELL",
-                                           "size": "1000"}).text
+                                           "size": "1000"},
+                           headers={"HX-Request": "true"}).text
     small_id, large_id = _snapshot_ids(small)[0], _snapshot_ids(large)[0]
     assert small_id != large_id
     small_inspector = c.get(
@@ -262,7 +266,8 @@ def test_ui_14_unavailable_snapshot_renders_cleanly(make_client):
 
     c = make_client(_build_service([], providers={"radar-core": failing}))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert "UNAVAILABLE" in response.text
     assert "PROVIDER_DECLARED_ERROR" in response.text
@@ -291,7 +296,8 @@ def test_ui_15_provider_timeout_renders_safely(make_client):
 def test_ui_16_invalid_provider_response_renders_safely(make_client):
     c = make_client(_build_service([], providers={"radar-core": lambda r: "bad"}))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert "INVALID_RESPONSE" in response.text
 
@@ -315,7 +321,8 @@ def test_ui_18_provider_config_never_reaches_html(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     response = c.post("/radar/refresh", data={"direction": "BUY",
-                                              "size": "100"})
+                                              "size": "100"},
+                           headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(response.text)[0]
     inspector = c.get(f"/radar/inspector/{snapshot_id}/execution.status").text
     blob = response.text + inspector
@@ -390,3 +397,235 @@ def test_ui_22_service_reuse_across_requests_keeps_persistence():
     assert _snapshot_ids(second.text)[0] == snapshot_id
     assert len(calls) == 1
     assert store.get(snapshot_id) is not None
+
+
+# ==========================================================================
+# Correction A — browser + snapshot binding closure (A1-A6)
+# ==========================================================================
+
+from types import SimpleNamespace
+
+
+def test_ca2_01_before_refresh_no_snapshot_authority_claimed(make_client):
+    page = make_client(_build_service([])).get("/radar").text
+    assert "Configured target asset" in page
+    assert 'data-panel="identity"' not in page
+    assert "acq-snap:" not in page
+
+
+def test_ca2_02_identity_panel_bound_to_refresh_snapshot(make_client):
+    calls: list = []
+    c = make_client(_build_service(calls))
+    response = c.post("/radar/refresh", data={"direction": "BUY",
+                                              "size": "100"},
+                      headers={"HX-Request": "true"})
+    snapshot_id = _snapshot_ids(response.text)[0]
+    assert 'data-panel="identity"' in response.text
+    identity_ids = re.findall(
+        r'(<section class="panel panel-identity"[^>]*data-snapshot-id=")'
+        r"(acq-snap:[0-9a-f]{64})", response.text)
+    assert identity_ids and identity_ids[0][1] == snapshot_id
+    assert "AAPL" in response.text  # uid from the snapshot evidence
+
+
+def test_ca2_03_historical_identity_survives_config_change(make_client):
+    calls: list = []
+    store = SnapshotStore(":memory:")
+    service = _build_service(calls, store=store)
+    c = make_client(service)
+    response = c.post("/radar/refresh", data={"direction": "BUY",
+                                              "size": "100"},
+                      headers={"HX-Request": "true"})
+    snapshot_id = _snapshot_ids(response.text)[0]
+    original_address = composition.asset_config()["contractAddress"]
+
+    # environment configuration changes after the snapshot exists
+    import os
+    os.environ["RADAR_V1_ASSET_ADDRESS"] = "0x" + "bb" * 20
+    try:
+        historical = c.get(f"/radar/snapshot/{snapshot_id}").text
+        assert original_address in historical  # persisted identity wins
+        assert ("0x" + "bb" * 20) not in historical
+    finally:
+        os.environ.pop("RADAR_V1_ASSET_ADDRESS", None)
+
+
+def test_ca3_04_reference_identity_mismatch_fails_closed():
+    def fake_registry(uid, address, chain_id=4663):
+        key = SimpleNamespace(chain_id=chain_id, contract_address=address)
+        asset_record = SimpleNamespace(
+            asset_uid=uid, token_symbol="AAPL",
+            deployment_for_chain=lambda c: key if c == chain_id else None)
+        registry_snapshot = SimpleNamespace(
+            find_by_symbol=lambda sym: [asset_record])
+        return SimpleNamespace(
+            fetch_snapshot=lambda: registry_snapshot,
+            fetch_bound_reference=lambda snap, key: ({}, {}))
+
+    source = composition.composition_radar_source(
+        registry_factory=lambda: fake_registry(
+            "AAPL", "0x" + "bb" * 20))  # wrong contract
+    request_obj = composition.build_request("BUY", "100")
+    result = source(request_obj)
+    reference = result["evidence"]["reference"]
+    assert reference["available"] is False
+    assert reference["reason"] == "REFERENCE_IDENTITY_MISMATCH"
+    # execution/gap must not regain availability from a mismatched reference
+    assert result["evidence"]["execution"]["available"] is False
+    assert result["evidence"]["gap"]["available"] is False
+
+
+def test_ca3_05_reference_uid_mismatch_fails_closed():
+    source = composition.composition_radar_source(
+        registry_factory=lambda: _fake_registry_uid(
+            "MSFT", composition.asset_config()["contractAddress"]))
+    request_obj = composition.build_request("BUY", "100")
+    result = source(request_obj)
+    assert (result["evidence"]["reference"]["reason"]
+            == "REFERENCE_IDENTITY_MISMATCH")
+
+
+def _fake_registry_uid(uid, address):
+    key = SimpleNamespace(chain_id=4663, contract_address=address)
+    asset_record = SimpleNamespace(
+        asset_uid=uid, token_symbol="AAPL",
+        deployment_for_chain=lambda c: key if c == 4663 else None)
+    registry_snapshot = SimpleNamespace(
+        find_by_symbol=lambda sym: [asset_record])
+    return SimpleNamespace(
+        fetch_snapshot=lambda: registry_snapshot,
+        fetch_bound_reference=lambda snap, key: ({}, {}))
+
+
+def test_ca3_06_exact_identity_binding_passes_helper():
+    from app.radar_ui.composition import bind_reference_identity
+    key = SimpleNamespace(chain_id=4663,
+                          contract_address="0xAAAAAAAAAAAAAAAAAAAAAAAA"
+                                           "AAAAAAAAAAAAAAAAAA")
+    asset_record = SimpleNamespace(asset_uid="AAPL")
+    # exact UID + chain + contract (case-insensitive EVM address semantics)
+    bind_reference_identity(asset_record, key,
+                            economic_asset_uid="AAPL", chain_id=4663,
+                            contract_address="0xaaaaaaaaaaaaaaaaaaaaaaaa"
+                                             "aaaaaaaaaaaaaaaaaa")
+    with pytest.raises(composition.ReferenceIdentityMismatch):
+        bind_reference_identity(asset_record, key,
+                                economic_asset_uid="MSFT", chain_id=4663,
+                                contract_address=key.contract_address)
+    with pytest.raises(composition.ReferenceIdentityMismatch):
+        bind_reference_identity(asset_record, key,
+                                economic_asset_uid="AAPL", chain_id=1,
+                                contract_address=key.contract_address)
+
+
+def test_ca3_07_snapshot_evidence_identity_is_bound_identity():
+    # through the service: the preserved evidence identity equals the
+    # requested canonical identity (never a mixture)
+    calls: list = []
+    service = _build_service(calls)
+    snapshot = service.acquire(composition.build_request("BUY", "100"))
+    payload = snapshot.to_payload()
+    evidence = payload["providers"][0]["evidence"]
+    assert evidence["asset"]["economicAssetUid"] == "AAPL"
+    assert evidence["asset"]["chainId"] == payload["chainId"]
+    assert evidence["asset"]["contractAddress"] == payload["contractAddress"]
+
+
+def test_ca4_08_every_rendered_inspector_link_resolves(make_client):
+    calls: list = []
+    c = make_client(_build_service(calls))
+    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+                                             "size": "100"},
+                     headers={"HX-Request": "true"})
+    snapshot_id = _snapshot_ids(refresh.text)[0]
+    links = re.findall(
+        r'href="(/radar/inspector/([^"]+)/([^"]+))"', refresh.text)
+    assert links, "panel fragment must render inspector links"
+    fields = {field for _, _, field in links}
+    assert "reference.source" in fields  # A4: previously broken link
+    for href, snapshot_id_in_link, field in links:
+        assert snapshot_id_in_link == snapshot_id
+        response = c.get(href)
+        assert response.status_code == 200
+        assert "UNKNOWN_FIELD" not in response.text, field
+        assert snapshot_id in response.text
+    assert len(calls) == 1  # following links never reacquires
+
+
+def test_ca5_09_field_specific_authority_timestamps(make_client):
+    calls: list = []
+    evidence = {
+        "reference": {"available": True, "price": "101.25",
+                      "observedAt": "2026-09-19T11:59:00+00:00"},
+        "execution": {"available": True, "side": "BUY",
+                      "status": "QUOTE_OK",
+                      "quotedAt": "2026-09-19T11:58:00+00:00"},
+        "gap": {"available": True, "gapBps": "-42.5",
+                "quotedAt": "2026-09-19T11:57:00+00:00"},
+    }
+    service = _build_service(
+        calls, providers={"radar-core": _fake_core(
+            calls, evidence=evidence,
+            observed_at="2026-09-19T12:00:00+00:00")})
+    c = make_client(service)
+    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+                                             "size": "100"},
+                     headers={"HX-Request": "true"})
+    snapshot_id = _snapshot_ids(refresh.text)[0]
+    expected = {"reference.price": "2026-09-19T11:59",
+                "execution.status": "2026-09-19T11:58",
+                "gap.gapBps": "2026-09-19T11:57"}
+    for field, timestamp in expected.items():
+        inspector = c.get(f"/radar/inspector/{snapshot_id}/{field}").text
+        assert timestamp in inspector, field
+    # the provider-wrapper observation time stays a SEPARATE lineage row
+    gap_inspector = c.get(f"/radar/inspector/{snapshot_id}/gap.gapBps").text
+    assert "12:00" in gap_inspector
+    assert "Acquisition/provider observation time" in gap_inspector
+
+
+def test_ca5_10_missing_field_timestamp_shows_unavailable(make_client):
+    calls: list = []
+    evidence = {"reference": {"available": True, "price": "101.25"}}
+    service = _build_service(
+        calls, providers={"radar-core": _fake_core(calls, evidence=evidence,
+                                                   observed_at="2026-09-19"
+                                                           "T12:00:00+00:00")})
+    c = make_client(service)
+    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+                                             "size": "100"},
+                     headers={"HX-Request": "true"})
+    snapshot_id = _snapshot_ids(refresh.text)[0]
+    inspector = c.get(f"/radar/inspector/{snapshot_id}/reference.price").text
+    # reference.observedAt absent -> explicit UNAVAILABLE, never the
+    # provider-wrapper time substituted in
+    assert "UNAVAILABLE" in inspector
+
+
+def test_ca6_11_execution_unavailable_reason_fidelity(make_client):
+    calls: list = []
+    evidence = {
+        "reference": {"available": True, "price": "101.25",
+                      "observedAt": "2026-09-19T11:59:00+00:00"},
+        "execution": {"available": False, "side": "BUY",
+                      "notionalUsd": "100",
+                      "status": "INSUFFICIENT_LIQUIDITY",
+                      "unavailableReason": "SOME_TYPED_REASON",
+                      "source": "LIFI_V1_QUOTE",
+                      "quotedAt": "2026-09-19T11:58:00+00:00"},
+        "gap": {"available": False,
+                "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    service = _build_service(
+        calls, providers={"radar-core": _fake_core(calls, evidence=evidence)})
+    c = make_client(service)
+    page = c.post("/radar/refresh", data={"direction": "BUY",
+                                          "size": "100"},
+                  headers={"HX-Request": "true"}).text
+    assert "INSUFFICIENT_LIQUIDITY" in page   # exact frozen status
+    assert "SOME_TYPED_REASON" in page        # exact frozen reason
+    assert "NOT_PROVIDED_BY_ACQUISITION" not in page
+    snapshot_id = _snapshot_ids(page)[0]
+    inspector = c.get(f"/radar/inspector/{snapshot_id}/execution.status").text
+    assert "INSUFFICIENT_LIQUIDITY" in inspector
+    assert "SOME_TYPED_REASON" in inspector

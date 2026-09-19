@@ -33,15 +33,29 @@ def _provider_result(payload: Mapping[str, Any],
     return None
 
 
+_SAFE_UNAVAILABLE_FIELDS = ("status", "unavailableReason", "source",
+                            "quotedAt", "side", "notionalUsd")
+
+
 def _section(evidence: Mapping[str, Any], key: str) -> dict[str, Any]:
+    """A6: unavailable sections PRESERVE the safe authority metadata they
+    supplied (frozen status, exact unavailableReason, source, quote
+    time).  The rendered reason prioritises the actual upstream
+    unavailableReason over composition-level reasons; the generic
+    NOT_PROVIDED_BY_ACQUISITION appears only when nothing more specific
+    exists."""
     section = evidence.get(key)
     if not isinstance(section, Mapping) or section.get("available") is not True:
         reason = None
+        fields: dict[str, Any] = {}
         if isinstance(section, Mapping):
-            reason = section.get("reason")
+            fields = {k: v for k, v in section.items()
+                      if k in _SAFE_UNAVAILABLE_FIELDS and v is not None}
+            reason = (section.get("unavailableReason")
+                      or section.get("reason"))
         return {"available": False,
                 "reason": reason or "NOT_PROVIDED_BY_ACQUISITION",
-                "fields": {}}
+                "fields": fields}
     return {"available": True, "reason": None,
             "fields": {k: v for k, v in section.items()
                        if k != "available"}}
@@ -119,6 +133,22 @@ def build_radar_view(snapshot) -> dict[str, Any]:
 # Evidence Inspector (P6)
 # --------------------------------------------------------------------------
 
+# A5: the authority timestamp belonging to each displayed field — the
+# provider-wrapper P1 observation time is a SEPARATE lineage row and must
+# never replace the field-specific SOURCE time.
+FIELD_AUTHORITY_TIMESTAMPS = {
+    "reference.price": ("reference", "observedAt"),
+    "reference.bid": ("reference", "observedAt"),
+    "reference.ask": ("reference", "observedAt"),
+    "reference.source": ("reference", "observedAt"),
+    "execution.status": ("execution", "quotedAt"),
+    "execution.rawAmountOut": ("execution", "quotedAt"),
+    "execution.effectivePrice": ("execution", "quotedAt"),
+    "gap.gapBps": ("gap", "quotedAt"),
+    "gap.gapToMidBps": ("gap", "quotedAt"),
+}
+
+
 def _inspector_common(snapshot, provider_result: "Mapping[str, Any] | None") -> dict[str, Any]:
     payload = snapshot.to_payload()
     return {
@@ -177,6 +207,11 @@ def build_inspector_view(snapshot, field_id: str) -> "dict[str, Any] | None":
         "gap": _section(evidence, "gap"),
     }
     field_labels = {
+        "reference.source": ("Reference source",
+                             "R2/R7 — frozen bound-reference authority",
+                             "reference", "source",
+                             "frozen registry/reference authority that "
+                             "produced the bound reference"),
         "reference.price": ("Reference price (token midpoint)",
                             "R2/R7 — frozen bound-reference authority",
                             "reference", "price",
@@ -237,6 +272,20 @@ def build_inspector_view(snapshot, field_id: str) -> "dict[str, Any] | None":
         gaps.append({"gapKind": "SECTION_UNAVAILABLE",
                      "reason": reason or "NOT_PROVIDED_BY_ACQUISITION"})
 
+    # A5: field-specific authority timestamp; falls back to UNAVAILABLE —
+    # never synthesized from the provider wrapper.
+    timestamp_section, timestamp_key = FIELD_AUTHORITY_TIMESTAMPS.get(
+        field_id, (None, None))
+    if timestamp_section is not None:
+        field_timestamp = sections[timestamp_section]["fields"].get(
+            timestamp_key)
+    else:
+        field_timestamp = common["observedAt"]
+    lineage = _lineage_rows(snapshot, provider_result)
+    lineage.append({"stage": "LINEAGE",
+                    "label": "Acquisition/provider observation time",
+                    "value": str(common["observedAt"])})
+
     return {
         "field": field_id,
         "label": label,
@@ -245,10 +294,10 @@ def build_inspector_view(snapshot, field_id: str) -> "dict[str, Any] | None":
             "provider": common["provider"],
             "providerState": common["providerState"],
             "phase": phase,
-            "observedAt": common["observedAt"],
+            "observedAt": field_timestamp or "UNAVAILABLE",
         },
         "derivation": derivation,
-        "lineage": _lineage_rows(snapshot, provider_result),
+        "lineage": lineage,
         "evidence": {
             "digest": common["evidenceDigest"],
             "providerPayload": (provider_result or {}).get("evidence"),

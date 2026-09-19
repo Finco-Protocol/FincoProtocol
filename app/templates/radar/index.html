@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FINCO Radar — v1</title>
   <link rel="stylesheet" href="/static/radar/radar.css">
-  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="/static/radar/vendor/htmx.min.js" defer></script>
 </head>
 <body class="radar">
 <header class="radar-topbar">
@@ -14,22 +14,19 @@
 </header>
 
 <main class="radar-main">
-  <section class="panel panel-identity" data-panel="identity" {% if view %}data-snapshot-id="{{ view.snapshot_id }}"{% endif %}>
-    <h2>Identity</h2>
+  <section class="panel panel-target" data-panel="configured-target">
+    <h2>Configured target asset</h2>
+    <p class="muted small">non-authoritative composition target — the authoritative Identity panel appears with each snapshot</p>
     <dl class="kv">
       <dt>Asset</dt><dd>{{ asset.economicAssetUid }} <span class="muted">({{ asset.symbol }})</span></dd>
       <dt>Chain</dt><dd>{{ asset.chainId }}</dd>
       <dt>Contract</dt><dd class="mono">{{ asset.contractAddress }}</dd>
-      <dt>Snapshot</dt>
-      <dd class="mono">
-        {% if view %}{{ view.snapshot_id }}{% else %}<span class="muted">awaiting first refresh</span>{% endif %}
-      </dd>
     </dl>
   </section>
 
   <section class="panel panel-controls" data-panel="controls">
     <h2>Quote controls</h2>
-    <form hx-post="/radar/refresh" hx-target="#radar-panels" hx-swap="innerHTML" class="radar-controls">
+    <form method="post" action="/radar/refresh" hx-post="/radar/refresh" hx-target="#radar-panels" hx-swap="innerHTML" class="radar-controls">
       <div class="control-group" role="group" aria-label="Quote direction">
         {% for d in directions %}
         <label class="chip"><input type="radio" name="direction" value="{{ d }}" {% if d == 'BUY' %}checked{% endif %}> {{ d }}</label>
