@@ -576,3 +576,54 @@ def test_adv_f03_positive_twin_id_reconstruction():
     assert ev["twinId"] == "digital-twin:" + _digest(material)
     assert ev["twinId"] == stable_twin_id(
         ev["economicAssetUid"], ev["economicNodeId"])
+
+
+# ==========================================================================
+# Correction B (B1) — deep immutable upstream gaps
+# ==========================================================================
+
+def test_b1_upstream_gaps_tuple_of_frozen_mappings():
+    twin = _twin(_r11_no_model())
+    assert isinstance(twin.upstream_gaps, tuple)
+    assert len(twin.upstream_gaps) > 0
+    from types import MappingProxyType
+    for gap in twin.upstream_gaps:
+        assert isinstance(gap, MappingProxyType)
+    with pytest.raises(TypeError):
+        twin.upstream_gaps[0]["gapKind"] = "MUTATED"
+    with pytest.raises(TypeError):
+        twin.upstream_gaps[0]["extra"] = "injected"
+
+
+def test_b1_upstream_gaps_nested_structures_immutable():
+    from dataclasses import replace
+    from types import MappingProxyType
+    twin = _twin(_r11_no_model())
+    nested_gap = {
+        "gapKind": "MODEL_BINDING_UNAVAILABLE",
+        "source": "R10_SUBJECT",
+        "reason": "no model binding",
+        "provenance": {"chain": {"deepest": "value"}},
+    }
+    twin2 = replace(twin, upstream_gaps=(nested_gap,))
+    assert isinstance(twin2.upstream_gaps[0], MappingProxyType)
+    with pytest.raises(TypeError):
+        twin2.upstream_gaps[0]["provenance"]["chain"]["deepest"] = "mutated"
+    with pytest.raises(TypeError):
+        twin2.upstream_gaps[0]["provenance"] = {}
+
+
+def test_b1_upstream_gaps_non_mapping_member_rejected():
+    from dataclasses import replace
+    twin = _twin(_r11_no_model())
+    with pytest.raises(TwinError):
+        replace(twin, upstream_gaps=("bad",))
+    with pytest.raises(TwinError):
+        replace(twin, upstream_gaps=([1],))
+
+
+def test_b1_freeze_preserves_serialized_semantics():
+    # The immutability hardening must not change serialized composition:
+    # the artifact still verifies through the canonical replay.
+    twin = _twin(_r11_no_model())
+    assert verify_serialized_r12_evidence(twin.to_evidence_dict()) is True

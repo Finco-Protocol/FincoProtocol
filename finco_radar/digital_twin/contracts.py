@@ -222,6 +222,20 @@ class DigitalTwinSnapshot:
                      "source_digests", "subject_r11_evidence", "boundaries"):
             object.__setattr__(self, name,
                                deep_freeze(getattr(self, name)))
+        # Correction B (B1): upstream gaps are authority-bearing evidence.
+        # Every member must be a Mapping and is recursively deep-frozen, so
+        # nested structures inside each gap are immutable too — the tuple
+        # boundary is immutable exactly like the containers above.
+        for gap in self.upstream_gaps:
+            if not isinstance(gap, Mapping):
+                raise TwinError(
+                    f"upstream gap member must be a mapping, got "
+                    f"{type(gap).__name__}")
+        object.__setattr__(
+            self,
+            "upstream_gaps",
+            tuple(deep_freeze(g) for g in self.upstream_gaps),
+        )
         if self.generated_at.tzinfo is None:
             raise TwinError("generated_at must be timezone-aware")
         if type(self.synthetic) is not bool:

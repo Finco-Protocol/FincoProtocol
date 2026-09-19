@@ -122,6 +122,14 @@ Further Correction A properties:
   different-R11-observation substitution; canonical partial, full-model,
   JSON round-trip and replay-equivalence controls pass.
 
+## Correction B — deep immutable upstream gaps (B1)
+
+`DigitalTwinSnapshot.__post_init__` now validates every `upstream_gaps`
+member as a Mapping and recursively deep-freezes the tuple, so nested
+structures inside each upstream gap are immutable too — completing the
+snapshot's deep-immutability contract.  Non-Mapping members are typed
+rejections; serialized composition semantics are unchanged.
+
 ## Reproduction commands
 
 ```bash
