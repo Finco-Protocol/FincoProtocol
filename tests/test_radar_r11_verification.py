@@ -2181,8 +2181,14 @@ def test_ca_c4_04_r10_r8_r9_deployment_agreement_passes():
 # Correction B.1 - C5: VERIFICATION_PARTIAL serialized semantics
 # --------------------------------------------------------------------------
 
-def test_cb_c5_01_verification_partial_requires_authority_unavailable_gap():
+def test_cb_c5_01_resealed_partial_claim_rejected_by_canonical_replay():
+    # Correction A (F02): a resealed VERIFICATION_PARTIAL status claim with
+    # an invented VERIFICATION_AUTHORITY_UNAVAILABLE gap used to pass on
+    # content integrity alone.  The canonical replay independently produces
+    # VERIFICATION_OK for this subject, so the resealed claim is rejected:
+    # CONTENT_INTEGRITY != VERIFICATION_AUTHORITY.
     evidence = _base_r11()
+    assert evidence["status"] == "VERIFICATION_OK"
     evidence["status"] = "VERIFICATION_PARTIAL"
     evidence["verificationGaps"] = [{
         "gapKind": "VERIFICATION_AUTHORITY_UNAVAILABLE",
@@ -2190,7 +2196,7 @@ def test_cb_c5_01_verification_partial_requires_authority_unavailable_gap():
         "reason": "optional authority unavailable",
     }]
     _reseal_r11(evidence)
-    assert verify_serialized_r11_evidence(evidence) is True
+    assert verify_serialized_r11_evidence(evidence) is False
 
 
 def test_cb_c5_02_verification_partial_without_authority_gap_rejected():
@@ -2212,3 +2218,223 @@ def test_cb_c5_03_verification_partial_with_fail_check_rejected():
     evidence["checks"][0]["state"] = "FAIL"
     _reseal_r11(evidence)
     assert verify_serialized_r11_evidence(evidence) is False
+
+
+# --------------------------------------------------------------------------
+# Correction A (F02) - A7: adversarial resealed matrix
+#
+# The attacker recomputes EVERY affected digest after each mutation
+# (embedded subject r10SnapshotDigest, subjectEvidenceDigest,
+# subjectSnapshotDigest, r11SnapshotDigest).  Digest reconstruction alone
+# therefore passes; only the canonical semantic verification replay can
+# reject these artifacts.  CONTENT_INTEGRITY != VERIFICATION_AUTHORITY.
+# --------------------------------------------------------------------------
+
+def _attacker_reseal(evidence: dict, *, reseal_subject_digest: bool = False,
+                     update_subject_binding: bool = False) -> dict:
+    """Attacker utility: after mutating the artifact, recompute every
+    affected digest.  reseal_subject_digest re-derives the embedded
+    subject's internal r10SnapshotDigest; update_subject_binding re-derives
+    subjectEvidenceDigest and subjectSnapshotDigest; the outer
+    r11SnapshotDigest is always resealed."""
+    subject = evidence.get("subjectEvidence")
+    if reseal_subject_digest and isinstance(subject, dict):
+        _reseal_r10(subject)
+    if update_subject_binding and isinstance(subject, dict):
+        evidence["subjectEvidenceDigest"] = _digest(subject)
+        evidence["subjectSnapshotDigest"] = subject.get("r10SnapshotDigest")
+    return _reseal_r11(evidence)
+
+
+def test_adv_f02_01_mutated_subject_semantic_failure_rejected():
+    # Silently "fix" the subject by deleting its honest gap, then reseal
+    # every digest.  The owning semantic verifier fails the subject
+    # (HONEST_MISSING_MODEL) while the serialized artifact claims OK.
+    evidence = _base_r11()
+    evidence["subjectEvidence"]["gaps"] = []
+    _attacker_reseal(evidence, reseal_subject_digest=True,
+                     update_subject_binding=True)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_02_removed_required_check_rejected():
+    evidence = _base_r11()
+    evidence["checks"].pop(0)
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_03_duplicated_required_check_rejected():
+    evidence = _base_r11()
+    evidence["checks"].append(copy.deepcopy(evidence["checks"][0]))
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_04_invented_passing_check_rejected():
+    # A plausible, sorted, unique, PASS-state invented check defeats every
+    # integrity-only rule (the pre-correction verifier accepted this); the
+    # canonical replay rejects it because the owning verifier never
+    # emitted it.
+    evidence = _base_r11()
+    evidence["checks"].append({
+        "checkId": "AAA_INVENTED_AUTHORITY",
+        "state": "PASS",
+        "detail": "fabricated by attacker",
+    })
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_05_changed_check_result_rejected():
+    evidence = _base_r11()
+    target = next(c for c in evidence["checks"]
+                  if c["checkId"] == "R10_SNAPSHOT_DIGEST")
+    target["state"] = "UNAVAILABLE"
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_06_failed_verification_upgraded_to_ok_rejected():
+    # The crown-jewel F02 case: canonical verification of the (mutated)
+    # subject FAILED; the attacker flips the overall status to
+    # VERIFICATION_OK, marks every check PASS, drops the gaps and reseals.
+    subject = _subject()
+    subject["gaps"] = []
+    _reseal_r10(subject)
+    broken = _verify(subject)
+    assert broken.status is VerificationStatus.VERIFICATION_FAILED
+    evidence = broken.to_evidence_dict()
+    evidence["status"] = "VERIFICATION_OK"
+    evidence["verificationGaps"] = []
+    for check in evidence["checks"]:
+        check["state"] = "PASS"
+        check["detail"] = ""
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_07_renamed_check_id_rejected():
+    evidence = _base_r11()
+    evidence["checks"][0]["checkId"] = "RENAMED_AUTHORITY_CHECK"
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_08_changed_schema_version_rejected():
+    evidence = _base_r11()
+    evidence["schemaVersion"] = "radar-r11-verification-v2"
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_09_wrong_subject_snapshot_digest_rejected():
+    evidence = _base_r11()
+    evidence["subjectSnapshotDigest"] = "0" * 64
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_10_subject_snapshot_digest_does_not_reconstruct():
+    # subjectSnapshotDigest matches the embedded subject's recorded
+    # r10SnapshotDigest, but that recorded digest no longer reconstructs
+    # the subject content; every envelope digest is resealed.
+    evidence = _base_r11()
+    evidence["subjectEvidence"]["r10SnapshotDigest"] = "a" * 64
+    evidence["subjectSnapshotDigest"] = "a" * 64
+    evidence["subjectEvidenceDigest"] = _digest(
+        evidence["subjectEvidence"])
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_11_subject_replaced_with_other_identity_rejected():
+    # A fully VALID R10 subject from another economic identity replaces the
+    # embedded subject; every digest is resealed.  The envelope still
+    # claims the original identity, so identity binding fails.
+    evidence = _base_r11()
+    other = _subject(uid="MSFT")
+    assert other["economicAssetUid"] == "MSFT"
+    assert other != evidence["subjectEvidence"]
+    evidence["subjectEvidence"] = other
+    _attacker_reseal(evidence, reseal_subject_digest=True,
+                     update_subject_binding=True)
+    assert evidence["economicAssetUid"] == "AAPL"
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_12_malformed_checks_container_rejected():
+    for bad in ("bad", {"unexpected": True}, 1):
+        evidence = _base_r11()
+        evidence["checks"] = bad
+        _attacker_reseal(evidence)
+        assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_13_malformed_truthy_check_member_rejected():
+    for bad in ({"unexpected": True}, [1], "PASS"):
+        evidence = _base_r11()
+        evidence["checks"][0] = bad
+        _attacker_reseal(evidence)
+        assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_14_malformed_generated_at_rejected():
+    for bad in ("2026-13-99T99:99:99+00:00", "2026-09-18T12:00:00"):
+        evidence = _base_r11()
+        evidence["generatedAt"] = bad
+        _attacker_reseal(evidence)
+        assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_15_invalid_or_missing_identity_rejected():
+    evidence = _base_r11()
+    evidence["economicAssetUid"] = None
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+    evidence = _base_r11()
+    evidence["economicNodeId"] = "economic:OTHER"
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+def test_adv_f02_16_invalid_status_rejected():
+    evidence = _base_r11()
+    evidence["status"] = "VERIFICATION_SUPER"
+    _attacker_reseal(evidence)
+    assert verify_serialized_r11_evidence(evidence) is False
+
+
+# -- Correction A (F02) positive controls ----------------------------------
+
+def test_adv_f02_positive_live_r11_evidence_verifies():
+    evidence = _base_r11()
+    assert evidence["status"] == "VERIFICATION_OK"
+    assert verify_serialized_r11_evidence(evidence) is True
+
+
+def test_adv_f02_positive_full_model_fixture_verifies():
+    snapshot = _verify(_comparable_subject())
+    assert snapshot.status is VerificationStatus.VERIFICATION_OK
+    assert verify_serialized_r11_evidence(snapshot.to_evidence_dict()) is True
+
+
+def test_adv_f02_positive_replay_is_the_authority():
+    # Serialized acceptance is exactly the canonical replay output:
+    # replaying verify_r10_evidence with the serialized authority inputs
+    # reproduces the artifact dict-for-dict, including the recomputed
+    # r11SnapshotDigest.
+    from finco_radar.verification.verifier import verify_r10_evidence as replay_fn
+    evidence = _base_r11()
+    assert verify_serialized_r11_evidence(evidence) is True
+    replayed = replay_fn(
+        evidence=evidence["subjectEvidence"],
+        generated_at=datetime.fromisoformat(evidence["generatedAt"]),
+        git_head=evidence["gitHead"],
+        freeze_anchor=ANCHOR,
+        freeze_tree=TREE,
+        content_envelope=evidence["contentEnvelope"],
+    )
+    assert replayed.to_evidence_dict() == evidence
+    assert replayed.status is VerificationStatus.VERIFICATION_OK
