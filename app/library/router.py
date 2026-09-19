@@ -64,8 +64,8 @@ def workbook_destination(project_code: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _get_current_user(request: Request):
-    from main_web import get_current_user
-    return get_current_user(request)
+    from app.auth import resolve_request_session
+    return resolve_request_session(request)
 
 
 def _templates():

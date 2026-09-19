@@ -9,10 +9,12 @@ contract (absent → ACTIVE).
 
 Authentication
 --------------
-Uses the canonical ``get_current_user`` helper from ``app.auth`` (cookie →
-``decode_session_token`` → ``SessionData``).  The authenticated user is a
-``SessionData`` instance; its ``user_id`` attribute is used to scope DB
-lookups, matching the legacy convention in all other routes.
+Uses the canonical session resolver ``app.auth.resolve_request_session``
+(cookie(s) → signed token → ``SessionData``), shared with main_web and the
+Library so every surface interprets the same session material identically.
+The resolved identity may be an admin or a demo session; its ``user_id``
+attribute is used to scope DB lookups, matching the legacy convention in all
+other routes.
 
 Current routes
 --------------
@@ -74,7 +76,7 @@ from app.utils.workbook_flag import (
     workbook_v2_active,
 )
 
-from app.auth import COOKIE_NAME, decode_session_token
+from app.auth import resolve_request_session
 from app.ui.capex_view_model import build_capex_view_model
 from app.ui.inputs_summary import build_inputs_summary
 from app.ui.opex_sheet_projection import build_opex_sheet_projection
@@ -168,17 +170,12 @@ _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"
 
 
 def _get_current_user(request: Request):
-    """Return the authenticated SessionData, or None.
+    """Return the resolved SessionData (admin or demo), or None.
 
-    Uses the canonical app.auth mechanism: reads the finco_session cookie,
-    decodes and validates the signed token, and returns a SessionData object
-    (with .user_id and .username attributes) — the same shape that all legacy
-    routes receive from get_current_user() in main_web.py.
+    Delegates to the canonical app.auth.resolve_request_session so Workbook
+    V2 interprets session cookies exactly like main_web and the Library.
     """
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        return None
-    return decode_session_token(token)
+    return resolve_request_session(request)
 
 
 _SENIOR_UNRESOLVED = "UNRESOLVED"

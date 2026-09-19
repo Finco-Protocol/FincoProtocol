@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.utils.workbook_flag import require_v2_active
 
-from app.auth import COOKIE_NAME, decode_session_token
+from app.auth import resolve_request_session
 from app.v2.capex_commands import (
     CapexCommandError,
     CapexConcurrentEditError,
@@ -47,10 +47,8 @@ capex_router = APIRouter()
 
 
 def _get_current_user(request: Request):
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        return None
-    return decode_session_token(token)
+    """Canonical session resolution — shared with main_web/Library (F05)."""
+    return resolve_request_session(request)
 
 
 def _render_capex_sheet(
