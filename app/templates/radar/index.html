@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — v1</title>
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <script src="/static/radar/vendor/htmx.min.js" defer></script>
+</head>
+<body class="radar">
+<header class="radar-topbar">
+  <div class="radar-brand">FINCO <span>RADAR</span> <em class="radar-readonly">READ-ONLY</em></div>
+  <div class="radar-note">quote direction only — no wallet, no signing, no transaction submission</div>
+</header>
+
+<main class="radar-main">
+  <section class="panel panel-target" data-panel="configured-target">
+    <h2>Configured target asset</h2>
+    <p class="muted small">non-authoritative composition target — the authoritative Identity panel appears with each snapshot</p>
+    <dl class="kv">
+      <dt>Asset</dt><dd>{{ asset.economicAssetUid }} <span class="muted">({{ asset.symbol }})</span></dd>
+      <dt>Chain</dt><dd>{{ asset.chainId }}</dd>
+      <dt>Contract</dt><dd class="mono">{{ asset.contractAddress }}</dd>
+    </dl>
+  </section>
+
+  <section class="panel panel-controls" data-panel="controls">
+    <h2>Quote controls</h2>
+    <form method="post" action="/radar/refresh" hx-post="/radar/refresh" hx-target="#radar-panels" hx-swap="innerHTML" class="radar-controls">
+      <div class="control-group" role="group" aria-label="Quote direction">
+        {% for d in directions %}
+        <label class="chip"><input type="radio" name="direction" value="{{ d }}" {% if d == 'BUY' %}checked{% endif %}> {{ d }}</label>
+        {% endfor %}
+      </div>
+      <div class="control-group" role="group" aria-label="Notional size">
+        {% for s in sizes %}
+        <label class="chip"><input type="radio" name="size" value="{{ s }}" {% if s == '100' %}checked{% endif %}> ${{ s }}</label>
+        {% endfor %}
+      </div>
+      <button type="submit" class="refresh-btn">Refresh</button>
+    </form>
+    <p class="muted small">One refresh = one immutable acquisition snapshot. Every panel and the Evidence Inspector reference that exact snapshot.</p>
+  </section>
+
+  <div id="radar-panels" class="radar-panels">
+    {% if load_error %}
+    <section class="panel panel-error"><h2>Snapshot</h2><p class="state-unavailable">{{ load_error }}</p></section>
+    {% elif view %}
+    {% include "radar/panels.html" %}
+    {% else %}
+    <section class="panel panel-idle"><h2>Panels</h2><p class="muted">No acquisition yet. Choose a direction and size, then Refresh.</p></section>
+    {% endif %}
+  </div>
+</main>
+</body>
+</html>

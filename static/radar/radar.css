@@ -1,0 +1,131 @@
+/* FINCO Radar v1 — dark institutional terminal.  Distinct from FINCO
+   Model: charcoal base, compact density, restrained teal/gold accents.
+   No neon, no glassmorphism, no dashboard cards. */
+
+:root {
+  --radar-bg: #101418;
+  --radar-panel: #161b21;
+  --radar-border: #232b33;
+  --radar-text: #d7dee5;
+  --radar-muted: #7d8a96;
+  --radar-teal: #3fb8af;
+  --radar-gold: #c9a55c;
+  --radar-red: #d07a6a;
+  --radar-green: #7fbf7f;
+  --radar-mono: "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+
+html, body.radar {
+  margin: 0;
+  background: var(--radar-bg);
+  color: var(--radar-text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.radar-topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--radar-border);
+}
+.radar-brand { font-size: 18px; letter-spacing: 0.14em; font-weight: 600; }
+.radar-brand span { color: var(--radar-teal); }
+.radar-brand em.radar-readonly {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--radar-gold);
+  border: 1px solid var(--radar-gold);
+  border-radius: 2px;
+  padding: 1px 7px;
+  margin-left: 10px;
+}
+.radar-note { color: var(--radar-muted); font-size: 12px; }
+
+.radar-main { padding: 18px 22px 40px; display: flow-root; }
+
+.panel {
+  background: var(--radar-panel);
+  border: 1px solid var(--radar-border);
+  border-radius: 3px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+}
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--radar-muted);
+  border-bottom: 1px solid var(--radar-border);
+  padding-bottom: 6px;
+}
+
+.kv { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 3px 16px; margin: 0; }
+.kv dt { color: var(--radar-muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+
+.mono { font-family: var(--radar-mono); font-size: 0.95em; }
+.big { font-size: 1.25em; color: var(--radar-teal); }
+.muted { color: var(--radar-muted); }
+.small { font-size: 12px; }
+
+.state-complete, .state-available, .state-success { color: var(--radar-green); }
+.state-partial, .state-timeout, .state-invalid_response, .state-provider_error { color: var(--radar-gold); }
+.state-unavailable, .state-transport_error { color: var(--radar-red); }
+
+.radar-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 8px; }
+.control-group { display: flex; gap: 8px; }
+.chip {
+  border: 1px solid var(--radar-border);
+  border-radius: 2px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: var(--radar-mono);
+}
+.chip input { accent-color: var(--radar-teal); margin-right: 6px; }
+.chip:hover { border-color: var(--radar-teal); }
+.refresh-btn {
+  background: var(--radar-teal);
+  border: none;
+  color: #0d1417;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 7px 22px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.refresh-btn:hover { filter: brightness(1.1); }
+
+.provider-row { padding: 1px 0; }
+
+.inspector-link { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--radar-teal); cursor: pointer; }
+.inspector-link:hover { color: var(--radar-teal); }
+
+.inspector { border-top: 1px solid var(--radar-border); }
+.inspector-stage { padding: 8px 0; border-bottom: 1px dashed var(--radar-border); }
+.inspector-stage h3 { margin: 0 0 8px; font-size: 14px; color: var(--radar-gold); }
+.inspector-stage h4 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--radar-muted);
+}
+.evidence-payload {
+  background: #0c1013;
+  border: 1px solid var(--radar-border);
+  padding: 8px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 11.5px;
+}
+
+@media (max-width: 760px) {
+  .kv { grid-template-columns: 1fr; }
+  .radar-main { padding: 12px; }
+}
