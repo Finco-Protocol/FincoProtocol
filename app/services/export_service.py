@@ -12,6 +12,13 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from app.ui.dirty_state import _scenario_changed
 
 
+# ── Export authority mode constants ───────────────────────────────────────────
+
+EXPORT_AUTHORITY_PREVIEW_WORKING = "PREVIEW_WORKING"
+EXPORT_AUTHORITY_FACTORY_REFERENCE = "FACTORY_REFERENCE"
+EXPORT_AUTHORITY_CANONICAL_LAST_RUN = "CANONICAL_LAST_RUN"
+
+
 # ── Single-read export authority ──────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -43,6 +50,10 @@ class ResolvedExportAuthority:
     active_scenario_name: str | None = None
     last_runtime_scenario_id: str | None = None
     any_run_committed: bool = False  # R9/N03-CorrA: True when ≥1 Run committed (Base or Scenario)
+    authority_mode: str = EXPORT_AUTHORITY_FACTORY_REFERENCE
+    run_id: str | None = None            # last_runtime_snapshot_id from workspace
+    run_at: str | None = None            # ISO timestamp of last run (last_runtime_at)
+    working_changed_since_run: bool = False  # draft differs from last-run snapshot
 
 
 @dataclass(frozen=True)
@@ -168,11 +179,13 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
     if project_record is None or user_id is None:
         return ResolvedExportAuthority(
             project_inputs=None, current_snapshot=None, runtime_origin=None,
+            authority_mode=EXPORT_AUTHORITY_FACTORY_REFERENCE,
         )
     origin = getattr(project_record, "project_origin", "") or ""
     if origin != "user_created":
         return ResolvedExportAuthority(
             project_inputs=None, current_snapshot=None, runtime_origin=None,
+            authority_mode=EXPORT_AUTHORITY_FACTORY_REFERENCE,
         )
     from app.persistence.workspace_repository import get_workspace_state
 
@@ -251,14 +264,25 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
     if folded_opex is not project_inputs.opex:
         project_inputs = _dc.replace(project_inputs, opex=folded_opex)
 
+    from app.persistence._helpers import snapshots_equal
+    _last_snap = ws.last_runtime_snapshot or {}
+    _working_changed = not snapshots_equal(ws.draft_snapshot or {}, _last_snap)
+    _run_at = (
+        ws.last_runtime_at.isoformat(timespec="seconds")
+        if getattr(ws, "last_runtime_at", None) else None
+    )
     return ResolvedExportAuthority(
         project_inputs=project_inputs,
         current_snapshot=current_snapshot,
         runtime_origin="saved_state",
         active_scenario_id=ws.active_scenario_id or None,
         active_scenario_name=ws.active_scenario_name or None,
-        last_runtime_scenario_id=ws.last_runtime_scenario_id,  # None = never run or Base run
+        last_runtime_scenario_id=ws.last_runtime_scenario_id,
         any_run_committed=bool(ws.any_run_committed),
+        authority_mode=EXPORT_AUTHORITY_PREVIEW_WORKING,
+        run_id=ws.last_runtime_snapshot_id or None,
+        run_at=_run_at,
+        working_changed_since_run=_working_changed,
     )
 
 
@@ -295,16 +319,22 @@ def build_runtime_summary_csv_export(
         # R5/F04-C: ONE workspace read → authority → rows.
         authority = resolve_export_authority(project_record, user_id)
         if authority.project_inputs is not None:
-            # F07: bind the artifact's scenario lineage to the resolved
-            # authority's active scenario (factory paths stay NOT_APPLICABLE).
+            # F07: bind the artifact's scenario lineage and export authority.
             runtime_rows = build_runtime_summary_rows(
                 runtime_project_code, _project_inputs=authority.project_inputs,
                 runtime_origin=authority.runtime_origin,
                 scenario_id=authority.active_scenario_id,
                 scenario_name=authority.active_scenario_name,
+                export_authority=authority.authority_mode,
+                working_changed_since_run=authority.working_changed_since_run,
+                run_id=authority.run_id,
+                run_at=authority.run_at,
             )
         else:
-            runtime_rows = build_runtime_summary_rows(runtime_project_code)
+            runtime_rows = build_runtime_summary_rows(
+                runtime_project_code,
+                export_authority=EXPORT_AUTHORITY_FACTORY_REFERENCE,
+            )
         first_row = runtime_rows[0]
         csv_text = build_runtime_summary_csv(
             runtime_project_code,
@@ -322,8 +352,8 @@ def build_runtime_summary_csv_export(
         )
 
     # Preserve provenance timestamps for the caller's record_export.
-    # These must match what the runtime itself recorded.
     # R9/N03: include scenario lineage so callers can detect stale-scenario state.
+    # F07-B: include export authority mode, run identity, and staleness.
     metadata = {
         "export_generated_at": first_row["export_generated_at"],
         "runtime_generated_at": first_row["runtime_generated_at"],
@@ -337,6 +367,10 @@ def build_runtime_summary_csv_export(
             _scenario_changed(authority.active_scenario_id or "", authority.last_runtime_scenario_id, any_run_committed=authority.any_run_committed)
             if authority.project_inputs is not None else False
         ),
+        "export_authority": authority.authority_mode,
+        "export_run_id": authority.run_id or "",
+        "export_run_at": authority.run_at or "",
+        "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
     }
 
     filename = f"phase10_{safe_project or runtime_project_code}_runtime_summary.csv"
@@ -386,6 +420,10 @@ def build_institutional_workbook_export(
             current_snapshot=authority.current_snapshot,
             scenario_id=authority.active_scenario_id,
             scenario_name=authority.active_scenario_name,
+            export_authority=authority.authority_mode,
+            working_changed_since_run=authority.working_changed_since_run,
+            run_id=authority.run_id,
+            run_at=authority.run_at,
         )
         first_row = bundle.runtime_rows[0]
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
@@ -400,6 +438,7 @@ def build_institutional_workbook_export(
 
     # Preserve provenance timestamps for the caller's record_export.
     # R9/N03: include scenario lineage so callers can detect stale-scenario state.
+    # F07-B: include export authority mode, run identity, and staleness.
     metadata = {
         "export_generated_at": first_row["export_generated_at"],
         "runtime_generated_at": first_row["runtime_generated_at"],
@@ -413,6 +452,10 @@ def build_institutional_workbook_export(
             _scenario_changed(authority.active_scenario_id or "", authority.last_runtime_scenario_id, any_run_committed=authority.any_run_committed)
             if authority.project_inputs is not None else False
         ),
+        "export_authority": authority.authority_mode,
+        "export_run_id": authority.run_id or "",
+        "export_run_at": authority.run_at or "",
+        "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
     }
 
     filename = f"phase10_{safe_project or runtime_project_code}_institutional_workbook_skeleton.xlsx"

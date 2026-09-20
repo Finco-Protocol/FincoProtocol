@@ -99,7 +99,7 @@ def _metric_value(record: "ScenarioRecord", key: str) -> Any:
     summary = record.last_run_summary or {}
     metric_map = {
         "Revenue": summary.get("total_revenue_keur"),
-        "OPEX": summary.get("total_opex_keur") or snapshot.get("opex_y1_keur"),
+        "OPEX": summary.get("total_opex_keur"),
         "EBITDA": summary.get("total_ebitda_keur"),
         "CAPEX": snapshot.get("total_capex_keur"),
         "Senior Debt": summary.get("senior_debt_keur"),

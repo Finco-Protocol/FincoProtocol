@@ -12,7 +12,7 @@ from pathlib import Path
 import csv
 import os
 
-from app.persistence.provenance import build_replay_metadata
+from app.persistence.provenance import build_replay_metadata, NOT_APPLICABLE
 from app.project_factories import (
     create_generic_solar_reference,
     create_default_solar_project,
@@ -51,6 +51,10 @@ RUNTIME_SUMMARY_COLUMNS = [
     "runtime_flags_json",
     "replay_limitations",
     "governance_posture_summary",
+    "export_authority",
+    "working_changed_since_run",
+    "run_id",
+    "run_at",
     "notes",
 ]
 
@@ -106,6 +110,10 @@ def build_runtime_summary_rows(
     runtime_origin: str | None = None,
     scenario_id: str | None = None,
     scenario_name: str | None = None,
+    export_authority: str | None = None,
+    working_changed_since_run: bool | None = None,
+    run_id: str | None = None,
+    run_at: str | None = None,
 ) -> list[dict[str, str]]:
     if _precomputed is not None:
         # PR-8: single-calculation reuse — a caller that already ran the
@@ -205,6 +213,14 @@ def build_runtime_summary_rows(
                 "runtime_flags_json": replay_metadata["runtime_flags_json"],
                 "replay_limitations": replay_metadata["replay_limitations_notice"],
                 "governance_posture_summary": replay_metadata["governance_posture_summary"],
+                "export_authority": export_authority or "FACTORY_REFERENCE",
+                "working_changed_since_run": (
+                    "true" if working_changed_since_run is True
+                    else "false" if working_changed_since_run is False
+                    else "not_applicable"
+                ),
+                "run_id": run_id or NOT_APPLICABLE,
+                "run_at": run_at or NOT_APPLICABLE,
                 "notes": notes,
             }
         )
