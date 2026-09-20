@@ -1,0 +1,47 @@
+{# ── Protocol Shell Navigation  (_protocol_nav.html)
+   Shared across all three FINCO Protocol surfaces:
+   Home · Model (library/workbook) · Radar (read-only) · Verify
+
+   Context variables used (all optional — nav degrades gracefully):
+     proto_active_page : str  — "home" | "model" | "radar" | "verify"
+     user              : obj  — the authenticated user (F05 session)
+
+   This partial loads protocol-shell.css; the calling page must also
+   include tokens.css before this file for the --fo-* tokens to resolve.
+#}
+<link rel="stylesheet" href="/static/css/protocol-shell.css">
+<nav class="proto-nav" aria-label="FINCO Protocol navigation">
+  <div class="proto-nav__inner">
+    <a href="/" class="proto-nav__brand">FINCO <span>Protocol</span></a>
+    <div class="proto-nav__links">
+      <a href="/"
+         class="proto-nav__link{% if proto_active_page == 'home' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'home' %}aria-current="page"{% endif %}>
+        Home
+      </a>
+      <a href="/library"
+         class="proto-nav__link{% if proto_active_page == 'model' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'model' %}aria-current="page"{% endif %}>
+        Model
+      </a>
+      <a href="/radar"
+         class="proto-nav__link{% if proto_active_page == 'radar' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'radar' %}aria-current="page"{% endif %}>
+        Radar
+        <span class="proto-nav__badge">READ-ONLY</span>
+      </a>
+      <a href="/verify"
+         class="proto-nav__link{% if proto_active_page == 'verify' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'verify' %}aria-current="page"{% endif %}>
+        Verify
+      </a>
+    </div>
+    {% if user %}
+    <div class="proto-nav__right">
+      <form method="POST" action="/logout" style="display:inline;">
+        <button type="submit" class="proto-nav__signout">Sign out</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</nav>

@@ -4,10 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FINCO Radar — v1</title>
+  <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <script src="/static/radar/vendor/htmx.min.js" defer></script>
 </head>
 <body class="radar">
+{% with proto_active_page="radar" %}
+{% include "partials/_protocol_nav.html" %}
+{% endwith %}
 <header class="radar-topbar">
   <div class="radar-brand">FINCO <span>RADAR</span> <em class="radar-readonly">READ-ONLY</em></div>
   <div class="radar-note">quote direction only — no wallet, no signing, no transaction submission</div>

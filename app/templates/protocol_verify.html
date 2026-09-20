@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify — FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+</head>
+<body style="margin:0;background:var(--fo-paper);">
+
+  {% with proto_active_page="verify" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <div class="proto-verify">
+    <div class="proto-verify__header">
+      <h1 class="proto-verify__title">Public Validation Corpus</h1>
+      <p class="proto-verify__desc">
+        Deterministic, network-free cross-surface verification.
+        Synthetic-only corpus: no client, workbook, wallet, company,
+        person or jurisdiction-specific calibration data.
+      </p>
+      {% if corpus %}
+      <p class="proto-verify__schema">{{ corpus.schema }}</p>
+      {% endif %}
+    </div>
+
+    {% if error %}
+    <div class="proto-verify__error">{{ error }}</div>
+
+    {% elif corpus %}
+
+    {% if corpus_valid %}
+    <div class="proto-verify__status proto-verify__status--ok">
+      ✓ Corpus verified — all {{ corpus.cases | length }} cases passed, digest confirmed
+    </div>
+    {% else %}
+    <div class="proto-verify__status proto-verify__status--err">
+      ✗ Corpus verification failed
+    </div>
+    {% endif %}
+
+    <div class="proto-verify__cases">
+      {% for case in corpus.cases %}
+      <div class="proto-verify__case">
+        <div class="proto-verify__case-header">
+          <span class="proto-verify__case-id">{{ case.caseId }}</span>
+          <span class="proto-verify__case-surface">{{ case.surface }}</span>
+          {% if case.envelope %}
+          <span class="proto-verify__case-ok">✓ envelope valid</span>
+          {% else %}
+          <span class="proto-verify__case-err">✗ missing envelope</span>
+          {% endif %}
+        </div>
+        <div class="proto-verify__case-meta">
+          evidence type: {{ case.envelope.evidenceType if case.envelope else "—" }}
+          &nbsp;·&nbsp;
+          synthetic: {{ case.synthetic }}
+          {% if case.envelope and case.envelope.issuedAt %}
+          &nbsp;·&nbsp; issued: {{ case.envelope.issuedAt }}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if corpus.corpusSha256 %}
+    <div class="proto-verify__digest">
+      <div class="proto-verify__digest-label">Corpus SHA-256 digest</div>
+      <div class="proto-verify__digest-value">{{ corpus.corpusSha256 }}</div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+
+</body>
+</html>

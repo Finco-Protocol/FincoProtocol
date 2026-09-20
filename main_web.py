@@ -275,6 +275,10 @@ app.include_router(_v2_opex_router, prefix="/v2/opex")
 from app.radar_ui.router import router as _radar_router
 app.include_router(_radar_router)
 
+# -- FINCO Protocol Shell (Unified home + Verify surface) ----------------------
+from app.protocol_ui.router import router as _protocol_router
+app.include_router(_protocol_router)
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""
@@ -2816,10 +2820,14 @@ async def index(request: Request, project: str | None = None):
         return RedirectResponse(url="/login", status_code=302)
 
     if not (project or "").strip():
-        # No project selected: redirect to the paginated
-        # Project Library. This is the single authoritative
-        # entry point for browsing projects.
-        return RedirectResponse(url="/library", status_code=302)
+        # No project selected: render the unified Protocol home (three product
+        # surfaces: Model, Radar READ-ONLY, Verify).  The paginated Project
+        # Library is still reachable from the nav and from /library directly.
+        return templates.TemplateResponse(
+            request=request,
+            name="protocol_home.html",
+            context={"user": user},
+        )
 
     project_code = (project or "").strip()
     if project_code:
