@@ -11,9 +11,13 @@ Architecture:
 
 Env vars:
 - FINCO_APP_MODE: development | internal | pilot (default: development)
-  - development/internal: placeholder secrets allowed with WARNING
-  - pilot: fails fast on placeholder/insecure secrets
-- FINCO_SECRET_KEY: signing key (required in pilot/production)
+  - development/internal: dev-grade; placeholder/missing secrets allowed with WARNING
+  - pilot: secure deployment (production and staging deploys use this mode);
+    fails fast on missing/placeholder/insecure secrets
+  - any other value: treated as a secure deployment — startup fails closed
+    unless a real signing secret is configured. It never downgrades to
+    development semantics.
+- FINCO_SECRET_KEY: signing key (required in pilot and any unrecognized mode)
 - FINCO_ADMIN_USER: username (default: admin)
 - FINCO_ADMIN_PASSWORD: plain password (default: FINCO Model2026!)
 - FINCO_ADMIN_PASSWORD_HASH: bcrypt hash (overrides FINCO_ADMIN_PASSWORD)
@@ -40,7 +44,12 @@ _VALID_APP_MODES = frozenset({"development", "internal", "pilot"})
 
 
 def get_app_mode() -> str:
-    """Return the current app mode, defaulting to 'development'."""
+    """Return the configured app mode.
+
+    Unset defaults to 'development'. An unrecognized value is returned as-is
+    and is treated as a secure deployment by the signing-secret checks below —
+    it must not silently inherit development semantics.
+    """
     raw = os.getenv("FINCO_APP_MODE", "").strip().lower()
     if raw in _VALID_APP_MODES:
         return raw
@@ -48,8 +57,17 @@ def get_app_mode() -> str:
         return "development"
     print(f"WARNING: FINCO_APP_MODE={raw!r} is not recognized. "
           f"Valid values are: {', '.join(sorted(_VALID_APP_MODES))}. "
-          f"Defaulting to 'development'.")
-    return "development"
+          f"Treating as a secure deployment: signing secrets must be valid.")
+    return raw
+
+
+def _mode_requires_secure_secret(mode: str) -> bool:
+    """True for deployment modes that must fail closed on insecure signing secrets.
+
+    Only the explicitly documented dev-grade modes ('development', 'internal')
+    may run on the development fallback.
+    """
+    return mode not in ("development", "internal")
 
 
 # ── Placeholder detection ──────────────────────────────────────────────────────
@@ -78,16 +96,30 @@ def _is_pilot_mode() -> bool:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 FINCO_APP_MODE = get_app_mode()
+_SECURE_MODE = _mode_requires_secure_secret(FINCO_APP_MODE)
 
 SECRET_KEY = os.getenv("FINCO_SECRET_KEY")
-if not SECRET_KEY:
-    SECRET_KEY = "dev-secret-please-change-in-production"
-    print("WARNING: FINCO_SECRET_KEY not set. Using insecure default.")
-elif is_placeholder_secret(SECRET_KEY) and _is_pilot_mode():
-    raise RuntimeError(
-        "FINCO_SECRET_KEY is a placeholder value in pilot mode. "
-        "Set a real secret: FINCO_SECRET_KEY=<long-random-string>"
-    )
+if _SECURE_MODE:
+    if SECRET_KEY and is_placeholder_secret(SECRET_KEY):
+        raise RuntimeError(
+            "FINCO_SECRET_KEY is a placeholder value in secure deployment mode "
+            f"(FINCO_APP_MODE={FINCO_APP_MODE!r}). "
+            "Set a real secret: FINCO_SECRET_KEY=<long-random-string>"
+        )
+    if not SECRET_KEY:
+        raise RuntimeError(
+            "FINCO_SECRET_KEY is not set in secure deployment mode "
+            f"(FINCO_APP_MODE={FINCO_APP_MODE!r}). "
+            "Refusing to start with a fallback signing secret. "
+            "Set FINCO_SECRET_KEY=<long-random-string>."
+        )
+else:
+    if not SECRET_KEY:
+        SECRET_KEY = "dev-secret-please-change-in-production"
+        print("WARNING: FINCO_SECRET_KEY not set. Using insecure default.")
+    elif is_placeholder_secret(SECRET_KEY):
+        print("WARNING: FINCO_SECRET_KEY is a placeholder value in "
+              f"FINCO_APP_MODE={FINCO_APP_MODE!r}. Do not use in production.")
 
 ADMIN_USERNAME = os.getenv("FINCO_ADMIN_USER", "admin")
 ADMIN_PASSWORD_HASH_ENV = os.getenv("FINCO_ADMIN_PASSWORD_HASH")
@@ -115,6 +147,12 @@ DEMO_USER_ID_PREFIX = "demo_"
 # ── CSRF configuration ────────────────────────────────────────────────────────
 
 CSRF_SECRET = os.getenv("FINCO_CSRF_SECRET") or SECRET_KEY
+if _SECURE_MODE and os.getenv("FINCO_CSRF_SECRET") and is_placeholder_secret(os.getenv("FINCO_CSRF_SECRET", "")):
+    raise RuntimeError(
+        "FINCO_CSRF_SECRET is a placeholder value in secure deployment mode "
+        f"(FINCO_APP_MODE={FINCO_APP_MODE!r}). "
+        "Set a real secret: FINCO_CSRF_SECRET=<long-random-string>"
+    )
 _csrf_serializer: Optional[URLSafeTimedSerializer] = None
 
 
