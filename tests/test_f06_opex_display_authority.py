@@ -243,3 +243,73 @@ def test_custom_sub_lines_counted_in_live_total_but_never_in_anchor():
     assert vm.y1_total_opex > anchor, (
         "live authority must include the custom line; the persisted anchor cannot"
     )
+
+
+# ==========================================================================
+# Correction A — escalation display authority (engine-bound fidelity)
+# ==========================================================================
+
+def _escalation_summary(ctx: dict) -> dict:
+    return ctx["opex_escalation_summary"]
+
+
+def test_ca_escalation_01_uniform_lines_display_single_authoritative_rate():
+    """Wind reference lines all share 2.0% escalation: the card shows that
+    single rate as uniform."""
+    ctx = _build_ctx(_wind_reference_snapshot()[0])
+    summary = _escalation_summary(ctx)
+    assert summary["value"] == "2.0%"
+    assert "uniform" in summary["label"]
+
+
+def _opex_line_vm(code: str, name: str, inflation_pct: float,
+                  y1_keur: float, *, custom: bool = True):
+    from app.ui.opex_view_model import OpexLineVM
+    return OpexLineVM(
+        row_id="row-" + code, code=code, parent_code=code.rsplit(".", 1)[0],
+        name=name, source="custom" if custom else "canonical",
+        unit="kEUR", notes="", display_order=1,
+        validation_status="OK", y1_keur=y1_keur,
+        inflation_pct=inflation_pct, wht_flag=False, is_group=False,
+        is_editable=True, is_read_only=False, is_derived=False,
+        is_contingency=False, is_fixed=True, is_variable=False,
+        is_custom=custom, is_active=True,
+        year_values=(y1_keur,) * 20)
+
+
+def test_ca_escalation_02_heterogeneous_lines_show_mixed():
+    """Injected sub-lines under one group with different escalation rates:
+    the grid group row shows "mixed" — never one rate masquerading as
+    governing the whole group."""
+    from app.ui.opex_view_model import OpexGroupVM, group_escalation_display
+    lines = tuple(
+        _opex_line_vm(f"B.01.0{i}", name, rate, 10.0 + i)
+        for i, (name, rate) in enumerate(
+            (("custom one", 3.5), ("custom two", 1.5)), start=1))
+    group = OpexGroupVM(
+        code="B.01", name="Test Group", inflation_pct=2.0,
+        is_contingency=False, contingency_pct=0.0, lines=lines,
+        subtotal_per_year=(30.0,) * 20)
+    assert group_escalation_display(group) == "mixed"
+
+
+def test_ca_escalation_03_uniform_lines_show_shared_rate():
+    from app.ui.opex_view_model import OpexGroupVM, group_escalation_display
+    lines = tuple(
+        _opex_line_vm(f"B.01.0{i}", f"line {i}", 2.0, 10.0 + i)
+        for i in (1, 2, 3))
+    group = OpexGroupVM(
+        code="B.01", name="Uniform", inflation_pct=2.0,
+        is_contingency=False, contingency_pct=0.0, lines=lines,
+        subtotal_per_year=(30.0,) * 20)
+    assert group_escalation_display(group) == "2.0%"
+
+
+def _opex_group_codes():
+    from app.ui.project_context import _OPEX_GROUP_META
+    return sorted(meta[0] for meta in _OPEX_GROUP_META.values())
+
+
+def _opex_group_codes():
+    from app.ui.project_context import _OPEX_GROUP_META
+    return [meta[0] for meta in _OPEX_GROUP_META.values()]

@@ -425,7 +425,7 @@
           </td>
           <td class="ox-col-infl">
             {% if not group.is_contingency %}
-              <span class="ox-value--muted">{{ "%.1f"|format(group.inflation_pct) }}%</span>
+              <span class="ox-value--muted">{{ opex_escalation_displays.get(group.code, "mixed") }}</span>
             {% endif %}
           </td>
           <td class="ox-col-wht"></td>

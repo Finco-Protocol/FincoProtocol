@@ -578,6 +578,11 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines)
     opex_fields = _build_sheet_fields("opex", pis)
     opex_sheet_groups = build_opex_sheet_projection(opex_vm, opex_fields)
+    # F06 Correction A: escalation display helper for the group rows
+    from app.ui.opex_view_model import group_escalation_display as _group_escalation_display
+    opex_escalation_displays = {
+        g.code: _group_escalation_display(g) for g in opex_vm.groups
+    }
 
     # Summary section fields (e.g. opex.summary.total_y1 PARTIAL) rendered separately
     # at the bottom of the sheet so PARTIAL fields are never silently filtered out.
@@ -597,10 +602,36 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
         if _summary_field["field_id"] == "opex.summary.total_y1":
             _summary_field["value"] = opex_vm.y1_total_opex
 
+    # F06 Correction A — escalation display authority. The summary strip's
+    # "Escalation" card previously showed the FIRST line's escalation (or a
+    # fabricated 2.0% default) as if it governed the whole sheet.  The
+    # effective engine-bound escalation is PER LINE (annual_inflation on
+    # each effective OPEX item, consumed by the frozen orchestrator); a
+    # single rate is displayed only when every line shares it, otherwise
+    # the card is explicitly context-only.  Presentation layer: no engine
+    # formula or persisted value is touched.
+    _esc_rates = sorted({
+        round(float(item.annual_inflation) * 100, 1)
+        for item in effective_pi.opex
+    })
+    if not _esc_rates:
+        _esc_value, _esc_label = "—", "no budget lines"
+    elif len(_esc_rates) == 1:
+        _esc_value = f"{_esc_rates[0]:.1f}%"
+        _esc_label = "per annum — uniform across lines"
+    else:
+        _esc_value = "mixed"
+        _esc_label = "varies by line — per-line rates are authoritative"
+
     return {
         "opex_vm": opex_vm,
         "opex_sheet_groups": opex_sheet_groups,
+        "opex_escalation_displays": opex_escalation_displays,
         "opex_summary_fields": opex_summary_fields,
+        "opex_escalation_summary": {
+            "value": _esc_value,
+            "label": _esc_label,
+        },
     }
 
 
