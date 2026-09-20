@@ -302,52 +302,36 @@ async def execute_post_download_route(
 
     # ── 4. Runtime guard + snapshot resolution ───────────────────────
     if project_record.project_origin == "user_created":
-        # user_created branch
-        # Phase PILOT-HOTFIX-3: export uses the latest successful runtime
-        # evidence (last_runtime_snapshot + last_runtime_summary) when
-        # present, instead of requiring the current form snapshot to
-        # bit-match the saved runtime boundary. The /run endpoint still
-        # enforces the strict boundary (Section 3 of execute_run_route);
-        # export only needs a frozen, project-scoped runtime result.
-        # - If last_runtime_snapshot exists, use it. The current form
-        #   boundary is irrelevant for export — the user is asking for
-        #   a workbook derived from a successful run, not a fresh run.
-        # - If no last_runtime_snapshot exists, fail with a clear
-        #   user-facing message ("Run the model before exporting.")
-        #   rather than the generic runtime-boundary message.
-        if (
-            workspace_state is not None
-            and workspace_state.last_runtime_snapshot
-            and len(workspace_state.last_runtime_snapshot) > 0
-        ):
-            # Latest runtime evidence is available — use it directly.
-            # PILOT-HOTFIX-3: skip the strict form-boundary check and
-            # skip resolve_runtime_snapshot_source (which would re-resolve
-            # from saved_snapshot or baseline_snapshot, potentially
-            # missing the scenario override). The last_runtime_snapshot
-            # was written by the most recent successful /run and is
-            # the authoritative export input.
-            runtime_snapshot = workspace_state.last_runtime_snapshot
-            # Re-resolve active_scenario_record from active_scenario_id
-            # so the workbook carries the right scenario provenance.
-            if workspace_state.active_scenario_id:
-                try:
-                    from app.persistence.scenarios_repository import get_scenario as _ph3_get_scenario
-                    active_scenario_record = _ph3_get_scenario(
-                        workspace_state.active_scenario_id, user.user_id,
-                    )
-                except Exception:
-                    active_scenario_record = None
-            runtime_origin = "saved_state"
-            runtime_warning = None
-        else:
-            # No successful runtime yet — give a clear, user-friendly
-            # error instead of the strict form-boundary message.
+        # user_created branch — use typed canonical export authority.
+        # F07-B Correction B: resolve_export_authority provides run-bound
+        # effective inputs (with correct CAPEX/OPEX folds applied from
+        # persisted identity) without re-reading mutable live tables.
+        try:
+            from app.services.export_service import (
+                resolve_export_authority,
+                EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+            )
+            _authority = resolve_export_authority(
+                project_record, user.user_id,
+                authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+            )
+        except ValueError as _auth_err:
+            return _build_inline_error_outcome(
+                message=str(_auth_err),
+                status_code=400,
+            )
+        if _authority.project_inputs is None:
             return _build_inline_error_outcome(
                 message="Run the model before exporting. The export uses the most recent successful runtime result for this project.",
                 status_code=400,
             )
-        override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
+        override = _authority.project_inputs
+        runtime_origin = "saved_state"
+        runtime_warning = None
+        # active_scenario_record: use None to avoid laundering the current
+        # (mutable) scenario name onto a run-bound export. Scenario provenance
+        # is correctly derived from authority.active_scenario_id/name.
+        active_scenario_record = None
         runtime_project_key = (
             "Solar"
             if deps.canonical_project_type(effective_project_type) == "Solar"

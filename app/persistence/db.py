@@ -295,6 +295,13 @@ def _init_schema(conn):
     _ensure_column(conn, "workspace_states", "draft_content_hash", "TEXT")
     # R9/N03-CorrA: distinguish "never run" (0) from "Base run" (1, last_runtime_scenario_id=NULL)
     _ensure_column(conn, "workspace_states", "any_run_committed", "INTEGER NOT NULL DEFAULT 0")
+    # F07-B Correction B: run-bound composite identity for canonical export authority.
+    # last_runtime_composite_hash: SHA-256 of the full composite workbook identity at run time.
+    # last_runtime_identity_json: serialised capex_rows, opex_rows, scenario_overrides, and
+    #   scenario_name captured at run commit — used for run-bound canonical export without
+    #   re-reading mutable live tables.
+    _ensure_column(conn, "workspace_states", "last_runtime_composite_hash", "TEXT")
+    _ensure_column(conn, "workspace_states", "last_runtime_identity_json", "TEXT")
     conn.commit()
 
 

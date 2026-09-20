@@ -178,7 +178,11 @@ def build_values_only_export_for_project(
 # ── Runtime Summary CSV export ────────────────────────────────────────────────
 
 def _apply_capex_opex_folds(project_inputs, project_id, sc_overrides):
-    """Apply CAPEX replace-fold and OPEX additive-fold for the given scenario overrides."""
+    """Apply CAPEX replace-fold and OPEX additive-fold for the given scenario overrides.
+
+    PREVIEW-ONLY: reads live mutable CAPEX/OPEX tables. Must NOT be called
+    for CANONICAL_LAST_RUN — use _apply_capex_opex_folds_from_identity instead.
+    """
     import dataclasses as _dc
     from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
     from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
@@ -197,6 +201,92 @@ def _apply_capex_opex_folds(project_inputs, project_id, sc_overrides):
     )
     if folded_opex is not project_inputs.opex:
         project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+    return project_inputs
+
+
+def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_dict):
+    """Apply run-bound CAPEX/OPEX folds using persisted identity data.
+
+    Uses the exact sub-line rows and scenario overrides captured at run commit
+    time — no live DB reads. Guarantees canonical export reproduces the
+    run-time effective inputs without touching mutable tables.
+
+    CAPEX fold uses REPLACE semantics (zero base, then add sub-lines).
+    OPEX fold uses ADDITIVE semantics (append sub-lines to existing tuple).
+    """
+    if not identity_dict:
+        return project_inputs
+
+    capex_rows = identity_dict.get("capex_rows") or []
+    opex_rows_data = identity_dict.get("opex_rows") or []
+    sc_overrides = identity_dict.get("scenario_overrides") or {}
+
+    import dataclasses as _dc
+
+    # CAPEX: REPLACE semantics — zero category base, then fold persisted rows.
+    if capex_rows:
+        from app.persistence.capex_sub_lines import (
+            CapexSubLine,
+            CAPEX_CATEGORY_TO_FIELD,
+            fold_sub_lines_into_capex,
+        )
+
+        cap_sub_lines = tuple(
+            CapexSubLine(
+                sub_line_id=r["sub_line_id"],
+                project_id=project_id,
+                parent_category_code=r["parent_category_code"],
+                business_code=r.get("business_code", r["sub_line_id"]),
+                display_order=0,
+                label="",
+                amount_keur=float(r["amount_keur"]),
+                is_active=True,
+            )
+            for r in capex_rows
+        )
+
+        fields_with_sub_lines: set = set()
+        for sub in cap_sub_lines:
+            field_name = CAPEX_CATEGORY_TO_FIELD.get(sub.parent_category_code)
+            if field_name:
+                fields_with_sub_lines.add(field_name)
+
+        zero_updates = {}
+        for field_name in fields_with_sub_lines:
+            existing_item = getattr(project_inputs.capex, field_name)
+            zero_updates[field_name] = _dc.replace(existing_item, amount_keur=0.0)
+
+        zeroed_capex = _dc.replace(project_inputs.capex, **zero_updates) if zero_updates else project_inputs.capex
+        capex_line_overrides = (sc_overrides.get("_capex_sub_line_overrides") or {}) if sc_overrides else {}
+        folded_capex = fold_sub_lines_into_capex(zeroed_capex, cap_sub_lines, scenario_overrides=capex_line_overrides)
+        if folded_capex is not project_inputs.capex:
+            project_inputs = _dc.replace(project_inputs, capex=folded_capex)
+
+    # OPEX: ADDITIVE semantics — append persisted sub-line rows.
+    if opex_rows_data:
+        from app.persistence.opex_sub_lines import OpexSubLine
+        from app.services.opex_sub_lines_integration import fold_sub_lines_into_opex
+
+        opex_sub_lines = tuple(
+            OpexSubLine(
+                sub_line_id=r["sub_line_id"],
+                project_id=project_id,
+                parent_group_code=r["parent_group_code"],
+                business_code=r["business_code"],
+                display_order=0,
+                label="",
+                amount_keur=float(r["amount_keur"]),
+                inflation_pct=float(r["inflation_pct"]),
+                is_active=True,
+            )
+            for r in opex_rows_data
+        )
+
+        opex_line_overrides = (sc_overrides.get("_opex_sub_line_overrides") or {}) if sc_overrides else {}
+        folded_opex = fold_sub_lines_into_opex(project_inputs.opex, opex_sub_lines, scenario_overrides=opex_line_overrides)
+        if folded_opex is not project_inputs.opex:
+            project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+
     return project_inputs
 
 
@@ -219,7 +309,13 @@ def _validate_scenario(sc, scenario_id, project_id):
 
 
 def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedExportAuthority":
-    """CANONICAL_LAST_RUN: economics from persisted last-run snapshot. FAIL CLOSED."""
+    """CANONICAL_LAST_RUN: economics from persisted last-run snapshot. FAIL CLOSED.
+
+    When last_runtime_identity is available (post-Correction B runs), uses the
+    persisted run-bound CAPEX/OPEX rows and scenario overrides — never reads
+    mutable live tables.  Falls back to live-table reads for pre-Correction B
+    rows that have no persisted identity.
+    """
     if not ws.any_run_committed:
         raise ValueError(
             "CANONICAL_LAST_RUN_UNAVAILABLE: no committed run exists for this project. "
@@ -237,26 +333,49 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
     project_inputs = pis.to_projectinputs()
     current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
 
-    # Resolve the last-run scenario and its overrides for sub-line folds.
-    _sc_overrides = None
+    _ri = getattr(ws, "last_runtime_identity", None)
     active_scenario_name = None
-    if ws.last_runtime_scenario_id:
-        from app.persistence.scenarios_repository import get_scenario
 
-        sc = get_scenario(scenario_id=ws.last_runtime_scenario_id, user_id=user_id)
-        _validate_scenario(sc, ws.last_runtime_scenario_id, project_record.project_id)
-        _sc_overrides = sc.overrides
-        active_scenario_name = getattr(sc, "scenario_name", None)
+    if _ri is not None:
+        # Run-bound path (post-Correction B): use persisted identity — no live DB reads.
+        active_scenario_name = _ri.get("scenario_name")
+        project_inputs = _apply_capex_opex_folds_from_identity(
+            project_inputs, project_record.project_id, _ri
+        )
+    else:
+        # Legacy fallback (pre-Correction B rows without persisted identity):
+        # resolve scenario and apply folds using live tables.
+        _sc_overrides = None
+        if ws.last_runtime_scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
 
-    project_inputs = _apply_capex_opex_folds(
-        project_inputs, project_record.project_id, _sc_overrides
-    )
+            sc = get_scenario(scenario_id=ws.last_runtime_scenario_id, user_id=user_id)
+            _validate_scenario(sc, ws.last_runtime_scenario_id, project_record.project_id)
+            _sc_overrides = sc.overrides
+            active_scenario_name = getattr(sc, "scenario_name", None)
 
-    from app.persistence._helpers import snapshots_equal
+        project_inputs = _apply_capex_opex_folds(
+            project_inputs, project_record.project_id, _sc_overrides
+        )
 
-    _working_changed = not snapshots_equal(
-        ws.draft_snapshot or {}, ws.last_runtime_snapshot or {}
-    )
+    # Staleness check: prefer composite hash when available, fall back to scalar.
+    _runtime_composite_hash = getattr(ws, "last_runtime_composite_hash", None)
+    if _runtime_composite_hash:
+        from app.workbook.workbook_identity import assemble_for_workspace
+        from app.workbook.registry import WORKBOOK
+        _cur_identity = assemble_for_workspace(
+            ws,
+            user_id=user_id,
+            project_id=project_record.project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        _working_changed = (_cur_identity.composite_hash != _runtime_composite_hash)
+    else:
+        from app.persistence._helpers import snapshots_equal
+        _working_changed = not snapshots_equal(
+            ws.draft_snapshot or {}, ws.last_runtime_snapshot or {}
+        )
+
     _run_at = (
         ws.last_runtime_at.isoformat(timespec="seconds")
         if getattr(ws, "last_runtime_at", None) else None

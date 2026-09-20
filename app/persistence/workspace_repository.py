@@ -585,6 +585,34 @@ def v2_atomic_run_commit(
 
         # Promote draft → saved; clear dirty.
         draft_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+
+        # F07-B Correction B: persist run-bound composite identity so canonical
+        # export can reproduce the exact effective inputs without re-reading
+        # mutable live tables (CAPEX/OPEX rows, scenario record).
+        _identity_payload = {
+            "capex_rows": [
+                {
+                    "sub_line_id": r.sub_line_id,
+                    "parent_category_code": r.parent_category_code,
+                    "amount_keur": r.amount_keur,
+                }
+                for r in identity.capex_rows
+            ],
+            "opex_rows": [
+                {
+                    "sub_line_id": r.sub_line_id,
+                    "parent_group_code": r.parent_group_code,
+                    "business_code": r.business_code,
+                    "amount_keur": r.amount_keur,
+                    "inflation_pct": r.inflation_pct,
+                }
+                for r in identity.opex_rows
+            ],
+            "scenario_overrides": dict(identity.scenario.overrides or {}),
+            "scenario_name": identity.scenario.scenario_name,
+            "composite_hash": identity.composite_hash,
+        }
+
         cur.execute(
             """
             UPDATE workspace_states
@@ -604,7 +632,9 @@ def v2_atomic_run_commit(
                 dirty=0,
                 any_run_committed=1,
                 updated_at=?,
-                last_runtime_at=?
+                last_runtime_at=?,
+                last_runtime_composite_hash=?,
+                last_runtime_identity_json=?
             WHERE workspace_id=? AND user_id=?
             """,
             (
@@ -623,6 +653,8 @@ def v2_atomic_run_commit(
                 last_runtime_scenario_id if last_runtime_scenario_id is not None else active_scenario_id,
                 now.isoformat(),
                 ran_at.isoformat() if hasattr(ran_at, "isoformat") else str(ran_at),
+                identity.composite_hash,
+                _json.dumps(_identity_payload, sort_keys=True),
                 row["workspace_id"],
                 user_id,
             ),

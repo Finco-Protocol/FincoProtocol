@@ -669,3 +669,330 @@ def test_canonical_uses_last_run_scenario(monkeypatch):
     # CANONICAL must bind to last-run scenario, NOT current Working scenario
     assert auth.active_scenario_id is None  # base run
     assert auth.authority_mode == EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+
+
+# ---------------------------------------------------------------------------
+# Correction B: run-bound effective inputs (no live-table reads for canonical)
+# ---------------------------------------------------------------------------
+
+
+def _make_ws_with_identity(
+    *,
+    draft_snapshot=None,
+    last_runtime_snapshot=None,
+    last_runtime_at=None,
+    last_runtime_scenario_id=None,
+    last_runtime_snapshot_id=None,
+    active_scenario_id=None,
+    active_scenario_name=None,
+    any_run_committed=False,
+    last_runtime_composite_hash=None,
+    last_runtime_identity=None,
+):
+    """Build a WorkspaceStateRecord-like stub that carries Correction B fields."""
+
+    class FakeWS:
+        pass
+
+    ws = FakeWS()
+    ws.draft_snapshot = draft_snapshot or {}
+    ws.last_runtime_snapshot = last_runtime_snapshot
+    ws.last_runtime_at = last_runtime_at
+    ws.last_runtime_scenario_id = last_runtime_scenario_id
+    ws.last_runtime_snapshot_id = last_runtime_snapshot_id
+    ws.active_scenario_id = active_scenario_id
+    ws.active_scenario_name = active_scenario_name
+    ws.any_run_committed = any_run_committed
+    ws.last_runtime_composite_hash = last_runtime_composite_hash
+    ws.last_runtime_identity = last_runtime_identity
+    return ws
+
+
+# Test L: canonical path uses persisted identity — _apply_capex_opex_folds NOT called
+
+def test_canonical_with_identity_skips_live_fold(monkeypatch):
+    """When last_runtime_identity is set, canonical path must NOT call _apply_capex_opex_folds."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    identity = {
+        "capex_rows": [],
+        "opex_rows": [],
+        "scenario_overrides": {},
+        "scenario_name": None,
+    }
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        any_run_committed=True,
+        last_runtime_identity=identity,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    live_fold_called = []
+
+    def _guard_live_fold(pi, project_id, sc_overrides):
+        live_fold_called.append(True)
+        return pi
+
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", _guard_live_fold)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+
+    pr = _make_project_record()
+    resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert not live_fold_called, "canonical path must NOT call _apply_capex_opex_folds when identity is present"
+
+
+# Test M: canonical path uses persisted identity — get_scenario NOT called
+
+def test_canonical_with_identity_skips_get_scenario(monkeypatch):
+    """When last_runtime_identity is set, canonical path must NOT call get_scenario."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.persistence.scenarios_repository as sc_repo
+
+    identity = {
+        "capex_rows": [],
+        "opex_rows": [],
+        "scenario_overrides": {"key": "val"},
+        "scenario_name": "Scenario At Run",
+    }
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        last_runtime_scenario_id="sc-run",
+        any_run_committed=True,
+        last_runtime_identity=identity,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    get_scenario_called = []
+
+    def _guard_get_scenario(scenario_id, user_id):
+        get_scenario_called.append(scenario_id)
+        return None  # would fail _validate_scenario
+
+    monkeypatch.setattr(sc_repo, "get_scenario", _guard_get_scenario)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    import app.workbook.service as wb_svc2
+    monkeypatch.setattr(wb_svc2.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    import app.services.export_service as export_svc
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds_from_identity", lambda pi, pid, ri: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert not get_scenario_called, "canonical path must NOT call get_scenario when identity is present"
+    # Scenario name from identity, not from live DB
+    assert auth.active_scenario_name == "Scenario At Run"
+
+
+# Test N: legacy canonical path (no identity) still resolves via live tables
+
+def test_canonical_legacy_path_uses_live_fold(monkeypatch):
+    """When last_runtime_identity is None (pre-CorrB row), canonical falls back to live fold."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        any_run_committed=True,
+        last_runtime_identity=None,     # legacy — no persisted identity
+        last_runtime_composite_hash=None,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    live_fold_called = []
+
+    def _recording_live_fold(pi, project_id, sc_overrides):
+        live_fold_called.append(True)
+        return pi
+
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", _recording_live_fold)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+
+    pr = _make_project_record()
+    resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert live_fold_called, "legacy canonical path must still call _apply_capex_opex_folds when identity absent"
+
+
+# Test O: composite staleness uses last_runtime_composite_hash when available
+
+def test_composite_staleness_uses_hash(monkeypatch):
+    """When last_runtime_composite_hash is set, staleness comparison uses composite identity."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+    import app.workbook.workbook_identity as wi
+
+    run_hash = "aabbccdd" * 8  # 64-char hash
+
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        any_run_committed=True,
+        last_runtime_identity={"capex_rows": [], "opex_rows": [], "scenario_overrides": {}, "scenario_name": None},
+        last_runtime_composite_hash=run_hash,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    class FakeCurrentIdentity:
+        composite_hash = "different_hash_" + "x" * 49  # differs from run_hash
+
+    monkeypatch.setattr(wi, "assemble_for_workspace", lambda ws, user_id, project_id, workbook_version: FakeCurrentIdentity())
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds_from_identity", lambda pi, pid, ri: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    # Different current hash → working has changed since run
+    assert auth.working_changed_since_run is True
+
+
+# Test P: composite staleness — same hash → not changed
+
+def test_composite_staleness_same_hash_not_changed(monkeypatch):
+    """When composite hash matches, working_changed_since_run is False."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+    import app.workbook.workbook_identity as wi
+
+    run_hash = "aabbccdd" * 8
+
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        any_run_committed=True,
+        last_runtime_identity={"capex_rows": [], "opex_rows": [], "scenario_overrides": {}, "scenario_name": None},
+        last_runtime_composite_hash=run_hash,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    class FakeCurrentIdentity:
+        composite_hash = run_hash  # same as run
+
+    monkeypatch.setattr(wi, "assemble_for_workspace", lambda ws, user_id, project_id, workbook_version: FakeCurrentIdentity())
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds_from_identity", lambda pi, pid, ri: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert auth.working_changed_since_run is False
+
+
+# Test Q: scenario_name from identity propagated to authority
+
+def test_canonical_active_scenario_name_from_identity(monkeypatch):
+    """active_scenario_name must come from persisted identity, not live DB."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    identity = {
+        "capex_rows": [],
+        "opex_rows": [],
+        "scenario_overrides": {},
+        "scenario_name": "Run-Time Scenario Name",
+    }
+    ws = _make_ws_with_identity(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        last_runtime_scenario_id="sc-1",
+        any_run_committed=True,
+        last_runtime_identity=identity,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds_from_identity", lambda pi, pid, ri: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert auth.active_scenario_name == "Run-Time Scenario Name"
+
+
+# Test R: _apply_capex_opex_folds_from_identity returns inputs unchanged for empty rows
+
+def test_identity_fold_noop_for_empty_rows():
+    """_apply_capex_opex_folds_from_identity returns project_inputs unchanged when no rows."""
+    from app.services.export_service import _apply_capex_opex_folds_from_identity
+
+    sentinel = object()
+    result = _apply_capex_opex_folds_from_identity(sentinel, "proj-1", {})
+    assert result is sentinel
+
+    result2 = _apply_capex_opex_folds_from_identity(sentinel, "proj-1", None)
+    assert result2 is sentinel
+
+    result3 = _apply_capex_opex_folds_from_identity(
+        sentinel, "proj-1",
+        {"capex_rows": [], "opex_rows": [], "scenario_overrides": {}, "scenario_name": None}
+    )
+    assert result3 is sentinel
+
+
+# Test S: WorkspaceStateRecord accepts last_runtime_composite_hash and last_runtime_identity
+
+def test_workspace_state_record_has_correction_b_fields():
+    """WorkspaceStateRecord must expose last_runtime_composite_hash and last_runtime_identity."""
+    from app.persistence.records import WorkspaceStateRecord
+    import dataclasses
+
+    fields = {f.name for f in dataclasses.fields(WorkspaceStateRecord)}
+    assert "last_runtime_composite_hash" in fields
+    assert "last_runtime_identity" in fields
