@@ -2741,10 +2741,14 @@ async def login_post(
 
 @app.post("/logout")
 async def logout():
-    """Clear session cookie and redirect to login."""
+    """F05 Correction A: log out of BOTH session kinds.
+
+    A visitor may hold an admin session, a demo session, or both.  Clearing
+    only the admin cookie would leave a demo cookie fully authenticated, so
+    both clearing cookies are always set and /login is actually reachable."""
     response = RedirectResponse(url="/login", status_code=302)
-    cookie = clear_session_cookie()
-    response.set_cookie(**cookie)
+    response.set_cookie(**clear_session_cookie())
+    response.set_cookie(**clear_demo_cookie())
     return response
 
 

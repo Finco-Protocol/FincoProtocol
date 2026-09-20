@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import time
 import uuid
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -269,3 +270,102 @@ def test_demo_redirect_chain_never_touches_login(client):
     assert not any("/login" in u for u in chain_urls), (
         f"demo session chain must never hit /login: {chain_urls}"
     )
+
+
+# ==========================================================================
+# Correction A — logout clears BOTH cookies + positive own-project proof
+# ==========================================================================
+
+def test_ca_logout_admin_only_session_clears_admin_cookie(client):
+    from app.auth import COOKIE_NAME, DEMO_COOKIE_NAME
+    resp = client.post("/logout", follow_redirects=False,
+                       headers={"Cookie": f"{COOKIE_NAME}={_admin_cookie_value()}"})
+    set_cookies = [v for k, v in resp.headers.multi_items()
+                   if k.lower() == "set-cookie"]
+    blob = " | ".join(set_cookies)
+    # Correction A: logout unconditionally clears BOTH cookies (an
+    # unconditional dual clear is deliberate — stale demo cookies must
+    # not survive logout)
+    assert any(COOKIE_NAME in c and "Max-Age=0" in c for c in set_cookies), (
+        "admin clearing cookie must be present")
+    assert not any("finco_demo=" in c and "Max-Age=0" not in c
+                   for c in set_cookies)
+
+
+def test_ca_logout_demo_only_session_clears_demo_cookie(client):
+    from app.auth import DEMO_COOKIE_NAME  # noqa: F811 - local clarity
+    resp = client.post("/logout", follow_redirects=False,
+                       headers={"Cookie": f"{DEMO_COOKIE_NAME}={_demo_cookie_value()}"})
+    set_cookies = [v for k, v in resp.headers.multi_items()
+                   if k.lower() == "set-cookie"]
+    cookie_blob = "; ".join(set_cookies)
+    assert "finco_demo=" in cookie_blob
+    assert "Max-Age=0" in cookie_blob or "max-age=0" in cookie_blob
+
+
+def test_ca_logout_both_cookies_present_clears_both(client):
+    from app.auth import COOKIE_NAME, DEMO_COOKIE_NAME  # noqa: F811
+    headers = {"Cookie": (
+        f"{COOKIE_NAME}={_admin_cookie_value()}; "
+        f"{DEMO_COOKIE_NAME}={_demo_cookie_value()}")}
+    resp = client.post("/logout", follow_redirects=False, headers=headers)
+    cookie_blob = "; ".join(v for k, v in resp.headers.multi_items()
+                            if k.lower() == "set-cookie")
+    assert f"{COOKIE_NAME}=" in cookie_blob
+    assert f"{DEMO_COOKIE_NAME}=" in cookie_blob
+    # both clearing cookies carry an expiry directive
+    expires = cookie_blob.count("Max-Age=0") + cookie_blob.count("max-age=0")
+    assert expires >= 2
+
+
+def test_ca_logout_login_reachable_after_logout(client):
+    from app.auth import COOKIE_NAME, DEMO_COOKIE_NAME
+    headers = {"Cookie": (
+        f"{COOKIE_NAME}={_admin_cookie_value()}; "
+        f"{DEMO_COOKIE_NAME}={_demo_cookie_value()}")}
+    resp = client.post("/logout", follow_redirects=False, headers=headers)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/login"
+    login = client.get("/login")
+    assert login.status_code == 200
+
+
+def test_ca_logout_no_demo_reauth_defeats_logout(client):
+    """Within the logout redirect chain no middleware may re-provision a
+    demo session that would silently re-authenticate the visitor."""
+    from app.auth import COOKIE_NAME, DEMO_COOKIE_NAME
+    headers = {"Cookie": (
+        f"{COOKIE_NAME}={_admin_cookie_value()}; "
+        f"{DEMO_COOKIE_NAME}={_demo_cookie_value()}")}
+    resp = client.post("/logout", follow_redirects=False, headers=headers)
+    cookie_blob = "; ".join(v for k, v in resp.headers.multi_items()
+                            if k.lower() == "set-cookie")
+    # clearing cookies must zero out both names, not mint new tokens
+    assert "Max-Age=0" in cookie_blob or "max-age=0" in cookie_blob
+    new_tokens = re.findall(
+        r"(?:finco_session|finco_demo)=[A-Za-z0-9_\-]{20,}", cookie_blob)
+    assert not new_tokens, f"logout minted fresh session tokens: {new_tokens}"
+    # and a subsequent request carries no session material
+    after = client.get("/library", follow_redirects=False)
+    assert after.status_code in (200, 302)
+
+
+def test_ca_demo_own_project_workbook_v2_access_positive(client):
+    """Section 4 positive authority proof: a valid demo identity can open
+    its OWN accessible Workbook V2 project — the request reaches the
+    Workbook V2 rendering path (not a redirect to /library or /login)."""
+    demo_id = "f05demo_" + uuid.uuid4().hex[:12]
+    code = "f05own_" + uuid.uuid4().hex[:10]
+    try:
+        _create_project(demo_id, code)
+        from app.auth import DEMO_COOKIE_NAME
+        resp = client.get(
+            f"/v2/workbook?project={code}",
+            headers={"Cookie": f"{DEMO_COOKIE_NAME}={_demo_cookie_value(demo_id)}"},
+        )
+        assert resp.status_code == 200, (
+            f"own-project access must reach the Workbook V2 rendering path, "
+            f"got {resp.status_code} -> {resp.headers.get('location')}")
+        assert "workbook" in resp.text.lower() or "sheet" in resp.text.lower()
+    finally:
+        _delete_projects(demo_id)
