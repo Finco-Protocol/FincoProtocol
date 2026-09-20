@@ -13,7 +13,6 @@ Rules:
 """
 from __future__ import annotations
 
-import re
 import pytest
 
 pytest.importorskip("httpx")
@@ -54,14 +53,41 @@ def test_p01_trust_strip_no_liquidity_claim(home_html):
 
 
 def test_p01_trust_strip_has_execution_aware_copy(home_html):
-    """Trust strip Execution-Aware pillar uses truthful copy."""
-    trust_block = _between(home_html, 'class="proto-trust"', '</div>\n    </div>')
-    assert trust_block, "proto-trust block not found"
-    # Must contain something about market state / execution / GAP
-    text = trust_block.lower()
-    assert any(phrase in text for phrase in (
-        "execution", "market state", "directional gap", "gap"
-    )), "Trust strip execution-aware pillar copy is missing expected truthful terms"
+    """Execution-Aware pillar's descriptive subcopy is truthful and specific.
+
+    Scoped to the proto-trust__pillar-sub div that immediately follows the
+    'Execution-Aware' pillar label, so the label text itself cannot satisfy
+    any of the 'execution' / 'market state' / 'directional gap' assertions.
+    """
+    # Locate the Execution-Aware pillar label
+    ea_idx = home_html.find("Execution-Aware")
+    assert ea_idx != -1, "Execution-Aware pillar label not found in Home page"
+    # The subcopy div immediately follows the label div in the same pillar
+    sub_start = home_html.find("proto-trust__pillar-sub", ea_idx)
+    assert sub_start != -1, (
+        "proto-trust__pillar-sub element not found after Execution-Aware label"
+    )
+    content_start = home_html.find(">", sub_start) + 1
+    content_end = home_html.find("</div>", content_start)
+    assert content_end > content_start, (
+        "Could not extract Execution-Aware pillar subcopy content"
+    )
+    subcopy = home_html[content_start:content_end]
+    # Positive: subcopy must describe the three required concepts
+    low = subcopy.lower()
+    assert "market state" in low, (
+        f"Execution-Aware subcopy missing 'market state'. Got: {subcopy!r}"
+    )
+    assert "execution" in low, (
+        f"Execution-Aware subcopy missing 'execution'. Got: {subcopy!r}"
+    )
+    assert "directional gap" in low, (
+        f"Execution-Aware subcopy missing 'directional gap'. Got: {subcopy!r}"
+    )
+    # Negative: subcopy must not claim liquidity
+    assert "liquidity" not in low, (
+        f"Execution-Aware subcopy must not claim 'liquidity'. Got: {subcopy!r}"
+    )
 
 
 # ── P01-B: Radar architecture description does not claim unsupported surfaces ─
