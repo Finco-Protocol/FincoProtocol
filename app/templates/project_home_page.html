@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My projects - FINCO Protocol</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css" />
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   <script src="/static/app.js" defer></script>
@@ -12,6 +13,9 @@
 <body class="standalone-page standalone-page--project-home"
       data-p2fix5a-page="project-home">
 
+  {% with proto_active_page="model" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
   {% include "partials/_standalone_header.html" %}
 
   <main class="standalone-main" id="standalone-main">

@@ -302,6 +302,19 @@
         </a>
       </div>
     </div>
+    {# Protocol-level navigation — gives Model Library and Workbook users
+       coherent cross-surface routing (Home / Radar / Verify) without
+       redesigning the workbook chrome. Uses existing sidebar section CSS. #}
+    <div class="ps-section" id="ps-protocol-surfaces">
+      <div class="ps-section-label">Protocol</div>
+      <div class="ps-downloads">
+        <a href="/" class="ps-download-item">Home</a>
+        <a href="/radar" class="ps-download-item">Radar
+          <span style="font-size:0.7em;opacity:0.7;">READ-ONLY</span>
+        </a>
+        <a href="/verify" class="ps-download-item">Verify</a>
+      </div>
+    </div>
   </nav>
 
   <aside class="sidebar-input" id="sidebar-input">

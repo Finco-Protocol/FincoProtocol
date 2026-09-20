@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+</head>
+<body style="margin:0;background:var(--fo-paper);">
+
+  {% with proto_active_page="home" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <div class="proto-home">
+    <div class="proto-home__hero">
+      <h1 class="proto-home__title">FINCO Protocol</h1>
+      <p class="proto-home__subtitle">Financial Intelligence Infrastructure — Model · Radar · Verify</p>
+    </div>
+
+    <div class="proto-home__cards">
+
+      <a href="/library" class="proto-card proto-card--model">
+        <div class="proto-card__eyebrow">FINCO Model</div>
+        <h2 class="proto-card__title">Project Finance Model</h2>
+        <p class="proto-card__desc">
+          Build, run, and export deterministic solar and wind project finance models.
+          Multi-scenario analysis, shareholder waterfall, IRR and DSCR outputs.
+        </p>
+        <span class="proto-card__cta">Open Model Library →</span>
+      </a>
+
+      <a href="/radar" class="proto-card proto-card--radar">
+        <div class="proto-card__eyebrow">
+          FINCO Radar
+          <span class="proto-card__readonly-badge">READ-ONLY</span>
+        </div>
+        <h2 class="proto-card__title">On-Chain Liquidity Radar</h2>
+        <p class="proto-card__desc">
+          Immutable quote snapshots for on-chain assets.
+          Quote direction only — no wallet, no signing, no transaction submission.
+        </p>
+        <span class="proto-card__cta">Open Radar →</span>
+      </a>
+
+      <a href="/verify" class="proto-card proto-card--verify">
+        <div class="proto-card__eyebrow">FINCO Verify</div>
+        <h2 class="proto-card__title">Public Validation Corpus</h2>
+        <p class="proto-card__desc">
+          Deterministic, network-free verification of Model and Radar evidence envelopes.
+          Synthetic-only corpus — no client or jurisdiction-specific data.
+        </p>
+        <span class="proto-card__cta">Open Verify →</span>
+      </a>
+
+    </div>
+  </div>
+
+</body>
+</html>
