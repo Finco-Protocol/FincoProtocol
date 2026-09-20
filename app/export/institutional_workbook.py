@@ -339,6 +339,8 @@ def _build_export_bundle(
     runtime_origin: str | None = None,
     project_record=None,
     current_snapshot: "dict | None" = None,
+    scenario_id: str | None = None,
+    scenario_name: str | None = None,
 ) -> WorkbookExportBundle:
     project_key = (project or "generic_wind_reference").strip().lower()
     # PR-8 correction pass: the institutional workbook obeys PROJECT-LEVEL
@@ -364,6 +366,8 @@ def _build_export_bundle(
         project_key,
         _precomputed=(execution.project_inputs, runtime_result),
         runtime_origin=runtime_origin,
+        scenario_id=scenario_id,
+        scenario_name=scenario_name,
     )
     if execution.clean_run is not None:
         # Clean runtime: financial-statements assembly intentionally
