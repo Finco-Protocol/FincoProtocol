@@ -237,6 +237,9 @@ class WorkspaceStateRecord:
     updated_at: datetime
     last_runtime_at: Optional[datetime]
     any_run_committed: bool = False  # R9/N03-CorrA: True when ≥1 Run has been committed (including Base runs)
+    # F07-B Correction B: run-bound composite identity for canonical export.
+    last_runtime_composite_hash: Optional[str] = None
+    last_runtime_identity: Optional[dict] = None  # decoded last_runtime_identity_json
 
     @classmethod
     def from_row(cls, row) -> "WorkspaceStateRecord":
@@ -266,6 +269,8 @@ class WorkspaceStateRecord:
             updated_at=_from_iso(row["updated_at"]),
             last_runtime_at=_from_iso(row["last_runtime_at"]) if row["last_runtime_at"] else None,
             any_run_committed=bool(row["any_run_committed"]) if "any_run_committed" in row.keys() else False,
+            last_runtime_composite_hash=row["last_runtime_composite_hash"] if "last_runtime_composite_hash" in row.keys() else None,
+            last_runtime_identity=_from_json(row["last_runtime_identity_json"] if "last_runtime_identity_json" in row.keys() else None, None),
         )
 
 

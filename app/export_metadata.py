@@ -55,6 +55,8 @@ def build_export_metadata(
     is_dirty: bool | None = None,
     validation_status: str | None = None,
     export_type: str = "unknown",
+    export_authority: str | None = None,
+    working_changed_since_run: str | None = None,
 ) -> dict[str, str]:
     """Build a lightweight metadata dictionary for export artefacts.
 
@@ -122,6 +124,8 @@ def build_export_metadata(
     return {
         "export_generated_at": now,
         "export_type": export_type,
+        "export_authority": export_authority or "FACTORY_REFERENCE",
+        "working_changed_since_run": working_changed_since_run or "not_applicable",
         "active_project": active_project or "",
         "project_id": project_id,
         "project_name": project_name or "",
@@ -143,6 +147,8 @@ def metadata_rows(metadata: dict[str, str]) -> list[tuple[str, str]]:
     order = [
         "export_generated_at",
         "export_type",
+        "export_authority",
+        "working_changed_since_run",
         "active_project",
         "project_id",
         "project_name",
@@ -167,6 +173,8 @@ def metadata_rows(metadata: dict[str, str]) -> list[tuple[str, str]]:
 _LABEL_MAP: dict[str, str] = {
     "export_generated_at": "Export generated at",
     "export_type": "Export type",
+    "export_authority": "Export authority",
+    "working_changed_since_run": "Working changed since run",
     "active_project": "Active project",
     "project_id": "Project ID",
     "project_name": "Project name",

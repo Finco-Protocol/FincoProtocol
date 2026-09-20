@@ -78,6 +78,10 @@ class WorkbookExportBundle:
     revenue_table: object
     debt_table: object
     authority_metadata: dict = field(default_factory=dict)
+    export_authority: str = "FACTORY_REFERENCE"
+    working_changed_since_run: str = "not_applicable"
+    run_id: str = "not_applicable"
+    run_at: str = "not_applicable"
 
 
 def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
@@ -341,6 +345,10 @@ def _build_export_bundle(
     current_snapshot: "dict | None" = None,
     scenario_id: str | None = None,
     scenario_name: str | None = None,
+    export_authority: str | None = None,
+    working_changed_since_run: bool | None = None,
+    run_id: str | None = None,
+    run_at: str | None = None,
 ) -> WorkbookExportBundle:
     project_key = (project or "generic_wind_reference").strip().lower()
     # PR-8 correction pass: the institutional workbook obeys PROJECT-LEVEL
@@ -368,6 +376,10 @@ def _build_export_bundle(
         runtime_origin=runtime_origin,
         scenario_id=scenario_id,
         scenario_name=scenario_name,
+        export_authority=export_authority,
+        working_changed_since_run=working_changed_since_run,
+        run_id=run_id,
+        run_at=run_at,
     )
     if execution.clean_run is not None:
         # Clean runtime: financial-statements assembly intentionally
@@ -430,6 +442,10 @@ def _build_export_bundle(
         runtime_rows=runtime_rows,
         statements=statements,
         authority_metadata=dict(authority_metadata or {}),
+        export_authority=runtime_rows[0]["export_authority"],
+        working_changed_since_run=runtime_rows[0]["working_changed_since_run"],
+        run_id=runtime_rows[0]["run_id"],
+        run_at=runtime_rows[0]["run_at"],
         inputs_summary=build_inputs_summary_table(project_inputs),
         capex_summary=build_capex_summary_table(project_inputs),
         capex_items=build_capex_items_table(project_inputs),
@@ -1018,6 +1034,8 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         active_project=bundle.active_project,
         run_at=bundle.runtime_timestamp,
         export_type="institutional_workbook",
+        export_authority=bundle.export_authority,
+        working_changed_since_run=bundle.working_changed_since_run,
     )
 
     rows_data = metadata_rows(meta)
