@@ -6,7 +6,7 @@
 <a class="inspector-link" href="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-get="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-target="#radar-inspector" hx-swap="innerHTML">{{ text }}</a>
 {%- endmacro %}
 
-<!-- ── Summary metrics row: Reference | Executable | GAP | Liquidity ── -->
+<!-- ── Summary metrics row: Reference | Executable | Directional GAP | Acquisition State ── -->
 <div class="radar-summary">
   <div class="radar-summary__cell">
     <div class="radar-summary__label">Reference</div>
@@ -21,16 +21,16 @@
     <div class="radar-summary__label">Executable</div>
     {% if view.execution.available and view.execution.fields.effectivePrice %}
     <div class="radar-summary__value">{{ view.execution.fields.effectivePrice }}</div>
-    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd }}k</div>
+    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd | intcomma }}</div>
     {% elif view.execution.available %}
     <div class="radar-summary__value" style="font-size:13px;">{{ view.execution.fields.status }}</div>
-    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd }}k</div>
+    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd | intcomma }}</div>
     {% else %}
     <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
     {% endif %}
   </div>
   <div class="radar-summary__cell">
-    <div class="radar-summary__label">Model / Market GAP</div>
+    <div class="radar-summary__label">Directional GAP</div>
     {% if view.gap.available %}
     <div class="radar-summary__value {% if view.gap.fields.gapBps and '-' in (view.gap.fields.gapBps | string) %}radar-summary__value--neg{% endif %}">{{ view.gap.fields.gapBps }} bps</div>
     <div class="radar-summary__sub">mid GAP: {{ view.gap.fields.gapToMidBps }} bps</div>
@@ -107,7 +107,7 @@
   <h2>Execution</h2>
   {% if view.execution.available %}
   <dl class="kv">
-    <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd }}k</dd>
+    <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd | intcomma }}</dd>
     <dt>Status</dt>
     <dd><span class="state-available">{{ inspector_link(view.snapshot_id, "execution.status", view.execution.fields.status) }}</span></dd>
     <dt>Expected output (raw)</dt>

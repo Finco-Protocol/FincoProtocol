@@ -324,6 +324,12 @@ def _jinja_fmt_delta(v: Any, fmt: str) -> str:
 
 templates.env.globals["_fmt_kpi"] = _jinja_fmt_kpi
 templates.env.globals["_fmt_delta"] = _jinja_fmt_delta
+def _intcomma(v):
+    try:
+        return "{:,}".format(int(float(str(v))))
+    except (ValueError, TypeError):
+        return str(v) if v else ""
+templates.env.filters["intcomma"] = _intcomma
 
 # -- Static files -------------------------------------------------------------
 # resolve_static_dir prefers the source-checkout path in dev mode and falls

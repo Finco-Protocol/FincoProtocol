@@ -51,7 +51,7 @@
           {% for s in sizes %}
           <label class="chip">
             <input type="radio" name="size" value="{{ s }}"
-                   {% if s == '100' %}checked{% endif %}> ${{ s }}k
+                   {% if s == '100' %}checked{% endif %}> ${{ s | intcomma }}
           </label>
           {% endfor %}
         </div>
@@ -86,7 +86,7 @@
     <section class="panel panel-idle">
       <h2>Panels</h2>
       <p class="muted">No acquisition yet. Choose a direction and size, then <strong style="color:#d7dee5;">Refresh</strong>.</p>
-      <p class="muted small">The panels will show Reference · Executable · GAP · Liquidity · Settlement · Freshness and the Evidence Inspector for each field.</p>
+      <p class="muted small">The panels will show Reference · Executable · Directional GAP · Settlement · Freshness · Evidence for each field.</p>
     </section>
     {% endif %}
   </div>
