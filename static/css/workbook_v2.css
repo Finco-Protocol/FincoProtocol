@@ -606,6 +606,80 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-proj-total-cell  { color: #14532d; }
 .v2-opex-proj-th-year     { min-width: 5rem; }
 
+/* ── OPEX custom & add rows (F08: these template forms previously had no
+   layout rules at all and rendered as unstyled inline flow — overflowing
+   on mobile). Flex-based so desktop aligns with the sheet grid and narrow
+   viewports wrap instead of overflowing the document. ────────────────── */
+.v2-opex-custom-row {
+  display: flex; align-items: center; gap: 0.3rem;
+  padding: 0.15rem 0.4rem 0.15rem 1rem;
+  border-bottom: 1px solid #f9fafb; font-size: 0.76rem;
+}
+.v2-opex-custom-row-form {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 0.3rem; flex: 1; min-width: 0;
+}
+.v2-opex-custom-label-input { flex: 1 1 8rem; min-width: 0; }
+.v2-opex-custom-amount-input { flex: 0 1 5.5rem; }
+.v2-opex-custom-escl-input  { flex: 0 1 4rem; }
+.v2-opex-custom-notes-input { flex: 1 1 6rem; min-width: 0; }
+.v2-opex-deactivate-form { flex: none; display: flex; }
+.v2-opex-add-row-form {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem;
+  padding: 0.3rem 0.4rem 0.3rem 1rem;
+}
+.v2-opex-add-label-input { flex: 1 1 8rem; min-width: 0; }
+.v2-opex-add-amount-input { flex: 0 1 5.5rem; }
+.v2-opex-add-escl-input  { flex: 0 1 4rem; }
+
+.v2-opex-custom-lines-container { margin-left: 1rem; border-left: 1px solid #f3f4f6; }
+.v2-opex-custom-save-btn {
+  font-size: 0.73rem; padding: 0.15rem 0.5rem;
+  border: 1px solid #15803d; border-radius: 2px;
+  background: #f0fdf4; color: #15803d; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.v2-opex-custom-save-btn:hover { background: #dcfce7; }
+.v2-opex-deactivate-btn {
+  width: 1.4rem; height: 1.4rem; line-height: 1.4rem;
+  padding: 0; border: 1px solid #fca5a5; border-radius: 2px;
+  background: #fef2f2; color: #991b1b; cursor: pointer; font-size: 0.8rem; flex-shrink: 0;
+}
+.v2-opex-deactivate-btn:hover { background: #fee2e2; }
+.v2-opex-add-btn {
+  font-size: 0.73rem; padding: 0.15rem 0.5rem;
+  border: 1px solid #2563eb; border-radius: 2px;
+  background: #eff6ff; color: #2563eb; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.v2-opex-add-btn:hover { background: #dbeafe; }
+.v2-opex-badge-calc   { background: #6b7280; color: #fff; }
+.v2-opex-badge-custom { background: #1d4ed8; color: #fff; }
+.v2-opex-runtime-bar {
+  background: #f9fafb; border: 1px solid #e5e7eb;
+  border-radius: 3px; padding: 0.4rem 0.75rem; margin-bottom: 0.75rem;
+}
+.v2-opex-summary-fields {
+  margin-top: 0.75rem; padding-top: 0.5rem;
+  border-top: 1px dashed #e5e7eb;
+}
+.v2-opex-proj-no-data-cell { color: #d1d5db; text-align: center; }
+
+/* Narrow viewports: collapse the OPEX sheet grid to Code | Description | Y1
+   and hide the secondary Escl/Status columns so the document never
+   overflows horizontally. The year projection table keeps its own
+   horizontal scroll container (by design). ───────────────────────────── */
+@media (max-width: 640px) {
+  .v2-opex-col-header,
+  .v2-opex-group-header,
+  .v2-opex-grand-total-row {
+    grid-template-columns: 3rem 1fr 5rem;
+  }
+  .v2-opex-col-y1 { min-width: 5rem; }
+  .v2-opex-col-escl, .v2-opex-col-status { display: none; }
+  .v2-opex-line-row { grid-template-columns: 3rem 1fr 5rem; }
+  .v2-opex-line-escl, .v2-opex-line-notes { display: none; }
+}
+
 /* ── Table base ──────────────────────────────────────────────── */
 .v2-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
 .v2-table thead th {
