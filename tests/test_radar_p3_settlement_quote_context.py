@@ -54,6 +54,7 @@ VALID_ENV = {
     "RADAR_V1_SETTLEMENT_ADDRESS": USDG,
     "RADAR_V1_SETTLEMENT_SYMBOL": "USDG",
     "RADAR_V1_SETTLEMENT_DECIMALS": "6",
+    "RADAR_V1_SETTLEMENT_CHAIN_ID": "4663",
     "RADAR_V1_SETTLEMENT_STATE": "REFERENCE_CURRENT",
     "RADAR_V1_SETTLEMENT_USD_PER_ASSET": "0.9998",
     "RADAR_V1_SETTLEMENT_SOURCE": "OPERATOR_CONFIGURED_REFERENCE",
@@ -642,3 +643,172 @@ def test_p3_27_frozen_settlement_contract_untouched():
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("base commit unavailable in shallow checkout")
     assert not [p for p in changed if p.startswith("finco_radar/")]
+
+
+# ==========================================================================
+# Correction B (P3) — C1 explicit settlement chain + C2 explicit decimals
+# ==========================================================================
+
+def test_c1_01_missing_settlement_chain_fails_closed(settlement_env,
+                                                     monkeypatch):
+    monkeypatch.delenv("RADAR_V1_SETTLEMENT_CHAIN_ID", raising=False)
+    context = resolve_quote_context(expected_chain_id=4663)
+    # C1: the chain is NOT inherited from the asset chain
+    assert context.settlement_chain_id is None
+    with pytest.raises(SettlementContextError) as excinfo:
+        build_settlement_reference(context, expected_chain_id=4663)
+    assert str(excinfo.value) == SETTLEMENT_NOT_CONFIGURED
+
+
+def test_c1_02_invalid_settlement_chain_fails_closed(settlement_env,
+                                                     monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_CHAIN_ID", "not-a-chain")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert SETTLEMENT_IDENTITY_INVALID in context.problems
+    with pytest.raises(SettlementContextError):
+        build_settlement_reference(context, expected_chain_id=4663)
+
+
+def test_c1_03_valid_explicit_chain_allows_quote_path(settlement_env):
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.problems == ()
+    assert context.settlement_chain_id == 4663
+    settlement = build_settlement_reference(context, expected_chain_id=4663)
+    assert settlement.asset.chain_id == 4663
+    assert settlement.usable is True
+
+
+def test_c1_04_settlement_chain_is_explicit_authority_not_asset_chain(
+    settlement_env, monkeypatch):
+    """The settlement chain stays whatever was explicitly configured even
+    when it differs from the target asset chain — it is never rewritten,
+    never inferred; a genuine cross-chain mismatch stays a typed
+    SETTLEMENT_CHAIN_MISMATCH, never silently corrected."""
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_CHAIN_ID", "137")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.settlement_chain_id == 137
+    assert SETTLEMENT_CHAIN_MISMATCH in context.problems
+
+
+def test_c1_05_no_implicit_inheritance_when_target_chain_unset(
+    settlement_env, monkeypatch):
+    monkeypatch.delenv("RADAR_V1_SETTLEMENT_CHAIN_ID", raising=False)
+    context = resolve_quote_context(expected_chain_id=None)
+    assert SETTLEMENT_NOT_CONFIGURED in context.problems
+    assert context.settlement_chain_id is None
+
+
+def test_c1_06_changing_settlement_chain_changes_fingerprint(
+    settlement_env, monkeypatch):
+    base = composition.build_request("BUY", "100")
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_CHAIN_ID", "137")
+    changed = composition.build_request("BUY", "100")
+    assert changed.fingerprint != base.fingerprint
+
+
+def test_c1_07_cached_context_never_crosses_chain_boundary(
+    make_client, settlement_env, monkeypatch):
+    calls: list = []
+    captures: list = []
+    service = _service(calls, quote_captures=captures)
+    client = make_client(service)
+    first = client.post("/radar/refresh", data={"direction": "BUY",
+                                                "size": "100"},
+                        headers={"HX-Request": "true"})
+    first_id = _snapshot_ids(first.text)[0]
+    before = len(calls)
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_CHAIN_ID", "137")
+    second = client.post("/radar/refresh", data={"direction": "BUY",
+                                                 "size": "100"},
+                         headers={"HX-Request": "true"})
+    second_id = _snapshot_ids(second.text)[0]
+    assert second_id != first_id
+    assert len(calls) == before + 1  # chain boundary = new acquisition
+
+
+def test_c2_01_missing_decimals_fail_closed(settlement_env, monkeypatch):
+    monkeypatch.delenv("RADAR_V1_SETTLEMENT_DECIMALS", raising=False)
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert "SETTLEMENT_DECIMALS_NOT_CONFIGURED" in context.problems
+    with pytest.raises(SettlementContextError) as excinfo:
+        build_settlement_reference(context, expected_chain_id=4663)
+    assert str(excinfo.value) == "SETTLEMENT_DECIMALS_NOT_CONFIGURED"
+
+
+def test_c2_02_zero_decimals_accepted(settlement_env, monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "0")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.settlement_decimals == 0
+
+
+def test_c2_03_normal_token_decimals_accepted(settlement_env, monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "6")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.settlement_decimals == 6
+
+
+def test_c2_04_max_decimals_accepted(settlement_env, monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "255")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.settlement_decimals == 255
+
+
+def test_c2_05_negative_decimals_rejected(settlement_env, monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "-1")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert SETTLEMENT_IDENTITY_INVALID in context.problems
+    with pytest.raises(SettlementContextError):
+        build_settlement_reference(context, expected_chain_id=4663)
+
+
+def test_c2_06_over_range_decimals_rejected(settlement_env, monkeypatch):
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "256")
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert SETTLEMENT_IDENTITY_INVALID in context.problems
+
+
+def test_c2_07_malformed_decimals_rejected(settlement_env, monkeypatch):
+    for bad in ("six", "6.0", "0x6", "6 ", "1e2"):
+        monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", bad)
+        context = resolve_quote_context(expected_chain_id=4663)
+        assert SETTLEMENT_IDENTITY_INVALID in context.problems, bad
+
+
+def test_c2_08_no_implicit_18_fallback(settlement_env, monkeypatch):
+    monkeypatch.delenv("RADAR_V1_SETTLEMENT_DECIMALS", raising=False)
+    context = resolve_quote_context(expected_chain_id=4663)
+    assert context.settlement_decimals is None  # never defaulted to 18
+    with pytest.raises(SettlementContextError) as excinfo:
+        build_settlement_reference(context, expected_chain_id=4663)
+    assert str(excinfo.value) == "SETTLEMENT_DECIMALS_NOT_CONFIGURED"
+
+
+def test_c2_09_changing_decimals_changes_fingerprint(settlement_env,
+                                                     monkeypatch):
+    base = composition.build_request("BUY", "100")
+    monkeypatch.setenv("RADAR_V1_SETTLEMENT_DECIMALS", "8")
+    changed = composition.build_request("BUY", "100")
+    assert changed.fingerprint != base.fingerprint
+
+
+def test_c2_10_provider_callable_receives_configured_decimals(
+    make_client, settlement_env):
+    """C2 end-to-end: the configured settlement decimals reach the frozen
+    QuoteRequest the composition builds for the provider callable."""
+    calls: list = []
+    captures: list = []
+    service = _service(calls, quote_captures=captures)
+    make_client(service).post("/radar/refresh",
+                              data={"direction": "BUY", "size": "100"},
+                              headers={"HX-Request": "true"})
+    assert len(captures) == 1
+    quote_request = captures[0]
+    assert quote_request.settlement.asset.decimals == 6
+    assert quote_request.settlement.asset.chain_id == 4663
+    assert quote_request.settlement.asset.contract_address == USDG
+    assert quote_request.taker_address == TAKER
+    assert quote_request.requested_notional_usd == __import__("decimal").Decimal("100")
+    service.close()
+
+
+

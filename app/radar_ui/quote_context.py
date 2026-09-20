@@ -46,6 +46,7 @@ SETTLEMENT_IDENTITY_INVALID = "SETTLEMENT_IDENTITY_INVALID"
 SETTLEMENT_CHAIN_MISMATCH = "SETTLEMENT_CHAIN_MISMATCH"
 SETTLEMENT_REFERENCE_INVALID = "SETTLEMENT_REFERENCE_INVALID"
 SETTLEMENT_REFERENCE_UNUSABLE = "SETTLEMENT_REFERENCE_UNUSABLE"
+SETTLEMENT_DECIMALS_NOT_CONFIGURED = "SETTLEMENT_DECIMALS_NOT_CONFIGURED"
 QUOTE_TAKER_ADDRESS_NOT_CONFIGURED = "QUOTE_TAKER_ADDRESS_NOT_CONFIGURED"
 QUOTE_TAKER_ADDRESS_INVALID = "QUOTE_TAKER_ADDRESS_INVALID"
 
@@ -171,23 +172,25 @@ def resolve_quote_context(*, expected_chain_id: "int | None" = None) -> QuoteCon
                 settlement_contract_address = raw_address
             else:
                 settlement_contract_address = raw_address
-        if raw_chain is not None:
+        if raw_chain is None:
+            # C1: the settlement chain is its own authority material.  It
+            # is NEVER inferred from the asset/target chain or any
+            # neighboring context — missing configuration fails closed.
+            problems.append(SETTLEMENT_NOT_CONFIGURED)
+        else:
             try:
                 settlement_chain_id = int(raw_chain)
             except (TypeError, ValueError):
                 problems.append(SETTLEMENT_IDENTITY_INVALID)
                 settlement_chain_id = None
-        elif expected_chain_id is not None:
-            settlement_chain_id = expected_chain_id
         if raw_decimals is not None:
-            try:
-                decimals = int(raw_decimals)
-            except (TypeError, ValueError):
-                decimals = -1
-            if not 0 <= decimals <= 255:
+            # C2: strict ASCII decimal digits only — int() would silently
+            # accept whitespace-padded forms, which the config contract
+            # rejects just like the raw-amount contract does.
+            if not isinstance(raw_decimals, str) or not raw_decimals.isascii()                     or not raw_decimals.isdigit()                     or not (0 <= int(raw_decimals) <= 255):
                 problems.append(SETTLEMENT_IDENTITY_INVALID)
             else:
-                settlement_decimals = decimals
+                settlement_decimals = int(raw_decimals)
         if raw_state is not None and raw_state not in {
             s.value for s in SettlementReferenceState
         }:
@@ -202,6 +205,12 @@ def resolve_quote_context(*, expected_chain_id: "int | None" = None) -> QuoteCon
         if (expected_chain_id is not None and settlement_chain_id is not None
                 and settlement_chain_id != expected_chain_id):
             problems.append(SETTLEMENT_CHAIN_MISMATCH)
+        # C2: settlement decimals are explicit quote authority.  Missing,
+        # malformed or out-of-range values fail closed — no implicit 18, no
+        # borrowing from the asset, no silent default.
+        if raw_decimals is None:
+            if raw_address is not None:
+                problems.append(SETTLEMENT_DECIMALS_NOT_CONFIGURED)
 
     return QuoteContext(
         settlement_chain_id=settlement_chain_id,
@@ -242,7 +251,13 @@ def build_settlement_reference(context: QuoteContext,
             or context.settlement_source is None):
         raise SettlementContextError(SETTLEMENT_NOT_CONFIGURED)
     if context.settlement_chain_id is None:
-        raise SettlementContextError(SETTLEMENT_IDENTITY_INVALID)
+        # C1: the chain was never explicitly configured — fail closed with
+        # the not-configured reason (an unparseable configured chain keeps
+        # its IDENTITY_INVALID reason recorded in problems).
+        identity_invalid = SETTLEMENT_IDENTITY_INVALID in context.problems
+        raise SettlementContextError(
+            SETTLEMENT_IDENTITY_INVALID if identity_invalid
+            else SETTLEMENT_NOT_CONFIGURED)
     if context.settlement_chain_id != expected_chain_id:
         raise SettlementContextError(SETTLEMENT_CHAIN_MISMATCH)
     if context.settlement_state not in {
@@ -255,6 +270,11 @@ def build_settlement_reference(context: QuoteContext,
         raise SettlementContextError(SETTLEMENT_REFERENCE_INVALID) from exc
     if not usd.is_finite() or usd <= 0:
         raise SettlementContextError(SETTLEMENT_REFERENCE_INVALID)
+    if context.settlement_decimals is None:
+        # C2: quote routing must never proceed without explicit decimals —
+        # frozen quote semantics would otherwise interpret the missing
+        # value through fallback behavior.
+        raise SettlementContextError(SETTLEMENT_DECIMALS_NOT_CONFIGURED)
     try:
         settlement_asset = AssetRef(
             chain_id=context.settlement_chain_id,

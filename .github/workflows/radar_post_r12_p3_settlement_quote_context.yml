@@ -51,11 +51,11 @@ jobs:
           print(f"POST_R12_P3_GATE_A_PASS changed_vs_anchor={len(changed)} "
                 "frozen_paths_untouched")
           PY
-      - name: Gate B — P1 acquisition runtime core untouched (vs d8c471b)
+      - name: Gate B — P1 acquisition runtime core untouched (vs canonical main 833ebe1)
         run: |
           python - <<'PY'
           import subprocess
-          base = "d8c471b9e5a591db52a78837a788f8e53647bb53"
+          base = "833ebe1d3d60a260fbbec3f9ddfe83bdfab7d49e"
           changed = subprocess.run(
               ["git", "diff", "--name-only", base, "HEAD"],
               capture_output=True, text=True, check=True,
