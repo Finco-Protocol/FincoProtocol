@@ -107,8 +107,11 @@ def live_url():
 
 @pytest.fixture(scope="module")
 def browser():
+    import os
     with sync_playwright() as pw:
-        browser = pw.chromium.launch()
+        exe = os.environ.get("FINCO_TEST_CHROMIUM_PATH")
+        kwargs = {"executable_path": exe} if exe else {}
+        browser = pw.chromium.launch(**kwargs)
         yield browser
         browser.close()
 

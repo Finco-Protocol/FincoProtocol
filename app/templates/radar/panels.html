@@ -6,28 +6,75 @@
 <a class="inspector-link" href="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-get="/radar/inspector/{{ snapshot_id }}/{{ field }}" hx-target="#radar-inspector" hx-swap="innerHTML">{{ text }}</a>
 {%- endmacro %}
 
+<!-- ── Summary metrics row: Reference | Executable | GAP | Liquidity ── -->
+<div class="radar-summary">
+  <div class="radar-summary__cell">
+    <div class="radar-summary__label">Reference</div>
+    {% if view.reference.available %}
+    <div class="radar-summary__value">{{ view.reference.fields.price }}</div>
+    <div class="radar-summary__sub">{{ view.reference.fields.source }}</div>
+    {% else %}
+    <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
+    {% endif %}
+  </div>
+  <div class="radar-summary__cell">
+    <div class="radar-summary__label">Executable</div>
+    {% if view.execution.available and view.execution.fields.effectivePrice %}
+    <div class="radar-summary__value">{{ view.execution.fields.effectivePrice }}</div>
+    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd }}k</div>
+    {% elif view.execution.available %}
+    <div class="radar-summary__value" style="font-size:13px;">{{ view.execution.fields.status }}</div>
+    <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd }}k</div>
+    {% else %}
+    <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
+    {% endif %}
+  </div>
+  <div class="radar-summary__cell">
+    <div class="radar-summary__label">Model / Market GAP</div>
+    {% if view.gap.available %}
+    <div class="radar-summary__value {% if view.gap.fields.gapBps and '-' in (view.gap.fields.gapBps | string) %}radar-summary__value--neg{% endif %}">{{ view.gap.fields.gapBps }} bps</div>
+    <div class="radar-summary__sub">mid GAP: {{ view.gap.fields.gapToMidBps }} bps</div>
+    {% else %}
+    <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
+    {% endif %}
+  </div>
+  <div class="radar-summary__cell">
+    <div class="radar-summary__label">Acquisition State</div>
+    {% if view.state %}
+    <div class="radar-summary__value {% if view.state == 'COMPLETE' %}{% elif view.state == 'PARTIAL' %}radar-summary__value--gold{% else %}radar-summary__value--unavail{% endif %}" style="font-size:14px;letter-spacing:0.04em;">{{ view.state }}</div>
+    <div class="radar-summary__sub">{{ view.freshness.completedAt }}</div>
+    {% else %}
+    <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Identity ── -->
 <section class="panel panel-identity" data-panel="identity" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Identity</h2>
   <dl class="kv">
-    <dt>Asset / economic UID</dt><dd>{% if view.identity.economicAssetUid %}{{ view.identity.economicAssetUid }}{% else %}<span class="state-unavailable">UNAVAILABLE</span>{% endif %}</dd>
+    <dt>Asset / economic UID</dt>
+    <dd>{% if view.identity.economicAssetUid %}{{ view.identity.economicAssetUid }}{% else %}<span class="state-unavailable">UNAVAILABLE</span>{% endif %}</dd>
     <dt>Chain</dt><dd>{{ view.identity.chainId }}</dd>
     <dt>Contract</dt><dd class="mono">{{ view.identity.contractAddress }}</dd>
-    {% if view.identity.symbol %}<dt>Symbol</dt><dd>{{ view.identity.symbol }} <span class="muted">(from snapshot evidence)</span></dd>{% endif %}
+    {% if view.identity.symbol %}<dt>Symbol</dt><dd>{{ view.identity.symbol }} <span class="muted">(snapshot evidence)</span></dd>{% endif %}
     <dt>Snapshot</dt><dd class="mono">{{ view.snapshot_id }}</dd>
   </dl>
 </section>
 
+<!-- ── Snapshot / Acquisition ── -->
 <section class="panel panel-snapshot" data-panel="snapshot" data-snapshot-id="{{ view.snapshot_id }}">
-  <h2>Snapshot</h2>
+  <h2>Acquisition snapshot</h2>
   <dl class="kv">
     <dt>snapshot_id</dt><dd class="mono">{{ view.snapshot_id }}</dd>
-    <dt>Acquisition state</dt><dd><span class="state-{{ view.state|lower }}">{{ view.state }}</span> <span class="muted">{{ view.state_label }}</span></dd>
-    <dt>Acquired (started)</dt><dd>{{ view.startedAt }}</dd>
+    <dt>State</dt>
+    <dd><span class="state-{{ view.state|lower }}">{{ view.state }}</span> <span class="muted">{{ view.state_label }}</span></dd>
+    <dt>Acquired</dt><dd>{{ view.startedAt }}</dd>
     <dt>Completed</dt><dd>{{ view.completedAt }}</dd>
     <dt>Providers</dt>
     <dd>
       {% for p in view.providers %}
-      <div class="provider-row" data-panel="provider-state" data-snapshot-id="{{ view.snapshot_id }}">
+      <div class="provider-row">
         {{ p.provider }} — <span class="state-{{ p.state|lower }}">{{ p.state }}</span>
         {% if p.errorClass %}<span class="muted">[{{ p.errorClass }}]</span>{% endif %}
         <span class="muted small">{{ p.elapsedMs }} ms</span>
@@ -37,14 +84,13 @@
   </dl>
 </section>
 
+<!-- ── Reference ── -->
 <section class="panel panel-reference" data-panel="reference" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Reference</h2>
   {% if view.reference.available %}
   <dl class="kv">
     <dt>Reference price</dt>
-    <dd class="mono big">
-      {{ inspector_link(view.snapshot_id, "reference.price", view.reference.fields.price) }}
-    </dd>
+    <dd class="mono big">{{ inspector_link(view.snapshot_id, "reference.price", view.reference.fields.price) }}</dd>
     <dt>Bid / Ask</dt><dd class="mono">{{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}</dd>
     <dt>Source</dt><dd>{{ inspector_link(view.snapshot_id, "reference.source", view.reference.fields.source) }}</dd>
     <dt>Observed / source time</dt><dd>{{ view.reference.fields.observedAt }}</dd>
@@ -56,11 +102,12 @@
   {% endif %}
 </section>
 
+<!-- ── Execution ── -->
 <section class="panel panel-execution" data-panel="execution" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Execution</h2>
   {% if view.execution.available %}
   <dl class="kv">
-    <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd }}</dd>
+    <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd }}k</dd>
     <dt>Status</dt>
     <dd><span class="state-available">{{ inspector_link(view.snapshot_id, "execution.status", view.execution.fields.status) }}</span></dd>
     <dt>Expected output (raw)</dt>
@@ -85,6 +132,7 @@
   {% endif %}
 </section>
 
+<!-- ── Settlement ── -->
 <section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Settlement context</h2>
   {% if view.settlement.configured %}
@@ -101,6 +149,7 @@
   {% endif %}
 </section>
 
+<!-- ── GAP ── -->
 <section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>GAP</h2>
   {% if view.gap.available %}
@@ -118,6 +167,7 @@
   {% endif %}
 </section>
 
+<!-- ── Freshness ── -->
 <section class="panel panel-freshness" data-panel="freshness" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Freshness / availability</h2>
   <dl class="kv">
@@ -129,9 +179,13 @@
   <p class="muted small">Independent source times and availability states — never collapsed into a single badge. Composition time does not refresh source evidence.</p>
 </section>
 
+<!-- ── Evidence Inspector ── -->
 <section class="panel panel-inspector-host" data-panel="inspector" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Evidence Inspector</h2>
-  <p class="muted small">Click any number, state or source above. LINEAGE: NUMBER → SOURCE → DERIVATION → LINEAGE → EVIDENCE → VERIFICATION — always from snapshot <span class="mono">{{ view.snapshot_id }}</span>.</p>
+  <p class="muted small">Click any number, state or source above to trace its lineage:
+    <strong style="color:#c9a55c;">NUMBER → SOURCE → DERIVATION → LINEAGE → EVIDENCE → VERIFICATION</strong> —
+    always from snapshot <span class="mono">{{ view.snapshot_id }}</span>.</p>
   <div id="radar-inspector" class="inspector-host"><p class="muted">Select a field to inspect its lineage.</p></div>
 </section>
+
 {% endif %}
