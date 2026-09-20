@@ -8,6 +8,7 @@ Verify is network-free: it calls the deterministic public corpus builder only.
 """
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter, Request
@@ -15,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,7 +38,8 @@ async def protocol_verify(request: Request):
         )
         corpus = await run_in_threadpool(build_public_validation_corpus)
         corpus_valid = verify_public_validation_corpus(corpus)
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
+        logger.exception("Verification corpus build failed")
         return _templates.TemplateResponse(
             request=request,
             name="protocol_verify.html",
@@ -44,7 +47,7 @@ async def protocol_verify(request: Request):
                 "user": user,
                 "corpus": None,
                 "corpus_valid": False,
-                "error": f"Corpus build error: {exc}",
+                "error": "Verification corpus is temporarily unavailable.",
             },
             status_code=200,
         )

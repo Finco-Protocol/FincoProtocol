@@ -63,6 +63,11 @@ async def radar_home(request: Request, snapshot_id: str = ""):
             view = view_model.build_radar_view(snapshot)
         except RadarRuntimeError as exc:
             load_error = str(exc)
+    # Optionally resolve session for presentation only — Radar stays public.
+    # An anonymous user sees no Sign-out button; an authenticated user does.
+    # resolve_request_session has no side-effects on anonymous requests.
+    from app.auth import resolve_request_session
+    user = resolve_request_session(request)
     return _templates.TemplateResponse(
         request=request,
         name="radar/index.html",
@@ -73,6 +78,7 @@ async def radar_home(request: Request, snapshot_id: str = ""):
             "view": view,
             "load_error": load_error,
             "snapshot_id": snapshot_id,
+            "user": user,
         },
     )
 

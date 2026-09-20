@@ -32,11 +32,11 @@
     {% elif corpus %}
 
     {% if corpus_valid %}
-    <div class="proto-verify__status proto-verify__status--ok">
+    <div class="proto-verify__status proto-verify__status--ok proto-verify__corpus-ok">
       ✓ Corpus verified — all {{ corpus.cases | length }} cases passed, digest confirmed
     </div>
     {% else %}
-    <div class="proto-verify__status proto-verify__status--err">
+    <div class="proto-verify__status proto-verify__status--err proto-verify__corpus-fail">
       ✗ Corpus verification failed
     </div>
     {% endif %}
@@ -48,9 +48,9 @@
           <span class="proto-verify__case-id">{{ case.caseId }}</span>
           <span class="proto-verify__case-surface">{{ case.surface }}</span>
           {% if case.envelope %}
-          <span class="proto-verify__case-ok">✓ envelope valid</span>
+          <span class="proto-verify__case-ok">Envelope present</span>
           {% else %}
-          <span class="proto-verify__case-err">✗ missing envelope</span>
+          <span class="proto-verify__case-err">Envelope missing</span>
           {% endif %}
         </div>
         <div class="proto-verify__case-meta">

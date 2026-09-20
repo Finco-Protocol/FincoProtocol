@@ -36,7 +36,7 @@
         Verify
       </a>
     </div>
-    {% if user %}
+    {% if user and not user.is_demo %}
     <div class="proto-nav__right">
       <form method="POST" action="/logout" style="display:inline;">
         <button type="submit" class="proto-nav__signout">Sign out</button>
