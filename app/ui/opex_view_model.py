@@ -255,6 +255,21 @@ def _get_year_values(
     return tuple(compute_year_values(y1, inflation, n_years))
 
 
+def group_escalation_display(group: "OpexGroupVM") -> str:
+    """F06 Correction A: authoritative escalation display for a group.
+
+    The group row's escalation cell must reflect the escalation actually
+    consumed by the group's effective lines.  When every line shares one
+    rate, that rate is displayed; when injected/effective lines carry
+    heterogeneous rates, the cell shows ``mixed`` so no single rate is
+    presented as governing.  Context only — the frozen engine consumes
+    each line's own escalation regardless of this label."""
+    rates = {line.inflation_pct for line in group.lines}
+    if len(rates) == 1:
+        return f"{next(iter(rates)):.1f}%"
+    return "mixed"
+
+
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------

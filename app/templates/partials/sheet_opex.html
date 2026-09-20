@@ -30,9 +30,16 @@
   </div>
   <div class="opex-ws-summary-card">
     <div class="opex-ws-summary-card__label">Escalation</div>
-    {% set default_esc = 2.0 if not project_ctx.opex_items else (project_ctx.opex_items[0].escalation_pct or 2.0) %}
-    <div class="opex-ws-summary-card__value">{{ "%.1f"|format(default_esc) }}%</div>
-    <div class="opex-ws-summary-card__unit">per annum</div>
+    {# F06 Correction A: this card is context only. The authoritative
+       escalation is per line (see the rate column below); a single rate
+       is shown only when every line shares it. #}
+    {% if opex_escalation_summary %}
+      <div class="opex-ws-summary-card__value">{{ opex_escalation_summary.value }}</div>
+      <div class="opex-ws-summary-card__unit">{{ opex_escalation_summary.label }}</div>
+    {% else %}
+      <div class="opex-ws-summary-card__value">—</div>
+      <div class="opex-ws-summary-card__unit">no budget lines</div>
+    {% endif %}
   </div>
   {% if project_ctx.opex_contingency_method %}
   <div class="opex-ws-summary-card">
@@ -120,7 +127,7 @@
               {% endif %}
             </td>
             <td class="fc-cell fc-th--unit">{{ item.unit }}</td>
-            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
+            <td class="fc-cell fc-cell--amount" title="authoritative per-line escalation">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
             <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
             <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
             <td class="fc-cell fc-th--pct-label">
