@@ -50,7 +50,7 @@ def test_resolved_export_authority_has_new_fields():
     assert auth.authority_mode == EXPORT_AUTHORITY_FACTORY_REFERENCE
     assert auth.run_id is None
     assert auth.run_at is None
-    assert auth.working_changed_since_run is False
+    assert auth.working_changed_since_run is None
 
 
 # ---------------------------------------------------------------------------
@@ -300,3 +300,372 @@ def test_factory_irr_not_changed_by_f07b():
     assert irr_row is not None
     val = float(irr_row["value"])
     assert val > 0.0, "project_irr must still be a positive number"
+
+
+# ---------------------------------------------------------------------------
+# State-transition tests — authority mode dispatch and identity correctness
+# ---------------------------------------------------------------------------
+
+
+def _make_ws(
+    *,
+    draft_snapshot=None,
+    last_runtime_snapshot=None,
+    last_runtime_at=None,
+    last_runtime_scenario_id=None,
+    last_runtime_snapshot_id=None,
+    active_scenario_id=None,
+    active_scenario_name=None,
+    any_run_committed=False,
+):
+    """Build a minimal WorkspaceStateRecord-like stub for testing."""
+
+    class FakeWS:
+        pass
+
+    ws = FakeWS()
+    ws.draft_snapshot = draft_snapshot or {}
+    ws.last_runtime_snapshot = last_runtime_snapshot
+    ws.last_runtime_at = last_runtime_at
+    ws.last_runtime_scenario_id = last_runtime_scenario_id
+    ws.last_runtime_snapshot_id = last_runtime_snapshot_id
+    ws.active_scenario_id = active_scenario_id
+    ws.active_scenario_name = active_scenario_name
+    ws.any_run_committed = any_run_committed
+    return ws
+
+
+def _make_project_record(project_origin="user_created", project_id="proj-1"):
+    class FakeProjectRecord:
+        pass
+
+    pr = FakeProjectRecord()
+    pr.project_origin = project_origin
+    pr.project_id = project_id
+    return pr
+
+
+# Test A: unknown authority_mode raises ValueError (FAIL CLOSED)
+
+def test_unknown_authority_mode_fails_closed(monkeypatch):
+    from app.services.export_service import resolve_export_authority
+    import app.persistence.workspace_repository as ws_repo
+
+    ws = _make_ws(draft_snapshot={"a": 1}, any_run_committed=True)
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    pr = _make_project_record()
+    with pytest.raises(ValueError, match="Unknown authority_mode"):
+        resolve_export_authority(pr, "user-1", authority_mode="INVALID_MODE")
+
+
+# Test B: CANONICAL_LAST_RUN fails closed when no run committed
+
+def test_canonical_fails_closed_no_run(monkeypatch):
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+
+    ws = _make_ws(draft_snapshot={"a": 1}, any_run_committed=False)
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    pr = _make_project_record()
+    with pytest.raises(ValueError, match="CANONICAL_LAST_RUN_UNAVAILABLE"):
+        resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+
+# Test C: CANONICAL_LAST_RUN fails closed when snapshot missing even if run committed
+
+def test_canonical_fails_closed_missing_snapshot(monkeypatch):
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+
+    ws = _make_ws(draft_snapshot={"a": 1}, any_run_committed=True, last_runtime_snapshot=None)
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    pr = _make_project_record()
+    with pytest.raises(ValueError, match="CANONICAL_LAST_RUN_UNAVAILABLE"):
+        resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+
+# Test D: PREVIEW_WORKING returns PREVIEW authority with no run identity
+
+def test_preview_working_clears_run_identity(monkeypatch):
+    from app.services.export_service import (
+        resolve_export_authority,
+        EXPORT_AUTHORITY_PREVIEW_WORKING,
+    )
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    snap = {"irr": 0.1}
+    ws = _make_ws(
+        draft_snapshot=snap,
+        any_run_committed=True,
+        last_runtime_snapshot_id="20260101T000000.000000+0000",
+        last_runtime_at=None,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_draft_input_set_from_workspace", staticmethod(lambda _ws: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_PREVIEW_WORKING)
+
+    assert auth.authority_mode == EXPORT_AUTHORITY_PREVIEW_WORKING
+    # PREVIEW must NOT inherit last-run identity
+    assert auth.run_id is None
+    assert auth.run_at is None
+    # None → "not_applicable" in CSV
+    assert auth.working_changed_since_run is None
+
+
+# Test E: CANONICAL uses last_runtime_snapshot, not draft
+
+def test_canonical_uses_last_runtime_snapshot(monkeypatch):
+    from app.services.export_service import (
+        resolve_export_authority,
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+    )
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    last_snap = {"source": "last_run", "irr": 0.12}
+    draft_snap = {"source": "draft", "irr": 0.08}
+    from datetime import datetime, timezone
+
+    run_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ws = _make_ws(
+        draft_snapshot=draft_snap,
+        last_runtime_snapshot=last_snap,
+        last_runtime_at=run_at,
+        any_run_committed=True,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    captured = {}
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    def fake_build_input_set(snapshot, **kw):
+        captured["snapshot"] = snapshot
+        return FakePIS()
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(fake_build_input_set))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    # Must have built from last_runtime_snapshot, not draft
+    assert captured["snapshot"] is last_snap
+    assert auth.authority_mode == EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    assert auth.run_id is None  # UUID unavailable — snapshot_id ≠ run UUID
+    assert auth.run_at == "2026-01-01T00:00:00+00:00"
+    assert auth.current_snapshot == last_snap
+
+
+# Test F: working_changed_since_run is True when draft differs from last-run snapshot
+
+def test_canonical_working_changed_since_run_true(monkeypatch):
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    last_snap = {"capex": 1000}
+    draft_snap = {"capex": 1200}  # edited after run → stale
+    ws = _make_ws(
+        draft_snapshot=draft_snap,
+        last_runtime_snapshot=last_snap,
+        any_run_committed=True,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert auth.working_changed_since_run is True
+
+
+# Test G: working_changed_since_run is False when draft equals last-run snapshot
+
+def test_canonical_working_changed_since_run_false(monkeypatch):
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    snap = {"capex": 1000}
+    ws = _make_ws(
+        draft_snapshot=dict(snap),
+        last_runtime_snapshot=dict(snap),
+        any_run_committed=True,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    assert auth.working_changed_since_run is False
+
+
+# Test H: run_id is never the snapshot_id (compact timestamp)
+
+def test_canonical_run_id_not_snapshot_id(monkeypatch):
+    """run_id must be None; it must not be aliased from last_runtime_snapshot_id."""
+    from app.services.export_service import resolve_export_authority, EXPORT_AUTHORITY_CANONICAL_LAST_RUN
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    ws = _make_ws(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        any_run_committed=True,
+        last_runtime_snapshot_id="20260101T120000.000000+0000",  # compact timestamp
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    # The compact timestamp must NOT be used as run_id
+    assert auth.run_id is None
+    assert auth.run_id != "20260101T120000.000000+0000"
+
+
+# Test I: factory-path project always returns FACTORY_REFERENCE regardless of requested mode
+
+def test_factory_project_always_factory_reference():
+    from app.services.export_service import (
+        resolve_export_authority,
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        EXPORT_AUTHORITY_FACTORY_REFERENCE,
+    )
+
+    pr = _make_project_record(project_origin="factory_reference")
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+    assert auth.authority_mode == EXPORT_AUTHORITY_FACTORY_REFERENCE
+    assert auth.project_inputs is None
+
+
+# Test J: PREVIEW active_scenario_id uses current Working scenario (not last-run)
+
+def test_preview_uses_working_scenario(monkeypatch):
+    from app.services.export_service import (
+        resolve_export_authority,
+        EXPORT_AUTHORITY_PREVIEW_WORKING,
+    )
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+    import app.persistence.scenarios_repository as sc_repo
+
+    ws = _make_ws(
+        draft_snapshot={"x": 1},
+        active_scenario_id="sc-B",
+        active_scenario_name="Scenario B",
+        last_runtime_scenario_id="sc-A",  # last run was on scenario A
+        any_run_committed=True,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    class FakeScenario:
+        scenario_name = "Scenario B"
+        archived = False
+        project_id = "proj-1"
+        overrides = None
+
+    monkeypatch.setattr(sc_repo, "get_scenario", lambda scenario_id, user_id: FakeScenario())
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_draft_input_set_from_workspace", staticmethod(lambda _ws: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_PREVIEW_WORKING)
+
+    # PREVIEW must show current Working scenario
+    assert auth.active_scenario_id == "sc-B"
+    assert auth.active_scenario_name == "Scenario B"
+
+
+# Test K: CANONICAL active_scenario_id uses last-run scenario (not current Working)
+
+def test_canonical_uses_last_run_scenario(monkeypatch):
+    from app.services.export_service import (
+        resolve_export_authority,
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+    )
+    import app.persistence.workspace_repository as ws_repo
+    import app.workbook.service as wb_svc
+    import app.services.export_service as export_svc
+
+    ws = _make_ws(
+        draft_snapshot={"x": 1},
+        last_runtime_snapshot={"x": 1},
+        active_scenario_id="sc-B",
+        last_runtime_scenario_id=None,  # base run (no scenario)
+        any_run_committed=True,
+    )
+    monkeypatch.setattr(ws_repo, "get_workspace_state", lambda uid, pid: ws)
+
+    sentinel = object()
+
+    class FakePIS:
+        def to_projectinputs(self):
+            return sentinel
+
+    monkeypatch.setattr(wb_svc.WorkbookService, "build_input_set", staticmethod(lambda snap, **kw: FakePIS()))
+    monkeypatch.setattr(export_svc, "_apply_capex_opex_folds", lambda pi, project_id, sc_overrides: pi)
+
+    pr = _make_project_record()
+    auth = resolve_export_authority(pr, "user-1", authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN)
+
+    # CANONICAL must bind to last-run scenario, NOT current Working scenario
+    assert auth.active_scenario_id is None  # base run
+    assert auth.authority_mode == EXPORT_AUTHORITY_CANONICAL_LAST_RUN

@@ -33,15 +33,26 @@ class ResolvedExportAuthority:
 
     ``project_inputs``          – effective ProjectInputs (scenario-folded); None
                                  for factory/reference projects (factory path).
-    ``current_snapshot``        – the raw draft_snapshot dict used to build
-                                 project_inputs; None for factory/reference projects.
+    ``current_snapshot``        – the snapshot used to build project_inputs; None for
+                                 factory/reference. For CANONICAL this is
+                                 last_runtime_snapshot; for PREVIEW this is draft_snapshot.
     ``runtime_origin``          – provenance label ("saved_state" or None).
-    ``active_scenario_id``      – workspace active_scenario_id at read time (R9/N03).
-    ``active_scenario_name``    – workspace active_scenario_name at read time.
+    ``active_scenario_id``      – the scenario identity for this export:
+                                   CANONICAL  → last_runtime_scenario_id (run-bound)
+                                   PREVIEW    → active_scenario_id (current Working)
+    ``active_scenario_name``    – name matching active_scenario_id above.
     ``last_runtime_scenario_id``– scenario that produced the last persisted Run.
-                                 Differs from active_scenario_id when the user
-                                 switched scenario after the last Run without
-                                 re-running (scenario-switch stale).
+                                 Only set on CANONICAL paths; used for stale-check logic.
+    ``run_id``                  – canonical run UUID if available.
+                                 The workspace persists a compact-timestamp snapshot ID
+                                 (last_runtime_snapshot_id), NOT a UUID run ID; a run_id
+                                 can only be known when a RunRecord is explicitly linked.
+                                 CANONICAL: None (truthfully unavailable — no UUID linked).
+                                 PREVIEW/FACTORY: None (not_applicable).
+    ``run_at``                  – ISO timestamp of the actual calculation run.
+                                 CANONICAL: last_runtime_at. PREVIEW/FACTORY: None.
+    ``working_changed_since_run`` – True when draft_snapshot differs from last_runtime_snapshot.
+                                   CANONICAL: True/False. PREVIEW/FACTORY: False (not_applicable).
     """
     project_inputs: Any  # ProjectInputs | None
     current_snapshot: dict[str, Any] | None
@@ -51,9 +62,13 @@ class ResolvedExportAuthority:
     last_runtime_scenario_id: str | None = None
     any_run_committed: bool = False  # R9/N03-CorrA: True when ≥1 Run committed (Base or Scenario)
     authority_mode: str = EXPORT_AUTHORITY_FACTORY_REFERENCE
-    run_id: str | None = None            # last_runtime_snapshot_id from workspace
-    run_at: str | None = None            # ISO timestamp of last run (last_runtime_at)
-    working_changed_since_run: bool = False  # draft differs from last-run snapshot
+    # run_id: NOT the runtime_snapshot_id (compact timestamp). Only set when a
+    # canonical UUID run ID is explicitly persisted and linked to this workspace.
+    # Currently unavailable in this persistence schema.
+    run_id: str | None = None
+    run_at: str | None = None            # ISO timestamp of last committed run
+    # None → "not_applicable" (FACTORY/PREVIEW); True/False → "true"/"false" (CANONICAL only)
+    working_changed_since_run: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -162,7 +177,152 @@ def build_values_only_export_for_project(
 
 # ── Runtime Summary CSV export ────────────────────────────────────────────────
 
-def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority:
+def _apply_capex_opex_folds(project_inputs, project_id, sc_overrides):
+    """Apply CAPEX replace-fold and OPEX additive-fold for the given scenario overrides."""
+    import dataclasses as _dc
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+
+    folded_capex = apply_user_sub_lines_replacing_base(
+        project_inputs.capex,
+        project_id=project_id,
+        scenario_overrides=sc_overrides,
+    )
+    if folded_capex is not project_inputs.capex:
+        project_inputs = _dc.replace(project_inputs, capex=folded_capex)
+    folded_opex = apply_user_sub_lines_to_opex(
+        project_inputs.opex,
+        project_id=project_id,
+        scenario_overrides=sc_overrides,
+    )
+    if folded_opex is not project_inputs.opex:
+        project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+    return project_inputs
+
+
+def _validate_scenario(sc, scenario_id, project_id):
+    """Raise ValueError if scenario is missing, archived, or cross-project."""
+    if sc is None:
+        raise ValueError(
+            f"Scenario {scenario_id!r} cannot be found; export aborted."
+        )
+    if getattr(sc, "archived", False):
+        raise ValueError(
+            f"Scenario {getattr(sc, 'scenario_name', scenario_id)!r} "
+            "is archived; export aborted."
+        )
+    if getattr(sc, "project_id", None) != project_id:
+        raise ValueError(
+            f"Scenario {getattr(sc, 'scenario_name', scenario_id)!r} "
+            "belongs to a different project; export aborted."
+        )
+
+
+def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedExportAuthority":
+    """CANONICAL_LAST_RUN: economics from persisted last-run snapshot. FAIL CLOSED."""
+    if not ws.any_run_committed:
+        raise ValueError(
+            "CANONICAL_LAST_RUN_UNAVAILABLE: no committed run exists for this project. "
+            "Run the model at least once before exporting."
+        )
+    if not ws.last_runtime_snapshot:
+        raise ValueError(
+            "CANONICAL_LAST_RUN_UNAVAILABLE: last-run snapshot is missing. "
+            "Run the model again to re-establish canonical state."
+        )
+
+    from app.workbook.service import WorkbookService
+
+    pis = WorkbookService.build_input_set(ws.last_runtime_snapshot)
+    project_inputs = pis.to_projectinputs()
+    current_snapshot: dict[str, Any] = dict(ws.last_runtime_snapshot)
+
+    # Resolve the last-run scenario and its overrides for sub-line folds.
+    _sc_overrides = None
+    active_scenario_name = None
+    if ws.last_runtime_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+
+        sc = get_scenario(scenario_id=ws.last_runtime_scenario_id, user_id=user_id)
+        _validate_scenario(sc, ws.last_runtime_scenario_id, project_record.project_id)
+        _sc_overrides = sc.overrides
+        active_scenario_name = getattr(sc, "scenario_name", None)
+
+    project_inputs = _apply_capex_opex_folds(
+        project_inputs, project_record.project_id, _sc_overrides
+    )
+
+    from app.persistence._helpers import snapshots_equal
+
+    _working_changed = not snapshots_equal(
+        ws.draft_snapshot or {}, ws.last_runtime_snapshot or {}
+    )
+    _run_at = (
+        ws.last_runtime_at.isoformat(timespec="seconds")
+        if getattr(ws, "last_runtime_at", None) else None
+    )
+    return ResolvedExportAuthority(
+        project_inputs=project_inputs,
+        current_snapshot=current_snapshot,
+        runtime_origin="saved_state",
+        active_scenario_id=ws.last_runtime_scenario_id or None,
+        active_scenario_name=active_scenario_name or None,
+        last_runtime_scenario_id=ws.last_runtime_scenario_id,
+        any_run_committed=bool(ws.any_run_committed),
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,  # truthfully unavailable — no UUID linked to workspace state
+        run_at=_run_at,
+        working_changed_since_run=_working_changed,
+    )
+
+
+def _resolve_preview_working_path(project_record, user_id, ws) -> "ResolvedExportAuthority":
+    """PREVIEW_WORKING: current draft economics; no run identity."""
+    if not ws.draft_snapshot:
+        raise ValueError(
+            "No saved working-copy state exists for this project yet. "
+            "Open the workbook and save before exporting."
+        )
+    current_snapshot: dict[str, Any] = dict(ws.draft_snapshot)
+
+    from app.workbook.service import WorkbookService
+
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    project_inputs = pis.to_projectinputs()
+
+    _sc_overrides = None
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+
+        sc = get_scenario(scenario_id=ws.active_scenario_id, user_id=user_id)
+        _validate_scenario(sc, ws.active_scenario_id, project_record.project_id)
+        _sc_overrides = sc.overrides
+
+    project_inputs = _apply_capex_opex_folds(
+        project_inputs, project_record.project_id, _sc_overrides
+    )
+
+    return ResolvedExportAuthority(
+        project_inputs=project_inputs,
+        current_snapshot=current_snapshot,
+        runtime_origin="saved_state",
+        active_scenario_id=ws.active_scenario_id or None,
+        active_scenario_name=ws.active_scenario_name or None,
+        last_runtime_scenario_id=ws.last_runtime_scenario_id,
+        any_run_committed=bool(ws.any_run_committed),
+        authority_mode=EXPORT_AUTHORITY_PREVIEW_WORKING,
+        run_id=None,         # not_applicable — preview has no committed run identity
+        run_at=None,         # not_applicable
+        working_changed_since_run=None,  # not_applicable — Preview IS current Working state
+    )
+
+
+def resolve_export_authority(
+    project_record,
+    user_id,
+    *,
+    authority_mode: str = EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+) -> ResolvedExportAuthority:
     """R5/F04-C — single-read export authority resolver.
 
     Reads the workspace ONCE and returns a ResolvedExportAuthority containing
@@ -170,11 +330,15 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
     current_snapshot dict.  Both fields come from the same workspace read so
     no concurrent save can produce a torn workbook.
 
-    Returns a factory-path authority (project_inputs=None, current_snapshot=None)
-    for factory/reference projects — callers keep the historical factory path.
+    ``authority_mode`` selects the authority contract:
+      CANONICAL_LAST_RUN (default) — economics from last committed run; FAIL
+        CLOSED if no run committed or snapshot missing.
+      PREVIEW_WORKING — economics from current draft; no run identity.
+      FACTORY_REFERENCE — always returns factory path (project_inputs=None).
 
-    Raises ValueError (fail-closed) when a user-owned project has no usable
-    persisted state.  No ``except Exception: pass`` anywhere in this path.
+    Returns factory-path authority for factory/reference projects regardless
+    of authority_mode.  Raises ValueError (fail-closed) on unknown mode or
+    unavailable canonical state.
     """
     if project_record is None or user_id is None:
         return ResolvedExportAuthority(
@@ -187,103 +351,34 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
             project_inputs=None, current_snapshot=None, runtime_origin=None,
             authority_mode=EXPORT_AUTHORITY_FACTORY_REFERENCE,
         )
+
+    _KNOWN_MODES = (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        EXPORT_AUTHORITY_PREVIEW_WORKING,
+        EXPORT_AUTHORITY_FACTORY_REFERENCE,
+    )
+    if authority_mode not in _KNOWN_MODES:
+        raise ValueError(f"Unknown authority_mode: {authority_mode!r}")
+
+    if authority_mode == EXPORT_AUTHORITY_FACTORY_REFERENCE:
+        return ResolvedExportAuthority(
+            project_inputs=None, current_snapshot=None, runtime_origin=None,
+            authority_mode=EXPORT_AUTHORITY_FACTORY_REFERENCE,
+        )
+
     from app.persistence.workspace_repository import get_workspace_state
 
     ws = get_workspace_state(user_id, project_record.project_id)
-    if ws is None or not ws.draft_snapshot:
+    if ws is None:
         raise ValueError(
             "No saved working-copy state exists for this project yet. "
             "Open the workbook and save before exporting."
         )
-    # Capture current_snapshot from this single read before any mutation.
-    current_snapshot: dict[str, Any] = dict(ws.draft_snapshot)
 
-    # ONE authority path: the exact materialization Workbook V2 Run uses
-    # (ProjectInputSet.from_snapshot on the draft -> to_projectinputs()).
-    from app.workbook.service import WorkbookService
-
-    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-    project_inputs = pis.to_projectinputs()
-
-    # Scenario overlay — EXACT parity with the live /v2/workbook/run path
-    # (R5 Correction D): Run materialises the persisted pis_draft via
-    # WorkbookService.to_projectinputs, validates the active scenario
-    # (fail-closed on missing/archived/cross-project), and passes
-    # sc.overrides ONLY to the CAPEX replace-fold and OPEX additive-fold.
-    # select_scenario() does NOT rewrite draft_snapshot with scalar
-    # overrides, so the export must not invent scalar scenario economics
-    # that Run does not apply.  Scalar scenario overrides remain a separate,
-    # not-yet-supported remediation — out of R5 scope.
-    _sc_overrides = None
-    if ws.active_scenario_id:
-        from app.persistence.scenarios_repository import get_scenario
-
-        sc = get_scenario(scenario_id=ws.active_scenario_id, user_id=user_id)
-        if sc is None:
-            raise ValueError(
-                f"Active scenario {ws.active_scenario_id!r} cannot be found; "
-                "export aborted. Select a valid scenario or deselect the active scenario."
-            )
-        if getattr(sc, "archived", False):
-            raise ValueError(
-                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
-                "is archived; export aborted. Select a valid scenario or deselect the active scenario."
-            )
-        if getattr(sc, "project_id", None) != project_record.project_id:
-            raise ValueError(
-                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
-                "belongs to a different project; export aborted."
-            )
-        _sc_overrides = sc.overrides
-
-    # R7/N01: the supported CAPEX/OPEX folds apply for the Base case too
-    # (persisted user sub-lines are part of the working copy's effective
-    # authority); _sc_overrides carries the scenario-specific overrides
-    # when a scenario is active, else None — same as /v2/workbook/run.
-    import dataclasses as _dc
-
-    from app.services.capex_sub_lines_integration import (
-        apply_user_sub_lines_replacing_base,
-    )
-    from app.services.opex_sub_lines_integration import (
-        apply_user_sub_lines_to_opex,
-    )
-
-    folded_capex = apply_user_sub_lines_replacing_base(
-        project_inputs.capex,
-        project_id=project_record.project_id,
-        scenario_overrides=_sc_overrides,
-    )
-    if folded_capex is not project_inputs.capex:
-        project_inputs = _dc.replace(project_inputs, capex=folded_capex)
-    folded_opex = apply_user_sub_lines_to_opex(
-        project_inputs.opex,
-        project_id=project_record.project_id,
-        scenario_overrides=_sc_overrides,
-    )
-    if folded_opex is not project_inputs.opex:
-        project_inputs = _dc.replace(project_inputs, opex=folded_opex)
-
-    from app.persistence._helpers import snapshots_equal
-    _last_snap = ws.last_runtime_snapshot or {}
-    _working_changed = not snapshots_equal(ws.draft_snapshot or {}, _last_snap)
-    _run_at = (
-        ws.last_runtime_at.isoformat(timespec="seconds")
-        if getattr(ws, "last_runtime_at", None) else None
-    )
-    return ResolvedExportAuthority(
-        project_inputs=project_inputs,
-        current_snapshot=current_snapshot,
-        runtime_origin="saved_state",
-        active_scenario_id=ws.active_scenario_id or None,
-        active_scenario_name=ws.active_scenario_name or None,
-        last_runtime_scenario_id=ws.last_runtime_scenario_id,
-        any_run_committed=bool(ws.any_run_committed),
-        authority_mode=EXPORT_AUTHORITY_PREVIEW_WORKING,
-        run_id=ws.last_runtime_snapshot_id or None,
-        run_at=_run_at,
-        working_changed_since_run=_working_changed,
-    )
+    if authority_mode == EXPORT_AUTHORITY_CANONICAL_LAST_RUN:
+        return _resolve_canonical_last_run_path(project_record, user_id, ws)
+    else:
+        return _resolve_preview_working_path(project_record, user_id, ws)
 
 
 def resolve_snapshot_authoritative_project_inputs(project_record, user_id):
