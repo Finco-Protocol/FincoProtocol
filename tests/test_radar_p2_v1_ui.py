@@ -787,11 +787,30 @@ def test_correction_b_gap_label_is_directional_not_model_market(make_client):
 
 
 def test_correction_c_no_unsupported_liquidity_claim_in_idle_state(make_client):
-    """Empty-state copy must not advertise 'Liquidity' as a rendered panel."""
+    """Idle-state panel must list only currently rendered surfaces, not Liquidity.
+
+    The assertion is scoped to the .panel-idle element only so that a
+    future Liquidity badge, nav item or properly-implemented R3 surface
+    elsewhere on the Radar page does not falsely fail this regression.
+    """
     page = make_client(_build_service([])).get("/radar").text
-    # Confirm the idle-state panel is present and does not mention Liquidity
-    assert "panel-idle" in page
-    assert "Liquidity" not in page
+    # Extract just the panel-idle element
+    start = page.find('class="panel panel-idle"')
+    assert start != -1, ".panel-idle element not found in Radar page"
+    # Find the closing </section> for this panel
+    end = page.find("</section>", start)
+    assert end != -1, "Could not find closing </section> for .panel-idle"
+    idle_html = page[start:end + len("</section>")]
+    # Positive contract: idle copy advertises the currently rendered surfaces
+    for expected in ("Reference", "Executable", "Directional GAP",
+                     "Settlement", "Freshness", "Evidence"):
+        assert expected in idle_html, (
+            f"Idle-state panel missing expected surface label '{expected}'"
+        )
+    # Negative contract: Liquidity is NOT promised in the idle-state copy
+    assert "Liquidity" not in idle_html, (
+        "Idle-state panel must not advertise 'Liquidity' as a rendered surface"
+    )
 
 
 def test_correction_f_read_only_boundary_intact(make_client):
