@@ -464,3 +464,63 @@ def clear_demo_cookie() -> dict:
         "max_age": 0,
         "path": "/",
     }
+
+
+# ── Canonical session resolution ──────────────────────────────────────────────
+#
+# Single shared authority for "who is this request?". Every router must
+# resolve identity through one of these two functions instead of re-implementing
+# its own cookie handling:
+#
+#   resolve_request_session — full resolution (admin or demo identity), used
+#     by surfaces that serve both: landing, Library, demo, Workbook V2.
+#   resolve_admin_session   — admin-restricted view of the same resolution,
+#     for surfaces that require a real account.
+#
+# Route-level authorization (redirects, ownership checks, role policy) stays
+# with each route; these functions only decide the identity.
+
+
+def resolve_request_session(request) -> Optional[SessionData]:
+    """Resolve the identity of a request from its session cookies.
+
+    Resolution order:
+    1. Admin session cookie (COOKIE_NAME) — signed admin token
+    2. Demo session cookie (DEMO_COOKIE_NAME) — signed anonymous token
+    3. Freshly provisioned demo token in request.state (first visit,
+       set by the demo-session middleware)
+    4. None — only for routes that explicitly handle unauthenticated state
+    """
+    # 1. Admin session
+    token = request.cookies.get(COOKIE_NAME)
+    if token:
+        session = decode_session_token(token)
+        if session:
+            return session
+
+    # 2. Existing demo session cookie
+    demo_token = request.cookies.get(DEMO_COOKIE_NAME)
+    if demo_token:
+        session = decode_demo_session_token(demo_token)
+        if session:
+            return session
+
+    # 3. Newly provisioned demo session (first visit — set by middleware this request)
+    state_token = getattr(request.state, "demo_session_token", None)
+    if state_token:
+        return decode_demo_session_token(state_token)
+
+    return None
+
+
+def resolve_admin_session(request) -> Optional[SessionData]:
+    """Resolve the request identity, restricted to real admin sessions.
+
+    Same underlying resolution as :func:`resolve_request_session`, but demo
+    identities are rejected. Use this for surfaces that require a real
+    account — never a hand-rolled cookie read.
+    """
+    session = resolve_request_session(request)
+    if session is None or session.is_demo:
+        return None
+    return session

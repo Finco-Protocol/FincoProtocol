@@ -57,6 +57,7 @@ from app.auth import (
     clear_demo_cookie,
     new_demo_user_id,
     check_demo_rate_limit,
+    resolve_request_session,
 )
 
 # Import persistence
@@ -499,34 +500,13 @@ NEW_PROJECT_TEMPLATE_OPTIONS = [
 # -- Auth dependency ----------------------------------------------------------
 
 def get_current_user(request: Request):
-    """Extract session from cookie. Admin session takes priority over demo session.
+    """Extract session from cookie — delegates to the canonical resolver.
 
-    Resolution order:
-    1. Admin session cookie (COOKIE_NAME) — signed admin token
-    2. Demo session cookie (DEMO_COOKIE_NAME) — signed anonymous token
-    3. Freshly provisioned demo token in request.state (first visit, set by middleware)
-    4. None — only for login/logout/health routes that explicitly handle unauthenticated state
+    The shared authority is app.auth.resolve_request_session (admin → demo
+    cookie → provisioned demo → None); this wrapper keeps the historical
+    entrypoint name for existing imports and templates.
     """
-    # 1. Admin session
-    token = request.cookies.get(COOKIE_NAME)
-    if token:
-        session = decode_session_token(token)
-        if session:
-            return session
-
-    # 2. Existing demo session cookie
-    demo_token = request.cookies.get(DEMO_COOKIE_NAME)
-    if demo_token:
-        session = decode_demo_session_token(demo_token)
-        if session:
-            return session
-
-    # 3. Newly provisioned demo session (first visit — set by middleware this request)
-    state_token = getattr(request.state, "demo_session_token", None)
-    if state_token:
-        return decode_demo_session_token(state_token)
-
-    return None
+    return resolve_request_session(request)
 
 def require_auth(request: Request):
     """Require auth - returns user or raises redirect to /login."""
@@ -2761,10 +2741,14 @@ async def login_post(
 
 @app.post("/logout")
 async def logout():
-    """Clear session cookie and redirect to login."""
+    """F05 Correction A: log out of BOTH session kinds.
+
+    A visitor may hold an admin session, a demo session, or both.  Clearing
+    only the admin cookie would leave a demo cookie fully authenticated, so
+    both clearing cookies are always set and /login is actually reachable."""
     response = RedirectResponse(url="/login", status_code=302)
-    cookie = clear_session_cookie()
-    response.set_cookie(**cookie)
+    response.set_cookie(**clear_session_cookie())
+    response.set_cookie(**clear_demo_cookie())
     return response
 
 
