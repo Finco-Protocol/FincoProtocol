@@ -104,6 +104,8 @@ def build_runtime_summary_rows(
     _precomputed=None,
     _project_inputs=None,
     runtime_origin: str | None = None,
+    scenario_id: str | None = None,
+    scenario_name: str | None = None,
 ) -> list[dict[str, str]]:
     if _precomputed is not None:
         # PR-8: single-calculation reuse — a caller that already ran the
@@ -132,6 +134,11 @@ def build_runtime_summary_rows(
         export_type="runtime_summary_csv",
         active_project=_project_key(project),
         runtime_origin=runtime_origin or "factory_base_runtime",
+        # F07 — the artifact itself must carry scenario identity when the
+        # exporter knows it (saved-state authority). Factory paths leave both
+        # None and the NOT_APPLICABLE provenance markers are preserved.
+        scenario_id=scenario_id,
+        scenario_name=scenario_name,
     )
 
     values = [

@@ -295,9 +295,13 @@ def build_runtime_summary_csv_export(
         # R5/F04-C: ONE workspace read → authority → rows.
         authority = resolve_export_authority(project_record, user_id)
         if authority.project_inputs is not None:
+            # F07: bind the artifact's scenario lineage to the resolved
+            # authority's active scenario (factory paths stay NOT_APPLICABLE).
             runtime_rows = build_runtime_summary_rows(
                 runtime_project_code, _project_inputs=authority.project_inputs,
                 runtime_origin=authority.runtime_origin,
+                scenario_id=authority.active_scenario_id,
+                scenario_name=authority.active_scenario_name,
             )
         else:
             runtime_rows = build_runtime_summary_rows(runtime_project_code)
@@ -380,6 +384,8 @@ def build_institutional_workbook_export(
             runtime_origin=authority.runtime_origin,
             project_record=project_record,
             current_snapshot=authority.current_snapshot,
+            scenario_id=authority.active_scenario_id,
+            scenario_name=authority.active_scenario_name,
         )
         first_row = bundle.runtime_rows[0]
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
