@@ -29,6 +29,12 @@ router = APIRouter()
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _templates = Jinja2Templates(
     directory=os.path.join(_APP_DIR, "templates"))
+def _intcomma(v):
+    try:
+        return "{:,}".format(int(float(str(v))))
+    except (ValueError, TypeError):
+        return str(v) if v else ""
+_templates.env.filters["intcomma"] = _intcomma
 
 _service_instance = None
 

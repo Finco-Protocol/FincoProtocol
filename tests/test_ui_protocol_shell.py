@@ -169,8 +169,14 @@ class TestProtocolHomeDesktop:
         assert "Model" in nav_text
         assert "Verify" in nav_text
 
-        cards = page.query_selector_all(".proto-card")
-        assert len(cards) >= 3, f"Expected ≥3 product cards, got {len(cards)}"
+        # Blueprint pass: home uses editorial architecture section (.proto-arch__product)
+        # instead of equal-weight cards. Accept either the new product items
+        # or the legacy proto-card class so both designs satisfy the invariant.
+        products = page.query_selector_all(".proto-arch__product, .proto-card")
+        assert len(products) >= 3, (
+            f"Expected ≥3 product items (.proto-arch__product or .proto-card), "
+            f"got {len(products)}"
+        )
 
         page_text = page.inner_text("body")
         assert "READ-ONLY" in page_text, "READ-ONLY badge missing on Radar card"
@@ -357,8 +363,9 @@ class TestModelJourney:
         assert home_link is not None, "Home link missing from Verify nav"
         page.goto(f"{live_url}/")
         page.wait_for_load_state("domcontentloaded")
-        assert page.query_selector(".proto-card") is not None, (
-            "Home cards missing after round-trip"
+        # Blueprint pass: home uses .proto-arch__product; accept either class.
+        assert page.query_selector(".proto-arch__product, .proto-card") is not None, (
+            "Home product items missing after round-trip"
         )
 
 

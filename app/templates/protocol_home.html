@@ -3,59 +3,159 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FINCO Protocol</title>
+  <title>FINCO Protocol — Financial Intelligence Infrastructure</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
   <link rel="stylesheet" href="/static/tokens.css">
 </head>
-<body style="margin:0;background:var(--fo-paper);">
+<body style="margin:0;background:#f9fafb;">
 
   {% with proto_active_page="home" %}
   {% include "partials/_protocol_nav.html" %}
   {% endwith %}
 
   <div class="proto-home">
+
+    <!-- ── Hero ── -->
     <div class="proto-home__hero">
-      <h1 class="proto-home__title">FINCO Protocol</h1>
-      <p class="proto-home__subtitle">Financial Intelligence Infrastructure — Model · Radar · Verify</p>
-    </div>
+      <div class="proto-home__hero-inner">
 
-    <div class="proto-home__cards">
+        <!-- Left: editorial copy + CTAs -->
+        <div class="proto-home__hero-copy">
+          <div class="proto-home__eyebrow">Financial Intelligence Infrastructure</div>
+          <h1 class="proto-home__title">FINCO<br>Protocol</h1>
+          <p class="proto-home__tagline">Real-world asset economics, market intelligence, and evidence integrity — deterministic and reproducible.</p>
 
-      <a href="/library" class="proto-card proto-card--model">
-        <div class="proto-card__eyebrow">FINCO Model</div>
-        <h2 class="proto-card__title">Project Finance Model</h2>
-        <p class="proto-card__desc">
-          Build, run, and export deterministic solar and wind project finance models.
-          Multi-scenario analysis, shareholder waterfall, IRR and DSCR outputs.
-        </p>
-        <span class="proto-card__cta">Open Model Library →</span>
-      </a>
+          <div class="proto-home__proposition">
+            <div class="proto-home__prop-item">Model the asset.</div>
+            <div class="proto-home__prop-item">Understand the market.</div>
+            <div class="proto-home__prop-item">Verify the evidence.</div>
+          </div>
 
-      <a href="/radar" class="proto-card proto-card--radar">
-        <div class="proto-card__eyebrow">
-          FINCO Radar
-          <span class="proto-card__readonly-badge">READ-ONLY</span>
+          <p class="proto-home__supporting">AI explains. FINCO calculates.</p>
+
+          <div class="proto-home__ctas">
+            <a href="/radar" class="proto-cta proto-cta--primary">Explore Radar</a>
+            <a href="/library" class="proto-cta proto-cta--secondary">Open FINCO Model</a>
+            <a href="/verify" class="proto-cta proto-cta--tertiary">Verify Evidence →</a>
+          </div>
         </div>
-        <h2 class="proto-card__title">On-Chain Liquidity Radar</h2>
-        <p class="proto-card__desc">
-          Immutable quote snapshots for on-chain assets.
-          Quote direction only — no wallet, no signing, no transaction submission.
-        </p>
-        <span class="proto-card__cta">Open Radar →</span>
-      </a>
 
-      <a href="/verify" class="proto-card proto-card--verify">
-        <div class="proto-card__eyebrow">FINCO Verify</div>
-        <h2 class="proto-card__title">Public Validation Corpus</h2>
-        <p class="proto-card__desc">
-          Deterministic, network-free verification of Model and Radar evidence envelopes.
-          Synthetic-only corpus — no client or jurisdiction-specific data.
-        </p>
-        <span class="proto-card__cta">Open Verify →</span>
-      </a>
+        <!-- Right: product composite terminal -->
+        <div class="proto-composite">
+          <div class="proto-composite__header">
+            <span class="proto-composite__title">FINCO MODEL COMPOSITE</span>
+            <span class="proto-composite__tag">ILLUSTRATIVE</span>
+          </div>
+          <div class="proto-composite__body">
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">MODEL VALUE</span>
+              <span class="proto-composite__value proto-composite__value--teal">€118.4m</span>
+            </div>
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">REFERENCE</span>
+              <span class="proto-composite__value">€111.0m</span>
+            </div>
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">EXECUTABLE</span>
+              <span class="proto-composite__value">€108.7m</span>
+            </div>
+            <div class="proto-composite__row proto-composite__row--sep">
+              <span class="proto-composite__label">MODEL / MARKET GAP</span>
+              <span class="proto-composite__value proto-composite__value--neg">−6.3%</span>
+            </div>
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">$100k LIQUIDITY</span>
+              <span class="proto-composite__value proto-composite__value--green">99.2%</span>
+            </div>
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">DSCR</span>
+              <span class="proto-composite__value">1.42×</span>
+            </div>
+            <div class="proto-composite__row">
+              <span class="proto-composite__label">EQUITY IRR</span>
+              <span class="proto-composite__value proto-composite__value--teal">12.8%</span>
+            </div>
+            <div class="proto-composite__row proto-composite__row--sep">
+              <span class="proto-composite__label">EVIDENCE</span>
+              <span class="proto-composite__value proto-composite__value--green">VERIFIED</span>
+            </div>
+          </div>
+          <div class="proto-composite__footer">Illustrative composite only — not live asset state</div>
+        </div>
 
+      </div>
+    </div><!-- /hero -->
+
+    <!-- ── Trust Strip ── -->
+    <div class="proto-trust">
+      <div class="proto-trust__inner">
+        <div class="proto-trust__pillar">
+          <div class="proto-trust__pillar-label">Deterministic</div>
+          <div class="proto-trust__pillar-sub">Identical inputs always produce identical outputs</div>
+        </div>
+        <div class="proto-trust__pillar">
+          <div class="proto-trust__pillar-label">Evidence-Backed</div>
+          <div class="proto-trust__pillar-sub">Every value carries a verifiable lineage</div>
+        </div>
+        <div class="proto-trust__pillar">
+          <div class="proto-trust__pillar-label">Execution-Aware</div>
+          <div class="proto-trust__pillar-sub">Market state, execution quotes and directional GAP in one view</div>
+        </div>
+        <div class="proto-trust__pillar">
+          <div class="proto-trust__pillar-label">Reproducible</div>
+          <div class="proto-trust__pillar-sub">Open verification corpus — no hidden assumptions</div>
+        </div>
+      </div>
     </div>
-  </div>
+
+    <!-- ── Architecture ── -->
+    <div class="proto-arch">
+      <div class="proto-arch__inner">
+        <div class="proto-arch__header">
+          <div class="proto-arch__eyebrow">Product Architecture</div>
+          <h2 class="proto-arch__title">Three interconnected surfaces</h2>
+        </div>
+
+        <div class="proto-arch__products">
+
+          <a href="/library" class="proto-arch__product">
+            <div class="proto-arch__product-num">01</div>
+            <h3 class="proto-arch__product-name">FINCO Model</h3>
+            <p class="proto-arch__product-desc">
+              Deterministic real-world asset economics and project finance modelling.
+              Multi-scenario analysis, shareholder waterfall, IRR and DSCR outputs.
+              Network-free, export-ready.
+            </p>
+            <span class="proto-arch__product-link">Open Model Library →</span>
+          </a>
+
+          <a href="/radar" class="proto-arch__product proto-arch__product--readonly">
+            <div class="proto-arch__product-num">02</div>
+            <h3 class="proto-arch__product-name proto-arch__product-name--teal">FINCO Radar</h3>
+            <p class="proto-arch__product-desc">
+              Market state, execution intelligence, directional GAP and evidence
+              lineage. Immutable acquisition snapshots with a full evidence trail.
+              Quote direction only.
+            </p>
+            <span class="proto-arch__product-link">Open Radar</span>
+          </a>
+
+          <a href="/verify" class="proto-arch__product">
+            <div class="proto-arch__product-num">03</div>
+            <h3 class="proto-arch__product-name">FINCO Verify</h3>
+            <p class="proto-arch__product-desc">
+              Evidence integrity, methodology lineage and reproducibility.
+              Deterministic, network-free verification of Model and Radar evidence
+              envelopes against the public synthetic corpus.
+            </p>
+            <span class="proto-arch__product-link">Open Verify →</span>
+          </a>
+
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /proto-home -->
 
 </body>
 </html>

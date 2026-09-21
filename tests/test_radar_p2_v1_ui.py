@@ -739,3 +739,91 @@ def test_cb_links_04_every_inspector_link_full_interaction_contract(
     bare = re.findall(r'<a class="inspector-link" href="[^"]*"(?![^>]*hx-get)',
                       page)
     assert not bare
+
+
+# ── Correction A regression tests ────────────────────────────────────────────
+
+
+def test_correction_a_notional_100_rendered_without_k_suffix(make_client):
+    """$100 is presented as '$100', never '$100k'."""
+    calls: list = []
+    c = make_client(_build_service(calls))
+    # Controls page must show $100 not $100k
+    page = c.get("/radar").text
+    assert "$100" in page
+    assert "$100k" not in page
+    # Post-refresh panels must also show $100 not $100k
+    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "100"},
+                  headers={"HX-Request": "true"})
+    assert "$100" in resp.text
+    assert "$100k" not in resp.text
+
+
+def test_correction_a_notional_1000_rendered_as_1000_with_comma(make_client):
+    """$1000 is presented as '$1,000', never '$1000k' or '$1,000k'."""
+    calls: list = []
+    c = make_client(_build_service(calls))
+    # Controls page must show $1,000 not $1000k / $1,000k
+    page = c.get("/radar").text
+    assert "$1,000" in page
+    assert "$1000k" not in page
+    assert "$1,000k" not in page
+    # Post-refresh panels must also show $1,000 not $1000k
+    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "1000"},
+                  headers={"HX-Request": "true"})
+    assert "$1,000" in resp.text
+    assert "$1000k" not in resp.text
+    assert "$1,000k" not in resp.text
+
+
+def test_correction_b_gap_label_is_directional_not_model_market(make_client):
+    """Summary row must show 'Directional GAP', not 'Model / Market GAP'."""
+    calls: list = []
+    c = make_client(_build_service(calls))
+    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "100"},
+                  headers={"HX-Request": "true"})
+    assert "Directional GAP" in resp.text
+    assert "Model / Market GAP" not in resp.text
+
+
+def test_correction_c_no_unsupported_liquidity_claim_in_idle_state(make_client):
+    """Idle-state panel must list only currently rendered surfaces, not Liquidity.
+
+    The assertion is scoped to the .panel-idle element only so that a
+    future Liquidity badge, nav item or properly-implemented R3 surface
+    elsewhere on the Radar page does not falsely fail this regression.
+    """
+    page = make_client(_build_service([])).get("/radar").text
+    # Extract just the panel-idle element
+    start = page.find('class="panel panel-idle"')
+    assert start != -1, ".panel-idle element not found in Radar page"
+    # Find the closing </section> for this panel
+    end = page.find("</section>", start)
+    assert end != -1, "Could not find closing </section> for .panel-idle"
+    idle_html = page[start:end + len("</section>")]
+    # Positive contract: idle copy advertises the currently rendered surfaces
+    for expected in ("Reference", "Executable", "Directional GAP",
+                     "Settlement", "Freshness", "Evidence"):
+        assert expected in idle_html, (
+            f"Idle-state panel missing expected surface label '{expected}'"
+        )
+    # Negative contract: Liquidity is NOT promised in the idle-state copy
+    assert "Liquidity" not in idle_html, (
+        "Idle-state panel must not advertise 'Liquidity' as a rendered surface"
+    )
+
+
+def test_correction_f_read_only_boundary_intact(make_client):
+    """READ-ONLY state chip present; no wallet connect / sign / submit controls."""
+    page = make_client(_build_service([])).get("/radar").text
+    assert "READ-ONLY" in page
+    # The READ-ONLY disclaimer explicitly says "no wallet, no signing…" — that
+    # text is correct authority copy. What must be absent is any interactive
+    # control that would enable those actions.
+    for forbidden_control in (
+        "connect wallet", "sign transaction", "submit transaction",
+        "send transaction", "approve transaction",
+    ):
+        assert forbidden_control not in page.lower(), (
+            f"Forbidden control phrase '{forbidden_control}' found on Radar page"
+        )
