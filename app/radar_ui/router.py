@@ -13,10 +13,18 @@ the P1 ``AcquisitionService.get_snapshot`` network-free path.  No HTMX
 partial can trigger acquisition.
 
 Multi-asset: GET /radar fetches the live Robinhood universe via the frozen
-RobinhoodAssetRegistryAdapter.  POST /radar/refresh accepts an asset_uid
+RobinhoodAssetRegistryAdapter.  POST /radar/refresh requires an asset_uid
 form field; the server resolves the exact UID/chain/contract/decimals from
-a fresh registry snapshot.  When asset_uid is absent, falls back to
-asset_config() for backward compat.
+a fresh registry snapshot.  Missing or unknown asset_uid fails closed with
+a stable reason and zero acquisition calls.
+
+Stale-identity prevention:
+- HTMX: panels.html emits an OOB swap that updates #radar-asset-header
+  (is_htmx_partial=True in context).
+- Non-JS: _selected_from_snapshot_identity derives selected from the
+  snapshot's authoritative identity after acquisition.
+- Snapshot query: GET /radar?snapshot_id=X derives selected from the
+  snapshot identity, not from the query asset_uid.
 """
 from __future__ import annotations
 
@@ -77,7 +85,7 @@ def _resolve_selected(universe, uid: str):
 
     When uid is provided and not found, returns None (fail-closed).
     When uid is empty, falls back to the first AAPL asset (convenience
-    default for GET /radar with no selection).
+    default for GET /radar with no explicit selection).
     Returns None if the universe is empty."""
     if not universe:
         return None
@@ -87,30 +95,69 @@ def _resolve_selected(universe, uid: str):
             if a.economic_asset_uid.lower() == uid_lower:
                 return a
         return None  # explicit uid not found — fail closed
-    # Default: AAPL if present, else first
+    # Default for empty uid: AAPL if present, else first
     for a in universe:
         if a.token_symbol == "AAPL":
             return a
     return universe[0]
 
 
-def _panels_context(snapshot) -> dict:
-    return {"view": view_model.build_radar_view(snapshot)}
+def _get_snapshot_uid(snapshot) -> str:
+    """Extract economicAssetUid from a snapshot's payload; empty string on
+    failure."""
+    try:
+        return snapshot.to_payload().get("economicAssetUid", "") or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _panels_context(snapshot, *, is_htmx_partial: bool = False) -> dict:
+    return {
+        "view": view_model.build_radar_view(snapshot),
+        "is_htmx_partial": is_htmx_partial,
+    }
+
+
+def _error_panels(request, error: str) -> HTMLResponse:
+    return _templates.TemplateResponse(
+        request=request,
+        name="radar/panels.html",
+        context={"view": None, "error": error, "is_htmx_partial": False},
+        status_code=200,
+    )
 
 
 @router.get("/radar", response_class=HTMLResponse)
 async def radar_home(request: Request, snapshot_id: str = "",
                      asset_uid: str = ""):
     universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
-    selected = _resolve_selected(universe, asset_uid)
+
+    # When a snapshot is requested its identity is authoritative for selection.
+    # Never substitute AAPL when the snapshot identity resolves differently.
+    selected = None
     view = None
     load_error = None
+    snapshot_identity_note = None
+
     if snapshot_id:
         try:
             snapshot = get_service().get_snapshot(snapshot_id)
             view = view_model.build_radar_view(snapshot)
+            snap_uid = _get_snapshot_uid(snapshot)
+            if snap_uid:
+                snap_selected = _resolve_selected(universe, snap_uid)
+                if snap_selected is not None:
+                    selected = snap_selected
+                else:
+                    snapshot_identity_note = (
+                        f"SNAPSHOT_UID_NOT_IN_UNIVERSE: {snap_uid!r}")
+            # asset_uid query param is subordinate to snapshot identity
         except RadarRuntimeError as exc:
             load_error = str(exc)
+
+    if selected is None:
+        selected = _resolve_selected(universe, asset_uid)
+
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
@@ -125,6 +172,7 @@ async def radar_home(request: Request, snapshot_id: str = "",
             "view": view,
             "load_error": load_error,
             "snapshot_id": snapshot_id,
+            "snapshot_identity_note": snapshot_identity_note,
             "user": user,
         },
     )
@@ -136,52 +184,46 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
                         asset_uid: str = Form("")):
     """ONE refresh = at most ONE acquisition = exactly ONE snapshot_id.
 
-    When asset_uid is provided, the server resolves the full asset identity
-    from a fresh registry snapshot before building the request.  When
-    asset_uid is absent, falls back to asset_config() (backward compat)."""
-    selected_asset = None
-    universe = []
-    universe_error = None
+    asset_uid is MANDATORY.  Missing, unresolvable, or universe-unavailable
+    states all fail closed with a stable reason and ZERO acquisition calls."""
+    # C01: asset_uid is required; missing → ASSET_UID_REQUIRED, zero acquire.
+    if not asset_uid:
+        return _error_panels(request, "ASSET_UID_REQUIRED")
 
-    if asset_uid:
-        universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
-        selected_asset = _resolve_selected(universe, asset_uid)
-        if selected_asset is None:
-            return _templates.TemplateResponse(
-                request=request,
-                name="radar/panels.html",
-                context={"view": None,
-                         "error": "ASSET_NOT_FOUND_IN_UNIVERSE"},
-                status_code=200,
-            )
+    # C01: universe must be available; failure → ASSET_UNIVERSE_UNAVAILABLE.
+    universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    if universe_error:
+        return _error_panels(request, "ASSET_UNIVERSE_UNAVAILABLE")
+
+    # C01: unknown uid → ASSET_NOT_FOUND_IN_UNIVERSE, zero acquire.
+    selected_asset = _resolve_selected(universe, asset_uid)
+    if selected_asset is None:
+        return _error_panels(request, "ASSET_NOT_FOUND_IN_UNIVERSE")
 
     try:
         request_obj = composition.build_request(
             direction, size, selected_asset)
     except RadarRuntimeError as exc:
-        return _templates.TemplateResponse(
-            request=request,
-            name="radar/panels.html",
-            context={"view": None, "error": f"INVALID_REQUEST: {exc}"},
-            status_code=200,
-        )
+        return _error_panels(request, f"INVALID_REQUEST: {exc}")
+
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
 
     # N03: the blocking acquisition is offloaded to Starlette's worker
     # threadpool so the ASGI event loop stays responsive.
     snapshot = await run_in_threadpool(get_service().acquire, request_obj)
 
-    if request.headers.get("HX-Request", "").lower() == "true":
+    if is_htmx:
         # HTMX path: swap in the snapshot-bound panel fragment.
+        # is_htmx_partial=True causes panels.html to emit the OOB header swap.
         return _templates.TemplateResponse(
             request=request,
             name="radar/panels.html",
-            context=_panels_context(snapshot),
+            context=_panels_context(snapshot, is_htmx_partial=True),
         )
 
     # A1: progressive fallback — a normal HTML POST returns the full Radar
-    # page.  Re-fetch universe so the page renders with correct selector state.
-    if not asset_uid:
-        universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    # page.  Derive selected from the snapshot's authoritative identity so
+    # the header and selector cannot show a stale asset.
     selected_from_snapshot = _selected_from_snapshot_identity(
         snapshot, universe)
     from app.auth import resolve_request_session
@@ -198,7 +240,8 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             "view": view_model.build_radar_view(snapshot),
             "load_error": None,
             "snapshot_id": snapshot.snapshot_id,
-            "user": None,
+            "snapshot_identity_note": None,
+            "user": user,
         },
     )
 
@@ -206,13 +249,9 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
 def _selected_from_snapshot_identity(snapshot, universe):
     """Derive the SelectedAsset for a non-JS full-page re-render from the
     snapshot's authoritative identity, ensuring no stale asset header."""
-    try:
-        payload = snapshot.to_payload()
-        uid = payload.get("economicAssetUid")
-        if uid:
-            return _resolve_selected(universe, uid)
-    except Exception:  # noqa: BLE001
-        pass
+    snap_uid = _get_snapshot_uid(snapshot)
+    if snap_uid:
+        return _resolve_selected(universe, snap_uid)
     return None
 
 
@@ -225,12 +264,16 @@ async def radar_snapshot(request: Request, snapshot_id: str):
         return _templates.TemplateResponse(
             request=request,
             name="radar/panels.html",
-            context={"view": None, "error": f"SNAPSHOT_NOT_FOUND: {exc}"},
+            context={"view": None, "error": f"SNAPSHOT_NOT_FOUND: {exc}",
+                     "is_htmx_partial": False},
             status_code=200,
         )
-    context = _panels_context(snapshot)
+    is_htmx = request.headers.get("HX-Request", "").lower() == "true"
     return _templates.TemplateResponse(
-        request=request, name="radar/panels.html", context=context)
+        request=request,
+        name="radar/panels.html",
+        context=_panels_context(snapshot, is_htmx_partial=is_htmx),
+    )
 
 
 @router.get("/radar/inspector/{snapshot_id}/{field_id}",

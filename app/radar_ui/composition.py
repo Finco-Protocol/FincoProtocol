@@ -50,6 +50,7 @@ SIZES = ("100", "1000")
 _TARGET_CHAIN_ID = 4663
 
 TOKEN_DECIMALS_UNAVAILABLE = "TOKEN_DECIMALS_UNAVAILABLE"
+TOKEN_DECIMALS_AUTHORITY_MISMATCH = "TOKEN_DECIMALS_AUTHORITY_MISMATCH"
 
 # The configured provider/source set for the canonical asset acquisition.
 _CONFIGURED_EXTRA_SOURCES: "tuple[str, ...]" = ()
@@ -78,6 +79,40 @@ def set_registry_factory(factory: "Callable[[], Any] | None") -> None:
     discovery and reference resolution.  Pass None to clear."""
     global _registry_factory_override
     _registry_factory_override = factory
+
+
+class TokenDecimalsUnavailable(RuntimeContractError):
+    """Token decimals are absent, invalid, or out of range [0, 255] in the
+    registry raw evidence.  The reference section fails closed."""
+
+
+class TokenDecimalsMismatch(RuntimeContractError):
+    """Live registry tokenDecimals differ from the fingerprint-bound value.
+    The reference section fails closed — stale decimals authority rejected."""
+
+
+def _parse_token_decimals(raw) -> int:
+    """Parse and validate tokenDecimals from registry raw_evidence.
+
+    Accepts a non-negative integer or an integer-valued string in [0, 255].
+    Rejects: None, bool, float, negative, >255, non-numeric strings.
+    Raises :class:`TokenDecimalsUnavailable` on any rejection."""
+    if raw is None or isinstance(raw, bool):
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if isinstance(raw, float):
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = int(raw)
+        except (ValueError, TypeError):
+            raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    else:
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if value < 0 or value > 255:
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    return value
 
 
 REFERENCE_IDENTITY_MISMATCH = "REFERENCE_IDENTITY_MISMATCH"
@@ -178,14 +213,10 @@ def fetch_robinhood_asset_universe(
         deployment = asset.deployment_for_chain(target_chain_id)
         if deployment is None:
             continue
-        decimals_raw = getattr(asset, "raw_evidence", {}).get("tokenDecimals")
-        if decimals_raw is None:
-            continue
         try:
-            decimals = int(decimals_raw)
-            if decimals < 0:
-                raise ValueError("negative decimals")
-        except (ValueError, TypeError):
+            decimals = _parse_token_decimals(
+                getattr(asset, "raw_evidence", {}).get("tokenDecimals"))
+        except TokenDecimalsUnavailable:
             continue
         result.append(SelectedAsset(
             economic_asset_uid=asset.asset_uid,
@@ -228,11 +259,13 @@ def build_request(direction: str, size: str,
         chain_id = selected_asset.chain_id
         contract_address = selected_asset.contract_address
         economic_asset_uid = selected_asset.economic_asset_uid
+        token_decimals = selected_asset.token_decimals
     else:
         asset = asset_config()
         chain_id = asset["chainId"]
         contract_address = asset["contractAddress"]
         economic_asset_uid = asset["economicAssetUid"]
+        token_decimals = asset["decimals"]
 
     quote_context = resolve_quote_context(expected_chain_id=chain_id)
     return AcquisitionRequest(
@@ -243,7 +276,10 @@ def build_request(direction: str, size: str,
         purpose="radar-v1-panel",
         notional_usd=size,
         economic_asset_uid=economic_asset_uid,
-        provider_config={"radarCore": quote_context.fingerprint_material()},
+        provider_config={
+            "radarCore": quote_context.fingerprint_material(),
+            "targetAsset": {"tokenDecimals": token_decimals},
+        },
     )
 
 
@@ -332,17 +368,23 @@ def composition_radar_source(
                     chain_id=request.chain_id,
                     contract_address=request.contract_address)
                 # Token decimals from official registry raw evidence
-                decimals_raw = getattr(
-                    asset_record, "raw_evidence", {}).get("tokenDecimals")
-                if decimals_raw is None:
-                    raise RuntimeContractError(TOKEN_DECIMALS_UNAVAILABLE)
-                try:
-                    _resolved_decimals = int(decimals_raw)
-                    if _resolved_decimals < 0:
-                        raise ValueError("negative decimals")
-                except (ValueError, TypeError) as exc:
-                    raise RuntimeContractError(
-                        TOKEN_DECIMALS_UNAVAILABLE) from exc
+                _resolved_decimals = _parse_token_decimals(
+                    getattr(asset_record, "raw_evidence", {}).get(
+                        "tokenDecimals"))
+                # C3: compare live decimals to the fingerprint-bound value.
+                # A change in tokenDecimals changes quote semantics; mismatches
+                # must fail closed — no stale decimals authority is consumed.
+                _bound_dec_raw = (request.provider_config or {}).get(
+                    "targetAsset", {}).get("tokenDecimals")
+                if _bound_dec_raw is not None:
+                    try:
+                        _bound_dec = int(_bound_dec_raw)
+                    except (ValueError, TypeError):
+                        _bound_dec = None
+                    if (_bound_dec is not None
+                            and _resolved_decimals != _bound_dec):
+                        raise TokenDecimalsMismatch(
+                            TOKEN_DECIMALS_AUTHORITY_MISMATCH)
                 binding_row, price_row = registry.fetch_bound_reference(
                     registry_snapshot, key)
                 reference_authority = build_bound_reference_price(
@@ -370,6 +412,11 @@ def composition_radar_source(
                 close = getattr(registry, "close", None)
                 if callable(close):
                     close()
+        except TokenDecimalsUnavailable:
+            evidence["reference"] = _unavailable(TOKEN_DECIMALS_UNAVAILABLE)
+        except TokenDecimalsMismatch:
+            evidence["reference"] = _unavailable(
+                TOKEN_DECIMALS_AUTHORITY_MISMATCH)
         except ReferenceIdentityMismatch:
             evidence["reference"] = _unavailable(REFERENCE_IDENTITY_MISMATCH)
         except Exception as exc:  # noqa: BLE001 - explicit section state

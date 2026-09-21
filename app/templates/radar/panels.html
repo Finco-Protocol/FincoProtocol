@@ -189,7 +189,11 @@
 </section>
 
 <!-- OOB: update the asset identity header with the snapshot's authoritative
-     identity so the header never stays stale after an HTMX refresh. -->
+     identity so the header never stays stale after an HTMX refresh.
+     Only emitted for HTMX partial responses (is_htmx_partial=True) to avoid
+     a duplicate id="radar-asset-header" on full-page renders where
+     index.html already owns that element. -->
+{% if is_htmx_partial %}
 <div id="radar-asset-header" class="radar-asset-header" hx-swap-oob="true">
   <div class="radar-asset-header__primary">
     <span class="radar-asset-header__symbol">{{ view.identity.symbol or view.identity.economicAssetUid or '—' }}</span>
@@ -200,5 +204,6 @@
     <span class="radar-note" style="font-size:11px;">quote direction only — no wallet, no signing, no transaction submission</span>
   </div>
 </div>
+{% endif %}
 
 {% endif %}

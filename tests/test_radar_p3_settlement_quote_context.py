@@ -196,6 +196,45 @@ def _snapshot_ids(text: str) -> list:
     return re.findall(r"acq-snap:[0-9a-f]{64}", text)
 
 
+def _asset_uid() -> str:
+    """Returns the current economicAssetUid from env config (monkeypatch-aware)."""
+    return composition.asset_config()["economicAssetUid"]
+
+
+@pytest.fixture(autouse=True)
+def _offline_configured_registry_p3():
+    """Autouse: inject an offline registry factory whose asset uid and address
+    mirror the current env config (including any monkeypatched settlement_env
+    values).  Evaluated lazily so monkeypatched env vars are visible when the
+    universe is actually fetched during the request."""
+    from types import SimpleNamespace as SN
+
+    def _factory():
+        cfg = composition.asset_config()
+        uid = cfg["economicAssetUid"]
+        addr = cfg["contractAddress"]
+        chain = cfg["chainId"]
+        decimals = cfg["decimals"]
+        _key = SN(chain_id=chain, contract_address=addr)
+        _asset = SN(
+            asset_uid=uid,
+            token_symbol=cfg.get("symbol", uid),
+            token_name=cfg.get("symbol", uid),
+            raw_evidence={"tokenDecimals": decimals},
+            deployment_for_chain=lambda c, k=_key, ch=chain: (
+                k if c == ch else None))
+        _snap = SN(
+            assets=[_asset],
+            get_by_uid=lambda u, a=_asset, _u=uid: a if u == _u else None)
+        return SN(
+            fetch_snapshot=lambda: _snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(_factory)
+    yield
+    composition.set_registry_factory(None)
+
+
 @pytest.fixture
 def make_client():
     def _make(service):
@@ -275,7 +314,7 @@ def test_p3_06_settlement_resolver_exception_is_explicit_unavailable(
 
     service = _service(calls, providers={"radar-core": failing_source})
     response = make_client(service).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert "RuntimeError" in response.text  # explicit unavailable state
@@ -311,7 +350,7 @@ def test_p3_09_invalid_context_prevents_lifi_invocation(make_client,
     monkeypatch.delenv("RADAR_V1_QUOTE_TAKER_ADDRESS", raising=False)
     service = _service(calls, quote_captures=captures)
     response = make_client(service).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"})
     assert response.status_code == 200
     assert QUOTE_TAKER_ADDRESS_NOT_CONFIGURED in response.text
@@ -342,7 +381,7 @@ def test_p3_11_captured_quote_request_contains_exact_settlement(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     c = make_client(service)
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -365,7 +404,7 @@ def test_p3_12_captured_quote_request_contains_exact_taker_address(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     make_client(service).post("/radar/refresh",
-                              data={"direction": "BUY", "size": "100"},
+                              data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
                               headers={"HX-Request": "true"})
     assert captures[0].taker_address == TAKER
     assert captures[0].taker_address == captures[0].taker_address.lower()
@@ -376,7 +415,7 @@ def test_p3_13_buy_exact_notional_preserved(make_client, settlement_env):
     captures: list = []
     service = _service(calls, quote_captures=captures)
     make_client(service).post("/radar/refresh",
-                              data={"direction": "BUY", "size": "100"},
+                              data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
                               headers={"HX-Request": "true"})
     from finco_radar.quotes.contracts import QuoteSide
     assert captures[0].side is QuoteSide.BUY
@@ -388,7 +427,7 @@ def test_p3_14_sell_sizing_reference_preserved(make_client, settlement_env):
     captures: list = []
     service = _service(calls, quote_captures=captures)
     make_client(service).post("/radar/refresh",
-                              data={"direction": "SELL", "size": "1000"},
+                              data={"asset_uid": _asset_uid(), "direction": "SELL", "size": "1000"},
                               headers={"HX-Request": "true"})
     from finco_radar.quotes.contracts import QuoteSide
     assert captures[0].side is QuoteSide.SELL
@@ -440,14 +479,14 @@ def test_p3_18_changed_context_cannot_reuse_cached_snapshot(
     cache = __import__("app.radar_runtime.cache", fromlist=["AcquisitionCache"])
     service = _service(calls, quote_captures=captures)
     client = make_client(service)
-    first = client.post("/radar/refresh", data={"direction": "BUY",
+    first = client.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                                 "size": "100"},
                         headers={"HX-Request": "true"})
     first_id = _snapshot_ids(first.text)[0]
     before = len(calls)
     monkeypatch.setenv("RADAR_V1_QUOTE_TAKER_ADDRESS",
                        "0x2222222222222222222222222222222222222222")
-    second = client.post("/radar/refresh", data={"direction": "BUY",
+    second = client.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                                  "size": "100"},
                          headers={"HX-Request": "true"})
     second_id = _snapshot_ids(second.text)[0]
@@ -465,7 +504,7 @@ def test_p3_19_successful_quote_activates_execution_panel(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     page = make_client(service).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"}).text
     assert 'data-panel="execution"' in page
     assert "QUOTE_OK" in page
@@ -495,7 +534,7 @@ def test_p3_20_quote_failure_preserves_exact_status_and_reason(
                              max_concurrent_providers=4),
         clock=lambda: NOW)
     page = make_client(service2).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"}).text
     assert "INSUFFICIENT_LIQUIDITY" in page
     assert "SOME_TYPED_REASON" in page
@@ -508,7 +547,7 @@ def test_p3_21_gap_available_on_success_unavailable_on_failure(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     ok_page = make_client(service).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"}).text
     # with a successful quote and bound reference, the frozen GAP engine
     # is invoked; a real DirectionalGapObservation requires the full
@@ -533,7 +572,7 @@ def test_p3_21_gap_available_on_success_unavailable_on_failure(
                              max_concurrent_providers=4),
         clock=lambda: NOW)
     fail_page = make_client(service3).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"}).text
     assert "GAP_REQUIRES_EXECUTION_AND_REFERENCE" in fail_page
 
@@ -548,7 +587,7 @@ def test_p3_22_inspector_remains_zero_network_with_context(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     c = make_client(service)
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -565,7 +604,7 @@ def test_p3_23_historical_snapshot_keeps_original_evidence(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     c = make_client(service)
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -590,7 +629,7 @@ def test_p3_24_no_wallet_signing_or_submission_semantics(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     page = make_client(service).post(
-        "/radar/refresh", data={"direction": "BUY", "size": "100"},
+        "/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
         headers={"HX-Request": "true"}).text.lower()
     for banned in ("connect wallet", "private key", "sign transaction",
                    "swap tokens", "submit order", "custody"):
@@ -715,13 +754,13 @@ def test_c1_07_cached_context_never_crosses_chain_boundary(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     client = make_client(service)
-    first = client.post("/radar/refresh", data={"direction": "BUY",
+    first = client.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                                 "size": "100"},
                         headers={"HX-Request": "true"})
     first_id = _snapshot_ids(first.text)[0]
     before = len(calls)
     monkeypatch.setenv("RADAR_V1_SETTLEMENT_CHAIN_ID", "137")
-    second = client.post("/radar/refresh", data={"direction": "BUY",
+    second = client.post("/radar/refresh", data={"asset_uid": _asset_uid(), "direction": "BUY",
                                                  "size": "100"},
                          headers={"HX-Request": "true"})
     second_id = _snapshot_ids(second.text)[0]
@@ -802,7 +841,7 @@ def test_c2_10_provider_callable_receives_configured_decimals(
     captures: list = []
     service = _service(calls, quote_captures=captures)
     make_client(service).post("/radar/refresh",
-                              data={"direction": "BUY", "size": "100"},
+                              data={"asset_uid": _asset_uid(), "direction": "BUY", "size": "100"},
                               headers={"HX-Request": "true"})
     assert len(captures) == 1
     quote_request = captures[0]

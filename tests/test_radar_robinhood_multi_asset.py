@@ -766,3 +766,401 @@ def test_set_registry_factory_global_seam():
     assert len(result) == 1
     # seam cleared
     assert composition._registry_factory_override is None
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — C01: missing asset_uid → ASSET_UID_REQUIRED, zero acquire
+# ---------------------------------------------------------------------------
+
+def test_item8_c01_missing_asset_uid_required(make_client):
+    calls: list = []
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls))
+        resp = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100"},
+            headers={"HX-Request": "true"},
+        )
+    finally:
+        composition.set_registry_factory(None)
+
+    assert resp.status_code == 200
+    assert "ASSET_UID_REQUIRED" in resp.text
+    assert len(calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — C01: registry unavailable → ASSET_UNIVERSE_UNAVAILABLE, zero acquire
+# ---------------------------------------------------------------------------
+
+def test_item8_c01_universe_unavailable_zero_acquire(make_client):
+    calls: list = []
+
+    def factory():
+        raise RuntimeError("registry down")
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls))
+        resp = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100", "asset_uid": "AAPL"},
+            headers={"HX-Request": "true"},
+        )
+    finally:
+        composition.set_registry_factory(None)
+
+    assert resp.status_code == 200
+    assert "ASSET_UNIVERSE_UNAVAILABLE" in resp.text
+    assert len(calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — C01: unknown UID → ASSET_NOT_FOUND_IN_UNIVERSE, zero acquire
+# ---------------------------------------------------------------------------
+
+def test_item8_c01_unknown_uid_zero_acquire(make_client):
+    calls: list = []
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls))
+        resp = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100",
+                  "asset_uid": "DOES-NOT-EXIST"},
+            headers={"HX-Request": "true"},
+        )
+    finally:
+        composition.set_registry_factory(None)
+
+    assert resp.status_code == 200
+    assert "ASSET_NOT_FOUND_IN_UNIVERSE" in resp.text
+    assert len(calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — _parse_token_decimals: direct unit tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_val,description", [
+    (None, "None rejected"),
+    (True, "bool True rejected"),
+    (False, "bool False rejected"),
+    (-1, "negative int rejected"),
+    (256, "out-of-range 256 rejected"),
+    ("abc", "non-numeric string rejected"),
+    (1.5, "float rejected"),
+    ("1.5", "fractional string rejected"),
+])
+def test_item8_parse_token_decimals_rejects(bad_val, description):
+    from app.radar_ui.composition import (
+        TokenDecimalsUnavailable,
+        _parse_token_decimals,
+    )
+    with pytest.raises(TokenDecimalsUnavailable):
+        _parse_token_decimals(bad_val)
+
+
+@pytest.mark.parametrize("good_val,expected", [
+    (0, 0),
+    (6, 6),
+    (18, 18),
+    (255, 255),
+    ("18", 18),
+    ("0", 0),
+    ("255", 255),
+])
+def test_item8_parse_token_decimals_accepts(good_val, expected):
+    from app.radar_ui.composition import _parse_token_decimals
+    assert _parse_token_decimals(good_val) == expected
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — fingerprint: decimals 18 vs 6 same identity → different fingerprint
+# ---------------------------------------------------------------------------
+
+def test_item8_fingerprint_decimals_18_vs_6_differ():
+    req_18 = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=18,
+        ))
+    req_6 = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=6,
+        ))
+    assert req_18.economic_asset_uid == req_6.economic_asset_uid
+    assert req_18.contract_address == req_6.contract_address
+    assert req_18.fingerprint != req_6.fingerprint
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — fingerprint: actual .fingerprint comparison for M-type test
+# ---------------------------------------------------------------------------
+
+def test_item8_fingerprint_differs_across_assets():
+    req_aapl = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=18,
+        ))
+    req_nvda = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="NVDA",
+            token_symbol="NVDA",
+            token_name="NVIDIA Corp.",
+            chain_id=_CHAIN,
+            contract_address=_NVDA_ADDR,
+            token_decimals=18,
+        ))
+    assert req_aapl.fingerprint != req_nvda.fingerprint
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — decimals mismatch fails reference closed (TOKEN_DECIMALS_AUTHORITY_MISMATCH)
+# ---------------------------------------------------------------------------
+
+def test_item8_decimals_mismatch_fails_reference_closed():
+    # Registry says decimals=18 but request was built with decimals=6
+    aapl_rec = SimpleNamespace(
+        asset_uid="AAPL",
+        token_symbol="AAPL",
+        raw_evidence={"tokenDecimals": 18},  # live registry says 18
+        deployment_for_chain=lambda c: SimpleNamespace(
+            chain_id=_CHAIN, contract_address=_AAPL_ADDR) if c == _CHAIN else None,
+    )
+    snapshot = SimpleNamespace(
+        assets=[aapl_rec],
+        get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+    )
+
+    def factory():
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snapshot,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    source = composition.composition_radar_source(registry_factory=factory)
+    req = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=6,  # fingerprint-bound decimals = 6, live = 18 → mismatch
+        ))
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False
+    assert ref["reason"] == "TOKEN_DECIMALS_AUTHORITY_MISMATCH"
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — stable TOKEN_DECIMALS_UNAVAILABLE from composition_radar_source
+# ---------------------------------------------------------------------------
+
+def test_item8_token_decimals_unavailable_stable_reason():
+    aapl_rec = SimpleNamespace(
+        asset_uid="AAPL",
+        token_symbol="AAPL",
+        raw_evidence={},  # missing tokenDecimals
+        deployment_for_chain=lambda c: SimpleNamespace(
+            chain_id=_CHAIN, contract_address=_AAPL_ADDR) if c == _CHAIN else None,
+    )
+    snapshot = SimpleNamespace(
+        assets=[aapl_rec],
+        get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+    )
+
+    def factory():
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snapshot,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    source = composition.composition_radar_source(registry_factory=factory)
+    req = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=18,
+        ))
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False
+    assert ref["reason"] == "TOKEN_DECIMALS_UNAVAILABLE"
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — NVDA selection: no stale AAPL in header/panel
+# ---------------------------------------------------------------------------
+
+def test_item8_nvda_selection_no_stale_aapl(make_client):
+    calls: list = []
+    nvda_rec = _make_asset_record("NVDA", "NVDA", "NVIDIA Corp.", _NVDA_ADDR)
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+    assets = [aapl_rec, nvda_rec]
+
+    def factory():
+        by_uid = {"AAPL": aapl_rec, "NVDA": nvda_rec}
+        snap = SimpleNamespace(
+            assets=assets,
+            get_by_uid=lambda u: by_uid.get(u),
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls, uid="NVDA", address=_NVDA_ADDR))
+        resp = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100", "asset_uid": "NVDA"},
+            headers={"HX-Request": "true"},
+        )
+    finally:
+        composition.set_registry_factory(None)
+
+    assert resp.status_code == 200
+    assert "NVDA" in resp.text
+    # OOB header must identify the snapshot's actual asset (NVDA)
+    assert 'id="radar-asset-header"' in resp.text
+    # The response must not show AAPL as the selected/acquired asset
+    assert calls[0].economic_asset_uid == "NVDA"
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — snapshot query: NVDA snapshot cannot render AAPL as target
+# ---------------------------------------------------------------------------
+
+def test_item8_snapshot_query_identity_consistent(make_client):
+    calls: list = []
+    nvda_rec = _make_asset_record("NVDA", "NVDA", "NVIDIA Corp.", _NVDA_ADDR)
+    assets = [nvda_rec]
+
+    def factory():
+        snap = SimpleNamespace(
+            assets=assets,
+            get_by_uid=lambda u: nvda_rec if u == "NVDA" else None,
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls, uid="NVDA", address=_NVDA_ADDR))
+        # Acquire NVDA snapshot
+        resp = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100", "asset_uid": "NVDA"},
+            headers={"HX-Request": "true"},
+        )
+        import re
+        ids = re.findall(r"acq-snap:[0-9a-f]{64}", resp.text)
+        snapshot_id = ids[0]
+        # Re-render the NVDA snapshot — identity must remain NVDA
+        resp2 = c.get(f"/radar/snapshot/{snapshot_id}")
+    finally:
+        composition.set_registry_factory(None)
+
+    assert resp2.status_code == 200
+    # The NVDA snapshot panels must contain NVDA identity, not AAPL
+    assert calls[0].economic_asset_uid == "NVDA"
+    assert "NVDA" in resp2.text
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — full page has exactly one id="radar-asset-header"
+# ---------------------------------------------------------------------------
+
+def test_item8_full_page_single_asset_header(make_client):
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
+
+    import re
+    matches = re.findall(r'id=["\']radar-asset-header["\']', page)
+    assert len(matches) == 1, (
+        f"expected exactly 1 id='radar-asset-header', found {len(matches)}")
+
+
+# ---------------------------------------------------------------------------
+# Item 8 — HTMX partial has OOB, full page does NOT have hx-swap-oob
+# ---------------------------------------------------------------------------
+
+def test_item8_oob_only_in_htmx_partial(make_client):
+    calls: list = []
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service(calls))
+        # HTMX partial: must have OOB
+        partial = c.post(
+            "/radar/refresh",
+            data={"direction": "BUY", "size": "100", "asset_uid": "AAPL"},
+            headers={"HX-Request": "true"},
+        ).text
+        # Full-page GET: must NOT have hx-swap-oob on the asset header
+        full_page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
+
+    assert 'hx-swap-oob="true"' in partial
+    # In the full page, id="radar-asset-header" exists exactly once and
+    # must NOT carry hx-swap-oob (the index.html owns the element,
+    # not panels.html's OOB block)
+    import re
+    oob_in_full = re.findall(
+        r'id=["\']radar-asset-header["\'][^>]*hx-swap-oob', full_page)
+    assert len(oob_in_full) == 0, (
+        "full-page render must not emit hx-swap-oob on radar-asset-header")
