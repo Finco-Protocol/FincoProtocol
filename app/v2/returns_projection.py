@@ -73,7 +73,7 @@ def _last_run_scenario(ws: Any) -> str:
     scenario_id = getattr(ws, "last_runtime_scenario_id", None)
     if isinstance(scenario_id, str) and scenario_id.strip():
         return f"Scenario ID: {scenario_id.strip()}"
-    return "Base Case"
+    return NOT_AVAILABLE
 
 
 def build_returns_projection(rr: Any, ws: Any) -> ReturnsProjection:

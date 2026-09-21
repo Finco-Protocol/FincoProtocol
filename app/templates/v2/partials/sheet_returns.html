@@ -1,6 +1,6 @@
 {# Workbook V2 Returns — persisted Last Run evidence only. #}
 {% macro money(v) -%}
-  {%- if v is number -%}<span class="{% if v < 0 %}v2-returns-negative{% endif %}">{{ "{:,.0f}".format(v) }}</span>
+  {%- if v is number and v is not sameas true and v is not sameas false -%}<span class="{% if v < 0 %}v2-returns-negative{% endif %}">{{ "{:,.0f}".format(v) }}</span>
   {%- else -%}<span class="v2-field-empty">—</span>{%- endif -%}
 {%- endmacro %}
 

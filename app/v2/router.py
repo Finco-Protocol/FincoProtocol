@@ -2277,7 +2277,7 @@ async def v2_scenario_select(
         # evidence — the toolbar and runtime bars must agree stale/not-current
         # in the same response (the scenario list and Overview fragments are
         # already emitted above).
-        from app.v2.post_run_ui import build_toolbar_state_oob
+        from app.v2.post_run_ui import build_toolbar_state_oob, _as_oob
         from app.v2.runtime_projection_views import build_all_runtime_bar_oob
 
         _rr_sel = WorkbookService.get_runtime_result(ws)
@@ -2287,7 +2287,14 @@ async def v2_scenario_select(
             + build_all_runtime_bar_oob(
                 build_runtime_projection_bundle(_rr_sel, ws.dirty))
         )
-        return HTMLResponse(content=html + "\n" + ov_oob + "\n" + stale_state_oob)
+        # F01: OOB-replace Returns with post-switch canonical state.
+        # Uses the same RuntimeResult already fetched above (no re-fetch, no engine).
+        returns_ctx = _build_returns_ctx(ws, rr=_rr_sel)
+        returns_ctx["project_code"] = project
+        returns_ctx["project_editable"] = not is_protected_reference(project_record)
+        returns_html = _templates.get_template("partials/sheet_returns.html").render(returns_ctx)
+        returns_oob = _as_oob(returns_html, "v2-sheet-returns")
+        return HTMLResponse(content=html + "\n" + ov_oob + "\n" + stale_state_oob + "\n" + returns_oob)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 

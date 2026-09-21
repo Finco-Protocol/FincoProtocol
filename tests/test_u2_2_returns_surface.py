@@ -372,3 +372,288 @@ def test_returns_browser_acceptance_no_run_current_and_stale():
             browser.close()
     finally:
         pw.stop()
+
+
+# ---------------------------------------------------------------------------
+# F03 — scenario identity fails closed; never falls back to "Base Case"
+# ---------------------------------------------------------------------------
+
+def test_f03_both_identity_sources_absent_returns_not_available():
+    ws = SimpleNamespace(
+        dirty=False,
+        active_scenario_name="Base Case",
+        last_runtime_scenario_id="",
+        last_runtime_identity={},
+    )
+    projection = build_returns_projection(_rr(), ws)
+    assert projection.scenario_name == NOT_AVAILABLE
+    assert projection.scenario_name != "Base Case"
+
+
+def test_f03_identity_scenario_name_none_and_id_none_returns_not_available():
+    ws = SimpleNamespace(
+        dirty=False,
+        active_scenario_name="Upside",
+        last_runtime_scenario_id=None,
+        last_runtime_identity={"scenario_name": None},
+    )
+    projection = build_returns_projection(_rr(), ws)
+    assert projection.scenario_name == NOT_AVAILABLE
+    assert projection.scenario_name != "Upside"
+
+
+def test_f03_working_scenario_never_substituted_for_last_run_identity():
+    ws = SimpleNamespace(
+        dirty=False,
+        active_scenario_name="Downside",
+        last_runtime_scenario_id="",
+        last_runtime_identity={"scenario_name": ""},
+    )
+    projection = build_returns_projection(_rr(), ws)
+    assert projection.scenario_name != "Downside"
+    assert projection.scenario_name == NOT_AVAILABLE
+
+
+def test_f03_valid_persisted_name_still_returned():
+    projection = build_returns_projection(
+        _rr(), _ws(current="Upside", last_name="Base Case", last_id="sc-base")
+    )
+    assert projection.scenario_name == "Base Case"
+
+
+def test_f03_scenario_id_fallback_still_returned():
+    projection = build_returns_projection(
+        _rr(), _ws(current="Upside", last_name="", last_id="sc-99")
+    )
+    assert projection.scenario_name == "Scenario ID: sc-99"
+
+
+# ---------------------------------------------------------------------------
+# F02 — schedule money() macro rejects booleans; genuine zero renders as zero
+# ---------------------------------------------------------------------------
+
+def _rr_with_row(row_values: dict):
+    """Build a RuntimeResult with a single sponsor period using the given values."""
+    sponsor_payload = {
+        "periods": [{"period": 1, "date": "2028-06-30", **row_values}],
+        "summary": {
+            "total_legal_equity_contributed_keur": None,
+            "total_shl_cash_contributed_keur": None,
+            "total_legal_equity_distributions_keur": None,
+            "total_sponsor_moic": None,
+        },
+        "source": "test",
+    }
+    return RuntimeResult(
+        snapshot_id="run-f02",
+        ran_at="2026-09-21T10:30:00+00:00",
+        origin="saved_state",
+        runtime_summary={},
+        financial_statements=None,
+        debt_schedule=None,
+        tax_schedule=None,
+        distribution_schedule=None,
+        sponsor_schedule=sponsor_payload,
+    )
+
+
+def _render_sponsor_cell(value) -> str:
+    projection = build_returns_projection(_rr_with_row({"share_capital_contribution_keur": value}), _ws())
+    return _render(projection)
+
+
+def test_f02_genuine_zero_int_renders_as_zero():
+    html = _render_sponsor_cell(0)
+    assert ">0<" in html
+
+
+def test_f02_genuine_zero_float_renders_as_zero():
+    html = _render_sponsor_cell(0.0)
+    assert ">0<" in html
+
+
+def test_f02_positive_number_renders():
+    html = _render_sponsor_cell(1250.0)
+    assert "1,250" in html
+
+
+def test_f02_negative_number_renders_with_negative_class():
+    html = _render_sponsor_cell(-500.0)
+    assert "v2-returns-negative" in html
+    assert "500" in html
+
+
+def test_f02_false_renders_as_em_dash():
+    html = _render_sponsor_cell(False)
+    assert ">—<" in html
+    assert ">0<" not in html
+
+
+def test_f02_true_renders_as_em_dash():
+    html = _render_sponsor_cell(True)
+    assert ">—<" in html
+    # money(True) must not render as ">1<" in a numeric cell (v2-num column)
+    assert 'class="v2-num"><span class="">1</span>' not in html
+    assert 'v2-num"><span>1</span>' not in html
+
+
+def test_f02_none_renders_as_em_dash():
+    html = _render_sponsor_cell(None)
+    assert ">—<" in html
+
+
+def test_f02_string_renders_as_em_dash():
+    html = _render_sponsor_cell("500")
+    assert ">—<" in html
+    assert ">500<" not in html
+
+
+def test_f02_numeric_looking_string_renders_as_em_dash():
+    html = _render_sponsor_cell("0")
+    assert ">—<" in html
+    assert ">0<" not in html
+
+
+def test_f02_lockup_active_boolean_rendering_unaffected():
+    """The dedicated lockup_active column uses sameas comparison not money(), unaffected."""
+    distribution_payload = {
+        "periods": [
+            {"period": 1, "date": "2028-06-30", "lockup_active": True,
+             "distribution_keur": 100.0, "cum_distribution_keur": 100.0,
+             "cf_after_reserves_keur": 100.0, "dsra_balance_keur": 0.0,
+             "dsra_contribution_keur": 0.0, "mra_balance_keur": 0.0,
+             "mra_contribution_keur": 0.0},
+            {"period": 2, "date": "2029-06-30", "lockup_active": False,
+             "distribution_keur": 200.0, "cum_distribution_keur": 300.0,
+             "cf_after_reserves_keur": 200.0, "dsra_balance_keur": 0.0,
+             "dsra_contribution_keur": 0.0, "mra_balance_keur": 0.0,
+             "mra_contribution_keur": 0.0},
+        ],
+        "summary": {"distribution_source": "test"},
+    }
+    rr = RuntimeResult(
+        snapshot_id="run-lockup",
+        ran_at="2026-09-21T10:30:00+00:00",
+        origin="saved_state",
+        runtime_summary={},
+        financial_statements=None,
+        debt_schedule=None,
+        tax_schedule=None,
+        distribution_schedule=distribution_payload,
+        sponsor_schedule=None,
+    )
+    html = _render(build_returns_projection(rr, _ws()))
+    assert "Active" in html
+    assert "Open" in html
+
+
+# ---------------------------------------------------------------------------
+# F01 — scenario-select OOB-refreshes #v2-sheet-returns
+# ---------------------------------------------------------------------------
+
+def test_f01_scenario_select_oob_replaces_returns_fragment():
+    """After selecting a new scenario, the HTMX response must include an OOB
+    replacement for #v2-sheet-returns that shows the post-switch canonical
+    Returns state (not the previous scenario's committed values)."""
+    import uuid
+    import main_web
+    from app.auth import COOKIE_NAME, create_session_token
+    from app.persistence.db import get_connection
+    from app.persistence.repository import create_project_record
+    from app.persistence.scenarios_repository import add_scenario, get_or_create_base_case_scenario
+    from app.persistence.workspace_repository import save_workspace_state
+    from starlette.testclient import TestClient
+
+    owner = "u22f01_" + uuid.uuid4().hex[:10]
+    code = "f01_" + uuid.uuid4().hex[:8]
+    snapshot = {
+        "active_project": code,
+        "project_name": "F01 Scenario Select Returns",
+        "project_type": "Solar",
+        "project_origin": "user_created",
+        "country_market": "HR",
+        "scenario": "Base",
+        "capacity_mw": 50.0,
+        "cod_date": "2028-01-01",
+        "construction_months": 12,
+        "horizon_years": 25,
+        "tariff_eur_mwh": 60.0,
+        "ppa_term_years": 10,
+        "p50_hours": 1500.0,
+        "opex_y1_keur": 500.0,
+        "total_capex_keur": 45000.0,
+        "gearing_pct": 65.0,
+        "interest_rate_pct": 6.0,
+        "tenor_years": 15,
+        "target_dscr": 1.3,
+    }
+    record = create_project_record(
+        user_id=owner,
+        project_code=code,
+        project_name="F01 Scenario Select Returns",
+        project_type="Solar",
+        project_origin="user_created",
+        template_source="",
+        baseline_snapshot=snapshot,
+    )
+    save_workspace_state(
+        user_id=owner,
+        project_id=record.project_id,
+        project_code=code,
+        draft_snapshot=snapshot,
+        saved_snapshot=snapshot,
+    )
+    # Create a second scenario so we can switch to it
+    base_sc = get_or_create_base_case_scenario(
+        user_id=owner, project_id=record.project_id, project_code=code,
+        project_name="F01 Scenario Select Returns", project_type="Solar",
+        source_project_template="", base_input_set=snapshot, governance_state={},
+    )
+    sc_b = add_scenario(
+        user_id=owner,
+        project_id=record.project_id,
+        project_code=code,
+        scenario_name="Scenario B",
+        parent_scenario_id=base_sc.scenario_id,
+        base_input_set=snapshot,
+    )
+    try:
+        with TestClient(main_web.app, raise_server_exceptions=False) as client:
+            token = create_session_token(user_id=owner, username="u22-f01")
+            with (
+                patch("app.services.production_waterfall_seam.execute_production_waterfall",
+                      side_effect=AssertionError("engine called during scenario select")) as waterfall,
+                patch("app.services.production_financial_authority.run_clean_production",
+                      side_effect=AssertionError("engine called during scenario select")) as clean,
+                patch("app.api.project_runner.run_project",
+                      side_effect=AssertionError("engine called during scenario select")) as project_runner,
+            ):
+                resp = client.post(
+                    "/v2/workbook/scenarios/select",
+                    data={"project": code, "scenario_id": sc_b.scenario_id},
+                    headers={
+                        "Cookie": f"{COOKIE_NAME}={token}",
+                        "HX-Request": "true",
+                    },
+                )
+            assert resp.status_code == 200, resp.text
+            html = resp.text
+
+            # OOB target must be present
+            assert 'id="v2-sheet-returns"' in html
+            assert 'hx-swap-oob="true"' in html
+
+            # No Scenario A economics visible (project was never run, so no-run state)
+            assert 'data-testid="returns-no-run"' in html
+
+            # No engine was called
+            waterfall.assert_not_called()
+            clean.assert_not_called()
+            project_runner.assert_not_called()
+    finally:
+        conn = get_connection()
+        conn.execute("DELETE FROM scenarios WHERE user_id=?", (owner,))
+        conn.execute("DELETE FROM workspace_states WHERE user_id=?", (owner,))
+        conn.execute("DELETE FROM projects WHERE user_id=?", (owner,))
+        conn.commit()
+        conn.close()
