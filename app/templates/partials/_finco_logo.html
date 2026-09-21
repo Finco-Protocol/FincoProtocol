@@ -1,0 +1,24 @@
+{# ── FINCO Logo Partial ──────────────────────────────────────────────────────
+   Renders the approved FINCO hexagonal emblem mark.
+
+   Parameters (Jinja2 context):
+     logo_variant : "light" (default) — for dark nav backgrounds
+                    "dark"            — for light page backgrounds
+     logo_size    : "sm" | "md" (default) | "lg"
+#}
+
+{% set _variant = logo_variant | default("light") %}
+{% set _size    = logo_size    | default("md") %}
+
+{% if _size == "sm" %}
+  {% set _h = 20 %}
+{% elif _size == "lg" %}
+  {% set _h = 30 %}
+{% else %}
+  {% set _h = 24 %}
+{% endif %}
+
+<img src="/static/logo/finco-emblem.png"
+     alt="FINCO"
+     height="{{ _h }}"
+     style="flex-shrink:0;display:inline-block;vertical-align:middle;width:auto;image-rendering:auto;">

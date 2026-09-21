@@ -254,22 +254,12 @@ class TestModelLibrary:
         _assert_no_overflow(page, "/library", 1280)
 
     def test_library_no_overflow_390(self, live_url, browser):
-        """Protocol sidebar section must not itself cause overflow on mobile.
-        (The workbook shell has a pre-existing minimum-width command bar
-        that renders wider than 390 px; we scope the overflow check to the
-        element we added so the test catches regressions we introduce.)"""
+        """Full page must not overflow at 390px after chrome.css mobile fix."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
         page.goto(f"{live_url}/library")
         page.wait_for_load_state("domcontentloaded")
-        proto = page.query_selector("#ps-protocol-surfaces")
-        assert proto is not None
-        proto_right = page.evaluate(
-            "document.getElementById('ps-protocol-surfaces').getBoundingClientRect().right"
-        )
-        assert proto_right <= 390 + WIDTH_TOLERANCE, (
-            f"Protocol sidebar section overflows at 390px: right edge={proto_right}"
-        )
+        _assert_no_overflow(page, "/library", 390)
 
 
 # ─── End-to-end Model Journey ──────────────────────────────────────────────────
@@ -303,25 +293,12 @@ class TestModelJourney:
         _assert_no_overflow(page, "/v2/workbook", 1280)
 
     def test_workbook_no_overflow_390(self, live_url, browser):
-        """Protocol sidebar section must not itself cause overflow on mobile.
-        (The workbook shell has a pre-existing minimum-width command bar
-        that renders wider than 390 px; we scope the overflow check to the
-        element we added so the test catches regressions we introduce.)"""
+        """Full page must not overflow at 390px after chrome.css mobile fix."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
         page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
         page.wait_for_load_state("domcontentloaded")
-        proto = page.query_selector("#ps-protocol-surfaces")
-        if proto is None:
-            # /v2/workbook with no project redirects to /library — check there
-            proto = page.query_selector("#ps-protocol-surfaces")
-        assert proto is not None, "Protocol sidebar section missing"
-        proto_right = page.evaluate(
-            "document.getElementById('ps-protocol-surfaces').getBoundingClientRect().right"
-        )
-        assert proto_right <= 390 + WIDTH_TOLERANCE, (
-            f"Protocol sidebar section overflows at 390px on Workbook: right edge={proto_right}"
-        )
+        _assert_no_overflow(page, "/v2/workbook", 390)
 
     def test_full_cross_surface_journey(self, live_url, browser):
         """Home → Library → Workbook → Radar → Verify → Home, no dead ends."""

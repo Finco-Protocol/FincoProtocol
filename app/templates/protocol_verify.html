@@ -33,6 +33,15 @@
 
     {% elif corpus %}
 
+    {# ── Digest / lineage anchor — NUMBER first ── #}
+    {% if corpus.corpusSha256 %}
+    <div class="proto-verify__digest">
+      <div class="proto-verify__digest-label">Corpus SHA-256 — lineage anchor</div>
+      <div class="proto-verify__digest-value">{{ corpus.corpusSha256 }}</div>
+    </div>
+    {% endif %}
+
+    {# ── Verification status ── #}
     {% if corpus_valid %}
     <div class="proto-verify__status proto-verify__status--ok proto-verify__corpus-ok">
       ✓ Corpus verified — all {{ corpus.cases | length }} cases passed, digest confirmed
@@ -43,6 +52,7 @@
     </div>
     {% endif %}
 
+    {# ── Evidence cases ── #}
     <div class="proto-verify__cases">
       {% for case in corpus.cases %}
       <div class="proto-verify__case">
@@ -66,13 +76,6 @@
       </div>
       {% endfor %}
     </div>
-
-    {% if corpus.corpusSha256 %}
-    <div class="proto-verify__digest">
-      <div class="proto-verify__digest-label">Corpus SHA-256 digest</div>
-      <div class="proto-verify__digest-value">{{ corpus.corpusSha256 }}</div>
-    </div>
-    {% endif %}
 
     {% endif %}
 

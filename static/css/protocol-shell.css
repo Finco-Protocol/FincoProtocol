@@ -26,17 +26,23 @@
 }
 
 .proto-nav__brand {
-  font-size: 13px;
-  font-weight: var(--fo-weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   text-decoration: none;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.proto-nav__brand span {
+.proto-nav__brand-wordmark {
+  font-size: 13px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.proto-nav__brand-wordmark span {
   color: #3fb8af;
 }
 
@@ -122,8 +128,8 @@
 /* ── Hero ── */
 
 .proto-home__hero {
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e9ef;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e6ec;
 }
 
 .proto-home__hero-inner {
@@ -142,6 +148,17 @@
   gap: 0;
 }
 
+/* Hero brand logo — approved FINCO mark above the eyebrow */
+.proto-home__hero-brand {
+  margin-bottom: 24px;
+}
+
+.proto-home__hero-logo {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
 .proto-home__eyebrow {
   font-size: 11px;
   font-weight: var(--fo-weight-semibold);
@@ -149,24 +166,26 @@
   text-transform: uppercase;
   color: #3fb8af;
   margin: 0 0 20px;
+  padding-left: 10px;
+  border-left: 2px solid #3fb8af;
 }
 
 .proto-home__title {
-  font-size: 42px;
+  font-size: 48px;
   font-weight: var(--fo-weight-bold);
-  color: #111827;
-  margin: 0 0 6px;
-  letter-spacing: -0.025em;
-  line-height: 1.05;
+  color: #0c1117;
+  margin: 0 0 8px;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
 }
 
 .proto-home__tagline {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: var(--fo-weight-regular);
-  color: #4b5563;
+  color: #374151;
   margin: 0 0 28px;
-  line-height: 1.5;
-  max-width: 480px;
+  line-height: 1.55;
+  max-width: 460px;
 }
 
 .proto-home__proposition {
@@ -177,11 +196,13 @@
 }
 
 .proto-home__prop-item {
-  font-size: 14px;
-  color: #374151;
+  font-size: 13.5px;
+  font-weight: var(--fo-weight-medium);
+  color: #1f2937;
   display: flex;
   align-items: center;
   gap: 10px;
+  letter-spacing: 0.005em;
 }
 
 .proto-home__prop-item::before {
@@ -349,10 +370,10 @@
 /* ── Trust Strip ── */
 
 .proto-trust {
-  background: #f3f4f6;
-  border-top: 1px solid #e5e9ef;
-  border-bottom: 1px solid #e5e9ef;
-  padding: 20px 32px;
+  background: #f0f2f5;
+  border-top: 1px solid #d9dde3;
+  border-bottom: 1px solid #d9dde3;
+  padding: 18px 32px;
 }
 
 .proto-trust__inner {
@@ -378,11 +399,11 @@
 }
 
 .proto-trust__pillar-label {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: var(--fo-weight-bold);
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #374151;
+  color: #1f2937;
 }
 
 .proto-trust__pillar-sub {
@@ -421,6 +442,15 @@
   font-weight: var(--fo-weight-bold);
   color: #111827;
   letter-spacing: -0.015em;
+  margin: 0 0 10px;
+}
+
+.proto-arch__brand-strip {
+  font-size: 10.5px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9ca3af;
   margin: 0;
 }
 
@@ -468,12 +498,31 @@
 
 .proto-arch__product-name--teal { color: #2a8a85; }
 
+.proto-arch__product-headline {
+  font-size: 12px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.04em;
+  color: #374151;
+  margin: -4px 0 4px;
+  text-transform: uppercase;
+  font-style: italic;
+}
+
 .proto-arch__product-desc {
   font-size: 13px;
   color: #6b7280;
   line-height: 1.6;
   margin: 0;
   flex: 1;
+}
+
+.proto-arch__product-readonly {
+  font-size: 10px;
+  font-weight: var(--fo-weight-bold);
+  letter-spacing: 0.1em;
+  color: #c9a55c;
+  display: inline-block;
+  margin-left: 2px;
 }
 
 .proto-arch__product-link {
@@ -527,7 +576,7 @@
 .proto-verify__title {
   font-size: 24px;
   font-weight: var(--fo-weight-bold);
-  color: #111827;
+  color: #0c1117;
   margin: 0 0 8px;
   letter-spacing: -0.015em;
 }
@@ -548,15 +597,16 @@
 }
 
 .proto-verify__status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   font-weight: var(--fo-weight-semibold);
-  padding: 10px 16px;
+  padding: 12px 16px;
   border-radius: 3px;
   margin-bottom: 24px;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .proto-verify__status--ok {
@@ -583,7 +633,16 @@
 
 .proto-verify__case {
   background: #ffffff;
-  padding: 12px 16px;
+  padding: 11px 16px 11px 18px;
+  border-left: 3px solid #e5e9ef;
+}
+
+.proto-verify__case:has(.proto-verify__case-ok) {
+  border-left-color: #a7f3d0;
+}
+
+.proto-verify__case:has(.proto-verify__case-err) {
+  border-left-color: #fecaca;
 }
 
 .proto-verify__case:first-child {
@@ -602,10 +661,11 @@
 }
 
 .proto-verify__case-id {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: var(--fo-weight-semibold);
   font-family: var(--fo-font-mono);
-  color: #111827;
+  color: #0c1117;
+  letter-spacing: 0.01em;
 }
 
 .proto-verify__case-surface {
@@ -645,27 +705,29 @@
 
 .proto-verify__digest {
   margin-top: 24px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e5e9ef;
-  border-radius: 4px;
+  padding: 14px 16px;
+  background: #0f1318;
+  border: 1px solid #1e2530;
+  border-radius: 3px;
 }
 
 .proto-verify__digest-label {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: var(--fo-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #9ca3af;
-  margin-bottom: 6px;
+  letter-spacing: 0.14em;
+  color: #4b6070;
+  margin-bottom: 8px;
+  font-family: var(--fo-font-mono);
 }
 
 .proto-verify__digest-value {
-  font-size: 11.5px;
+  font-size: 12px;
   font-family: var(--fo-font-mono);
-  color: #374151;
+  color: #7fbf7f;
   word-break: break-all;
-  line-height: 1.5;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
 }
 
 .proto-verify__error {
@@ -702,22 +764,23 @@
 }
 
 .radar-summary__label {
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #4b6070;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   font-family: "SFMono-Regular", Consolas, monospace;
 }
 
 .radar-summary__value {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
   color: #3fb8af;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-variant-numeric: tabular-nums lining-nums;
   line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 .radar-summary__value--unavail {
@@ -876,6 +939,7 @@
     order: 3;
     width: 100%;
     padding-bottom: 8px;
+    flex-wrap: wrap;
   }
 
   .proto-home__hero-inner {
@@ -920,5 +984,38 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
+  }
+}
+
+/* ── 390 px — narrow phone ───────────────────────────────────────────────── */
+@media (max-width: 420px) {
+  /* Hide wordmark on very narrow phones; keep logo mark + links */
+  .proto-nav__brand-wordmark {
+    display: none;
+  }
+
+  .proto-home__hero-logo {
+    height: 38px;
+  }
+
+  .proto-nav__link {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .proto-home__hero-inner {
+    padding: 32px 16px 28px;
+  }
+
+  .proto-home__title {
+    font-size: 26px;
+  }
+
+  .proto-composite {
+    font-size: 12px;
+  }
+
+  .proto-verify {
+    padding: 24px 16px;
   }
 }

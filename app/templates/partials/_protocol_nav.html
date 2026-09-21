@@ -12,7 +12,13 @@
 <link rel="stylesheet" href="/static/css/protocol-shell.css">
 <nav class="proto-nav" aria-label="FINCO Protocol navigation">
   <div class="proto-nav__inner">
-    <a href="/" class="proto-nav__brand">FINCO <span>Protocol</span></a>
+    <a href="/" class="proto-nav__brand" aria-label="FINCO Protocol — Home">
+      {# Logo mark — reusable slot. Replace _finco_logo.html with the approved asset. #}
+      {% with logo_variant="light", logo_size="sm" %}
+      {% include "partials/_finco_logo.html" %}
+      {% endwith %}
+      <span class="proto-nav__brand-wordmark">FINCO <span>Protocol</span></span>
+    </a>
     <div class="proto-nav__links">
       <a href="/"
          class="proto-nav__link{% if proto_active_page == 'home' %} proto-nav__link--active{% endif %}"

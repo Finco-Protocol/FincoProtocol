@@ -502,6 +502,60 @@
   }
 }
 
+/* ── 480 px  — narrow / mobile phone ─────────────────────────────────────── */
+/* Fix: fo-brand-bar overflow at 390 px (fo-brand-bar__action--signout was
+   extending to right=401 px because secondary utility items were still
+   rendered at this width). Strategy: hide non-essential items; keep logo
+   and sign-out reachable. The underlying flex layout is corrected — we do
+   NOT apply overflow-x:hidden on html/body. */
+@media (max-width: 480px) {
+  /* Brand bar: only logo + sign-out visible */
+  .fo-brand-bar {
+    gap: var(--fo-s2);
+    padding: 0 var(--fo-s3);
+  }
+  .fo-brand-bar__brand {
+    min-width: 0;
+    flex-shrink: 0;
+  }
+  /* Hide project/scenario selectors, dividers between them, and version badge */
+  .fo-brand-bar__select,
+  .fo-brand-bar__divider,
+  .fo-brand-bar__version {
+    display: none;
+  }
+  /* Hide all brand-bar action buttons except the sign-out button */
+  .fo-brand-bar__action:not(.fo-brand-bar__action--signout) {
+    display: none;
+  }
+
+  /* Command bar: scroll within its own container — does not expand the body */
+  .fo-command-bar {
+    padding: 0 var(--fo-s3);
+    gap: var(--fo-s2);
+    overflow-x: auto;
+    /* Prevent any child from expanding the page-level scroll */
+    min-width: 0;
+  }
+  /* On narrow phones, hide status pills, meta labels, spacer and kbd chips
+     to keep Run / Save / Export reachable without horizontal body scroll */
+  .fo-command-bar .fo-btn--placeholder,
+  .fo-command-bar .fo-meta,
+  .fo-command-bar .fo-pill,
+  .fo-command-bar .fo-command-bar__spacer,
+  .fo-command-bar .fo-command-bar__divider {
+    display: none;
+  }
+  .fo-btn__kbd {
+    display: none;
+  }
+
+  /* KPI strip: always horizontally scrollable (already set at 900px) */
+  .fo-kpi-strip {
+    overflow-x: auto;
+  }
+}
+
 /* ============================================================================
    6.  PRINT  ── hide chrome on paper
    ========================================================================== */
