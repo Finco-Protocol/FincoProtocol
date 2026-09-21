@@ -2018,9 +2018,9 @@ async def v2_workbook_export(
     authenticated user; unauthenticated requests redirect to /login.
     """
     from app.persistence.projects_repository import resolve_accessible_project
-    from app.services.export_service import (
-        build_institutional_workbook_export,
-        _make_streaming_response,
+    from app.services.export_service import _make_streaming_response
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
     )
 
     user = _get_current_user(request)
@@ -2032,7 +2032,7 @@ async def v2_workbook_export(
         return HTMLResponse(
             content=(
                 "<html><body><h2>Export failed</h2>"
-                f"<p>Project {project!r} not found or not accessible.</p>"
+                "<p>Project not found or not accessible.</p>"
                 "<a href='/library'>Back to Library</a></body></html>"
             ),
             status_code=404,
@@ -2056,12 +2056,40 @@ async def v2_workbook_export(
         else:
             runtime_project_code = "generic_wind"
 
-    export = build_institutional_workbook_export(
+    export = build_canonical_last_run_institutional_workbook_export(
         runtime_project_code,
         safe_project=safe_project,
         project_record=project_record,
         user_id=workspace_owner,
     )
+
+    if export.status_code == 200:
+        from app.persistence.repository import record_export
+        _governance_state = {"g20_status": "BLOCKED", "r99_r102_status": "NOT APPROVED"}
+        _meta = export.metadata or {}
+        _replay_meta = {
+            "export_type": "institutional_workbook",
+            "workbook_type": "institutional_workbook",
+            "export_timestamp": _meta.get("export_generated_at", ""),
+            "export_generated_at": _meta.get("export_generated_at", ""),
+            "runtime_timestamp": _meta.get("runtime_generated_at", ""),
+            "runtime_origin": _meta.get("runtime_origin", "canonical_last_run"),
+            "artifact_name": export.filename,
+            "export_authority": _meta.get("export_authority", "CANONICAL_LAST_RUN"),
+            "run_id": _meta.get("export_run_id", ""),
+            "run_at": _meta.get("export_run_at", ""),
+        }
+        record_export(
+            user_id=workspace_owner,
+            project_code=runtime_project_code,
+            export_type="institutional_workbook",
+            artifact_name=export.filename,
+            artifact_path="/v2/workbook/export",
+            project_id=getattr(project_record, "project_id", None),
+            governance_state=_governance_state,
+            replay_metadata=_replay_meta,
+        )
+
     return _make_streaming_response(export)
 
 
