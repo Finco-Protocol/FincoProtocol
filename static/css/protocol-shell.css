@@ -26,17 +26,23 @@
 }
 
 .proto-nav__brand {
-  font-size: 13px;
-  font-weight: var(--fo-weight-semibold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   text-decoration: none;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-.proto-nav__brand span {
+.proto-nav__brand-wordmark {
+  font-size: 13px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.proto-nav__brand-wordmark span {
   color: #3fb8af;
 }
 
@@ -876,6 +882,7 @@
     order: 3;
     width: 100%;
     padding-bottom: 8px;
+    flex-wrap: wrap;
   }
 
   .proto-home__hero-inner {
@@ -920,5 +927,34 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px 12px;
+  }
+}
+
+/* ── 390 px — narrow phone ───────────────────────────────────────────────── */
+@media (max-width: 420px) {
+  /* Hide wordmark on very narrow phones; keep logo mark + links */
+  .proto-nav__brand-wordmark {
+    display: none;
+  }
+
+  .proto-nav__link {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .proto-home__hero-inner {
+    padding: 32px 16px 28px;
+  }
+
+  .proto-home__title {
+    font-size: 26px;
+  }
+
+  .proto-composite {
+    font-size: 12px;
+  }
+
+  .proto-verify {
+    padding: 24px 16px;
   }
 }
