@@ -112,9 +112,12 @@ def _fake_registry():
         pending_multiplier=None,
         pending_multiplier_effective_at=None,
         status=RegistryAssetStatus.ACTIVE,
+        raw_evidence={"tokenDecimals": config["decimals"]},
     )
     registry_snapshot = SimpleNamespace(
-        find_by_symbol=lambda sym: [asset_record])
+        find_by_symbol=lambda sym: [asset_record],
+        get_by_uid=lambda uid: (
+            asset_record if uid == config["economicAssetUid"] else None))
     binding = ReferenceBinding(
         asset_uid=config["economicAssetUid"],
         asset_key=key,

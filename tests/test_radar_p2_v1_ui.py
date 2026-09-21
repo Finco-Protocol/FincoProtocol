@@ -97,11 +97,31 @@ def test_ui_01_radar_page_renders(make_client):
 
 
 def test_ui_02_canonical_asset_identity_visible(make_client):
-    c = make_client(_build_service([]))
-    page = c.get("/radar").text
+    aapl_address = composition.asset_config()["contractAddress"]
+    from types import SimpleNamespace as SN
+    key = SN(chain_id=4663, contract_address=aapl_address)
+    asset_record = SN(
+        asset_uid="AAPL", token_symbol="AAPL", token_name="Apple Inc.",
+        raw_evidence={"tokenDecimals": 18},
+        deployment_for_chain=lambda c: key if c == 4663 else None)
+    snapshot = SN(
+        assets=[asset_record],
+        get_by_uid=lambda u: asset_record if u == "AAPL" else None)
+
+    def fake_registry():
+        return SN(
+            fetch_snapshot=lambda: snapshot,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(fake_registry)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
     assert "AAPL" in page
     assert "4663" in page
-    assert composition.asset_config()["contractAddress"] in page
+    assert aapl_address in page
 
 
 def test_ui_03_buy_sell_controls_exist(make_client):
@@ -408,7 +428,7 @@ from types import SimpleNamespace
 
 def test_ca2_01_before_refresh_no_snapshot_authority_claimed(make_client):
     page = make_client(_build_service([])).get("/radar").text
-    assert "Configured target asset" in page
+    assert "Selected asset" in page
     assert 'data-panel="identity"' not in page
     assert "acq-snap:" not in page
 
@@ -455,9 +475,11 @@ def test_ca3_04_reference_identity_mismatch_fails_closed():
         key = SimpleNamespace(chain_id=chain_id, contract_address=address)
         asset_record = SimpleNamespace(
             asset_uid=uid, token_symbol="AAPL",
+            raw_evidence={"tokenDecimals": 18},
             deployment_for_chain=lambda c: key if c == chain_id else None)
         registry_snapshot = SimpleNamespace(
-            find_by_symbol=lambda sym: [asset_record])
+            find_by_symbol=lambda sym: [asset_record],
+            get_by_uid=lambda u: asset_record)
         return SimpleNamespace(
             fetch_snapshot=lambda: registry_snapshot,
             fetch_bound_reference=lambda snap, key: ({}, {}))
@@ -489,9 +511,11 @@ def _fake_registry_uid(uid, address):
     key = SimpleNamespace(chain_id=4663, contract_address=address)
     asset_record = SimpleNamespace(
         asset_uid=uid, token_symbol="AAPL",
+        raw_evidence={"tokenDecimals": 18},
         deployment_for_chain=lambda c: key if c == 4663 else None)
     registry_snapshot = SimpleNamespace(
-        find_by_symbol=lambda sym: [asset_record])
+        find_by_symbol=lambda sym: [asset_record],
+        get_by_uid=lambda u: asset_record)
     return SimpleNamespace(
         fetch_snapshot=lambda: registry_snapshot,
         fetch_bound_reference=lambda snap, key: ({}, {}))

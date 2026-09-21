@@ -3,7 +3,7 @@
 Browser-reachable surface.  Routes NEVER call providers directly and
 NEVER import private live_proof helpers:
 
-- ``GET  /radar``                                 page shell (no acquisition)
+- ``GET  /radar``                                 page shell with live universe
 - ``POST /radar/refresh``                         ONE acquire -> ONE snapshot_id
 - ``GET  /radar/snapshot/{snapshot_id}``          re-render panels (network-free)
 - ``GET  /radar/inspector/{snapshot_id}/{field}`` Evidence Inspector (network-free)
@@ -11,6 +11,12 @@ NEVER import private live_proof helpers:
 Every detail endpoint takes the exact ``snapshot_id`` and reads through
 the P1 ``AcquisitionService.get_snapshot`` network-free path.  No HTMX
 partial can trigger acquisition.
+
+Multi-asset: GET /radar fetches the live Robinhood universe via the frozen
+RobinhoodAssetRegistryAdapter.  POST /radar/refresh accepts an asset_uid
+form field; the server resolves the exact UID/chain/contract/decimals from
+a fresh registry snapshot.  When asset_uid is absent, falls back to
+asset_config() for backward compat.
 """
 from __future__ import annotations
 
@@ -29,19 +35,22 @@ router = APIRouter()
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _templates = Jinja2Templates(
     directory=os.path.join(_APP_DIR, "templates"))
+
+
 def _intcomma(v):
     try:
         return "{:,}".format(int(float(str(v))))
     except (ValueError, TypeError):
         return str(v) if v else ""
+
+
 _templates.env.filters["intcomma"] = _intcomma
 
 _service_instance = None
 
 
 def get_service():
-    """Lazily build the canonical P1 acquisition service (composition
-    root owns wiring)."""
+    """Lazily build the canonical P1 acquisition service."""
     global _service_instance
     if _service_instance is None:
         _service_instance = composition.build_service()
@@ -49,10 +58,40 @@ def get_service():
 
 
 def set_service(service) -> None:
-    """Test/diagnostic seam: inject a service with offline fake
-    providers.  Never used by production routes themselves."""
+    """Test/diagnostic seam: inject a service with offline fake providers."""
     global _service_instance
     _service_instance = service
+
+
+def _fetch_universe_safe():
+    """Fetch the Robinhood asset universe; returns (list, error_str|None)."""
+    try:
+        universe = composition.fetch_robinhood_asset_universe()
+        return universe, None
+    except Exception as exc:  # noqa: BLE001
+        return [], type(exc).__name__
+
+
+def _resolve_selected(universe, uid: str):
+    """Resolve SelectedAsset from universe by uid (case-insensitive).
+
+    When uid is provided and not found, returns None (fail-closed).
+    When uid is empty, falls back to the first AAPL asset (convenience
+    default for GET /radar with no selection).
+    Returns None if the universe is empty."""
+    if not universe:
+        return None
+    if uid:
+        uid_lower = uid.lower()
+        for a in universe:
+            if a.economic_asset_uid.lower() == uid_lower:
+                return a
+        return None  # explicit uid not found — fail closed
+    # Default: AAPL if present, else first
+    for a in universe:
+        if a.token_symbol == "AAPL":
+            return a
+    return universe[0]
 
 
 def _panels_context(snapshot) -> dict:
@@ -60,7 +99,10 @@ def _panels_context(snapshot) -> dict:
 
 
 @router.get("/radar", response_class=HTMLResponse)
-async def radar_home(request: Request, snapshot_id: str = ""):
+async def radar_home(request: Request, snapshot_id: str = "",
+                     asset_uid: str = ""):
+    universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    selected = _resolve_selected(universe, asset_uid)
     view = None
     load_error = None
     if snapshot_id:
@@ -69,16 +111,15 @@ async def radar_home(request: Request, snapshot_id: str = ""):
             view = view_model.build_radar_view(snapshot)
         except RadarRuntimeError as exc:
             load_error = str(exc)
-    # Optionally resolve session for presentation only — Radar stays public.
-    # An anonymous user sees no Sign-out button; an authenticated user does.
-    # resolve_request_session has no side-effects on anonymous requests.
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
         request=request,
         name="radar/index.html",
         context={
-            "asset": composition.asset_config(),
+            "universe": universe,
+            "universe_error": universe_error,
+            "selected": selected,
             "sizes": composition.SIZES,
             "directions": composition.DIRECTIONS,
             "view": view,
@@ -91,12 +132,32 @@ async def radar_home(request: Request, snapshot_id: str = ""):
 
 @router.post("/radar/refresh", response_class=HTMLResponse)
 async def radar_refresh(request: Request, direction: str = Form("BUY"),
-                        size: str = Form("100")):
+                        size: str = Form("100"),
+                        asset_uid: str = Form("")):
     """ONE refresh = at most ONE acquisition = exactly ONE snapshot_id.
-    The returned fragment (and every panel inside it) is bound to that
-    single snapshot."""
+
+    When asset_uid is provided, the server resolves the full asset identity
+    from a fresh registry snapshot before building the request.  When
+    asset_uid is absent, falls back to asset_config() (backward compat)."""
+    selected_asset = None
+    universe = []
+    universe_error = None
+
+    if asset_uid:
+        universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+        selected_asset = _resolve_selected(universe, asset_uid)
+        if selected_asset is None:
+            return _templates.TemplateResponse(
+                request=request,
+                name="radar/panels.html",
+                context={"view": None,
+                         "error": "ASSET_NOT_FOUND_IN_UNIVERSE"},
+                status_code=200,
+            )
+
     try:
-        request_obj = composition.build_request(direction, size)
+        request_obj = composition.build_request(
+            direction, size, selected_asset)
     except RadarRuntimeError as exc:
         return _templates.TemplateResponse(
             request=request,
@@ -104,10 +165,11 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             context={"view": None, "error": f"INVALID_REQUEST: {exc}"},
             status_code=200,
         )
+
     # N03: the blocking acquisition is offloaded to Starlette's worker
-    # threadpool so the ASGI event loop stays responsive (a lightweight
-    # heartbeat route completes while the provider call runs).
+    # threadpool so the ASGI event loop stays responsive.
     snapshot = await run_in_threadpool(get_service().acquire, request_obj)
+
     if request.headers.get("HX-Request", "").lower() == "true":
         # HTMX path: swap in the snapshot-bound panel fragment.
         return _templates.TemplateResponse(
@@ -115,21 +177,43 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             name="radar/panels.html",
             context=_panels_context(snapshot),
         )
-    # A1: progressive fallback — a normal HTML POST returns the full
-    # Radar page for the resulting snapshot; correctness never depends
-    # on JavaScript.
+
+    # A1: progressive fallback — a normal HTML POST returns the full Radar
+    # page.  Re-fetch universe so the page renders with correct selector state.
+    if not asset_uid:
+        universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    selected_from_snapshot = _selected_from_snapshot_identity(
+        snapshot, universe)
+    from app.auth import resolve_request_session
+    user = resolve_request_session(request)
     return _templates.TemplateResponse(
         request=request,
         name="radar/index.html",
         context={
-            "asset": composition.asset_config(),
+            "universe": universe,
+            "universe_error": universe_error,
+            "selected": selected_from_snapshot or selected_asset,
             "sizes": composition.SIZES,
             "directions": composition.DIRECTIONS,
             "view": view_model.build_radar_view(snapshot),
             "load_error": None,
             "snapshot_id": snapshot.snapshot_id,
+            "user": None,
         },
     )
+
+
+def _selected_from_snapshot_identity(snapshot, universe):
+    """Derive the SelectedAsset for a non-JS full-page re-render from the
+    snapshot's authoritative identity, ensuring no stale asset header."""
+    try:
+        payload = snapshot.to_payload()
+        uid = payload.get("economicAssetUid")
+        if uid:
+            return _resolve_selected(universe, uid)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 @router.get("/radar/snapshot/{snapshot_id}", response_class=HTMLResponse)
