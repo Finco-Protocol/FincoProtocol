@@ -2355,6 +2355,82 @@ async def v2_scenario_archive(
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
+@router.post("/workbook/scenarios/update-overrides")
+async def v2_scenario_update_overrides(
+    request: Request,
+    _: None = Depends(require_v2_active),
+):
+    """Patch financial overrides for a non-base-case scenario.
+
+    Accepts multipart/form-data with fields: ``project``, ``scenario_id``,
+    plus any combination of SCENARIO_INPUT_FIELDS (e.g. tariff_eur_mwh,
+    gearing_pct).  Non-numeric submissions for numeric fields are silently
+    skipped.  Unknown field names are silently dropped by the persistence
+    layer (Phase 20B invariant).
+
+    Base Case scenarios cannot be edited via this endpoint (409).
+    Returns the re-rendered scenario list partial (HTMX OOB).
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    try:
+        form = await request.form()
+    except Exception:
+        return JSONResponse({"error": "Invalid form-data body."}, status_code=400)
+
+    project = (form.get("project") or "").strip()
+    scenario_id = (form.get("scenario_id") or "").strip()
+    if not project or not scenario_id:
+        return JSONResponse({"error": "project and scenario_id are required."}, status_code=422)
+
+    # Parse submitted override fields; skip routing/meta fields.
+    _SKIP_KEYS = frozenset({"project", "scenario_id", "csrf_token", "csrf"})
+    overrides: dict = {}
+    items = form.multi_items() if hasattr(form, "multi_items") else form.items()
+    for key, val in items:
+        if key in _SKIP_KEYS or not key or not val:
+            continue
+        try:
+            overrides[key] = float(val)
+        except (ValueError, TypeError):
+            pass  # silently skip non-numeric; persistence layer drops unknown keys
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import (
+        get_scenario,
+        update_scenario_overrides,
+    )
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot edit overrides."}, status_code=409)
+
+    sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+    if sc is None or sc.project_id != project_record.project_id:
+        return JSONResponse({"error": "Scenario not found."}, status_code=404)
+    if sc.is_base_case:
+        return JSONResponse(
+            {"error": "Base Case overrides cannot be edited via this endpoint. Use the Inputs tab."},
+            status_code=409,
+        )
+
+    updated = update_scenario_overrides(workspace_owner, scenario_id, overrides)
+    if updated is None:
+        return JSONResponse({"error": "Failed to update overrides."}, status_code=500)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        return HTMLResponse(content=html)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
 @router.get("/workbook/scenarios/compare", response_class=HTMLResponse)
 async def v2_scenario_compare(
     request: Request,
