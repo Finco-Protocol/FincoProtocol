@@ -1,0 +1,124 @@
+{# Workbook V2 Returns — persisted Last Run evidence only. #}
+{% macro money(v) -%}
+  {%- if v is number and v is not sameas true and v is not sameas false -%}<span class="{% if v < 0 %}v2-returns-negative{% endif %}">{{ "{:,.0f}".format(v) }}</span>
+  {%- else -%}<span class="v2-field-empty">—</span>{%- endif -%}
+{%- endmacro %}
+
+<div id="v2-sheet-returns" class="v2-returns" data-sheet="returns">
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status" data-testid="returns-reference-notice">
+      Reference project — Returns are read-only. Create a working copy to edit inputs.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  <div class="v2-returns-authority" data-testid="returns-authority-bar">
+    <div>
+      <span class="v2-returns-eyebrow">Canonical authority</span>
+      <strong>Last Run</strong>
+      {% if returns.state == "CLEAN" %}
+        <span class="v2-runtime-clean">Current</span>
+      {% elif returns.state == "STALE" %}
+        <span class="v2-runtime-dirty">Working changes pending</span>
+      {% else %}
+        <span class="v2-field-empty">Not run</span>
+      {% endif %}
+    </div>
+    {% if returns.has_runtime %}
+    <div class="v2-returns-lineage">
+      <span>Scenario: <strong data-testid="returns-last-run-scenario">{{ returns.scenario_name }}</strong></span>
+      {% if returns.ran_at %}<span>Run: <strong>{{ returns.ran_at }}</strong></span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not returns.has_runtime %}
+    <div class="v2-returns-empty" data-testid="returns-no-run">
+      <h2>Returns</h2>
+      <p>Run the model to generate sponsor and distribution results.</p>
+      <p>No return values are available before a committed Run.</p>
+    </div>
+  {% else %}
+    <section class="v2-overview-section" aria-labelledby="returns-summary-title">
+      <div class="v2-overview-section-title" id="returns-summary-title">Sponsor return summary</div>
+      <div class="v2-kpi-grid v2-returns-kpi-grid">
+        {% for metric in returns.metrics %}
+        <div class="v2-kpi-tile{% if metric.value is none %} v2-kpi-tile--unavail{% elif returns.state == 'STALE' %} v2-kpi-tile--stale{% endif %}"
+             data-testid="returns-kpi-{{ metric.key }}" title="{{ metric.source }}">
+          <span class="v2-kpi-label">{{ metric.label }}</span>
+          <span class="v2-kpi-value{% if metric.value is none %} v2-kpi-value--na{% endif %}">{{ metric.display }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="v2-returns-note">Values remain tied to this Last Run until another Run is committed. Missing persisted evidence is shown as NOT AVAILABLE, never as zero.</p>
+    </section>
+
+    <section class="v2-overview-section" aria-labelledby="returns-sponsor-title">
+      <div class="v2-overview-section-title" id="returns-sponsor-title">
+        <span>Sponsor cash-flow schedule</span><span>kEUR</span>
+      </div>
+      {% if returns.sponsor_available %}
+      <div class="v2-schedule-scroll">
+        <table class="v2-schedule-table v2-returns-table" data-testid="returns-sponsor-table">
+          <thead><tr>
+            <th>Period</th><th>Date</th><th>Share capital</th><th>Share premium</th>
+            <th>Other committed equity</th><th>Additional equity</th>
+            <th>SHL cash interest received</th><th>SHL principal received</th>
+            <th>Legal equity distribution</th>
+          </tr></thead>
+          <tbody>
+          {% for row in returns.sponsor_rows %}
+            <tr>
+              <td>{{ row.get('period', '—') }}</td><td>{{ row.get('date') or '—' }}</td>
+              <td class="v2-num">{{ money(row.get('share_capital_contribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('share_premium_contribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('other_committed_equity_contribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('additional_equity_contribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('shl_cash_interest_receipt_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('shl_principal_receipt_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('legal_equity_distribution_keur')) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="v2-returns-unavailable" data-testid="returns-sponsor-unavailable">Sponsor schedule NOT AVAILABLE for this Last Run.</div>
+      {% endif %}
+    </section>
+
+    <section class="v2-overview-section" aria-labelledby="returns-distribution-title">
+      <div class="v2-overview-section-title" id="returns-distribution-title">
+        <span>Distribution and reserve evidence</span><span>kEUR</span>
+      </div>
+      {% if returns.distribution_available %}
+      <div class="v2-schedule-scroll">
+        <table class="v2-schedule-table v2-returns-table" data-testid="returns-distribution-table">
+          <thead><tr>
+            <th>Period</th><th>Date</th><th>Distribution</th><th>Cumulative distribution</th>
+            <th>Cash after reserves</th><th>DSRA balance</th><th>DSRA contribution</th>
+            <th>MRA balance</th><th>MRA contribution</th><th>Lock-up</th>
+          </tr></thead>
+          <tbody>
+          {% for row in returns.distribution_rows %}
+            <tr>
+              <td>{{ row.get('period', '—') }}</td><td>{{ row.get('date') or '—' }}</td>
+              <td class="v2-num">{{ money(row.get('distribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('cum_distribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('cf_after_reserves_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('dsra_balance_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('dsra_contribution_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('mra_balance_keur')) }}</td>
+              <td class="v2-num">{{ money(row.get('mra_contribution_keur')) }}</td>
+              <td>{% if row.get('lockup_active') is sameas true %}Active{% elif row.get('lockup_active') is sameas false %}Open{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="v2-returns-unavailable" data-testid="returns-distribution-unavailable">Distribution schedule NOT AVAILABLE for this Last Run.</div>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>

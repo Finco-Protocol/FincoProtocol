@@ -79,6 +79,7 @@
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-debt"            id="tab-debt">Senior Debt</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-tax"             id="tab-tax">Tax</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-returns"         id="tab-returns">Returns</button>
   </nav>
 
   {# ── Status banner — OOB-swappable ────────────────────────────────── #}
@@ -168,6 +169,12 @@
     <div class="v2-sheet-panel" role="tabpanel" id="panel-fs" aria-labelledby="tab-fs" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_financial_statements.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-returns" aria-labelledby="tab-returns" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_returns.html" %}
       </div>
     </div>
 
