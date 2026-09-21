@@ -651,6 +651,65 @@ def update_scenario_overrides(
 
 
 # ============================================================
+# Group B high-risk write: remove_scenario_overrides (scenario-reset)
+# ============================================================
+
+
+def remove_scenario_overrides(
+    user_id: str,
+    scenario_id: str,
+    keys_to_remove: "list[str]",
+) -> "Optional[ScenarioRecord]":
+    """Remove specific override keys from a non-base-case scenario.
+
+    Semantics: deletes the named keys from overrides_json so the scenario
+    inherits the Base Case value for those fields on the next run.
+
+    Critical invariant (override-reset):
+        override key absent              ≠  override key present with 0.0
+    A genuine persisted zero (0.0) must not be interpreted as "remove".
+    Only keys explicitly passed in keys_to_remove are deleted.
+
+    Unknown keys in keys_to_remove are silently ignored (no-op).
+    Base Case scenarios return None (their overrides live in base_input_set).
+    Returns the updated ScenarioRecord, or None if the scenario does not exist.
+    """
+    record = get_scenario(scenario_id, user_id)
+    if record is None:
+        return None
+    if record.is_base_case:
+        return None  # base-case values live in base_input_set; not removable here
+
+    merged = dict(record.overrides)
+    for key in keys_to_remove:
+        merged.pop(key, None)  # absent key is silently ignored
+
+    resolved = resolve_scenario_snapshot(record.base_input_set, merged)
+    now = _now_utc()
+
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scenarios
+            SET overrides_json=?, snapshot_json=?, updated_at=?
+            WHERE scenario_id=? AND user_id=?
+            """,
+            (
+                _to_json(merged),
+                _to_json(resolved),
+                now.isoformat(),
+                scenario_id,
+                user_id,
+            ),
+        )
+
+    record.overrides = merged
+    record.snapshot = resolved
+    record.updated_at = now
+    return record
+
+
+# ============================================================
 # Group B high-risk write: get_or_create_base_case_scenario (Phase 53G-7)
 # ============================================================
 

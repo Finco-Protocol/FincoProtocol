@@ -155,12 +155,29 @@
   {# ── Override editor modal ───────────────────────────────────────────── #}
   {#
      Modeller edits financial assumptions for a non-base scenario.
-     Only the fields entered are sent; the persistence layer merges them
-     with existing overrides (new values win). Leave a field blank to
-     keep its current override (or inherit from Base Case if none set).
+
+     Two distinct actions:
+       Set/update: enter a value in the input → merges override (blank = unchanged)
+       Reset:      click "↩ Base Case" → removes that override key, restoring
+                   Base Case inheritance for that field.
+
+     Blank input means "leave unchanged" — it does NOT remove an existing override.
+     Use "↩ Base Case" to explicitly remove an override and inherit Base Case.
      Numeric fields only — non-numeric entries are silently skipped.
   #}
   <div id="v2-scenario-override-modal" class="v2-scenario-modal v2-scenario-override-modal" hidden>
+
+    {# ── Active overrides panel (populated by JS) ───────────────────── #}
+    <div id="v2-override-active-panel" hidden>
+      <div class="v2-scenario-modal-label v2-override-active-title">Active overrides</div>
+      <p class="v2-scenario-override-hint">
+        These fields deviate from Base Case.
+        Click <strong>↩ Base Case</strong> to remove an override and inherit the Base Case value.
+      </p>
+      <div id="v2-override-active-list" class="v2-override-active-list"></div>
+    </div>
+
+    {# ── Set/update form ─────────────────────────────────────────────── #}
     <form id="v2-scenario-override-form"
           hx-post="/v2/workbook/scenarios/update-overrides"
           hx-target="#v2-sheet-scenarios"
@@ -170,8 +187,9 @@
 
       <div class="v2-scenario-modal-label" id="v2-override-modal-title">Edit scenario overrides</div>
       <p class="v2-scenario-override-hint">
-        Enter new values to override Base Case assumptions for this scenario.
-        Leave a field blank to keep its current value.
+        Enter a new value to set or update an override.
+        <strong>Blank = leave unchanged</strong>
+        (does not remove an existing override).
       </p>
 
       <div class="v2-override-fields">
@@ -267,6 +285,24 @@ function v2ScenarioRename(id, currentName) {
   document.getElementById('v2-rename-new-name').focus();
 }
 
+// Override fields listed in the editor (must match form input names above).
+var _V2_OVERRIDE_FIELDS = [
+  'tariff_eur_mwh', 'p50_hours', 'opex_y1_keur', 'total_capex_keur',
+  'gearing_pct', 'interest_rate_pct', 'tenor_years', 'target_dscr'
+];
+
+// Human-readable labels for active override display (must mirror OVERRIDE_EDITOR_FIELDS).
+var _V2_OVERRIDE_LABELS = {
+  tariff_eur_mwh:    'Tariff',
+  p50_hours:         'P50 hours',
+  opex_y1_keur:      'OPEX year 1',
+  total_capex_keur:  'Total CAPEX',
+  gearing_pct:       'Gearing',
+  interest_rate_pct: 'Interest rate',
+  tenor_years:       'Tenor',
+  target_dscr:       'Target DSCR'
+};
+
 function v2ScenarioEditOverridesFromButton(btn) {
   var id = btn.dataset.scenarioId;
   var name = btn.dataset.scenarioName;
@@ -274,12 +310,6 @@ function v2ScenarioEditOverridesFromButton(btn) {
   try { overrides = JSON.parse(btn.dataset.overrides || '{}'); } catch (e) {}
   v2ScenarioEditOverrides(id, name, overrides);
 }
-
-// Override fields listed in the editor (must match form input names above).
-var _V2_OVERRIDE_FIELDS = [
-  'tariff_eur_mwh', 'p50_hours', 'opex_y1_keur', 'total_capex_keur',
-  'gearing_pct', 'interest_rate_pct', 'tenor_years', 'target_dscr'
-];
 
 function v2ScenarioEditOverrides(scenarioId, scenarioName, currentOverrides) {
   document.getElementById('v2-override-scenario-id').value = scenarioId;
@@ -298,10 +328,59 @@ function v2ScenarioEditOverrides(scenarioId, scenarioName, currentOverrides) {
     }
   }
 
+  // Populate the active overrides panel.
+  // Each active override gets a Reset row with an explicit "↩ Base Case" button.
+  // This is the only path for removing an override; blank inputs do NOT remove.
+  var activeList = document.getElementById('v2-override-active-list');
+  var activePanel = document.getElementById('v2-override-active-panel');
+  activeList.innerHTML = '';
+  var activeKeys = Object.keys(currentOverrides || {}).filter(function(k) {
+    return _V2_OVERRIDE_FIELDS.indexOf(k) !== -1;
+  });
+  if (activeKeys.length > 0) {
+    activePanel.hidden = false;
+    for (var j = 0; j < activeKeys.length; j++) {
+      var k = activeKeys[j];
+      var label = _V2_OVERRIDE_LABELS[k] || k;
+      var val = currentOverrides[k];
+      var row = document.createElement('div');
+      row.className = 'v2-override-active-row';
+      // Encode field key safely as text content — never interpolated into attribute.
+      var resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'v2-scenario-action-btn v2-scenario-action-btn--reset';
+      resetBtn.title = 'Remove override — inherit Base Case value';
+      resetBtn.textContent = '↩ Base Case';
+      resetBtn.dataset.field = k;
+      resetBtn.onclick = function(e) { v2ResetOverride(e.currentTarget); };
+      var desc = document.createElement('span');
+      desc.className = 'v2-override-active-desc';
+      desc.textContent = label + ': ' + val;
+      row.appendChild(resetBtn);
+      row.appendChild(desc);
+      activeList.appendChild(row);
+    }
+  } else {
+    activePanel.hidden = true;
+  }
+
   document.getElementById('v2-scenario-override-modal').hidden = false;
   // Focus first input
   var first = document.querySelector('#v2-scenario-override-form input[type="number"]');
   if (first) first.focus();
+}
+
+// Post a single-field override removal to the server via HTMX.
+// Invariant preserved by server: key absent ≠ key present with 0.0.
+function v2ResetOverride(btn) {
+  var field = btn.dataset.field;
+  var project = document.querySelector('#v2-scenario-override-form input[name="project"]').value;
+  var scenarioId = document.getElementById('v2-override-scenario-id').value;
+  htmx.ajax('POST', '/v2/workbook/scenarios/remove-override', {
+    target: '#v2-sheet-scenarios',
+    swap: 'outerHTML',
+    values: { project: project, scenario_id: scenarioId, field: field }
+  });
 }
 
 function v2CloseOverrideModal() {
@@ -311,5 +390,8 @@ function v2CloseOverrideModal() {
     var el = document.getElementById('ov-' + _V2_OVERRIDE_FIELDS[i]);
     if (el) el.value = '';
   }
+  // Also hide active overrides panel.
+  var activePanel = document.getElementById('v2-override-active-panel');
+  if (activePanel) activePanel.hidden = true;
 }
 </script>

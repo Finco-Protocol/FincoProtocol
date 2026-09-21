@@ -2431,6 +2431,80 @@ async def v2_scenario_update_overrides(
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
+@router.post("/workbook/scenarios/remove-override")
+async def v2_scenario_remove_override(
+    request: Request,
+    _: None = Depends(require_v2_active),
+):
+    """Remove a specific field override from a scenario, restoring Base Case inheritance.
+
+    Semantics: removes the named key(s) from overrides_json so the scenario
+    inherits the Base Case value for that field on the next run.
+
+    Invariant (override-reset): key absent ≠ key present with 0.0.
+    A genuine persisted 0.0 is untouched; only explicitly named keys are removed.
+
+    Accepts form data: ``project``, ``scenario_id``, ``field`` (repeatable —
+    submit multiple ``field`` values to remove several overrides at once).
+    Base Case scenarios → 409.  Protected references → 409.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    try:
+        form = await request.form()
+    except Exception:
+        return JSONResponse({"error": "Invalid form-data body."}, status_code=400)
+
+    project = (form.get("project") or "").strip()
+    scenario_id = (form.get("scenario_id") or "").strip()
+    if not project or not scenario_id:
+        return JSONResponse({"error": "project and scenario_id are required."}, status_code=422)
+
+    # Collect one or more field keys to remove.
+    fields_to_remove: list[str] = []
+    items = form.multi_items() if hasattr(form, "multi_items") else form.items()
+    for key, val in items:
+        if key == "field" and val:
+            fields_to_remove.append(val.strip())
+    if not fields_to_remove:
+        return JSONResponse({"error": "At least one 'field' parameter is required."}, status_code=422)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import (
+        get_scenario,
+        remove_scenario_overrides,
+    )
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot edit overrides."}, status_code=409)
+
+    sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+    if sc is None or sc.project_id != project_record.project_id:
+        return JSONResponse({"error": "Scenario not found."}, status_code=404)
+    if sc.is_base_case:
+        return JSONResponse(
+            {"error": "Base Case overrides cannot be removed via this endpoint."},
+            status_code=409,
+        )
+
+    updated = remove_scenario_overrides(workspace_owner, scenario_id, fields_to_remove)
+    if updated is None:
+        return JSONResponse({"error": "Failed to remove override."}, status_code=500)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        return HTMLResponse(content=html)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
 @router.get("/workbook/scenarios/compare", response_class=HTMLResponse)
 async def v2_scenario_compare(
     request: Request,
