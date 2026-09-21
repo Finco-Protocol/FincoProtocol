@@ -15,11 +15,17 @@
 {% include "partials/_protocol_nav.html" %}
 {% endwith %}
 
-<!-- Asset Identity Header -->
-<div class="radar-asset-header">
+<!-- Asset Identity Header (updated by HTMX OOB swap on refresh) -->
+<div id="radar-asset-header" class="radar-asset-header">
   <div class="radar-asset-header__primary">
-    <span class="radar-asset-header__symbol">{{ asset.symbol or asset.economicAssetUid }}</span>
-    <span class="radar-asset-header__chain">{{ asset.chainId }}{% if asset.contractAddress %} · <span class="mono" style="font-size:11px;">{{ asset.contractAddress[:20] }}…</span>{% endif %}</span>
+    {% if selected %}
+    <span class="radar-asset-header__symbol">{{ selected.token_symbol }}</span>
+    <span class="radar-asset-header__chain">{{ selected.chain_id }} · <span class="mono" style="font-size:11px;">{{ selected.contract_address[:20] }}…</span></span>
+    {% elif universe_error %}
+    <span class="radar-asset-header__symbol" style="color:var(--fo-warn,#e8a838);">Universe Unavailable</span>
+    {% else %}
+    <span class="radar-asset-header__symbol">—</span>
+    {% endif %}
   </div>
   <div class="radar-asset-header__state">
     <span class="radar-state-chip radar-state-chip--readonly">READ-ONLY</span>
@@ -29,53 +35,118 @@
 
 <main class="radar-main">
 
-  <!-- Controls + configured target: compact two-column row -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-
-    <section class="panel panel-controls" data-panel="controls">
-      <h2>Quote controls</h2>
-      <form method="post" action="/radar/refresh"
-            hx-post="/radar/refresh"
-            hx-target="#radar-panels"
-            hx-swap="innerHTML"
-            class="radar-controls">
-        <div class="control-group" role="group" aria-label="Quote direction">
-          {% for d in directions %}
-          <label class="chip">
-            <input type="radio" name="direction" value="{{ d }}"
-                   {% if d == 'BUY' %}checked{% endif %}> {{ d }}
-          </label>
+  <!-- Asset selection GET form: submits GET /radar?asset_uid=<uid> -->
+  <form method="get" action="/radar" class="radar-controls-form">
+    <section class="panel panel-universe" data-panel="asset-selector" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+        <h2 style="margin:0;">Asset</h2>
+        {% if universe %}
+        <span class="muted small">{{ universe | length }} Robinhood asset{{ 's' if universe | length != 1 else '' }}</span>
+        {% endif %}
+      </div>
+      {% if universe_error %}
+      <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable — {{ universe_error }}</p>
+      <p class="muted small">Acquisition is disabled until the registry is reachable.</p>
+      {% elif universe %}
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select name="asset_uid" class="asset-selector-select"
+                style="flex:1;padding:6px 8px;background:var(--fo-surface-2,#1a2030);color:var(--fo-text-primary,#d7dee5);border:1px solid var(--fo-border,#2a3448);border-radius:4px;font-size:13px;font-family:inherit;">
+          {% for a in universe %}
+          <option value="{{ a.economic_asset_uid }}"
+                  {% if selected and selected.economic_asset_uid == a.economic_asset_uid %}selected{% endif %}>
+            {{ a.token_symbol }} — {{ a.token_name }}
+          </option>
           {% endfor %}
-        </div>
-        <div class="control-group" role="group" aria-label="Notional size">
-          {% for s in sizes %}
-          <label class="chip">
-            <input type="radio" name="size" value="{{ s }}"
-                   {% if s == '100' %}checked{% endif %}> ${{ s | intcomma }}
-          </label>
-          {% endfor %}
-        </div>
-        <button type="submit" class="refresh-btn">Refresh</button>
-      </form>
-      <p class="muted small">One refresh = one immutable acquisition snapshot. Every panel references that exact snapshot.</p>
-    </section>
-
-    <section class="panel panel-target" data-panel="configured-target">
-      <h2>Configured target asset</h2>
-      <p class="muted small" style="margin-bottom:8px;">non-authoritative composition target — authoritative identity appears with each snapshot</p>
-      <dl class="kv">
-        <dt>Asset UID</dt><dd>{{ asset.economicAssetUid }}</dd>
-        <dt>Symbol</dt><dd>{{ asset.symbol }}</dd>
-        <dt>Chain</dt><dd>{{ asset.chainId }}</dd>
-        <dt>Contract</dt><dd class="mono">{{ asset.contractAddress }}</dd>
+        </select>
+        <button type="submit" class="refresh-btn" style="white-space:nowrap;">Select / Load Asset</button>
+      </div>
+      {% if selected %}
+      <dl class="kv" style="margin-top:8px;font-size:11px;">
+        <dt>UID</dt><dd class="mono" style="word-break:break-all;">{{ selected.economic_asset_uid }}</dd>
+        <dt>Chain</dt><dd>{{ selected.chain_id }}</dd>
+        <dt>Contract</dt><dd class="mono">{{ selected.contract_address }}</dd>
+        <dt>Decimals</dt><dd>{{ selected.token_decimals }}</dd>
       </dl>
+      {% endif %}
+      {% else %}
+      <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable</p>
+      {% endif %}
     </section>
+  </form>
 
-  </div>
+  <!-- Quote POST form: carries hidden asset_uid so the server knows the
+       exact requested asset; direction/size are the only variable inputs. -->
+  <form method="post" action="/radar/refresh"
+        hx-post="/radar/refresh"
+        hx-target="#radar-panels"
+        hx-swap="innerHTML"
+        class="radar-controls-form">
+    <input type="hidden" name="asset_uid"
+           value="{{ selected.economic_asset_uid if selected else '' }}">
+
+    <!-- Controls + selected-asset row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+
+      <section class="panel panel-controls" data-panel="controls">
+        <h2>Quote controls</h2>
+        <div class="radar-controls">
+          <div class="control-group" role="group" aria-label="Quote direction">
+            {% for d in directions %}
+            <label class="chip">
+              <input type="radio" name="direction" value="{{ d }}"
+                     {% if d == 'BUY' %}checked{% endif %}> {{ d }}
+            </label>
+            {% endfor %}
+          </div>
+          <div class="control-group" role="group" aria-label="Notional size">
+            {% for s in sizes %}
+            <label class="chip">
+              <input type="radio" name="size" value="{{ s }}"
+                     {% if s == '100' %}checked{% endif %}> ${{ s | intcomma }}
+            </label>
+            {% endfor %}
+          </div>
+          <button type="submit"
+                  class="refresh-btn"
+                  {% if universe_error or not universe or not selected %}disabled{% endif %}>Refresh</button>
+        </div>
+        <p class="muted small">One refresh = one immutable acquisition snapshot. Every panel references that exact snapshot.</p>
+      </section>
+
+      <section class="panel panel-target" data-panel="configured-target">
+        <h2>Selected asset</h2>
+        {% if selected %}
+        <p class="muted small" style="margin-bottom:8px;">identity from official Robinhood registry</p>
+        <dl class="kv">
+          <dt>Symbol</dt><dd>{{ selected.token_symbol }}</dd>
+          <dt>Name</dt><dd>{{ selected.token_name }}</dd>
+          <dt>Chain</dt><dd>{{ selected.chain_id }}</dd>
+          <dt>Contract</dt><dd class="mono">{{ selected.contract_address }}</dd>
+          <dt>Decimals</dt><dd>{{ selected.token_decimals }}</dd>
+        </dl>
+        {% elif snapshot_identity_note %}
+        <p class="state-unavailable">{{ snapshot_identity_note }}</p>
+        <p class="muted small">The snapshot's asset is not present in the current universe.</p>
+        {% elif universe_error %}
+        <p class="state-unavailable">Universe unavailable — {{ universe_error }}</p>
+        {% else %}
+        <p class="muted">No asset selected.</p>
+        {% endif %}
+      </section>
+
+    </div>
+
+  </form>
 
   <!-- Panels area -->
   <div id="radar-panels" class="radar-panels">
-    {% if load_error %}
+    {% if snapshot_identity_note and not view %}
+    <section class="panel panel-error">
+      <h2>Snapshot identity</h2>
+      <p class="state-unavailable">{{ snapshot_identity_note }}</p>
+      <p class="muted small">The snapshot's asset UID is not present in the current Robinhood universe. No asset substitution is performed.</p>
+    </section>
+    {% elif load_error %}
     <section class="panel panel-error">
       <h2>Snapshot</h2>
       <p class="state-unavailable">{{ load_error }}</p>

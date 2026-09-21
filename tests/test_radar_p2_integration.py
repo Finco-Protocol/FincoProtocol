@@ -57,8 +57,27 @@ def _fake_core(calls: list):
 def real_client():
     """The REAL main_web application with the real middleware stack, and
     the Radar router's service replaced by an offline fake provider."""
+    from types import SimpleNamespace as SN
+
     import main_web  # the actual product composition root
-    from app.radar_ui import router as radar_router_module
+    from app.radar_ui import composition, router as radar_router_module
+
+    aapl_addr = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    _key = SN(chain_id=4663, contract_address=aapl_addr)
+    _asset = SN(
+        asset_uid="AAPL", token_symbol="AAPL", token_name="Apple Inc.",
+        raw_evidence={"tokenDecimals": 18},
+        deployment_for_chain=lambda c: _key if c == 4663 else None)
+    _snap = SN(
+        assets=[_asset],
+        get_by_uid=lambda u: _asset if u == "AAPL" else None)
+
+    def _offline_factory():
+        return SN(
+            fetch_snapshot=lambda: _snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(_offline_factory)
 
     calls: list = []
     service = AcquisitionService(
@@ -71,6 +90,7 @@ def real_client():
     client = TestClient(main_web.app)
     yield client, calls
     radar_router_module.set_service(None)
+    composition.set_registry_factory(None)
 
 
 def test_integration_01_radar_route_on_real_app(real_client):
@@ -113,7 +133,7 @@ def test_integration_05_htmx_refresh_returns_fragment_one_snapshot(
     real_client):
     client, calls = real_client
     response = client.post("/radar/refresh",
-                           data={"direction": "BUY", "size": "100"},
+                           data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
                            headers=HTMX_HEADERS)
     assert response.status_code == 200
     assert "<!DOCTYPE html>" not in response.text  # fragment, not a page
@@ -127,7 +147,7 @@ def test_integration_06_normal_post_fallback_returns_full_page(real_client):
     # a DISTINCT request (different fingerprint) proves the fallback path
     # acquires and renders the full page for its own snapshot
     response = client.post("/radar/refresh",
-                           data={"direction": "SELL", "size": "1000"})
+                           data={"asset_uid": "AAPL", "direction": "SELL", "size": "1000"})
     assert response.status_code == 200
     assert "<!DOCTYPE html>" in response.text  # full Radar page
     assert response.text.count("acq-snap:") >= 1
@@ -138,7 +158,7 @@ def test_integration_06_normal_post_fallback_returns_full_page(real_client):
 def test_integration_07_inspector_on_real_app_zero_acquisition(real_client):
     client, calls = real_client
     refresh = client.post("/radar/refresh",
-                          data={"direction": "BUY", "size": "100"},
+                          data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
                           headers=HTMX_HEADERS)
     import re
     snapshot_id = re.search(r"acq-snap:[0-9a-f]{64}",

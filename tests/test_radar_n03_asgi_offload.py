@@ -49,7 +49,9 @@ def _fake_core(calls: list):
 
 @pytest.fixture
 def wired_client(monkeypatch):
-    from app.radar_ui import router as radar_router_module
+    from types import SimpleNamespace
+
+    from app.radar_ui import composition, router as radar_router_module
 
     calls: list = []
     service = AcquisitionService(
@@ -62,11 +64,29 @@ def wired_client(monkeypatch):
     monkeypatch.setenv("RADAR_V1_ASSET_UID", "AAPL")
     monkeypatch.setenv("RADAR_V1_ASSET_ADDRESS",
                        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    # Inject a fast offline registry factory so the GET /radar heartbeat
+    # path does not attempt a live network call to the Robinhood registry.
+    _addr = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    _key = SimpleNamespace(chain_id=4663, contract_address=_addr)
+    _asset = SimpleNamespace(
+        asset_uid="AAPL", token_symbol="AAPL", token_name="Apple Inc.",
+        raw_evidence={"tokenDecimals": 18},
+        deployment_for_chain=lambda c: _key if c == 4663 else None)
+    _snap = SimpleNamespace(
+        assets=[_asset], get_by_uid=lambda u: _asset if u == "AAPL" else None)
+
+    def _offline_registry():
+        return SimpleNamespace(
+            fetch_snapshot=lambda: _snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(_offline_registry)
     yield calls
     # section 10 test hygiene: release the service-owned executor and
     # reset the globally injected Radar service
     service.close()
     radar_router_module.set_service(None)
+    composition.set_registry_factory(None)
 
 
 @pytest.mark.anyio
@@ -85,7 +105,8 @@ async def test_n03_refresh_offload_keeps_event_loop_responsive(
         # includes any event-loop scheduling delay caused by the refresh.
         t0 = time.monotonic()
         refresh_task = asyncio.create_task(client.post(
-            "/radar/refresh", data={"direction": "BUY", "size": "100"},
+            "/radar/refresh",
+            data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
             headers={"HX-Request": "true"}))
         heartbeat_task = asyncio.create_task(client.get("/radar"))
         heartbeat = await heartbeat_task

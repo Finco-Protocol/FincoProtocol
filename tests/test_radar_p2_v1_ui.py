@@ -70,6 +70,32 @@ def _build_service(calls: list, *, providers=None, config=None, store=None):
     )
 
 
+@pytest.fixture(autouse=True)
+def _offline_aapl_registry():
+    """Autouse: inject an offline AAPL registry factory so every test that
+    triggers a universe fetch (GET /radar, POST /radar/refresh) does not
+    attempt a live Robinhood network call."""
+    from types import SimpleNamespace as SN
+    _addr = composition.asset_config()["contractAddress"]
+    _key = SN(chain_id=4663, contract_address=_addr)
+    _asset = SN(
+        asset_uid="AAPL", token_symbol="AAPL", token_name="Apple Inc.",
+        raw_evidence={"tokenDecimals": 18},
+        deployment_for_chain=lambda c: _key if c == 4663 else None)
+    _snap = SN(
+        assets=[_asset],
+        get_by_uid=lambda u: _asset if u == "AAPL" else None)
+
+    def _factory():
+        return SN(
+            fetch_snapshot=lambda: _snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(_factory)
+    yield
+    composition.set_registry_factory(None)
+
+
 @pytest.fixture
 def make_client():
     def _make(service):
@@ -97,11 +123,31 @@ def test_ui_01_radar_page_renders(make_client):
 
 
 def test_ui_02_canonical_asset_identity_visible(make_client):
-    c = make_client(_build_service([]))
-    page = c.get("/radar").text
+    aapl_address = composition.asset_config()["contractAddress"]
+    from types import SimpleNamespace as SN
+    key = SN(chain_id=4663, contract_address=aapl_address)
+    asset_record = SN(
+        asset_uid="AAPL", token_symbol="AAPL", token_name="Apple Inc.",
+        raw_evidence={"tokenDecimals": 18},
+        deployment_for_chain=lambda c: key if c == 4663 else None)
+    snapshot = SN(
+        assets=[asset_record],
+        get_by_uid=lambda u: asset_record if u == "AAPL" else None)
+
+    def fake_registry():
+        return SN(
+            fetch_snapshot=lambda: snapshot,
+            fetch_bound_reference=lambda sn, k: ({}, {}))
+
+    composition.set_registry_factory(fake_registry)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
     assert "AAPL" in page
     assert "4663" in page
-    assert composition.asset_config()["contractAddress"] in page
+    assert aapl_address in page
 
 
 def test_ui_03_buy_sell_controls_exist(make_client):
@@ -127,7 +173,7 @@ def test_ui_04_only_reviewed_sizes_supported(make_client):
 def test_ui_05_one_refresh_exactly_one_acquisition(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     assert response.status_code == 200
@@ -137,7 +183,7 @@ def test_ui_05_one_refresh_exactly_one_acquisition(make_client):
 def test_ui_06_response_binds_exactly_one_snapshot_id(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     ids = _snapshot_ids(response.text)
@@ -148,7 +194,7 @@ def test_ui_06_response_binds_exactly_one_snapshot_id(make_client):
 def test_ui_07_all_panels_carry_the_same_snapshot_id(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     panel_ids = re.findall(r'data-snapshot-id="(acq-snap:[0-9a-f]{64})"',
@@ -164,7 +210,7 @@ def test_ui_07_all_panels_carry_the_same_snapshot_id(make_client):
 def test_ui_08_inspector_reads_exact_same_snapshot(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                              "size": "100"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
     inspector = c.get(f"/radar/inspector/{snapshot_id}/gap.gapBps")
@@ -177,7 +223,7 @@ def test_ui_08_inspector_reads_exact_same_snapshot(make_client):
 def test_ui_09_inspector_performs_zero_provider_or_network_calls(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                              "size": "100"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
     before = len(calls)
@@ -191,9 +237,9 @@ def test_ui_09_inspector_performs_zero_provider_or_network_calls(make_client):
 def test_ui_10_changing_snapshot_id_changes_displayed_evidence(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    small = c.post("/radar/refresh", data={"direction": "BUY",
+    small = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                            "size": "100"}).text
-    large = c.post("/radar/refresh", data={"direction": "SELL",
+    large = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "SELL",
                                            "size": "1000"},
                            headers={"HX-Request": "true"}).text
     small_id, large_id = _snapshot_ids(small)[0], _snapshot_ids(large)[0]
@@ -214,7 +260,7 @@ def test_ui_10_changing_snapshot_id_changes_displayed_evidence(make_client):
 def test_ui_11_reference_values_consumed_verbatim_not_recomputed(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"}).text
     assert "101.25" in page and "101.20" in page and "101.30" in page
 
@@ -222,7 +268,7 @@ def test_ui_11_reference_values_consumed_verbatim_not_recomputed(make_client):
 def test_ui_12_gap_consumed_from_authority_not_locally_derived(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"}).text
     assert "-42.5" in page and "-12.5" in page
     assert "consumed, not recomputed" in page
@@ -250,7 +296,7 @@ def test_ui_13_partial_snapshot_renders_cleanly(make_client):
     c = make_client(service)
     composition.set_configured_sources(("aux",))
     try:
-        response = c.post("/radar/refresh", data={"direction": "BUY",
+        response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                                   "size": "100"})
     finally:
         composition.set_configured_sources(())
@@ -265,7 +311,7 @@ def test_ui_14_unavailable_snapshot_renders_cleanly(make_client):
         return {"error": "provider down"}
 
     c = make_client(_build_service([], providers={"radar-core": failing}))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     assert response.status_code == 200
@@ -286,7 +332,7 @@ def test_ui_15_provider_timeout_renders_safely(make_client):
             total_budget_seconds=5.0,
             max_concurrent_providers=2))
     response = make_client(service).post("/radar/refresh",
-                                         data={"direction": "BUY",
+                                         data={"asset_uid": "AAPL", "direction": "BUY",
                                                "size": "100"})
     assert response.status_code == 200
     assert "TIMEOUT" in response.text
@@ -295,7 +341,7 @@ def test_ui_15_provider_timeout_renders_safely(make_client):
 
 def test_ui_16_invalid_provider_response_renders_safely(make_client):
     c = make_client(_build_service([], providers={"radar-core": lambda r: "bad"}))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     assert response.status_code == 200
@@ -311,7 +357,7 @@ def test_ui_17_provider_secrets_never_reach_html(make_client):
         return {"error": f"Authorization: Bearer {SECRET}"}
 
     c = make_client(_build_service([], providers={"radar-core": leaky}))
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"}).text
     assert SECRET not in page
     assert "Bearer" not in page
@@ -320,7 +366,7 @@ def test_ui_17_provider_secrets_never_reach_html(make_client):
 def test_ui_18_provider_config_never_reaches_html(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                            headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(response.text)[0]
@@ -388,11 +434,11 @@ def test_ui_22_service_reuse_across_requests_keeps_persistence():
     app = FastAPI()
     app.include_router(radar_router_module.router)
     c = TestClient(app)
-    first = c.post("/radar/refresh", data={"direction": "BUY",
+    first = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                            "size": "100"})
     snapshot_id = _snapshot_ids(first.text)[0]
     # same request again -> cached snapshot reused, one snapshot only
-    second = c.post("/radar/refresh", data={"direction": "BUY",
+    second = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                             "size": "100"})
     assert _snapshot_ids(second.text)[0] == snapshot_id
     assert len(calls) == 1
@@ -408,7 +454,7 @@ from types import SimpleNamespace
 
 def test_ca2_01_before_refresh_no_snapshot_authority_claimed(make_client):
     page = make_client(_build_service([])).get("/radar").text
-    assert "Configured target asset" in page
+    assert "Selected asset" in page
     assert 'data-panel="identity"' not in page
     assert "acq-snap:" not in page
 
@@ -416,7 +462,7 @@ def test_ca2_01_before_refresh_no_snapshot_authority_claimed(make_client):
 def test_ca2_02_identity_panel_bound_to_refresh_snapshot(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                       headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(response.text)[0]
@@ -433,7 +479,7 @@ def test_ca2_03_historical_identity_survives_config_change(make_client):
     store = SnapshotStore(":memory:")
     service = _build_service(calls, store=store)
     c = make_client(service)
-    response = c.post("/radar/refresh", data={"direction": "BUY",
+    response = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                               "size": "100"},
                       headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(response.text)[0]
@@ -455,9 +501,11 @@ def test_ca3_04_reference_identity_mismatch_fails_closed():
         key = SimpleNamespace(chain_id=chain_id, contract_address=address)
         asset_record = SimpleNamespace(
             asset_uid=uid, token_symbol="AAPL",
+            raw_evidence={"tokenDecimals": 18},
             deployment_for_chain=lambda c: key if c == chain_id else None)
         registry_snapshot = SimpleNamespace(
-            find_by_symbol=lambda sym: [asset_record])
+            find_by_symbol=lambda sym: [asset_record],
+            get_by_uid=lambda u: asset_record)
         return SimpleNamespace(
             fetch_snapshot=lambda: registry_snapshot,
             fetch_bound_reference=lambda snap, key: ({}, {}))
@@ -489,9 +537,11 @@ def _fake_registry_uid(uid, address):
     key = SimpleNamespace(chain_id=4663, contract_address=address)
     asset_record = SimpleNamespace(
         asset_uid=uid, token_symbol="AAPL",
+        raw_evidence={"tokenDecimals": 18},
         deployment_for_chain=lambda c: key if c == 4663 else None)
     registry_snapshot = SimpleNamespace(
-        find_by_symbol=lambda sym: [asset_record])
+        find_by_symbol=lambda sym: [asset_record],
+        get_by_uid=lambda u: asset_record)
     return SimpleNamespace(
         fetch_snapshot=lambda: registry_snapshot,
         fetch_bound_reference=lambda snap, key: ({}, {}))
@@ -534,7 +584,7 @@ def test_ca3_07_snapshot_evidence_identity_is_bound_identity():
 def test_ca4_08_every_rendered_inspector_link_resolves(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -568,7 +618,7 @@ def test_ca5_09_field_specific_authority_timestamps(make_client):
             calls, evidence=evidence,
             observed_at="2026-09-19T12:00:00+00:00")})
     c = make_client(service)
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -592,7 +642,7 @@ def test_ca5_10_missing_field_timestamp_shows_unavailable(make_client):
                                                    observed_at="2026-09-19"
                                                            "T12:00:00+00:00")})
     c = make_client(service)
-    refresh = c.post("/radar/refresh", data={"direction": "BUY",
+    refresh = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                              "size": "100"},
                      headers={"HX-Request": "true"})
     snapshot_id = _snapshot_ids(refresh.text)[0]
@@ -619,7 +669,7 @@ def test_ca6_11_execution_unavailable_reason_fidelity(make_client):
     service = _build_service(
         calls, providers={"radar-core": _fake_core(calls, evidence=evidence)})
     c = make_client(service)
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"},
                   headers={"HX-Request": "true"}).text
     assert "INSUFFICIENT_LIQUIDITY" in page   # exact frozen status
@@ -672,7 +722,7 @@ def _unavailable_execution_snapshot(make_client, calls: list) -> str:
     service = _build_service(
         calls, providers={"radar-core": _fake_core(calls, evidence=evidence)})
     c = make_client(service)
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"},
                   headers={"HX-Request": "true"}).text
     return _snapshot_ids(page)[0], c
@@ -708,7 +758,7 @@ def test_cb_links_04_every_inspector_link_full_interaction_contract(
     make_client):
     calls: list = []
     c = make_client(_build_service(calls))
-    page = c.post("/radar/refresh", data={"direction": "BUY",
+    page = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY",
                                           "size": "100"},
                   headers={"HX-Request": "true"}).text
     snapshot_id = _snapshot_ids(page)[0]
@@ -753,7 +803,7 @@ def test_correction_a_notional_100_rendered_without_k_suffix(make_client):
     assert "$100" in page
     assert "$100k" not in page
     # Post-refresh panels must also show $100 not $100k
-    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "100"},
+    resp = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
                   headers={"HX-Request": "true"})
     assert "$100" in resp.text
     assert "$100k" not in resp.text
@@ -769,7 +819,7 @@ def test_correction_a_notional_1000_rendered_as_1000_with_comma(make_client):
     assert "$1000k" not in page
     assert "$1,000k" not in page
     # Post-refresh panels must also show $1,000 not $1000k
-    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "1000"},
+    resp = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY", "size": "1000"},
                   headers={"HX-Request": "true"})
     assert "$1,000" in resp.text
     assert "$1000k" not in resp.text
@@ -780,7 +830,7 @@ def test_correction_b_gap_label_is_directional_not_model_market(make_client):
     """Summary row must show 'Directional GAP', not 'Model / Market GAP'."""
     calls: list = []
     c = make_client(_build_service(calls))
-    resp = c.post("/radar/refresh", data={"direction": "BUY", "size": "100"},
+    resp = c.post("/radar/refresh", data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
                   headers={"HX-Request": "true"})
     assert "Directional GAP" in resp.text
     assert "Model / Market GAP" not in resp.text

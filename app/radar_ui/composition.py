@@ -8,10 +8,10 @@ Combines exactly three things:
    helpers are NEVER called from browser-reachable composition);
 3. presentation-only view models.
 
-ONE canonical configured asset in this PR (P3): identified by chain +
-contract deployment + economic UID, never ticker alone.  The deployment
-address/decimals are configuration (env-overridable) pinned to the
-canonical Radar live-path asset.
+Multi-asset: the dynamic Robinhood asset universe is discovered at the
+APP COMPOSITION layer via the existing frozen RobinhoodAssetRegistryAdapter.
+Asset identity is always UID-first; ticker is presentation only.  Token
+decimals are derived from the official registry raw_evidence.
 
 The USDG settlement resolver is an INJECTABLE one-line wiring point:
 frozen settlement parsing lives inside the frozen proof modules and is
@@ -22,6 +22,7 @@ fabricated fallback.
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
@@ -46,16 +47,18 @@ PROVIDER_NAME = "radar-core"
 DIRECTIONS = ("BUY", "SELL")
 SIZES = ("100", "1000")
 
+_TARGET_CHAIN_ID = 4663
+
+TOKEN_DECIMALS_UNAVAILABLE = "TOKEN_DECIMALS_UNAVAILABLE"
+TOKEN_DECIMALS_AUTHORITY_MISMATCH = "TOKEN_DECIMALS_AUTHORITY_MISMATCH"
+TOKEN_DECIMALS_AUTHORITY_UNBOUND = "TOKEN_DECIMALS_AUTHORITY_UNBOUND"
+
 # The configured provider/source set for the canonical asset acquisition.
-# Composition-level configuration (env-extensible, test-seamable) — the
-# P1 request fingerprint binds this set, so extending it changes the
-# request identity by design.
 _CONFIGURED_EXTRA_SOURCES: "tuple[str, ...]" = ()
 
 
 def set_configured_sources(extra: "tuple[str, ...]") -> None:
-    """Test/diagnostic seam: extend the configured source set (the
-    canonical provider is always first and cannot be removed)."""
+    """Test/diagnostic seam: extend the configured source set."""
     global _CONFIGURED_EXTRA_SOURCES
     _CONFIGURED_EXTRA_SOURCES = tuple(extra)
 
@@ -65,6 +68,57 @@ def configured_sources() -> "tuple[str, ...]":
         s.strip() for s in
         os.getenv("RADAR_V1_EXTRA_SOURCES", "").split(",") if s.strip())
     return (PROVIDER_NAME,) + _CONFIGURED_EXTRA_SOURCES + env_extra
+
+
+# Test/diagnostic seam: override the registry factory used by
+# fetch_robinhood_asset_universe and composition_radar_source.
+_registry_factory_override: "Callable[[], Any] | None" = None
+
+
+def set_registry_factory(factory: "Callable[[], Any] | None") -> None:
+    """Test seam: inject a fake registry factory for offline universe
+    discovery and reference resolution.  Pass None to clear."""
+    global _registry_factory_override
+    _registry_factory_override = factory
+
+
+class TokenDecimalsUnavailable(RuntimeContractError):
+    """Token decimals are absent, invalid, or out of range [0, 255] in the
+    registry raw evidence.  The reference section fails closed."""
+
+
+class TokenDecimalsMismatch(RuntimeContractError):
+    """Live registry tokenDecimals differ from the fingerprint-bound value.
+    The reference section fails closed — stale decimals authority rejected."""
+
+
+class TokenDecimalsUnbound(RuntimeContractError):
+    """Fingerprint-bound tokenDecimals are absent or malformed.
+    The reference section fails closed — no substitution of live decimals."""
+
+
+def _parse_token_decimals(raw) -> int:
+    """Parse and validate tokenDecimals from registry raw_evidence.
+
+    Accepts a non-negative integer or an integer-valued string in [0, 255].
+    Rejects: None, bool, float, negative, >255, non-numeric strings.
+    Raises :class:`TokenDecimalsUnavailable` on any rejection."""
+    if raw is None or isinstance(raw, bool):
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if isinstance(raw, float):
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if isinstance(raw, int):
+        value = raw
+    elif isinstance(raw, str):
+        if not raw.isascii() or not raw.isdigit():
+            raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+        value = int(raw)
+    else:
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    if value < 0 or value > 255:
+        raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+    return value
+
 
 REFERENCE_IDENTITY_MISMATCH = "REFERENCE_IDENTITY_MISMATCH"
 
@@ -103,7 +157,8 @@ def bind_reference_identity(asset_record, key, *, economic_asset_uid: str,
 
 
 def asset_config() -> dict[str, Any]:
-    """The ONE canonical configured Radar v1 asset (P3)."""
+    """Fallback configured asset (env-overridable).  Used only when no
+    selected_asset is supplied to build_request (backward compat / tests)."""
     return {
         "economicAssetUid": os.getenv("RADAR_V1_ASSET_UID", "AAPL"),
         "symbol": os.getenv("RADAR_V1_ASSET_SYMBOL", "AAPL"),
@@ -115,46 +170,130 @@ def asset_config() -> dict[str, Any]:
     }
 
 
-def build_request(direction: str, size: str) -> AcquisitionRequest:
-    """Build the canonical acquisition request for the configured asset.
+@dataclass(frozen=True)
+class SelectedAsset:
+    """Server-resolved asset identity for one browser Radar acquisition.
+
+    Every field is authoritative from the official Robinhood registry.
+    Clients supply only the economic_asset_uid; the server derives all
+    other fields from the live registry snapshot."""
+    economic_asset_uid: str
+    token_symbol: str
+    token_name: str
+    chain_id: int
+    contract_address: str
+    token_decimals: int
+
+
+def fetch_robinhood_asset_universe(
+    registry_factory: "Callable[[], Any] | None" = None,
+    *,
+    target_chain_id: int = _TARGET_CHAIN_ID,
+) -> "list[SelectedAsset]":
+    """Discover the live Robinhood Stock Token universe for target_chain_id.
+
+    Uses the existing frozen RobinhoodAssetRegistryAdapter.  Returns a
+    deterministically sorted list of SelectedAsset objects for every asset
+    that has a canonical deployment on target_chain_id and valid
+    tokenDecimals in its raw registry evidence.
+
+    Fails with a plain exception (caller wraps in try/except) if the
+    registry is unavailable."""
+    from finco_radar.assets.adapters.robinhood import (
+        RobinhoodAssetRegistryAdapter,
+    )
+
+    factory = registry_factory or _registry_factory_override or (
+        lambda: RobinhoodAssetRegistryAdapter())
+    registry = factory()
+    try:
+        snapshot = registry.fetch_snapshot()
+    finally:
+        close = getattr(registry, "close", None)
+        if callable(close):
+            close()
+
+    result: list[SelectedAsset] = []
+    for asset in snapshot.assets:
+        deployment = asset.deployment_for_chain(target_chain_id)
+        if deployment is None:
+            continue
+        try:
+            decimals = _parse_token_decimals(
+                getattr(asset, "raw_evidence", {}).get("tokenDecimals"))
+        except TokenDecimalsUnavailable:
+            continue
+        result.append(SelectedAsset(
+            economic_asset_uid=asset.asset_uid,
+            token_symbol=asset.token_symbol,
+            token_name=asset.token_name,
+            chain_id=deployment.chain_id,
+            contract_address=deployment.contract_address,
+            token_decimals=decimals,
+        ))
+
+    # Deterministic sort: symbol then uid
+    result.sort(key=lambda a: (a.token_symbol, a.economic_asset_uid))
+    return result
+
+
+def build_request(direction: str, size: str,
+                  selected_asset: "SelectedAsset | None" = None,
+                  ) -> AcquisitionRequest:
+    """Build the canonical acquisition request.
+
+    If selected_asset is provided the request is bound to that exact
+    UID/chain/contract identity.  Without it the legacy asset_config()
+    fallback is used (backward compat for existing tests and bookmarks).
 
     Only the reviewed quote directions (BUY/SELL) and the two sized
-    notional controls ($100 / $1,000) supported by the frozen Radar path
-    are accepted (P4); everything else is a typed rejection.
+    notional controls ($100 / $1,000) are accepted; everything else is a
+    typed rejection.
 
     P5/P6: the read-only quote context (settlement identity/value/state +
     taker routing address) is resolved HERE and bound into the P1 request
-    fingerprint material — the provider callable consumes exactly this
-    material, so any context change changes the acquisition identity and
-    there is no config split-brain."""
-    asset = asset_config()
+    fingerprint material."""
     if direction not in DIRECTIONS:
         raise RuntimeContractError(
             f"direction must be one of {list(DIRECTIONS)}, got {direction!r}")
     if size not in SIZES:
         raise RuntimeContractError(
             f"size must be one of {list(SIZES)}, got {size!r}")
-    quote_context = resolve_quote_context(
-        expected_chain_id=asset["chainId"])
+
+    if selected_asset is not None:
+        chain_id = selected_asset.chain_id
+        contract_address = selected_asset.contract_address
+        economic_asset_uid = selected_asset.economic_asset_uid
+        token_decimals = selected_asset.token_decimals
+    else:
+        asset = asset_config()
+        chain_id = asset["chainId"]
+        contract_address = asset["contractAddress"]
+        economic_asset_uid = asset["economicAssetUid"]
+        token_decimals = asset["decimals"]
+
+    quote_context = resolve_quote_context(expected_chain_id=chain_id)
     return AcquisitionRequest(
-        chain_id=asset["chainId"],
-        contract_address=asset["contractAddress"],
+        chain_id=chain_id,
+        contract_address=contract_address,
         direction=direction,
         sources=configured_sources(),
         purpose="radar-v1-panel",
         notional_usd=size,
-        economic_asset_uid=asset["economicAssetUid"],
-        provider_config={"radarCore": quote_context.fingerprint_material()},
+        economic_asset_uid=economic_asset_uid,
+        provider_config={
+            "radarCore": quote_context.fingerprint_material(),
+            "targetAsset": {"tokenDecimals": token_decimals},
+        },
     )
 
 
 def composition_radar_source(
     *,
-    asset: "Mapping[str, Any] | None" = None,
     settlement_resolver: "Callable[[], Any] | None" = None,
     registry_factory: "Callable[[], Any] | None" = None,
     quote_adapter_factory: "Callable[[], Any] | None" = None,
-) -> Callable[[AcquisitionRequest], Mapping[str, Any]]:
+) -> "Callable[[AcquisitionRequest], Mapping[str, Any]]":
     """Production provider callable composing FROZEN Radar authority
     surfaces (public adapters/engines only):
 
@@ -163,11 +302,14 @@ def composition_radar_source(
     - ``LifiExecutionQuoteAdapter``      (frozen R0 quote authority)
     - ``compute_directional_gap``        (frozen R2 GAP engine)
 
-    The USDG settlement is supplied by the injectable
-    ``settlement_resolver``; without it the execution/gap sections report
-    explicitly UNAVAILABLE — no fabricated fallback (P5/P8/P9).
-    Section-level failures stay explicit inside the evidence; the runtime
-    classifies the overall observation (P5)."""
+    Asset identity is derived from request.economic_asset_uid via a fresh
+    registry snapshot on every acquisition — the same long-lived service
+    instance safely processes any number of different assets.  Token
+    decimals are taken from the official registry raw_evidence[tokenDecimals].
+
+    The USDG settlement is supplied by the injectable settlement_resolver;
+    without it the execution/gap sections report explicitly UNAVAILABLE —
+    no fabricated fallback."""
     from decimal import Decimal
 
     from finco_radar.assets.adapters.robinhood import (
@@ -186,7 +328,9 @@ def composition_radar_source(
         QuoteStatus,
     )
 
-    config = dict(asset or asset_config())
+    def _reg_factory():
+        return (registry_factory or _registry_factory_override
+                or (lambda: RobinhoodAssetRegistryAdapter()))()
 
     def _unavailable(reason: str) -> dict[str, Any]:
         return {"available": False, "reason": reason}
@@ -195,8 +339,8 @@ def composition_radar_source(
         observed_at = datetime.now(timezone.utc).isoformat()
         evidence: dict[str, Any] = {
             "asset": {
-                "symbol": config["symbol"],
-                "economicAssetUid": config["economicAssetUid"],
+                "symbol": request.economic_asset_uid,
+                "economicAssetUid": request.economic_asset_uid,
                 "chainId": request.chain_id,
                 "contractAddress": request.contract_address,
             },
@@ -204,21 +348,19 @@ def composition_radar_source(
         }
         reference_authority = None
         quote_authority = None
+        _resolved_decimals: "int | None" = None
 
         # -- reference: frozen R1 registry + R2/R7 bound-reference engine
         try:
-            registry = (registry_factory or (lambda: (
-                RobinhoodAssetRegistryAdapter(client=httpx.Client(
-                    base_url="https://api.robinhood.com", timeout=10.0,
-                    headers={"accept": "application/json"})))))()
+            registry = _reg_factory()
             try:
                 registry_snapshot = registry.fetch_snapshot()
-                matches = registry_snapshot.find_by_symbol(config["symbol"])
-                if len(matches) != 1:
+                # UID-based resolution: canonical identity, not ticker
+                asset_record = registry_snapshot.get_by_uid(
+                    request.economic_asset_uid)
+                if asset_record is None:
                     raise RuntimeError(
-                        "symbol discovery did not resolve exactly one "
-                        "canonical asset")
-                asset_record = matches[0]
+                        "economic asset uid not found in registry snapshot")
                 key = asset_record.deployment_for_chain(request.chain_id)
                 if key is None:
                     raise RuntimeError("canonical deployment unavailable")
@@ -230,12 +372,32 @@ def composition_radar_source(
                     economic_asset_uid=request.economic_asset_uid,
                     chain_id=request.chain_id,
                     contract_address=request.contract_address)
+                # Token decimals from official registry raw evidence
+                _resolved_decimals = _parse_token_decimals(
+                    getattr(asset_record, "raw_evidence", {}).get(
+                        "tokenDecimals"))
+                # C3 / B01: fingerprint-bound decimals are MANDATORY.
+                # targetAsset.tokenDecimals must exist and parse correctly;
+                # missing or malformed → fail closed, no live-decimals sub.
+                _target_asset = (request.provider_config or {}).get(
+                    "targetAsset")
+                if (not isinstance(_target_asset, Mapping)
+                        or "tokenDecimals" not in _target_asset):
+                    raise TokenDecimalsUnbound(TOKEN_DECIMALS_AUTHORITY_UNBOUND)
+                try:
+                    _bound_dec = _parse_token_decimals(
+                        _target_asset["tokenDecimals"])
+                except TokenDecimalsUnavailable:
+                    raise TokenDecimalsUnbound(TOKEN_DECIMALS_AUTHORITY_UNBOUND)
+                if _bound_dec != _resolved_decimals:
+                    raise TokenDecimalsMismatch(
+                        TOKEN_DECIMALS_AUTHORITY_MISMATCH)
                 binding_row, price_row = registry.fetch_bound_reference(
                     registry_snapshot, key)
                 reference_authority = build_bound_reference_price(
                     asset_record, binding_row, price_row)
                 # The preserved evidence identity represents the BOUND
-                # snapshot identity, never a mixture with config.
+                # snapshot identity, never a mixture with request fields.
                 evidence["asset"] = {
                     "symbol": asset_record.token_symbol,
                     "economicAssetUid": asset_record.asset_uid,
@@ -245,7 +407,8 @@ def composition_radar_source(
                 evidence["reference"] = {
                     "available": True,
                     "symbol": reference_authority.symbol,
-                    "price": str(reference_authority.token_midpoint_usd_per_token),
+                    "price": str(
+                        reference_authority.token_midpoint_usd_per_token),
                     "bid": str(reference_authority.token_bid_usd_per_token),
                     "ask": str(reference_authority.token_ask_usd_per_token),
                     "source": f"FROZEN::{type(reference_authority).__name__}",
@@ -256,17 +419,21 @@ def composition_radar_source(
                 close = getattr(registry, "close", None)
                 if callable(close):
                     close()
+        except TokenDecimalsUnavailable:
+            evidence["reference"] = _unavailable(TOKEN_DECIMALS_UNAVAILABLE)
+        except TokenDecimalsUnbound:
+            evidence["reference"] = _unavailable(
+                TOKEN_DECIMALS_AUTHORITY_UNBOUND)
+        except TokenDecimalsMismatch:
+            evidence["reference"] = _unavailable(
+                TOKEN_DECIMALS_AUTHORITY_MISMATCH)
         except ReferenceIdentityMismatch:
-            # A3: stable closed composition reason for identity mismatch
             evidence["reference"] = _unavailable(REFERENCE_IDENTITY_MISMATCH)
         except Exception as exc:  # noqa: BLE001 - explicit section state
             evidence["reference"] = _unavailable(type(exc).__name__)
 
         # -- execution: frozen R0 quote authority for the requested side/size
         try:
-            # P5/P6: the settlement/taker context comes from the
-            # fingerprint-bound request material — never re-read from a
-            # different configuration source.
             quote_context = QuoteContext.from_material(
                 (request.provider_config or {}).get("radarCore"))
             if quote_context.problems:
@@ -275,9 +442,6 @@ def composition_radar_source(
             elif reference_authority is None:
                 evidence["execution"] = _unavailable("REFERENCE_UNAVAILABLE")
             else:
-                # P3: frozen SettlementReference built from the bound
-                # context; chain/usable validation fails closed BEFORE
-                # LI.FI is invoked.
                 settlement_authority = build_settlement_reference(
                     quote_context, expected_chain_id=request.chain_id)
                 taker_address = quote_taker_address(quote_context)
@@ -295,15 +459,11 @@ def composition_radar_source(
                     LifiExecutionQuoteAdapter(client=httpx.Client(
                         base_url="https://li.quest", timeout=10.0)))))()
                 try:
-                    # P7: the frozen QuoteRequest is constructed with ALL
-                    # required arguments, including the validated public
-                    # taker routing address.  Quote-only: any transaction
-                    # payload fields remain inert evidence.
                     quote_authority = quote_adapter.quote(QuoteRequest(
                         token=AssetRef(
                             request.chain_id, request.contract_address,
-                            symbol=config["symbol"],
-                            decimals=config["decimals"]),
+                            symbol=evidence["asset"]["symbol"],
+                            decimals=_resolved_decimals),
                         settlement=settlement_authority,
                         side=(QuoteSide.BUY if request.direction == "BUY"
                               else QuoteSide.SELL),
@@ -346,7 +506,6 @@ def composition_radar_source(
                     "unavailableReason": quote_authority.unavailable_reason,
                 }
         except SettlementContextError as exc:
-            # P3: typed fail-closed settlement context reason
             evidence["settlement"] = {
                 "configured": False, "reason": str(exc),
             }

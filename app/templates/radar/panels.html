@@ -188,4 +188,22 @@
   <div id="radar-inspector" class="inspector-host"><p class="muted">Select a field to inspect its lineage.</p></div>
 </section>
 
+<!-- OOB: update the asset identity header with the snapshot's authoritative
+     identity so the header never stays stale after an HTMX refresh.
+     Only emitted for HTMX partial responses (is_htmx_partial=True) to avoid
+     a duplicate radar-asset-header element on full-page renders where
+     index.html already owns that element. -->
+{% if is_htmx_partial %}
+<div id="radar-asset-header" class="radar-asset-header" hx-swap-oob="true">
+  <div class="radar-asset-header__primary">
+    <span class="radar-asset-header__symbol">{{ view.identity.symbol or view.identity.economicAssetUid or '—' }}</span>
+    <span class="radar-asset-header__chain">{{ view.identity.chainId }}{% if view.identity.contractAddress %} · <span class="mono" style="font-size:11px;">{{ view.identity.contractAddress[:20] }}…</span>{% endif %}</span>
+  </div>
+  <div class="radar-asset-header__state">
+    <span class="radar-state-chip radar-state-chip--readonly">READ-ONLY</span>
+    <span class="radar-note" style="font-size:11px;">quote direction only — no wallet, no signing, no transaction submission</span>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}
