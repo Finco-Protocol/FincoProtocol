@@ -118,9 +118,11 @@ class _RuntimeResultAdapter:
     Never calls execute_production_waterfall or run_clean_production.
 
     KPI fields (project_irr, equity_irr, …) are served from runtime_summary.
-    .periods is served from debt_schedule.periods (senior debt periods; SHL
-    and revenue per-period fields will be 0.0 — a known persisted-path
-    limitation documented in the export workbook).
+    Absent keys and explicit None values return None (F07/C: unavailable
+    persisted evidence ≠ financial zero).  Genuine persisted 0.0 is returned
+    as 0.0.  Callers must guard against None before numeric formatting.
+    .periods is served from debt_schedule.periods (senior-debt periods;
+    absent per-period fields also return None per _PeriodAdapter).
     .sculpting_result returns None so _resolve_export_senior_debt_keur falls
     through to context.senior_debt_keur (the explicit input field).
     """
@@ -170,9 +172,13 @@ class _RuntimeResultAdapter:
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)
-        val = self._rs.get(name)
-        if val is None:
-            return 0.0
+        # F07/C: distinguish absent key / explicit null (→ None) from
+        # genuine persisted 0.0 (→ 0.0).  Use a sentinel to tell the
+        # two None-like states apart without a second dict lookup.
+        _MISSING = object()
+        val = self._rs.get(name, _MISSING)
+        if val is _MISSING or val is None:
+            return None  # unavailable persisted evidence ≠ financial zero
         try:
             return float(val)
         except (TypeError, ValueError):

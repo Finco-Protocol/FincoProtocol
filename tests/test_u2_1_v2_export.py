@@ -1951,3 +1951,177 @@ def test_xlsx_cell_value_verification():
     assert any(KNOWN_SNAPSHOT_ID in v for v in all_wb_values), (
         f"snapshot_id={KNOWN_SNAPSHOT_ID!r} not found anywhere in workbook"
     )
+
+
+# ---------------------------------------------------------------------------
+# Correction C — F07 residue: _RuntimeResultAdapter KPI None vs 0.0
+# ---------------------------------------------------------------------------
+
+
+def _make_correction_c_export(runtime_summary_dict, *, project_id="proj-c", snap_id="snap-c"):
+    """Helper: run the canonical export with a given runtime_summary dict."""
+    from io import BytesIO
+    from types import SimpleNamespace as NS
+    import openpyxl
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id=project_id,
+        project_origin="user_created",
+        project_code=f"{project_id}_code",
+        project_name="Correction C Project",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id=snap_id,
+        ran_at="2026-05-01T00:00:00+00:00",
+        runtime_summary=runtime_summary_dict,
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-05-01T00:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id=snap_id),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="correction_c",
+            project_record=fake_record,
+            user_id=f"user-{project_id}",
+        )
+
+    assert export.status_code == 200, (
+        f"Expected 200 but got {export.status_code}: {export.error_content}"
+    )
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+    return export, wb
+
+
+def _collect_kpi_cells(wb):
+    """Return {label: cell_value} for the four KPI rows written directly to sheets."""
+    # These labels are written by _write_key_value_section calls in institutional_workbook.py.
+    target_labels = {
+        "Runtime project IRR",
+        "Runtime equity IRR",
+        "Runtime avg DSCR",
+        "Runtime min DSCR",
+    }
+    found = {}
+    for sheet_name in wb.sheetnames:
+        sheet = wb[sheet_name]
+        for row in sheet.iter_rows(values_only=True):
+            if row and row[0] in target_labels:
+                found[row[0]] = row[1]  # column B is the value
+    return found
+
+
+def test_fc_null_kpi_not_exported_as_zero():
+    """Correction C / F07-residue: persisted None KPI must not become 0.0 in the XLSX.
+
+    Adversarial scenario: IRR calculation failed, DSCR not computed (no debt).
+    The workbook must NOT display 0.0 for these cells — that would misrepresent
+    NOT_AVAILABLE as a genuine financial zero.
+    """
+    _, wb = _make_correction_c_export(
+        {
+            "project_irr": None,
+            "equity_irr": None,
+            "actual_avg_dscr": None,
+            "actual_min_dscr": None,
+        },
+        project_id="proj-null-kpi",
+        snap_id="snap-null-kpi",
+    )
+    kpis = _collect_kpi_cells(wb)
+    for label in ("Runtime project IRR", "Runtime equity IRR",
+                  "Runtime avg DSCR", "Runtime min DSCR"):
+        val = kpis.get(label)
+        assert val != 0.0, (
+            f"{label!r}: persisted None must not produce 0.0 in XLSX (got {val!r}). "
+            "Absent persisted evidence ≠ financial zero."
+        )
+
+
+def test_fc_absent_kpi_key_not_exported_as_zero():
+    """Correction C / F07-residue: entirely absent KPI key must not become 0.0.
+
+    The missing-key case is distinct from an explicit None: the runtime_summary
+    dict was persisted without the field (older run, partial failure).  The
+    workbook must NOT display 0.0 for the missing field.
+    """
+    # runtime_summary has NO KPI keys at all.
+    _, wb = _make_correction_c_export(
+        {},
+        project_id="proj-absent-kpi",
+        snap_id="snap-absent-kpi",
+    )
+    kpis = _collect_kpi_cells(wb)
+    for label in ("Runtime project IRR", "Runtime equity IRR",
+                  "Runtime avg DSCR", "Runtime min DSCR"):
+        val = kpis.get(label)
+        assert val != 0.0, (
+            f"{label!r}: absent key must not produce 0.0 in XLSX (got {val!r}). "
+            "Missing persisted evidence ≠ financial zero."
+        )
+
+
+def test_fc_genuine_zero_kpi_retained():
+    """Correction C: a genuine persisted 0.0 KPI must remain 0.0 in the XLSX.
+
+    Correction C must distinguish NOT_AVAILABLE from an actual financial zero.
+    A project whose IRR is legitimately zero (e.g. breakeven) or whose DSCR
+    is 0.0 must not have those values silently erased.
+    """
+    _, wb = _make_correction_c_export(
+        {
+            "project_irr": 0.0,
+            "equity_irr": 0.0,
+            "actual_avg_dscr": 0.0,
+            "actual_min_dscr": 0.0,
+        },
+        project_id="proj-zero-kpi",
+        snap_id="snap-zero-kpi",
+    )
+    kpis = _collect_kpi_cells(wb)
+    for label in ("Runtime project IRR", "Runtime equity IRR",
+                  "Runtime avg DSCR", "Runtime min DSCR"):
+        val = kpis.get(label)
+        assert val == 0.0, (
+            f"{label!r}: genuine persisted 0.0 must be retained as 0.0 in XLSX (got {val!r}). "
+            "Correction C must not eliminate genuine financial zeros."
+        )
