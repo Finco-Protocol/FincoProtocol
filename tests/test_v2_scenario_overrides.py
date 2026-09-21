@@ -20,6 +20,21 @@ Priority gaps addressed (gap audit finding #1):
   K. ScenarioPresentation carries overrides dict from ScenarioRecord
   L. Base Case scenario has empty overrides in presentation
   M. Override editor fields constant is exported from scenario_presentation
+
+Override reset / removal (Phase 4 — model/scenario-override-reset):
+  R1. Remove-override — valid removal removes key and returns HTML partial
+  R2. Remove-override — base-case rejection → 409
+  R3. Remove-override — missing field param → 422
+  R4. Remove-override — auth gate → 401
+  R5. Remove-override — project not found → 404
+  R6. Remove-override — scenario not found → 404
+  R7. Remove-override — non-HTMX redirect → 303
+  R8. Persistence — genuine 0.0 override NOT removed when different key requested
+  R9. Persistence — removing only key leaves overrides empty (not a zero dict)
+  R10. Presentation — override count decreases after removal
+  R11. HTTP allowlist — reserved/unknown fields fail closed with zero mutation
+  R12. HTTP allowlist — mixed valid/invalid fields perform zero removal
+  R13. HTTP allowlist — multiple canonical fields remain removable
 """
 from __future__ import annotations
 
@@ -683,4 +698,442 @@ def test_a1_html_is_parseable_without_attribute_breakage():
     # Must not look like an old broken onclick with raw JSON object literal
     assert "{" not in collector.edit_onclick, (
         f"Edit onclick still embeds object literal: {collector.edit_onclick!r}"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 4 — Override Reset / Remove Tests (R1–R10)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _post_remove_override(client, data, htmx=True, follow_redirects=True):
+    headers = {"HX-Request": "true"} if htmx else {}
+    return client.post(
+        "/v2/workbook/scenarios/remove-override",
+        data=data,
+        headers=headers,
+        follow_redirects=follow_redirects,
+    )
+
+
+# ─── R1: valid removal returns HTML partial ───────────────────────────────────
+
+
+def test_remove_override_success_removes_key_returns_html():
+    """R1: removing a valid field key returns 200 HTML partial and calls remove_scenario_overrides."""
+    client = _get_test_client()
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    updated_sc = _make_scenario(overrides={"gearing_pct": 60.0})
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+            return_value=updated_sc,
+        ) as mock_rso,
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=_make_ws(),
+        ),
+        patch(
+            "app.persistence.scenarios_repository.list_scenarios",
+            return_value=[updated_sc],
+        ),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-1", "field": "tariff_eur_mwh"},
+        )
+
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    mock_rso.assert_called_once_with("user-sc", "sc-1", ["tariff_eur_mwh"])
+
+
+# ─── R11-R13: canonical HTTP field allowlist ─────────────────────────────────
+
+
+def test_remove_override_reserved_key_rejected_without_mutation():
+    """R11: internal scenario payload keys are not user-removable."""
+    client = _get_test_client()
+    reserved_fields = (
+        "_capex_sub_line_overrides",
+        "_capex_sub_line_overrides_metadata",
+        "_opex_sub_line_overrides",
+    )
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        for reserved_field in reserved_fields:
+            resp = _post_remove_override(
+                client,
+                {
+                    "project": "test_proj",
+                    "scenario_id": "sc-1",
+                    "field": reserved_field,
+                },
+            )
+            assert resp.status_code == 422
+            assert resp.json()["invalid_fields"] == [reserved_field]
+
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_mixed_valid_and_reserved_rejected_without_mutation():
+    """R12: one invalid field rejects the whole request before persistence."""
+    client = _get_test_client()
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": ["tariff_eur_mwh", "_capex_sub_line_overrides"],
+            },
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["invalid_fields"] == ["_capex_sub_line_overrides"]
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_unknown_field_rejected_without_mutation():
+    """R11: arbitrary unknown keys fail closed at the HTTP boundary."""
+    client = _get_test_client()
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": "totally_fake_field",
+            },
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["invalid_fields"] == ["totally_fake_field"]
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_multiple_valid_fields_remain_accepted():
+    """R13: multiple canonical editor fields retain existing removal behavior."""
+    client = _get_test_client()
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    updated_sc = _make_scenario(overrides={})
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+            return_value=updated_sc,
+        ) as mock_rso,
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=_make_ws(),
+        ),
+        patch(
+            "app.persistence.scenarios_repository.list_scenarios",
+            return_value=[updated_sc],
+        ),
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": ["tariff_eur_mwh", "gearing_pct"],
+            },
+        )
+
+    assert resp.status_code == 200
+    mock_rso.assert_called_once_with(
+        "user-sc", "sc-1", ["tariff_eur_mwh", "gearing_pct"]
+    )
+
+
+# ─── R2: base-case rejection ──────────────────────────────────────────────────
+
+
+def test_remove_override_base_case_rejected():
+    """R2: attempting to remove an override from the Base Case returns 409."""
+    client = _get_test_client()
+    base_sc = _make_scenario(is_base_case=True)
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=base_sc),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-1", "field": "tariff_eur_mwh"},
+        )
+
+    assert resp.status_code == 409
+    body = resp.json()
+    assert "Base Case" in body.get("error", "")
+
+
+# ─── R3: missing field param ──────────────────────────────────────────────────
+
+
+def test_remove_override_missing_field_param():
+    """R3: no 'field' parameter returns 422."""
+    client = _get_test_client()
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0})
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-1"},
+        )
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "field" in body.get("error", "").lower()
+
+
+# ─── R4: auth gate ────────────────────────────────────────────────────────────
+
+
+def test_remove_override_unauthenticated():
+    """R4: missing auth returns 401."""
+    client = _get_test_client()
+    with patch("app.v2.router._get_current_user", return_value=None):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-1", "field": "tariff_eur_mwh"},
+        )
+    assert resp.status_code == 401
+
+
+# ─── R5: project not found ────────────────────────────────────────────────────
+
+
+def test_remove_override_project_not_found():
+    """R5: unknown project returns 404."""
+    client = _get_test_client()
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(None, "user-sc"),
+        ),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "ghost", "scenario_id": "sc-1", "field": "tariff_eur_mwh"},
+        )
+    assert resp.status_code == 404
+
+
+# ─── R6: scenario not found ───────────────────────────────────────────────────
+
+
+def test_remove_override_scenario_not_found():
+    """R6: unknown scenario_id (get_scenario returns None) returns 404."""
+    client = _get_test_client()
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=None),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-ghost", "field": "tariff_eur_mwh"},
+        )
+    assert resp.status_code == 404
+
+
+# ─── R7: non-HTMX redirect ───────────────────────────────────────────────────
+
+
+def test_remove_override_non_htmx_redirects():
+    """R7: non-HTMX request returns 303 redirect (not HTML partial)."""
+    client = _get_test_client()
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0})
+    updated_sc = _make_scenario(overrides={})
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+            return_value=updated_sc,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=_make_ws(),
+        ),
+        patch(
+            "app.persistence.scenarios_repository.list_scenarios",
+            return_value=[updated_sc],
+        ),
+    ):
+        resp = _post_remove_override(
+            client,
+            {"project": "test_proj", "scenario_id": "sc-1", "field": "tariff_eur_mwh"},
+            htmx=False,
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 303
+    assert "test_proj" in resp.headers.get("location", "")
+
+
+# ─── R8: genuine 0.0 preserved when a different key is removed ────────────────
+
+
+def test_remove_override_genuine_zero_preserved():
+    """R8: override key present with 0.0 is NOT removed when a different key is requested.
+
+    Invariant: override key absent ≠ override key present with 0.0.
+    A genuine 0.0 is a valid financial value and must survive removal of other keys.
+    """
+    from app.persistence.scenarios_repository import remove_scenario_overrides
+    from app.persistence._helpers import _from_json, _to_json
+
+    # Simulate the persistence layer directly (no DB) by patching get_scenario
+    # and get_cursor so we can inspect what is written.
+    written_overrides = {}
+
+    class _FakeCursor:
+        def __init__(self): self.rowcount = 1
+        def execute(self, sql, params): written_overrides['val'] = params
+
+    class _FakeCtx:
+        def __enter__(self): return _FakeCursor()
+        def __exit__(self, *a): return False
+
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 0.0, "gearing_pct": 60.0})
+
+    with (
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch("app.persistence.scenarios_repository.get_cursor", return_value=_FakeCtx()),
+        patch(
+            "app.persistence.scenarios_repository.resolve_scenario_snapshot",
+            return_value={},
+        ),
+    ):
+        result = remove_scenario_overrides("user-sc", "sc-1", ["gearing_pct"])
+
+    assert result is not None
+    remaining = result.overrides
+    # The genuine 0.0 for tariff must still be present
+    assert "tariff_eur_mwh" in remaining, "Genuine 0.0 override was incorrectly removed"
+    assert remaining["tariff_eur_mwh"] == 0.0, (
+        f"Genuine 0.0 value corrupted: {remaining['tariff_eur_mwh']!r}"
+    )
+    # The explicitly removed key must be gone
+    assert "gearing_pct" not in remaining, "Requested key was not removed"
+
+
+# ─── R9: removing only key leaves overrides empty dict (not zero dict) ────────
+
+
+def test_remove_override_last_key_leaves_empty_overrides():
+    """R9: removing the sole override key results in an empty overrides dict.
+
+    This verifies that 'no overrides' is represented as {} (key absent),
+    NOT as {field: 0} or {field: None}.
+    """
+    from app.persistence.scenarios_repository import remove_scenario_overrides
+
+    class _FakeCursor:
+        def __init__(self): self.rowcount = 1
+        def execute(self, sql, params): pass
+
+    class _FakeCtx:
+        def __enter__(self): return _FakeCursor()
+        def __exit__(self, *a): return False
+
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 55.0})
+
+    with (
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch("app.persistence.scenarios_repository.get_cursor", return_value=_FakeCtx()),
+        patch(
+            "app.persistence.scenarios_repository.resolve_scenario_snapshot",
+            return_value={},
+        ),
+    ):
+        result = remove_scenario_overrides("user-sc", "sc-1", ["tariff_eur_mwh"])
+
+    assert result is not None
+    assert result.overrides == {}, (
+        f"Expected empty overrides after removing last key; got {result.overrides!r}"
+    )
+
+
+# ─── R10: presentation — override count decreases after removal ───────────────
+
+
+def test_override_count_reflects_removal():
+    """R10: ScenarioPresentation.overrides length reflects current override state.
+
+    After removing a key, the override count shown in the UI must decrease.
+    """
+    from app.v2.scenario_presentation import build_scenario_presentation
+
+    # Before removal: 2 overrides
+    sc_before = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    pres_before = build_scenario_presentation(sc_before, active_scenario_id=None)
+    assert len(pres_before.overrides) == 2, (
+        f"Expected 2 overrides before removal; got {len(pres_before.overrides)}"
+    )
+
+    # After removal: 1 override
+    sc_after = _make_scenario(overrides={"gearing_pct": 60.0})
+    pres_after = build_scenario_presentation(sc_after, active_scenario_id=None)
+    assert len(pres_after.overrides) == 1, (
+        f"Expected 1 override after removal; got {len(pres_after.overrides)}"
+    )
+    assert "tariff_eur_mwh" not in pres_after.overrides, (
+        "Removed key still present in presentation overrides"
+    )
+    assert "gearing_pct" in pres_after.overrides, (
+        "Retained key missing from presentation overrides"
     )

@@ -139,6 +139,7 @@ from app.persistence.scenarios_repository import (
     save_scenario,
     add_scenario,
     update_scenario_overrides,
+    remove_scenario_overrides,
     get_or_create_base_case_scenario,
     get_base_case_scenario,
 )
