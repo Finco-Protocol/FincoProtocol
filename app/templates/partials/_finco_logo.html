@@ -1,43 +1,33 @@
 {# ── FINCO Logo Partial ──────────────────────────────────────────────────────
-   Canonical logo slot. Renders the current approved mark until an official
-   SVG/PNG asset is supplied.
+   Canonical logo slot — ready for the approved FINCO mark.
 
-   FINCO_APPROVED_LOGO_ASSET_REQUIRED — swap this partial once the asset lands:
-     Replace the inline SVG below with:
-       <img src="/static/logo/finco-logo.svg" alt="FINCO" ...>
-     or include the approved SVG file inline with its own viewBox/dimensions.
+   FINCO_APPROVED_LOGO_ASSET_REQUIRED — to activate, swap this partial with:
+     <img src="/static/logo/finco-logo.svg" alt="FINCO"
+          width="{{ _w }}" height="{{ _w }}"
+          style="flex-shrink:0;display:inline-block;vertical-align:middle;">
+   or include the approved SVG file inline with its own viewBox/dimensions.
 
    Parameters (Jinja2 context):
      logo_variant : "light" (default) — for dark nav backgrounds
                     "dark"            — for light page backgrounds
      logo_size    : "sm" | "md" (default) | "lg"
+
+   Until the approved asset is supplied this slot renders nothing.
+   The FINCO textual wordmark (.proto-nav__brand-wordmark) is the visible
+   brand identity in the interim.
 #}
 
 {% set _variant = logo_variant | default("light") %}
 {% set _size    = logo_size    | default("md") %}
 
 {% if _size == "sm" %}
-  {% set _w = 18 %}{% set _fs = 11 %}
+  {% set _w = 18 %}
 {% elif _size == "lg" %}
-  {% set _w = 28 %}{% set _fs = 16 %}
+  {% set _w = 28 %}
 {% else %}
-  {% set _w = 20 %}{% set _fs = 12 %}
+  {% set _w = 20 %}
 {% endif %}
 
-<svg class="finco-logo-mark"
-     width="{{ _w }}" height="{{ _w }}"
-     viewBox="0 0 32 32"
-     aria-label="FINCO"
-     role="img"
-     style="flex-shrink:0;display:inline-block;vertical-align:middle;">
-  <rect width="32" height="32" rx="5"
-        fill="{% if _variant == 'dark' %}#1a56db{% else %}#1a56db{% endif %}" />
-  <text x="50%" y="54%"
-        dominant-baseline="middle"
-        text-anchor="middle"
-        font-size="{{ _fs * 1.5 }}"
-        font-weight="700"
-        font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
-        fill="#ffffff"
-        letter-spacing="-0.5">F</text>
-</svg>
+{# FINCO_APPROVED_LOGO_ASSET_REQUIRED
+   Slot is ready for /static/logo/finco-logo.svg at width={{ _w }}px.
+   No invented mark is rendered; the wordmark alone identifies the brand. #}
