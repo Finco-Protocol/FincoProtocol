@@ -26,9 +26,23 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
+
+
+# Fields exposed to the scenario override editor in order of display.
+# Each entry: (field_key, display_label, unit_hint)
+OVERRIDE_EDITOR_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("tariff_eur_mwh", "Tariff", "€/MWh"),
+    ("p50_hours", "P50 hours", "h/yr"),
+    ("opex_y1_keur", "OPEX year 1", "k€"),
+    ("total_capex_keur", "Total CAPEX", "k€"),
+    ("gearing_pct", "Gearing", "%"),
+    ("interest_rate_pct", "Interest rate", "%"),
+    ("tenor_years", "Tenor", "years"),
+    ("target_dscr", "Target DSCR", "x"),
+)
 
 
 @dataclass(frozen=True)
@@ -48,6 +62,9 @@ class ScenarioPresentation:
     state: str                 # "NOT_RUN" | "CURRENT" | "STALE"
     is_stale: bool
     has_run: bool
+
+    # Current financial overrides (non-base-case only; {} for base case)
+    overrides: dict = field(default_factory=dict)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -146,6 +163,7 @@ def build_scenario_presentation(sc, active_scenario_id: Optional[str]) -> Scenar
         state=state,
         is_stale=stale,
         has_run=has_run,
+        overrides=dict(getattr(sc, "overrides", None) or {}),
     )
 
 
