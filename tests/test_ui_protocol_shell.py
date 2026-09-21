@@ -383,22 +383,33 @@ class TestRadar:
         assert nav is not None, "Protocol nav missing on /radar"
 
     def test_radar_no_transaction_controls(self, live_url, browser):
-        """Enumerate allowed Radar interactions; fail on any unexpected form or
-        control targeting wallet/approval/signing/transaction submission."""
+        """Enumerate allowed Radar interactions using method-aware form safety contract.
+
+        Safe Radar forms (method, action):
+          (GET,  "/radar")         — asset selection / navigation only
+          (POST, "/radar/refresh") — read-only quote acquisition
+          (POST, "/logout")        — authentication logout
+
+        Any other (method, action) combination is forbidden.
+        """
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url}/radar")
         page.wait_for_load_state("domcontentloaded")
 
-        # Collect all form actions and all interactive targets
+        # Method-aware form safety contract: enumerate (method, action) pairs.
+        # HTML default method is GET when the attribute is absent.
+        _ALLOWED_FORMS = {
+            ("get",  "/radar"),          # asset selection — GET navigation only
+            ("post", "/radar/refresh"),  # read-only quote acquisition
+            ("post", "/logout"),         # authentication logout
+        }
         forms = page.query_selector_all("form")
-        form_actions = [f.get_attribute("action") or f.get_attribute("hx-post") or ""
-                        for f in forms]
-
-        # Allowed form actions on Radar
-        _ALLOWED_ACTIONS = {"/radar/refresh", "/logout", ""}
-        for action in form_actions:
-            assert action in _ALLOWED_ACTIONS, (
-                f"Unexpected form action on Radar (possible tx control): {action!r}"
+        for form in forms:
+            action = form.get_attribute("action") or ""
+            method = (form.get_attribute("method") or "get").lower()
+            assert (method, action) in _ALLOWED_FORMS, (
+                f"Unexpected (method, action) on Radar (possible tx control): "
+                f"({method!r}, {action!r})"
             )
 
         # Links: must not target wallet/custody/approval/signing/tx endpoints
@@ -451,6 +462,219 @@ class TestRadar:
         page.goto(f"{live_url}/radar")
         page.wait_for_load_state("domcontentloaded")
         _assert_no_overflow(page, "/radar", 1280)
+
+
+# ─── Radar form contract ───────────────────────────────────────────────────────
+
+class TestRadarFormContract:
+    """Assert the exact Correction B form safety contract for the Radar surface.
+
+    GET /radar   — asset selection; non-transactional navigation form.
+    POST /radar/refresh — read-only quote acquisition; carries canonical UID.
+    """
+
+    def test_asset_selector_is_get_form(self, live_url, browser):
+        """GET /radar form must use method=GET and action=/radar."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        get_radar_forms = [
+            f for f in forms
+            if (f.get_attribute("action") or "") == "/radar"
+            and (f.get_attribute("method") or "get").lower() == "get"
+        ]
+        assert len(get_radar_forms) == 1, (
+            f"Expected exactly 1 GET /radar form; found {len(get_radar_forms)}"
+        )
+
+    def test_asset_selector_contains_select_asset_uid(self, live_url, browser):
+        """GET /radar form must contain select[name='asset_uid']."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        get_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar"
+             and (f.get_attribute("method") or "get").lower() == "get"),
+            None,
+        )
+        assert get_form is not None, "GET /radar form not found"
+        sel = get_form.query_selector("select[name='asset_uid']")
+        assert sel is not None, "select[name='asset_uid'] missing from GET /radar form"
+
+    def test_asset_selector_has_no_hx_post(self, live_url, browser):
+        """GET /radar form must NOT carry hx-post (navigation only, not HTMX quote)."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        get_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar"
+             and (f.get_attribute("method") or "get").lower() == "get"),
+            None,
+        )
+        assert get_form is not None, "GET /radar form not found"
+        hx_post = get_form.get_attribute("hx-post")
+        assert hx_post is None, (
+            f"GET /radar form must not have hx-post; found: {hx_post!r}"
+        )
+
+    def test_asset_selector_no_transaction_fields(self, live_url, browser):
+        """GET /radar form must not contain BUY/SELL authority or wallet/signing controls."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        get_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar"
+             and (f.get_attribute("method") or "get").lower() == "get"),
+            None,
+        )
+        assert get_form is not None, "GET /radar form not found"
+
+        # No BUY/SELL authority fields
+        direction_inputs = get_form.query_selector_all(
+            "input[name='direction'], input[value='BUY'], input[value='SELL']"
+        )
+        assert len(direction_inputs) == 0, (
+            f"GET /radar form contains BUY/SELL authority fields: {len(direction_inputs)}"
+        )
+
+        # No transaction/wallet/signing control names
+        _FORBIDDEN_NAMES = ["wallet", "sign", "approve", "transaction", "tx", "trade"]
+        all_inputs = get_form.query_selector_all("input, button, select")
+        for el in all_inputs:
+            name = (el.get_attribute("name") or "").lower()
+            for forbidden in _FORBIDDEN_NAMES:
+                assert forbidden not in name, (
+                    f"GET /radar form contains forbidden field name {name!r}"
+                )
+
+    def test_quote_form_is_post_with_htmx(self, live_url, browser):
+        """POST /radar/refresh form must use method=POST and hx-post=/radar/refresh."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        post_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar/refresh"
+             and (f.get_attribute("method") or "get").lower() == "post"),
+            None,
+        )
+        assert post_form is not None, "POST /radar/refresh form not found"
+
+        hx_post = post_form.get_attribute("hx-post")
+        assert hx_post == "/radar/refresh", (
+            f"Quote form hx-post must be /radar/refresh; got {hx_post!r}"
+        )
+
+    def test_quote_form_has_hidden_asset_uid(self, live_url, browser):
+        """POST /radar/refresh form must carry hidden input[name='asset_uid']."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        post_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar/refresh"
+             and (f.get_attribute("method") or "get").lower() == "post"),
+            None,
+        )
+        assert post_form is not None, "POST /radar/refresh form not found"
+        hidden_uid = post_form.query_selector(
+            "input[type='hidden'][name='asset_uid']"
+        )
+        assert hidden_uid is not None, (
+            "POST /radar/refresh form missing hidden input[name='asset_uid']"
+        )
+
+    def test_quote_form_has_direction_controls(self, live_url, browser):
+        """POST /radar/refresh form must contain BUY/SELL direction radios."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        post_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar/refresh"
+             and (f.get_attribute("method") or "get").lower() == "post"),
+            None,
+        )
+        assert post_form is not None, "POST /radar/refresh form not found"
+
+        buy = post_form.query_selector("input[name='direction'][value='BUY']")
+        sell = post_form.query_selector("input[name='direction'][value='SELL']")
+        assert buy is not None, "BUY direction radio missing from POST quote form"
+        assert sell is not None, "SELL direction radio missing from POST quote form"
+
+    def test_quote_form_no_wallet_signing_controls(self, live_url, browser):
+        """POST /radar/refresh form must not contain wallet/signing/submission controls."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        post_form = next(
+            (f for f in forms
+             if (f.get_attribute("action") or "") == "/radar/refresh"
+             and (f.get_attribute("method") or "get").lower() == "post"),
+            None,
+        )
+        assert post_form is not None, "POST /radar/refresh form not found"
+
+        _FORBIDDEN_NAMES = ["wallet", "sign", "approve", "transaction", "tx", "trade",
+                            "submit_tx", "execute", "custody"]
+        all_inputs = post_form.query_selector_all("input, button, select")
+        for el in all_inputs:
+            name = (el.get_attribute("name") or "").lower()
+            for forbidden in _FORBIDDEN_NAMES:
+                assert forbidden not in name, (
+                    f"POST /radar/refresh form contains forbidden field {name!r}"
+                )
+
+    def test_forbidden_post_radar_action(self, live_url, browser):
+        """Demonstrate that POST /radar is not permitted on the Radar surface."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        forbidden = [
+            f for f in forms
+            if (f.get_attribute("action") or "") == "/radar"
+            and (f.get_attribute("method") or "get").lower() == "post"
+        ]
+        assert len(forbidden) == 0, (
+            "Found POST /radar form — only GET is permitted for asset selection"
+        )
+
+    def test_forbidden_get_refresh_action(self, live_url, browser):
+        """Demonstrate that GET /radar/refresh is not permitted."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url}/radar")
+        page.wait_for_load_state("domcontentloaded")
+
+        forms = page.query_selector_all("form")
+        forbidden = [
+            f for f in forms
+            if (f.get_attribute("action") or "") == "/radar/refresh"
+            and (f.get_attribute("method") or "get").lower() == "get"
+        ]
+        assert len(forbidden) == 0, (
+            "Found GET /radar/refresh form — only POST is permitted for quote acquisition"
+        )
 
 
 # ─── Verify ────────────────────────────────────────────────────────────────────
