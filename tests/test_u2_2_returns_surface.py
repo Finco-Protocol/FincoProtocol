@@ -552,17 +552,31 @@ def test_f02_lockup_active_boolean_rendering_unaffected():
 # ---------------------------------------------------------------------------
 
 def test_f01_scenario_select_oob_replaces_returns_fragment():
-    """After selecting a new scenario, the HTMX response must include an OOB
-    replacement for #v2-sheet-returns that shows the post-switch canonical
-    Returns state (not the previous scenario's committed values)."""
+    """True lifecycle regression: Scenario A has a committed run; selecting
+    Scenario B must replace #v2-sheet-returns with the no-run state (not
+    show Scenario A economics). Engine must never be called.
+
+    Failure mode on the pre-Correction-A codebase: scenario-select response
+    does not contain an OOB replacement for #v2-sheet-returns, so Scenario A
+    committed economics remain in the browser even though the workspace now
+    has Scenario B selected."""
     import uuid
+    from datetime import datetime, timezone
     import main_web
     from app.auth import COOKIE_NAME, create_session_token
     from app.persistence.db import get_connection
     from app.persistence.repository import create_project_record
     from app.persistence.scenarios_repository import add_scenario, get_or_create_base_case_scenario
-    from app.persistence.workspace_repository import save_workspace_state
+    from app.persistence.workspace_repository import (
+        save_workspace_state, v2_atomic_run_commit,
+    )
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
     from starlette.testclient import TestClient
+
+    # Unique unmistakable equity IRR for Scenario A — chosen so formatted
+    # display "13.57%" will not appear in normal boilerplate HTML.
+    SC_A_EQUITY_IRR = 0.1357
 
     owner = "u22f01_" + uuid.uuid4().hex[:10]
     code = "f01_" + uuid.uuid4().hex[:8]
@@ -587,37 +601,111 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
         "tenor_years": 15,
         "target_dscr": 1.3,
     }
-    record = create_project_record(
-        user_id=owner,
-        project_code=code,
-        project_name="F01 Scenario Select Returns",
-        project_type="Solar",
-        project_origin="user_created",
-        template_source="",
-        baseline_snapshot=snapshot,
-    )
-    save_workspace_state(
-        user_id=owner,
-        project_id=record.project_id,
-        project_code=code,
-        draft_snapshot=snapshot,
-        saved_snapshot=snapshot,
-    )
-    # Create a second scenario so we can switch to it
-    base_sc = get_or_create_base_case_scenario(
-        user_id=owner, project_id=record.project_id, project_code=code,
-        project_name="F01 Scenario Select Returns", project_type="Solar",
-        source_project_template="", base_input_set=snapshot, governance_state={},
-    )
-    sc_b = add_scenario(
-        user_id=owner,
-        project_id=record.project_id,
-        project_code=code,
-        scenario_name="Scenario B",
-        parent_scenario_id=base_sc.scenario_id,
-        base_input_set=snapshot,
-    )
+    conn = get_connection()
     try:
+        # ── Step 1-2: project + workspace + Base Case scenario ──────────────── #
+        record = create_project_record(
+            user_id=owner,
+            project_code=code,
+            project_name="F01 Scenario Select Returns",
+            project_type="Solar",
+            project_origin="user_created",
+            template_source="",
+            baseline_snapshot=snapshot,
+        )
+        save_workspace_state(
+            user_id=owner,
+            project_id=record.project_id,
+            project_code=code,
+            draft_snapshot=snapshot,
+            saved_snapshot=snapshot,
+        )
+        base_sc = get_or_create_base_case_scenario(
+            user_id=owner, project_id=record.project_id, project_code=code,
+            project_name="F01 Scenario Select Returns", project_type="Solar",
+            source_project_template="", base_input_set=snapshot, governance_state={},
+        )
+
+        # ── Step 3: commit real RuntimeResult for Scenario A (Base Case) ───── #
+        # Use the canonical v2_atomic_run_commit path, exactly as the Run flow
+        # does. Derive the composite hash first so the CAS check passes.
+        identity = assemble_consistent_for_get(
+            user_id=owner,
+            project_id=record.project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        sponsor_schedule_a = {
+            "periods": [{
+                "period": 1,
+                "date": "2028-06-30",
+                "share_capital_contribution_keur": 0.0,
+                "share_premium_contribution_keur": 1500.0,
+                "other_committed_equity_contribution_keur": None,
+                "additional_equity_contribution_keur": 0.0,
+                "shl_cash_interest_receipt_keur": 75.0,
+                "shl_principal_receipt_keur": 150.0,
+                "legal_equity_distribution_keur": 300.0,
+            }],
+            "summary": {
+                "total_legal_equity_contributed_keur": 1500.0,
+                "total_shl_cash_contributed_keur": 600.0,
+                "total_legal_equity_distributions_keur": 300.0,
+                "total_sponsor_moic": 1.45,
+            },
+            "source": "CovenantGatedWaterfallResult (clean G2C production authority)",
+        }
+        v2_atomic_run_commit(
+            user_id=owner,
+            project_id=record.project_id,
+            project_code=code,
+            expected_composite_hash=identity.composite_hash,
+            runtime_snapshot_id="snap-sc-a-" + uuid.uuid4().hex[:8],
+            runtime_origin="v2_run",
+            runtime_summary={
+                "project_irr": 0.0812,
+                "equity_irr": SC_A_EQUITY_IRR,
+            },
+            financial_statements=None,
+            debt_schedule=None,
+            tax_schedule=None,
+            distribution_schedule=None,
+            sponsor_schedule=sponsor_schedule_a,
+            active_scenario_id=base_sc.scenario_id,
+            active_scenario_name="Base Case",
+            last_runtime_scenario_id=base_sc.scenario_id,
+            ran_at=datetime.now(timezone.utc),
+        )
+
+        # ── Step 4: prove Scenario A Returns are visible before switching ───── #
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.service import WorkbookService
+        ws_after_run = get_workspace_state(user_id=owner, project_id=record.project_id)
+        assert ws_after_run is not None
+        rr_a = WorkbookService.get_runtime_result(ws_after_run)
+        assert rr_a is not None, "RuntimeResult must be present after v2_atomic_run_commit"
+        from app.v2.returns_projection import build_returns_projection
+        proj_a = build_returns_projection(rr_a, ws_after_run)
+        equity_irr_metric = next(m for m in proj_a.metrics if m.key == "equity_irr")
+        assert abs(equity_irr_metric.value - SC_A_EQUITY_IRR) < 1e-9, (
+            f"Scenario A equity IRR must be persisted as {SC_A_EQUITY_IRR}, got {equity_irr_metric.value}"
+        )
+        # Unmistakable display string — must appear before switch, must vanish after
+        SC_A_IRR_DISPLAY = "13.57%"
+        assert SC_A_IRR_DISPLAY in _render(proj_a), (
+            f"Scenario A Returns HTML must contain '{SC_A_IRR_DISPLAY}' before switch"
+        )
+
+        # ── Step 5: create Scenario B (not run) ─────────────────────────────── #
+        sc_b = add_scenario(
+            user_id=owner,
+            project_id=record.project_id,
+            project_code=code,
+            scenario_name="Scenario B",
+            parent_scenario_id=base_sc.scenario_id,
+            base_input_set=snapshot,
+        )
+
+        # ── Steps 6-9: POST scenario-select, assert OOB + no A values ─────── #
         with TestClient(main_web.app, raise_server_exceptions=False) as client:
             token = create_session_token(user_id=owner, username="u22-f01")
             with (
@@ -640,18 +728,24 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
             html = resp.text
 
             # OOB target must be present
-            assert 'id="v2-sheet-returns"' in html
-            assert 'hx-swap-oob="true"' in html
+            assert 'id="v2-sheet-returns"' in html, "Returns OOB fragment missing from response"
+            assert 'hx-swap-oob="true"' in html, "hx-swap-oob attribute missing"
 
-            # No Scenario A economics visible (project was never run, so no-run state)
-            assert 'data-testid="returns-no-run"' in html
+            # Must show no-run state for Scenario B
+            assert 'data-testid="returns-no-run"' in html, (
+                "Returns fragment must show no-run state after switching to unrun Scenario B"
+            )
 
-            # No engine was called
+            # Must NOT contain Scenario A's unique committed equity IRR
+            assert SC_A_IRR_DISPLAY not in html, (
+                f"Scenario A equity IRR '{SC_A_IRR_DISPLAY}' must not appear after selecting Scenario B"
+            )
+
+            # Engine must never be called (Returns is pure presentation)
             waterfall.assert_not_called()
             clean.assert_not_called()
             project_runner.assert_not_called()
     finally:
-        conn = get_connection()
         conn.execute("DELETE FROM scenarios WHERE user_id=?", (owner,))
         conn.execute("DELETE FROM workspace_states WHERE user_id=?", (owner,))
         conn.execute("DELETE FROM projects WHERE user_id=?", (owner,))
