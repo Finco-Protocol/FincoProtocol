@@ -460,3 +460,227 @@ def test_override_editor_fields_cover_key_modellable_inputs():
     # Debt
     assert "gearing_pct" in keys
     assert "interest_rate_pct" in keys
+
+
+# ─── Correction A: HTML attribute safety (A1 regression) ─────────────────────
+#
+# These tests render the sheet_scenarios.html template through Jinja2 directly
+# and verify that:
+#  1. The Edit and Rename buttons do NOT embed raw JSON in onclick attributes.
+#  2. The data-* attributes are present and correctly encoded.
+#  3. Python's html.parser decodes the attributes to the original Python values.
+#  4. JSON.parse on the recovered data-overrides works (via json.loads proxy).
+#  5. Adversarial scenario names containing double-quotes and & survive intact.
+
+
+def _render_scenarios_partial(scenarios, active_scenario_id=None, project_code="proj"):
+    """Render sheet_scenarios.html via Jinja2 (same loader as the V2 router)."""
+    import os
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+    template_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "app", "templates", "v2",
+    )
+    env = Environment(
+        loader=FileSystemLoader(template_dir),
+        autoescape=select_autoescape(["html"]),
+    )
+    template = env.get_template("partials/sheet_scenarios.html")
+    return template.render(
+        scenarios=scenarios,
+        active_scenario_id=active_scenario_id,
+        project_code=project_code,
+        ws=None,
+    )
+
+
+def _parse_buttons(html_text, btn_class_fragment):
+    """Parse HTML and return list of attribute dicts for matching buttons."""
+    from html.parser import HTMLParser
+
+    class ButtonCollector(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.buttons = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "button":
+                attr_dict = dict(attrs)
+                cls = attr_dict.get("class", "")
+                if btn_class_fragment in cls:
+                    self.buttons.append(attr_dict)
+
+    collector = ButtonCollector()
+    collector.feed(html_text)
+    return collector.buttons
+
+
+def test_a1_edit_button_uses_data_attributes_not_onclick_json():
+    """A1: Edit button must NOT embed raw JSON in onclick; must use data-* attrs."""
+    from app.v2.scenario_presentation import build_scenario_presentation
+
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    edit_btns = _parse_buttons(html, "v2-scenario-action-btn--edit")
+    assert edit_btns, "Edit button not found in rendered HTML"
+    btn = edit_btns[0]
+
+    # data-* attributes must be present
+    assert "data-scenario-id" in btn, "data-scenario-id missing"
+    assert "data-scenario-name" in btn, "data-scenario-name missing"
+    assert "data-overrides" in btn, "data-overrides missing"
+
+    # onclick must NOT contain raw JSON (no { before ) )
+    onclick = btn.get("onclick", "")
+    assert "FromButton(this)" in onclick, "onclick should call FromButton(this)"
+
+    # data-overrides must be valid JSON (html.parser decodes &#34; → ")
+    import json
+    recovered = json.loads(btn["data-overrides"])
+    assert recovered.get("tariff_eur_mwh") == 45.0
+    assert recovered.get("gearing_pct") == 60.0
+
+
+def test_a1_rename_button_uses_data_attributes_not_onclick_json():
+    """A1: Rename button must NOT embed raw JSON in onclick; must use data-* attrs."""
+    from app.v2.scenario_presentation import build_scenario_presentation
+
+    sc = _make_scenario(overrides={})
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    rename_btns = _parse_buttons(html, "v2-scenario-action-btn--rename")
+    assert rename_btns, "Rename button not found in rendered HTML"
+    btn = rename_btns[0]
+
+    assert "data-scenario-id" in btn, "data-scenario-id missing on Rename"
+    assert "data-scenario-name" in btn, "data-scenario-name missing on Rename"
+
+    onclick = btn.get("onclick", "")
+    assert "FromButton(this)" in onclick, "Rename onclick should call FromButton(this)"
+    # Must NOT contain tojson-style string (no JS string literal with JSON double-quote)
+    assert '{"' not in onclick and '"}' not in onclick, "Rename onclick embeds raw JSON"
+
+
+def test_a1_edit_button_scenario_name_round_trips():
+    """A1: scenario name is HTML-safe in data attribute and recovers exactly."""
+    from app.v2.scenario_presentation import build_scenario_presentation
+
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    edit_btns = _parse_buttons(html, "v2-scenario-action-btn--edit")
+    assert edit_btns
+    assert edit_btns[0]["data-scenario-name"] == "Downside"
+
+
+def test_a1_adversarial_scenario_name_with_quotes_and_ampersand():
+    """A1 adversarial: scenario name containing double-quotes and & survives intact.
+
+    Scenario name: Downside "P90" & Debt
+    This would break a tojson-in-onclick attribute; must work with data-* attrs.
+    """
+    from app.v2.scenario_presentation import build_scenario_presentation, ScenarioPresentation
+
+    adversarial_name = 'Downside "P90" & Debt'
+    sc = SimpleNamespace(
+        scenario_id="sc-adv",
+        scenario_name=adversarial_name,
+        is_base_case=False,
+        archived=False,
+        overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0},
+        base_input_set={},
+        snapshot=None,
+        last_run_summary={},
+        updated_at=None,
+    )
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    # HTML must parse without errors (html.parser tolerates broken attrs but we
+    # verify the button's decoded data-scenario-name matches exactly)
+    edit_btns = _parse_buttons(html, "v2-scenario-action-btn--edit")
+    assert edit_btns, "Edit button not rendered for adversarial scenario"
+    btn = edit_btns[0]
+
+    # html.parser decodes &amp; → & and &quot; / &#34; → "
+    assert btn["data-scenario-name"] == adversarial_name, (
+        f"Scenario name round-trip failed: got {btn['data-scenario-name']!r}"
+    )
+
+    # data-overrides must still parse as JSON
+    import json
+    recovered = json.loads(btn["data-overrides"])
+    assert recovered.get("tariff_eur_mwh") == 45.0
+
+
+def test_a1_override_modal_values_prefill():
+    """A1 modal interaction: data-overrides JSON contains the expected field values.
+
+    This proves that when JavaScript calls JSON.parse(btn.dataset.overrides),
+    it recovers the correct tariff and gearing values for pre-filling the form.
+    """
+    from app.v2.scenario_presentation import build_scenario_presentation
+    import json
+
+    overrides = {"tariff_eur_mwh": 45.0, "gearing_pct": 60.0}
+    sc = _make_scenario(overrides=overrides)
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    edit_btns = _parse_buttons(html, "v2-scenario-action-btn--edit")
+    assert edit_btns
+    btn = edit_btns[0]
+
+    # Simulate what JavaScript does: JSON.parse(btn.dataset.overrides)
+    recovered = json.loads(btn["data-overrides"])
+
+    # Tariff pre-fill value
+    assert recovered.get("tariff_eur_mwh") == 45.0, \
+        f"Tariff not pre-filled correctly: {recovered.get('tariff_eur_mwh')!r}"
+    # Gearing pre-fill value
+    assert recovered.get("gearing_pct") == 60.0, \
+        f"Gearing not pre-filled correctly: {recovered.get('gearing_pct')!r}"
+
+
+def test_a1_html_is_parseable_without_attribute_breakage():
+    """A1: rendered HTML must not have broken attributes due to unescaped JSON quotes.
+
+    If the attribute were broken (old onclick pattern), html.parser would report
+    fewer attributes than expected because the attribute would be split at the
+    first unescaped double-quote.
+    This test confirms the HTML is well-formed at the attribute level.
+    """
+    from app.v2.scenario_presentation import build_scenario_presentation
+    from html.parser import HTMLParser
+
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    pres = build_scenario_presentation(sc, active_scenario_id=None)
+    html = _render_scenarios_partial([pres])
+
+    class OnclickCollector(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.edit_onclick = None
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "button":
+                attr_dict = dict(attrs)
+                cls = attr_dict.get("class", "")
+                if "v2-scenario-action-btn--edit" in cls:
+                    self.edit_onclick = attr_dict.get("onclick", "")
+
+    collector = OnclickCollector()
+    collector.feed(html)
+
+    assert collector.edit_onclick is not None, "Edit button not parsed"
+    # The entire onclick value must be a single clean function call — not broken JSON
+    assert "FromButton(this)" in collector.edit_onclick
+    # Must not look like an old broken onclick with raw JSON object literal
+    assert "{" not in collector.edit_onclick, (
+        f"Edit onclick still embeds object literal: {collector.edit_onclick!r}"
+    )
