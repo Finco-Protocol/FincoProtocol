@@ -1,0 +1,32 @@
+{#
+  V2 Export controls — institutional workbook export action for the toolbar.
+
+  Standard form POST (NOT HTMX): exporting a binary file requires a full
+  browser navigation so the browser handles the Content-Disposition download.
+
+  Three visual states driven by context vars:
+    - has_runtime=False  → disabled; tooltip explains no run yet
+    - has_runtime=True, ws_dirty=False → available (clean)
+    - has_runtime=True, ws_dirty=True  → available with "Working changed" badge
+
+  Context vars: project_code (str), has_runtime (bool), ws_dirty (bool)
+#}
+<form method="post" action="/v2/workbook/export" class="v2-export-form">
+  <input type="hidden" name="project" value="{{ project_code }}">
+  {% if has_runtime %}
+    <button type="submit"
+            class="v2-export-btn{% if ws_dirty %} v2-export-btn--stale{% endif %}"
+            data-testid="v2-export-btn"
+            title="{% if ws_dirty %}Export last run — working inputs have changed since last run{% else %}Export last run as institutional workbook{% endif %}">
+      Export{% if ws_dirty %} <span class="v2-export-stale-badge" aria-label="working inputs changed since last run">*</span>{% endif %}
+    </button>
+  {% else %}
+    <button type="submit"
+            class="v2-export-btn v2-export-btn--disabled"
+            data-testid="v2-export-btn"
+            disabled
+            title="Run the model first to enable export">
+      Export
+    </button>
+  {% endif %}
+</form>
