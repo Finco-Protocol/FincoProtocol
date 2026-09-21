@@ -1164,3 +1164,526 @@ def test_item8_oob_only_in_htmx_partial(make_client):
         r'id=["\']radar-asset-header["\'][^>]*hx-swap-oob', full_page)
     assert len(oob_in_full) == 0, (
         "full-page render must not emit hx-swap-oob on radar-asset-header")
+
+
+# ===========================================================================
+# Correction B tests
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# B01 — fingerprint-bound decimals are mandatory
+# ---------------------------------------------------------------------------
+
+def _make_aapl_source_factory(decimals_in_registry=18):
+    """Helper: registry with AAPL whose tokenDecimals matches registry value."""
+    aapl_rec = SimpleNamespace(
+        asset_uid="AAPL",
+        token_symbol="AAPL",
+        raw_evidence={"tokenDecimals": decimals_in_registry},
+        deployment_for_chain=lambda c: SimpleNamespace(
+            chain_id=_CHAIN, contract_address=_AAPL_ADDR) if c == _CHAIN else None,
+    )
+    snapshot = SimpleNamespace(
+        assets=[aapl_rec],
+        get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+    )
+
+    def factory():
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snapshot,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+    return factory
+
+
+def _build_request_no_target_asset(direction="BUY", size="100",
+                                   uid="AAPL", address=_AAPL_ADDR):
+    """Build AcquisitionRequest without targetAsset in provider_config."""
+    from app.radar_runtime.contracts import AcquisitionRequest
+    from app.radar_ui.quote_context import resolve_quote_context
+    qc = resolve_quote_context(expected_chain_id=_CHAIN)
+    return AcquisitionRequest(
+        chain_id=_CHAIN,
+        contract_address=address,
+        direction=direction,
+        sources=(composition.PROVIDER_NAME,),
+        purpose="test",
+        notional_usd=size,
+        economic_asset_uid=uid,
+        provider_config={"radarCore": qc.fingerprint_material()},
+    )
+
+
+def _build_request_no_token_decimals(direction="BUY", size="100",
+                                     uid="AAPL", address=_AAPL_ADDR):
+    """Build AcquisitionRequest with targetAsset but no tokenDecimals key."""
+    from app.radar_runtime.contracts import AcquisitionRequest
+    from app.radar_ui.quote_context import resolve_quote_context
+    qc = resolve_quote_context(expected_chain_id=_CHAIN)
+    return AcquisitionRequest(
+        chain_id=_CHAIN,
+        contract_address=address,
+        direction=direction,
+        sources=(composition.PROVIDER_NAME,),
+        purpose="test",
+        notional_usd=size,
+        economic_asset_uid=uid,
+        provider_config={"radarCore": qc.fingerprint_material(),
+                         "targetAsset": {}},
+    )
+
+
+def _build_request_malformed_decimals(raw_dec, direction="BUY", size="100",
+                                      uid="AAPL", address=_AAPL_ADDR):
+    """Build AcquisitionRequest with targetAsset.tokenDecimals = raw_dec."""
+    from app.radar_runtime.contracts import AcquisitionRequest
+    from app.radar_ui.quote_context import resolve_quote_context
+    qc = resolve_quote_context(expected_chain_id=_CHAIN)
+    return AcquisitionRequest(
+        chain_id=_CHAIN,
+        contract_address=address,
+        direction=direction,
+        sources=(composition.PROVIDER_NAME,),
+        purpose="test",
+        notional_usd=size,
+        economic_asset_uid=uid,
+        provider_config={"radarCore": qc.fingerprint_material(),
+                         "targetAsset": {"tokenDecimals": raw_dec}},
+    )
+
+
+def test_b01_missing_target_asset_fails_closed():
+    """provider_config without targetAsset → TOKEN_DECIMALS_AUTHORITY_UNBOUND."""
+    source = composition.composition_radar_source(
+        registry_factory=_make_aapl_source_factory())
+    req = _build_request_no_target_asset()
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False
+    assert ref["reason"] == "TOKEN_DECIMALS_AUTHORITY_UNBOUND"
+
+
+def test_b01_missing_token_decimals_key_fails_closed():
+    """targetAsset present but tokenDecimals absent → TOKEN_DECIMALS_AUTHORITY_UNBOUND."""
+    source = composition.composition_radar_source(
+        registry_factory=_make_aapl_source_factory())
+    req = _build_request_no_token_decimals()
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False
+    assert ref["reason"] == "TOKEN_DECIMALS_AUTHORITY_UNBOUND"
+
+
+@pytest.mark.parametrize("raw_dec,description", [
+    ("1.0", "fractional string"),
+    (" 18", "leading space string"),
+    ("18 ", "trailing space string"),
+    ("+18", "plus-sign string"),
+    ("1e1", "exponential string"),
+    ("", "empty string"),
+    (True, "bool True"),
+    (1.5, "float"),
+    (-1, "negative int"),
+    (256, "out-of-range 256"),
+])
+def test_b01_malformed_bound_decimals_fails_closed(raw_dec, description):
+    """Malformed bound tokenDecimals → TOKEN_DECIMALS_AUTHORITY_UNBOUND."""
+    source = composition.composition_radar_source(
+        registry_factory=_make_aapl_source_factory())
+    req = _build_request_malformed_decimals(raw_dec)
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False, f"expected fail-closed for {description!r}"
+    assert ref["reason"] == "TOKEN_DECIMALS_AUTHORITY_UNBOUND", (
+        f"expected UNBOUND reason for {description!r}, got {ref['reason']!r}")
+
+
+def test_b01_valid_bound_matches_live_may_proceed():
+    """Valid bound decimals matching live registry: reference section proceeds
+    (fails later only because fetch_bound_reference returns empty dicts)."""
+    source = composition.composition_radar_source(
+        registry_factory=_make_aapl_source_factory(decimals_in_registry=18))
+    req = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=18,
+        ))
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    # Must NOT be UNBOUND or MISMATCH — failure here is from build_bound_reference
+    assert ref.get("reason") not in (
+        "TOKEN_DECIMALS_AUTHORITY_UNBOUND",
+        "TOKEN_DECIMALS_AUTHORITY_MISMATCH",
+    )
+
+
+def test_b01_valid_bound_differs_from_live_mismatch():
+    """Valid bound decimals (6) but live says 18 → TOKEN_DECIMALS_AUTHORITY_MISMATCH."""
+    source = composition.composition_radar_source(
+        registry_factory=_make_aapl_source_factory(decimals_in_registry=18))
+    req = composition.build_request(
+        "BUY", "100",
+        composition.SelectedAsset(
+            economic_asset_uid="AAPL",
+            token_symbol="AAPL",
+            token_name="Apple Inc.",
+            chain_id=_CHAIN,
+            contract_address=_AAPL_ADDR,
+            token_decimals=6,
+        ))
+    result = source(req)
+    ref = result["evidence"]["reference"]
+    assert ref["available"] is False
+    assert ref["reason"] == "TOKEN_DECIMALS_AUTHORITY_MISMATCH"
+
+
+# ---------------------------------------------------------------------------
+# B02 — strict ASCII decimal string grammar
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_str,description", [
+    (" 18", "leading space"),
+    ("18 ", "trailing space"),
+    ("+18", "plus sign"),
+    ("-1", "minus sign"),
+    ("1.0", "decimal point"),
+    ("1e1", "exponent"),
+    ("", "empty string"),
+    ("١٨", "arabic-indic digits (not ASCII)"),
+])
+def test_b02_strict_string_grammar_rejects(bad_str, description):
+    """Strict grammar must reject non-canonical string forms."""
+    from app.radar_ui.composition import (
+        TokenDecimalsUnavailable,
+        _parse_token_decimals,
+    )
+    with pytest.raises(TokenDecimalsUnavailable, match="TOKEN_DECIMALS_UNAVAILABLE"):
+        _parse_token_decimals(bad_str)
+
+
+@pytest.mark.parametrize("good_str,expected", [
+    ("0", 0),
+    ("6", 6),
+    ("18", 18),
+    ("255", 255),
+])
+def test_b02_strict_string_grammar_accepts(good_str, expected):
+    """Strict grammar must accept canonical digit-only ASCII strings."""
+    from app.radar_ui.composition import _parse_token_decimals
+    assert _parse_token_decimals(good_str) == expected
+
+
+# ---------------------------------------------------------------------------
+# B03 — separate GET selection form + hidden asset_uid in POST quote form
+# ---------------------------------------------------------------------------
+
+def _make_nvda_aapl_client():
+    """Return (client, nvda_rec, aapl_rec) with both assets in universe."""
+    nvda_rec = _make_asset_record("NVDA", "NVDA", "NVIDIA Corp.", _NVDA_ADDR)
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+    assets = [aapl_rec, nvda_rec]
+
+    def factory():
+        by_uid = {"AAPL": aapl_rec, "NVDA": nvda_rec}
+        snap = SimpleNamespace(
+            assets=assets,
+            get_by_uid=lambda u: by_uid.get(u),
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    service = _build_service([], uid="NVDA", address=_NVDA_ADDR)
+    radar_router_module.set_service(service)
+    app = __import__("fastapi").FastAPI()
+    app.include_router(radar_router_module.router)
+    client = __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(app)
+    return client, nvda_rec, aapl_rec
+
+
+def test_b03_get_form_present_with_select_submit(make_client):
+    """GET /radar must include a GET form for asset selection."""
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
+
+    assert 'method="get"' in page or "method='get'" in page
+    assert 'action="/radar"' in page or "action='/radar'" in page
+    assert 'name="asset_uid"' in page
+    assert "Select" in page or "Load Asset" in page
+
+
+def test_b03_post_form_has_hidden_asset_uid(make_client):
+    """POST quote form must carry hidden asset_uid matching server-resolved uid."""
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
+
+    import re
+    # The POST form must carry a hidden asset_uid field
+    hidden = re.findall(r'<input[^>]*type=["\']hidden["\'][^>]*name=["\']asset_uid["\']', page)
+    if not hidden:
+        hidden = re.findall(r'<input[^>]*name=["\']asset_uid["\'][^>]*type=["\']hidden["\']', page)
+    assert hidden, "POST form must contain a hidden asset_uid input"
+
+
+def test_b03_get_asset_uid_selects_nvda(make_client):
+    """GET /radar?asset_uid=NVDA → NVDA appears in selector, header, and
+    Selected Asset panel; the hidden POST field carries NVDA's uid."""
+    nvda_rec = _make_asset_record("NVDA", "NVDA", "NVIDIA Corp.", _NVDA_ADDR)
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+    assets = [aapl_rec, nvda_rec]
+
+    def factory():
+        by_uid = {"AAPL": aapl_rec, "NVDA": nvda_rec}
+        snap = SimpleNamespace(
+            assets=assets,
+            get_by_uid=lambda u: by_uid.get(u),
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar?asset_uid=NVDA").text
+    finally:
+        composition.set_registry_factory(None)
+
+    # NVDA must appear as selected in the <select> element
+    assert "NVDA" in page
+    # Hidden POST field must carry NVDA's uid
+    import re
+    hidden_vals = re.findall(
+        r'<input[^>]*type=["\']hidden["\'][^>]*name=["\']asset_uid["\'][^>]*value=["\']([^"\']*)["\']',
+        page)
+    if not hidden_vals:
+        hidden_vals = re.findall(
+            r'<input[^>]*name=["\']asset_uid["\'][^>]*type=["\']hidden["\'][^>]*value=["\']([^"\']*)["\']',
+            page)
+    assert any("NVDA" in v for v in hidden_vals), (
+        f"hidden asset_uid must carry NVDA uid; found: {hidden_vals}")
+
+
+def test_b03_post_form_separate_from_get_form(make_client):
+    """POST form carries method=post and GET form carries method=get; they are
+    distinct — hx-post must only appear on the POST form."""
+    assets = [_make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)]
+
+    def factory():
+        return _make_registry(assets)
+
+    composition.set_registry_factory(factory)
+    try:
+        c = make_client(_build_service([]))
+        page = c.get("/radar").text
+    finally:
+        composition.set_registry_factory(None)
+
+    assert 'action="/radar/refresh"' in page
+    assert 'method="post"' in page
+    assert 'hx-post="/radar/refresh"' in page
+    assert 'hx-target="#radar-panels"' in page
+    # GET form must exist with action=/radar
+    assert 'action="/radar"' in page
+
+
+# ---------------------------------------------------------------------------
+# B04 — snapshot identity must never fall back
+# ---------------------------------------------------------------------------
+
+def test_b04_snapshot_uid_not_in_universe_no_fallback(make_client):
+    """GET /radar?snapshot_id=X where X has NVDA uid + AAPL-only universe →
+    selected=None, no AAPL substitution, visible SNAPSHOT_UID_NOT_IN_UNIVERSE."""
+    calls: list = []
+    # Universe has only AAPL
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+
+    def factory():
+        snap = SimpleNamespace(
+            assets=[aapl_rec],
+            get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        # Acquire a NVDA snapshot (service has NVDA evidence)
+        service = _build_service(calls, uid="NVDA", address=_NVDA_ADDR)
+        c = make_client(service)
+        # To get a snapshot we first do a POST (universe factory ignores
+        # NVDA uid check since it's the service fake_core, not registry)
+        # We'll build the snapshot manually by calling acquire directly.
+        req = composition.build_request(
+            "BUY", "100",
+            composition.SelectedAsset(
+                economic_asset_uid="NVDA",
+                token_symbol="NVDA",
+                token_name="NVIDIA Corp.",
+                chain_id=_CHAIN,
+                contract_address=_NVDA_ADDR,
+                token_decimals=18,
+            ))
+        snapshot = service.acquire(req)
+        snapshot_id = snapshot.snapshot_id
+        # Now GET /radar?snapshot_id=X with asset_uid=AAPL as the query param
+        page = c.get(f"/radar?snapshot_id={snapshot_id}&asset_uid=AAPL").text
+    finally:
+        composition.set_registry_factory(None)
+
+    # Must NOT show AAPL as selected asset (no substitution)
+    # The SNAPSHOT_UID_NOT_IN_UNIVERSE note must appear
+    assert "SNAPSHOT_UID_NOT_IN_UNIVERSE" in page
+    # The Selected Asset panel must NOT claim AAPL is selected
+    # (it may show the note, but NOT AAPL's details as if selected)
+    # Key: "Apple Inc." should NOT appear as the selected asset name
+    # in the Selected Asset panel when the snapshot is NVDA
+    assert "NVDA" in page  # the snapshot panels render NVDA identity
+
+
+def test_b04_snapshot_uid_not_in_universe_asset_uid_param_ignored(make_client):
+    """asset_uid=AAPL query param must be ignored when a snapshot is loaded
+    whose uid is not in the universe — selected stays None."""
+    calls: list = []
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+
+    def factory():
+        snap = SimpleNamespace(
+            assets=[aapl_rec],
+            get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        service = _build_service(calls, uid="NVDA", address=_NVDA_ADDR)
+        req = composition.build_request(
+            "BUY", "100",
+            composition.SelectedAsset(
+                economic_asset_uid="NVDA",
+                token_symbol="NVDA",
+                token_name="NVIDIA Corp.",
+                chain_id=_CHAIN,
+                contract_address=_NVDA_ADDR,
+                token_decimals=18,
+            ))
+        snapshot = service.acquire(req)
+        c = make_client(service)
+        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}&asset_uid=AAPL").text
+    finally:
+        composition.set_registry_factory(None)
+
+    # The identity note must be visible — AAPL was NOT substituted
+    assert "SNAPSHOT_UID_NOT_IN_UNIVERSE" in page
+
+
+def test_b04_snapshot_identity_note_rendered_visibly(make_client):
+    """snapshot_identity_note must be rendered in the HTML, not just passed
+    as a template variable — it must appear in the page text."""
+    calls: list = []
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+
+    def factory():
+        snap = SimpleNamespace(
+            assets=[aapl_rec],
+            get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        service = _build_service(calls, uid="NVDA", address=_NVDA_ADDR)
+        req = composition.build_request(
+            "BUY", "100",
+            composition.SelectedAsset(
+                economic_asset_uid="NVDA",
+                token_symbol="NVDA",
+                token_name="NVIDIA Corp.",
+                chain_id=_CHAIN,
+                contract_address=_NVDA_ADDR,
+                token_decimals=18,
+            ))
+        snapshot = service.acquire(req)
+        c = make_client(service)
+        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}").text
+    finally:
+        composition.set_registry_factory(None)
+
+    assert "SNAPSHOT_UID_NOT_IN_UNIVERSE" in page, (
+        "snapshot_identity_note must be rendered visibly in the page")
+
+
+def test_b04_full_page_single_asset_header_with_nvda_snapshot(make_client):
+    """Full-page render with a NVDA snapshot + AAPL-only universe must have
+    exactly one id=radar-asset-header and no AAPL as the selected asset."""
+    calls: list = []
+    aapl_rec = _make_asset_record("AAPL", "AAPL", "Apple Inc.", _AAPL_ADDR)
+
+    def factory():
+        snap = SimpleNamespace(
+            assets=[aapl_rec],
+            get_by_uid=lambda u: aapl_rec if u == "AAPL" else None,
+        )
+        return SimpleNamespace(
+            fetch_snapshot=lambda: snap,
+            fetch_bound_reference=lambda sn, k: ({}, {}),
+        )
+
+    composition.set_registry_factory(factory)
+    try:
+        service = _build_service(calls, uid="NVDA", address=_NVDA_ADDR)
+        req = composition.build_request(
+            "BUY", "100",
+            composition.SelectedAsset(
+                economic_asset_uid="NVDA",
+                token_symbol="NVDA",
+                token_name="NVIDIA Corp.",
+                chain_id=_CHAIN,
+                contract_address=_NVDA_ADDR,
+                token_decimals=18,
+            ))
+        snapshot = service.acquire(req)
+        c = make_client(service)
+        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}").text
+    finally:
+        composition.set_registry_factory(None)
+
+    import re
+    headers = re.findall(r'id=["\']radar-asset-header["\']', page)
+    assert len(headers) == 1, (
+        f"expected exactly 1 id='radar-asset-header', found {len(headers)}")

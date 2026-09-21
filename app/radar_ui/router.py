@@ -138,10 +138,12 @@ async def radar_home(request: Request, snapshot_id: str = "",
     view = None
     load_error = None
     snapshot_identity_note = None
+    _snapshot_loaded = False
 
     if snapshot_id:
         try:
             snapshot = get_service().get_snapshot(snapshot_id)
+            _snapshot_loaded = True
             view = view_model.build_radar_view(snapshot)
             snap_uid = _get_snapshot_uid(snapshot)
             if snap_uid:
@@ -151,11 +153,13 @@ async def radar_home(request: Request, snapshot_id: str = "",
                 else:
                     snapshot_identity_note = (
                         f"SNAPSHOT_UID_NOT_IN_UNIVERSE: {snap_uid!r}")
-            # asset_uid query param is subordinate to snapshot identity
+            # B04: no asset_uid fallback when snapshot loaded — identity is
+            # authoritative from the snapshot, not the query parameter.
         except RadarRuntimeError as exc:
             load_error = str(exc)
 
-    if selected is None:
+    # Only use asset_uid query param when no snapshot was successfully loaded.
+    if selected is None and not _snapshot_loaded:
         selected = _resolve_selected(universe, asset_uid)
 
     from app.auth import resolve_request_session

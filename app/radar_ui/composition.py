@@ -51,6 +51,7 @@ _TARGET_CHAIN_ID = 4663
 
 TOKEN_DECIMALS_UNAVAILABLE = "TOKEN_DECIMALS_UNAVAILABLE"
 TOKEN_DECIMALS_AUTHORITY_MISMATCH = "TOKEN_DECIMALS_AUTHORITY_MISMATCH"
+TOKEN_DECIMALS_AUTHORITY_UNBOUND = "TOKEN_DECIMALS_AUTHORITY_UNBOUND"
 
 # The configured provider/source set for the canonical asset acquisition.
 _CONFIGURED_EXTRA_SOURCES: "tuple[str, ...]" = ()
@@ -91,6 +92,11 @@ class TokenDecimalsMismatch(RuntimeContractError):
     The reference section fails closed — stale decimals authority rejected."""
 
 
+class TokenDecimalsUnbound(RuntimeContractError):
+    """Fingerprint-bound tokenDecimals are absent or malformed.
+    The reference section fails closed — no substitution of live decimals."""
+
+
 def _parse_token_decimals(raw) -> int:
     """Parse and validate tokenDecimals from registry raw_evidence.
 
@@ -104,10 +110,9 @@ def _parse_token_decimals(raw) -> int:
     if isinstance(raw, int):
         value = raw
     elif isinstance(raw, str):
-        try:
-            value = int(raw)
-        except (ValueError, TypeError):
+        if not raw.isascii() or not raw.isdigit():
             raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
+        value = int(raw)
     else:
         raise TokenDecimalsUnavailable(TOKEN_DECIMALS_UNAVAILABLE)
     if value < 0 or value > 255:
@@ -371,20 +376,22 @@ def composition_radar_source(
                 _resolved_decimals = _parse_token_decimals(
                     getattr(asset_record, "raw_evidence", {}).get(
                         "tokenDecimals"))
-                # C3: compare live decimals to the fingerprint-bound value.
-                # A change in tokenDecimals changes quote semantics; mismatches
-                # must fail closed — no stale decimals authority is consumed.
-                _bound_dec_raw = (request.provider_config or {}).get(
-                    "targetAsset", {}).get("tokenDecimals")
-                if _bound_dec_raw is not None:
-                    try:
-                        _bound_dec = int(_bound_dec_raw)
-                    except (ValueError, TypeError):
-                        _bound_dec = None
-                    if (_bound_dec is not None
-                            and _resolved_decimals != _bound_dec):
-                        raise TokenDecimalsMismatch(
-                            TOKEN_DECIMALS_AUTHORITY_MISMATCH)
+                # C3 / B01: fingerprint-bound decimals are MANDATORY.
+                # targetAsset.tokenDecimals must exist and parse correctly;
+                # missing or malformed → fail closed, no live-decimals sub.
+                _target_asset = (request.provider_config or {}).get(
+                    "targetAsset")
+                if (not isinstance(_target_asset, Mapping)
+                        or "tokenDecimals" not in _target_asset):
+                    raise TokenDecimalsUnbound(TOKEN_DECIMALS_AUTHORITY_UNBOUND)
+                try:
+                    _bound_dec = _parse_token_decimals(
+                        _target_asset["tokenDecimals"])
+                except TokenDecimalsUnavailable:
+                    raise TokenDecimalsUnbound(TOKEN_DECIMALS_AUTHORITY_UNBOUND)
+                if _bound_dec != _resolved_decimals:
+                    raise TokenDecimalsMismatch(
+                        TOKEN_DECIMALS_AUTHORITY_MISMATCH)
                 binding_row, price_row = registry.fetch_bound_reference(
                     registry_snapshot, key)
                 reference_authority = build_bound_reference_price(
@@ -414,6 +421,9 @@ def composition_radar_source(
                     close()
         except TokenDecimalsUnavailable:
             evidence["reference"] = _unavailable(TOKEN_DECIMALS_UNAVAILABLE)
+        except TokenDecimalsUnbound:
+            evidence["reference"] = _unavailable(
+                TOKEN_DECIMALS_AUTHORITY_UNBOUND)
         except TokenDecimalsMismatch:
             evidence["reference"] = _unavailable(
                 TOKEN_DECIMALS_AUTHORITY_MISMATCH)

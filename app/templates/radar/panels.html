@@ -191,7 +191,7 @@
 <!-- OOB: update the asset identity header with the snapshot's authoritative
      identity so the header never stays stale after an HTMX refresh.
      Only emitted for HTMX partial responses (is_htmx_partial=True) to avoid
-     a duplicate id="radar-asset-header" on full-page renders where
+     a duplicate radar-asset-header element on full-page renders where
      index.html already owns that element. -->
 {% if is_htmx_partial %}
 <div id="radar-asset-header" class="radar-asset-header" hx-swap-oob="true">
