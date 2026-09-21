@@ -89,6 +89,7 @@ from app.ui.inputs_slice1 import (
 )
 from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
+from app.v2.scenario_presentation import OVERRIDE_EDITOR_FIELDS
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
 from app.workbook.workbook_identity import assemble_consistent_for_get, assemble_for_workspace
@@ -103,6 +104,14 @@ from app.workbook.update_service import (
 )
 
 router = APIRouter()
+
+# The remove-override HTTP surface is intentionally narrower than the generic
+# persistence API. Derive its authority from the fields exposed by the V2
+# Scenario Override Editor so internal scenario payloads cannot be removed by
+# a crafted request and the UI/router contracts cannot drift independently.
+_REMOVABLE_OVERRIDE_FIELDS = frozenset(
+    field_key for field_key, _label, _unit in OVERRIDE_EDITOR_FIELDS
+)
 
 
 def _fmt_runtime_at(ts: str) -> str:
@@ -2470,6 +2479,19 @@ async def v2_scenario_remove_override(
             fields_to_remove.append(val.strip())
     if not fields_to_remove:
         return JSONResponse({"error": "At least one 'field' parameter is required."}, status_code=422)
+
+    invalid_fields = sorted({
+        field for field in fields_to_remove
+        if field not in _REMOVABLE_OVERRIDE_FIELDS
+    })
+    if invalid_fields:
+        return JSONResponse(
+            {
+                "error": "One or more override fields are not removable.",
+                "invalid_fields": invalid_fields,
+            },
+            status_code=422,
+        )
 
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state

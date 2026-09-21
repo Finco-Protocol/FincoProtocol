@@ -32,6 +32,9 @@ Override reset / removal (Phase 4 — model/scenario-override-reset):
   R8. Persistence — genuine 0.0 override NOT removed when different key requested
   R9. Persistence — removing only key leaves overrides empty (not a zero dict)
   R10. Presentation — override count decreases after removal
+  R11. HTTP allowlist — reserved/unknown fields fail closed with zero mutation
+  R12. HTTP allowlist — mixed valid/invalid fields perform zero removal
+  R13. HTTP allowlist — multiple canonical fields remain removable
 """
 from __future__ import annotations
 
@@ -750,6 +753,128 @@ def test_remove_override_success_removes_key_returns_html():
     assert resp.status_code == 200
     assert "text/html" in resp.headers.get("content-type", "")
     mock_rso.assert_called_once_with("user-sc", "sc-1", ["tariff_eur_mwh"])
+
+
+# ─── R11-R13: canonical HTTP field allowlist ─────────────────────────────────
+
+
+def test_remove_override_reserved_key_rejected_without_mutation():
+    """R11: internal scenario payload keys are not user-removable."""
+    client = _get_test_client()
+    reserved_fields = (
+        "_capex_sub_line_overrides",
+        "_capex_sub_line_overrides_metadata",
+        "_opex_sub_line_overrides",
+    )
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        for reserved_field in reserved_fields:
+            resp = _post_remove_override(
+                client,
+                {
+                    "project": "test_proj",
+                    "scenario_id": "sc-1",
+                    "field": reserved_field,
+                },
+            )
+            assert resp.status_code == 422
+            assert resp.json()["invalid_fields"] == [reserved_field]
+
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_mixed_valid_and_reserved_rejected_without_mutation():
+    """R12: one invalid field rejects the whole request before persistence."""
+    client = _get_test_client()
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": ["tariff_eur_mwh", "_capex_sub_line_overrides"],
+            },
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["invalid_fields"] == ["_capex_sub_line_overrides"]
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_unknown_field_rejected_without_mutation():
+    """R11: arbitrary unknown keys fail closed at the HTTP boundary."""
+    client = _get_test_client()
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+        ) as mock_rso,
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": "totally_fake_field",
+            },
+        )
+
+    assert resp.status_code == 422
+    assert resp.json()["invalid_fields"] == ["totally_fake_field"]
+    mock_rso.assert_not_called()
+
+
+def test_remove_override_multiple_valid_fields_remain_accepted():
+    """R13: multiple canonical editor fields retain existing removal behavior."""
+    client = _get_test_client()
+    sc = _make_scenario(overrides={"tariff_eur_mwh": 45.0, "gearing_pct": 60.0})
+    updated_sc = _make_scenario(overrides={})
+
+    with (
+        patch("app.v2.router._get_current_user", return_value=_mock_user()),
+        patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(_make_project_record(), "user-sc"),
+        ),
+        patch("app.persistence.scenarios_repository.get_scenario", return_value=sc),
+        patch(
+            "app.persistence.scenarios_repository.remove_scenario_overrides",
+            return_value=updated_sc,
+        ) as mock_rso,
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=_make_ws(),
+        ),
+        patch(
+            "app.persistence.scenarios_repository.list_scenarios",
+            return_value=[updated_sc],
+        ),
+    ):
+        resp = _post_remove_override(
+            client,
+            {
+                "project": "test_proj",
+                "scenario_id": "sc-1",
+                "field": ["tariff_eur_mwh", "gearing_pct"],
+            },
+        )
+
+    assert resp.status_code == 200
+    mock_rso.assert_called_once_with(
+        "user-sc", "sc-1", ["tariff_eur_mwh", "gearing_pct"]
+    )
 
 
 # ─── R2: base-case rejection ──────────────────────────────────────────────────
