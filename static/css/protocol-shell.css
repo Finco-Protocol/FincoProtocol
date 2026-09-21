@@ -148,6 +148,17 @@
   gap: 0;
 }
 
+/* Hero brand logo — approved FINCO mark above the eyebrow */
+.proto-home__hero-brand {
+  margin-bottom: 24px;
+}
+
+.proto-home__hero-logo {
+  height: 52px;
+  width: auto;
+  display: block;
+}
+
 .proto-home__eyebrow {
   font-size: 11px;
   font-weight: var(--fo-weight-semibold);
@@ -431,6 +442,15 @@
   font-weight: var(--fo-weight-bold);
   color: #111827;
   letter-spacing: -0.015em;
+  margin: 0 0 10px;
+}
+
+.proto-arch__brand-strip {
+  font-size: 10.5px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #9ca3af;
   margin: 0;
 }
 
@@ -478,12 +498,31 @@
 
 .proto-arch__product-name--teal { color: #2a8a85; }
 
+.proto-arch__product-headline {
+  font-size: 12px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.04em;
+  color: #374151;
+  margin: -4px 0 4px;
+  text-transform: uppercase;
+  font-style: italic;
+}
+
 .proto-arch__product-desc {
   font-size: 13px;
   color: #6b7280;
   line-height: 1.6;
   margin: 0;
   flex: 1;
+}
+
+.proto-arch__product-readonly {
+  font-size: 10px;
+  font-weight: var(--fo-weight-bold);
+  letter-spacing: 0.1em;
+  color: #c9a55c;
+  display: inline-block;
+  margin-left: 2px;
 }
 
 .proto-arch__product-link {
@@ -953,6 +992,10 @@
   /* Hide wordmark on very narrow phones; keep logo mark + links */
   .proto-nav__brand-wordmark {
     display: none;
+  }
+
+  .proto-home__hero-logo {
+    height: 38px;
   }
 
   .proto-nav__link {

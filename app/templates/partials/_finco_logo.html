@@ -1,33 +1,24 @@
 {# ── FINCO Logo Partial ──────────────────────────────────────────────────────
-   Canonical logo slot — ready for the approved FINCO mark.
-
-   FINCO_APPROVED_LOGO_ASSET_REQUIRED — to activate, swap this partial with:
-     <img src="/static/logo/finco-logo.svg" alt="FINCO"
-          width="{{ _w }}" height="{{ _w }}"
-          style="flex-shrink:0;display:inline-block;vertical-align:middle;">
-   or include the approved SVG file inline with its own viewBox/dimensions.
+   Renders the approved FINCO hexagonal emblem mark.
 
    Parameters (Jinja2 context):
      logo_variant : "light" (default) — for dark nav backgrounds
                     "dark"            — for light page backgrounds
      logo_size    : "sm" | "md" (default) | "lg"
-
-   Until the approved asset is supplied this slot renders nothing.
-   The FINCO textual wordmark (.proto-nav__brand-wordmark) is the visible
-   brand identity in the interim.
 #}
 
 {% set _variant = logo_variant | default("light") %}
 {% set _size    = logo_size    | default("md") %}
 
 {% if _size == "sm" %}
-  {% set _w = 18 %}
+  {% set _h = 20 %}
 {% elif _size == "lg" %}
-  {% set _w = 28 %}
+  {% set _h = 30 %}
 {% else %}
-  {% set _w = 20 %}
+  {% set _h = 24 %}
 {% endif %}
 
-{# FINCO_APPROVED_LOGO_ASSET_REQUIRED
-   Slot is ready for /static/logo/finco-logo.svg at width={{ _w }}px.
-   No invented mark is rendered; the wordmark alone identifies the brand. #}
+<img src="/static/logo/finco-emblem.png"
+     alt="FINCO"
+     height="{{ _h }}"
+     style="flex-shrink:0;display:inline-block;vertical-align:middle;width:auto;image-rendering:auto;">
