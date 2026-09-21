@@ -362,6 +362,52 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
   color: #111827;
 }
 
+/* ── Returns: persisted Last Run sponsor evidence ───────────── */
+.v2-returns {
+  max-width: 1400px;
+  padding: 0.75rem 1rem 1.5rem;
+  font-size: 0.84rem;
+}
+.v2-returns-authority {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.55rem 0.7rem;
+  margin-bottom: 0.9rem;
+  border: 1px solid #d1d5db;
+  border-left: 3px solid #2563eb;
+  background: #f9fafb;
+}
+.v2-returns-authority > div,
+.v2-returns-lineage { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.v2-returns-lineage { justify-content: flex-end; color: #4b5563; }
+.v2-returns-eyebrow {
+  color: #6b7280;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.v2-returns-kpi-grid { grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
+.v2-returns-note { color: #6b7280; font-size: 0.76rem; margin: 0.25rem 0 0; }
+.v2-returns-empty,
+.v2-returns-unavailable {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  padding: 1rem;
+  color: #4b5563;
+}
+.v2-returns-empty h2 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.v2-returns-empty p { margin: 0.25rem 0; }
+.v2-returns-table { min-width: 960px; }
+.v2-returns-negative { color: #b91c1c; }
+@media (max-width: 720px) {
+  .v2-returns { padding: 0.6rem; }
+  .v2-returns-authority { flex-direction: column; }
+  .v2-returns-lineage { justify-content: flex-start; }
+}
+
 /* ── CAPEX worksheet ─────────────────────────────────────────── */
 #v2-sheet-capex { font-size: 0.84rem; }
 

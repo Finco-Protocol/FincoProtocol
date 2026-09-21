@@ -923,6 +923,16 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     }
 
 
+def _build_returns_ctx(ws, rr=None) -> dict:
+    """Build Returns context from the persisted Last Run only."""
+    from app.v2.returns_projection import build_returns_projection
+    from app.workbook.service import WorkbookService
+
+    if rr is None:
+        rr = WorkbookService.get_runtime_result(ws)
+    return {"returns": build_returns_projection(rr, ws)}
+
+
 def _build_all_oob(ws, *, request=None, project_record=None, project="",
                    workspace_owner="") -> str:
     """R6 Correction A: full post-Save stale-state refresh after a mutation.
@@ -1121,6 +1131,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
+    context.update(_build_returns_ctx(ws, rr=_rr))
     from app.v2.overview_projection import build_overview_projection
     context["overview"] = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=ws.active_scenario_name or "")
 

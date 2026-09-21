@@ -25,6 +25,7 @@ Surfaces refreshed (all runtime-dependent):
     #v2-sheet-senior-debt       debt runtime bar + coverage presentation
     #v2-sheet-tax               tax runtime bar (R4 typed country-tax semantics preserved)
     #v2-sheet-financial-statements  FS runtime state (canonical unavailable stays unavailable)
+    #v2-sheet-returns           persisted sponsor/distribution Last Run evidence
     #v2-sheet-scenarios         per-scenario last-run status (persisted in run step 12b)
 
 Inputs-only sheets (project_setup, inputs, revenue, CAPEX, OPEX) are NOT
@@ -66,6 +67,7 @@ def build_post_run_ui_state(
         _build_debt_ctx,
         _build_tax_ctx,
         _build_financial_statements_ctx,
+        _build_returns_ctx,
     )
 
     pis_fresh = _build_pis_with_composite_identity(
@@ -127,7 +129,12 @@ def build_post_run_ui_state(
         "partials/sheet_financial_statements.html").render(ctx)
     fragments.append(_as_oob(fs_html, "v2-sheet-financial-statements"))
 
-    # H. Scenario last-run statuses (persisted during run step 12b).
+    # H. Returns — sponsor/distribution evidence from the same persisted run.
+    ctx.update(_build_returns_ctx(ws_fresh, rr=rr))
+    returns_html = _templates.get_template("partials/sheet_returns.html").render(ctx)
+    fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
+
+    # I. Scenario last-run statuses (persisted during run step 12b).
     scenarios_html = _scenario_list_html(
         workspace_owner, project_record.project_id, project, ws_fresh)
     fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
@@ -180,6 +187,7 @@ def build_post_save_ui_state(
         _fmt_runtime_at,
         _scenario_list_html,
         _templates,
+        _build_returns_ctx,
     )
 
     if rr is _NOTSET:
@@ -248,6 +256,19 @@ def build_post_save_ui_state(
     # that already emitted the bars can suppress this section.
     if include_runtime_bars:
         fragments.append(build_all_runtime_bar_oob(projection))
+
+    # Returns values remain those of the persisted Last Run while their state
+    # changes to stale.  This is a presentation refresh, never a calculation.
+    returns_ctx = {
+        "returns": _build_returns_ctx(ws_fresh, rr=rr)["returns"],
+        "project_code": project,
+        "project_editable": True,
+    }
+    if project_record is not None:
+        from app.ui.protected_reference_service import is_protected_reference
+        returns_ctx["project_editable"] = not is_protected_reference(project_record)
+    returns_html = _templates.get_template("partials/sheet_returns.html").render(returns_ctx)
+    fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
 
     # Scenario last-run statuses (persisted by the previous Run's step 12b).
     if project_record is not None and workspace_owner:
