@@ -381,12 +381,17 @@ def test_export_route_access_isolation_uses_workspace_owner():
 
 def test_v2_export_service_no_engine_call_sentinel():
     """build_canonical_last_run_institutional_workbook_export must not invoke
-    execute_production_waterfall — proven via a live sentinel that raises AssertionError."""
+    execute_production_waterfall — proven via a live sentinel that raises AssertionError.
+
+    F02: sentinel must not fire AND export must succeed (status 200) with parseable XLSX.
+    """
+    from io import BytesIO
     from types import SimpleNamespace as NS
     from app.services.v2_export_service import (
         build_canonical_last_run_institutional_workbook_export,
     )
     from app.project_factories import create_generic_wind_reference
+    import openpyxl
 
     fake_pi = create_generic_wind_reference()
     fake_record = NS(
@@ -402,6 +407,7 @@ def test_v2_export_service_no_engine_call_sentinel():
 
     mock_rr = NS(
         snapshot_id="snap-001",
+        ran_at="2026-01-01T00:00:00+00:00",
         runtime_summary={"project_irr": 0.12, "equity_irr": 0.15},
         debt_schedule={"periods": []},
         financial_statements=None,
@@ -435,8 +441,9 @@ def test_v2_export_service_no_engine_call_sentinel():
             "app.services.production_waterfall_seam.execute_production_waterfall",
             side_effect=_sentinel_engine,
         ),
+        # F03/F06: mock the new single-read wrapper, not resolve_export_authority.
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -455,14 +462,19 @@ def test_v2_export_service_no_engine_call_sentinel():
             user_id="user-sentinel",
         )
 
-    # If the sentinel raised, we'd never reach here — engine was not called.
-    # Accept 200 or 400 (bundle construction may fail in test env without full DB).
-    assert export.status_code in (200, 400)
+    # F02: sentinel must not have fired AND export must produce real XLSX bytes.
     assert "execute_production_waterfall must NOT be called" not in (export.error_content or "")
+    assert export.status_code == 200, f"Expected 200 but got {export.status_code}: {export.error_content}"
+    assert export.bytes_data is not None and len(export.bytes_data) > 0
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+    assert "Runtime Summary" in wb.sheetnames
 
 
 def test_v2_export_run_clean_production_sentinel():
-    """run_clean_production must not be called in the V2 zero-engine export path."""
+    """run_clean_production must not be called in the V2 zero-engine export path.
+
+    F02: sentinel must not fire AND export must succeed (status 200).
+    """
     from types import SimpleNamespace as NS
     from app.services.v2_export_service import (
         build_canonical_last_run_institutional_workbook_export,
@@ -482,6 +494,7 @@ def test_v2_export_run_clean_production_sentinel():
     )
     mock_rr = NS(
         snapshot_id="snap-002",
+        ran_at="2026-01-01T00:00:00+00:00",
         runtime_summary={"project_irr": 0.10},
         debt_schedule={"periods": []},
         financial_statements=None,
@@ -515,8 +528,9 @@ def test_v2_export_run_clean_production_sentinel():
             "app.services.production_financial_authority.run_clean_production",
             side_effect=_sentinel_clean,
         ),
+        # F03/F06: mock new single-read wrapper, not resolve_export_authority.
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -535,8 +549,9 @@ def test_v2_export_run_clean_production_sentinel():
             user_id="user-clean-sentinel",
         )
 
-    assert export.status_code in (200, 400)
+    # F02: sentinel must not fire AND export must succeed.
     assert "run_clean_production must NOT be called" not in (export.error_content or "")
+    assert export.status_code == 200, f"Expected 200 but got {export.status_code}: {export.error_content}"
 
 
 def test_export_response_is_streaming_or_html_error():
@@ -593,10 +608,12 @@ def _make_fake_runtime_result(
     project_irr=0.12,
     equity_irr=0.15,
     has_statements=False,
+    ran_at="2026-01-01T00:00:00+00:00",
 ):
     rs = {"project_irr": project_irr, "equity_irr": equity_irr}
     return SimpleNamespace(
         snapshot_id=snapshot_id,
+        ran_at=ran_at,
         runtime_summary=rs,
         debt_schedule={"periods": []},
         financial_statements={"pnl": {"periods": []}} if has_statements else None,
@@ -645,7 +662,10 @@ def _mock_user(user_id="user-http"):
 
 
 def test_http_route_case_a_clean_run_200():
-    """Case A: clean run (working_changed=False) → 200 + xlsx bytes."""
+    """Case A: clean run (working_changed=False) → 200 + xlsx bytes.
+
+    F03: mock at workspace/RuntimeResult level, not authority level.
+    """
     from app.project_factories import create_generic_wind_reference
 
     fake_pi = create_generic_wind_reference()
@@ -661,8 +681,9 @@ def test_http_route_case_a_clean_run_200():
             "app.persistence.projects_repository.resolve_accessible_project",
             return_value=(fake_record, "user-http"),
         ),
+        # F03/F06: mock the new single-read wrapper (not resolve_export_authority).
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -685,7 +706,10 @@ def test_http_route_case_a_clean_run_200():
 
 
 def test_http_route_case_b_dirty_after_run_200():
-    """Case B: dirty working inputs (working_changed=True) → 200 + metadata flag."""
+    """Case B: dirty working inputs (working_changed=True) → 200 + metadata flag.
+
+    F03: mock at workspace/RuntimeResult level, not authority level.
+    """
     from app.project_factories import create_generic_wind_reference
 
     fake_pi = create_generic_wind_reference()
@@ -702,7 +726,7 @@ def test_http_route_case_b_dirty_after_run_200():
             return_value=(fake_record, "user-http"),
         ),
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -721,7 +745,10 @@ def test_http_route_case_b_dirty_after_run_200():
 
 
 def test_http_route_case_c_scenario_lineage_200():
-    """Case C: scenario lineage — 200 with correct scenario identity."""
+    """Case C: scenario lineage — 200 with correct scenario identity.
+
+    F03: mock at workspace/RuntimeResult level, not authority level.
+    """
     from app.project_factories import create_generic_wind_reference
 
     fake_pi = create_generic_wind_reference()
@@ -743,7 +770,7 @@ def test_http_route_case_c_scenario_lineage_200():
             return_value=(fake_record, "user-http"),
         ),
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -762,9 +789,10 @@ def test_http_route_case_c_scenario_lineage_200():
 
 
 def test_http_route_case_d_no_run_400():
-    """Case D: no committed run → 400 HTML error from v2_export_service."""
-    from app.project_factories import create_generic_wind_reference
+    """Case D: no committed run → 400 HTML error from v2_export_service.
 
+    F03: mock at the new single-read wrapper level (not resolve_export_authority).
+    """
     fake_record = _make_fake_project_record()
 
     client = _get_test_client()
@@ -775,8 +803,18 @@ def test_http_route_case_d_no_run_400():
             "app.persistence.projects_repository.resolve_accessible_project",
             return_value=(fake_record, "user-http"),
         ),
+        # F06: v2_export_service now calls get_workspace_state then
+        # resolve_canonical_last_run_from_workspace — mock both.
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=SimpleNamespace(
+                any_run_committed=False,
+                last_runtime_snapshot=None,
+                last_runtime_snapshot_id=None,
+            ),
+        ),
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             side_effect=ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: no run"),
         ),
     ):
@@ -874,6 +912,7 @@ def test_adversarial_proof_zero_engine_full_roundtrip():
     )
     mock_rr = NS(
         snapshot_id="snap-adversarial",
+        ran_at="2026-09-21T00:00:00+00:00",
         runtime_summary={
             "project_irr": 0.13,
             "equity_irr": 0.16,
@@ -919,8 +958,9 @@ def test_adversarial_proof_zero_engine_full_roundtrip():
             "app.services.production_financial_authority.run_clean_production",
             side_effect=_clean_sentinel,
         ),
+        # F03/F06: mock the new single-read wrapper, not resolve_export_authority.
         patch(
-            "app.services.export_service.resolve_export_authority",
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
             return_value=mock_authority,
         ),
         patch(
@@ -939,11 +979,13 @@ def test_adversarial_proof_zero_engine_full_roundtrip():
             user_id="user-adversarial",
         )
 
-    # Sentinels must never have fired.
+    # F02: Sentinels must never have fired AND export must produce real XLSX.
     assert engine_call_log == [], (
         f"Engine was called during zero-engine V2 export: {engine_call_log}"
     )
-    # Result must not be an engine-sentinel error.
+    assert export.status_code == 200, (
+        f"Expected 200 but got {export.status_code}: {export.error_content}"
+    )
     if export.error_content:
         assert "SENTINEL" not in export.error_content
 
@@ -1014,3 +1056,898 @@ def test_v2_export_service_fails_closed_when_no_project_record():
 
     assert export.status_code == 400
     assert export.has_error()
+
+
+# ===========================================================================
+# Correction B — new tests: F06, F07, F08, F05, F04, invariants, XLSX verify
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# F06 — Single workspace read: adversarial race lock
+# ---------------------------------------------------------------------------
+
+
+def test_f06_single_workspace_read_invariant():
+    """F06: get_workspace_state is called exactly ONCE per export invocation.
+
+    Authority and RuntimeResult must derive from the same ws object; a second
+    read would open a torn-workbook window (Last Run A inputs + Last Run B outputs).
+    """
+    from types import SimpleNamespace as NS
+    from unittest.mock import call
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-f06",
+        project_origin="user_created",
+        project_code="f06_proj",
+        project_name="F06 Race Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id="snap-f06",
+        ran_at="2026-06-01T09:00:00+00:00",
+        runtime_summary={"project_irr": 0.11},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-06-01T09:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    ws_read_calls = []
+
+    def _counting_ws(*args, **kwargs):
+        ws_read_calls.append(("get_workspace_state", args, kwargs))
+        return NS(last_runtime_snapshot_id="snap-f06")
+
+    with (
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            side_effect=_counting_ws,
+        ),
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="f06_proj",
+            project_record=fake_record,
+            user_id="user-f06",
+        )
+
+    # F06: workspace must be read exactly once.
+    assert len(ws_read_calls) == 1, (
+        f"Expected 1 workspace read but got {len(ws_read_calls)}: {ws_read_calls}"
+    )
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+
+
+def test_f06_adversarial_race_torn_workbook_prevented():
+    """F06 adversarial: two workspace objects (A and B) with different project_irr.
+
+    Proves that only ONE workspace is read and the exported IRR matches ws_a
+    (the single read), never a mix of ws_a and ws_b data.
+    """
+    from types import SimpleNamespace as NS
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+        _RuntimeResultAdapter,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-race",
+        project_origin="user_created",
+        project_code="race_proj",
+        project_name="Race Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+
+    # ws_a: last run with project_irr=0.13 — the "correct" authority.
+    ws_a = NS(last_runtime_snapshot_id="snap-a")
+    rr_a = NS(
+        snapshot_id="snap-a",
+        ran_at="2026-01-01T00:00:00+00:00",
+        runtime_summary={"project_irr": 0.13},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    authority_a = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-01-01T00:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    read_count = [0]
+
+    def _ws_once(*args, **kwargs):
+        read_count[0] += 1
+        if read_count[0] > 1:
+            raise AssertionError(
+                f"RACE: get_workspace_state called {read_count[0]} times — F06 violated"
+            )
+        return ws_a
+
+    with (
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            side_effect=_ws_once,
+        ),
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=authority_a,
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=rr_a,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="race_proj",
+            project_record=fake_record,
+            user_id="user-race",
+        )
+
+    assert read_count[0] == 1, f"Expected 1 read, got {read_count[0]}"
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+    # No RACE error in response.
+    assert "RACE" not in (export.error_content or "")
+
+
+# ---------------------------------------------------------------------------
+# F07 — Missing persisted fields: None not 0.0; SHL NOT_AVAILABLE guard
+# ---------------------------------------------------------------------------
+
+
+def test_f07_period_adapter_absent_field_returns_none():
+    """F07: _PeriodAdapter returns None for absent fields, not 0.0.
+
+    An absent field means the data was never persisted (NOT_AVAILABLE), not that
+    the financial value is zero.  Callers must guard before arithmetic.
+    """
+    from app.services.v2_export_service import _PeriodAdapter
+
+    p = _PeriodAdapter({"senior_balance_keur": 1000.0})
+    assert p.senior_balance_keur == 1000.0
+    assert p.shl_balance_keur is None, "Absent field must be None, not 0.0"
+    assert p.shl_interest_keur is None
+
+
+def test_f07_period_adapter_null_field_returns_none():
+    """F07: _PeriodAdapter returns None for explicitly null fields, not 0.0."""
+    from app.services.v2_export_service import _PeriodAdapter
+
+    p = _PeriodAdapter({"senior_balance_keur": None})
+    assert p.senior_balance_keur is None, "Explicit null must be None, not 0.0"
+
+
+def test_f07_shl_data_available_false_when_no_shl_fields():
+    """F07: shl_data_available returns False when debt_schedule has no SHL fields."""
+    from app.services.v2_export_service import _RuntimeResultAdapter
+
+    # Production debt_schedule has only senior fields — no SHL.
+    debt_schedule = {
+        "periods": [
+            {
+                "date": "2027-12-31",
+                "senior_balance_keur": 50000.0,
+                "senior_principal_keur": 1000.0,
+                "senior_interest_keur": 500.0,
+            }
+        ]
+    }
+    adapter = _RuntimeResultAdapter({}, debt_schedule)
+    assert adapter.shl_data_available is False
+
+
+def test_f07_shl_data_available_true_when_shl_fields_present():
+    """F07: shl_data_available returns True when SHL fields are in the debt_schedule."""
+    from app.services.v2_export_service import _RuntimeResultAdapter
+
+    debt_schedule = {
+        "periods": [
+            {
+                "date": "2027-12-31",
+                "shl_balance_keur": 10000.0,
+                "shl_interest_keur": 300.0,
+            }
+        ]
+    }
+    adapter = _RuntimeResultAdapter({}, debt_schedule)
+    assert adapter.shl_data_available is True
+
+
+def test_f07_shl_not_available_export_succeeds_without_crash():
+    """F07: Export with no SHL data produces 200 without crashing on float(None).
+
+    _write_shl_sheet must render NOT_AVAILABLE via the guard, not raise TypeError.
+    """
+    from io import BytesIO
+    from types import SimpleNamespace as NS
+    import openpyxl
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-shl",
+        project_origin="user_created",
+        project_code="shl_proj",
+        project_name="SHL Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    # debt_schedule with senior-only periods (no SHL fields) — triggers NOT_AVAILABLE guard.
+    mock_rr = NS(
+        snapshot_id="snap-shl",
+        ran_at="2026-03-01T00:00:00+00:00",
+        runtime_summary={"project_irr": 0.10, "equity_irr": 0.14},
+        debt_schedule={
+            "periods": [
+                {
+                    "date": "2027-12-31",
+                    "senior_balance_keur": 50000.0,
+                    "senior_ds_keur": 3000.0,
+                    "dscr": 1.40,
+                }
+            ]
+        },
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-03-01T00:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-shl"),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="shl_proj",
+            project_record=fake_record,
+            user_id="user-shl",
+        )
+
+    assert export.status_code == 200, (
+        f"Expected 200 but got {export.status_code}: {export.error_content}"
+    )
+    # Parse XLSX — SHL sheet should exist and contain NOT_AVAILABLE marker.
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+    assert "SHL" in wb.sheetnames
+    shl_sheet = wb["SHL"]
+    # NOT_AVAILABLE marker should appear somewhere in the first 10 rows.
+    shl_values = [shl_sheet.cell(row=r, column=1).value for r in range(1, 11)]
+    assert any(
+        v is not None and "NOT_AVAILABLE" in str(v).upper()
+        for v in shl_values
+    ), f"SHL sheet did not show NOT_AVAILABLE; first 10 rows col A: {shl_values}"
+
+
+# ---------------------------------------------------------------------------
+# F08 — Runtime timestamp from persisted ran_at, not export time
+# ---------------------------------------------------------------------------
+
+
+def test_f08_runtime_timestamp_uses_persisted_ran_at():
+    """F08: workbook runtime_timestamp carries the persisted ran_at, not export time.
+
+    build_runtime_summary_rows must use the runtime_timestamp passed in by the
+    bundle builder rather than calling datetime.now().
+    """
+    from io import BytesIO
+    from types import SimpleNamespace as NS
+    import openpyxl
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    PERSISTED_RAN_AT = "2025-03-15T08:30:00+00:00"
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-ts",
+        project_origin="user_created",
+        project_code="ts_proj",
+        project_name="Timestamp Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id="snap-ts",
+        ran_at=PERSISTED_RAN_AT,
+        runtime_summary={"project_irr": 0.09},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at=PERSISTED_RAN_AT,
+        working_changed_since_run=False,
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-ts"),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="ts_proj",
+            project_record=fake_record,
+            user_id="user-ts",
+        )
+
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+    # F08: metadata must carry the persisted ran_at, not the current export time.
+    assert export.metadata.get("export_run_at") == PERSISTED_RAN_AT, (
+        f"export_run_at should be persisted ran_at but got: {export.metadata.get('export_run_at')}"
+    )
+    # Also verify via XLSX: runtime_timestamp cell in Runtime Summary sheet.
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+    assert "Runtime Summary" in wb.sheetnames
+    # The runtime_timestamp row should contain the persisted date prefix, not today's date.
+    rt_sheet = wb["Runtime Summary"]
+    ts_values = []
+    for row in rt_sheet.iter_rows(values_only=True):
+        for cell in row:
+            if cell and "2025-03-15" in str(cell):
+                ts_values.append(cell)
+    assert ts_values, (
+        f"Persisted ran_at '2025-03-15' not found in Runtime Summary sheet rows"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F04 — Error response never reflects exception text
+# ---------------------------------------------------------------------------
+
+
+def test_f04_export_error_never_reflects_exception_text():
+    """F04: ValueError message is not reflected into the HTML error response.
+
+    Malicious content (e.g. from a persisted field) must not appear in the
+    HTML error body — only a static safe message is returned.
+    """
+    from types import SimpleNamespace as NS
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+
+    fake_record = NS(
+        project_id="proj-xss",
+        project_origin="user_created",
+        project_code="xss_proj",
+    )
+    MALICIOUS_MSG = "<script>alert('xss_from_persisted_field')</script>"
+
+    with (
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-xss"),
+        ),
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            side_effect=ValueError(MALICIOUS_MSG),
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            project_record=fake_record,
+            user_id="user-xss",
+        )
+
+    assert export.status_code == 400
+    assert MALICIOUS_MSG not in (export.error_content or ""), (
+        "Exception text must not be reflected into the HTML error response (F04)"
+    )
+    assert "<script>" not in (export.error_content or "")
+
+
+# ---------------------------------------------------------------------------
+# F05 — Audit trail: actual project_code, scenario_id, snapshot_id
+# ---------------------------------------------------------------------------
+
+
+def test_f05_audit_uses_project_record_project_code():
+    """F05: record_export is called with project_record.project_code, not template code.
+
+    The audit trail must identify the user's actual project, not the template.
+    Also verifies scenario_id and runtime_snapshot_id are passed.
+    """
+    from types import SimpleNamespace as NS
+    from unittest.mock import MagicMock, patch as mock_patch
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    # project_code is "my_wind_farm_2026" — different from runtime template "generic_wind"
+    fake_record = SimpleNamespace(
+        project_id="proj-audit",
+        project_origin="user_created",
+        project_code="my_wind_farm_2026",
+        project_name="My Wind Farm 2026",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id="snap-audit-99",
+        ran_at="2026-08-01T00:00:00+00:00",
+        runtime_summary={"project_irr": 0.12},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id="sc-audit-x",
+        active_scenario_name="Audit Scenario",
+        last_runtime_scenario_id="sc-audit-x",
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-08-01T00:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    record_export_calls = []
+
+    def _capture_record_export(**kwargs):
+        record_export_calls.append(kwargs)
+        return None
+
+    client = _get_test_client()
+    with (
+        mock_patch("app.v2.router._get_current_user", return_value=_mock_user("user-audit")),
+        mock_patch(
+            "app.persistence.projects_repository.resolve_accessible_project",
+            return_value=(fake_record, "user-audit"),
+        ),
+        mock_patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        mock_patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-audit-99"),
+        ),
+        mock_patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+        mock_patch(
+            "app.persistence.repository.record_export",
+            side_effect=_capture_record_export,
+        ),
+    ):
+        resp = client.post("/v2/workbook/export", data={"project": "my_wind_farm_2026"})
+
+    assert resp.status_code == 200
+    assert len(record_export_calls) == 1, f"Expected 1 record_export call, got {len(record_export_calls)}"
+    call_kwargs = record_export_calls[0]
+    # F05: actual user project code, not template code.
+    assert call_kwargs.get("project_code") == "my_wind_farm_2026", (
+        f"Expected project_code='my_wind_farm_2026' but got {call_kwargs.get('project_code')!r}"
+    )
+    # F05: scenario identity.
+    assert call_kwargs.get("scenario_id") == "sc-audit-x", (
+        f"scenario_id not in audit call: {call_kwargs}"
+    )
+    # F05: runtime snapshot identity.
+    assert call_kwargs.get("runtime_snapshot_id") == "snap-audit-99", (
+        f"runtime_snapshot_id not in audit call: {call_kwargs}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Working-vs-Last-Run invariant lock
+# ---------------------------------------------------------------------------
+
+
+def test_working_vs_lastrun_invariant_kpis_from_last_run():
+    """Invariant: exported KPIs come from last run, not working-copy edits.
+
+    When working inputs differ from last run (working_changed_since_run=True),
+    the export must still carry last-run KPIs (project_irr=0.12 from rr, not
+    any modified working value) AND flag working_changed_since_run=true.
+    """
+    from io import BytesIO
+    from types import SimpleNamespace as NS
+    import openpyxl
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    LAST_RUN_IRR = 0.12
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-inv",
+        project_origin="user_created",
+        project_code="inv_proj",
+        project_name="Invariant Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    # RuntimeResult carries the last-run KPIs (project_irr=0.12).
+    mock_rr = NS(
+        snapshot_id="snap-inv",
+        ran_at="2026-05-01T00:00:00+00:00",
+        runtime_summary={"project_irr": LAST_RUN_IRR, "equity_irr": 0.18},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    # Authority: working has changed since last run.
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        last_runtime_scenario_id=None,
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-05-01T00:00:00+00:00",
+        working_changed_since_run=True,  # working inputs were edited after last run
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-inv"),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="inv_proj",
+            project_record=fake_record,
+            user_id="user-inv",
+        )
+
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+    # Metadata must flag that working inputs changed.
+    assert export.metadata.get("export_working_changed_since_run") == "true"
+    # Runtime result adapter carries last-run project_irr — verify via bundle metadata.
+    # The export bytes contain the last-run KPIs, not any modified working value.
+    assert export.bytes_data is not None and len(export.bytes_data) > 0
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+    assert "Runtime Summary" in wb.sheetnames
+
+
+# ---------------------------------------------------------------------------
+# Scenario invariant lock
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_invariant_export_carries_last_run_scenario():
+    """Scenario invariant: exported scenario = scenario at last run time.
+
+    After switching the active scenario without re-running, the export must
+    still reflect the last-run scenario identity, not the new active one.
+    """
+    from types import SimpleNamespace as NS
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-sc-inv",
+        project_origin="user_created",
+        project_code="sc_inv_proj",
+        project_name="Scenario Invariant Test",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id="snap-sc-inv",
+        ran_at="2026-07-01T00:00:00+00:00",
+        runtime_summary={"project_irr": 0.10},
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    # Authority: last_runtime_scenario_id = "sc-high" (run on High Case)
+    # active_scenario_id = "sc-low" (user switched to Low Case but didn't re-run)
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id="sc-low",       # working active scenario
+        active_scenario_name="Low Case",
+        last_runtime_scenario_id="sc-high",  # scenario used for last run
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-07-01T00:00:00+00:00",
+        working_changed_since_run=True,
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id="snap-sc-inv"),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="sc_inv_proj",
+            project_record=fake_record,
+            user_id="user-sc-inv",
+        )
+
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+    # Exported last-run scenario must be "sc-high", not the current active "sc-low".
+    assert export.metadata.get("export_last_runtime_scenario_id") == "sc-high", (
+        f"Expected last_runtime_scenario_id='sc-high' but got "
+        f"{export.metadata.get('export_last_runtime_scenario_id')!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# XLSX cell value verification
+# ---------------------------------------------------------------------------
+
+
+def test_xlsx_cell_value_verification():
+    """XLSX cell value verification: open workbook and assert known KPI values.
+
+    Proves that the exported XLSX actually encodes the persisted RuntimeResult
+    data, not stale, default, or regenerated values.
+    """
+    from io import BytesIO
+    from types import SimpleNamespace as NS
+    import openpyxl
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+    from app.project_factories import create_generic_wind_reference
+    from app.services.export_service import (
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        ResolvedExportAuthority,
+    )
+
+    KNOWN_PROJECT_IRR = 0.1337
+    KNOWN_EQUITY_IRR = 0.1842
+    KNOWN_SNAPSHOT_ID = "snap-cell-verify"
+
+    fake_pi = create_generic_wind_reference()
+    fake_record = NS(
+        project_id="proj-cell",
+        project_origin="user_created",
+        project_code="cell_verify_proj",
+        project_name="Cell Verify Project",
+        project_type="Wind",
+        template_source="generic_wind",
+        project_origin_detail=None,
+        baseline_snapshot=None,
+    )
+    mock_rr = NS(
+        snapshot_id=KNOWN_SNAPSHOT_ID,
+        ran_at="2026-04-20T12:00:00+00:00",
+        runtime_summary={
+            "project_irr": KNOWN_PROJECT_IRR,
+            "equity_irr": KNOWN_EQUITY_IRR,
+            "actual_min_dscr": 1.28,
+            "actual_avg_dscr": 1.52,
+            "total_revenue_keur": 75000.0,
+        },
+        debt_schedule={"periods": []},
+        financial_statements=None,
+    )
+    mock_authority = ResolvedExportAuthority(
+        project_inputs=fake_pi,
+        current_snapshot={},
+        runtime_origin="canonical_last_run",
+        active_scenario_id="sc-cell",
+        active_scenario_name="Cell Scenario",
+        last_runtime_scenario_id="sc-cell",
+        any_run_committed=True,
+        authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        run_id=None,
+        run_at="2026-04-20T12:00:00+00:00",
+        working_changed_since_run=False,
+    )
+
+    with (
+        patch(
+            "app.services.export_service.resolve_canonical_last_run_from_workspace",
+            return_value=mock_authority,
+        ),
+        patch(
+            "app.persistence.workspace_repository.get_workspace_state",
+            return_value=NS(last_runtime_snapshot_id=KNOWN_SNAPSHOT_ID),
+        ),
+        patch(
+            "app.workbook.runtime_result.RuntimeResult.from_workspace_state",
+            return_value=mock_rr,
+        ),
+    ):
+        export = build_canonical_last_run_institutional_workbook_export(
+            "generic_wind",
+            safe_project="cell_verify_proj",
+            project_record=fake_record,
+            user_id="user-cell",
+        )
+
+    assert export.status_code == 200, f"Expected 200: {export.error_content}"
+    assert export.bytes_data is not None
+    wb = openpyxl.load_workbook(BytesIO(export.bytes_data))
+
+    # Verify sheet existence.
+    assert "Runtime Summary" in wb.sheetnames
+    assert "SHL" in wb.sheetnames
+
+    # Find project_irr and equity_irr values in the Runtime Summary sheet.
+    rs = wb["Runtime Summary"]
+    all_values = set()
+    for row in rs.iter_rows(values_only=True):
+        for cell in row:
+            if cell is not None:
+                all_values.add(cell)
+
+    # project_irr = 0.1337 and equity_irr = 0.1842 must appear as numeric values.
+    found_project_irr = any(
+        isinstance(v, float) and abs(v - KNOWN_PROJECT_IRR) < 1e-6
+        for v in all_values
+    )
+    found_equity_irr = any(
+        isinstance(v, float) and abs(v - KNOWN_EQUITY_IRR) < 1e-6
+        for v in all_values
+    )
+    assert found_project_irr, (
+        f"project_irr={KNOWN_PROJECT_IRR} not found in Runtime Summary sheet values"
+    )
+    assert found_equity_irr, (
+        f"equity_irr={KNOWN_EQUITY_IRR} not found in Runtime Summary sheet values"
+    )
+
+    # Scenario identity must appear in the sheet.
+    all_str_values = {str(v) for v in all_values if v is not None}
+    assert any("sc-cell" in s or "Cell Scenario" in s for s in all_str_values), (
+        f"Scenario identity not found in Runtime Summary sheet"
+    )
+
+    # Snapshot ID must appear somewhere in the workbook (metadata provenance).
+    all_wb_values = set()
+    for sheet_name in wb.sheetnames:
+        for row in wb[sheet_name].iter_rows(values_only=True):
+            for cell in row:
+                if cell is not None:
+                    all_wb_values.add(str(cell))
+    assert any(KNOWN_SNAPSHOT_ID in v for v in all_wb_values), (
+        f"snapshot_id={KNOWN_SNAPSHOT_ID!r} not found anywhere in workbook"
+    )

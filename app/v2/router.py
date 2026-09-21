@@ -2081,13 +2081,19 @@ async def v2_workbook_export(
         }
         record_export(
             user_id=workspace_owner,
-            project_code=runtime_project_code,
+            # F05: use actual user project code, not template code.
+            project_code=getattr(project_record, "project_code", None) or runtime_project_code,
             export_type="institutional_workbook",
             artifact_name=export.filename,
             artifact_path="/v2/workbook/export",
             project_id=getattr(project_record, "project_id", None),
+            scenario_id=_meta.get("export_active_scenario_id") or None,
+            runtime_snapshot_id=_meta.get("export_snapshot_id") or None,
             governance_state=_governance_state,
-            replay_metadata=_replay_meta,
+            replay_metadata={
+                **_replay_meta,
+                "runtime_project_code": runtime_project_code,
+            },
         )
 
     return _make_streaming_response(export)

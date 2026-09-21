@@ -3,14 +3,17 @@
 Builds the institutional workbook from persisted RuntimeResult data only.
 Never calls execute_production_waterfall or run_clean_production.
 
-Architecture:
-  1. resolve_export_authority  → project_inputs + authority metadata (workspace read 1)
-  2. get_workspace_state       → RuntimeResult.from_workspace_state (workspace read 2)
-  3. _RuntimeResultAdapter     → KPI attribute access from runtime_summary dict
-  4. _StatementsAdapter        → FS period access from financial_statements dict
-  5. export_institutional_workbook_from_bundle → pure serialization, ZERO engine
+Architecture (F06 single-read):
+  1. get_workspace_state           → ONE workspace read; ws used for both:
+     a. resolve_canonical_last_run_from_workspace(ws) → project_inputs + authority
+     b. RuntimeResult.from_workspace_state(ws)        → KPIs, debt schedule, FS
+  2. _RuntimeResultAdapter         → KPI attribute access from runtime_summary dict
+  3. _StatementsAdapter            → FS period access from financial_statements dict
+  4. export_institutional_workbook_from_bundle → pure serialization, ZERO engine
 
-Both workspace reads are read-only; no financial calculation is performed.
+The single workspace read eliminates the torn-workbook race (F06): authority
+and RuntimeResult both derive from the same immutable ws snapshot, so a
+concurrent save cannot mix Last Run A inputs with Last Run B outputs.
 """
 from __future__ import annotations
 
@@ -25,8 +28,9 @@ class _PeriodAdapter:
     """Attribute-access wrapper for a period dict from a persisted schedule.
 
     Compatible with both plain dict and MappingProxyType (RuntimeResult._freeze).
-    Returns 0.0 for numeric fields absent from the persisted payload.
-    Converts ISO date strings to datetime.date objects for .isoformat() calls.
+    Returns None for fields absent from or explicitly null in the persisted payload
+    (F07: absent field ≠ financial zero; callers must guard against None before
+    arithmetic).  Converts ISO date strings to datetime.date for .isoformat() calls.
     """
 
     __slots__ = ("_d",)
@@ -38,9 +42,9 @@ class _PeriodAdapter:
         try:
             val = self._d[name]
         except (KeyError, TypeError):
-            return 0.0
+            return None  # F07: absent field → None, not 0.0
         if val is None:
-            return 0.0
+            return None  # F07: explicit null → None, not 0.0
         if name in ("date", "end_date") and isinstance(val, str):
             try:
                 return datetime.date.fromisoformat(val[:10])
@@ -151,6 +155,18 @@ class _RuntimeResultAdapter:
     def sculpting_result(self) -> None:
         return None
 
+    @property
+    def shl_data_available(self) -> bool:
+        """F07: True only when the persisted debt_schedule includes SHL per-period fields.
+
+        The production _serialize_debt_schedule persists senior fields only (no SHL).
+        This guard prevents _write_shl_sheet from crashing on None arithmetic.
+        """
+        if not self._ds_periods:
+            return False
+        first = self._ds_periods[0]
+        return "shl_balance_keur" in first
+
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)
@@ -182,6 +198,7 @@ def _build_persisted_bundle(
     run_id: "str | None",
     run_at: "str | None",
     snapshot_id: str,
+    runtime_timestamp: "str | None" = None,
 ) -> Any:  # WorkbookExportBundle
     from app.export.institutional_workbook import WorkbookExportBundle
     from app.export.runtime_summary import build_runtime_summary_rows
@@ -196,6 +213,8 @@ def _build_persisted_bundle(
     project_key_norm = (project_key or "generic_wind_reference").strip().lower()
 
     # Build runtime rows from persisted adapter — no engine call via _precomputed.
+    # F08: pass persisted runtime_timestamp so the workbook carries the actual run
+    # time, not the export-generation time.
     runtime_rows = build_runtime_summary_rows(
         project_key_norm,
         _precomputed=(project_inputs, result_adapter),
@@ -206,6 +225,7 @@ def _build_persisted_bundle(
         working_changed_since_run=working_changed_since_run,
         run_id=run_id,
         run_at=run_at,
+        runtime_timestamp=runtime_timestamp,
     )
 
     # Project context: prefer record-authoritative for user projects.
@@ -287,7 +307,7 @@ def build_canonical_last_run_institutional_workbook_export(
     from app.services.export_service import (
         EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
         ExportResponse,
-        resolve_export_authority,
+        resolve_canonical_last_run_from_workspace,
     )
 
     # Fail closed: V2 export requires a committed user run — no factory fallback.
@@ -312,17 +332,17 @@ def build_canonical_last_run_institutional_workbook_export(
         )
 
     try:
-        # Workspace read 1: project_inputs + authority metadata via canonical path.
-        # Raises ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: …") when no run exists.
-        authority = resolve_export_authority(
-            project_record, user_id, authority_mode=EXPORT_AUTHORITY_CANONICAL_LAST_RUN
-        )
-
-        # Workspace read 2: persisted RuntimeResult (KPIs, debt schedule, FS).
         from app.persistence.workspace_repository import get_workspace_state
         from app.workbook.runtime_result import RuntimeResult
 
+        # F06: ONE workspace read.  Both authority and RuntimeResult derive from
+        # the same ws object — no concurrent save can combine Last Run A inputs
+        # with Last Run B outputs into a falsely canonical workbook.
         ws = get_workspace_state(user_id, project_record.project_id)
+
+        # Raises ValueError("CANONICAL_LAST_RUN_UNAVAILABLE: …") when no run exists.
+        authority = resolve_canonical_last_run_from_workspace(project_record, user_id, ws)
+
         rr = RuntimeResult.from_workspace_state(ws) if ws is not None else None
         if rr is None:
             raise ValueError(
@@ -350,18 +370,21 @@ def build_canonical_last_run_institutional_workbook_export(
             run_id=authority.run_id,
             run_at=authority.run_at,
             snapshot_id=rr.snapshot_id,
+            runtime_timestamp=getattr(rr, "ran_at", None),  # F08: persisted run time
         )
 
         from app.export.institutional_workbook import export_institutional_workbook_from_bundle
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
         first_row = bundle.runtime_rows[0]
 
-    except ValueError as exc:
+    except ValueError:
+        # F04: never reflect exception text into HTML — static safe message only.
         return ExportResponse(
             status_code=400,
             error_content=(
                 "<html><body><h2>Institutional workbook export failed</h2>"
-                f"<p>{exc}</p><a href='/library'>Back to Library</a></body></html>"
+                "<p>Last Run required. Run the model and try again.</p>"
+                "<a href='/library'>Back to Library</a></body></html>"
             ),
         )
 
@@ -377,6 +400,7 @@ def build_canonical_last_run_institutional_workbook_export(
         "export_last_runtime_scenario_id": authority.last_runtime_scenario_id or "",
         "export_run_id": authority.run_id or "",
         "export_run_at": authority.run_at or "",
+        "export_snapshot_id": getattr(rr, "snapshot_id", None) or "",  # F05: for audit
         "export_working_changed_since_run": str(authority.working_changed_since_run).lower(),
     }
 
