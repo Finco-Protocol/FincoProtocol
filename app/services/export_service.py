@@ -500,6 +500,30 @@ def resolve_export_authority(
         return _resolve_preview_working_path(project_record, user_id, ws)
 
 
+def resolve_canonical_last_run_from_workspace(
+    project_record,
+    user_id,
+    ws,
+) -> "ResolvedExportAuthority":
+    """Single-read canonical last-run resolver accepting a pre-fetched workspace.
+
+    F06 atomic invariant: caller fetches ws once, then passes it here so that
+    the RuntimeResult derivation and authority resolution share the identical ws
+    object.  A second workspace read inside resolve_export_authority would allow
+    a concurrent save to produce a torn workbook (Last Run A inputs + Last Run B
+    outputs).  This wrapper eliminates that window.
+
+    Raises ValueError for the same failure cases as resolve_export_authority
+    in CANONICAL_LAST_RUN mode.
+    """
+    if ws is None:
+        raise ValueError(
+            "No saved working-copy state exists for this project yet. "
+            "Open the workbook and save before exporting."
+        )
+    return _resolve_canonical_last_run_path(project_record, user_id, ws)
+
+
 def resolve_snapshot_authoritative_project_inputs(project_record, user_id):
     """Backwards-compatible delegate — returns only project_inputs.
 

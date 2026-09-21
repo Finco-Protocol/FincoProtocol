@@ -114,6 +114,7 @@ def build_runtime_summary_rows(
     working_changed_since_run: bool | None = None,
     run_id: str | None = None,
     run_at: str | None = None,
+    runtime_timestamp: str | None = None,
 ) -> list[dict[str, str]]:
     if _precomputed is not None:
         # PR-8: single-calculation reuse — a caller that already ran the
@@ -124,7 +125,9 @@ def build_runtime_summary_rows(
         project_inputs, result = _run_project(
             project, project_inputs=_project_inputs)
     project_name = project_inputs.info.name
-    runtime_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # F08: use persisted run timestamp when provided; fall back to current time for
+    # factory/preview paths that have no committed run timestamp.
+    runtime_timestamp = runtime_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
     timestamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
     branch = source_branch or _source_branch()
     governance_status = "review_only"

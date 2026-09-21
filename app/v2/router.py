@@ -1993,6 +1993,113 @@ async def v2_workbook_run(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# U2.1: Institutional workbook export route
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/workbook/export")
+async def v2_workbook_export(
+    request: Request,
+    project: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Institutional workbook export — canonical last-run authority.
+
+    Uses CANONICAL_LAST_RUN authority exclusively: the export reflects the
+    inputs that produced the last committed engine run, NOT the current
+    working-copy edits.  Zero engine execution; no financial computation.
+
+    Fail-closed: returns 400 HTML error when no run has been committed.
+
+    Not an HTMX endpoint: returns a binary file download via StreamingResponse
+    (or HTMLResponse on error).  Standard form POST only.
+
+    Access isolation: resolve_accessible_project() scopes the workspace to the
+    authenticated user; unauthenticated requests redirect to /login.
+    """
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.services.export_service import _make_streaming_response
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(
+            content=(
+                "<html><body><h2>Export failed</h2>"
+                "<p>Project not found or not accessible.</p>"
+                "<a href='/library'>Back to Library</a></body></html>"
+            ),
+            status_code=404,
+        )
+
+    safe_project = project_record.project_code or project
+    # Derive runtime_project_code from template_source, mirroring main_web._normalize_template_source.
+    _ts = (project_record.template_source or "").strip().lower()
+    _known = {
+        "generic_wind_reference", "generic_solar_reference", "generic_storage_reference",
+        "generic_wind", "generic_solar", "generic_storage",
+    }
+    if _ts in _known:
+        runtime_project_code = _ts
+    else:
+        _pt = (project_record.project_type or "").strip().lower()
+        if _pt == "solar":
+            runtime_project_code = "generic_solar"
+        elif _pt in ("storage", "bess"):
+            runtime_project_code = "generic_storage"
+        else:
+            runtime_project_code = "generic_wind"
+
+    export = build_canonical_last_run_institutional_workbook_export(
+        runtime_project_code,
+        safe_project=safe_project,
+        project_record=project_record,
+        user_id=workspace_owner,
+    )
+
+    if export.status_code == 200:
+        from app.persistence.repository import record_export
+        _governance_state = {"g20_status": "BLOCKED", "r99_r102_status": "NOT APPROVED"}
+        _meta = export.metadata or {}
+        _replay_meta = {
+            "export_type": "institutional_workbook",
+            "workbook_type": "institutional_workbook",
+            "export_timestamp": _meta.get("export_generated_at", ""),
+            "export_generated_at": _meta.get("export_generated_at", ""),
+            "runtime_timestamp": _meta.get("runtime_generated_at", ""),
+            "runtime_origin": _meta.get("runtime_origin", "canonical_last_run"),
+            "artifact_name": export.filename,
+            "export_authority": _meta.get("export_authority", "CANONICAL_LAST_RUN"),
+            "run_id": _meta.get("export_run_id", ""),
+            "run_at": _meta.get("export_run_at", ""),
+        }
+        record_export(
+            user_id=workspace_owner,
+            # F05: use actual user project code, not template code.
+            project_code=getattr(project_record, "project_code", None) or runtime_project_code,
+            export_type="institutional_workbook",
+            artifact_name=export.filename,
+            artifact_path="/v2/workbook/export",
+            project_id=getattr(project_record, "project_id", None),
+            scenario_id=_meta.get("export_active_scenario_id") or None,
+            runtime_snapshot_id=_meta.get("export_snapshot_id") or None,
+            governance_state=_governance_state,
+            replay_metadata={
+                **_replay_meta,
+                "runtime_project_code": runtime_project_code,
+            },
+        )
+
+    return _make_streaming_response(export)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # UI-3B: Scenario management routes
 # ═══════════════════════════════════════════════════════════════════════════════
 

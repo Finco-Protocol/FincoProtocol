@@ -752,6 +752,11 @@ def _write_senior_debt_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_shl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
+    # F07: SHL per-period fields are not persisted in debt_schedule.  Guard prevents
+    # float(None) / sum(None) crashes; workbook consumers see NOT_AVAILABLE instead.
+    if not getattr(bundle.runtime_result, "shl_data_available", True):
+        _write_fs_unavailable_rows(sheet)
+        return
     financing = bundle.project_inputs.financing
     periods = list(bundle.runtime_result.periods)
     opening_balances = [bundle.context.shl_amount_keur + bundle.context.shl_idc_keur]
