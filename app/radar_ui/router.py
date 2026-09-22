@@ -36,7 +36,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
-from app.radar_ui import composition, equity_enrichment, equity_view_model, view_model
+from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
 # Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
@@ -412,6 +412,56 @@ async def radar_snapshot(request: Request, snapshot_id: str):
         request=request,
         name="radar/panels.html",
         context=_panels_context(snapshot, is_htmx_partial=is_htmx),
+    )
+
+
+@router.get("/radar/equity/{economic_asset_uid}", response_class=HTMLResponse)
+async def radar_equity_terminal(request: Request, economic_asset_uid: str):
+    """Company Terminal for one equity asset.  Network-free: zero quote
+    acquisitions, zero LI.FI calls, zero GAP calculations.
+
+    Path authority is economic_asset_uid (UID-first).  Unknown UID → 404 page.
+    """
+    universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    selected = _resolve_selected(universe, economic_asset_uid)
+    if selected is None:
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/equity_terminal.html",
+            context={
+                "terminal": {
+                    "state": "NOT_FOUND",
+                    "available": False,
+                    "economic_asset_uid": economic_asset_uid,
+                    "symbol": "",
+                },
+                "error": f"UID_NOT_FOUND: {economic_asset_uid!r}",
+            },
+            status_code=404,
+        )
+
+    from app.auth import resolve_request_session
+
+    history_bundle = await run_in_threadpool(
+        lambda: equity_terminal.get_history_for_terminal(selected.token_symbol)
+    )
+    terminal_view = equity_terminal.build_terminal_view(
+        history_bundle,
+        economic_asset_uid=economic_asset_uid,
+        fallback_name=selected.token_name,
+    )
+    user = resolve_request_session(request)
+    return _templates.TemplateResponse(
+        request=request,
+        name="radar/equity_terminal.html",
+        context={
+            "terminal": terminal_view,
+            "selected": selected,
+            "universe": universe,
+            "universe_error": universe_error,
+            "user": user,
+            "error": None,
+        },
     )
 
 

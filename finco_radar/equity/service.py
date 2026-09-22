@@ -23,6 +23,7 @@ from .config import (
 from .models import (
     AvailabilityState,
     EquityAssetIdentity,
+    EquityCompanyHistoryBundle,
     EquityFundamentalsBundle,
     FinancialSnapshot,
     FundamentalsFreshness,
@@ -188,6 +189,127 @@ def _build_one_bundle(
         availability=_compute_availability(asset, profile, ttm, quarterly, annual),
         freshness=_make_freshness(asset, profile, ttm, quarterly, annual),
     )
+
+
+def _unavailable_history_bundle(
+    robinhood_token_symbol: str,
+    state: AvailabilityState,
+) -> EquityCompanyHistoryBundle:
+    return EquityCompanyHistoryBundle(
+        robinhood_token_symbol=robinhood_token_symbol,
+        asset=None,
+        company_profile=None,
+        annual_history=(),
+        quarterly_history=(),
+        ttm_history=(),
+        recent_dividends=(),
+        recent_splits=(),
+        source_lineage=(),
+        availability=state,
+        freshness=_make_freshness(None, None, None, None, None),
+    )
+
+
+def get_equity_company_history(
+    robinhood_token_symbol: str,
+    *,
+    db_path: Optional[Path] = None,
+    db_mode: Optional[str] = None,
+    annual_limit: int = 5,
+    quarterly_limit: int = 8,
+    ttm_limit: int = 1,
+    dividends_limit: int = 20,
+    splits_limit: int = 10,
+    lineage_limit: int = 10,
+) -> EquityCompanyHistoryBundle:
+    """Resolve a Robinhood token to a full company history bundle for E3 Terminal.
+
+    One DB session: all financial history (annual, quarterly, TTM), profile,
+    dividends, splits, and lineage are read from a single BEGIN DEFERRED
+    transaction so all data is internally consistent.
+
+    When the DB is unconfigured or missing, returns SOURCE_UNAVAILABLE.
+    When the token is unknown, returns NOT_FOUND.
+
+    No market prices.  No network I/O.  No Robinhood API calls.
+    """
+    if db_mode is not None:
+        db_mode = validate_db_mode(db_mode)
+
+    try:
+        path = db_path if db_path is not None else resolve_db_path()
+    except (EquityDBNotConfiguredError, EquityDBNotFoundError):
+        return _unavailable_history_bundle(
+            robinhood_token_symbol, AvailabilityState.SOURCE_UNAVAILABLE
+        )
+
+    mode = db_mode if db_mode is not None else resolve_db_mode()
+
+    try:
+        repo = EquityFundamentalsRepository(path, mode)
+        with repo.read_session() as session:
+            asset = session.get_asset(robinhood_token_symbol)
+            if asset is None:
+                return _unavailable_history_bundle(
+                    robinhood_token_symbol, AvailabilityState.NOT_FOUND
+                )
+
+            canonical_symbol = asset.robinhood_token_symbol
+            ticker = asset.underlying_ticker
+            profile = session.get_latest_profile(ticker)
+            annual_history = tuple(
+                session.get_financial_history(ticker, "annual", limit=annual_limit)
+            )
+            quarterly_history = tuple(
+                session.get_financial_history(ticker, "quarterly", limit=quarterly_limit)
+            )
+            ttm_history = tuple(
+                session.get_financial_history(ticker, "ttm", limit=ttm_limit)
+            )
+            dividends = session.get_dividends(ticker, limit=dividends_limit)
+            splits = session.get_splits(ticker, limit=splits_limit)
+
+            # Lineage: use best hash from TTM, then quarterly, then annual.
+            best_ttm = ttm_history[0] if ttm_history else None
+            best_quarterly = quarterly_history[0] if quarterly_history else None
+            best_annual = annual_history[0] if annual_history else None
+            best_hash: Optional[str] = None
+            for snap in (best_ttm, best_quarterly, best_annual):
+                if snap is not None and snap.payload_hash:
+                    best_hash = snap.payload_hash
+                    break
+            lineage = session.get_lineage(
+                ticker, payload_hash=best_hash, limit=lineage_limit
+            )
+
+            # Availability: reuse _compute_availability with the latest snapshots.
+            latest_ttm = best_ttm
+            latest_quarterly = best_quarterly
+            latest_annual = best_annual
+            availability = _compute_availability(
+                asset, profile, latest_ttm, latest_quarterly, latest_annual
+            )
+            freshness = _make_freshness(
+                asset, profile, latest_ttm, latest_quarterly, latest_annual
+            )
+
+            return EquityCompanyHistoryBundle(
+                robinhood_token_symbol=canonical_symbol,
+                asset=asset,
+                company_profile=profile,
+                annual_history=annual_history,
+                quarterly_history=quarterly_history,
+                ttm_history=ttm_history,
+                recent_dividends=tuple(dividends),
+                recent_splits=tuple(splits),
+                source_lineage=tuple(lineage),
+                availability=availability,
+                freshness=freshness,
+            )
+    except EquityDBReadError:
+        return _unavailable_history_bundle(
+            robinhood_token_symbol, AvailabilityState.SOURCE_UNAVAILABLE
+        )
 
 
 def get_equity_fundamentals_many(

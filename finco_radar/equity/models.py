@@ -170,7 +170,7 @@ class SplitRecord:
 class SourceLineage:
     """Source provenance for a snapshot or filing."""
 
-    lineage_id: Optional[str]
+    lineage_id: Optional[int]
     ticker: str
     stage: Optional[str]
     provider: Optional[str]
@@ -204,6 +204,30 @@ class FundamentalsFreshness:
 
 
 # ── bundle ────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EquityCompanyHistoryBundle:
+    """Full company history for one Robinhood token — used by Company Terminal (E3).
+
+    Contains no market prices, no token prices, no OHLCV, no quotes,
+    no execution prices, no spreads, no liquidity data.
+
+    Financial history lists are sorted period_end DESC.  The TTM entry is
+    in ttm_history (at most one canonical revision).
+    """
+
+    robinhood_token_symbol: str
+    asset: Optional[EquityAssetIdentity]
+    company_profile: Optional[CompanyProfile]
+    annual_history: tuple
+    quarterly_history: tuple
+    ttm_history: tuple
+    recent_dividends: tuple
+    recent_splits: tuple
+    source_lineage: tuple
+    availability: AvailabilityState
+    freshness: FundamentalsFreshness
+
 
 @dataclass(frozen=True)
 class EquityFundamentalsBundle:

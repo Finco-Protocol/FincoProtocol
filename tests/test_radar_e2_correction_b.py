@@ -672,10 +672,10 @@ class TestB07DetailsLinks:
         resp = client.get("/radar")
         html = resp.text
 
-        # All details links should contain #equity-details
-        detail_hrefs = re.findall(r'href="([^"]*equity-details[^"]*)"', html)
+        # E3: all details links now point to /radar/equity/{uid} (not #equity-details)
+        detail_hrefs = re.findall(r'href="(/radar/equity/[^"]+)"', html)
         assert len(detail_hrefs) >= 10, (
-            f"Expected >=10 href with #equity-details; found {detail_hrefs}"
+            f"Expected >=10 href with /radar/equity/; found {detail_hrefs}"
         )
 
 
