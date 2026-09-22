@@ -275,6 +275,19 @@ def validate_staging_env(
             "staging paths must never use the production root"
         )
 
+    # Equity DB must be a different file from the main application DB.
+    # Compare resolved paths so a symlink alias cannot bypass the check.
+    equity_raw = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", "").strip()
+    if equity_raw:
+        equity_resolved = Path(equity_raw).resolve(strict=False)
+        if equity_resolved == db_path:
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH must be distinct from "
+                "FINCO_DB_PATH; the equity time-series DB and the main "
+                "application DB are separate subsystems and must never share "
+                "a file"
+            )
+
     try:
         concurrent_runs = int(env["FINCO_MAX_CONCURRENT_RUNS"])
     except ValueError as exc:

@@ -362,6 +362,65 @@ def test_staging_env_example_declares_separate_operational_identity() -> None:
         )
 
 
+# ── Equity DB != main application DB (Correction B) ──────────────────────────
+
+def test_equity_db_same_as_main_db_raises() -> None:
+    """Identical paths for equity DB and main DB must be rejected."""
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = env["FINCO_DB_PATH"]
+    with pytest.raises(StagingPreflightError, match="distinct from FINCO_DB_PATH"):
+        _validate(env)
+
+
+def test_equity_db_symlink_alias_of_main_db_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two lexically different paths resolving to the same file via symlink must fail."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    storage.mkdir(parents=True)
+    real_db = storage / "main_app.db"
+    real_db.write_bytes(b"")
+    equity_link = storage / "equity_via_symlink.db"
+    equity_link.symlink_to(real_db)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(real_db)
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(equity_link)
+
+    with pytest.raises(StagingPreflightError, match="distinct from FINCO_DB_PATH"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
+
+
+def test_distinct_equity_db_and_main_db_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Normal distinct main DB + equity snapshot must pass."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    storage.mkdir(parents=True)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(storage / "equity_fundamentals.db")
+
+    validate_staging_env(
+        env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+    )
+
+
 # ── E5 equity fundamentals additive contract ─────────────────────────────────
 
 def test_equity_path_missing_raises() -> None:
