@@ -224,6 +224,8 @@
     </tbody>
   </table>
   </div>
+  {% elif sm.state == "SOURCE_DATA_MALFORMED" %}
+  <p class="muted small state-source-data-malformed" style="margin-bottom:16px;">SOURCE_DATA_MALFORMED: Statement payload could not be parsed for the selected period.</p>
   {% else %}
   <p class="muted small" style="margin-bottom:16px;">No statement data available for selected period/timeframe.</p>
   {% endif %}

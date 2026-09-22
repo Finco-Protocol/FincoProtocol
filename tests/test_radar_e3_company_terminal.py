@@ -1,4 +1,4 @@
-"""E3 Company Terminal tests — T01–T64.
+"""E3 Company Terminal tests — T01–T87.
 
 Covers:
   T01  lineage_id is Optional[int] in SourceLineage model
@@ -65,6 +65,29 @@ Covers:
   T62  Asset switcher <select> in page
   T63  Token Market: chain_id, contract_address, economic_asset_uid in page
   T64  Token Market: "No quote/execution acquisition" wording
+  T65  F05: IDENTITY_MISMATCH suppresses dividends in build_terminal_view
+  T66  F05: IDENTITY_MISMATCH suppresses splits in build_terminal_view
+  T67  F05: IDENTITY_MISMATCH suppresses snapshot_evidence in build_terminal_view
+  T68  F05: IDENTITY_MISMATCH suppresses lineage in build_terminal_view
+  T69  F05: IDENTITY_MISMATCH suppresses profile in build_terminal_view
+  T70  F05: IDENTITY_MISMATCH suppresses profile_evidence (available==False) in build_terminal_view
+  T71  F05: IDENTITY_MISMATCH freshness all "—" in build_terminal_view
+  T72  F05: IDENTITY_MISMATCH company_name uses fallback_name, not DB profile
+  T73  F05: rendered HTML does NOT contain sentinel DB company name on IDENTITY_MISMATCH
+  T74  F05: rendered HTML does NOT contain sentinel dividend declaration_date on IDENTITY_MISMATCH
+  T75  F05: rendered HTML does NOT contain sentinel payload_hash on IDENTITY_MISMATCH
+  T76  F05: selected token identity remains visible in rendered HTML on IDENTITY_MISMATCH
+  T77  F06: symbol mismatch + both contracts present → IDENTITY_MISMATCH
+  T78  F06: symbol mismatch + selected_contract missing → IDENTITY_MISMATCH
+  T79  F06: symbol mismatch + DB contract missing → IDENTITY_MISMATCH
+  T80  F06: matching symbol + selected_contract missing → PARTIAL_IDENTITY
+  T81  F06: matching symbol + DB contract missing → PARTIAL_IDENTITY
+  T82  F06: full match (symbol + contract) → VERIFIED
+  T83  F07: single malformed-only period → matrix state SOURCE_DATA_MALFORMED
+  T84  F07: multiple malformed-only periods → matrix state SOURCE_DATA_MALFORMED
+  T85  F07: mixed available + malformed periods → matrix state PARTIAL
+  T86  F07: absent-only periods → matrix state NOT_AVAILABLE
+  T87  F07: SOURCE_DATA_MALFORMED visible in rendered HTML
 """
 from __future__ import annotations
 
@@ -1621,3 +1644,561 @@ def test_t64_token_market_no_acquisition_wording():
                    "acquisition" in resp.text.lower()
     finally:
         db.unlink(missing_ok=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# T65–T87: Correction B regression tests — F05 / F06 / F07
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── T65: F05 IDENTITY_MISMATCH suppresses dividends ──────────────────────────
+
+def test_t65_identity_mismatch_suppresses_dividends():
+    db = _build_test_db(add_dividend=True)
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["dividends"] == [], (
+            f"IDENTITY_MISMATCH must suppress dividends, got {view['dividends']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T66: F05 IDENTITY_MISMATCH suppresses splits ─────────────────────────────
+
+def test_t66_identity_mismatch_suppresses_splits():
+    db = _build_test_db(add_split=True)
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["splits"] == [], (
+            f"IDENTITY_MISMATCH must suppress splits, got {view['splits']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T67: F05 IDENTITY_MISMATCH suppresses snapshot_evidence ──────────────────
+
+def test_t67_identity_mismatch_suppresses_snapshot_evidence():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["snapshot_evidence"] == [], (
+            f"IDENTITY_MISMATCH must suppress snapshot_evidence, got {view['snapshot_evidence']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T68: F05 IDENTITY_MISMATCH suppresses lineage ────────────────────────────
+
+def test_t68_identity_mismatch_suppresses_lineage():
+    db = _build_test_db(add_lineage=True)
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["lineage"] == [], (
+            f"IDENTITY_MISMATCH must suppress lineage, got {view['lineage']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T69: F05 IDENTITY_MISMATCH suppresses profile ────────────────────────────
+
+def test_t69_identity_mismatch_suppresses_profile():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["profile"] is None, (
+            f"IDENTITY_MISMATCH must suppress profile, got {view['profile']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T70: F05 IDENTITY_MISMATCH suppresses profile_evidence ───────────────────
+
+def test_t70_identity_mismatch_suppresses_profile_evidence():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["profile_evidence"]["available"] is False, (
+            f"IDENTITY_MISMATCH must suppress profile_evidence, got {view['profile_evidence']}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T71: F05 IDENTITY_MISMATCH → all freshness values are "—" ────────────────
+
+def test_t71_identity_mismatch_freshness_all_dash():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc", identity_state="IDENTITY_MISMATCH",
+        )
+        fr = view["freshness"]
+        for key, val in fr.items():
+            assert val == "—", (
+                f"freshness[{key!r}] must be '—' on IDENTITY_MISMATCH, got {val!r}"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T72: F05 IDENTITY_MISMATCH → company_name uses fallback, not DB ──────────
+
+def test_t72_identity_mismatch_company_name_from_fallback():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle, economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="FALLBACK_CORP_XXYYZZ", identity_state="IDENTITY_MISMATCH",
+        )
+        assert view["company_name"] == "FALLBACK_CORP_XXYYZZ", (
+            f"company_name should come from fallback_name, got {view['company_name']!r}"
+        )
+        assert "AAPL Corp" not in view["company_name"]
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T73: F05 sentinel DB company name absent from rendered HTML ───────────────
+
+def test_t73_identity_mismatch_sentinel_company_not_in_html():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _SENTINEL = "SENTINELCORP_XQ99ZZ_DBNAME"
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", _SENTINEL, "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_company_profiles (ticker,profile_json,provider,fetched_at) "
+        "VALUES (?,?,?,?)",
+        ("AAPL", json.dumps({"name": _SENTINEL}), "SYNTH", "2024-10-01"),
+    )
+    conn.commit()
+    conn.close()
+
+    mismatch_asset = _SA(
+        economic_asset_uid="rh-equity-aapl-001",
+        token_symbol="AAPL",
+        token_name="Apple Inc",
+        chain_id=4663,
+        contract_address="0xWRONG_CONTRACT_T73",
+        token_decimals=0,
+    )
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([mismatch_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "IDENTITY_MISMATCH" in resp.text
+            assert _SENTINEL not in resp.text, (
+                f"Sentinel DB company name {_SENTINEL!r} must not appear in IDENTITY_MISMATCH page"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── T74: F05 sentinel dividend date absent from rendered HTML ─────────────────
+
+def test_t74_identity_mismatch_sentinel_dividend_not_in_html():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _SENTINEL_DATE = "3333-12-31"
+    tmp = _build_test_db(add_dividend=False, add_split=False, add_lineage=False)
+    conn = sqlite3.connect(str(tmp))
+    conn.execute(
+        "INSERT INTO equity_dividends (ticker,cash_amount,currency,declaration_date,"
+        "ex_dividend_date,record_date,pay_date,frequency,dividend_type) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("AAPL", 0.25, "USD", _SENTINEL_DATE, "3333-12-15", "3333-12-16", "3333-12-18", 4, "CD"),
+    )
+    conn.commit()
+    conn.close()
+
+    mismatch_asset = _SA(
+        economic_asset_uid="rh-equity-aapl-001",
+        token_symbol="AAPL",
+        token_name="Apple Inc",
+        chain_id=4663,
+        contract_address="0xWRONG_CONTRACT_T74",
+        token_decimals=0,
+    )
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([mismatch_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "IDENTITY_MISMATCH" in resp.text
+            assert _SENTINEL_DATE not in resp.text, (
+                f"Sentinel dividend declaration_date {_SENTINEL_DATE!r} must not appear in IDENTITY_MISMATCH page"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── T75: F05 sentinel payload hash absent from rendered HTML ──────────────────
+
+def test_t75_identity_mismatch_sentinel_payload_hash_not_in_html():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _SENTINEL_HASH = "SENTINELHASH_MISMATCH_XQ99ZZ_9988"
+    tmp = _build_test_db(ttm_period=None, add_dividend=False, add_split=False, add_lineage=False)
+    conn = sqlite3.connect(str(tmp))
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,payload_hash,fetched_at) VALUES (?,?,?,?,?,?,?)",
+        ("AAPL", "ttm", "2024-09-28", "SYNTH", _AAPL_DERIVED, _SENTINEL_HASH, "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+
+    mismatch_asset = _SA(
+        economic_asset_uid="rh-equity-aapl-001",
+        token_symbol="AAPL",
+        token_name="Apple Inc",
+        chain_id=4663,
+        contract_address="0xWRONG_CONTRACT_T75",
+        token_decimals=0,
+    )
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([mismatch_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "IDENTITY_MISMATCH" in resp.text
+            assert _SENTINEL_HASH not in resp.text, (
+                "Sentinel payload hash must not appear in IDENTITY_MISMATCH page"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── T76: F05 selected token identity visible in IDENTITY_MISMATCH page ────────
+
+def test_t76_identity_mismatch_selected_token_visible_in_html():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _SENTINEL_CONTRACT = "0xSENTINEL_SELECTED_T76_CONTRACT"
+    mismatch_asset = _SA(
+        economic_asset_uid="rh-equity-aapl-001",
+        token_symbol="AAPL",
+        token_name="Apple Inc",
+        chain_id=9999,
+        contract_address=_SENTINEL_CONTRACT,
+        token_decimals=0,
+    )
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([mismatch_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=token-market")
+            assert resp.status_code == 200
+            assert "IDENTITY_MISMATCH" in resp.text
+            assert "rh-equity-aapl-001" in resp.text, (
+                "economic_asset_uid must remain visible on IDENTITY_MISMATCH page"
+            )
+            assert _SENTINEL_CONTRACT in resp.text, (
+                "selected contract address must remain visible on IDENTITY_MISMATCH page"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T77: F06 symbol mismatch + both contracts present → IDENTITY_MISMATCH ─────
+
+def test_t77_f06_symbol_mismatch_both_contracts():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "MSFT"
+    bundle.asset.token_contract_address = "0xmsft_contract"
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract="0xaapl_contract",
+        bundle=bundle,
+    )
+    assert state == "IDENTITY_MISMATCH", (
+        f"F06: symbol mismatch must override contract presence, got {state!r}"
+    )
+
+
+# ── T78: F06 symbol mismatch + selected_contract missing → IDENTITY_MISMATCH ──
+
+def test_t78_f06_symbol_mismatch_no_selected_contract():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "MSFT"
+    bundle.asset.token_contract_address = "0xmsft_contract"
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract=None,
+        bundle=bundle,
+    )
+    assert state == "IDENTITY_MISMATCH", (
+        f"F06: symbol mismatch must not be downgraded to PARTIAL_IDENTITY, got {state!r}"
+    )
+
+
+# ── T79: F06 symbol mismatch + DB contract missing → IDENTITY_MISMATCH ───────
+
+def test_t79_f06_symbol_mismatch_no_db_contract():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "MSFT"
+    bundle.asset.token_contract_address = None
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract="0xaapl_contract",
+        bundle=bundle,
+    )
+    assert state == "IDENTITY_MISMATCH", (
+        f"F06: symbol mismatch must not be downgraded to PARTIAL_IDENTITY, got {state!r}"
+    )
+
+
+# ── T80: F06 matching symbol + selected_contract missing → PARTIAL_IDENTITY ───
+
+def test_t80_f06_matching_symbol_no_selected_contract():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "AAPL"
+    bundle.asset.token_contract_address = "0xaapl_contract"
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract=None,
+        bundle=bundle,
+    )
+    assert state == "PARTIAL_IDENTITY", (
+        f"F06: matching symbol + absent selected_contract → PARTIAL_IDENTITY, got {state!r}"
+    )
+
+
+# ── T81: F06 matching symbol + DB contract missing → PARTIAL_IDENTITY ─────────
+
+def test_t81_f06_matching_symbol_no_db_contract():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "AAPL"
+    bundle.asset.token_contract_address = None
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract="0xaapl_contract",
+        bundle=bundle,
+    )
+    assert state == "PARTIAL_IDENTITY", (
+        f"F06: matching symbol + absent DB contract → PARTIAL_IDENTITY, got {state!r}"
+    )
+
+
+# ── T82: F06 full match (symbol + contract) → VERIFIED ───────────────────────
+
+def test_t82_f06_full_match_verified():
+    bundle = MagicMock()
+    bundle.asset = MagicMock()
+    bundle.asset.robinhood_token_symbol = "AAPL"
+    bundle.asset.token_contract_address = "0xaapl_contract"
+    state = validate_terminal_identity(
+        selected_symbol="AAPL",
+        selected_contract="0xaapl_contract",
+        bundle=bundle,
+    )
+    assert state == "VERIFIED", f"Full match should be VERIFIED, got {state!r}"
+
+
+# ── T83: F07 single malformed-only period → SOURCE_DATA_MALFORMED ─────────────
+
+def test_t83_matrix_single_malformed_state():
+    from finco_radar.equity.models import FinancialSnapshot
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value=None, absent=False, parse_error="JSON parse error"),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    assert result["state"] == "SOURCE_DATA_MALFORMED", (
+        f"All-malformed periods must yield SOURCE_DATA_MALFORMED, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── T84: F07 multiple malformed-only periods → SOURCE_DATA_MALFORMED ──────────
+
+def test_t84_matrix_multiple_malformed_state():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    def _malformed_snap(fy):
+        return FinancialSnapshot(
+            ticker="AAPL", cik=None, timeframe="annual",
+            fiscal_year=fy, fiscal_quarter=None,
+            period_end=f"{fy}-09-30", filing_date=None,
+            provider="SYNTH", source_contract=None,
+            fetched_at=None, normalized_at=None, payload_hash=None,
+            income_statement=JsonField(value=None, absent=False, parse_error="bad JSON"),
+            balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+            cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+            derived_source=JsonField(value=None, absent=True, parse_error=None),
+            derived=None,
+        )
+
+    result = _build_statement_matrix(
+        [_malformed_snap("2023"), _malformed_snap("2022")], "income_statement"
+    )
+    assert result["state"] == "SOURCE_DATA_MALFORMED"
+    assert result["available"] is False
+
+
+# ── T85: F07 mixed available + malformed → PARTIAL ───────────────────────────
+
+def test_t85_matrix_mixed_available_malformed_partial():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap_ok = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value={"totalRevenue": 100.0}, absent=False, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    snap_bad = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2022", fiscal_quarter=None,
+        period_end="2022-09-24", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value=None, absent=False, parse_error="bad JSON"),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap_ok, snap_bad], "income_statement")
+    assert result["state"] == "PARTIAL", (
+        f"Mixed available+malformed must be PARTIAL, got {result['state']!r}"
+    )
+    assert result["available"] is True
+
+
+# ── T86: F07 absent-only periods → NOT_AVAILABLE ─────────────────────────────
+
+def test_t86_matrix_absent_only_not_available():
+    from finco_radar.equity.models import FinancialSnapshot
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value=None, absent=True, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    assert result["state"] == "NOT_AVAILABLE", (
+        f"Absent-only must be NOT_AVAILABLE, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── T87: F07 SOURCE_DATA_MALFORMED visible in rendered HTML ───────────────────
+
+def test_t87_source_data_malformed_in_html():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    # Build DB with malformed income_statement_json for the only annual period
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_company_profiles (ticker,profile_json,provider,fetched_at) "
+        "VALUES (?,?,?,?)",
+        ("AAPL", json.dumps({"name": "AAPL Corp"}), "SYNTH", "2024-10-01"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,"
+        "income_statement_json,fetched_at) VALUES (?,?,?,?,?,?,?)",
+        ("AAPL", "annual", "2023-09-30", "SYNTH", _AAPL_DERIVED,
+         "NOT_VALID_JSON_{{{_MALFORMED", "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+
+    universe = [_AAPL_ASSET]
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                "/radar/equity/rh-equity-aapl-001?tab=financials&timeframe=annual&statement=income"
+            )
+            assert resp.status_code == 200
+            assert "SOURCE_DATA_MALFORMED" in resp.text, (
+                "SOURCE_DATA_MALFORMED must appear in rendered HTML when all periods are malformed"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)

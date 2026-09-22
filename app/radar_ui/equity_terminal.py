@@ -70,31 +70,33 @@ def validate_terminal_identity(
 ) -> str:
     """Compare Robinhood universe identity vs E1 DB identity.
 
-    Compares symbol (case-insensitive) and contract address (case-insensitive).
-    Returns one of: VERIFIED / IDENTITY_MISMATCH / PARTIAL_IDENTITY / NOT_AVAILABLE
+    Precedence (F06):
+      1. bundle.asset is None                         → NOT_AVAILABLE
+      2. symbol mismatch (case-insensitive)           → IDENTITY_MISMATCH
+      3. symbol matches, either contract absent       → PARTIAL_IDENTITY
+      4. both contracts present but differ            → IDENTITY_MISMATCH
+      5. symbol and contract both match               → VERIFIED
 
-    VERIFIED         both symbol and contract address match.
-    IDENTITY_MISMATCH either symbol or contract mismatch (suppress all financials).
-    PARTIAL_IDENTITY  either side has no contract address to compare.
-    NOT_AVAILABLE    bundle.asset is None (DB lookup failed or not found).
+    A known symbol mismatch is never downgraded to PARTIAL_IDENTITY.
     """
     if bundle.asset is None:
         return "NOT_AVAILABLE"
 
-    db_asset = bundle.asset
-    db_symbol = db_asset.robinhood_token_symbol
-    db_contract = db_asset.token_contract_address
+    db_symbol = bundle.asset.robinhood_token_symbol
+    db_contract = bundle.asset.token_contract_address
 
-    symbol_match = db_symbol.upper() == selected_symbol.upper()
+    # Step 2: symbol takes absolute precedence
+    if db_symbol.upper() != selected_symbol.upper():
+        return "IDENTITY_MISMATCH"
 
+    # Symbol matches — evaluate contract
     if not selected_contract or not db_contract:
         return "PARTIAL_IDENTITY"
 
-    contract_match = db_contract.lower() == selected_contract.lower()
+    if db_contract.lower() != selected_contract.lower():
+        return "IDENTITY_MISMATCH"
 
-    if symbol_match and contract_match:
-        return "VERIFIED"
-    return "IDENTITY_MISMATCH"
+    return "VERIFIED"
 
 
 # ── statement adapter ─────────────────────────────────────────────────────────
@@ -276,11 +278,18 @@ def _build_statement_matrix(
 
     stmt_key: "income_statement" | "balance_sheet" | "cash_flow_statement"
 
+    Matrix-level state (F07 — SOURCE_DATA_MALFORMED != NOT_AVAILABLE):
+      AVAILABLE            all periods available (at least one)
+      PARTIAL              mix of available + malformed/absent
+      SOURCE_DATA_MALFORMED all periods present but all have parse errors
+      NOT_AVAILABLE        no periods, or all absent
+
     Returns:
       period_headers: list[{label, period_end, timeframe, fiscal_year, fiscal_quarter, state}]
       rows: list[{field_key, label, cells: list[str]}]
       unit_note: "Source values — no unit conversion applied."
-      available: bool
+      available: bool  (True when AVAILABLE or PARTIAL)
+      state: str       matrix-level state
       stmt_key: str
 
     Cell values: "—" for missing/absent/malformed; formatted value otherwise.
@@ -307,6 +316,23 @@ def _build_statement_matrix(
         else:
             flat = dict(_flatten_dict(stmt_field.value or {}))
             period_data.append((header, flat, "AVAILABLE"))
+
+    # Matrix-level state derivation
+    if not period_data:
+        matrix_state = "NOT_AVAILABLE"
+    else:
+        available_count = sum(1 for _, _, s in period_data if s == "AVAILABLE")
+        malformed_count = sum(1 for _, _, s in period_data if s == "SOURCE_DATA_MALFORMED")
+        if available_count > 0 and malformed_count == 0:
+            matrix_state = "AVAILABLE"
+        elif available_count > 0:
+            matrix_state = "PARTIAL"
+        elif malformed_count > 0:
+            matrix_state = "SOURCE_DATA_MALFORMED"
+        else:
+            matrix_state = "NOT_AVAILABLE"
+
+    matrix_available = matrix_state in ("AVAILABLE", "PARTIAL")
 
     # Union all field paths from available periods
     all_fields_set: set = set()
@@ -341,7 +367,8 @@ def _build_statement_matrix(
         "period_headers": period_headers,
         "rows": rows,
         "unit_note": "Source values — no unit conversion applied.",
-        "available": len(period_data) > 0,
+        "available": matrix_available,
+        "state": matrix_state,
         "stmt_key": stmt_key,
     }
 
@@ -440,6 +467,69 @@ def build_terminal_view(
         }
 
     # NOT_AVAILABLE, PARTIAL, AVAILABLE
+    availability = bundle.availability
+
+    # Selected Robinhood identity — always available regardless of identity state
+    selected_token = {
+        "symbol": bundle.robinhood_token_symbol,
+        "economic_asset_uid": economic_asset_uid,
+        "chain_id": selected_chain_id or "—",
+        "contract_address": selected_contract_address or "—",
+    }
+
+    _empty_profile_evidence: dict = {
+        "available": False,
+        "provider": None,
+        "source_contract": None,
+        "fetched_at": None,
+        "payload_hash": None,
+    }
+    _empty_freshness: dict = {
+        "ttm_period_end": "—",
+        "ttm_filing_date": "—",
+        "quarterly_period_end": "—",
+        "annual_period_end": "—",
+        "profile_fetched_at": "—",
+        "asset_last_seen_at": "—",
+    }
+    _empty_matrix: dict = {
+        "available": False,
+        "state": "NOT_AVAILABLE",
+        "period_headers": [],
+        "rows": [],
+        "unit_note": "Source values — no unit conversion applied.",
+        "stmt_key": _NAV_STMT_TO_FIELD_KEY.get(nav.get("statement", "income"), "income_statement"),
+    }
+
+    # F05: IDENTITY_MISMATCH — fail closed at a single explicit boundary.
+    # No DB-derived company/fundamental/corporate-action data may be exposed.
+    # The selected Robinhood universe identity remains authoritative.
+    if identity_state == "IDENTITY_MISMATCH":
+        return {
+            "state": availability.value,
+            "available": False,
+            "economic_asset_uid": economic_asset_uid,
+            "symbol": bundle.robinhood_token_symbol,
+            "company_name": fallback_name or bundle.robinhood_token_symbol,
+            "identity": None,
+            "identity_state": "IDENTITY_MISMATCH",
+            "profile": None,
+            "profile_evidence": _empty_profile_evidence,
+            "snapshot_evidence": [],
+            "annual_history": [],
+            "quarterly_history": [],
+            "ttm_history": [],
+            "statement_matrix": _empty_matrix,
+            "dividends": [],
+            "splits": [],
+            "lineage": [],
+            "nav": nav,
+            "selected_token": selected_token,
+            "freshness": _empty_freshness,
+            "execution_simulator_url": f"/radar?asset_uid={economic_asset_uid}#radar-panels",
+            "radar_url": "/radar",
+        }
+
     asset = bundle.asset
     profile = bundle.company_profile
 
@@ -505,13 +595,7 @@ def build_terminal_view(
             "payload_hash": profile.payload_hash or "—",
         }
     else:
-        profile_evidence = {
-            "available": False,
-            "provider": None,
-            "source_contract": None,
-            "fetched_at": None,
-            "payload_hash": None,
-        }
+        profile_evidence = _empty_profile_evidence
 
     # Snapshot evidence (all timeframes, all periods — no raw_payload_json)
     snapshot_evidence_rows = [
@@ -523,36 +607,22 @@ def build_terminal_view(
         )
     ]
 
-    # IDENTITY_MISMATCH: suppress all financial data
-    suppress_financials = (identity_state == "IDENTITY_MISMATCH")
+    # Financial history rows
+    annual_rows = [_build_snapshot_row(s) for s in bundle.annual_history]
+    quarterly_rows = [_build_snapshot_row(s) for s in bundle.quarterly_history]
+    ttm_rows = [_build_snapshot_row(s) for s in bundle.ttm_history]
 
-    if suppress_financials:
-        annual_rows: list = []
-        quarterly_rows: list = []
-        ttm_rows: list = []
-        statement_matrix: dict = {
-            "available": False,
-            "period_headers": [],
-            "rows": [],
-            "unit_note": "Source values — no unit conversion applied.",
-            "stmt_key": _NAV_STMT_TO_FIELD_KEY.get(nav.get("statement", "income"), "income_statement"),
-        }
-    else:
-        annual_rows = [_build_snapshot_row(s) for s in bundle.annual_history]
-        quarterly_rows = [_build_snapshot_row(s) for s in bundle.quarterly_history]
-        ttm_rows = [_build_snapshot_row(s) for s in bundle.ttm_history]
-
-        # Statement matrix for Financials tab
-        nav_timeframe = nav.get("timeframe", "annual")
-        nav_statement = nav.get("statement", "income")
-        stmt_key = _NAV_STMT_TO_FIELD_KEY.get(nav_statement, "income_statement")
-        timeframe_snapshots_map: dict = {
-            "annual": bundle.annual_history,
-            "quarterly": bundle.quarterly_history,
-            "ttm": bundle.ttm_history,
-        }
-        snapshots_for_matrix = timeframe_snapshots_map.get(nav_timeframe, bundle.annual_history)
-        statement_matrix = _build_statement_matrix(snapshots_for_matrix, stmt_key)
+    # Statement matrix for Financials tab
+    nav_timeframe = nav.get("timeframe", "annual")
+    nav_statement = nav.get("statement", "income")
+    stmt_key = _NAV_STMT_TO_FIELD_KEY.get(nav_statement, "income_statement")
+    timeframe_snapshots_map: dict = {
+        "annual": bundle.annual_history,
+        "quarterly": bundle.quarterly_history,
+        "ttm": bundle.ttm_history,
+    }
+    snapshots_for_matrix = timeframe_snapshots_map.get(nav_timeframe, bundle.annual_history)
+    statement_matrix = _build_statement_matrix(snapshots_for_matrix, stmt_key)
 
     # Corporate actions — all authority fields
     dividend_rows = [
@@ -593,14 +663,6 @@ def build_terminal_view(
 
     # Freshness
     freshness = bundle.freshness
-
-    # Selected Robinhood identity for Token Market tab
-    selected_token = {
-        "symbol": bundle.robinhood_token_symbol,
-        "economic_asset_uid": economic_asset_uid,
-        "chain_id": selected_chain_id or "—",
-        "contract_address": selected_contract_address or "—",
-    }
 
     return {
         "state": availability.value,
