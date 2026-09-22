@@ -639,7 +639,7 @@ class TestFeaturedBoardViewModel:
             "AAPL", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", db_path=db)
         row = build_equity_board_row(result, asset_uid="AAPL")
         assert "AAPL" in row["details_url"]
-        assert "equity-details" in row["details_url"]
+        assert "/radar/equity/" in row["details_url"]
 
     def test_board_row_available_has_metrics(self):
         db = _aapl_db()

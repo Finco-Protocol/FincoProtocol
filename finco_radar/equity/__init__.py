@@ -14,6 +14,7 @@ from .models import (
     DerivedFundamentals,
     DividendRecord,
     EquityAssetIdentity,
+    EquityCompanyHistoryBundle,
     EquityFundamentalsBundle,
     FinancialSnapshot,
     FundamentalsFreshness,
@@ -21,7 +22,11 @@ from .models import (
     SourceLineage,
     SplitRecord,
 )
-from .service import get_equity_fundamentals, get_equity_fundamentals_many
+from .service import (
+    get_equity_company_history,
+    get_equity_fundamentals,
+    get_equity_fundamentals_many,
+)
 
 __all__ = [
     "AvailabilityState",
@@ -29,12 +34,14 @@ __all__ = [
     "DerivedFundamentals",
     "DividendRecord",
     "EquityAssetIdentity",
+    "EquityCompanyHistoryBundle",
     "EquityFundamentalsBundle",
     "FinancialSnapshot",
     "FundamentalsFreshness",
     "JsonField",
     "SourceLineage",
     "SplitRecord",
+    "get_equity_company_history",
     "get_equity_fundamentals",
     "get_equity_fundamentals_many",
 ]
