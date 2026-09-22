@@ -440,7 +440,7 @@ def build_equity_board_row(
         "symbol": symbol,
         "company_name": company_name,
         "asset_uid": asset_uid,
-        "details_url": f"/radar?asset_uid={asset_uid}#equity-details",
+        "details_url": f"/radar/equity/{asset_uid}",
     }
 
     if state not in (EnrichmentState.AVAILABLE, EnrichmentState.PARTIAL):
