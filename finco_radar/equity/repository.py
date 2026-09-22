@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Iterator, List, Optional
 from urllib.parse import quote as _urlquote
 
+from .config import validate_db_mode
 from .models import (
     CompanyProfile,
     DerivedFundamentals,
@@ -456,7 +457,7 @@ class EquityFundamentalsRepository:
 
     def __init__(self, db_path: Path, mode: str = "snapshot") -> None:
         self._path = db_path
-        self._mode = mode
+        self._mode = validate_db_mode(mode)  # raises EquityDBModeError on invalid
 
     @contextmanager
     def read_session(self) -> Iterator[BoundReadSession]:

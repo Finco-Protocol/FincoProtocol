@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from .config import (
+    EquityDBModeError,  # noqa: F401 — re-exported for callers
     EquityDBNotConfiguredError,
     EquityDBNotFoundError,
     resolve_db_path,
     resolve_db_mode,
+    validate_db_mode,
 )
 from .models import (
     AvailabilityState,
@@ -112,6 +114,11 @@ def get_equity_fundamentals(
 
     Deterministic: no network calls, no datetime.now() inside the result.
     """
+    # Validate mode before any DB access — programmer/config errors propagate immediately.
+    # EquityDBModeError is NOT caught by the SOURCE_UNAVAILABLE handler below.
+    if db_mode is not None:
+        db_mode = validate_db_mode(db_mode)
+
     try:
         path = db_path if db_path is not None else resolve_db_path()
     except (EquityDBNotConfiguredError, EquityDBNotFoundError):

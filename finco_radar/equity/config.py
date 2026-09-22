@@ -66,18 +66,29 @@ def resolve_db_path() -> Path:
     return p
 
 
+def validate_db_mode(mode: str) -> str:
+    """Normalize and validate a DB mode string.
+
+    Normalizes to lowercase.  Accepts 'snapshot' and 'live' only.
+    Raises EquityDBModeError for any other value.
+    Never silently downgrades an unrecognised value to a valid mode.
+    """
+    normalized = mode.strip().lower()
+    if normalized not in _VALID_MODES:
+        raise EquityDBModeError(
+            f"DB mode {mode!r} is invalid. "
+            f"Must be one of: {sorted(_VALID_MODES)}"
+        )
+    return normalized
+
+
 def resolve_db_mode() -> str:
     """Return the configured source mode ('snapshot' or 'live').
 
     Defaults to 'snapshot' when the env var is absent.
     Raises EquityDBModeError when set to an unrecognised value.
     """
-    raw = os.environ.get(ENV_KEY_MODE, "").strip().lower()
+    raw = os.environ.get(ENV_KEY_MODE, "").strip()
     if not raw:
         return _DEFAULT_MODE
-    if raw not in _VALID_MODES:
-        raise EquityDBModeError(
-            f"{ENV_KEY_MODE}={raw!r} is invalid. "
-            f"Must be one of: {sorted(_VALID_MODES)}"
-        )
-    return raw
+    return validate_db_mode(raw)

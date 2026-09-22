@@ -166,6 +166,27 @@ def _make_db(rows_fn=None) -> Path:
     return path
 
 
+def _make_wal_db(rows_fn=None) -> Path:
+    """Create a fresh temporary DB in genuine WAL journal mode with the production schema.
+
+    Asserts that PRAGMA journal_mode=WAL was actually applied (returns 'wal').
+    """
+    f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    f.close()
+    path = Path(f.name)
+    conn = sqlite3.connect(str(path))
+    try:
+        result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+        assert result[0] == "wal", f"Expected WAL journal mode, got: {result[0]!r}"
+        conn.executescript(_DDL)
+        if rows_fn is not None:
+            rows_fn(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return path
+
+
 def _nvda_asset(conn, active=1):
     conn.execute(
         """INSERT INTO equity_assets VALUES
@@ -987,59 +1008,253 @@ class TestConfig:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# T15 — WAL snapshot mode: immutable=1 URI; no WAL/SHM files created
+# E1-F05 — strict mode validation: every public DB-mode entry point
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestF05ModeValidation:
+    """No public path may silently downgrade an invalid mode to live behaviour."""
+
+    def test_validate_db_mode_snapshot(self):
+        from finco_radar.equity.config import validate_db_mode
+        assert validate_db_mode("snapshot") == "snapshot"
+
+    def test_validate_db_mode_live(self):
+        from finco_radar.equity.config import validate_db_mode
+        assert validate_db_mode("live") == "live"
+
+    def test_validate_db_mode_normalizes_uppercase(self):
+        from finco_radar.equity.config import validate_db_mode
+        assert validate_db_mode("SNAPSHOT") == "snapshot"
+        assert validate_db_mode("LIVE") == "live"
+
+    def test_validate_db_mode_invalid_raises(self):
+        from finco_radar.equity.config import validate_db_mode
+        with pytest.raises(EquityDBModeError):
+            validate_db_mode("realtime")
+
+    def test_validate_db_mode_empty_raises(self):
+        from finco_radar.equity.config import validate_db_mode
+        with pytest.raises(EquityDBModeError):
+            validate_db_mode("")
+
+    def test_validate_db_mode_unknown_raises(self):
+        from finco_radar.equity.config import validate_db_mode
+        for bad in ("ro", "rw", "readonly", "wal", "immutable", "auto"):
+            with pytest.raises(EquityDBModeError, match="invalid"):
+                validate_db_mode(bad)
+
+    def test_service_direct_db_mode_invalid_raises(self):
+        """get_equity_fundamentals(db_mode='realtime') raises EquityDBModeError
+        immediately — does NOT return SOURCE_UNAVAILABLE."""
+        path = _make_db(_nvda_asset)
+        with pytest.raises(EquityDBModeError):
+            get_equity_fundamentals("NVDA", db_path=path, db_mode="realtime")
+
+    def test_service_direct_db_mode_invalid_is_not_source_unavailable(self):
+        """EquityDBModeError must NOT be swallowed as SOURCE_UNAVAILABLE."""
+        path = _make_db(_nvda_asset)
+        try:
+            result = get_equity_fundamentals("NVDA", db_path=path, db_mode="bad")
+            assert False, (
+                f"Expected EquityDBModeError, but got bundle with "
+                f"availability={result.availability}"
+            )
+        except EquityDBModeError:
+            pass  # correct
+
+    def test_repository_invalid_mode_raises_on_construction(self):
+        """EquityFundamentalsRepository(path, mode='invalid') raises immediately."""
+        path = _make_db(_nvda_asset)
+        with pytest.raises(EquityDBModeError):
+            EquityFundamentalsRepository(path, mode="realtime")
+
+    def test_repository_valid_modes_accepted(self):
+        path = _make_db(_nvda_asset)
+        for valid_mode in ("snapshot", "live", "SNAPSHOT", "LIVE"):
+            repo = EquityFundamentalsRepository(path, mode=valid_mode)
+            assert repo._mode in ("snapshot", "live")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T15 — genuine checkpointed WAL snapshot
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestT15WALSnapshotMode:
+    def test_make_wal_db_produces_genuine_wal_mode(self):
+        """_make_wal_db must produce a DB whose journal_mode is 'wal'."""
+        path = _make_wal_db()
+        conn = sqlite3.connect(str(path))
+        try:
+            result = conn.execute("PRAGMA journal_mode").fetchone()
+            assert result[0] == "wal", f"Expected WAL journal mode, got: {result[0]!r}"
+        finally:
+            conn.close()
+
     def test_snapshot_mode_uri_contains_immutable(self):
         from finco_radar.equity.repository import _build_uri
-        path = Path("/tmp/test.db")
-        uri = _build_uri(path, "snapshot")
+        uri = _build_uri(Path("/tmp/test.db"), "snapshot")
         assert "immutable=1" in uri
         assert "mode=ro" in uri
 
-    def test_live_mode_uri_no_immutable(self):
-        from finco_radar.equity.repository import _build_uri
-        path = Path("/tmp/test.db")
-        uri = _build_uri(path, "live")
-        assert "immutable" not in uri
-        assert "mode=ro" in uri
+    def test_checkpointed_wal_snapshot_reads_correctly(self):
+        """E1 snapshot mode reads a genuinely checkpointed WAL database."""
+        path = _make_wal_db(_nvda_asset)
 
-    def test_snapshot_mode_opens_readable_db(self):
-        path = _make_db(_nvda_asset)
+        # Complete WAL checkpoint: merge all WAL frames into the main DB file
+        conn = sqlite3.connect(str(path))
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+
         repo = EquityFundamentalsRepository(path, mode="snapshot")
         asset = repo.get_asset("NVDA")
         assert asset is not None
         assert asset.underlying_ticker == "NVDA"
+        assert asset.robinhood_token_symbol == "NVDA"
 
-    def test_snapshot_mode_no_wal_shm_side_effects(self):
-        """Opening in snapshot mode must not create WAL or SHM files."""
-        path = _make_db(_nvda_asset)
-        wal = path.with_suffix(".db-wal")
-        shm = path.with_suffix(".db-shm")
+    def test_snapshot_mode_no_wal_shm_creation_after_checkpoint(self):
+        """Snapshot reader must not create or grow WAL/SHM sidecar files.
+
+        After a checkpoint and full writer close, opening with immutable=1
+        must leave the DB directory unchanged.
+        """
+        path = _make_wal_db(_nvda_asset)
+
+        # Checkpoint and close all writer connections
+        conn = sqlite3.connect(str(path))
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+
+        wal_path = Path(str(path) + "-wal")
+        shm_path = Path(str(path) + "-shm")
+
+        # Capture pre-read sidecar state
+        wal_size_before = wal_path.stat().st_size if wal_path.exists() else None
+        shm_existed_before = shm_path.exists()
+
+        # E1 snapshot read (immutable=1 — must not touch WAL/SHM)
         repo = EquityFundamentalsRepository(path, mode="snapshot")
-        _ = repo.get_asset("NVDA")
-        assert not wal.exists(), "snapshot mode must not create -wal file"
-        assert not shm.exists(), "snapshot mode must not create -shm file"
+        asset = repo.get_asset("NVDA")
+        assert asset is not None
+
+        # Verify no new sidecar growth or creation
+        wal_size_after = wal_path.stat().st_size if wal_path.exists() else None
+        shm_after = shm_path.exists()
+
+        if wal_size_before is None:
+            assert wal_size_after in (None, 0), (
+                "Snapshot reader must not create WAL sidecar file"
+            )
+        else:
+            assert (wal_size_after or 0) <= wal_size_before, (
+                "Snapshot reader must not grow WAL file"
+            )
+        if not shm_existed_before:
+            assert not shm_after, "Snapshot reader must not create SHM sidecar file"
+
+    def test_snapshot_mode_nonwritable_directory(self):
+        """Snapshot mode (immutable=1) works even when the DB directory is not writable.
+
+        This proves immutable=1 bypasses WAL/SHM which would require write
+        permission on the source directory.  Skipped when running as root.
+        """
+        import os
+        if os.getuid() == 0:
+            pytest.skip("Root ignores filesystem permissions; cannot test read-only directory")
+
+        tmpdir = Path(tempfile.mkdtemp())
+        db_path = tmpdir / "snapshot_ro.db"
+
+        # Seed with WAL mode and checkpoint while dir is still writable
+        seed_conn = sqlite3.connect(str(db_path))
+        try:
+            seed_conn.execute("PRAGMA journal_mode=WAL")
+            seed_conn.executescript(_DDL)
+            _nvda_asset(seed_conn)
+            seed_conn.commit()
+            seed_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            seed_conn.close()
+
+        # Make directory non-writable (live mode would fail here; snapshot must succeed)
+        os.chmod(tmpdir, 0o555)
+        try:
+            repo = EquityFundamentalsRepository(db_path, mode="snapshot")
+            asset = repo.get_asset("NVDA")
+            assert asset is not None, "Snapshot mode must work in non-writable directory"
+            assert asset.underlying_ticker == "NVDA"
+        finally:
+            os.chmod(tmpdir, 0o755)
 
     def test_default_mode_is_snapshot(self):
-        path = _make_db(_nvda_asset)
-        # Default constructor: mode defaults to "snapshot"
-        repo = EquityFundamentalsRepository(path)
+        path = _make_wal_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path)  # default: "snapshot"
         asset = repo.get_asset("NVDA")
         assert asset is not None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# T16 — live mode: mode=ro only URI
+# T16 — genuine live WAL reader
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestT16LiveMode:
-    def test_live_mode_opens_readable_db(self):
-        path = _make_db(_nvda_asset)
+    def test_live_mode_uri_no_immutable(self):
+        from finco_radar.equity.repository import _build_uri
+        uri = _build_uri(Path("/tmp/test.db"), "live")
+        assert "immutable" not in uri
+        assert "mode=ro" in uri
+
+    def test_live_wal_reads_current_data(self):
+        """E1 live mode reads a genuine WAL database."""
+        path = _make_wal_db(_nvda_asset)
         repo = EquityFundamentalsRepository(path, mode="live")
         asset = repo.get_asset("NVDA")
         assert asset is not None
+        assert asset.underlying_ticker == "NVDA"
+
+    def test_live_mode_sees_writer_committed_revision(self):
+        """After a writer commits a new revision, a new E1 live-mode session sees it.
+
+        Proof sequence:
+          1. Old E1 session reads OLD_TTM (period 2024-03-31).
+          2. Writer commits NEW_TTM (period 2024-06-30, newer → selected by tie-break).
+          3. New E1 session reads NEW_TTM.
+        """
+        OLD_TTM_HASH = "old-ttm-live-t16"
+        NEW_TTM_HASH = "new-ttm-live-t16"
+
+        def seed(conn):
+            _nvda_asset(conn)
+            _insert_snapshot(conn, "NVDA", "ttm", "2024-03-31", OLD_TTM_HASH)
+
+        path = _make_wal_db(seed)
+        repo = EquityFundamentalsRepository(path, mode="live")
+
+        # Old E1 session: reads initial state
+        with repo.read_session() as old_session:
+            old_ttm = old_session.get_latest_snapshot("NVDA", "ttm")
+        assert old_ttm is not None
+        assert old_ttm.payload_hash == OLD_TTM_HASH
+
+        # Writer commits new revision with a newer period_end (wins tie-break)
+        writer_conn = sqlite3.connect(str(path))
+        try:
+            _insert_snapshot(writer_conn, "NVDA", "ttm", "2024-06-30", NEW_TTM_HASH)
+            writer_conn.commit()
+        finally:
+            writer_conn.close()
+
+        # New E1 session: must see the newly committed revision
+        with repo.read_session() as new_session:
+            new_ttm = new_session.get_latest_snapshot("NVDA", "ttm")
+        assert new_ttm is not None
+        assert new_ttm.payload_hash == NEW_TTM_HASH, (
+            f"New E1 session must see writer-committed revision; "
+            f"got {new_ttm.payload_hash}"
+        )
 
     def test_live_mode_bundle_reads_correctly(self):
         def seed(conn):
@@ -1049,40 +1264,137 @@ class TestT16LiveMode:
                 ("NVDA", None, json.dumps({"name": "NVIDIA"}), "ph1",
                  "MASSIVE", "LEGACY_MASSIVE_VX", "2025-01-01T00:00:00"),
             )
-            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-ttm")
+            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-ttm-t16")
 
-        path = _make_db(seed)
+        path = _make_wal_db(seed)
         bundle = get_equity_fundamentals("NVDA", db_path=path, db_mode="live")
         assert bundle.availability == AvailabilityState.AVAILABLE
         assert bundle.latest_ttm is not None
 
     def test_db_mode_override_in_service(self):
-        path = _make_db(_nvda_asset)
-        # Passing db_mode overrides env
+        path = _make_wal_db(_nvda_asset)
         bundle = get_equity_fundamentals("NVDA", db_path=path, db_mode="snapshot")
         assert bundle.availability == AvailabilityState.NOT_AVAILABLE
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# T17 — atomic bundle read: all fields from one read_session
+# T17 — mandatory concurrent atomic bundle snapshot
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestT17AtomicBundleRead:
-    def test_read_session_context_manager(self):
-        path = _make_db(_nvda_asset)
-        repo = EquityFundamentalsRepository(path)
+    def test_concurrent_atomic_snapshot_no_mixed_reads(self):
+        """Atomic bundle authority proof against a genuine WAL database.
+
+        Deterministic sequence:
+          1. Seed DB:   OLD_PROFILE (fetched 2025-01-01), OLD_TTM (period 2024-03-31)
+          2. Open E1 read_session (live, WAL, BEGIN DEFERRED)
+          3. First read establishes WAL snapshot — reads OLD_PROFILE
+          4. Writer B commits: NEW_PROFILE (fetched 2026-01-01), NEW_TTM (period 2024-06-30)
+          5. Reader in SAME session: must still see OLD_PROFILE and OLD_TTM
+             (no mixing of old profile + new TTM or vice versa)
+          6. Close reader session
+          7. New E1 session: must see NEW_PROFILE and NEW_TTM
+        """
+        OLD_PROFILE_HASH = "old-profile-t17"
+        NEW_PROFILE_HASH = "new-profile-t17"
+        OLD_TTM_HASH = "old-ttm-t17"
+        NEW_TTM_HASH = "new-ttm-t17"
+
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_company_profiles VALUES (?,?,?,?,?,?,?)",
+                ("NVDA", None,
+                 json.dumps({"name": "NVIDIA old"}), OLD_PROFILE_HASH,
+                 "MASSIVE", "LEGACY_MASSIVE_VX", "2025-01-01T00:00:00"),
+            )
+            _insert_snapshot(
+                conn, "NVDA", "ttm", "2024-03-31", OLD_TTM_HASH,
+                derived_json=json.dumps({"revenues": 100.0}),
+            )
+
+        path = _make_wal_db(seed)
+        repo = EquityFundamentalsRepository(path, mode="live")
+
+        reader_profile_hash_during = None
+        reader_ttm_hash_during = None
+
+        with repo.read_session() as session:
+            # Step 3: First read — establishes WAL read snapshot
+            pre_write_profile = session.get_latest_profile("NVDA")
+            assert pre_write_profile is not None
+            assert pre_write_profile.payload_hash == OLD_PROFILE_HASH, (
+                f"Pre-write: expected {OLD_PROFILE_HASH}, "
+                f"got {pre_write_profile.payload_hash}"
+            )
+
+            # Step 4: Writer B commits NEW data on a separate connection
+            writer_conn = sqlite3.connect(str(path))
+            try:
+                writer_conn.execute(
+                    "INSERT INTO equity_company_profiles VALUES (?,?,?,?,?,?,?)",
+                    ("NVDA", None,
+                     json.dumps({"name": "NVIDIA new"}), NEW_PROFILE_HASH,
+                     "MASSIVE", "LEGACY_MASSIVE_VX", "2026-01-01T00:00:00"),
+                )
+                _insert_snapshot(
+                    writer_conn, "NVDA", "ttm", "2024-06-30", NEW_TTM_HASH,
+                    derived_json=json.dumps({"revenues": 999.0}),
+                )
+                writer_conn.commit()
+            finally:
+                writer_conn.close()
+
+            # Step 5: SAME reader session — must still see OLD snapshot
+            post_write_profile = session.get_latest_profile("NVDA")
+            post_write_ttm = session.get_latest_snapshot("NVDA", "ttm")
+
+            reader_profile_hash_during = post_write_profile.payload_hash
+            reader_ttm_hash_during = post_write_ttm.payload_hash
+
+            assert reader_profile_hash_during == OLD_PROFILE_HASH, (
+                f"ATOMIC VIOLATION: same-session profile changed after writer committed.\n"
+                f"  Expected OLD: {OLD_PROFILE_HASH}\n"
+                f"  Got: {reader_profile_hash_during}"
+            )
+            assert reader_ttm_hash_during == OLD_TTM_HASH, (
+                f"ATOMIC VIOLATION: same-session TTM changed after writer committed.\n"
+                f"  Expected OLD: {OLD_TTM_HASH}\n"
+                f"  Got: {reader_ttm_hash_during}"
+            )
+        # Reader session closed
+
+        # Step 7: New E1 session — must see NEW committed data
+        with repo.read_session() as new_session:
+            new_profile = new_session.get_latest_profile("NVDA")
+            new_ttm = new_session.get_latest_snapshot("NVDA", "ttm")
+
+        assert new_profile is not None
+        assert new_profile.payload_hash == NEW_PROFILE_HASH, (
+            f"New session must see NEW profile {NEW_PROFILE_HASH}; "
+            f"got {new_profile.payload_hash}"
+        )
+        assert new_ttm is not None
+        assert new_ttm.payload_hash == NEW_TTM_HASH, (
+            f"New session must see NEW TTM {NEW_TTM_HASH}; "
+            f"got {new_ttm.payload_hash}"
+        )
+
+    def test_read_session_basic_wal(self):
+        """read_session context manager works on a WAL DB."""
+        path = _make_wal_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path, mode="live")
         with repo.read_session() as session:
             asset = session.get_asset("NVDA")
-            assert asset is not None
-            # All queries through the same session
             profile = session.get_latest_profile("NVDA")
             ttm = session.get_latest_snapshot("NVDA", "ttm")
-        # Session closed; verifying results
+        assert asset is not None
         assert asset.underlying_ticker == "NVDA"
-        assert profile is None  # no profile in seed
-        assert ttm is None  # no snapshot in seed
+        assert profile is None
+        assert ttm is None
 
-    def test_full_bundle_uses_read_session(self):
+    def test_full_bundle_atomic_via_read_session(self):
+        """Service uses one read_session for the entire bundle."""
         def seed(conn):
             _nvda_asset(conn)
             conn.execute(
@@ -1090,27 +1402,27 @@ class TestT17AtomicBundleRead:
                 ("NVDA", None, json.dumps({"name": "NVIDIA"}), "ph1",
                  "MASSIVE", "LEGACY_MASSIVE_VX", "2025-01-01T00:00:00"),
             )
-            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-t17")
+            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-t17-bundle")
 
-        path = _make_db(seed)
-        bundle = get_equity_fundamentals("NVDA", db_path=path)
+        path = _make_wal_db(seed)
+        bundle = get_equity_fundamentals("NVDA", db_path=path, db_mode="live")
         assert bundle.asset is not None
         assert bundle.company_profile is not None
         assert bundle.latest_ttm is not None
         assert bundle.availability == AvailabilityState.AVAILABLE
 
     def test_read_session_does_not_hold_write_lock(self):
-        """After read_session closes, the DB is writable again via a new connection."""
-        path = _make_db(_nvda_asset)
-        repo = EquityFundamentalsRepository(path)
+        """After read_session closes, the DB is writable again."""
+        path = _make_wal_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path, mode="live")
         with repo.read_session() as session:
             _ = session.get_asset("NVDA")
-        # Open a new writable connection to verify no leftover lock
+        # Writable connection must succeed after reader closed
         conn = sqlite3.connect(str(path))
         try:
             conn.execute(
                 "INSERT INTO equity_assets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                ("TEST2", "TEST2", None, None, None, None,
+                ("TEST3", "TEST3", None, None, None, None,
                  None, None, None, None, 1, None, None),
             )
             conn.commit()
