@@ -354,6 +354,12 @@ def _build_run_controls_oob(ctx: dict) -> str:
     return '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
 
 
+def _build_export_controls_oob(ctx: dict) -> str:
+    """Return OOB HTML to refresh #v2-export-controls after a run."""
+    export_html = _templates.get_template("partials/_v2_export_controls.html").render(ctx)
+    return '<div id="v2-export-controls" hx-swap-oob="true">' + export_html + "</div>"
+
+
 def _build_toolbar_state_oob(ctx: dict) -> str:
     """Return OOB HTML to refresh the toolbar runtime state chip."""
     toolbar_html = _templates.get_template("partials/_v2_toolbar_state.html").render(ctx)
@@ -1997,6 +2003,35 @@ async def v2_workbook_run(
             )
             # Non-fatal: workspace run committed; Compare will show NOT_RUN until
             # user re-runs this scenario.
+    else:
+        # No explicit scenario selected — save to base case so Compare can show
+        # this run's results when compared against an explicit scenario run.
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            from app.persistence.scenarios_repository import get_base_case_scenario as _get_base
+            _base_sc = _get_base(user_id=workspace_owner, project_id=project_record.project_id)
+            if _base_sc:
+                _base_run_summary = {
+                    "kpis": dict(result["kpis"]),
+                    "snapshot_id": runtime_snapshot_id,
+                    "ran_at": ran_at.isoformat(),
+                    "scenario_id": _base_sc.scenario_id,
+                    "scenario_name": _base_sc.scenario_name or "Base Case",
+                    "scenario_snapshot_hash": None,
+                    "scenario_overrides_at_run": {},
+                }
+                update_scenario_last_run_summary(
+                    user_id=workspace_owner,
+                    scenario_id=_base_sc.scenario_id,
+                    last_run_summary=_base_run_summary,
+                    replay_metadata={"v2_run": True, "project": project},
+                )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist base case last_run_summary "
+                "project=%s", project
+            )
 
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(

@@ -59,6 +59,7 @@ def build_post_run_ui_state(
 
     from app.v2.router import (  # local import: router owns template helpers
         _base_sheet_ctx,
+        _build_export_controls_oob,
         _build_pis_with_composite_identity,
         _build_run_controls_oob,
         _build_toolbar_state_oob,
@@ -89,6 +90,9 @@ def build_post_run_ui_state(
 
     # A. Run controls — authoritative composite hash for immediate re-edit.
     fragments.append(_build_run_controls_oob(ctx))
+
+    # A'. Export controls — now that a run exists, enable the export button.
+    fragments.append(_build_export_controls_oob(ctx))
 
     # B. Status banner — dirty/stale transitions to the post-run state.
     banner_html = _templates.get_template(
@@ -188,6 +192,7 @@ def build_post_save_ui_state(
 
     from app.v2.router import (  # router owns the template helpers
         _build_pis_with_composite_identity,
+        _build_export_controls_oob,
         _build_run_controls_oob,
         _build_toolbar_state_oob,
         _fmt_runtime_at,
@@ -237,6 +242,7 @@ def build_post_save_ui_state(
             '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>")
         fragments.append(_build_toolbar_state_oob(ctx))
         fragments.append(_build_run_controls_oob(ctx))
+        fragments.append(_build_export_controls_oob(ctx))
     else:
         # Toolbar-only OOB (banner/controls are already emitted by the sheet
         # renderer on every mutation response).
