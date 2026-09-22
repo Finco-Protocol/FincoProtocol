@@ -29,6 +29,7 @@ Stale-identity prevention:
 from __future__ import annotations
 
 import os
+from typing import List
 
 from fastapi import APIRouter, Form, Request
 from fastapi.concurrency import run_in_threadpool
@@ -37,6 +38,21 @@ from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
 from app.radar_ui import composition, equity_enrichment, equity_view_model, view_model
+
+# Featured equities default — symbols present in the canonical Robinhood universe.
+# Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
+_DEFAULT_FEATURED_SYMBOLS = (
+    "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL",
+    "META", "TSLA", "AVGO", "JPM", "V",
+    "WMT", "NFLX", "AMD", "ORCL", "PLTR",
+)
+
+
+def _get_featured_symbols() -> tuple:
+    raw = os.environ.get("RADAR_FEATURED_EQUITY_SYMBOLS", "")
+    if raw.strip():
+        return tuple(s.strip() for s in raw.split(",") if s.strip())
+    return _DEFAULT_FEATURED_SYMBOLS
 
 router = APIRouter()
 
@@ -128,6 +144,46 @@ def _load_equity_view(selected, fallback_name: str = "") -> dict:
     return equity_view_model.build_equity_view(result, fallback_name=fallback_name)
 
 
+def _load_featured_board(universe: list) -> list:
+    """Synchronous helper: build the Featured Equities board rows.
+
+    Only shows symbols present in the live canonical Robinhood universe in
+    configured order.  Uses a single batch E1 read (one DB connection,
+    one read_session, one BEGIN DEFERRED).  Zero live price acquisitions.
+    Returns a list of board-row dicts for the template.
+    """
+    featured_symbols = _get_featured_symbols()
+    # Resolve universe by symbol (case-insensitive) to get contract+uid
+    universe_by_symbol = {}
+    for a in universe:
+        universe_by_symbol[a.token_symbol.upper()] = a
+
+    # Filter to configured featured symbols that are in the live universe
+    # preserving deterministic configured order.
+    featured_assets = []
+    for sym in featured_symbols:
+        asset = universe_by_symbol.get(sym.upper())
+        if asset is not None:
+            featured_assets.append(asset)
+
+    if not featured_assets:
+        return []
+
+    # One batch E1 read for all featured assets
+    pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
+    results = equity_enrichment.enrich_many_selected_assets(pairs)
+
+    rows = []
+    for asset, result in zip(featured_assets, results):
+        row = equity_view_model.build_equity_board_row(
+            result,
+            asset_uid=asset.economic_asset_uid,
+            fallback_name=asset.token_name,
+        )
+        rows.append(row)
+    return rows
+
+
 def _panels_context(snapshot, *, is_htmx_partial: bool = False) -> dict:
     return {
         "view": view_model.build_radar_view(snapshot),
@@ -179,12 +235,13 @@ async def radar_home(request: Request, snapshot_id: str = "",
     if selected is None and not _snapshot_loaded:
         selected = _resolve_selected(universe, asset_uid)
 
-    # E2: load corporate fundamentals for the selected asset.
-    # Runs in the threadpool (SQLite is blocking); equity_view is {} when
-    # selected is None so the template include-guard suppresses the section.
-    equity_view = await run_in_threadpool(
-        _load_equity_view, selected,
-        selected.token_name if selected else "",
+    # E2: load corporate fundamentals for the selected asset and featured board.
+    # Both run in the threadpool (SQLite is blocking).
+    equity_view, featured_board = await run_in_threadpool(
+        lambda: (
+            _load_equity_view(selected, selected.token_name if selected else ""),
+            _load_featured_board(universe) if universe else [],
+        )
     )
 
     from app.auth import resolve_request_session
@@ -204,6 +261,7 @@ async def radar_home(request: Request, snapshot_id: str = "",
             "snapshot_identity_note": snapshot_identity_note,
             "user": user,
             "equity_view": equity_view,
+            "featured_board": featured_board,
         },
     )
 
@@ -258,9 +316,12 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
         snapshot, universe)
     final_selected = selected_from_snapshot or selected_asset
     # E2: load fundamentals from the snapshot-authoritative selected identity.
-    equity_view = await run_in_threadpool(
-        _load_equity_view, final_selected,
-        final_selected.token_name if final_selected else "",
+    equity_view, featured_board = await run_in_threadpool(
+        lambda: (
+            _load_equity_view(final_selected,
+                              final_selected.token_name if final_selected else ""),
+            _load_featured_board(universe),
+        )
     )
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
@@ -279,6 +340,7 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             "snapshot_identity_note": None,
             "user": user,
             "equity_view": equity_view,
+            "featured_board": featured_board,
         },
     )
 

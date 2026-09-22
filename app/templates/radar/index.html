@@ -35,6 +35,9 @@
 
 <main class="radar-main">
 
+  <!-- E2-CA: Featured Equities Board — above asset selector -->
+  {% include "radar/featured_board.html" %}
+
   <!-- Asset selection GET form: submits GET /radar?asset_uid=<uid> -->
   <form method="get" action="/radar" class="radar-controls-form">
     <section class="panel panel-universe" data-panel="asset-selector" style="margin-bottom:14px;">
@@ -139,8 +142,11 @@
   </form>
 
   <!-- E2: Corporate fundamentals — outside #radar-panels so quote Refresh
-       does not reload it.  Asset selection (GET) triggers a fresh read. -->
+       does not reload it.  Asset selection (GET) triggers a fresh read.
+       id="equity-details" is the stable anchor for Details CTA links. -->
+  <div id="equity-details">
   {% include "radar/equity_fundamentals.html" %}
+  </div>
 
   <!-- Panels area -->
   <div id="radar-panels" class="radar-panels">

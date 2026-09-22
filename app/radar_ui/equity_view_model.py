@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from app.radar_ui.equity_enrichment import EnrichmentState, EquityEnrichmentResult
+from app.radar_ui.equity_enrichment import EnrichmentState, EquityEnrichmentResult  # noqa: F401
 from finco_radar.equity.models import (
     AvailabilityState,
     CompanyProfile,
@@ -57,10 +57,25 @@ def _fmt_currency(value: Optional[float]) -> str:
     return _fmt_float(value, precision=2)
 
 
-def _fmt_ratio(value: Optional[float]) -> str:
-    """Format a ratio/margin field as the raw source float.
+def _fmt_percent(value: Optional[float]) -> str:
+    """Format a source-fraction field as a percentage.
 
-    No ×100 applied: unit semantics not proven.
+    Source stores values as fractions (e.g. 0.44 = 44 %).  Proven from
+    test fixtures: gross_margin=0.44 is AAPL's ~44 % gross margin;
+    revenue_growth=0.08 is 8 % growth; return_on_equity=1.47 is 147 % ROE.
+    Display multiplies by 100 and appends %; the raw value is preserved in
+    the view dict's 'raw' key for evidence purposes.
+    """
+    if value is None:
+        return "—"
+    return f"{value * 100:,.2f}%"
+
+
+def _fmt_ratio_raw(value: Optional[float]) -> str:
+    """Format a dimensionless ratio field as the raw source float.
+
+    debt_to_equity is a ratio (e.g. -1.8x) not a percentage fraction;
+    semantics are best expressed as a plain multiplier.
     """
     return _fmt_float(value, precision=4)
 
@@ -123,26 +138,27 @@ def _identity_section(
     }
 
 
+def _best_snapshot(
+    latest_ttm: Optional[FinancialSnapshot],
+    latest_quarterly: Optional[FinancialSnapshot],
+    latest_annual: Optional[FinancialSnapshot],
+) -> Optional[FinancialSnapshot]:
+    """Return the best available snapshot using TTM → quarterly → annual precedence."""
+    return latest_ttm or latest_quarterly or latest_annual
+
+
 def _reporting_section(
     freshness: FundamentalsFreshness,
     latest_ttm: Optional[FinancialSnapshot],
     latest_quarterly: Optional[FinancialSnapshot],
     latest_annual: Optional[FinancialSnapshot],
 ) -> dict[str, Any]:
-    provider = None
-    source_contract = None
-    fetched_at = None
-    normalized_at = None
-    if latest_ttm is not None:
-        provider = latest_ttm.provider
-        source_contract = latest_ttm.source_contract
-        fetched_at = latest_ttm.fetched_at
-        normalized_at = latest_ttm.normalized_at
-    elif latest_annual is not None:
-        provider = latest_annual.provider
-        source_contract = latest_annual.source_contract
-        fetched_at = latest_annual.fetched_at
-        normalized_at = latest_annual.normalized_at
+    best = _best_snapshot(latest_ttm, latest_quarterly, latest_annual)
+    provider = best.provider if best else None
+    source_contract = best.source_contract if best else None
+    fetched_at = best.fetched_at if best else None
+    normalized_at = best.normalized_at if best else None
+    filing_date = best.filing_date if best else None
     return {
         "ttm_period_end": freshness.ttm_period_end or "—",
         "ttm_filing_date": freshness.ttm_filing_date or "—",
@@ -154,6 +170,7 @@ def _reporting_section(
         "source_contract": source_contract or "—",
         "fetched_at": fetched_at or "—",
         "normalized_at": normalized_at or "—",
+        "filing_date": filing_date or "—",
         "profile_fetched_at": freshness.profile_fetched_at or "—",
     }
 
@@ -199,38 +216,38 @@ def _ttm_metrics_section(
             },
             "revenue_growth": {
                 "label": "Revenue Growth",
-                "value": _fmt_ratio(d.revenue_growth),
+                "value": _fmt_percent(d.revenue_growth),
                 "raw": d.revenue_growth,
                 "is_missing": d.revenue_growth is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "gross_margin": {
                 "label": "Gross Margin",
-                "value": _fmt_ratio(d.gross_margin),
+                "value": _fmt_percent(d.gross_margin),
                 "raw": d.gross_margin,
                 "is_missing": d.gross_margin is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "ebit_margin": {
                 "label": "EBIT Margin",
-                "value": _fmt_ratio(d.ebit_margin),
+                "value": _fmt_percent(d.ebit_margin),
                 "raw": d.ebit_margin,
                 "is_missing": d.ebit_margin is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "ebitda_margin": {
                 "label": "EBITDA Margin",
-                "value": _fmt_ratio(d.ebitda_margin),
+                "value": _fmt_percent(d.ebitda_margin),
                 "raw": d.ebitda_margin,
                 "is_missing": d.ebitda_margin is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "net_margin": {
                 "label": "Net Margin",
-                "value": _fmt_ratio(d.net_margin),
+                "value": _fmt_percent(d.net_margin),
                 "raw": d.net_margin,
                 "is_missing": d.net_margin is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "free_cash_flow": {
                 "label": "Free Cash Flow",
@@ -241,17 +258,17 @@ def _ttm_metrics_section(
             },
             "fcf_margin": {
                 "label": "FCF Margin",
-                "value": _fmt_ratio(d.fcf_margin),
+                "value": _fmt_percent(d.fcf_margin),
                 "raw": d.fcf_margin,
                 "is_missing": d.fcf_margin is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "return_on_equity": {
                 "label": "Return on Equity",
-                "value": _fmt_ratio(d.return_on_equity),
+                "value": _fmt_percent(d.return_on_equity),
                 "raw": d.return_on_equity,
                 "is_missing": d.return_on_equity is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
             },
             "net_debt": {
                 "label": "Net Debt",
@@ -262,19 +279,19 @@ def _ttm_metrics_section(
             },
             "debt_to_equity": {
                 "label": "Debt / Equity",
-                "value": _fmt_ratio(d.debt_to_equity),
+                "value": _fmt_ratio_raw(d.debt_to_equity),
                 "raw": d.debt_to_equity,
                 "is_missing": d.debt_to_equity is None,
-                "unit_rule": "raw source float; unit semantics not proven (may be fraction or %)",
+                "unit_rule": "dimensionless ratio (e.g. -1.8×); not a percentage fraction",
             },
         },
     }
 
 
 def _lineage_section(bundle: EquityFundamentalsBundle) -> dict[str, Any]:
-    """Compact source/lineage block for the E2 teaser."""
-    ttm = bundle.latest_ttm
-    if ttm is None:
+    """Compact source/lineage block — follows same TTM → quarterly → annual precedence."""
+    snap = _best_snapshot(bundle.latest_ttm, bundle.latest_quarterly, bundle.latest_annual)
+    if snap is None:
         return {
             "available": False,
             "provider": None,
@@ -287,13 +304,13 @@ def _lineage_section(bundle: EquityFundamentalsBundle) -> dict[str, Any]:
         }
     return {
         "available": True,
-        "provider": ttm.provider,
-        "source_contract": ttm.source_contract,
-        "period_end": ttm.period_end,
-        "filing_date": ttm.filing_date,
-        "fetched_at": ttm.fetched_at,
-        "normalized_at": ttm.normalized_at,
-        "payload_hash": ttm.payload_hash,
+        "provider": snap.provider,
+        "source_contract": snap.source_contract,
+        "period_end": snap.period_end,
+        "filing_date": snap.filing_date,
+        "fetched_at": snap.fetched_at,
+        "normalized_at": snap.normalized_at,
+        "payload_hash": snap.payload_hash,
     }
 
 
@@ -371,3 +388,49 @@ def build_equity_view(
         "lineage": _lineage_section(bundle),
         "identity_note": None,
     }
+
+
+def build_equity_board_row(
+    result: EquityEnrichmentResult,
+    asset_uid: str,
+    fallback_name: str = "",
+) -> dict[str, Any]:
+    """Build a compact board row dict for the Featured Equities board.
+
+    Always returns a dict.  The 'state', 'symbol', 'company_name',
+    'asset_uid' and 'details_url' keys are always present.
+    Financial metrics (revenues, revenue_growth, gross_margin, fcf_margin,
+    period_end) are shown only when AVAILABLE or PARTIAL.
+    """
+    state = result.state
+    bundle = result.bundle
+    symbol = (bundle.robinhood_token_symbol if bundle else asset_uid) or asset_uid
+
+    # Company name: best available
+    company_name: str = fallback_name or symbol
+    if bundle is not None:
+        company_name = _company_name(bundle, fallback_name)
+
+    base = {
+        "state": state.value,
+        "symbol": symbol,
+        "company_name": company_name,
+        "asset_uid": asset_uid,
+        "details_url": f"/radar?asset_uid={asset_uid}#equity-details",
+    }
+
+    if state not in (EnrichmentState.AVAILABLE, EnrichmentState.PARTIAL):
+        return base
+
+    assert bundle is not None
+    ttm = bundle.latest_ttm
+    d = ttm.derived if ttm is not None else None
+
+    base.update({
+        "revenues": _fmt_currency(d.revenues) if d else "—",
+        "revenue_growth": _fmt_percent(d.revenue_growth) if d else "—",
+        "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
+        "fcf_margin": _fmt_percent(d.fcf_margin) if d else "—",
+        "period_end": (ttm.period_end or "—") if ttm else "—",
+    })
+    return base

@@ -1,6 +1,8 @@
 """High-level equity fundamentals service for E1.
 
-Entry point: get_equity_fundamentals(robinhood_token_symbol)
+Entry points:
+  get_equity_fundamentals(robinhood_token_symbol)
+  get_equity_fundamentals_many(robinhood_token_symbols)
 
 Deterministic against a fixed DB snapshot.
 No Robinhood API calls.  No market prices.  No network I/O of any kind.
@@ -8,7 +10,7 @@ No Robinhood API calls.  No market prices.  No network I/O of any kind.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence, Tuple
 
 from .config import (
     EquityDBModeError,  # noqa: F401 — re-exported for callers
@@ -176,4 +178,102 @@ def get_equity_fundamentals(
     except EquityDBReadError:
         return _unavailable_bundle(
             robinhood_token_symbol, AvailabilityState.SOURCE_UNAVAILABLE
+        )
+
+
+def _build_one_bundle(
+    session,
+    symbol: str,
+    dividends_limit: int,
+    splits_limit: int,
+    lineage_limit: int,
+) -> EquityFundamentalsBundle:
+    """Build one bundle within an already-open read session."""
+    asset = session.get_asset(symbol)
+    if asset is None:
+        return _unavailable_bundle(symbol, AvailabilityState.NOT_FOUND)
+
+    canonical_symbol = asset.robinhood_token_symbol
+    ticker = asset.underlying_ticker
+    profile = session.get_latest_profile(ticker)
+    ttm = session.get_latest_snapshot(ticker, "ttm")
+    quarterly = session.get_latest_snapshot(ticker, "quarterly")
+    annual = session.get_latest_snapshot(ticker, "annual")
+    dividends = session.get_dividends(ticker, limit=dividends_limit)
+    splits = session.get_splits(ticker, limit=splits_limit)
+
+    best_hash: Optional[str] = None
+    for snap in (ttm, quarterly, annual):
+        if snap is not None and snap.payload_hash:
+            best_hash = snap.payload_hash
+            break
+    lineage = session.get_lineage(
+        ticker, payload_hash=best_hash, limit=lineage_limit
+    )
+    return EquityFundamentalsBundle(
+        robinhood_token_symbol=canonical_symbol,
+        asset=asset,
+        company_profile=profile,
+        latest_ttm=ttm,
+        latest_quarterly=quarterly,
+        latest_annual=annual,
+        recent_dividends=tuple(dividends),
+        recent_splits=tuple(splits),
+        source_lineage_summary=tuple(lineage),
+        availability=_compute_availability(asset, profile, ttm, quarterly, annual),
+        freshness=_make_freshness(asset, profile, ttm, quarterly, annual),
+    )
+
+
+def get_equity_fundamentals_many(
+    robinhood_token_symbols: Sequence[str],
+    *,
+    db_path: Optional[Path] = None,
+    db_mode: Optional[str] = None,
+    dividends_limit: int = 20,
+    splits_limit: int = 10,
+    lineage_limit: int = 10,
+) -> Tuple[EquityFundamentalsBundle, ...]:
+    """Resolve multiple Robinhood tokens to equity fundamentals bundles.
+
+    One DB configuration resolution, one repository, one read_session,
+    one BEGIN DEFERRED snapshot — all requested symbols read from that
+    same SQLite snapshot.
+
+    Preserves the input ordering.  Duplicates receive independent results.
+    Unknown symbol → NOT_FOUND bundle in its position.
+
+    Raises EquityDBModeError for bad mode (propagates to caller).
+    Returns SOURCE_UNAVAILABLE bundles for all positions on DB errors.
+    """
+    if not robinhood_token_symbols:
+        return ()
+
+    if db_mode is not None:
+        db_mode = validate_db_mode(db_mode)
+
+    try:
+        path = db_path if db_path is not None else resolve_db_path()
+    except (EquityDBNotConfiguredError, EquityDBNotFoundError):
+        return tuple(
+            _unavailable_bundle(sym, AvailabilityState.SOURCE_UNAVAILABLE)
+            for sym in robinhood_token_symbols
+        )
+
+    mode = db_mode if db_mode is not None else resolve_db_mode()
+
+    try:
+        repo = EquityFundamentalsRepository(path, mode)
+        with repo.read_session() as session:
+            return tuple(
+                _build_one_bundle(
+                    session, sym,
+                    dividends_limit, splits_limit, lineage_limit,
+                )
+                for sym in robinhood_token_symbols
+            )
+    except EquityDBReadError:
+        return tuple(
+            _unavailable_bundle(sym, AvailabilityState.SOURCE_UNAVAILABLE)
+            for sym in robinhood_token_symbols
         )
