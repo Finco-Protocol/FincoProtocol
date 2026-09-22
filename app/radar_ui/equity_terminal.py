@@ -474,8 +474,9 @@ def build_terminal_view(
             "state": "FUNDAMENTALS_NOT_FOUND",
             "available": False,
             "economic_asset_uid": economic_asset_uid,
-            "symbol": selected_symbol or bundle.robinhood_token_symbol,
-            "message": "Asset exists in Robinhood universe but fundamental data is unavailable.",
+            "symbol": selected_symbol,
+            "company_name": selected_name or selected_symbol,
+            "message": "Asset exists in Robinhood universe, but no matching fundamentals record is available.",
             "nav": nav,
         }
 
@@ -484,7 +485,7 @@ def build_terminal_view(
 
     # Selected Robinhood identity — always use selected params (Robinhood-selected), never bundle
     selected_token = {
-        "symbol": selected_symbol or bundle.robinhood_token_symbol,
+        "symbol": selected_symbol,
         "economic_asset_uid": economic_asset_uid,
         "chain_id": selected_chain_id or "—",
         "contract_address": selected_contract_address or "—",
@@ -518,7 +519,8 @@ def build_terminal_view(
     # No DB-derived company/fundamental/corporate-action data may be exposed.
     # The selected Robinhood universe identity remains authoritative.
     if identity_state == "IDENTITY_MISMATCH":
-        _mismatch_symbol = selected_symbol or bundle.robinhood_token_symbol
+        # Fail closed: never read bundle identity on mismatch; use only Robinhood-selected params.
+        _mismatch_symbol = selected_symbol if selected_symbol else "—"
         _mismatch_name = selected_name or fallback_name or _mismatch_symbol
         return {
             "state": availability.value,

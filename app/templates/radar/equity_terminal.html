@@ -18,13 +18,18 @@
 
 <div class="page-container" style="max-width:1200px;margin:0 auto;padding:20px 16px;">
 
-{% if tv and tv.state in ("ASSET_UNIVERSE_UNAVAILABLE", "NOT_FOUND", "SOURCE_UNAVAILABLE", "FUNDAMENTALS_CONFIG_INVALID") %}
+{% if tv and tv.state in ("ASSET_UNIVERSE_UNAVAILABLE", "ASSET_NOT_FOUND_IN_UNIVERSE", "FUNDAMENTALS_NOT_FOUND", "SOURCE_UNAVAILABLE", "FUNDAMENTALS_CONFIG_INVALID") %}
 {# ── error / unavailable ────────────────────────────────────────────────── #}
 <section class="panel panel-error" data-panel="equity-terminal-error">
   <h1 class="page-title" style="font-size:20px;margin:0 0 12px;">Company Terminal</h1>
   <p class="state-unavailable">{{ tv.state }}</p>
-  {% if tv.state == "NOT_FOUND" %}
-  <p class="muted small">Asset UID <code>{{ tv.economic_asset_uid }}</code> was not found in the Robinhood universe.</p>
+  {% if tv.state == "ASSET_NOT_FOUND_IN_UNIVERSE" %}
+  <p class="muted small">Asset UID was not found in the current Robinhood universe.</p>
+  {% if tv.economic_asset_uid %}<p class="muted small mono">UID: <code>{{ tv.economic_asset_uid }}</code></p>{% endif %}
+  {% elif tv.state == "FUNDAMENTALS_NOT_FOUND" %}
+  <p class="muted small">Asset exists in the Robinhood universe, but no matching fundamentals record is available.</p>
+  {% if tv.symbol %}<p class="muted small">Symbol: <strong>{{ tv.symbol }}</strong></p>{% endif %}
+  {% if tv.economic_asset_uid %}<p class="muted small mono">UID: <code>{{ tv.economic_asset_uid }}</code></p>{% endif %}
   {% elif tv.state == "SOURCE_UNAVAILABLE" %}
   <p class="muted small">Equity fundamentals database is not configured or is currently unavailable.</p>
   {% elif tv.state == "FUNDAMENTALS_CONFIG_INVALID" %}
@@ -77,7 +82,7 @@
 {% endif %}
 
 {# ── tab bar ──────────────────────────────────────────────────────────────── #}
-<div role="tablist" style="display:flex;gap:0;border-bottom:1px solid var(--fo-border,#2d3748);margin-bottom:20px;">
+<div role="tablist" style="display:flex;gap:0;border-bottom:1px solid var(--fo-border,#2d3748);margin-bottom:20px;overflow-x:auto;">
   <a href="?tab=overview&timeframe={{ tv.nav.timeframe }}&statement={{ tv.nav.statement }}"
      class="tab-btn{% if tv.nav.tab == 'overview' %} tab-active{% endif %}" role="tab"
      aria-selected="{{ 'true' if tv.nav.tab == 'overview' else 'false' }}"

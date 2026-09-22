@@ -1,4 +1,4 @@
-"""E3 Company Terminal tests — T01–T92, D01–D10, F08-ADV, F10-A, F10-B, HTML-ESC, 3x3.
+"""E3 Company Terminal tests — T01–T92, D01–D13, E01–E17.
 
 Covers:
   T01  lineage_id is Optional[int] in SourceLineage model
@@ -106,6 +106,16 @@ Covers:
   D11  F10-B: build_terminal_view NOT_FOUND → FUNDAMENTALS_NOT_FOUND with message
   D12  HTML escaping: adversarial company name with <script> is escaped in page
   D13  3×3 nav: all (annual/quarterly/ttm) × (income/balance/cashflow) tab combinations
+  E01  F12: IDENTITY_MISMATCH with empty selected_symbol → symbol="—", DB sentinel absent
+  E02  F12: FUNDAMENTALS_NOT_FOUND with empty selected_symbol → symbol="", no DB fallback
+  E03  F13: rendered ASSET_NOT_FOUND_IN_UNIVERSE correct message
+  E04  F13: rendered FUNDAMENTALS_NOT_FOUND correct message + symbol + UID
+  E05  F14: selected token_name <script> escaped in rendered HTML
+  E06  F14: profile/company name <script> escaped
+  E07  F14: provider field <script> escaped
+  E08  F14: source_contract field <script> escaped
+  E09  F14: statement string value <script> escaped
+  E10–E18: F15 authoritative 3×3 sentinel matrix (9 parametrized cases)
 """
 from __future__ import annotations
 
@@ -2639,5 +2649,456 @@ def test_d13_3x3_nav_combinations(timeframe, statement):
             assert timeframe in resp.text, (
                 f"timeframe={timeframe!r} not found in rendered page"
             )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction E: E01–E18
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── E01: F12 IDENTITY_MISMATCH empty selected_symbol → "—", DB sentinel absent ─
+
+def test_e01_f12_identity_mismatch_empty_selected_symbol_no_db_fallback():
+    """When selected_symbol is empty, IDENTITY_MISMATCH must NOT expose DB token symbol."""
+    _DB_SENTINEL = "DB_SENTINEL_XQZZ_E01"
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        bundle_mock = MagicMock(wraps=bundle)
+        bundle_mock.robinhood_token_symbol = _DB_SENTINEL
+        bundle_mock.availability = bundle.availability
+
+        view = build_terminal_view(
+            bundle_mock,
+            economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc",
+            identity_state="IDENTITY_MISMATCH",
+            selected_symbol="",   # empty — the adversarial case
+            selected_name="",
+        )
+        assert _DB_SENTINEL not in str(view), (
+            f"DB sentinel {_DB_SENTINEL!r} must not appear when selected_symbol is empty"
+        )
+        assert view["symbol"] == "—", (
+            f"Empty selected_symbol on IDENTITY_MISMATCH must yield '—', got {view['symbol']!r}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── E02: F12 FUNDAMENTALS_NOT_FOUND empty selected_symbol → symbol="", no DB fallback
+
+def test_e02_f12_fundamentals_not_found_empty_selected_no_db_fallback():
+    """FUNDAMENTALS_NOT_FOUND must not expose bundle.robinhood_token_symbol."""
+    from finco_radar.equity.models import AvailabilityState
+
+    _DB_SENTINEL = "DB_SENTINEL_XQZZ_E02"
+    bundle = MagicMock()
+    bundle.availability = AvailabilityState.NOT_FOUND
+    bundle.robinhood_token_symbol = _DB_SENTINEL
+
+    view = build_terminal_view(
+        bundle,
+        economic_asset_uid="rh-equity-test-001",
+        selected_symbol="",  # empty — should NOT fall back to DB
+    )
+    assert view["state"] == "FUNDAMENTALS_NOT_FOUND"
+    assert _DB_SENTINEL not in str(view), (
+        f"DB sentinel {_DB_SENTINEL!r} must not appear in FUNDAMENTALS_NOT_FOUND view"
+    )
+    assert view.get("symbol", "") == "", (
+        f"symbol must be empty string (not DB sentinel), got {view.get('symbol')!r}"
+    )
+
+
+# ── E03: F13 rendered ASSET_NOT_FOUND_IN_UNIVERSE message ─────────────────────
+
+def test_e03_f13_rendered_asset_not_found_in_universe():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)):
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        resp = client.get("/radar/equity/rh-equity-totally-unknown-xq99zz")
+        assert resp.status_code == 404
+        assert "ASSET_NOT_FOUND_IN_UNIVERSE" in resp.text, (
+            "ASSET_NOT_FOUND_IN_UNIVERSE state must appear in rendered error page"
+        )
+        assert "not found in the current Robinhood universe" in resp.text, (
+            "Exact ASSET_NOT_FOUND_IN_UNIVERSE message must appear in rendered page"
+        )
+
+
+# ── E04: F13 rendered FUNDAMENTALS_NOT_FOUND message + symbol + UID ───────────
+
+def test_e04_f13_rendered_fundamentals_not_found():
+    import main_web
+    from app.radar_ui import router as radar_router
+    from finco_radar.equity.models import AvailabilityState
+
+    bundle_mock = MagicMock()
+    bundle_mock.availability = AvailabilityState.NOT_FOUND
+    bundle_mock.robinhood_token_symbol = "DB_SENTINEL_XQZZ_E04"
+
+    universe = [_AAPL_ASSET]
+    with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+         patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle_mock):
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        resp = client.get("/radar/equity/rh-equity-aapl-001")
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+        assert "FUNDAMENTALS_NOT_FOUND" in resp.text, (
+            "FUNDAMENTALS_NOT_FOUND state must appear in rendered page"
+        )
+        assert "exists in the Robinhood universe" in resp.text, (
+            "FUNDAMENTALS_NOT_FOUND message must appear in rendered page"
+        )
+        assert "rh-equity-aapl-001" in resp.text, (
+            "UID must be visible in FUNDAMENTALS_NOT_FOUND shell"
+        )
+        assert "AAPL" in resp.text, (
+            "Selected symbol must be visible in FUNDAMENTALS_NOT_FOUND shell"
+        )
+        assert "DB_SENTINEL_XQZZ_E04" not in resp.text, (
+            "DB sentinel must not appear in FUNDAMENTALS_NOT_FOUND page"
+        )
+
+
+# ── E05: F14 selected token_name <script> escaped ─────────────────────────────
+
+def test_e05_f14_token_name_script_escaped():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _PAYLOAD = '<script>alert("token_name_e05")</script>'
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        evil_asset = _SA(
+            economic_asset_uid="rh-equity-aapl-001",
+            token_symbol="AAPL",
+            token_name=_PAYLOAD,
+            chain_id=4663,
+            contract_address="0xabc123",
+            token_decimals=0,
+        )
+        # Need a second asset so the asset switcher renders (universe|length > 1),
+        # which is where token_name is rendered: {{ a.token_name }}
+        benign_asset = _SA(
+            economic_asset_uid="rh-equity-msft-002",
+            token_symbol="MSFT",
+            token_name="Microsoft Corporation",
+            chain_id=4663,
+            contract_address="0xdef456",
+            token_decimals=0,
+        )
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([evil_asset, benign_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert '<script>alert("token_name_e05")' not in resp.text, (
+                "Raw <script> from token_name must be HTML-escaped"
+            )
+            assert "token_name_e05" in resp.text or "alert" in resp.text, (
+                "Escaped content should still appear in page"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── E06: F14 profile/company name <script> escaped ────────────────────────────
+
+def test_e06_f14_profile_company_name_script_escaped():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _PAYLOAD = '<script>alert("company_name_e06")</script>'
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_company_profiles (ticker,profile_json,provider,fetched_at) "
+        "VALUES (?,?,?,?)",
+        ("AAPL", json.dumps({"name": _PAYLOAD}), "SYNTH", "2024-10-01"),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([_AAPL_ASSET], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert '<script>alert("company_name_e06")' not in resp.text, (
+                "Raw <script> from profile company name must be HTML-escaped"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── E07: F14 provider field <script> escaped ──────────────────────────────────
+
+def test_e07_f14_provider_script_escaped():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _PAYLOAD = '<script>alert("provider_e07")</script>'
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,income_statement_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("AAPL", "annual", "2023-09-30", _PAYLOAD, _AAPL_DERIVED,
+         json.dumps({"revenues": 100.0}), "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([_AAPL_ASSET], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                "/radar/equity/rh-equity-aapl-001?tab=financials&timeframe=annual&statement=income"
+            )
+            assert resp.status_code == 200
+            assert '<script>alert("provider_e07")' not in resp.text, (
+                "Raw <script> from provider field must be HTML-escaped"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── E08: F14 source_contract field <script> escaped ───────────────────────────
+
+def test_e08_f14_source_contract_script_escaped():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _PAYLOAD = '<script>alert("source_contract_e08")</script>'
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,source_contract,derived_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("AAPL", "annual", "2023-09-30", "SYNTH", _PAYLOAD, _AAPL_DERIVED, "2024-11-05"),
+    )
+    conn.execute(
+        "INSERT INTO equity_source_lineage "
+        "(ticker,stage,provider,source_contract,payload_hash,fetched_at) VALUES (?,?,?,?,?,?)",
+        ("AAPL", "fetch", "SYNTH", _PAYLOAD, "abc123", "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([_AAPL_ASSET], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=evidence")
+            assert resp.status_code == 200
+            assert '<script>alert("source_contract_e08")' not in resp.text, (
+                "Raw <script> from source_contract must be HTML-escaped"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── E09: F14 statement string value <script> escaped ──────────────────────────
+
+def test_e09_f14_statement_string_value_script_escaped():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _PAYLOAD = '<script>alert("stmt_value_e09")</script>'
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,income_statement_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("AAPL", "annual", "2023-09-30", "SYNTH", _AAPL_DERIVED,
+         json.dumps({"xss_field_e09": _PAYLOAD}), "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([_AAPL_ASSET], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                "/radar/equity/rh-equity-aapl-001?tab=financials&timeframe=annual&statement=income"
+            )
+            assert resp.status_code == 200
+            assert '<script>alert("stmt_value_e09")' not in resp.text, (
+                "Raw <script> from statement string value must be HTML-escaped"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── E10–E18: F15 authoritative 3×3 sentinel matrix ────────────────────────────
+
+def _build_sentinel_db() -> tuple:
+    """Build DB with distinct sentinel field keys per (timeframe, statement) combination."""
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("AAPL", "AAPL", "AAPL Corp", "0xabc123", "ethereum", "USD"),
+    )
+
+    _SENTINELS = {
+        ("annual",    "income"):   "ANNUAL_INCOME_SENTINEL_XQZZ",
+        ("annual",    "balance"):  "ANNUAL_BALANCE_SENTINEL_XQZZ",
+        ("annual",    "cashflow"): "ANNUAL_CASHFLOW_SENTINEL_XQZZ",
+        ("quarterly", "income"):   "QUARTERLY_INCOME_SENTINEL_XQZZ",
+        ("quarterly", "balance"):  "QUARTERLY_BALANCE_SENTINEL_XQZZ",
+        ("quarterly", "cashflow"): "QUARTERLY_CASHFLOW_SENTINEL_XQZZ",
+        ("ttm",       "income"):   "TTM_INCOME_SENTINEL_XQZZ",
+        ("ttm",       "balance"):  "TTM_BALANCE_SENTINEL_XQZZ",
+        ("ttm",       "cashflow"): "TTM_CASHFLOW_SENTINEL_XQZZ",
+    }
+
+    def _stmt_json(tf, stmt):
+        key = _SENTINELS[(tf, stmt)]
+        return json.dumps({key: 999.0, "explicit_zero_field": 0.0,
+                           "negative_field": -1234.5, "missing_field": None})
+
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,"
+        "income_statement_json,balance_sheet_json,cash_flow_statement_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("AAPL", "annual", "2023-09-30", "SYNTH", _AAPL_DERIVED,
+         _stmt_json("annual", "income"), _stmt_json("annual", "balance"),
+         _stmt_json("annual", "cashflow"), "2024-11-05"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,fiscal_quarter,period_end,provider,derived_json,"
+        "income_statement_json,balance_sheet_json,cash_flow_statement_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ("AAPL", "quarterly", "Q1", "2023-12-31", "SYNTH", _AAPL_DERIVED,
+         _stmt_json("quarterly", "income"), _stmt_json("quarterly", "balance"),
+         _stmt_json("quarterly", "cashflow"), "2024-11-05"),
+    )
+    conn.execute(
+        "INSERT INTO equity_financial_snapshots "
+        "(ticker,timeframe,period_end,provider,derived_json,"
+        "income_statement_json,balance_sheet_json,cash_flow_statement_json,fetched_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("AAPL", "ttm", "2024-09-28", "SYNTH", _AAPL_DERIVED,
+         _stmt_json("ttm", "income"), _stmt_json("ttm", "balance"),
+         _stmt_json("ttm", "cashflow"), "2024-11-05"),
+    )
+    conn.commit()
+    conn.close()
+    return tmp, _SENTINELS
+
+
+_STMT_KEY_MAP = {
+    "income":   "income_statement",
+    "balance":  "balance_sheet",
+    "cashflow": "cash_flow_statement",
+}
+
+
+@pytest.mark.parametrize("timeframe,statement", [
+    ("annual",    "income"),
+    ("annual",    "balance"),
+    ("annual",    "cashflow"),
+    ("quarterly", "income"),
+    ("quarterly", "balance"),
+    ("quarterly", "cashflow"),
+    ("ttm",       "income"),
+    ("ttm",       "balance"),
+    ("ttm",       "cashflow"),
+])
+def test_e10_f15_authoritative_3x3_sentinel(timeframe, statement):
+    """F15: authoritative 3×3 sentinel matrix — each combination proven by distinct sentinel."""
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    db, _SENTINELS = _build_sentinel_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([_AAPL_ASSET], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                f"/radar/equity/rh-equity-aapl-001"
+                f"?tab=financials&timeframe={timeframe}&statement={statement}"
+            )
+            assert resp.status_code == 200, (
+                f"3×3 [{timeframe}×{statement}] expected 200, got {resp.status_code}"
+            )
+
+            nav = {"tab": "financials", "timeframe": timeframe, "statement": statement}
+            view = build_terminal_view(
+                bundle, economic_asset_uid="rh-equity-aapl-001",
+                fallback_name="AAPL", nav=nav,
+                selected_symbol="AAPL", selected_name="AAPL Corp",
+            )
+
+            assert view["nav"]["timeframe"] == timeframe
+            assert view["nav"]["statement"] == statement
+            expected_stmt_key = _STMT_KEY_MAP[statement]
+            assert view["statement_matrix"]["stmt_key"] == expected_stmt_key, (
+                f"stmt_key: expected {expected_stmt_key!r}, got {view['statement_matrix']['stmt_key']!r}"
+            )
+
+            expected_sentinel = _SENTINELS[(timeframe, statement)]
+            assert expected_sentinel in resp.text, (
+                f"Expected sentinel {expected_sentinel!r} missing from [{timeframe}×{statement}] page"
+            )
+
+            for (tf2, st2), sentinel in _SENTINELS.items():
+                if (tf2, st2) == (timeframe, statement):
+                    continue
+                assert sentinel not in resp.text, (
+                    f"Wrong sentinel {sentinel!r} for [{tf2}×{st2}] found in [{timeframe}×{statement}] page"
+                )
+
+            rows = view["statement_matrix"]["rows"]
+            row_map = {r["field_key"]: r["cells"][0] for r in rows if r["cells"]}
+            if "explicit_zero_field" in row_map:
+                assert row_map["explicit_zero_field"] != "—", "Explicit 0 must not render as '—'"
+                assert "0" in row_map["explicit_zero_field"]
+            if "negative_field" in row_map:
+                assert "-" in row_map["negative_field"], "Negative value must remain negative"
+            if "missing_field" in row_map:
+                assert row_map["missing_field"] == "—", "None must render as '—'"
     finally:
         db.unlink(missing_ok=True)
