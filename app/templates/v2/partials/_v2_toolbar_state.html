@@ -11,7 +11,7 @@
 {% elif not has_runtime %}
   <span class="v2-toolbar-state v2-state-notrun" data-testid="toolbar-runtime-state">Not run</span>
   <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Never run</span>
-{% elif ws_dirty %}
+{% elif runtime_is_stale|default(ws_dirty) %}
   <span class="v2-toolbar-state v2-state-stale" data-testid="toolbar-runtime-state">Stale</span>
   {% if last_runtime_at %}
     <span class="v2-toolbar-lastrun" data-testid="toolbar-lastrun">Last run: {{ last_runtime_at }}</span>

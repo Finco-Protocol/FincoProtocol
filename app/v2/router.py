@@ -146,6 +146,15 @@ def _build_pis_with_composite_identity(ws, project_record, workspace_owner_id: s
     return pis.with_composite_hash(identity.composite_hash)
 
 
+def _runtime_freshness(ws, pis):
+    """Resolve presentation freshness from the canonical composite identity."""
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    return resolve_runtime_freshness(
+        ws, current_composite_hash=getattr(pis, "content_hash", None)
+    )
+
+
 def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -> HTMLResponse:
     import json as _json
     resp.headers["HX-Trigger"] = _json.dumps({
@@ -321,6 +330,7 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
 
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     """Shared context dict for both sheet partials."""
+    freshness = _runtime_freshness(ws, pis)
     return {
         "request": request,
         "project_code": project,
@@ -329,6 +339,8 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
         "template_source": pis.template_source,
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
+        "runtime_is_stale": freshness.is_stale,
+        "runtime_state": freshness.state.value,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "field_error": field_error,
@@ -340,6 +352,12 @@ def _build_run_controls_oob(ctx: dict) -> str:
     """Return OOB HTML to refresh #v2-run-controls with the current composite hash."""
     run_controls_html = _templates.get_template("partials/_v2_run_controls.html").render(ctx)
     return '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+
+
+def _build_export_controls_oob(ctx: dict) -> str:
+    """Return OOB HTML to refresh #v2-export-controls after a run."""
+    export_html = _templates.get_template("partials/_v2_export_controls.html").render(ctx)
+    return '<div id="v2-export-controls" hx-swap-oob="true">' + export_html + "</div>"
 
 
 def _build_toolbar_state_oob(ctx: dict) -> str:
@@ -685,7 +703,8 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
 
     if projection is None:
         rr = WorkbookService.get_runtime_result(ws)
-        projection = build_runtime_projection_bundle(rr, ws.dirty)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
         rs = thaw_runtime_payload(rr.runtime_summary) if rr else None
     else:
         # Re-use runtime_summary already thawed by fs projection (same dict);
@@ -746,7 +765,8 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     if projection is None:
         rr = WorkbookService.get_runtime_result(ws)
         from app.workbook.runtime_projection import build_runtime_projection_bundle
-        projection = build_runtime_projection_bundle(rr, ws.dirty)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
     d = projection.debt
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
@@ -810,7 +830,8 @@ def _build_tax_ctx(pis, ws, projection=None) -> dict:
     from app.workbook.service import WorkbookService
     if projection is None:
         rr = WorkbookService.get_runtime_result(ws)
-        projection = build_runtime_projection_bundle(rr, ws.dirty)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
     t = projection.tax
     raw_fields = _build_sheet_fields("tax", pis)
 
@@ -896,7 +917,8 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     from app.workbook.service import WorkbookService
     if projection is None:
         rr = WorkbookService.get_runtime_result(ws)
-        projection = build_runtime_projection_bundle(rr, ws.dirty)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
     f = projection.fs
     # Map the FS UNAVAILABLE state to the legacy template key for backward compat
     fs_state = f.state.value if f.state.value != "UNAVAILABLE" else "FS_UNAVAILABLE"
@@ -923,14 +945,15 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     }
 
 
-def _build_returns_ctx(ws, rr=None) -> dict:
+def _build_returns_ctx(ws, rr=None, *, runtime_is_stale=None) -> dict:
     """Build Returns context from the persisted Last Run only."""
     from app.v2.returns_projection import build_returns_projection
     from app.workbook.service import WorkbookService
 
     if rr is None:
         rr = WorkbookService.get_runtime_result(ws)
-    return {"returns": build_returns_projection(rr, ws)}
+    return {"returns": build_returns_projection(
+        rr, ws, runtime_is_stale=runtime_is_stale)}
 
 
 def _build_all_oob(ws, *, request=None, project_record=None, project="",
@@ -1076,6 +1099,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         pass  # migration failure must never block page render
 
     pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    runtime_freshness = _runtime_freshness(ws, pis)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
     project_editable = not is_protected_reference(project_record)
@@ -1115,6 +1139,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "user": user,
         "project_editable": project_editable,
         "ws_dirty": ws.dirty,
+        "runtime_is_stale": runtime_freshness.is_stale,
+        "runtime_state": runtime_freshness.state.value,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "flash_error": flash_error,
         "field_error": "",
@@ -1126,16 +1152,22 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     _rr = WorkbookService.get_runtime_result(ws)
-    _projection = build_runtime_projection_bundle(_rr, ws.dirty)
+    _projection = build_runtime_projection_bundle(
+        _rr, runtime_freshness.is_stale)
     context.update(_build_revenue_ctx(pis, ws, projection=_projection))
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
-    context.update(_build_returns_ctx(ws, rr=_rr))
+    context.update(_build_returns_ctx(
+        ws, rr=_rr, runtime_is_stale=runtime_freshness.is_stale))
     from app.v2.overview_projection import build_overview_projection
-    context["overview"] = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=ws.active_scenario_name or "")
+    context["overview"] = build_overview_projection(
+        _rr, runtime_freshness.is_stale, pis,
+        active_scenario_name=ws.active_scenario_name or "")
 
-    # UI-3B: inject scenario presentations for the Scenarios tab
+    # UI-3B: inject scenario presentations for the Scenarios tab.
+    # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
+    # apply the same canonical freshness decision to scenario cards.
     try:
         from app.persistence.scenarios_repository import list_scenarios
         from app.v2.scenario_presentation import build_scenario_presentations
@@ -1145,7 +1177,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             include_archived=False,
         )
         _active_sc_id = ws.active_scenario_id if ws else None
-        context["scenarios"] = build_scenario_presentations(_sc_records, _active_sc_id)
+        context["scenarios"] = build_scenario_presentations(
+            _sc_records, _active_sc_id, global_is_stale=runtime_freshness.is_stale)
         context["active_scenario_id"] = _active_sc_id
     except Exception:
         context["scenarios"] = []
@@ -1311,7 +1344,7 @@ async def v2_inputs_slice1_update(
             request=request,
             project_record=project_record,
             project=project,
-            workspace_owner=_workspace_owner,
+            workspace_owner=workspace_owner,
         )
         final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
         return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
@@ -1973,6 +2006,35 @@ async def v2_workbook_run(
             )
             # Non-fatal: workspace run committed; Compare will show NOT_RUN until
             # user re-runs this scenario.
+    else:
+        # No explicit scenario selected — save to base case so Compare can show
+        # this run's results when compared against an explicit scenario run.
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            from app.persistence.scenarios_repository import get_base_case_scenario as _get_base
+            _base_sc = _get_base(user_id=workspace_owner, project_id=project_record.project_id)
+            if _base_sc:
+                _base_run_summary = {
+                    "kpis": dict(result["kpis"]),
+                    "snapshot_id": runtime_snapshot_id,
+                    "ran_at": ran_at.isoformat(),
+                    "scenario_id": _base_sc.scenario_id,
+                    "scenario_name": _base_sc.scenario_name or "Base Case",
+                    "scenario_snapshot_hash": None,
+                    "scenario_overrides_at_run": {},
+                }
+                update_scenario_last_run_summary(
+                    user_id=workspace_owner,
+                    scenario_id=_base_sc.scenario_id,
+                    last_run_summary=_base_run_summary,
+                    replay_metadata={"v2_run": True, "project": project},
+                )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist base case last_run_summary "
+                "project=%s", project
+            )
 
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
@@ -2128,9 +2190,25 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
     """Render the scenario list partial HTML (used by multiple endpoints)."""
     from app.persistence.scenarios_repository import list_scenarios
     from app.v2.scenario_presentation import build_scenario_presentations
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.workbook.workbook_identity import assemble_consistent_for_get
     scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
     active_id = ws.active_scenario_id if ws else None
-    presentations = build_scenario_presentations(scenarios, active_id)
+    # GF-F04/F05: resolve canonical freshness with the REAL composite hash so
+    # that a post-Run CURRENT workspace is not incorrectly forced to STALE.
+    # Fail closed (STALE) only when identity assembly genuinely fails.
+    try:
+        identity = assemble_consistent_for_get(
+            user_id=user_id,
+            project_id=project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        current_hash = identity.composite_hash
+    except Exception:
+        current_hash = None  # fail closed per runtime-authority semantics
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=current_hash)
+    presentations = build_scenario_presentations(
+        scenarios, active_id, global_is_stale=freshness.is_stale)
     ctx = {
         "scenarios": presentations,
         "active_scenario_id": active_id,
@@ -2138,6 +2216,23 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
         "ws": ws,
     }
     return _templates.get_template("partials/sheet_scenarios.html").render(ctx)
+
+
+def _scenario_authority_oob(
+    request, ws, project_record, project: str, workspace_owner: str
+) -> str:
+    """Refresh every runtime-backed surface after a scenario mutation."""
+    from app.v2.post_run_ui import build_post_save_ui_state
+
+    return build_post_save_ui_state(
+        ws_fresh=ws,
+        project_record=project_record,
+        project=project,
+        workspace_owner=workspace_owner,
+        request=request,
+        include_banner_and_controls=True,
+        include_scenario_list=False,
+    )
 
 
 @router.post("/workbook/scenarios/create")
@@ -2214,10 +2309,8 @@ async def v2_scenario_create(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
-        toolbar_ctx = {"active_scenario_name": new_sc.scenario_name, "project_code": project}
-        toolbar_html = _templates.get_template("partials/_v2_toolbar_state.html").render(toolbar_ctx)
-        toolbar_oob = '<div id="v2-toolbar-runtime-state" hx-swap-oob="true">' + toolbar_html + "</div>"
-        return HTMLResponse(content=html + "\n" + toolbar_oob)
+        return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
+            request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -2251,50 +2344,8 @@ async def v2_scenario_select(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
-        # OOB-update the overview sheet to reflect newly active scenario
-        from app.workbook.service import WorkbookService
-        from app.workbook.runtime_projection import build_runtime_projection_bundle
-        from app.v2.overview_projection import build_overview_projection
-        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-        _rr = WorkbookService.get_runtime_result(ws)
-        _active_sc_name = ws.active_scenario_name or "" if ws else ""
-        ov = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=_active_sc_name)
-        ov_ctx = {
-            "overview": ov,
-            "project_code": project,
-            "project_name": project_record.project_name or project,
-            "project_type": project_record.project_type or "",
-            "ws_dirty": ws.dirty if ws else True,
-            "has_runtime": bool(ws.last_runtime_snapshot_id) if ws else False,
-        }
-        ov_html = _templates.get_template("partials/sheet_overview.html").render(ov_ctx)
-        ov_oob = ov_html.replace(
-            '<div id="v2-sheet-overview"',
-            '<div id="v2-sheet-overview" hx-swap-oob="true"',
-            1,
-        )
-        # R6 Correction A: selecting a scenario invalidates the prior runtime
-        # evidence — the toolbar and runtime bars must agree stale/not-current
-        # in the same response (the scenario list and Overview fragments are
-        # already emitted above).
-        from app.v2.post_run_ui import build_toolbar_state_oob, _as_oob
-        from app.v2.runtime_projection_views import build_all_runtime_bar_oob
-
-        _rr_sel = WorkbookService.get_runtime_result(ws)
-        stale_state_oob = (
-            build_toolbar_state_oob(ws)
-            + "\n"
-            + build_all_runtime_bar_oob(
-                build_runtime_projection_bundle(_rr_sel, ws.dirty))
-        )
-        # F01: OOB-replace Returns with post-switch canonical state.
-        # Uses the same RuntimeResult already fetched above (no re-fetch, no engine).
-        returns_ctx = _build_returns_ctx(ws, rr=_rr_sel)
-        returns_ctx["project_code"] = project
-        returns_ctx["project_editable"] = not is_protected_reference(project_record)
-        returns_html = _templates.get_template("partials/sheet_returns.html").render(returns_ctx)
-        returns_oob = _as_oob(returns_html, "v2-sheet-returns")
-        return HTMLResponse(content=html + "\n" + ov_oob + "\n" + stale_state_oob + "\n" + returns_oob)
+        return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
+            request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -2365,9 +2416,10 @@ async def v2_scenario_archive(
     if sc.is_base_case:
         return JSONResponse({"error": "Base Case cannot be archived."}, status_code=409)
 
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    archived_active = bool(ws and ws.active_scenario_id == scenario_id)
     archive_scenario(user_id=workspace_owner, scenario_id=scenario_id)
 
-    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     # If the archived scenario was active, switch to Base Case
     if ws and ws.active_scenario_id == scenario_id:
         base = get_base_case_scenario(user_id=workspace_owner, project_id=project_record.project_id)
@@ -2378,6 +2430,9 @@ async def v2_scenario_archive(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        if archived_active:
+            html += "\n" + _scenario_authority_oob(
+                request, ws, project_record, project, workspace_owner)
         return HTMLResponse(content=html)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
@@ -2454,7 +2509,8 @@ async def v2_scenario_update_overrides(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
-        return HTMLResponse(content=html)
+        return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
+            request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -2541,7 +2597,8 @@ async def v2_scenario_remove_override(
     is_htmx = request.headers.get("HX-Request") == "true"
     if is_htmx:
         html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
-        return HTMLResponse(content=html)
+        return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
+            request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 

@@ -60,7 +60,12 @@
     <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-scenarios"      id="tab-scenarios">Scenarios</button>
-    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"        id="tab-compare">Compare</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"
+            id="tab-compare"
+            hx-get="/v2/workbook/scenarios/compare"
+            hx-target="#v2-sheet-compare"
+            hx-swap="outerHTML"
+            hx-include="#v2-compare-picker-form">Compare</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-sensitivity"    id="tab-sensitivity">Sensitivity</button>
     {# SETUP group #}
     <span class="v2-tab-group-sep" aria-hidden="true"></span>

@@ -97,6 +97,14 @@ def _make_ws():
     )
 
 
+def _mock_authority_oob():
+    """Legacy route-unit tests isolate persistence from composite authority."""
+    return patch(
+        "app.v2.router._scenario_authority_oob",
+        return_value='<div id="v2-run-controls" hx-swap-oob="true"></div>',
+    )
+
+
 def _post_overrides(client, data, htmx=True, follow_redirects=True):
     headers = {"HX-Request": "true"} if htmx else {}
     return client.post(
@@ -158,6 +166,7 @@ def test_update_overrides_success_persists_and_returns_html():
             "app.persistence.scenarios_repository.list_scenarios",
             return_value=[updated_sc],
         ),
+        _mock_authority_oob(),
     ):
         resp = _post_overrides(
             client,
@@ -275,6 +284,7 @@ def test_update_overrides_non_numeric_value_skipped():
             return_value=_make_ws(),
         ),
         patch("app.persistence.scenarios_repository.list_scenarios", return_value=[updated_sc]),
+        _mock_authority_oob(),
     ):
         resp = _post_overrides(
             client,
@@ -362,6 +372,7 @@ def test_update_overrides_htmx_response_contains_scenario_list():
             return_value=_make_ws(),
         ),
         patch("app.persistence.scenarios_repository.list_scenarios", return_value=[updated_sc]),
+        _mock_authority_oob(),
     ):
         resp = _post_overrides(
             client,
@@ -744,6 +755,7 @@ def test_remove_override_success_removes_key_returns_html():
             "app.persistence.scenarios_repository.list_scenarios",
             return_value=[updated_sc],
         ),
+        _mock_authority_oob(),
     ):
         resp = _post_remove_override(
             client,
@@ -861,6 +873,7 @@ def test_remove_override_multiple_valid_fields_remain_accepted():
             "app.persistence.scenarios_repository.list_scenarios",
             return_value=[updated_sc],
         ),
+        _mock_authority_oob(),
     ):
         resp = _post_remove_override(
             client,
