@@ -36,7 +36,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
-from app.radar_ui import composition, view_model
+from app.radar_ui import composition, equity_enrichment, equity_view_model, view_model
 
 router = APIRouter()
 
@@ -111,6 +111,23 @@ def _get_snapshot_uid(snapshot) -> str:
         return ""
 
 
+def _load_equity_view(selected, fallback_name: str = "") -> dict:
+    """Synchronous helper: E1 enrichment + view model for one selected asset.
+
+    Called via run_in_threadpool from async routes; never called on its own
+    from HTMX refresh paths (corporate fundamentals live outside #radar-panels).
+    Returns an empty dict when selected is None so templates receive equity_view={}
+    and the include guard ``{% if equity_view %}`` suppresses the section.
+    """
+    if selected is None:
+        return {}
+    result = equity_enrichment.enrich_selected_asset(
+        selected.token_symbol,
+        selected.contract_address,
+    )
+    return equity_view_model.build_equity_view(result, fallback_name=fallback_name)
+
+
 def _panels_context(snapshot, *, is_htmx_partial: bool = False) -> dict:
     return {
         "view": view_model.build_radar_view(snapshot),
@@ -162,6 +179,14 @@ async def radar_home(request: Request, snapshot_id: str = "",
     if selected is None and not _snapshot_loaded:
         selected = _resolve_selected(universe, asset_uid)
 
+    # E2: load corporate fundamentals for the selected asset.
+    # Runs in the threadpool (SQLite is blocking); equity_view is {} when
+    # selected is None so the template include-guard suppresses the section.
+    equity_view = await run_in_threadpool(
+        _load_equity_view, selected,
+        selected.token_name if selected else "",
+    )
+
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
@@ -178,6 +203,7 @@ async def radar_home(request: Request, snapshot_id: str = "",
             "snapshot_id": snapshot_id,
             "snapshot_identity_note": snapshot_identity_note,
             "user": user,
+            "equity_view": equity_view,
         },
     )
 
@@ -230,6 +256,12 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
     # the header and selector cannot show a stale asset.
     selected_from_snapshot = _selected_from_snapshot_identity(
         snapshot, universe)
+    final_selected = selected_from_snapshot or selected_asset
+    # E2: load fundamentals from the snapshot-authoritative selected identity.
+    equity_view = await run_in_threadpool(
+        _load_equity_view, final_selected,
+        final_selected.token_name if final_selected else "",
+    )
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
@@ -238,7 +270,7 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
         context={
             "universe": universe,
             "universe_error": universe_error,
-            "selected": selected_from_snapshot or selected_asset,
+            "selected": final_selected,
             "sizes": composition.SIZES,
             "directions": composition.DIRECTIONS,
             "view": view_model.build_radar_view(snapshot),
@@ -246,6 +278,7 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             "snapshot_id": snapshot.snapshot_id,
             "snapshot_identity_note": None,
             "user": user,
+            "equity_view": equity_view,
         },
     )
 

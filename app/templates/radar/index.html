@@ -138,6 +138,10 @@
 
   </form>
 
+  <!-- E2: Corporate fundamentals — outside #radar-panels so quote Refresh
+       does not reload it.  Asset selection (GET) triggers a fresh read. -->
+  {% include "radar/equity_fundamentals.html" %}
+
   <!-- Panels area -->
   <div id="radar-panels" class="radar-panels">
     {% if snapshot_identity_note and not view %}
