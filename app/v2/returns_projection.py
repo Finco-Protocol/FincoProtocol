@@ -76,7 +76,12 @@ def _last_run_scenario(ws: Any) -> str:
     return NOT_AVAILABLE
 
 
-def build_returns_projection(rr: Any, ws: Any) -> ReturnsProjection:
+def build_returns_projection(
+    rr: Any,
+    ws: Any,
+    *,
+    runtime_is_stale: Optional[bool] = None,
+) -> ReturnsProjection:
     """Project persisted Returns evidence without calculating economics."""
     if rr is None:
         return ReturnsProjection(
@@ -130,7 +135,10 @@ def build_returns_projection(rr: Any, ws: Any) -> ReturnsProjection:
     )
 
     return ReturnsProjection(
-        state="STALE" if bool(getattr(ws, "dirty", False)) else "CLEAN",
+        state="STALE" if (
+            bool(getattr(ws, "dirty", False))
+            if runtime_is_stale is None else runtime_is_stale
+        ) else "CLEAN",
         has_runtime=True,
         scenario_name=_last_run_scenario(ws),
         ran_at=getattr(rr, "ran_at", "") or "",

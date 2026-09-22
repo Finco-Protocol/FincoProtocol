@@ -107,7 +107,7 @@ def _create_project_from_visible_flow(page, base_url: str, name: str) -> str:
     page.get_by_role("link", name="New Project").click()
     page.locator("#npm-project_name").fill(name)
     page.locator("#npm-project_type").select_option(label="Solar")
-    page.locator("#npm-country_market").fill("Croatia")
+    page.locator("#npm-country_market").fill("Synthetic Market")
     page.locator("#npm-capacity_mw").fill("42")
     page.get_by_role("button", name="Create project").click()
     page.wait_for_url("**/v2/workbook?project=**")
@@ -163,7 +163,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
 
         for tab, panel, marker in (
             ("tab-overview", "panel-overview", '[data-testid="kpi-project-irr"]'),
-            ("tab-debt", "panel-debt", "#v2-sheet-debt"),
+            ("tab-debt", "panel-debt", "#v2-sheet-senior-debt"),
             ("tab-fs", "panel-fs", "#v2-sheet-financial-statements"),
             ("tab-returns", "panel-returns", '[data-testid="returns-authority-bar"]'),
         ):

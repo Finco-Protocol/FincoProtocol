@@ -358,23 +358,23 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
             project_inputs, project_record.project_id, _sc_overrides
         )
 
-    # Staleness check: prefer composite hash when available, fall back to scalar.
-    _runtime_composite_hash = getattr(ws, "last_runtime_composite_hash", None)
-    if _runtime_composite_hash:
-        from app.workbook.workbook_identity import assemble_for_workspace
-        from app.workbook.registry import WORKBOOK
+    # UI and export share one composite runtime-freshness authority.
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.workbook.workbook_identity import assemble_for_workspace
+    from app.workbook.registry import WORKBOOK
+
+    try:
         _cur_identity = assemble_for_workspace(
             ws,
-            user_id=user_id,
-            project_id=project_record.project_id,
+            user_id=user_id, project_id=project_record.project_id,
             workbook_version=WORKBOOK.version,
         )
-        _working_changed = (_cur_identity.composite_hash != _runtime_composite_hash)
-    else:
-        from app.persistence._helpers import snapshots_equal
-        _working_changed = not snapshots_equal(
-            ws.draft_snapshot or {}, ws.last_runtime_snapshot or {}
-        )
+        _cur_hash = _cur_identity.composite_hash
+    except Exception:
+        _cur_hash = None
+    _working_changed = resolve_runtime_freshness(
+        ws, current_composite_hash=_cur_hash
+    ).is_stale
 
     _run_at = (
         ws.last_runtime_at.isoformat(timespec="seconds")

@@ -13,7 +13,7 @@
   <div class="v2-banner v2-banner-error" role="alert" data-testid="banner-run-failed">
     Run failed — check inputs and try again. Prior results (if any) are still shown.
   </div>
-{% elif ws_dirty %}
+{% elif runtime_is_stale|default(ws_dirty) %}
   <div class="v2-banner v2-banner-dirty" role="status" data-testid="banner-stale">
     Inputs changed — outputs are stale. Run the model to refresh.
   </div>

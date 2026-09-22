@@ -72,13 +72,16 @@ def build_post_run_ui_state(
 
     pis_fresh = _build_pis_with_composite_identity(
         ws_fresh, project_record, workspace_owner)
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    freshness = resolve_runtime_freshness(
+        ws_fresh, current_composite_hash=pis_fresh.content_hash)
     # R6 Correction A/F: the router validates that a persisted RuntimeResult
     # exists and passes it in — exactly ONE RuntimeProjectionBundle is built
     # here for the whole successful Run response.
     if rr is None:
         rr = WorkbookService.get_runtime_result(ws_fresh)
     projection = (
-        build_runtime_projection_bundle(rr, ws_fresh.dirty) if rr is not None else None
+        build_runtime_projection_bundle(rr, freshness.is_stale) if rr is not None else None
     )
     ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
 
@@ -98,7 +101,7 @@ def build_post_run_ui_state(
 
     # A. Overview — runtime KPIs/status from THIS run (F07 defect surface).
     ov = build_overview_projection(
-        rr, ws_fresh.dirty, pis_fresh,
+        rr, freshness.is_stale, pis_fresh,
         active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "",
     )
     ov_ctx = {
@@ -107,6 +110,7 @@ def build_post_run_ui_state(
         "project_name": getattr(project_record, "project_name", "") or project,
         "project_type": getattr(project_record, "project_type", "") or "",
         "ws_dirty": getattr(ws_fresh, "dirty", True),
+        "runtime_is_stale": freshness.is_stale,
         "has_runtime": bool(getattr(ws_fresh, "last_runtime_snapshot_id", None)),
     }
     ov_html = _templates.get_template("partials/sheet_overview.html").render(ov_ctx)
@@ -130,7 +134,8 @@ def build_post_run_ui_state(
     fragments.append(_as_oob(fs_html, "v2-sheet-financial-statements"))
 
     # H. Returns — sponsor/distribution evidence from the same persisted run.
-    ctx.update(_build_returns_ctx(ws_fresh, rr=rr))
+    ctx.update(_build_returns_ctx(
+        ws_fresh, rr=rr, runtime_is_stale=freshness.is_stale))
     returns_html = _templates.get_template("partials/sheet_returns.html").render(ctx)
     fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
 
@@ -160,6 +165,7 @@ def build_post_save_ui_state(
     request: Any = None,
     include_banner_and_controls: bool = False,
     include_runtime_bars: bool = True,
+    include_scenario_list: bool = True,
     projection=None,
     rr=_NOTSET,
 ) -> str:
@@ -192,15 +198,23 @@ def build_post_save_ui_state(
 
     if rr is _NOTSET:
         rr = WorkbookService.get_runtime_result(ws_fresh)
+    pis_fresh = None
+    if project_record is not None and workspace_owner:
+        pis_fresh = _build_pis_with_composite_identity(
+            ws_fresh, project_record, workspace_owner)
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    freshness = resolve_runtime_freshness(
+        ws_fresh,
+        current_composite_hash=(
+            pis_fresh.content_hash if pis_fresh is not None else None),
+    )
     if projection is None:
-        projection = build_runtime_projection_bundle(rr, ws_fresh.dirty)
+        projection = build_runtime_projection_bundle(rr, freshness.is_stale)
     dirty = bool(getattr(ws_fresh, "dirty", True))
     has_runtime = bool(getattr(ws_fresh, "last_runtime_snapshot_id", None))
     fragments: list[str] = []
 
     if include_banner_and_controls and request is not None:
-        pis_fresh = _build_pis_with_composite_identity(
-            ws_fresh, project_record, workspace_owner)
         ctx = {
             "request": request,
             "project_code": project,
@@ -209,6 +223,7 @@ def build_post_save_ui_state(
             "template_source": pis_fresh.template_source,
             "project_editable": True,
             "ws_dirty": dirty,
+            "runtime_is_stale": freshness.is_stale,
             "has_runtime": has_runtime,
             "last_runtime_at": _fmt_runtime_at(
                 getattr(ws_fresh, "last_runtime_at", None) or ""),
@@ -228,6 +243,7 @@ def build_post_save_ui_state(
         toolbar_ctx = {
             "has_runtime": has_runtime,
             "ws_dirty": dirty,
+            "runtime_is_stale": freshness.is_stale,
             "last_runtime_at": _fmt_runtime_at(
                 getattr(ws_fresh, "last_runtime_at", None) or ""),
         }
@@ -237,7 +253,7 @@ def build_post_save_ui_state(
     # stale while the workspace is dirty (v2-kpi-tile--stale + is_stale).
     pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
     ov = build_overview_projection(
-        rr, dirty, pis,
+        rr, freshness.is_stale, pis,
         active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "",
     )
     ov_ctx = {
@@ -246,6 +262,7 @@ def build_post_save_ui_state(
         "project_name": getattr(project_record, "project_name", "") or project,
         "project_type": getattr(project_record, "project_type", "") or "",
         "ws_dirty": dirty,
+        "runtime_is_stale": freshness.is_stale,
         "has_runtime": has_runtime,
     }
     ov_html = _templates.get_template("partials/sheet_overview.html").render(ov_ctx)
@@ -260,7 +277,9 @@ def build_post_save_ui_state(
     # Returns values remain those of the persisted Last Run while their state
     # changes to stale.  This is a presentation refresh, never a calculation.
     returns_ctx = {
-        "returns": _build_returns_ctx(ws_fresh, rr=rr)["returns"],
+        "returns": _build_returns_ctx(
+            ws_fresh, rr=rr,
+            runtime_is_stale=freshness.is_stale)["returns"],
         "project_code": project,
         "project_editable": True,
     }
@@ -271,7 +290,7 @@ def build_post_save_ui_state(
     fragments.append(_as_oob(returns_html, "v2-sheet-returns"))
 
     # Scenario last-run statuses (persisted by the previous Run's step 12b).
-    if project_record is not None and workspace_owner:
+    if include_scenario_list and project_record is not None and workspace_owner:
         scenarios_html = _scenario_list_html(
             workspace_owner, project_record.project_id, project, ws_fresh)
         fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
@@ -279,13 +298,17 @@ def build_post_save_ui_state(
     return chr(10).join(fragments)
 
 
-def build_toolbar_state_oob(ws) -> str:
+def build_toolbar_state_oob(ws, *, runtime_is_stale=None) -> str:
     """Toolbar runtime-state chip only (Correction A: scenario-select path)."""
     from app.v2.router import _build_toolbar_state_oob, _fmt_runtime_at
 
     ctx = {
         "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
         "ws_dirty": bool(getattr(ws, "dirty", True)),
+        "runtime_is_stale": (
+            bool(getattr(ws, "dirty", True))
+            if runtime_is_stale is None else runtime_is_stale
+        ),
         "last_runtime_at": _fmt_runtime_at(
             getattr(ws, "last_runtime_at", None) or ""),
     }

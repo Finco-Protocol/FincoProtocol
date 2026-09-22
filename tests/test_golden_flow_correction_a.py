@@ -25,7 +25,7 @@ def test_inputs_slice1_htmx_save_uses_resolved_owner_and_preserves_last_run():
         "project_name": "Golden Flow F01",
         "project_type": "Solar",
         "project_origin": "user_created",
-        "country_market": "Croatia",
+        "country_market": "Synthetic Market",
         "scenario": "Base",
     })
     record = create_project_record(
