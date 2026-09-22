@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -52,6 +52,10 @@ def _get_featured_symbols() -> tuple:
     if raw.strip():
         return tuple(s.strip() for s in raw.split(",") if s.strip())
     return _DEFAULT_FEATURED_SYMBOLS
+
+_VALID_TABS = frozenset({"overview", "financials", "token-market", "evidence"})
+_VALID_TIMEFRAMES = frozenset({"annual", "quarterly", "ttm"})
+_VALID_STATEMENTS = frozenset({"income", "balance", "cashflow"})
 
 router = APIRouter()
 
@@ -416,15 +420,54 @@ async def radar_snapshot(request: Request, snapshot_id: str):
 
 
 @router.get("/radar/equity/{economic_asset_uid}", response_class=HTMLResponse)
-async def radar_equity_terminal(request: Request, economic_asset_uid: str):
+async def radar_equity_terminal(
+    request: Request,
+    economic_asset_uid: str,
+    tab: str = Query(default="overview"),
+    timeframe: str = Query(default="annual"),
+    statement: str = Query(default="income"),
+):
     """Company Terminal for one equity asset.  Network-free: zero quote
     acquisitions, zero LI.FI calls, zero GAP calculations.
 
-    Path authority is economic_asset_uid (UID-first).  Unknown UID → 404 page.
+    Path authority is economic_asset_uid (UID-first).
+    F02: universe fetch error → 503 ASSET_UNIVERSE_UNAVAILABLE (not 404).
+    F01: identity boundary check after history fetch.
     """
+    nav_tab = tab if tab in _VALID_TABS else "overview"
+    nav_timeframe = timeframe if timeframe in _VALID_TIMEFRAMES else "annual"
+    nav_statement = statement if statement in _VALID_STATEMENTS else "income"
+    nav = {"tab": nav_tab, "timeframe": nav_timeframe, "statement": nav_statement}
+
     universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+
+    # F02: universe fetch error → 503, not 404
+    if universe_error and not universe:
+        from app.auth import resolve_request_session
+        user = resolve_request_session(request)
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/equity_terminal.html",
+            context={
+                "terminal": {
+                    "state": "ASSET_UNIVERSE_UNAVAILABLE",
+                    "available": False,
+                    "economic_asset_uid": economic_asset_uid,
+                    "nav": nav,
+                },
+                "error": "ASSET_UNIVERSE_UNAVAILABLE",
+                "universe": [],
+                "universe_error": universe_error,
+                "selected": None,
+                "user": user,
+            },
+            status_code=503,
+        )
+
     selected = _resolve_selected(universe, economic_asset_uid)
     if selected is None:
+        from app.auth import resolve_request_session
+        user = resolve_request_session(request)
         return _templates.TemplateResponse(
             request=request,
             name="radar/equity_terminal.html",
@@ -434,8 +477,13 @@ async def radar_equity_terminal(request: Request, economic_asset_uid: str):
                     "available": False,
                     "economic_asset_uid": economic_asset_uid,
                     "symbol": "",
+                    "nav": nav,
                 },
                 "error": f"UID_NOT_FOUND: {economic_asset_uid!r}",
+                "universe": universe,
+                "universe_error": universe_error,
+                "selected": None,
+                "user": user,
             },
             status_code=404,
         )
@@ -445,10 +493,22 @@ async def radar_equity_terminal(request: Request, economic_asset_uid: str):
     history_bundle = await run_in_threadpool(
         lambda: equity_terminal.get_history_for_terminal(selected.token_symbol)
     )
+
+    # F01: identity boundary enforcement
+    identity_state = equity_terminal.validate_terminal_identity(
+        selected.token_symbol,
+        selected.contract_address,
+        history_bundle,
+    )
+
     terminal_view = equity_terminal.build_terminal_view(
         history_bundle,
         economic_asset_uid=economic_asset_uid,
         fallback_name=selected.token_name,
+        identity_state=identity_state,
+        selected_chain_id=str(selected.chain_id),
+        selected_contract_address=selected.contract_address,
+        nav=nav,
     )
     user = resolve_request_session(request)
     return _templates.TemplateResponse(

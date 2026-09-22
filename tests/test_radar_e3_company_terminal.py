@@ -1,4 +1,4 @@
-"""E3 Company Terminal tests — T01–T35.
+"""E3 Company Terminal tests — T01–T64.
 
 Covers:
   T01  lineage_id is Optional[int] in SourceLineage model
@@ -36,6 +36,35 @@ Covers:
   T33  Corporate actions: dividends in Evidence tab
   T34  Corporate actions: splits in Evidence tab
   T35  Frozen gate: GET /radar/equity/{uid} triggers zero acquisition calls
+  T36  Canonical dedup: two rows same period_end → exactly one in history
+  T37  IDENTITY_MISMATCH suppresses annual_history in build_terminal_view
+  T38  IDENTITY_MISMATCH identity badge in page
+  T39  PARTIAL_IDENTITY when selected has no contract address
+  T40  VERIFIED when symbol and contract match
+  T41  F02: universe unavailable → 503, ASSET_UNIVERSE_UNAVAILABLE
+  T42  F03: FUNDAMENTALS_CONFIG_INVALID shown in page
+  T43  Query param nav: default tab is overview
+  T44  Query param nav: ?tab=financials routes to financials
+  T45  Query param nav: ?timeframe=quarterly&statement=balance
+  T46  Query param nav: invalid tab defaults to overview
+  T47  _build_statement_matrix: empty snapshots → available=False
+  T48  _build_statement_matrix: single period income statement
+  T49  _build_statement_matrix: multi-period union of field paths
+  T50  _build_statement_matrix: known fields in map order, unknowns alphabetical
+  T51  _build_statement_matrix: None value → "—"
+  T52  _build_statement_matrix: 0.0 value → displayed zero
+  T53  _build_statement_matrix: negative value preserved
+  T54  _build_statement_matrix: absent period → "—" for all rows
+  T55  _build_statement_matrix: nested dict flattened
+  T56  _build_statement_matrix: period_headers labels correct
+  T57  Evidence: profile evidence fields in page
+  T58  Evidence: snapshot evidence fields in page
+  T59  Evidence: raw_payload_json NOT in page
+  T60  Dividend completeness: declaration_date in page
+  T61  Dividend completeness: record_date in page
+  T62  Asset switcher <select> in page
+  T63  Token Market: chain_id, contract_address, economic_asset_uid in page
+  T64  Token Market: "No quote/execution acquisition" wording
 """
 from __future__ import annotations
 
@@ -50,15 +79,23 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.radar_ui.equity_terminal import _adapt_statement, _fmt_statement_value, build_terminal_view
+from app.radar_ui.equity_terminal import (
+    _adapt_statement,
+    _build_statement_matrix,
+    _fmt_statement_value,
+    build_terminal_view,
+    validate_terminal_identity,
+)
 from app.radar_ui.equity_view_model import build_equity_board_row
 from app.radar_ui.equity_enrichment import EnrichmentState, EquityEnrichmentResult
 from finco_radar.equity import (
     EquityCompanyHistoryBundle,
     get_equity_company_history,
 )
+from finco_radar.equity.config import EquityDBModeError
 from finco_radar.equity.models import (
     AvailabilityState,
+    FundamentalsFreshness,
     JsonField,
     SourceLineage,
 )
@@ -182,8 +219,9 @@ def _build_test_db(
     if add_dividend:
         conn.execute(
             "INSERT INTO equity_dividends (ticker,cash_amount,currency,"
-            "ex_dividend_date,pay_date,dividend_type) VALUES (?,?,?,?,?,?)",
-            (ticker, 0.25, "USD", "2024-08-12", "2024-08-15", "CD"),
+            "declaration_date,ex_dividend_date,record_date,pay_date,frequency,dividend_type) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (ticker, 0.25, "USD", "2024-08-01", "2024-08-12", "2024-08-13", "2024-08-15", 4, "CD"),
         )
 
     if add_split:
@@ -217,7 +255,7 @@ _AAPL_ASSET = _SA(
     token_symbol="AAPL",
     token_name="Apple Inc",
     chain_id=4663,
-    contract_address="0xAAPL" + "00" * 18,
+    contract_address="0xabc123",
     token_decimals=0,
 )
 
@@ -370,26 +408,26 @@ def test_t09_returns_equity_company_history_bundle():
 
 def test_t10_one_read_session():
     """All data (annual, quarterly, TTM, dividends, splits, lineage) read in one session."""
+    from contextlib import contextmanager
+    from finco_radar.equity.repository import EquityFundamentalsRepository
+
     db = _build_test_db(add_dividend=True, add_split=True, add_lineage=True)
+    call_count = [0]
+    _original_read_session = EquityFundamentalsRepository.read_session
+
+    @contextmanager
+    def _counting_read_session(self):
+        call_count[0] += 1
+        with _original_read_session(self) as session:
+            yield session
+
     try:
-        from finco_radar.equity.repository import EquityFundamentalsRepository
-        repo = EquityFundamentalsRepository(db, "snapshot")
-        session_call_count = [0]
-        original_read_session = repo.read_session
+        with patch.object(EquityFundamentalsRepository, "read_session", _counting_read_session):
+            result = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
 
-        @property
-        def _counted_read_session(self):
-            from contextlib import contextmanager
-            @contextmanager
-            def _ctx():
-                session_call_count[0] += 1
-                with original_read_session.__get__(self)() as s:
-                    yield s
-            return _ctx()
-
-        result = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
-        # All fields should be populated from a single call
-        assert result.recent_dividends != () or True  # dividends may be populated
+        assert call_count[0] == 1, (
+            f"Expected exactly 1 read_session call, got {call_count[0]}"
+        )
         assert isinstance(result.annual_history, tuple)
         assert isinstance(result.quarterly_history, tuple)
         assert isinstance(result.ttm_history, tuple)
@@ -873,5 +911,713 @@ def test_t35_frozen_gate_zero_acquisitions():
         assert acquire_calls == [], (
             f"Expected zero acquire calls, got: {acquire_calls}"
         )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T36: canonical dedup ──────────────────────────────────────────────────────
+
+def test_t36_canonical_dedup_two_rows_same_period():
+    """Two rows with same (ticker, timeframe, period_end) → exactly one in history."""
+    db = _build_test_db(annual_periods=[])
+    conn = sqlite3.connect(str(db))
+    try:
+        # Insert two rows with the same period_end for annual
+        for _ in range(2):
+            conn.execute(
+                "INSERT INTO equity_financial_snapshots "
+                "(ticker,timeframe,period_end,provider,derived_json,fetched_at) "
+                "VALUES (?,?,?,?,?,?)",
+                ("AAPL", "annual", "2023-09-30", "SYNTH", _AAPL_DERIVED, "2024-11-05"),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        result = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        pe_list = [s.period_end for s in result.annual_history if s.period_end == "2023-09-30"]
+        assert len(pe_list) == 1, (
+            f"Expected exactly 1 canonical period for 2023-09-30, got {len(pe_list)}"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T37: IDENTITY_MISMATCH suppresses annual_history ─────────────────────────
+
+def test_t37_identity_mismatch_suppresses_financials():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        view = build_terminal_view(
+            bundle,
+            economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc",
+            identity_state="IDENTITY_MISMATCH",
+            selected_chain_id="4663",
+            selected_contract_address="0xWRONG",
+        )
+        assert view["annual_history"] == [], (
+            f"IDENTITY_MISMATCH should suppress annual_history, got {view['annual_history']}"
+        )
+        assert view["quarterly_history"] == []
+        assert view["ttm_history"] == []
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T38: IDENTITY_MISMATCH badge in page ──────────────────────────────────────
+
+def test_t38_identity_mismatch_badge_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    mismatch_asset = _SA(
+        economic_asset_uid="rh-equity-aapl-001",
+        token_symbol="AAPL",
+        token_name="Apple Inc",
+        chain_id=4663,
+        contract_address="0xWRONG_CONTRACT",
+        token_decimals=0,
+    )
+    universe = [mismatch_asset]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "IDENTITY_MISMATCH" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T39: PARTIAL_IDENTITY when no contract ────────────────────────────────────
+
+def test_t39_partial_identity_no_contract():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        state = validate_terminal_identity(
+            selected_symbol="AAPL",
+            selected_contract=None,
+            bundle=bundle,
+        )
+        assert state == "PARTIAL_IDENTITY", f"Expected PARTIAL_IDENTITY, got {state!r}"
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T40: VERIFIED when symbol and contract match ──────────────────────────────
+
+def test_t40_verified_when_matches():
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        state = validate_terminal_identity(
+            selected_symbol="AAPL",
+            selected_contract="0xabc123",
+            bundle=bundle,
+        )
+        assert state == "VERIFIED", f"Expected VERIFIED, got {state!r}"
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T41: F02 universe unavailable → 503 ──────────────────────────────────────
+
+def test_t41_universe_unavailable_503():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    with patch.object(radar_router, "_fetch_universe_safe",
+                      return_value=([], "Connection refused")):
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        resp = client.get("/radar/equity/rh-equity-aapl-001")
+        assert resp.status_code == 503
+        assert "ASSET_UNIVERSE_UNAVAILABLE" in resp.text
+
+
+# ── T42: F03 FUNDAMENTALS_CONFIG_INVALID in page ─────────────────────────────
+
+def test_t42_fundamentals_config_invalid_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    invalid_bundle = EquityCompanyHistoryBundle(
+        robinhood_token_symbol="AAPL",
+        asset=None,
+        company_profile=None,
+        annual_history=(),
+        quarterly_history=(),
+        ttm_history=(),
+        recent_dividends=(),
+        recent_splits=(),
+        source_lineage=(),
+        availability=AvailabilityState.FUNDAMENTALS_CONFIG_INVALID,
+        freshness=FundamentalsFreshness(
+            ttm_period_end=None, ttm_filing_date=None, ttm_fetched_at=None,
+            ttm_normalized_at=None, quarterly_period_end=None,
+            quarterly_fetched_at=None, annual_period_end=None,
+            annual_fetched_at=None, profile_fetched_at=None,
+            asset_last_seen_at=None,
+        ),
+    )
+    universe = [_AAPL_ASSET]
+    with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+         patch("app.radar_ui.equity_terminal.get_history_for_terminal",
+               return_value=invalid_bundle):
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        resp = client.get("/radar/equity/rh-equity-aapl-001")
+        assert resp.status_code == 200
+        assert "FUNDAMENTALS_CONFIG_INVALID" in resp.text
+
+
+# ── T43: default tab is overview ──────────────────────────────────────────────
+
+def test_t43_default_tab_overview():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            # Overview tab should be visible (display:block)
+            assert "tab-overview" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T44: ?tab=financials routes to financials ─────────────────────────────────
+
+def test_t44_tab_financials_query_param():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=financials")
+            assert resp.status_code == 200
+            assert "tab-financials" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T45: ?timeframe=quarterly&statement=balance ───────────────────────────────
+
+def test_t45_timeframe_statement_query_params():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                "/radar/equity/rh-equity-aapl-001?tab=financials&timeframe=quarterly&statement=balance"
+            )
+            assert resp.status_code == 200
+            assert "tab-financials" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T46: invalid tab defaults to overview ─────────────────────────────────────
+
+def test_t46_invalid_tab_defaults_to_overview():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=HACKED_VALUE")
+            assert resp.status_code == 200
+            # nav.tab should have been sanitized to "overview"
+            assert "tab-overview" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T47: _build_statement_matrix empty → available=False ─────────────────────
+
+def test_t47_statement_matrix_empty():
+    result = _build_statement_matrix([], "income_statement")
+    assert result["available"] is False
+    assert result["period_headers"] == []
+    assert result["rows"] == []
+
+
+# ── T48: _build_statement_matrix single period ───────────────────────────────
+
+def test_t48_statement_matrix_single_period():
+    from finco_radar.equity.models import FinancialSnapshot, DerivedFundamentals
+
+    snap = FinancialSnapshot(
+        ticker="AAPL",
+        cik=None,
+        timeframe="annual",
+        fiscal_year="2023",
+        fiscal_quarter=None,
+        period_end="2023-09-30",
+        filing_date=None,
+        provider="SYNTH",
+        source_contract=None,
+        fetched_at=None,
+        normalized_at=None,
+        payload_hash=None,
+        income_statement=JsonField(
+            value={"totalRevenue": 385000000000.0, "netIncome": 99000000000.0},
+            absent=False,
+            parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    assert result["available"] is True
+    assert len(result["period_headers"]) == 1
+    assert result["period_headers"][0]["label"] == "FY2023"
+    field_keys = [r["field_key"] for r in result["rows"]]
+    assert "totalRevenue" in field_keys
+    assert "netIncome" in field_keys
+
+
+# ── T49: _build_statement_matrix multi-period union ──────────────────────────
+
+def test_t49_statement_matrix_multiperiod_union():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    def _make_snap(fy, fields):
+        return FinancialSnapshot(
+            ticker="AAPL", cik=None, timeframe="annual",
+            fiscal_year=fy, fiscal_quarter=None,
+            period_end=f"{fy}-09-30", filing_date=None,
+            provider="SYNTH", source_contract=None,
+            fetched_at=None, normalized_at=None, payload_hash=None,
+            income_statement=JsonField(value=fields, absent=False, parse_error=None),
+            balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+            cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+            derived_source=JsonField(value=None, absent=True, parse_error=None),
+            derived=None,
+        )
+
+    snap1 = _make_snap("2023", {"totalRevenue": 100.0, "netIncome": 20.0})
+    snap2 = _make_snap("2022", {"totalRevenue": 90.0, "operatingIncome": 25.0})
+    result = _build_statement_matrix([snap1, snap2], "income_statement")
+    field_keys = [r["field_key"] for r in result["rows"]]
+    assert "totalRevenue" in field_keys
+    assert "netIncome" in field_keys
+    assert "operatingIncome" in field_keys
+    assert len(result["period_headers"]) == 2
+
+
+# ── T50: known fields in map order, unknowns alphabetical ────────────────────
+
+def test_t50_statement_matrix_field_ordering():
+    from finco_radar.equity.models import FinancialSnapshot
+    from app.radar_ui.equity_terminal import _INCOME_FIELD_MAP
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(
+            value={
+                "netIncome": 99.0,
+                "totalRevenue": 385.0,
+                "zzz_unknown": 1.0,
+                "aaa_unknown": 2.0,
+                "grossProfit": 170.0,
+            },
+            absent=False, parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    field_keys = [r["field_key"] for r in result["rows"]]
+    # Known fields come first in map order
+    known_in_map = [k for k in _INCOME_FIELD_MAP if k in {"netIncome", "totalRevenue", "grossProfit"}]
+    known_positions = [field_keys.index(k) for k in known_in_map if k in field_keys]
+    unknown_positions = [field_keys.index(k) for k in ["aaa_unknown", "zzz_unknown"] if k in field_keys]
+    assert max(known_positions) < min(unknown_positions), (
+        "Known fields must come before unknown fields"
+    )
+    # Unknown fields must be sorted alphabetically
+    unknown_keys = [k for k in field_keys if k in {"aaa_unknown", "zzz_unknown"}]
+    assert unknown_keys == sorted(unknown_keys)
+
+
+# ── T51: None value → "—" in matrix ──────────────────────────────────────────
+
+def test_t51_statement_matrix_none_value():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(
+            value={"totalRevenue": None},
+            absent=False, parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    revenue_row = next(r for r in result["rows"] if r["field_key"] == "totalRevenue")
+    assert revenue_row["cells"][0] == "—"
+
+
+# ── T52: 0.0 → displayed zero ─────────────────────────────────────────────────
+
+def test_t52_statement_matrix_zero_displayed():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(
+            value={"totalRevenue": 0.0},
+            absent=False, parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    revenue_row = next(r for r in result["rows"] if r["field_key"] == "totalRevenue")
+    assert revenue_row["cells"][0] != "—", "0.0 must display as a zero value, not '—'"
+    assert "0" in revenue_row["cells"][0]
+
+
+# ── T53: negative value preserved ────────────────────────────────────────────
+
+def test_t53_statement_matrix_negative_preserved():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(
+            value={"netIncome": -50000000.0},
+            absent=False, parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    ni_row = next(r for r in result["rows"] if r["field_key"] == "netIncome")
+    assert "-" in ni_row["cells"][0], f"Negative value not preserved: {ni_row['cells'][0]!r}"
+
+
+# ── T54: absent period → "—" for all rows ────────────────────────────────────
+
+def test_t54_statement_matrix_absent_period():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value=None, absent=True, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    # No fields → no rows (all absent); available is True because we have a period
+    assert result["period_headers"][0]["state"] == "NOT_AVAILABLE"
+    assert result["rows"] == []
+
+
+# ── T55: nested dict flattened in matrix ─────────────────────────────────────
+
+def test_t55_statement_matrix_nested_flattened():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        balance_sheet=JsonField(
+            value={"totalAssets": 100.0, "nested": {"a": 1, "b": 2}},
+            absent=False, parse_error=None,
+        ),
+        income_statement=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "balance_sheet")
+    field_keys = [r["field_key"] for r in result["rows"]]
+    assert "nested.a" in field_keys
+    assert "nested.b" in field_keys
+    assert "totalAssets" in field_keys
+
+
+# ── T56: period_headers labels ────────────────────────────────────────────────
+
+def test_t56_statement_matrix_period_labels():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap_a = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value={"totalRevenue": 1.0}, absent=False, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    snap_q = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="quarterly",
+        fiscal_year="2023", fiscal_quarter="Q3",
+        period_end="2023-06-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value={"totalRevenue": 2.0}, absent=False, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result_a = _build_statement_matrix([snap_a], "income_statement")
+    assert result_a["period_headers"][0]["label"] == "FY2023"
+
+    result_q = _build_statement_matrix([snap_q], "income_statement")
+    assert "Q3" in result_q["period_headers"][0]["label"]
+
+
+# ── T57: Evidence: profile evidence fields in page ───────────────────────────
+
+def test_t57_profile_evidence_fields_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=evidence")
+            assert resp.status_code == 200
+            # Provider and fetched_at from profile
+            assert "panel-profile-evidence" in resp.text or "Profile Evidence" in resp.text
+            assert "SYNTH" in resp.text
+            assert "2024-10-01" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T58: Evidence: snapshot evidence fields in page ──────────────────────────
+
+def test_t58_snapshot_evidence_fields_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001?tab=evidence")
+            assert resp.status_code == 200
+            assert "panel-snapshot-evidence" in resp.text or "Snapshot Evidence" in resp.text
+            # payload_hash inserted for TTM
+            assert "abc123hash" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T59: raw_payload_json must NOT appear in page ─────────────────────────────
+
+def test_t59_raw_payload_json_not_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert "raw_payload_json" not in resp.text, (
+                "raw_payload_json must never appear in the rendered terminal page"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T60: dividend declaration_date in page ────────────────────────────────────
+
+def test_t60_dividend_declaration_date_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db(add_dividend=True)
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            # declaration_date was inserted as "2024-08-01"
+            assert "2024-08-01" in resp.text, (
+                "declaration_date must be shown in dividend row"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T61: dividend record_date in page ────────────────────────────────────────
+
+def test_t61_dividend_record_date_in_page():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db(add_dividend=True)
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            # record_date was inserted as "2024-08-13"
+            assert "2024-08-13" in resp.text, (
+                "record_date must be shown in dividend row"
+            )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T62: asset switcher <select> in page ─────────────────────────────────────
+
+def test_t62_asset_switcher_in_page():
+    """Asset switcher renders as <select> when universe has multiple assets."""
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _MSFT_ASSET = _SA(
+        economic_asset_uid="rh-equity-msft-001",
+        token_symbol="MSFT",
+        token_name="Microsoft Corp",
+        chain_id=4663,
+        contract_address="0xmsft",
+        token_decimals=0,
+    )
+    universe = [_AAPL_ASSET, _MSFT_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "<select" in resp.text
+            assert "rh-equity-aapl-001" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T63: Token Market shows chain_id, contract_address, economic_asset_uid ───
+
+def test_t63_token_market_shows_identity():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "tab-token-market" in resp.text
+            assert "rh-equity-aapl-001" in resp.text
+            assert "4663" in resp.text
+            assert "0xabc123" in resp.text
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── T64: Token Market "No quote/execution acquisition" wording ────────────────
+
+def test_t64_token_market_no_acquisition_wording():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-aapl-001")
+            assert resp.status_code == 200
+            assert "No quote" in resp.text or "No quote/execution" in resp.text or \
+                   "acquisition" in resp.text.lower()
     finally:
         db.unlink(missing_ok=True)

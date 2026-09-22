@@ -25,6 +25,7 @@ class AvailabilityState(str, Enum):
     NOT_AVAILABLE = "NOT_AVAILABLE"   # asset known but no financial data
     SOURCE_UNAVAILABLE = "SOURCE_UNAVAILABLE"  # DB missing / unreadable
     NOT_FOUND = "NOT_FOUND"           # token not in equity_assets
+    FUNDAMENTALS_CONFIG_INVALID = "FUNDAMENTALS_CONFIG_INVALID"  # invalid DB mode config
 
 
 # ── JSON field wrapper ────────────────────────────────────────────────────────
