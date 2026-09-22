@@ -683,7 +683,8 @@ class TestFeaturedBoardViewModel:
 # ── Ratio display semantics ────────────────────────────────────────────────────
 
 class TestRatioDisplaySemantics:
-    """Proven: margin/growth/return fields are source-fractions → displayed as %."""
+    """Margin/return fields are source-fractions → displayed as %;
+    revenue_growth unit not proven → displayed as raw float."""
 
     def test_gross_margin_44pct(self):
         db = _aapl_db()
@@ -695,13 +696,16 @@ class TestRatioDisplaySemantics:
         assert f["gross_margin"]["value"] == "44.00%"
         assert f["gross_margin"]["raw"] == pytest.approx(0.44)
 
-    def test_revenue_growth_8pct(self):
+    def test_revenue_growth_is_raw_float_not_percent(self):
+        """revenue_growth unit not proven; rendered as raw float (no ×100)."""
         db = _aapl_db()
         result = enrich_selected_asset(
             "AAPL", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", db_path=db)
         view = build_equity_view(result)
         f = view["ttm_metrics"]["fields"]
-        assert f["revenue_growth"]["value"] == "8.00%"
+        # raw 0.08 → "0.08" (not "8.00%")
+        assert "%" not in f["revenue_growth"]["value"]
+        assert f["revenue_growth"]["value"] == "0.08"
 
     def test_return_on_equity_147pct(self):
         db = _aapl_db()

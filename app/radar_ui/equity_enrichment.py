@@ -87,14 +87,17 @@ def enrich_selected_asset(
 ) -> EquityEnrichmentResult:
     """Look up E1 fundamentals for a selected Radar asset.
 
-    Never raises — all failure modes are mapped to typed enrichment states so
-    the rest of /radar remains usable when fundamentals are unavailable.
+    Known config/source states are mapped to typed EnrichmentState values so
+    /radar remains usable when fundamentals are unavailable:
+    - EquityDBModeError (bad env config) → FUNDAMENTALS_CONFIG_INVALID
+    - SOURCE_UNAVAILABLE, NOT_FOUND, NOT_AVAILABLE, AVAILABLE, PARTIAL from E1
+    - contract/symbol mismatch → IDENTITY_MISMATCH
+
+    Unexpected programming exceptions (e.g. TypeError, AttributeError) propagate
+    to the caller so bugs remain visible and are not silently swallowed.
 
     Identity mismatch suppresses financial metrics (IDENTITY_MISMATCH state)
     but the bundle is still returned so the caller can inspect it if needed.
-
-    EquityDBModeError (programmer config mistake) is mapped to
-    FUNDAMENTALS_CONFIG_INVALID so /radar does not crash on bad env config.
     """
     try:
         bundle = get_equity_fundamentals(

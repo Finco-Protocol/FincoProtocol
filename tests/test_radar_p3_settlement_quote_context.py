@@ -677,18 +677,13 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # full checkout instead).
     #
     # The finco_radar/equity/ package was added by E1 (PR #54, merged before
-    # this correction) and is NOT a settlement/quote contract.  The assertion
-    # is therefore narrowed to the specific settlement/quote authority paths
-    # while allowing the already-merged E1 equity sub-package.
-    _SETTLEMENT_PATHS = (
-        "finco_radar/quotes/",
-        "finco_radar/assets/",
-        "finco_radar/gap/",
-        "finco_radar/liquidity/",
-        "finco_radar/reference_state/",
-        "finco_radar/cross_market/",
-        "finco_radar/execution_simulator/",
-    )
+    # this correction) and is the ONLY approved addition to the finco_radar/
+    # namespace in this PR series.  All other finco_radar/ paths remain frozen.
+    #
+    # The gate is: any finco_radar/ change that is NOT under finco_radar/equity/
+    # is a violation.  This preserves the original broad freeze intent while
+    # permitting the already-approved equity sub-package, without opening an
+    # unbounded whitelist that would let unknown future paths bypass the gate.
     import subprocess
     try:
         changed = subprocess.run(
@@ -699,10 +694,11 @@ def test_p3_27_frozen_settlement_contract_untouched():
         pytest.skip("base commit unavailable in shallow checkout")
     violations = [
         p for p in changed
-        if any(p.startswith(sp) for sp in _SETTLEMENT_PATHS)
+        if p.startswith("finco_radar/")
+        and not p.startswith("finco_radar/equity/")
     ]
     assert not violations, (
-        "Settlement/quote contract paths modified: " + str(violations)
+        "Non-equity finco_radar paths modified (frozen): " + str(violations)
     )
 
 

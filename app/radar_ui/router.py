@@ -127,61 +127,72 @@ def _get_snapshot_uid(snapshot) -> str:
         return ""
 
 
-def _load_equity_view(selected, fallback_name: str = "") -> dict:
-    """Synchronous helper: E1 enrichment + view model for one selected asset.
+def _load_equity_and_featured_board(
+    universe: list,
+    selected,
+    fallback_name: str = "",
+) -> tuple:
+    """Unified equity detail + featured board load.
 
-    Called via run_in_threadpool from async routes; never called on its own
-    from HTMX refresh paths (corporate fundamentals live outside #radar-panels).
-    Returns an empty dict when selected is None so templates receive equity_view={}
-    and the include guard ``{% if equity_view %}`` suppresses the section.
-    """
-    if selected is None:
-        return {}
-    result = equity_enrichment.enrich_selected_asset(
-        selected.token_symbol,
-        selected.contract_address,
-    )
-    return equity_view_model.build_equity_view(result, fallback_name=fallback_name)
+    Performs at most one batch read (for all featured assets) plus at most one
+    additional single read (only when selected is NOT already in the featured
+    set).  When selected is featured, its EquityEnrichmentResult is reused from
+    the batch — zero extra single reads.
 
-
-def _load_featured_board(universe: list) -> list:
-    """Synchronous helper: build the Featured Equities board rows.
-
-    Only shows symbols present in the live canonical Robinhood universe in
-    configured order.  Uses a single batch E1 read (one DB connection,
-    one read_session, one BEGIN DEFERRED).  Zero live price acquisitions.
-    Returns a list of board-row dicts for the template.
+    Returns (equity_view_dict, featured_board_rows).
     """
     featured_symbols = _get_featured_symbols()
-    # Resolve universe by symbol (case-insensitive) to get contract+uid
-    universe_by_symbol = {}
-    for a in universe:
-        universe_by_symbol[a.token_symbol.upper()] = a
+    universe_by_symbol: dict = {a.token_symbol.upper(): a for a in universe}
 
-    # Filter to configured featured symbols that are in the live universe
-    # preserving deterministic configured order.
-    featured_assets = []
-    for sym in featured_symbols:
-        asset = universe_by_symbol.get(sym.upper())
-        if asset is not None:
-            featured_assets.append(asset)
+    # Featured assets in configured order, filtered to live universe.
+    featured_assets = [
+        universe_by_symbol[sym.upper()]
+        for sym in featured_symbols
+        if sym.upper() in universe_by_symbol
+    ]
 
-    if not featured_assets:
-        return []
+    # ONE batch read for all featured assets.
+    if featured_assets:
+        pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
+        featured_results = equity_enrichment.enrich_many_selected_assets(pairs)
+    else:
+        featured_results = ()
 
-    # One batch E1 read for all featured assets
-    pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
-    results = equity_enrichment.enrich_many_selected_assets(pairs)
-
-    rows = []
-    for asset, result in zip(featured_assets, results):
-        row = equity_view_model.build_equity_board_row(
+    # Build board rows — pass token_symbol separately so UID never leaks into
+    # the symbol column.
+    rows = [
+        equity_view_model.build_equity_board_row(
             result,
             asset_uid=asset.economic_asset_uid,
             fallback_name=asset.token_name,
+            token_symbol=asset.token_symbol,
         )
-        rows.append(row)
-    return rows
+        for asset, result in zip(featured_assets, featured_results)
+    ]
+
+    # Equity view for the selected asset.
+    equity_view: dict = {}
+    if selected is not None:
+        # Prefer reusing the batch result when selected is in the featured set.
+        batch_by_symbol: dict = {
+            a.token_symbol.upper(): result
+            for a, result in zip(featured_assets, featured_results)
+        }
+        sel_upper = selected.token_symbol.upper()
+        if sel_upper in batch_by_symbol:
+            equity_view = equity_view_model.build_equity_view(
+                batch_by_symbol[sel_upper], fallback_name=fallback_name,
+            )
+        else:
+            # Not featured — one additional single read.
+            single = equity_enrichment.enrich_selected_asset(
+                selected.token_symbol, selected.contract_address,
+            )
+            equity_view = equity_view_model.build_equity_view(
+                single, fallback_name=fallback_name,
+            )
+
+    return equity_view, rows
 
 
 def _panels_context(snapshot, *, is_htmx_partial: bool = False) -> dict:
@@ -235,12 +246,14 @@ async def radar_home(request: Request, snapshot_id: str = "",
     if selected is None and not _snapshot_loaded:
         selected = _resolve_selected(universe, asset_uid)
 
-    # E2: load corporate fundamentals for the selected asset and featured board.
-    # Both run in the threadpool (SQLite is blocking).
+    # E2: load corporate fundamentals and featured board in one threadpool call.
+    # Unified: one batch read for featured assets; selected reuses batch result
+    # if featured, otherwise one additional single read.
     equity_view, featured_board = await run_in_threadpool(
-        lambda: (
-            _load_equity_view(selected, selected.token_name if selected else ""),
-            _load_featured_board(universe) if universe else [],
+        lambda: _load_equity_and_featured_board(
+            universe,
+            selected,
+            selected.token_name if selected else "",
         )
     )
 
@@ -317,10 +330,10 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
     final_selected = selected_from_snapshot or selected_asset
     # E2: load fundamentals from the snapshot-authoritative selected identity.
     equity_view, featured_board = await run_in_threadpool(
-        lambda: (
-            _load_equity_view(final_selected,
-                              final_selected.token_name if final_selected else ""),
-            _load_featured_board(universe),
+        lambda: _load_equity_and_featured_board(
+            universe,
+            final_selected,
+            final_selected.token_name if final_selected else "",
         )
     )
     from app.auth import resolve_request_session

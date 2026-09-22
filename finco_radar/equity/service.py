@@ -115,6 +115,9 @@ def get_equity_fundamentals(
     request casing.
 
     Deterministic: no network calls, no datetime.now() inside the result.
+
+    Uses the same internal _build_one_bundle helper as get_equity_fundamentals_many
+    so single and batch paths cannot drift.
     """
     # Validate mode before any DB access — programmer/config errors propagate immediately.
     # EquityDBModeError is NOT caught by the SOURCE_UNAVAILABLE handler below.
@@ -132,49 +135,11 @@ def get_equity_fundamentals(
 
     try:
         repo = EquityFundamentalsRepository(path, mode)
-
         with repo.read_session() as session:
-            asset = session.get_asset(robinhood_token_symbol)
-
-            if asset is None:
-                return _unavailable_bundle(
-                    robinhood_token_symbol, AvailabilityState.NOT_FOUND
-                )
-
-            # Use canonical symbol from DB, not request casing
-            canonical_symbol = asset.robinhood_token_symbol
-            ticker = asset.underlying_ticker
-            profile = session.get_latest_profile(ticker)
-            ttm = session.get_latest_snapshot(ticker, "ttm")
-            quarterly = session.get_latest_snapshot(ticker, "quarterly")
-            annual = session.get_latest_snapshot(ticker, "annual")
-            dividends = session.get_dividends(ticker, limit=dividends_limit)
-            splits = session.get_splits(ticker, limit=splits_limit)
-
-            # Lineage: use the most informative available snapshot's hash
-            best_hash: Optional[str] = None
-            for snap in (ttm, quarterly, annual):
-                if snap is not None and snap.payload_hash:
-                    best_hash = snap.payload_hash
-                    break
-            lineage = session.get_lineage(
-                ticker, payload_hash=best_hash, limit=lineage_limit
+            return _build_one_bundle(
+                session, robinhood_token_symbol,
+                dividends_limit, splits_limit, lineage_limit,
             )
-
-        return EquityFundamentalsBundle(
-            robinhood_token_symbol=canonical_symbol,
-            asset=asset,
-            company_profile=profile,
-            latest_ttm=ttm,
-            latest_quarterly=quarterly,
-            latest_annual=annual,
-            recent_dividends=tuple(dividends),
-            recent_splits=tuple(splits),
-            source_lineage_summary=tuple(lineage),
-            availability=_compute_availability(asset, profile, ttm, quarterly, annual),
-            freshness=_make_freshness(asset, profile, ttm, quarterly, annual),
-        )
-
     except EquityDBReadError:
         return _unavailable_bundle(
             robinhood_token_symbol, AvailabilityState.SOURCE_UNAVAILABLE

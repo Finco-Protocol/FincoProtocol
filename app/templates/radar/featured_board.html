@@ -2,7 +2,7 @@
 {# E2-CA: Featured Equities Board — compact terminal table.
    Sits above #equity-details / selected-asset panel.
    Zero live price acquisitions; identity + fundamentals only. #}
-<section class="panel panel-featured-board" data-panel="featured-board" style="margin-bottom:14px;">
+<section id="featured-board" class="panel panel-featured-board" data-panel="featured-board" style="margin-bottom:14px;">
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
     <h2 style="margin:0;">Featured Equities</h2>
     <span class="muted small">{{ featured_board | length }} asset{{ 's' if featured_board | length != 1 else '' }} · fundamentals only · no live prices</span>

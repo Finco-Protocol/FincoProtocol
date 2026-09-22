@@ -5,9 +5,12 @@ Rules enforced by construction:
 - formats only; never derives financial metrics from raw statement JSON
 - MISSING != ZERO: value is None → "—"; value == 0.0 → "0.00"
 - negative values remain negative (never clamped)
-- unit semantics for ratio/margin fields are NOT proven from the source
-  contract in E2; they are rendered as the raw source float with no ×100
-  or ÷100 applied (see UNIT_SEMANTICS_NOTE below)
+- margin and return fields (gross_margin, ebit_margin, ebitda_margin,
+  net_margin, fcf_margin, return_on_equity) are derived as
+  numerator/denominator ratios; displayed as percentages (raw × 100)
+- revenue_growth unit semantics are not proven from a canonical source
+  contract; rendered as raw float (no × 100)
+- debt_to_equity is a dimensionless ratio; rendered as raw float (4 dp)
 - company name follows deterministic precedence (see _company_name)
 - no market prices, quotes, spreads or GAP fields
 """
@@ -27,10 +30,15 @@ from finco_radar.equity.models import (
     JsonField,
 )
 
-# Unit semantics note surfaced in the rendered view for every ratio/margin field.
-# E2 does not prove whether the source stores these as fractions (0–1) or
-# percentages (0–100); we render the raw source value faithfully.
-UNIT_SEMANTICS_NOTE = "source-derived; unit semantics not independently proven in E2"
+# Per-field unit authority:
+# - margin/return fields: source fraction → × 100 → "%"; canonical derivation
+#   is numerator/denominator so fraction storage is authoritative
+# - revenue_growth: unit not proven from source contract; raw float displayed
+# - debt_to_equity: dimensionless ratio; raw float (4 dp)
+UNIT_SEMANTICS_NOTE = (
+    "margin/return fields displayed as % (numerator/denominator derivation); "
+    "revenue_growth displayed as raw float (unit not proven from source contract)"
+)
 
 
 # ── numeric formatters ────────────────────────────────────────────────────────
@@ -60,11 +68,13 @@ def _fmt_currency(value: Optional[float]) -> str:
 def _fmt_percent(value: Optional[float]) -> str:
     """Format a source-fraction field as a percentage.
 
-    Source stores values as fractions (e.g. 0.44 = 44 %).  Proven from
-    test fixtures: gross_margin=0.44 is AAPL's ~44 % gross margin;
-    revenue_growth=0.08 is 8 % growth; return_on_equity=1.47 is 147 % ROE.
-    Display multiplies by 100 and appends %; the raw value is preserved in
-    the view dict's 'raw' key for evidence purposes.
+    Applied to margin and return fields whose canonical derivation is a
+    numerator/denominator ratio (e.g. gross_profit/revenue, net_income/equity).
+    Multiplies by 100 and appends %; the raw value is preserved in the view
+    dict's 'raw' key for evidence purposes.
+
+    Do NOT use for revenue_growth — its unit semantics are not proven from a
+    canonical source contract; use _fmt_float instead.
     """
     if value is None:
         return "—"
@@ -216,10 +226,10 @@ def _ttm_metrics_section(
             },
             "revenue_growth": {
                 "label": "Revenue Growth",
-                "value": _fmt_percent(d.revenue_growth),
+                "value": _fmt_float(d.revenue_growth),
                 "raw": d.revenue_growth,
                 "is_missing": d.revenue_growth is None,
-                "unit_rule": "source-fraction proven; displayed as % (raw × 100)",
+                "unit_rule": "source semantics not proven from canonical contract; rendered as raw float",
             },
             "gross_margin": {
                 "label": "Gross Margin",
@@ -394,6 +404,7 @@ def build_equity_board_row(
     result: EquityEnrichmentResult,
     asset_uid: str,
     fallback_name: str = "",
+    token_symbol: str = "",
 ) -> dict[str, Any]:
     """Build a compact board row dict for the Featured Equities board.
 
@@ -401,10 +412,23 @@ def build_equity_board_row(
     'asset_uid' and 'details_url' keys are always present.
     Financial metrics (revenues, revenue_growth, gross_margin, fcf_margin,
     period_end) are shown only when AVAILABLE or PARTIAL.
+
+    token_symbol: canonical Robinhood token symbol (e.g. "NVDA"), separate
+    from asset_uid (e.g. "rh-equity-nvda-002").  When supplied it is used as
+    the displayed symbol so UID values never leak into the symbol column.
     """
     state = result.state
     bundle = result.bundle
-    symbol = (bundle.robinhood_token_symbol if bundle else asset_uid) or asset_uid
+
+    # Displayed symbol: E1 canonical > caller token_symbol > fallback_name > asset_uid
+    if bundle is not None and bundle.robinhood_token_symbol:
+        symbol = bundle.robinhood_token_symbol
+    elif token_symbol:
+        symbol = token_symbol
+    elif fallback_name:
+        symbol = fallback_name
+    else:
+        symbol = asset_uid
 
     # Company name: best available
     company_name: str = fallback_name or symbol
@@ -428,7 +452,7 @@ def build_equity_board_row(
 
     base.update({
         "revenues": _fmt_currency(d.revenues) if d else "—",
-        "revenue_growth": _fmt_percent(d.revenue_growth) if d else "—",
+        "revenue_growth": _fmt_float(d.revenue_growth) if d else "—",
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
         "fcf_margin": _fmt_percent(d.fcf_margin) if d else "—",
         "period_end": (ttm.period_end or "—") if ttm else "—",
