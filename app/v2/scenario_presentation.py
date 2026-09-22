@@ -137,12 +137,21 @@ def _is_stale(sc) -> bool:
 
 # ── public API ───────────────────────────────────────────────────────────────
 
-def build_scenario_presentation(sc, active_scenario_id: Optional[str]) -> ScenarioPresentation:
-    """Convert a ScenarioRecord to a template-safe ScenarioPresentation."""
+def build_scenario_presentation(
+    sc,
+    active_scenario_id: Optional[str],
+    global_is_stale: bool = False,
+) -> ScenarioPresentation:
+    """Convert a ScenarioRecord to a template-safe ScenarioPresentation.
+
+    ``global_is_stale`` propagates workspace-level staleness: when the global
+    workspace is stale (dirty after a run), a scenario that would otherwise read
+    CURRENT is downgraded to STALE (GF-F04 consistency rule).
+    """
     rs = getattr(sc, "last_run_summary", None) or {}
     has_run = bool(rs.get("kpis"))
 
-    stale = _is_stale(sc)
+    stale = _is_stale(sc) or (has_run and global_is_stale)
     if not has_run:
         state = "NOT_RUN"
     elif stale:
@@ -170,5 +179,9 @@ def build_scenario_presentation(sc, active_scenario_id: Optional[str]) -> Scenar
 def build_scenario_presentations(
     scenarios,
     active_scenario_id: Optional[str],
+    global_is_stale: bool = False,
 ) -> list[ScenarioPresentation]:
-    return [build_scenario_presentation(sc, active_scenario_id) for sc in scenarios]
+    return [
+        build_scenario_presentation(sc, active_scenario_id, global_is_stale=global_is_stale)
+        for sc in scenarios
+    ]

@@ -2187,9 +2187,14 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
     """Render the scenario list partial HTML (used by multiple endpoints)."""
     from app.persistence.scenarios_repository import list_scenarios
     from app.v2.scenario_presentation import build_scenario_presentations
+    from app.workbook.runtime_authority import resolve_runtime_freshness
     scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
     active_id = ws.active_scenario_id if ws else None
-    presentations = build_scenario_presentations(scenarios, active_id)
+    # GF-F04: propagate global staleness so a CURRENT scenario card is
+    # downgraded to STALE when the workspace is dirty after a run.
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=None)
+    presentations = build_scenario_presentations(
+        scenarios, active_id, global_is_stale=freshness.is_stale)
     ctx = {
         "scenarios": presentations,
         "active_scenario_id": active_id,
