@@ -181,7 +181,22 @@ def build_scenario_presentations(
     active_scenario_id: Optional[str],
     global_is_stale: bool = False,
 ) -> list[ScenarioPresentation]:
-    return [
-        build_scenario_presentation(sc, active_scenario_id, global_is_stale=global_is_stale)
-        for sc in scenarios
-    ]
+    """Build presentations for all scenarios.
+
+    ``global_is_stale`` is narrowly applied only to the effective current
+    scenario — the active scenario when one is selected, or the Base Case
+    when ``active_scenario_id`` is None.  Unrelated scenarios retain their
+    own persisted freshness authority (GF-F05/T5 preservation rule).
+    """
+    effective_is_base = active_scenario_id is None
+    result = []
+    for sc in scenarios:
+        is_effective = (
+            (active_scenario_id is not None and sc.scenario_id == active_scenario_id)
+            or (effective_is_base and getattr(sc, "is_base_case", False))
+        )
+        result.append(build_scenario_presentation(
+            sc, active_scenario_id,
+            global_is_stale=(global_is_stale and is_effective),
+        ))
+    return result

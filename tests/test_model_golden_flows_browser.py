@@ -565,7 +565,7 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
             "Reopen must NOT execute the engine (no implicit Run)"
         )
 
-        # ── 7. Verify stale state persists after reopen ───────────────────────
+        # ── 7. Verify stale state persists after reopen (T3) ─────────────────
         _click_tab(page, "tab-overview", "panel-overview")
         assert page.locator('[data-testid="overview-status-stale"]').count() == 1, (
             "STALE state must survive browser reopen (no implicit run)"
@@ -579,6 +579,20 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
         assert _metric_text(page, "kpi-project-irr") == irr_a, (
             "Project IRR must remain Run A's after reopen (no implicit calculation)"
         )
+
+        # T3: scenario card must also show STALE after reopen (GET path fix).
+        _click_tab(page, "tab-scenarios", "panel-scenarios")
+        page.wait_for_load_state("networkidle", timeout=10_000)
+        base_case_row_reopen = page.locator(".v2-scenario-row").filter(
+            has=page.locator(".v2-scenario-base-badge")
+        )
+        if base_case_row_reopen.count() > 0:
+            base_state_current_reopen = base_case_row_reopen.locator(
+                ".v2-scenario-state--clean").count()
+            assert base_state_current_reopen == 0, (
+                "T3/GF-F05: Base Case scenario card must NOT show Current after "
+                "reopen into a stale workspace (GET-path canonical freshness gap)"
+            )
 
         # Working edit persists
         _click_tab(page, "tab-inputs", "panel-inputs")
@@ -630,21 +644,26 @@ def test_golden_flow_c_run_a_stale_working_edit_reopen_run_b(golden_app, browser
             "Export button must be enabled after Run B"
         )
 
-        # ── 10. Scenario-card consistency after Run B ─────────────────────────
+        # ── 10. Scenario-card consistency after Run B (T4) ───────────────────
         _click_tab(page, "tab-scenarios", "panel-scenarios")
         page.wait_for_load_state("networkidle", timeout=10_000)
         base_case_row_b = page.locator(".v2-scenario-row").filter(
             has=page.locator(".v2-scenario-base-badge")
         )
         if base_case_row_b.count() > 0:
-            # After Run B, state is CURRENT — base case may show Current or Stale,
-            # but must NOT show Stale when Overview is Current (inverse of GF-F04)
-            base_state_stale_b = base_case_row_b.locator(".v2-scenario-state--stale").count()
-            # Not asserting Current here since base case state depends on scenario semantics;
-            # asserting only no contradiction with global state being CURRENT.
-            # A base case showing Not-run after a successful base-case run is the
-            # only other acceptable state that could differ before the test is expanded.
-            pass
+            # T4: after Run B, effective scenario must be CURRENT (not STALE).
+            base_state_stale_b = base_case_row_b.locator(
+                ".v2-scenario-state--stale").count()
+            base_state_current_b = base_case_row_b.locator(
+                ".v2-scenario-state--clean").count()
+            assert base_state_stale_b == 0, (
+                "T4/GF-F05: Base Case scenario card must NOT show Stale after "
+                "Run B completes (effective scenario must be CURRENT)"
+            )
+            assert base_state_current_b == 1, (
+                "T4/GF-F05: Base Case scenario card must show Current after "
+                "Run B — global state is CURRENT and hash matches"
+            )
 
     finally:
         page.close()

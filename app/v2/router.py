@@ -1165,7 +1165,9 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         _rr, runtime_freshness.is_stale, pis,
         active_scenario_name=ws.active_scenario_name or "")
 
-    # UI-3B: inject scenario presentations for the Scenarios tab
+    # UI-3B: inject scenario presentations for the Scenarios tab.
+    # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
+    # apply the same canonical freshness decision to scenario cards.
     try:
         from app.persistence.scenarios_repository import list_scenarios
         from app.v2.scenario_presentation import build_scenario_presentations
@@ -1175,7 +1177,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             include_archived=False,
         )
         _active_sc_id = ws.active_scenario_id if ws else None
-        context["scenarios"] = build_scenario_presentations(_sc_records, _active_sc_id)
+        context["scenarios"] = build_scenario_presentations(
+            _sc_records, _active_sc_id, global_is_stale=runtime_freshness.is_stale)
         context["active_scenario_id"] = _active_sc_id
     except Exception:
         context["scenarios"] = []
@@ -2188,11 +2191,22 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
     from app.persistence.scenarios_repository import list_scenarios
     from app.v2.scenario_presentation import build_scenario_presentations
     from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.workbook.workbook_identity import assemble_consistent_for_get
     scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
     active_id = ws.active_scenario_id if ws else None
-    # GF-F04: propagate global staleness so a CURRENT scenario card is
-    # downgraded to STALE when the workspace is dirty after a run.
-    freshness = resolve_runtime_freshness(ws, current_composite_hash=None)
+    # GF-F04/F05: resolve canonical freshness with the REAL composite hash so
+    # that a post-Run CURRENT workspace is not incorrectly forced to STALE.
+    # Fail closed (STALE) only when identity assembly genuinely fails.
+    try:
+        identity = assemble_consistent_for_get(
+            user_id=user_id,
+            project_id=project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        current_hash = identity.composite_hash
+    except Exception:
+        current_hash = None  # fail closed per runtime-authority semantics
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=current_hash)
     presentations = build_scenario_presentations(
         scenarios, active_id, global_is_stale=freshness.is_stale)
     ctx = {
