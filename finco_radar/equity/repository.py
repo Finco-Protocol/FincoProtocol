@@ -3,6 +3,12 @@
 The database is opened with sqlite3 URI mode=ro so the OS-level file descriptor
 is read-only.  PRAGMA query_only=ON is applied as defence-in-depth.
 
+Mode selection (FINCO_EQUITY_FUNDAMENTALS_DB_MODE):
+  snapshot — WAL-checkpointed standalone export.  Opens with mode=ro&immutable=1.
+             No WAL/SHM creation; no source-directory write permission needed.
+  live     — Live WAL DB updated by an ingestion process.  Opens with mode=ro only.
+             Standard WAL/SHM semantics; source directory must be writable.
+
 Never CREATEs, INSERTs, UPDATEs, DELETEs, or ALTERs the source DB.
 Never creates an empty database if the path is wrong.
 
@@ -27,7 +33,8 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
+from urllib.parse import quote as _urlquote
 
 from .models import (
     CompanyProfile,
@@ -43,6 +50,20 @@ from .models import (
 
 class EquityDBReadError(RuntimeError):
     """Raised when the DB file exists but cannot be opened or queried."""
+
+
+# ── URI builder ───────────────────────────────────────────────────────────────
+
+def _build_uri(path: Path, mode: str) -> str:
+    """Build a SQLite URI for the given path and mode.
+
+    snapshot → mode=ro&immutable=1 (bypasses WAL/SHM; safe for read-only dirs)
+    live     → mode=ro             (standard WAL semantics)
+    """
+    encoded = _urlquote(str(path), safe="/:")
+    if mode == "snapshot":
+        return f"file:{encoded}?mode=ro&immutable=1"
+    return f"file:{encoded}?mode=ro"
 
 
 # ── JSON helpers ──────────────────────────────────────────────────────────────
@@ -69,11 +90,7 @@ def _parse_json_field(raw: Optional[str]) -> JsonField:
 
 
 def _get_float(d: Optional[dict], key: str) -> Optional[float]:
-    """Extract an optional numeric value, preserving 0.0 as distinct from None.
-
-    Returns None when key is absent OR when value is JSON null.
-    Returns 0.0 when value is genuinely 0.
-    """
+    """Extract an optional numeric value, preserving 0.0 as distinct from None."""
     if d is None or key not in d:
         return None
     v = d[key]
@@ -138,6 +155,7 @@ def _row_to_snapshot(row) -> FinancialSnapshot:
         income_statement=income,
         balance_sheet=balance,
         cash_flow_statement=cashflow,
+        derived_source=derived_field,
         derived=derived,
     )
 
@@ -145,14 +163,15 @@ def _row_to_snapshot(row) -> FinancialSnapshot:
 # ── connection context ────────────────────────────────────────────────────────
 
 @contextmanager
-def open_db(path: Path) -> Iterator[sqlite3.Connection]:
+def open_db(path: Path, mode: str = "snapshot") -> Iterator[sqlite3.Connection]:
     """Open the equity fundamentals DB in read-only mode.
 
-    Uses URI mode=ro so the OS-level fd is read-only.
+    mode='snapshot' adds immutable=1 to bypass WAL/SHM (safe for read-only dirs).
+    mode='live' opens with mode=ro only; WAL/SHM semantics apply.
     PRAGMA query_only=ON applied as defence-in-depth.
     Never creates the file if absent.
     """
-    uri = f"file:{path}?mode=ro"
+    uri = _build_uri(path, mode)
     try:
         conn = sqlite3.connect(uri, uri=True)
     except sqlite3.OperationalError as exc:
@@ -166,34 +185,46 @@ def open_db(path: Path) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-# ── repository ────────────────────────────────────────────────────────────────
+# ── bound read session ────────────────────────────────────────────────────────
 
-class EquityFundamentalsRepository:
-    """Read-only data-access boundary for equity_fundamentals.db."""
+class BoundReadSession:
+    """All repository reads for one bundle share this single connection.
 
-    def __init__(self, db_path: Path) -> None:
-        self._path = db_path
+    The connection is opened with BEGIN (deferred) so SQLite takes a WAL
+    read snapshot at the first read; writer commits within this transaction
+    are invisible until the transaction ends.  All OperationalError /
+    DatabaseError from queries are wrapped as EquityDBReadError.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def _q(self, sql: str, params: tuple = ()) -> list:
+        try:
+            return self._conn.execute(sql, params).fetchall()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as exc:
+            raise EquityDBReadError(f"Query failed: {exc}") from exc
+
+    def _q1(self, sql: str, params: tuple = ()) -> Optional[tuple]:
+        try:
+            return self._conn.execute(sql, params).fetchone()
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as exc:
+            raise EquityDBReadError(f"Query failed: {exc}") from exc
 
     # ── asset identity ────────────────────────────────────────────────────────
 
     def get_asset(self, robinhood_token_symbol: str) -> Optional[EquityAssetIdentity]:
-        """Resolve a Robinhood token (case-insensitive) to its equity identity.
-
-        Returns None for unknown tokens.
-        Returns the record with active=False for inactive tokens (not silently hidden).
-        """
-        with open_db(self._path) as conn:
-            row = conn.execute(
-                """
-                SELECT robinhood_token_symbol, underlying_ticker, name,
-                       token_contract_address, chain_network, underlying_exchange,
-                       cik, figi, currency, security_type, active,
-                       first_seen_at, last_seen_at
-                FROM equity_assets
-                WHERE UPPER(robinhood_token_symbol) = UPPER(?)
-                """,
-                (robinhood_token_symbol,),
-            ).fetchone()
+        row = self._q1(
+            """
+            SELECT robinhood_token_symbol, underlying_ticker, name,
+                   token_contract_address, chain_network, underlying_exchange,
+                   cik, figi, currency, security_type, active,
+                   first_seen_at, last_seen_at
+            FROM equity_assets
+            WHERE UPPER(robinhood_token_symbol) = UPPER(?)
+            """,
+            (robinhood_token_symbol,),
+        )
         if row is None:
             return None
         return EquityAssetIdentity(
@@ -212,20 +243,18 @@ class EquityFundamentalsRepository:
             last_seen_at=row[12],
         )
 
-    def list_active_assets(self) -> list[EquityAssetIdentity]:
-        """List all active equity assets ordered by symbol."""
-        with open_db(self._path) as conn:
-            rows = conn.execute(
-                """
-                SELECT robinhood_token_symbol, underlying_ticker, name,
-                       token_contract_address, chain_network, underlying_exchange,
-                       cik, figi, currency, security_type, active,
-                       first_seen_at, last_seen_at
-                FROM equity_assets
-                WHERE active = 1
-                ORDER BY robinhood_token_symbol ASC
-                """
-            ).fetchall()
+    def list_active_assets(self) -> List[EquityAssetIdentity]:
+        rows = self._q(
+            """
+            SELECT robinhood_token_symbol, underlying_ticker, name,
+                   token_contract_address, chain_network, underlying_exchange,
+                   cik, figi, currency, security_type, active,
+                   first_seen_at, last_seen_at
+            FROM equity_assets
+            WHERE active = 1
+            ORDER BY robinhood_token_symbol ASC
+            """
+        )
         return [
             EquityAssetIdentity(
                 robinhood_token_symbol=r[0],
@@ -248,22 +277,17 @@ class EquityFundamentalsRepository:
     # ── company profile ───────────────────────────────────────────────────────
 
     def get_latest_profile(self, ticker: str) -> Optional[CompanyProfile]:
-        """Get the deterministically latest company profile for a ticker.
-
-        Tie-break: fetched_at DESC, payload_hash ASC.
-        """
-        with open_db(self._path) as conn:
-            row = conn.execute(
-                """
-                SELECT ticker, cik, profile_json, payload_hash,
-                       provider, source_contract, fetched_at
-                FROM equity_company_profiles
-                WHERE ticker = ?
-                ORDER BY fetched_at DESC, payload_hash ASC
-                LIMIT 1
-                """,
-                (ticker,),
-            ).fetchone()
+        row = self._q1(
+            """
+            SELECT ticker, cik, profile_json, payload_hash,
+                   provider, source_contract, fetched_at
+            FROM equity_company_profiles
+            WHERE ticker = ?
+            ORDER BY fetched_at DESC, payload_hash ASC
+            LIMIT 1
+            """,
+            (ticker,),
+        )
         if row is None:
             return None
         return CompanyProfile(
@@ -281,30 +305,24 @@ class EquityFundamentalsRepository:
     def get_latest_snapshot(
         self, ticker: str, timeframe: str
     ) -> Optional[FinancialSnapshot]:
-        """Get the single latest financial snapshot for ticker/timeframe.
-
-        Returns the most recent economic period; within that period returns
-        the most recent version per the documented tie-break rule.
-        """
-        with open_db(self._path) as conn:
-            row = conn.execute(
-                """
-                SELECT ticker, cik, timeframe, fiscal_year, fiscal_quarter,
-                       period_end, filing_date, provider, source_contract,
-                       fetched_at, normalized_at, payload_hash,
-                       income_statement_json, balance_sheet_json,
-                       cash_flow_statement_json, derived_json
-                FROM equity_financial_snapshots
-                WHERE ticker = ? AND timeframe = ?
-                ORDER BY period_end    DESC,
-                         filing_date   DESC,
-                         normalized_at DESC,
-                         fetched_at    DESC,
-                         payload_hash  ASC
-                LIMIT 1
-                """,
-                (ticker, timeframe),
-            ).fetchone()
+        row = self._q1(
+            """
+            SELECT ticker, cik, timeframe, fiscal_year, fiscal_quarter,
+                   period_end, filing_date, provider, source_contract,
+                   fetched_at, normalized_at, payload_hash,
+                   income_statement_json, balance_sheet_json,
+                   cash_flow_statement_json, derived_json
+            FROM equity_financial_snapshots
+            WHERE ticker = ? AND timeframe = ?
+            ORDER BY period_end    DESC,
+                     filing_date   DESC,
+                     normalized_at DESC,
+                     fetched_at    DESC,
+                     payload_hash  ASC
+            LIMIT 1
+            """,
+            (ticker, timeframe),
+        )
         if row is None:
             return None
         return _row_to_snapshot(row)
@@ -314,86 +332,73 @@ class EquityFundamentalsRepository:
         ticker: str,
         timeframe: str,
         limit: int = 20,
-    ) -> list[FinancialSnapshot]:
-        """Get historical snapshots; one best-version row per unique economic period.
-
-        Uses a window ROW_NUMBER to pick one row per (ticker, timeframe, period_end),
-        then returns those rows ordered by period_end DESC.
-        Tie-break within the same period: filing_date DESC, normalized_at DESC,
-        fetched_at DESC, payload_hash ASC.
-        """
-        with open_db(self._path) as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker, cik, timeframe, fiscal_year, fiscal_quarter,
-                       period_end, filing_date, provider, source_contract,
-                       fetched_at, normalized_at, payload_hash,
-                       income_statement_json, balance_sheet_json,
-                       cash_flow_statement_json, derived_json
-                FROM (
-                    SELECT *,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY ticker, timeframe, period_end
-                               ORDER BY filing_date   DESC,
-                                        normalized_at DESC,
-                                        fetched_at    DESC,
-                                        payload_hash  ASC
-                           ) AS rn
-                    FROM equity_financial_snapshots
-                    WHERE ticker = ? AND timeframe = ?
-                )
-                WHERE rn = 1
-                ORDER BY period_end DESC
-                LIMIT ?
-                """,
-                (ticker, timeframe, limit),
-            ).fetchall()
+    ) -> List[FinancialSnapshot]:
+        rows = self._q(
+            """
+            SELECT ticker, cik, timeframe, fiscal_year, fiscal_quarter,
+                   period_end, filing_date, provider, source_contract,
+                   fetched_at, normalized_at, payload_hash,
+                   income_statement_json, balance_sheet_json,
+                   cash_flow_statement_json, derived_json
+            FROM (
+                SELECT *,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY ticker, timeframe, period_end
+                           ORDER BY filing_date   DESC,
+                                    normalized_at DESC,
+                                    fetched_at    DESC,
+                                    payload_hash  ASC
+                       ) AS rn
+                FROM equity_financial_snapshots
+                WHERE ticker = ? AND timeframe = ?
+            )
+            WHERE rn = 1
+            ORDER BY period_end DESC
+            LIMIT ?
+            """,
+            (ticker, timeframe, limit),
+        )
         return [_row_to_snapshot(r) for r in rows]
 
     # ── corporate actions ─────────────────────────────────────────────────────
 
-    def get_dividends(
-        self, ticker: str, limit: int = 20
-    ) -> list[DividendRecord]:
-        with open_db(self._path) as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker, external_id, cash_amount, currency,
-                       declaration_date, ex_dividend_date, record_date,
-                       pay_date, frequency, dividend_type, first_seen_at
-                FROM equity_dividends
-                WHERE ticker = ?
-                ORDER BY COALESCE(pay_date, ex_dividend_date, declaration_date) DESC,
-                         external_id ASC
-                LIMIT ?
-                """,
-                (ticker, limit),
-            ).fetchall()
+    def get_dividends(self, ticker: str, limit: int = 20) -> List[DividendRecord]:
+        rows = self._q(
+            """
+            SELECT ticker, external_id, cash_amount, currency,
+                   declaration_date, ex_dividend_date, record_date,
+                   pay_date, frequency, dividend_type, first_seen_at
+            FROM equity_dividends
+            WHERE ticker = ?
+            ORDER BY COALESCE(pay_date, ex_dividend_date, declaration_date) DESC,
+                     external_id ASC
+            LIMIT ?
+            """,
+            (ticker, limit),
+        )
         return [
             DividendRecord(
                 ticker=r[0], external_id=r[1], cash_amount=r[2],
                 currency=r[3], declaration_date=r[4], ex_dividend_date=r[5],
-                record_date=r[6], pay_date=r[7], frequency=r[8],
+                record_date=r[6], pay_date=r[7],
+                frequency=int(r[8]) if r[8] is not None else None,
                 dividend_type=r[9], first_seen_at=r[10],
             )
             for r in rows
         ]
 
-    def get_splits(
-        self, ticker: str, limit: int = 10
-    ) -> list[SplitRecord]:
-        with open_db(self._path) as conn:
-            rows = conn.execute(
-                """
-                SELECT ticker, external_id, execution_date,
-                       split_from, split_to, first_seen_at
-                FROM equity_splits
-                WHERE ticker = ?
-                ORDER BY execution_date DESC, external_id ASC
-                LIMIT ?
-                """,
-                (ticker, limit),
-            ).fetchall()
+    def get_splits(self, ticker: str, limit: int = 10) -> List[SplitRecord]:
+        rows = self._q(
+            """
+            SELECT ticker, external_id, execution_date,
+                   split_from, split_to, first_seen_at
+            FROM equity_splits
+            WHERE ticker = ?
+            ORDER BY execution_date DESC, external_id ASC
+            LIMIT ?
+            """,
+            (ticker, limit),
+        )
         return [
             SplitRecord(
                 ticker=r[0], external_id=r[1], execution_date=r[2],
@@ -409,33 +414,31 @@ class EquityFundamentalsRepository:
         ticker: str,
         payload_hash: Optional[str] = None,
         limit: int = 10,
-    ) -> list[SourceLineage]:
-        """Get source lineage records; optionally filter by payload_hash."""
-        with open_db(self._path) as conn:
-            if payload_hash is not None:
-                rows = conn.execute(
-                    """
-                    SELECT lineage_id, ticker, stage, provider, source_contract,
-                           endpoint, payload_hash, normalized_ref, fetched_at
-                    FROM equity_source_lineage
-                    WHERE ticker = ? AND payload_hash = ?
-                    ORDER BY fetched_at DESC, lineage_id ASC
-                    LIMIT ?
-                    """,
-                    (ticker, payload_hash, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT lineage_id, ticker, stage, provider, source_contract,
-                           endpoint, payload_hash, normalized_ref, fetched_at
-                    FROM equity_source_lineage
-                    WHERE ticker = ?
-                    ORDER BY fetched_at DESC, lineage_id ASC
-                    LIMIT ?
-                    """,
-                    (ticker, limit),
-                ).fetchall()
+    ) -> List[SourceLineage]:
+        if payload_hash is not None:
+            rows = self._q(
+                """
+                SELECT lineage_id, ticker, stage, provider, source_contract,
+                       endpoint, payload_hash, normalized_ref, fetched_at
+                FROM equity_source_lineage
+                WHERE ticker = ? AND payload_hash = ?
+                ORDER BY fetched_at DESC, lineage_id ASC
+                LIMIT ?
+                """,
+                (ticker, payload_hash, limit),
+            )
+        else:
+            rows = self._q(
+                """
+                SELECT lineage_id, ticker, stage, provider, source_contract,
+                       endpoint, payload_hash, normalized_ref, fetched_at
+                FROM equity_source_lineage
+                WHERE ticker = ?
+                ORDER BY fetched_at DESC, lineage_id ASC
+                LIMIT ?
+                """,
+                (ticker, limit),
+            )
         return [
             SourceLineage(
                 lineage_id=r[0], ticker=r[1], stage=r[2], provider=r[3],
@@ -444,3 +447,80 @@ class EquityFundamentalsRepository:
             )
             for r in rows
         ]
+
+
+# ── repository ────────────────────────────────────────────────────────────────
+
+class EquityFundamentalsRepository:
+    """Read-only data-access boundary for equity_fundamentals.db."""
+
+    def __init__(self, db_path: Path, mode: str = "snapshot") -> None:
+        self._path = db_path
+        self._mode = mode
+
+    @contextmanager
+    def read_session(self) -> Iterator[BoundReadSession]:
+        """Open one connection, begin a deferred transaction, yield a BoundReadSession.
+
+        All queries within the session share a single WAL read snapshot.
+        The transaction is always rolled back on exit (read-only; nothing to commit).
+        Wraps open/connect failures as EquityDBReadError.
+        """
+        with open_db(self._path, self._mode) as conn:
+            try:
+                conn.execute("BEGIN DEFERRED")
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as exc:
+                raise EquityDBReadError(f"Cannot begin read transaction: {exc}") from exc
+            try:
+                yield BoundReadSession(conn)
+            finally:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+
+    # ── convenience pass-through methods (single-call use cases) ─────────────
+
+    def get_asset(self, robinhood_token_symbol: str) -> Optional[EquityAssetIdentity]:
+        with self.read_session() as s:
+            return s.get_asset(robinhood_token_symbol)
+
+    def list_active_assets(self) -> List[EquityAssetIdentity]:
+        with self.read_session() as s:
+            return s.list_active_assets()
+
+    def get_latest_profile(self, ticker: str) -> Optional[CompanyProfile]:
+        with self.read_session() as s:
+            return s.get_latest_profile(ticker)
+
+    def get_latest_snapshot(
+        self, ticker: str, timeframe: str
+    ) -> Optional[FinancialSnapshot]:
+        with self.read_session() as s:
+            return s.get_latest_snapshot(ticker, timeframe)
+
+    def get_financial_history(
+        self,
+        ticker: str,
+        timeframe: str,
+        limit: int = 20,
+    ) -> List[FinancialSnapshot]:
+        with self.read_session() as s:
+            return s.get_financial_history(ticker, timeframe, limit)
+
+    def get_dividends(self, ticker: str, limit: int = 20) -> List[DividendRecord]:
+        with self.read_session() as s:
+            return s.get_dividends(ticker, limit)
+
+    def get_splits(self, ticker: str, limit: int = 10) -> List[SplitRecord]:
+        with self.read_session() as s:
+            return s.get_splits(ticker, limit)
+
+    def get_lineage(
+        self,
+        ticker: str,
+        payload_hash: Optional[str] = None,
+        limit: int = 10,
+    ) -> List[SourceLineage]:
+        with self.read_session() as s:
+            return s.get_lineage(ticker, payload_hash=payload_hash, limit=limit)

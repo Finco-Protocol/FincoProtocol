@@ -1,8 +1,25 @@
 """E1 configuration resolver for the equity fundamentals database.
 
-The DB path is resolved exclusively from the environment variable
-FINCO_EQUITY_FUNDAMENTALS_DB_PATH.  The application never inspects
-machine-specific default paths and never creates the file.
+Two env-vars govern the DB access:
+
+  FINCO_EQUITY_FUNDAMENTALS_DB_PATH
+    Absolute path to the equity_fundamentals.db file.
+    Never inspected for a default; never auto-created.
+
+  FINCO_EQUITY_FUNDAMENTALS_DB_MODE   (default: snapshot)
+    snapshot — for a WAL-checkpointed standalone export/snapshot that will
+               not change in place.  Opens with mode=ro&immutable=1.
+               No WAL/SHM creation or source-directory write permission needed.
+               Appropriate for: exported checkpointed DB, atomically replaced
+               snapshot files, periodically produced read snapshots.
+
+    live     — for a live WAL DB that an ingestion process may update.
+               Opens with mode=ro only.  Standard WAL/SHM semantics are
+               respected; the source directory must be writable by the
+               SQLite runtime for SHM access.
+
+The caller chooses the mode explicitly.  The implementation never silently
+detects and switches modes.
 """
 from __future__ import annotations
 
@@ -10,6 +27,10 @@ import os
 from pathlib import Path
 
 ENV_KEY = "FINCO_EQUITY_FUNDAMENTALS_DB_PATH"
+ENV_KEY_MODE = "FINCO_EQUITY_FUNDAMENTALS_DB_MODE"
+
+_VALID_MODES = frozenset({"snapshot", "live"})
+_DEFAULT_MODE = "snapshot"
 
 
 class EquityDBNotConfiguredError(RuntimeError):
@@ -18,6 +39,10 @@ class EquityDBNotConfiguredError(RuntimeError):
 
 class EquityDBNotFoundError(RuntimeError):
     """Raised when the configured DB path does not exist on disk."""
+
+
+class EquityDBModeError(ValueError):
+    """Raised when FINCO_EQUITY_FUNDAMENTALS_DB_MODE has an invalid value."""
 
 
 def resolve_db_path() -> Path:
@@ -39,3 +64,20 @@ def resolve_db_path() -> Path:
             f"Equity fundamentals DB not found at configured path: {p}"
         )
     return p
+
+
+def resolve_db_mode() -> str:
+    """Return the configured source mode ('snapshot' or 'live').
+
+    Defaults to 'snapshot' when the env var is absent.
+    Raises EquityDBModeError when set to an unrecognised value.
+    """
+    raw = os.environ.get(ENV_KEY_MODE, "").strip().lower()
+    if not raw:
+        return _DEFAULT_MODE
+    if raw not in _VALID_MODES:
+        raise EquityDBModeError(
+            f"{ENV_KEY_MODE}={raw!r} is invalid. "
+            f"Must be one of: {sorted(_VALID_MODES)}"
+        )
+    return raw

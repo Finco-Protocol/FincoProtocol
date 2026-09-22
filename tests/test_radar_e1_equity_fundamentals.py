@@ -1,4 +1,4 @@
-"""E1 equity fundamentals read authority — T1 through T14.
+"""E1 equity fundamentals read authority — T1 through T21.
 
 All tests use a synthetic in-process SQLite DB with the exact production
 schema.  No production data.  No network calls.  No Robinhood API calls.
@@ -17,6 +17,13 @@ T11 — read-only enforcement: INSERT through repo raises; missing path not crea
 T12 — deterministic bundle: two identical reads produce equivalent results.
 T13 — malformed JSON: parse error isolated to section; record still returned.
 T14 — no market authority leakage: bundle contains no price/quote/liquidity fields.
+T15 — WAL snapshot mode: immutable=1 URI; no WAL/SHM files created.
+T16 — live mode: mode=ro only URI; standard WAL open.
+T17 — atomic bundle read: all fields from one read_session.
+T18 — missing schema table → EquityDBReadError → SOURCE_UNAVAILABLE.
+T19 — dividend frequency is Optional[int], not string.
+T20 — derived_source metadata preserved: absent/malformed distinction.
+T21 — canonical token symbol: bundle uses DB form, not request casing.
 """
 from __future__ import annotations
 
@@ -30,8 +37,10 @@ from typing import Optional
 import pytest
 
 from finco_radar.equity.config import (
+    EquityDBModeError,
     EquityDBNotConfiguredError,
     EquityDBNotFoundError,
+    resolve_db_mode,
     resolve_db_path,
 )
 from finco_radar.equity.models import AvailabilityState, EquityFundamentalsBundle
@@ -102,7 +111,7 @@ CREATE TABLE equity_dividends (
     ex_dividend_date TEXT,
     record_date TEXT,
     pay_date TEXT,
-    frequency TEXT,
+    frequency INTEGER,
     dividend_type TEXT,
     first_seen_at TEXT
 );
@@ -584,13 +593,13 @@ class TestT8DividendsAndSplits:
             "INSERT INTO equity_dividends VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             ("NVDA", "div-001", 0.10, "USD",
              "2024-09-01", "2024-09-15", "2024-09-16", "2024-10-01",
-             "quarterly", "CASH", "2024-09-02T00:00:00"),
+             4, "CASH", "2024-09-02T00:00:00"),
         )
         conn.execute(
             "INSERT INTO equity_dividends VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             ("NVDA", "div-002", 0.0, "USD",
              "2024-06-01", "2024-06-15", "2024-06-16", "2024-07-01",
-             "quarterly", "CASH", "2024-06-02T00:00:00"),
+             4, "CASH", "2024-06-02T00:00:00"),
         )
         # Split record
         conn.execute(
@@ -954,3 +963,391 @@ class TestConfig:
         monkeypatch.delenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", raising=False)
         bundle = get_equity_fundamentals("NVDA")
         assert bundle.availability == AvailabilityState.SOURCE_UNAVAILABLE
+
+    def test_mode_defaults_to_snapshot(self, monkeypatch):
+        monkeypatch.delenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", raising=False)
+        assert resolve_db_mode() == "snapshot"
+
+    def test_mode_live_accepted(self, monkeypatch):
+        monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "live")
+        assert resolve_db_mode() == "live"
+
+    def test_mode_snapshot_accepted(self, monkeypatch):
+        monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+        assert resolve_db_mode() == "snapshot"
+
+    def test_mode_invalid_raises(self, monkeypatch):
+        monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "realtime")
+        with pytest.raises(EquityDBModeError):
+            resolve_db_mode()
+
+    def test_mode_case_insensitive(self, monkeypatch):
+        monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "SNAPSHOT")
+        assert resolve_db_mode() == "snapshot"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T15 — WAL snapshot mode: immutable=1 URI; no WAL/SHM files created
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT15WALSnapshotMode:
+    def test_snapshot_mode_uri_contains_immutable(self):
+        from finco_radar.equity.repository import _build_uri
+        path = Path("/tmp/test.db")
+        uri = _build_uri(path, "snapshot")
+        assert "immutable=1" in uri
+        assert "mode=ro" in uri
+
+    def test_live_mode_uri_no_immutable(self):
+        from finco_radar.equity.repository import _build_uri
+        path = Path("/tmp/test.db")
+        uri = _build_uri(path, "live")
+        assert "immutable" not in uri
+        assert "mode=ro" in uri
+
+    def test_snapshot_mode_opens_readable_db(self):
+        path = _make_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path, mode="snapshot")
+        asset = repo.get_asset("NVDA")
+        assert asset is not None
+        assert asset.underlying_ticker == "NVDA"
+
+    def test_snapshot_mode_no_wal_shm_side_effects(self):
+        """Opening in snapshot mode must not create WAL or SHM files."""
+        path = _make_db(_nvda_asset)
+        wal = path.with_suffix(".db-wal")
+        shm = path.with_suffix(".db-shm")
+        repo = EquityFundamentalsRepository(path, mode="snapshot")
+        _ = repo.get_asset("NVDA")
+        assert not wal.exists(), "snapshot mode must not create -wal file"
+        assert not shm.exists(), "snapshot mode must not create -shm file"
+
+    def test_default_mode_is_snapshot(self):
+        path = _make_db(_nvda_asset)
+        # Default constructor: mode defaults to "snapshot"
+        repo = EquityFundamentalsRepository(path)
+        asset = repo.get_asset("NVDA")
+        assert asset is not None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T16 — live mode: mode=ro only URI
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT16LiveMode:
+    def test_live_mode_opens_readable_db(self):
+        path = _make_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path, mode="live")
+        asset = repo.get_asset("NVDA")
+        assert asset is not None
+
+    def test_live_mode_bundle_reads_correctly(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_company_profiles VALUES (?,?,?,?,?,?,?)",
+                ("NVDA", None, json.dumps({"name": "NVIDIA"}), "ph1",
+                 "MASSIVE", "LEGACY_MASSIVE_VX", "2025-01-01T00:00:00"),
+            )
+            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-ttm")
+
+        path = _make_db(seed)
+        bundle = get_equity_fundamentals("NVDA", db_path=path, db_mode="live")
+        assert bundle.availability == AvailabilityState.AVAILABLE
+        assert bundle.latest_ttm is not None
+
+    def test_db_mode_override_in_service(self):
+        path = _make_db(_nvda_asset)
+        # Passing db_mode overrides env
+        bundle = get_equity_fundamentals("NVDA", db_path=path, db_mode="snapshot")
+        assert bundle.availability == AvailabilityState.NOT_AVAILABLE
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T17 — atomic bundle read: all fields from one read_session
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT17AtomicBundleRead:
+    def test_read_session_context_manager(self):
+        path = _make_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path)
+        with repo.read_session() as session:
+            asset = session.get_asset("NVDA")
+            assert asset is not None
+            # All queries through the same session
+            profile = session.get_latest_profile("NVDA")
+            ttm = session.get_latest_snapshot("NVDA", "ttm")
+        # Session closed; verifying results
+        assert asset.underlying_ticker == "NVDA"
+        assert profile is None  # no profile in seed
+        assert ttm is None  # no snapshot in seed
+
+    def test_full_bundle_uses_read_session(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_company_profiles VALUES (?,?,?,?,?,?,?)",
+                ("NVDA", None, json.dumps({"name": "NVIDIA"}), "ph1",
+                 "MASSIVE", "LEGACY_MASSIVE_VX", "2025-01-01T00:00:00"),
+            )
+            _insert_snapshot(conn, "NVDA", "ttm", "2024-09-30", "hash-t17")
+
+        path = _make_db(seed)
+        bundle = get_equity_fundamentals("NVDA", db_path=path)
+        assert bundle.asset is not None
+        assert bundle.company_profile is not None
+        assert bundle.latest_ttm is not None
+        assert bundle.availability == AvailabilityState.AVAILABLE
+
+    def test_read_session_does_not_hold_write_lock(self):
+        """After read_session closes, the DB is writable again via a new connection."""
+        path = _make_db(_nvda_asset)
+        repo = EquityFundamentalsRepository(path)
+        with repo.read_session() as session:
+            _ = session.get_asset("NVDA")
+        # Open a new writable connection to verify no leftover lock
+        conn = sqlite3.connect(str(path))
+        try:
+            conn.execute(
+                "INSERT INTO equity_assets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("TEST2", "TEST2", None, None, None, None,
+                 None, None, None, None, 1, None, None),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T18 — missing schema table → EquityDBReadError → SOURCE_UNAVAILABLE
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT18MissingSchemaTable:
+    def test_missing_table_raises_equity_db_read_error(self):
+        """A DB missing equity_assets must raise EquityDBReadError (not crash)."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        f.close()
+        path = Path(f.name)
+        conn = sqlite3.connect(str(path))
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        repo = EquityFundamentalsRepository(path)
+        with pytest.raises(EquityDBReadError):
+            repo.get_asset("NVDA")
+
+    def test_missing_schema_bundle_is_source_unavailable(self):
+        """Service wraps EquityDBReadError → SOURCE_UNAVAILABLE."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        f.close()
+        path = Path(f.name)
+        conn = sqlite3.connect(str(path))
+        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        bundle = get_equity_fundamentals("NVDA", db_path=path)
+        assert bundle.availability == AvailabilityState.SOURCE_UNAVAILABLE
+
+    def test_empty_db_bundle_is_source_unavailable(self):
+        """Completely empty SQLite file must yield SOURCE_UNAVAILABLE."""
+        f = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        f.close()
+        path = Path(f.name)
+        conn = sqlite3.connect(str(path))
+        conn.commit()
+        conn.close()
+
+        bundle = get_equity_fundamentals("NVDA", db_path=path)
+        assert bundle.availability == AvailabilityState.SOURCE_UNAVAILABLE
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T19 — dividend frequency is Optional[int], not string
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT19DividendFrequencyInt:
+    def test_frequency_is_int_when_present(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_dividends VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("NVDA", "div-freq-1", 0.25, "USD",
+                 "2024-01-01", "2024-01-15", "2024-01-16", "2024-02-01",
+                 4, "CASH", "2024-01-02T00:00:00"),
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        divs = repo.get_dividends("NVDA")
+        assert len(divs) == 1
+        assert divs[0].frequency == 4
+        assert isinstance(divs[0].frequency, int), (
+            f"frequency must be int, got {type(divs[0].frequency)}"
+        )
+
+    def test_frequency_is_none_when_null(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_dividends VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("NVDA", "div-freq-null", 0.10, "USD",
+                 "2024-01-01", "2024-01-15", "2024-01-16", "2024-02-01",
+                 None, "CASH", "2024-01-02T00:00:00"),
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        divs = repo.get_dividends("NVDA")
+        assert divs[0].frequency is None
+
+    def test_frequency_annual_is_1(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            conn.execute(
+                "INSERT INTO equity_dividends VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                ("NVDA", "div-freq-annual", 1.00, "USD",
+                 "2024-01-01", "2024-01-15", "2024-01-16", "2024-02-01",
+                 1, "CASH", "2024-01-02T00:00:00"),
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        divs = repo.get_dividends("NVDA")
+        assert divs[0].frequency == 1
+        assert isinstance(divs[0].frequency, int)
+
+    def test_model_field_type_annotation(self):
+        """DividendRecord.frequency must be annotated Optional[int], not Optional[str]."""
+        import inspect
+        from finco_radar.equity.models import DividendRecord
+        hints = {}
+        for f in dataclasses.fields(DividendRecord):
+            hints[f.name] = f.type
+        # The type annotation string must reflect int not str
+        freq_type = hints.get("frequency", "")
+        assert "str" not in str(freq_type), (
+            f"DividendRecord.frequency must be Optional[int], got: {freq_type}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T20 — derived_source metadata preserved: absent/malformed distinction
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT20DerivedSourceMetadata:
+    def test_derived_source_absent_when_null(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            _insert_snapshot(
+                conn, "NVDA", "ttm", "2024-03-31", "hash-t20-null",
+                derived_json=None,
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        snap = repo.get_latest_snapshot("NVDA", "ttm")
+        assert snap is not None
+        assert snap.derived_source.absent is True
+        assert snap.derived_source.parse_error is None
+        assert snap.derived is None
+
+    def test_derived_source_parse_error_when_malformed(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            _insert_snapshot(
+                conn, "NVDA", "ttm", "2024-03-31", "hash-t20-bad",
+                derived_json="{bad json!",
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        snap = repo.get_latest_snapshot("NVDA", "ttm")
+        assert snap is not None
+        assert snap.derived_source.absent is False
+        assert snap.derived_source.parse_error is not None
+        assert snap.derived is None
+
+    def test_derived_source_available_when_valid(self):
+        def seed(conn):
+            _nvda_asset(conn)
+            _insert_snapshot(
+                conn, "NVDA", "ttm", "2024-03-31", "hash-t20-ok",
+                derived_json=json.dumps({"revenues": 1000.0}),
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        snap = repo.get_latest_snapshot("NVDA", "ttm")
+        assert snap is not None
+        assert snap.derived_source.absent is False
+        assert snap.derived_source.parse_error is None
+        assert snap.derived_source.is_available is True
+        assert snap.derived is not None
+        assert snap.derived.revenues == 1000.0
+
+    def test_derived_source_wrong_type_yields_parse_error(self):
+        """A JSON array is valid JSON but not a dict → parse_error set."""
+        def seed(conn):
+            _nvda_asset(conn)
+            _insert_snapshot(
+                conn, "NVDA", "ttm", "2024-03-31", "hash-t20-arr",
+                derived_json="[1, 2, 3]",
+            )
+
+        path = _make_db(seed)
+        repo = EquityFundamentalsRepository(path)
+        snap = repo.get_latest_snapshot("NVDA", "ttm")
+        assert snap.derived_source.absent is False
+        assert snap.derived_source.parse_error is not None
+        assert snap.derived is None
+
+    def test_derived_source_field_exists_on_model(self):
+        """FinancialSnapshot must have derived_source: JsonField field."""
+        from finco_radar.equity.models import FinancialSnapshot, JsonField
+        field_names = {f.name for f in dataclasses.fields(FinancialSnapshot)}
+        assert "derived_source" in field_names, (
+            "FinancialSnapshot must have derived_source field"
+        )
+        field_map = {f.name: f for f in dataclasses.fields(FinancialSnapshot)}
+        assert field_map["derived_source"].type in (
+            "JsonField", JsonField,
+        ) or "JsonField" in str(field_map["derived_source"].type)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# T21 — canonical token symbol: bundle uses DB form, not request casing
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestT21CanonicalTokenSymbol:
+    def test_lowercase_request_returns_db_canonical_symbol(self):
+        path = _make_db(_nvda_asset)
+        bundle = get_equity_fundamentals("nvda", db_path=path)
+        assert bundle.robinhood_token_symbol == "NVDA", (
+            "bundle.robinhood_token_symbol must be DB canonical form 'NVDA', not 'nvda'"
+        )
+
+    def test_mixed_case_request_returns_db_canonical_symbol(self):
+        path = _make_db(_nvda_asset)
+        bundle = get_equity_fundamentals("NvDa", db_path=path)
+        assert bundle.robinhood_token_symbol == "NVDA"
+
+    def test_exact_case_request_returns_db_canonical_symbol(self):
+        path = _make_db(_nvda_asset)
+        bundle = get_equity_fundamentals("NVDA", db_path=path)
+        assert bundle.robinhood_token_symbol == "NVDA"
+
+    def test_not_found_preserves_request_symbol(self):
+        """For NOT_FOUND, the request symbol (any casing) is kept in the bundle."""
+        path = _make_db(_nvda_asset)
+        bundle = get_equity_fundamentals("unknown_token", db_path=path)
+        assert bundle.availability == AvailabilityState.NOT_FOUND
+        assert bundle.robinhood_token_symbol == "unknown_token"
+
+    def test_canonical_symbol_matches_asset_field(self):
+        """bundle.robinhood_token_symbol must equal bundle.asset.robinhood_token_symbol."""
+        path = _make_db(_nvda_asset)
+        bundle = get_equity_fundamentals("nvda", db_path=path)
+        assert bundle.asset is not None
+        assert bundle.robinhood_token_symbol == bundle.asset.robinhood_token_symbol

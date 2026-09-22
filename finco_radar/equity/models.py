@@ -133,6 +133,7 @@ class FinancialSnapshot:
     income_statement: JsonField
     balance_sheet: JsonField
     cash_flow_statement: JsonField
+    derived_source: JsonField
     derived: Optional[DerivedFundamentals]
 
 
@@ -148,7 +149,7 @@ class DividendRecord:
     ex_dividend_date: Optional[str]
     record_date: Optional[str]
     pay_date: Optional[str]
-    frequency: Optional[str]
+    frequency: Optional[int]
     dividend_type: Optional[str]
     first_seen_at: Optional[str]
 

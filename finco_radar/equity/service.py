@@ -14,6 +14,7 @@ from .config import (
     EquityDBNotConfiguredError,
     EquityDBNotFoundError,
     resolve_db_path,
+    resolve_db_mode,
 )
 from .models import (
     AvailabilityState,
@@ -94,6 +95,7 @@ def get_equity_fundamentals(
     robinhood_token_symbol: str,
     *,
     db_path: Optional[Path] = None,
+    db_mode: Optional[str] = None,
     dividends_limit: int = 20,
     splits_limit: int = 10,
     lineage_limit: int = 10,
@@ -101,8 +103,12 @@ def get_equity_fundamentals(
     """Resolve a Robinhood token to a full equity fundamentals bundle.
 
     ``db_path`` overrides the environment-variable path; pass it in tests.
+    ``db_mode`` overrides FINCO_EQUITY_FUNDAMENTALS_DB_MODE; pass it in tests.
     When the DB is unconfigured or missing, returns SOURCE_UNAVAILABLE.
     When the token is unknown, returns NOT_FOUND.
+
+    The bundle's robinhood_token_symbol is the canonical DB form, not the
+    request casing.
 
     Deterministic: no network calls, no datetime.now() inside the result.
     """
@@ -113,35 +119,41 @@ def get_equity_fundamentals(
             robinhood_token_symbol, AvailabilityState.SOURCE_UNAVAILABLE
         )
 
-    try:
-        repo = EquityFundamentalsRepository(path)
-        asset = repo.get_asset(robinhood_token_symbol)
+    mode = db_mode if db_mode is not None else resolve_db_mode()
 
-        if asset is None:
-            return _unavailable_bundle(
-                robinhood_token_symbol, AvailabilityState.NOT_FOUND
+    try:
+        repo = EquityFundamentalsRepository(path, mode)
+
+        with repo.read_session() as session:
+            asset = session.get_asset(robinhood_token_symbol)
+
+            if asset is None:
+                return _unavailable_bundle(
+                    robinhood_token_symbol, AvailabilityState.NOT_FOUND
+                )
+
+            # Use canonical symbol from DB, not request casing
+            canonical_symbol = asset.robinhood_token_symbol
+            ticker = asset.underlying_ticker
+            profile = session.get_latest_profile(ticker)
+            ttm = session.get_latest_snapshot(ticker, "ttm")
+            quarterly = session.get_latest_snapshot(ticker, "quarterly")
+            annual = session.get_latest_snapshot(ticker, "annual")
+            dividends = session.get_dividends(ticker, limit=dividends_limit)
+            splits = session.get_splits(ticker, limit=splits_limit)
+
+            # Lineage: use the most informative available snapshot's hash
+            best_hash: Optional[str] = None
+            for snap in (ttm, quarterly, annual):
+                if snap is not None and snap.payload_hash:
+                    best_hash = snap.payload_hash
+                    break
+            lineage = session.get_lineage(
+                ticker, payload_hash=best_hash, limit=lineage_limit
             )
 
-        ticker = asset.underlying_ticker
-        profile = repo.get_latest_profile(ticker)
-        ttm = repo.get_latest_snapshot(ticker, "ttm")
-        quarterly = repo.get_latest_snapshot(ticker, "quarterly")
-        annual = repo.get_latest_snapshot(ticker, "annual")
-        dividends = repo.get_dividends(ticker, limit=dividends_limit)
-        splits = repo.get_splits(ticker, limit=splits_limit)
-
-        # Lineage: use the most informative available snapshot's hash
-        best_hash: Optional[str] = None
-        for snap in (ttm, quarterly, annual):
-            if snap is not None and snap.payload_hash:
-                best_hash = snap.payload_hash
-                break
-        lineage = repo.get_lineage(
-            ticker, payload_hash=best_hash, limit=lineage_limit
-        )
-
         return EquityFundamentalsBundle(
-            robinhood_token_symbol=robinhood_token_symbol,
+            robinhood_token_symbol=canonical_symbol,
             asset=asset,
             company_profile=profile,
             latest_ttm=ttm,
