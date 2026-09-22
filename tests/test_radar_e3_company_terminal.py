@@ -1,4 +1,4 @@
-"""E3 Company Terminal tests — T01–T87.
+"""E3 Company Terminal tests — T01–T92.
 
 Covers:
   T01  lineage_id is Optional[int] in SourceLineage model
@@ -88,6 +88,11 @@ Covers:
   T85  F07: mixed available + malformed periods → matrix state PARTIAL
   T86  F07: absent-only periods → matrix state NOT_AVAILABLE
   T87  F07: SOURCE_DATA_MALFORMED visible in rendered HTML
+  T88  C3: income field map labels all real-data snake_case keys
+  T89  C3: balance sheet field map labels all real-data snake_case keys
+  T90  C3: cash flow field map labels all real-data snake_case keys
+  T91  C3: unknown field key falls back to raw key as label
+  T92  C3: statement matrix with real-data snake_case keys renders correct row labels
 """
 from __future__ import annotations
 
@@ -1271,11 +1276,11 @@ def test_t50_statement_matrix_field_ordering():
         fetched_at=None, normalized_at=None, payload_hash=None,
         income_statement=JsonField(
             value={
-                "netIncome": 99.0,
-                "totalRevenue": 385.0,
+                "net_income_loss": 99.0,
+                "revenues": 385.0,
                 "zzz_unknown": 1.0,
                 "aaa_unknown": 2.0,
-                "grossProfit": 170.0,
+                "gross_profit": 170.0,
             },
             absent=False, parse_error=None,
         ),
@@ -1287,7 +1292,7 @@ def test_t50_statement_matrix_field_ordering():
     result = _build_statement_matrix([snap], "income_statement")
     field_keys = [r["field_key"] for r in result["rows"]]
     # Known fields come first in map order
-    known_in_map = [k for k in _INCOME_FIELD_MAP if k in {"netIncome", "totalRevenue", "grossProfit"}]
+    known_in_map = [k for k in _INCOME_FIELD_MAP if k in {"net_income_loss", "revenues", "gross_profit"}]
     known_positions = [field_keys.index(k) for k in known_in_map if k in field_keys]
     unknown_positions = [field_keys.index(k) for k in ["aaa_unknown", "zzz_unknown"] if k in field_keys]
     assert max(known_positions) < min(unknown_positions), (
@@ -2202,3 +2207,140 @@ def test_t87_source_data_malformed_in_html():
             )
     finally:
         tmp.unlink(missing_ok=True)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# T88–T92: Correction C — real-data field map coverage
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── T88: income field map labels all real-data snake_case keys ────────────────
+
+def test_t88_income_field_map_covers_real_data_keys():
+    from app.radar_ui.equity_terminal import _INCOME_FIELD_MAP
+
+    # Keys observed in real MASSIVE/LEGACY_MASSIVE_VX income statements
+    real_keys = {
+        "revenues", "cost_of_revenue", "gross_profit", "operating_income_loss",
+        "operating_expenses", "costs_and_expenses", "benefits_costs_expenses",
+        "income_loss_from_continuing_operations_before_tax", "income_tax_expense_benefit",
+        "income_loss_from_continuing_operations_after_tax", "net_income_loss",
+        "net_income_loss_attributable_to_parent", "basic_earnings_per_share",
+        "diluted_earnings_per_share", "basic_average_shares", "diluted_average_shares",
+    }
+    missing = real_keys - set(_INCOME_FIELD_MAP)
+    assert not missing, f"Income field map missing real-data keys: {sorted(missing)}"
+    for k in real_keys:
+        assert _INCOME_FIELD_MAP[k] != k, f"Key {k!r} falls back to raw key — add a display label"
+
+
+# ── T89: balance sheet field map labels all real-data snake_case keys ─────────
+
+def test_t89_balance_field_map_covers_real_data_keys():
+    from app.radar_ui.equity_terminal import _BALANCE_FIELD_MAP
+
+    real_keys = {
+        "assets", "current_assets", "noncurrent_assets", "inventory",
+        "other_current_assets", "fixed_assets", "other_noncurrent_assets",
+        "liabilities", "current_liabilities", "noncurrent_liabilities",
+        "accounts_payable", "other_current_liabilities", "long_term_debt",
+        "other_noncurrent_liabilities", "equity", "equity_attributable_to_parent",
+        "equity_attributable_to_noncontrolling_interest", "liabilities_and_equity",
+    }
+    missing = real_keys - set(_BALANCE_FIELD_MAP)
+    assert not missing, f"Balance field map missing real-data keys: {sorted(missing)}"
+    for k in real_keys:
+        assert _BALANCE_FIELD_MAP[k] != k, f"Key {k!r} falls back to raw key — add a display label"
+
+
+# ── T90: cash flow field map labels all real-data snake_case keys ─────────────
+
+def test_t90_cashflow_field_map_covers_real_data_keys():
+    from app.radar_ui.equity_terminal import _CASHFLOW_FIELD_MAP
+
+    real_keys = {
+        "net_cash_flow_from_operating_activities",
+        "net_cash_flow_from_investing_activities",
+        "net_cash_flow_from_financing_activities",
+        "net_cash_flow",
+        "net_cash_flow_continuing",
+        "net_cash_flow_from_operating_activities_continuing",
+        "net_cash_flow_from_investing_activities_continuing",
+        "net_cash_flow_from_financing_activities_continuing",
+    }
+    missing = real_keys - set(_CASHFLOW_FIELD_MAP)
+    assert not missing, f"Cash flow field map missing real-data keys: {sorted(missing)}"
+    for k in real_keys:
+        assert _CASHFLOW_FIELD_MAP[k] != k, f"Key {k!r} falls back to raw key — add a display label"
+
+
+# ── T91: unknown field key falls back to raw key as label ─────────────────────
+
+def test_t91_unknown_field_falls_back_to_raw_key():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2023", fiscal_quarter=None,
+        period_end="2023-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(
+            value={"revenues": 385.0, "xyzzy_future_field": 1.0},
+            absent=False, parse_error=None,
+        ),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    row_map = {r["field_key"]: r["label"] for r in result["rows"]}
+    assert row_map["revenues"] == "Revenue", "Known key must use human label"
+    assert row_map["xyzzy_future_field"] == "xyzzy_future_field", (
+        "Unknown key must fall back to raw key as label"
+    )
+
+
+# ── T92: matrix with real-data snake_case keys renders correct row labels ─────
+
+def test_t92_matrix_real_data_key_labels():
+    from finco_radar.equity.models import FinancialSnapshot
+
+    income_data = {
+        "revenues": 385_980_000_000.0,
+        "gross_profit": 166_936_000_000.0,
+        "operating_income_loss": 119_437_000_000.0,
+        "net_income_loss": 96_150_000_000.0,
+        "basic_earnings_per_share": 6.16,
+        "diluted_earnings_per_share": 6.08,
+        "basic_average_shares": 15_617_769_000.0,
+        "diluted_average_shares": 15_812_547_000.0,
+    }
+    snap = FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year="2025", fiscal_quarter=None,
+        period_end="2025-09-27", filing_date=None,
+        provider="MASSIVE", source_contract="LEGACY_MASSIVE_VX",
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=JsonField(value=income_data, absent=False, parse_error=None),
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+    result = _build_statement_matrix([snap], "income_statement")
+    assert result["state"] == "AVAILABLE"
+    assert result["available"] is True
+    row_map = {r["field_key"]: r["label"] for r in result["rows"]}
+    assert row_map["revenues"] == "Revenue"
+    assert row_map["gross_profit"] == "Gross Profit"
+    assert row_map["operating_income_loss"] == "Operating Income"
+    assert row_map["net_income_loss"] == "Net Income"
+    assert row_map["basic_earnings_per_share"] == "EPS (Basic)"
+    assert row_map["diluted_earnings_per_share"] == "EPS (Diluted)"
+    assert row_map["basic_average_shares"] == "Shares (Basic)"
+    assert row_map["diluted_average_shares"] == "Shares (Diluted)"
+    # Values formatted correctly
+    cells_map = {r["field_key"]: r["cells"][0] for r in result["rows"]}
+    assert cells_map["net_income_loss"] == "96,150,000,000.00"
+    assert cells_map["basic_earnings_per_share"] == "6.16"
