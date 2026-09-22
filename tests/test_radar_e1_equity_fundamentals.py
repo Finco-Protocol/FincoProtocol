@@ -1663,3 +1663,97 @@ class TestT21CanonicalTokenSymbol:
         bundle = get_equity_fundamentals("nvda", db_path=path)
         assert bundle.asset is not None
         assert bundle.robinhood_token_symbol == bundle.asset.robinhood_token_symbol
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# E1-F06 — open_db mode loophole closure
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestF06OpenDbModeValidation:
+    """open_db must validate mode before building the URI.
+
+    No public/read boundary may silently fall through to live-style mode=ro
+    behaviour for an unrecognised mode string.
+    """
+
+    def test_open_db_snapshot_accepted(self):
+        path = _make_db(_nvda_asset)
+        with open_db(path, "snapshot") as conn:
+            row = conn.execute("SELECT COUNT(*) FROM equity_assets").fetchone()
+            assert row[0] == 1
+
+    def test_open_db_live_accepted(self):
+        path = _make_wal_db(_nvda_asset)
+        with open_db(path, "live") as conn:
+            row = conn.execute("SELECT COUNT(*) FROM equity_assets").fetchone()
+            assert row[0] == 1
+
+    def test_open_db_snapshot_uppercase_normalizes(self):
+        """open_db('SNAPSHOT') follows same normalization policy as validate_db_mode."""
+        path = _make_db(_nvda_asset)
+        with open_db(path, "SNAPSHOT") as conn:
+            row = conn.execute("SELECT COUNT(*) FROM equity_assets").fetchone()
+            assert row[0] == 1
+
+    def test_open_db_live_uppercase_normalizes(self):
+        """open_db('LIVE') follows same normalization policy as validate_db_mode."""
+        path = _make_wal_db(_nvda_asset)
+        with open_db(path, "LIVE") as conn:
+            row = conn.execute("SELECT COUNT(*) FROM equity_assets").fetchone()
+            assert row[0] == 1
+
+    def test_open_db_invalid_mode_raises_before_open(self):
+        """open_db(path, 'realtime') must raise EquityDBModeError immediately.
+
+        Must NOT silently fall through to mode=ro (live) behaviour.
+        """
+        path = _make_db(_nvda_asset)
+        with pytest.raises(EquityDBModeError):
+            with open_db(path, "realtime"):
+                pass
+
+    def test_open_db_empty_mode_raises(self):
+        path = _make_db(_nvda_asset)
+        with pytest.raises(EquityDBModeError):
+            with open_db(path, ""):
+                pass
+
+    def test_open_db_invalid_does_not_silently_open(self):
+        """Verify no connection was opened under an invalid mode.
+
+        Passing 'realtime' must not reach sqlite3.connect at all — EquityDBModeError
+        is raised before any file I/O.
+        """
+        path = _make_db(_nvda_asset)
+        opened = []
+        original_connect = __import__("sqlite3").connect
+
+        def tracking_connect(*args, **kwargs):
+            opened.append(args)
+            return original_connect(*args, **kwargs)
+
+        import sqlite3 as _sqlite3
+        _sqlite3.connect = tracking_connect
+        try:
+            with pytest.raises(EquityDBModeError):
+                with open_db(path, "realtime"):
+                    pass
+        finally:
+            _sqlite3.connect = original_connect
+
+        assert not opened, (
+            "sqlite3.connect must not be called for an invalid mode — "
+            "EquityDBModeError must be raised before any file I/O"
+        )
+
+    def test_validate_db_mode_none_raises_mode_error(self):
+        """validate_db_mode(None) must raise EquityDBModeError, not AttributeError."""
+        from finco_radar.equity.config import validate_db_mode
+        with pytest.raises(EquityDBModeError):
+            validate_db_mode(None)
+
+    def test_validate_db_mode_integer_raises_mode_error(self):
+        """validate_db_mode(123) must raise EquityDBModeError, not AttributeError."""
+        from finco_radar.equity.config import validate_db_mode
+        with pytest.raises(EquityDBModeError):
+            validate_db_mode(123)

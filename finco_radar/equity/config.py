@@ -70,9 +70,13 @@ def validate_db_mode(mode: str) -> str:
     """Normalize and validate a DB mode string.
 
     Normalizes to lowercase.  Accepts 'snapshot' and 'live' only.
-    Raises EquityDBModeError for any other value.
+    Raises EquityDBModeError for any other value, including non-strings.
     Never silently downgrades an unrecognised value to a valid mode.
     """
+    if not isinstance(mode, str):
+        raise EquityDBModeError(
+            f"DB mode must be a string, got {type(mode).__name__}: {mode!r}"
+        )
     normalized = mode.strip().lower()
     if normalized not in _VALID_MODES:
         raise EquityDBModeError(

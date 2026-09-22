@@ -171,7 +171,10 @@ def open_db(path: Path, mode: str = "snapshot") -> Iterator[sqlite3.Connection]:
     mode='live' opens with mode=ro only; WAL/SHM semantics apply.
     PRAGMA query_only=ON applied as defence-in-depth.
     Never creates the file if absent.
+    Raises EquityDBModeError immediately for any unrecognised mode — does NOT
+    silently fall through to live behaviour.
     """
+    mode = validate_db_mode(mode)
     uri = _build_uri(path, mode)
     try:
         conn = sqlite3.connect(uri, uri=True)
