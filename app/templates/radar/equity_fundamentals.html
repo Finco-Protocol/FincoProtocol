@@ -1,0 +1,141 @@
+{% if equity_view %}
+{# E2 corporate fundamentals panel — sits OUTSIDE #radar-panels so quote
+   Refresh does not reload it.  Asset selection (GET) triggers a fresh read. #}
+<section class="panel panel-equity-fundamentals" data-panel="equity-fundamentals">
+  <h2>Corporate Fundamentals</h2>
+
+  {% set ev = equity_view %}
+  {% set estate = ev.state %}
+
+  {# ── failure / non-data states ─────────────────────────────────────── #}
+
+  {% if estate == "SOURCE_UNAVAILABLE" %}
+  <p class="state-unavailable">SOURCE_UNAVAILABLE</p>
+  <p class="muted small">Equity fundamentals database is not configured or is
+    currently unavailable. Existing Radar market authority is unaffected.</p>
+
+  {% elif estate == "FUNDAMENTALS_CONFIG_INVALID" %}
+  <p class="state-unavailable">FUNDAMENTALS_CONFIG_INVALID</p>
+  {% if ev.identity_note %}
+  <p class="muted small mono">{{ ev.identity_note }}</p>
+  {% endif %}
+  <p class="muted small">Check FINCO_EQUITY_FUNDAMENTALS_DB_MODE.
+    Existing Radar market authority is unaffected.</p>
+
+  {% elif estate == "NOT_FOUND" %}
+  <p class="state-unavailable">NOT_FOUND</p>
+  <p class="muted small">{{ ev.symbol }} is not in the equity fundamentals
+    database. No financial data available.</p>
+
+  {% elif estate == "NOT_AVAILABLE" %}
+  <p class="state-unavailable">NOT_AVAILABLE</p>
+  {% if ev.identity and ev.identity.available %}
+  <dl class="kv">
+    <dt>Company</dt><dd>{{ ev.identity.company_name }}</dd>
+    <dt>Symbol</dt><dd>{{ ev.identity.symbol }}</dd>
+  </dl>
+  {% endif %}
+  <p class="muted small">Asset is known but no financial reporting data is
+    available in the database.</p>
+
+  {% elif estate == "IDENTITY_MISMATCH" %}
+  <p class="state-unavailable">IDENTITY_MISMATCH</p>
+  <p class="muted small">Financial metrics suppressed — the E1 record's
+    contract address does not match the selected Robinhood asset.</p>
+  {% if ev.identity_note %}
+  <p class="muted small mono" style="word-break:break-all;">{{ ev.identity_note }}</p>
+  {% endif %}
+
+  {% elif ev.available %}
+  {# ── identity block ────────────────────────────────────────────────── #}
+  {% set ident = ev.identity %}
+  {% if ident and ident.available %}
+  <div style="margin-bottom:10px;">
+    <strong style="font-size:15px;">{{ ident.company_name }}</strong>
+    <span class="muted" style="margin-left:8px;">{{ ident.symbol }}
+      {% if ident.underlying_ticker and ident.underlying_ticker != ident.symbol %}
+        · {{ ident.underlying_ticker }}
+      {% endif %}
+      {% if ident.exchange %} · {{ ident.exchange }}{% endif %}
+      {% if ident.currency %} · {{ ident.currency }}{% endif %}
+    </span>
+  </div>
+  {% if ident.security_type %}
+  <p class="muted small" style="margin-bottom:10px;">{{ ident.security_type }}</p>
+  {% endif %}
+  {% endif %}
+
+  {# ── availability badge ────────────────────────────────────────────── #}
+  <span class="state-{{ estate|lower }}" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+
+  {# ── reporting status ──────────────────────────────────────────────── #}
+  {% if ev.reporting %}
+  {% set rep = ev.reporting %}
+  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+             color:var(--fo-text-secondary,#8899a6);margin:10px 0 4px;">Reporting</h3>
+  <dl class="kv">
+    <dt>TTM period</dt><dd>{{ rep.ttm_period_end }}</dd>
+    <dt>TTM filed</dt><dd>{{ rep.ttm_filing_date }}</dd>
+    <dt>Latest quarter</dt><dd>{{ rep.quarterly_period_end }}</dd>
+    <dt>Latest annual</dt><dd>{{ rep.annual_period_end }}</dd>
+    <dt>Provider</dt><dd>{{ rep.provider }}</dd>
+    <dt>Source</dt><dd class="mono" style="font-size:11px;word-break:break-all;">{{ rep.source_contract }}</dd>
+    <dt>Fetched</dt><dd>{{ rep.fetched_at }}</dd>
+    <dt>Normalised</dt><dd>{{ rep.normalized_at }}</dd>
+  </dl>
+  {% endif %}
+
+  {# ── TTM source-derived fundamentals ───────────────────────────────── #}
+  {% if ev.ttm_metrics %}
+  {% set tm = ev.ttm_metrics %}
+  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+             color:var(--fo-text-secondary,#8899a6);margin:14px 0 4px;">TTM Fundamentals</h3>
+  {% if tm.available %}
+  <dl class="kv">
+    {% for key, f in tm.fields.items() %}
+    <dt>{{ f.label }}</dt>
+    <dd {% if f.is_missing %}class="muted"{% endif %}>{{ f.value }}</dd>
+    {% endfor %}
+  </dl>
+  <p class="muted small" style="margin-top:6px;">
+    Source-derived fundamentals.
+    Market/reference prices remain in Radar market panels.
+  </p>
+  {% else %}
+  <p class="state-unavailable">{{ tm.reason }}</p>
+  {% if tm.parse_error %}
+  <p class="muted small">Source data condition: {{ tm.reason }} — parse error preserved</p>
+  {% elif tm.reason == "TTM_UNAVAILABLE" %}
+  <p class="muted small">No TTM period available. Annual and quarterly dates
+    may still be shown in the reporting block above.</p>
+  {% else %}
+  <p class="muted small">{{ tm.reason }}</p>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+
+  {# ── source / lineage teaser ────────────────────────────────────────── #}
+  {% if ev.lineage and ev.lineage.available %}
+  {% set lin = ev.lineage %}
+  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+             color:var(--fo-text-secondary,#8899a6);margin:14px 0 4px;">Source</h3>
+  <dl class="kv">
+    {% if lin.provider %}<dt>Provider</dt><dd>{{ lin.provider }}</dd>{% endif %}
+    {% if lin.source_contract %}<dt>Contract</dt>
+      <dd class="mono" style="font-size:11px;word-break:break-all;">{{ lin.source_contract }}</dd>{% endif %}
+    {% if lin.period_end %}<dt>Period end</dt><dd>{{ lin.period_end }}</dd>{% endif %}
+    {% if lin.filing_date %}<dt>Filing date</dt><dd>{{ lin.filing_date }}</dd>{% endif %}
+    {% if lin.fetched_at %}<dt>Fetched</dt><dd>{{ lin.fetched_at }}</dd>{% endif %}
+    {% if lin.normalized_at %}<dt>Normalised</dt><dd>{{ lin.normalized_at }}</dd>{% endif %}
+    {% if lin.payload_hash %}<dt>Payload hash</dt>
+      <dd class="mono" style="font-size:11px;word-break:break-all;">{{ lin.payload_hash[:24] }}…</dd>{% endif %}
+  </dl>
+  {% endif %}
+
+  {% else %}
+  {# Fallback for unexpected state values #}
+  <p class="state-unavailable">{{ estate }}</p>
+  {% endif %}
+
+</section>
+{% endif %}

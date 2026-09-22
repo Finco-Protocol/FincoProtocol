@@ -36,7 +36,22 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
-from app.radar_ui import composition, view_model
+from app.radar_ui import composition, equity_enrichment, equity_view_model, view_model
+
+# Featured equities default — symbols present in the canonical Robinhood universe.
+# Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
+_DEFAULT_FEATURED_SYMBOLS = (
+    "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL",
+    "META", "TSLA", "AVGO", "JPM", "V",
+    "WMT", "NFLX", "AMD", "ORCL", "PLTR",
+)
+
+
+def _get_featured_symbols() -> tuple:
+    raw = os.environ.get("RADAR_FEATURED_EQUITY_SYMBOLS", "")
+    if raw.strip():
+        return tuple(s.strip() for s in raw.split(",") if s.strip())
+    return _DEFAULT_FEATURED_SYMBOLS
 
 router = APIRouter()
 
@@ -111,6 +126,102 @@ def _get_snapshot_uid(snapshot) -> str:
         return ""
 
 
+def _load_equity_and_featured_board(
+    universe: list,
+    selected,
+    fallback_name: str = "",
+) -> tuple:
+    """Unified equity detail + featured board load.
+
+    Performs at most one batch read (for all featured assets) plus at most one
+    additional single read (only when selected is NOT already in the featured
+    set).  When selected is featured, its EquityEnrichmentResult is reused from
+    the batch — zero extra single reads.
+
+    Selected-detail reuse is UID-first: a featured batch result is reused only
+    when the featured SelectedAsset is the SAME canonical identity as selected,
+    proven by equal economic_asset_uid, chain_id, and contract_address
+    (case-insensitive).  Token symbol alone is never sufficient.
+
+    Featured resolution is duplicate-safe: a configured symbol with >1 live
+    matches is skipped from the board rather than silently choosing one.
+
+    Returns (equity_view_dict, featured_board_rows).
+    """
+    featured_symbols = _get_featured_symbols()
+
+    # Build per-symbol match lists to detect duplicates — fail closed on ambiguity.
+    symbol_to_assets: dict = {}
+    for a in universe:
+        sym_upper = a.token_symbol.upper()
+        if sym_upper not in symbol_to_assets:
+            symbol_to_assets[sym_upper] = []
+        symbol_to_assets[sym_upper].append(a)
+
+    # Featured assets in configured order:
+    #   0 matches  → skip (not in live universe)
+    #   1 match    → include
+    #   >1 matches → skip (ambiguous; do not silently choose)
+    featured_assets = []
+    for sym in featured_symbols:
+        matches = symbol_to_assets.get(sym.upper(), [])
+        if len(matches) == 1:
+            featured_assets.append(matches[0])
+
+    # ONE batch read for all featured assets.
+    if featured_assets:
+        pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
+        featured_results = equity_enrichment.enrich_many_selected_assets(pairs)
+    else:
+        featured_results = ()
+
+    # featured_pairs carries both identity and result for UID-first reuse below.
+    featured_pairs = list(zip(featured_assets, featured_results))
+
+    # Build board rows — pass token_symbol separately so UID never leaks into
+    # the symbol column.
+    rows = [
+        equity_view_model.build_equity_board_row(
+            result,
+            asset_uid=asset.economic_asset_uid,
+            fallback_name=asset.token_name,
+            token_symbol=asset.token_symbol,
+        )
+        for asset, result in featured_pairs
+    ]
+
+    # Equity view for the selected asset.
+    equity_view: dict = {}
+    if selected is not None:
+        # UID-first reuse: selected may reuse a featured batch result ONLY when
+        # the featured SelectedAsset is the SAME canonical identity — equal
+        # economic_asset_uid, chain_id, and contract_address (case-insensitive).
+        selected_result = None
+        for feat_asset, feat_result in featured_pairs:
+            if (
+                feat_asset.economic_asset_uid == selected.economic_asset_uid
+                and feat_asset.chain_id == selected.chain_id
+                and feat_asset.contract_address.lower() == selected.contract_address.lower()
+            ):
+                selected_result = feat_result
+                break
+
+        if selected_result is not None:
+            equity_view = equity_view_model.build_equity_view(
+                selected_result, fallback_name=fallback_name,
+            )
+        else:
+            # Not featured (or ambiguous) — one additional single read.
+            single = equity_enrichment.enrich_selected_asset(
+                selected.token_symbol, selected.contract_address,
+            )
+            equity_view = equity_view_model.build_equity_view(
+                single, fallback_name=fallback_name,
+            )
+
+    return equity_view, rows
+
+
 def _panels_context(snapshot, *, is_htmx_partial: bool = False) -> dict:
     return {
         "view": view_model.build_radar_view(snapshot),
@@ -162,6 +273,17 @@ async def radar_home(request: Request, snapshot_id: str = "",
     if selected is None and not _snapshot_loaded:
         selected = _resolve_selected(universe, asset_uid)
 
+    # E2: load corporate fundamentals and featured board in one threadpool call.
+    # Unified: one batch read for featured assets; selected reuses batch result
+    # if featured, otherwise one additional single read.
+    equity_view, featured_board = await run_in_threadpool(
+        lambda: _load_equity_and_featured_board(
+            universe,
+            selected,
+            selected.token_name if selected else "",
+        )
+    )
+
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
@@ -178,6 +300,8 @@ async def radar_home(request: Request, snapshot_id: str = "",
             "snapshot_id": snapshot_id,
             "snapshot_identity_note": snapshot_identity_note,
             "user": user,
+            "equity_view": equity_view,
+            "featured_board": featured_board,
         },
     )
 
@@ -230,6 +354,15 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
     # the header and selector cannot show a stale asset.
     selected_from_snapshot = _selected_from_snapshot_identity(
         snapshot, universe)
+    final_selected = selected_from_snapshot or selected_asset
+    # E2: load fundamentals from the snapshot-authoritative selected identity.
+    equity_view, featured_board = await run_in_threadpool(
+        lambda: _load_equity_and_featured_board(
+            universe,
+            final_selected,
+            final_selected.token_name if final_selected else "",
+        )
+    )
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
@@ -238,7 +371,7 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
         context={
             "universe": universe,
             "universe_error": universe_error,
-            "selected": selected_from_snapshot or selected_asset,
+            "selected": final_selected,
             "sizes": composition.SIZES,
             "directions": composition.DIRECTIONS,
             "view": view_model.build_radar_view(snapshot),
@@ -246,6 +379,8 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             "snapshot_id": snapshot.snapshot_id,
             "snapshot_identity_note": None,
             "user": user,
+            "equity_view": equity_view,
+            "featured_board": featured_board,
         },
     )
 

@@ -1,0 +1,60 @@
+{% if featured_board is defined and featured_board %}
+{# E2-CA: Featured Equities Board — compact terminal table.
+   Sits above #equity-details / selected-asset panel.
+   Zero live price acquisitions; identity + fundamentals only. #}
+<section id="featured-board" class="panel panel-featured-board" data-panel="featured-board" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+    <h2 style="margin:0;">Featured Equities</h2>
+    <span class="muted small">{{ featured_board | length }} asset{{ 's' if featured_board | length != 1 else '' }} · fundamentals only · no live prices</span>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table class="board-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--fo-border,#2a3448);color:var(--fo-text-secondary,#8899a6);text-align:left;">
+          <th style="padding:4px 8px 4px 0;white-space:nowrap;">Symbol</th>
+          <th style="padding:4px 8px;white-space:nowrap;">Company</th>
+          <th style="padding:4px 8px;white-space:nowrap;text-align:right;">Revenue TTM</th>
+          <th style="padding:4px 8px;white-space:nowrap;text-align:right;">Rev Growth</th>
+          <th style="padding:4px 8px;white-space:nowrap;text-align:right;">Gross Margin</th>
+          <th style="padding:4px 8px;white-space:nowrap;text-align:right;">FCF Margin</th>
+          <th style="padding:4px 8px;white-space:nowrap;">Period</th>
+          <th style="padding:4px 8px;white-space:nowrap;">State</th>
+          <th style="padding:4px 8px;white-space:nowrap;text-align:right;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in featured_board %}
+        <tr style="border-bottom:1px solid var(--fo-border,#2a3448);line-height:1.6;">
+          <td style="padding:4px 8px 4px 0;font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
+          <td style="padding:4px 8px;color:var(--fo-text-secondary,#8899a6);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.company_name }}">{{ row.company_name }}</td>
+
+          {% if row.state in ("AVAILABLE", "PARTIAL") %}
+          <td style="padding:4px 8px;text-align:right;font-family:monospace;">{{ row.revenues | default("—") }}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace;">{{ row.revenue_growth | default("—") }}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace;">{{ row.gross_margin | default("—") }}</td>
+          <td style="padding:4px 8px;text-align:right;font-family:monospace;">{{ row.fcf_margin | default("—") }}</td>
+          <td style="padding:4px 8px;color:var(--fo-text-secondary,#8899a6);white-space:nowrap;">{{ row.period_end | default("—") }}</td>
+          {% else %}
+          <td colspan="5" style="padding:4px 8px;color:var(--fo-text-secondary,#8899a6);">
+            <span class="state-unavailable" style="font-size:11px;">{{ row.state }}</span>
+          </td>
+          {% endif %}
+
+          <td style="padding:4px 8px;white-space:nowrap;">
+            <span class="state-{{ row.state | lower }}" style="font-size:11px;">{{ row.state }}</span>
+          </td>
+          <td style="padding:4px 8px;text-align:right;white-space:nowrap;">
+            <a href="{{ row.details_url }}"
+               class="board-details-cta"
+               style="color:var(--fo-accent,#4a9eff);text-decoration:none;font-size:11px;font-weight:600;white-space:nowrap;"
+               data-symbol="{{ row.symbol }}">Details →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small" style="margin-top:6px;">Featured symbols from canonical Robinhood universe. No live prices. Select asset for market state.</p>
+</section>
+{% endif %}

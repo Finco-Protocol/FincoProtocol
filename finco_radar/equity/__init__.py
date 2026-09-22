@@ -21,7 +21,7 @@ from .models import (
     SourceLineage,
     SplitRecord,
 )
-from .service import get_equity_fundamentals
+from .service import get_equity_fundamentals, get_equity_fundamentals_many
 
 __all__ = [
     "AvailabilityState",
@@ -36,4 +36,5 @@ __all__ = [
     "SourceLineage",
     "SplitRecord",
     "get_equity_fundamentals",
+    "get_equity_fundamentals_many",
 ]

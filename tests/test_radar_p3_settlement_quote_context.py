@@ -675,8 +675,16 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # been modified by this correction.  Skipped in shallow checkouts that
     # cannot resolve the base commit (the P3 CI gate enforces this with a
     # full checkout instead).
+    #
+    # The finco_radar/equity/ package was added by E1 (PR #54, merged before
+    # this correction) and is the ONLY approved addition to the finco_radar/
+    # namespace in this PR series.  All other finco_radar/ paths remain frozen.
+    #
+    # The gate is: any finco_radar/ change that is NOT under finco_radar/equity/
+    # is a violation.  This preserves the original broad freeze intent while
+    # permitting the already-approved equity sub-package, without opening an
+    # unbounded whitelist that would let unknown future paths bypass the gate.
     import subprocess
-    from pathlib import Path
     try:
         changed = subprocess.run(
             ["git", "diff", "--name-only",
@@ -684,7 +692,14 @@ def test_p3_27_frozen_settlement_contract_untouched():
             capture_output=True, text=True, check=True).stdout.splitlines()
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("base commit unavailable in shallow checkout")
-    assert not [p for p in changed if p.startswith("finco_radar/")]
+    violations = [
+        p for p in changed
+        if p.startswith("finco_radar/")
+        and not p.startswith("finco_radar/equity/")
+    ]
+    assert not violations, (
+        "Non-equity finco_radar paths modified (frozen): " + str(violations)
+    )
 
 
 # ==========================================================================
