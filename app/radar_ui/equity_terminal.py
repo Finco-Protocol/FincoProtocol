@@ -333,7 +333,7 @@ def _build_statement_matrix(
     else:
         available_count = sum(1 for _, _, s in period_data if s == "AVAILABLE")
         malformed_count = sum(1 for _, _, s in period_data if s == "SOURCE_DATA_MALFORMED")
-        if available_count > 0 and malformed_count == 0:
+        if available_count == len(period_data):
             matrix_state = "AVAILABLE"
         elif available_count > 0:
             matrix_state = "PARTIAL"
@@ -438,6 +438,8 @@ def build_terminal_view(
     selected_chain_id: Optional[str] = None,
     selected_contract_address: Optional[str] = None,
     nav: Optional[dict] = None,
+    selected_symbol: str = "",
+    selected_name: str = "",
 ) -> dict[str, Any]:
     """Build the E3 Company Terminal view dict from a history bundle.
 
@@ -469,19 +471,20 @@ def build_terminal_view(
 
     if availability == AvailabilityState.NOT_FOUND:
         return {
-            "state": "NOT_FOUND",
+            "state": "FUNDAMENTALS_NOT_FOUND",
             "available": False,
             "economic_asset_uid": economic_asset_uid,
-            "symbol": bundle.robinhood_token_symbol,
+            "symbol": selected_symbol or bundle.robinhood_token_symbol,
+            "message": "Asset exists in Robinhood universe but fundamental data is unavailable.",
             "nav": nav,
         }
 
     # NOT_AVAILABLE, PARTIAL, AVAILABLE
     availability = bundle.availability
 
-    # Selected Robinhood identity — always available regardless of identity state
+    # Selected Robinhood identity — always use selected params (Robinhood-selected), never bundle
     selected_token = {
-        "symbol": bundle.robinhood_token_symbol,
+        "symbol": selected_symbol or bundle.robinhood_token_symbol,
         "economic_asset_uid": economic_asset_uid,
         "chain_id": selected_chain_id or "—",
         "contract_address": selected_contract_address or "—",
@@ -515,12 +518,14 @@ def build_terminal_view(
     # No DB-derived company/fundamental/corporate-action data may be exposed.
     # The selected Robinhood universe identity remains authoritative.
     if identity_state == "IDENTITY_MISMATCH":
+        _mismatch_symbol = selected_symbol or bundle.robinhood_token_symbol
+        _mismatch_name = selected_name or fallback_name or _mismatch_symbol
         return {
             "state": availability.value,
             "available": False,
             "economic_asset_uid": economic_asset_uid,
-            "symbol": bundle.robinhood_token_symbol,
-            "company_name": fallback_name or bundle.robinhood_token_symbol,
+            "symbol": _mismatch_symbol,
+            "company_name": _mismatch_name,
             "identity": None,
             "identity_state": "IDENTITY_MISMATCH",
             "profile": None,

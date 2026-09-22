@@ -1,4 +1,4 @@
-"""E3 Company Terminal tests — T01–T92.
+"""E3 Company Terminal tests — T01–T92, D01–D10, F08-ADV, F10-A, F10-B, HTML-ESC, 3x3.
 
 Covers:
   T01  lineage_id is Optional[int] in SourceLineage model
@@ -93,6 +93,19 @@ Covers:
   T90  C3: cash flow field map labels all real-data snake_case keys
   T91  C3: unknown field key falls back to raw key as label
   T92  C3: statement matrix with real-data snake_case keys renders correct row labels
+  D01  F09: all available periods → AVAILABLE
+  D02  F09: available + absent → PARTIAL (not AVAILABLE)
+  D03  F09: available + malformed → PARTIAL
+  D04  F09: available + absent + malformed → PARTIAL
+  D05  F09: all absent → NOT_AVAILABLE
+  D06  F09: all malformed → SOURCE_DATA_MALFORMED
+  D07  F09: malformed + absent → SOURCE_DATA_MALFORMED
+  D08  F09: no periods → NOT_AVAILABLE
+  D09  F08: IDENTITY_MISMATCH uses selected_symbol, not bundle symbol (DB_SENTINEL absent)
+  D10  F10-A: GET /radar/equity/{unknown} → 404, state=ASSET_NOT_FOUND_IN_UNIVERSE
+  D11  F10-B: build_terminal_view NOT_FOUND → FUNDAMENTALS_NOT_FOUND with message
+  D12  HTML escaping: adversarial company name with <script> is escaped in page
+  D13  3×3 nav: all (annual/quarterly/ttm) × (income/balance/cashflow) tab combinations
 """
 from __future__ import annotations
 
@@ -510,7 +523,7 @@ def test_t12_route_404_unknown_uid():
         client = TestClient(main_web.app, raise_server_exceptions=False)
         resp = client.get("/radar/equity/rh-equity-unknown-000")
         assert resp.status_code == 404
-        assert "UID_NOT_FOUND" in resp.text or "NOT_FOUND" in resp.text
+        assert "ASSET_NOT_FOUND_IN_UNIVERSE" in resp.text
 
 
 # ── T13: zero quote acquisitions ─────────────────────────────────────────────
@@ -2344,3 +2357,287 @@ def test_t92_matrix_real_data_key_labels():
     cells_map = {r["field_key"]: r["cells"][0] for r in result["rows"]}
     assert cells_map["net_income_loss"] == "96,150,000,000.00"
     assert cells_map["basic_earnings_per_share"] == "6.16"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction D: D01–D13
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _make_snap(
+    fiscal_year: str,
+    income_state: str = "AVAILABLE",  # "AVAILABLE", "ABSENT", "MALFORMED"
+) -> "FinancialSnapshot":
+    from finco_radar.equity.models import FinancialSnapshot
+    if income_state == "AVAILABLE":
+        inc = JsonField(value={"revenues": 100.0}, absent=False, parse_error=None)
+    elif income_state == "MALFORMED":
+        inc = JsonField(value=None, absent=False, parse_error="bad JSON")
+    else:
+        inc = JsonField(value=None, absent=True, parse_error=None)
+    return FinancialSnapshot(
+        ticker="AAPL", cik=None, timeframe="annual",
+        fiscal_year=fiscal_year, fiscal_quarter=None,
+        period_end=f"{fiscal_year}-09-30", filing_date=None,
+        provider="SYNTH", source_contract=None,
+        fetched_at=None, normalized_at=None, payload_hash=None,
+        income_statement=inc,
+        balance_sheet=JsonField(value=None, absent=True, parse_error=None),
+        cash_flow_statement=JsonField(value=None, absent=True, parse_error=None),
+        derived_source=JsonField(value=None, absent=True, parse_error=None),
+        derived=None,
+    )
+
+
+# ── D01: F09 all available → AVAILABLE ───────────────────────────────────────
+
+def test_d01_all_available_is_available():
+    snaps = [_make_snap("2023", "AVAILABLE"), _make_snap("2022", "AVAILABLE")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "AVAILABLE", (
+        f"All available periods must yield AVAILABLE, got {result['state']!r}"
+    )
+    assert result["available"] is True
+
+
+# ── D02: F09 available + absent → PARTIAL (not AVAILABLE) ────────────────────
+
+def test_d02_available_plus_absent_is_partial():
+    snaps = [_make_snap("2023", "AVAILABLE"), _make_snap("2022", "ABSENT")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "PARTIAL", (
+        f"available+absent must yield PARTIAL (not AVAILABLE), got {result['state']!r}"
+    )
+    assert result["available"] is True
+
+
+# ── D03: F09 available + malformed → PARTIAL ─────────────────────────────────
+
+def test_d03_available_plus_malformed_is_partial():
+    snaps = [_make_snap("2023", "AVAILABLE"), _make_snap("2022", "MALFORMED")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "PARTIAL", (
+        f"available+malformed must yield PARTIAL, got {result['state']!r}"
+    )
+    assert result["available"] is True
+
+
+# ── D04: F09 available + absent + malformed → PARTIAL ────────────────────────
+
+def test_d04_mixed_three_states_is_partial():
+    snaps = [
+        _make_snap("2023", "AVAILABLE"),
+        _make_snap("2022", "ABSENT"),
+        _make_snap("2021", "MALFORMED"),
+    ]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "PARTIAL", (
+        f"available+absent+malformed must yield PARTIAL, got {result['state']!r}"
+    )
+    assert result["available"] is True
+
+
+# ── D05: F09 all absent → NOT_AVAILABLE ──────────────────────────────────────
+
+def test_d05_all_absent_is_not_available():
+    snaps = [_make_snap("2023", "ABSENT"), _make_snap("2022", "ABSENT")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "NOT_AVAILABLE", (
+        f"All absent must yield NOT_AVAILABLE, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── D06: F09 all malformed → SOURCE_DATA_MALFORMED ───────────────────────────
+
+def test_d06_all_malformed_is_source_data_malformed():
+    snaps = [_make_snap("2023", "MALFORMED"), _make_snap("2022", "MALFORMED")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "SOURCE_DATA_MALFORMED", (
+        f"All malformed must yield SOURCE_DATA_MALFORMED, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── D07: F09 malformed + absent → SOURCE_DATA_MALFORMED ──────────────────────
+
+def test_d07_malformed_plus_absent_is_source_data_malformed():
+    snaps = [_make_snap("2023", "MALFORMED"), _make_snap("2022", "ABSENT")]
+    result = _build_statement_matrix(snaps, "income_statement")
+    assert result["state"] == "SOURCE_DATA_MALFORMED", (
+        f"malformed+absent (no available) must yield SOURCE_DATA_MALFORMED, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── D08: F09 no periods → NOT_AVAILABLE ──────────────────────────────────────
+
+def test_d08_no_periods_is_not_available():
+    result = _build_statement_matrix([], "income_statement")
+    assert result["state"] == "NOT_AVAILABLE", (
+        f"No periods must yield NOT_AVAILABLE, got {result['state']!r}"
+    )
+    assert result["available"] is False
+
+
+# ── D09: F08 IDENTITY_MISMATCH uses selected_symbol, DB sentinel absent ───────
+
+def test_d09_f08_identity_mismatch_uses_selected_symbol_not_bundle():
+    _DB_SENTINEL = "DB_SENTINEL_CORP_XQ99ZZA"
+    _RH_SELECTED = "RH_SELECTED_SYMBOL_XQ99ZZB"
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        # Patch bundle's robinhood_token_symbol to look like the DB value
+        bundle_mock = MagicMock(wraps=bundle)
+        bundle_mock.robinhood_token_symbol = _DB_SENTINEL
+        bundle_mock.availability = bundle.availability
+
+        view = build_terminal_view(
+            bundle_mock,
+            economic_asset_uid="rh-equity-aapl-001",
+            fallback_name="Apple Inc",
+            identity_state="IDENTITY_MISMATCH",
+            selected_symbol=_RH_SELECTED,
+            selected_name="Apple Inc (RH Selected)",
+        )
+        assert view["symbol"] == _RH_SELECTED, (
+            f"symbol must be selected_symbol={_RH_SELECTED!r}, got {view['symbol']!r}"
+        )
+        assert _DB_SENTINEL not in str(view), (
+            f"DB sentinel {_DB_SENTINEL!r} must not appear anywhere in IDENTITY_MISMATCH view"
+        )
+    finally:
+        db.unlink(missing_ok=True)
+
+
+# ── D10: F10-A GET unknown UID → 404, state=ASSET_NOT_FOUND_IN_UNIVERSE ───────
+
+def test_d10_f10_case_a_unknown_uid_asset_not_found():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)):
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        resp = client.get("/radar/equity/rh-equity-totally-unknown-uid-999")
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}"
+        assert "ASSET_NOT_FOUND_IN_UNIVERSE" in resp.text, (
+            "Case A (UID not in universe) must render ASSET_NOT_FOUND_IN_UNIVERSE"
+        )
+
+
+# ── D11: F10-B build_terminal_view NOT_FOUND → FUNDAMENTALS_NOT_FOUND ─────────
+
+def test_d11_f10_case_b_fundamentals_not_found():
+    from unittest.mock import MagicMock
+    from finco_radar.equity.models import AvailabilityState
+
+    bundle = MagicMock()
+    bundle.availability = AvailabilityState.NOT_FOUND
+    bundle.robinhood_token_symbol = "AAPL"
+
+    view = build_terminal_view(
+        bundle,
+        economic_asset_uid="rh-equity-aapl-001",
+        fallback_name="Apple Inc",
+        selected_symbol="AAPL",
+        selected_name="Apple Inc",
+    )
+    assert view["state"] == "FUNDAMENTALS_NOT_FOUND", (
+        f"E1 NOT_FOUND must map to FUNDAMENTALS_NOT_FOUND, got {view['state']!r}"
+    )
+    assert view["available"] is False
+    assert "message" in view, "FUNDAMENTALS_NOT_FOUND must include a message key"
+    assert "Robinhood" in view["message"] or "fundamental" in view["message"].lower(), (
+        f"message must explain the situation, got {view['message']!r}"
+    )
+
+
+# ── D12: HTML escaping adversarial company name ───────────────────────────────
+
+def test_d12_html_escaping_adversarial_company_name():
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    _SCRIPT_PAYLOAD = '<script>alert("company_xq99")</script>'
+    tmp = Path(tempfile.mktemp(suffix=".db"))
+    conn = sqlite3.connect(str(tmp))
+    conn.executescript(_SCHEMA)
+    conn.execute(
+        "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
+        "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
+        ("EVIL", "EVIL", _SCRIPT_PAYLOAD, "0xevil", "ethereum", "USD"),
+    )
+    conn.execute(
+        "INSERT INTO equity_company_profiles (ticker,profile_json,provider,fetched_at) "
+        "VALUES (?,?,?,?)",
+        ("EVIL", json.dumps({"name": _SCRIPT_PAYLOAD}), "SYNTH", "2024-10-01"),
+    )
+    conn.commit()
+    conn.close()
+
+    evil_asset = _SA(
+        economic_asset_uid="rh-equity-evil-001",
+        token_symbol="EVIL",
+        token_name=_SCRIPT_PAYLOAD,
+        chain_id=4663,
+        contract_address="0xevil",
+        token_decimals=0,
+    )
+    try:
+        from finco_radar.equity import get_equity_company_history as _gech
+        bundle = _gech("EVIL", db_path=tmp, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=([evil_asset], None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get("/radar/equity/rh-equity-evil-001")
+            assert resp.status_code == 200
+            # The raw script tag must NOT appear unescaped
+            assert "<script>alert(" not in resp.text, (
+                "Raw <script> tag from adversarial company name must be HTML-escaped in output"
+            )
+            # The content must appear somewhere (escaped form)
+            assert "alert" in resp.text or "company_xq99" in resp.text, (
+                "Escaped content should still appear in page"
+            )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+# ── D13: 3×3 nav — all timeframe×statement combinations return 200 ─────────────
+
+@pytest.mark.parametrize("timeframe,statement", [
+    ("annual", "income"),
+    ("annual", "balance"),
+    ("annual", "cashflow"),
+    ("quarterly", "income"),
+    ("quarterly", "balance"),
+    ("quarterly", "cashflow"),
+    ("ttm", "income"),
+    ("ttm", "balance"),
+    ("ttm", "cashflow"),
+])
+def test_d13_3x3_nav_combinations(timeframe, statement):
+    import main_web
+    from app.radar_ui import router as radar_router
+
+    universe = [_AAPL_ASSET]
+    db = _build_test_db()
+    try:
+        bundle = get_equity_company_history("AAPL", db_path=db, db_mode="snapshot")
+        with patch.object(radar_router, "_fetch_universe_safe", return_value=(universe, None)), \
+             patch("app.radar_ui.equity_terminal.get_history_for_terminal", return_value=bundle):
+            client = TestClient(main_web.app, raise_server_exceptions=False)
+            resp = client.get(
+                f"/radar/equity/rh-equity-aapl-001?tab=financials"
+                f"&timeframe={timeframe}&statement={statement}"
+            )
+            assert resp.status_code == 200, (
+                f"3×3 nav [{timeframe}×{statement}] expected 200, got {resp.status_code}"
+            )
+            # Nav params must be reflected in page
+            assert timeframe in resp.text, (
+                f"timeframe={timeframe!r} not found in rendered page"
+            )
+    finally:
+        db.unlink(missing_ok=True)

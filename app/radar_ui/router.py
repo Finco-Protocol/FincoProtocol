@@ -473,13 +473,13 @@ async def radar_equity_terminal(
             name="radar/equity_terminal.html",
             context={
                 "terminal": {
-                    "state": "NOT_FOUND",
+                    "state": "ASSET_NOT_FOUND_IN_UNIVERSE",
                     "available": False,
                     "economic_asset_uid": economic_asset_uid,
                     "symbol": "",
                     "nav": nav,
                 },
-                "error": f"UID_NOT_FOUND: {economic_asset_uid!r}",
+                "error": f"ASSET_NOT_FOUND_IN_UNIVERSE: {economic_asset_uid!r}",
                 "universe": universe,
                 "universe_error": universe_error,
                 "selected": None,
@@ -509,6 +509,8 @@ async def radar_equity_terminal(
         selected_chain_id=str(selected.chain_id),
         selected_contract_address=selected.contract_address,
         nav=nav,
+        selected_symbol=selected.token_symbol,
+        selected_name=selected.token_name,
     )
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
