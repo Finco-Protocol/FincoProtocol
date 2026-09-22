@@ -724,7 +724,8 @@ def resp_has_disabled_refresh(page: str) -> bool:
         r'<button[^>]*type=["\']submit["\'][^>]*>.*?</button>',
         page, re.S)
     for btn in buttons:
-        if "Refresh" in btn and "disabled" in btn:
+        # E4: button text changed from "Refresh" to "Check Execution"
+        if ("Refresh" in btn or "Check Execution" in btn) and "disabled" in btn:
             return True
     return False
 

@@ -1,0 +1,80 @@
+{# Execution Simulator HTMX result fragment.
+   Rendered by POST /radar/equity/{uid}/simulate and swapped into
+   #sim-result-{uid}.  The `sim` context variable is the build_radar_view()
+   dict returned by the POST handler.
+#}
+{% if sim_error %}
+<div class="sim-result sim-result--error" role="alert" aria-live="polite">
+  <p class="state-unavailable" style="margin:0;">{{ sim_error }}</p>
+  <p class="muted small" style="margin:4px 0 0;">Simulation only — no order is submitted.</p>
+</div>
+{% else %}
+<div class="sim-result" role="region" aria-label="Simulation result" aria-live="polite">
+  <dl class="kv sim-kv" style="max-width:480px;margin:0 0 12px;">
+    <dt>State</dt>
+    <dd>
+      {% if sim.state == 'COMPLETE' %}
+      <span style="color:var(--fo-ok,#34d399);">{{ sim.state }}</span>
+      {% else %}
+      <span style="color:var(--fo-warn,#e8a838);">{{ sim.state or 'UNAVAILABLE' }}</span>
+      {% endif %}
+    </dd>
+
+    <dt>Direction</dt>
+    <dd>{{ sim.request.direction or '—' }}</dd>
+
+    <dt>Notional</dt>
+    <dd>${{ sim.request.notionalUsd | intcomma if sim.request.notionalUsd else '—' }}</dd>
+
+    <dt>Reference price</dt>
+    <dd>
+      {% if sim.reference.available %}
+      <strong>{{ sim.reference.fields.price }}</strong>
+      <span class="muted small" style="margin-left:4px;">{{ sim.reference.fields.source }}</span>
+      {% else %}
+      <span class="state-unavailable">UNAVAILABLE — {{ sim.reference.reason }}</span>
+      {% endif %}
+    </dd>
+
+    <dt>Executable price</dt>
+    <dd>
+      {% if sim.execution.available and sim.execution.fields.effectivePrice is not none %}
+      <strong>{{ sim.execution.fields.effectivePrice }}</strong>
+      <span class="muted small" style="margin-left:4px;">{{ sim.execution.fields.status }}</span>
+      {% elif sim.execution.available %}
+      <span>{{ sim.execution.fields.status }}</span>
+      {% else %}
+      <span class="state-unavailable">UNAVAILABLE — {{ sim.execution.reason }}</span>
+      {% endif %}
+    </dd>
+
+    <dt>Directional GAP</dt>
+    <dd>
+      {% if sim.gap.available %}
+      <strong class="{% if '-' in (sim.gap.fields.gapBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ sim.gap.fields.gapBps }} bps
+      </strong>
+      <span class="muted small" style="margin-left:4px;">mid GAP: {{ sim.gap.fields.gapToMidBps }} bps</span>
+      {% else %}
+      <span class="state-unavailable">UNAVAILABLE — {{ sim.gap.reason }}</span>
+      {% endif %}
+    </dd>
+
+    <dt>Asset UID</dt>
+    <dd class="mono" style="font-size:11px;">{{ sim.identity.economicAssetUid or '—' }}</dd>
+
+    <dt>Contract</dt>
+    <dd class="mono" style="font-size:11px;">{{ sim.identity.contractAddress or '—' }}</dd>
+  </dl>
+
+  {% if sim.freshness.completedAt %}
+  <p class="muted small" style="margin:0;">
+    Completed: {{ sim.freshness.completedAt }}
+  </p>
+  {% endif %}
+
+  <p class="muted small" style="margin:4px 0 0;font-style:italic;">
+    Simulation only — no order is submitted.
+  </p>
+</div>
+{% endif %}
