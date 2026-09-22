@@ -39,7 +39,7 @@
     available in the database.</p>
 
   {% elif estate == "IDENTITY_MISMATCH" %}
-  <p class="state-unavailable">IDENTITY_MISMATCH</p>
+  <span class="state-chip state-chip--mismatch">IDENTITY_MISMATCH</span>
   <p class="muted small">Financial metrics suppressed — the E1 record's
     contract address does not match the selected Robinhood asset.</p>
   {% if ev.identity_note %}
@@ -50,9 +50,9 @@
   {# ── identity block ────────────────────────────────────────────────── #}
   {% set ident = ev.identity %}
   {% if ident and ident.available %}
-  <div style="margin-bottom:10px;">
-    <strong style="font-size:15px;">{{ ident.company_name }}</strong>
-    <span class="muted" style="margin-left:8px;">{{ ident.symbol }}
+  <div class="fundamentals-identity">
+    <strong class="fundamentals-identity__name">{{ ident.company_name }}</strong>
+    <span class="muted fundamentals-identity__meta">{{ ident.symbol }}
       {% if ident.underlying_ticker and ident.underlying_ticker != ident.symbol %}
         · {{ ident.underlying_ticker }}
       {% endif %}
@@ -61,25 +61,30 @@
     </span>
   </div>
   {% if ident.security_type %}
-  <p class="muted small" style="margin-bottom:10px;">{{ ident.security_type }}</p>
+  <p class="muted small fundamentals-security-type">{{ ident.security_type }}</p>
   {% endif %}
   {% endif %}
 
   {# ── availability badge ────────────────────────────────────────────── #}
-  <span class="state-{{ estate|lower }}" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  {% if estate == "AVAILABLE" %}
+  <span class="state-chip state-chip--available" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  {% elif estate == "PARTIAL" %}
+  <span class="state-chip state-chip--partial" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  {% else %}
+  <span class="state-chip state-chip--unavail" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  {% endif %}
 
   {# ── reporting status ──────────────────────────────────────────────── #}
   {% if ev.reporting %}
   {% set rep = ev.reporting %}
-  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
-             color:var(--fo-text-secondary,#8899a6);margin:10px 0 4px;">Reporting</h3>
+  <h3 class="terminal-section-heading">Reporting</h3>
   <dl class="kv">
     <dt>TTM period</dt><dd>{{ rep.ttm_period_end }}</dd>
     <dt>TTM filed</dt><dd>{{ rep.ttm_filing_date }}</dd>
     <dt>Latest quarter</dt><dd>{{ rep.quarterly_period_end }}</dd>
     <dt>Latest annual</dt><dd>{{ rep.annual_period_end }}</dd>
     <dt>Provider</dt><dd>{{ rep.provider }}</dd>
-    <dt>Source</dt><dd class="mono" style="font-size:11px;word-break:break-all;">{{ rep.source_contract }}</dd>
+    <dt>Source</dt><dd class="mono small" style="word-break:break-all;">{{ rep.source_contract }}</dd>
     <dt>Fetched</dt><dd>{{ rep.fetched_at }}</dd>
     <dt>Normalised</dt><dd>{{ rep.normalized_at }}</dd>
   </dl>
@@ -88,8 +93,7 @@
   {# ── TTM source-derived fundamentals ───────────────────────────────── #}
   {% if ev.ttm_metrics %}
   {% set tm = ev.ttm_metrics %}
-  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
-             color:var(--fo-text-secondary,#8899a6);margin:14px 0 4px;">TTM Fundamentals</h3>
+  <h3 class="terminal-section-heading">TTM Fundamentals</h3>
   {% if tm.available %}
   <dl class="kv">
     {% for key, f in tm.fields.items() %}
@@ -117,18 +121,17 @@
   {# ── source / lineage teaser ────────────────────────────────────────── #}
   {% if ev.lineage and ev.lineage.available %}
   {% set lin = ev.lineage %}
-  <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;
-             color:var(--fo-text-secondary,#8899a6);margin:14px 0 4px;">Source</h3>
+  <h3 class="terminal-section-heading">Source</h3>
   <dl class="kv">
     {% if lin.provider %}<dt>Provider</dt><dd>{{ lin.provider }}</dd>{% endif %}
     {% if lin.source_contract %}<dt>Contract</dt>
-      <dd class="mono" style="font-size:11px;word-break:break-all;">{{ lin.source_contract }}</dd>{% endif %}
+      <dd class="mono small" style="word-break:break-all;">{{ lin.source_contract }}</dd>{% endif %}
     {% if lin.period_end %}<dt>Period end</dt><dd>{{ lin.period_end }}</dd>{% endif %}
     {% if lin.filing_date %}<dt>Filing date</dt><dd>{{ lin.filing_date }}</dd>{% endif %}
     {% if lin.fetched_at %}<dt>Fetched</dt><dd>{{ lin.fetched_at }}</dd>{% endif %}
     {% if lin.normalized_at %}<dt>Normalised</dt><dd>{{ lin.normalized_at }}</dd>{% endif %}
     {% if lin.payload_hash %}<dt>Payload hash</dt>
-      <dd class="mono" style="font-size:11px;word-break:break-all;">{{ lin.payload_hash[:24] }}…</dd>{% endif %}
+      <dd class="mono small" style="word-break:break-all;">{{ lin.payload_hash[:24] }}…</dd>{% endif %}
   </dl>
   {% endif %}
 
