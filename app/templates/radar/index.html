@@ -22,7 +22,7 @@
     <span class="radar-asset-header__symbol">{{ selected.token_symbol }}</span>
     <span class="radar-asset-header__chain">{{ selected.chain_id }} · <span class="mono" style="font-size:11px;">{{ selected.contract_address[:20] }}…</span></span>
     {% elif universe_error %}
-    <span class="radar-asset-header__symbol" style="color:var(--fo-warn,#e8a838);">Universe Unavailable</span>
+    <span class="radar-asset-header__symbol" style="color:var(--radar-gold);">Universe Unavailable</span>
     {% else %}
     <span class="radar-asset-header__symbol">—</span>
     {% endif %}
@@ -35,25 +35,20 @@
 
 <main class="radar-main">
 
-  <!-- E2-CA: Featured Equities Board — above asset selector -->
+  {# ── Featured Equities Board ─────────────────────────────────────────────── #}
   {% include "radar/featured_board.html" %}
 
-  <!-- Asset selection GET form: submits GET /radar?asset_uid=<uid> -->
+  {# ── Asset selector ──────────────────────────────────────────────────────── #}
   <form method="get" action="/radar" class="radar-controls-form">
-    <section class="panel panel-universe" data-panel="asset-selector" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
-        <h2 style="margin:0;">Asset</h2>
-        {% if universe %}
-        <span class="muted small">{{ universe | length }} Robinhood asset{{ 's' if universe | length != 1 else '' }}</span>
-        {% endif %}
-      </div>
+    <section class="panel" data-panel="asset-selector" style="margin-bottom:14px;">
+      <h2>Asset Selection</h2>
       {% if universe_error %}
       <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable — {{ universe_error }}</p>
       <p class="muted small">Acquisition is disabled until the registry is reachable.</p>
       {% elif universe %}
-      <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select name="asset_uid" class="asset-selector-select"
-                style="flex:1;padding:6px 8px;background:var(--fo-surface-2,#1a2030);color:var(--fo-text-primary,#d7dee5);border:1px solid var(--fo-border,#2a3448);border-radius:4px;font-size:13px;font-family:inherit;">
+                aria-label="Select asset from Robinhood universe">
           {% for a in universe %}
           <option value="{{ a.economic_asset_uid }}"
                   {% if selected and selected.economic_asset_uid == a.economic_asset_uid %}selected{% endif %}>
@@ -61,24 +56,19 @@
           </option>
           {% endfor %}
         </select>
-        <button type="submit" class="refresh-btn" style="white-space:nowrap;">Select / Load Asset</button>
+        <button type="submit" class="refresh-btn" style="white-space:nowrap;">Load Asset</button>
       </div>
-      {% if selected %}
-      <dl class="kv" style="margin-top:8px;font-size:11px;">
-        <dt>UID</dt><dd class="mono" style="word-break:break-all;">{{ selected.economic_asset_uid }}</dd>
-        <dt>Chain</dt><dd>{{ selected.chain_id }}</dd>
-        <dt>Contract</dt><dd class="mono">{{ selected.contract_address }}</dd>
-        <dt>Decimals</dt><dd>{{ selected.token_decimals }}</dd>
-      </dl>
-      {% endif %}
+      <p class="muted small" style="margin:6px 0 0;">
+        {{ universe | length }} asset{{ 's' if universe | length != 1 else '' }} from Robinhood canonical registry.
+        {% if selected %}Selected: <strong style="color:var(--radar-text);">{{ selected.token_symbol }}</strong>{% endif %}
+      </p>
       {% else %}
       <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable</p>
       {% endif %}
     </section>
   </form>
 
-  <!-- Quote POST form: carries hidden asset_uid so the server knows the
-       exact requested asset; direction/size are the only variable inputs. -->
+  {# ── Execution Simulator ─────────────────────────────────────────────────── #}
   <form method="post" action="/radar/refresh"
         hx-post="/radar/refresh"
         hx-target="#radar-panels"
@@ -87,7 +77,6 @@
     <input type="hidden" name="asset_uid"
            value="{{ selected.economic_asset_uid if selected else '' }}">
 
-    <!-- Controls + selected-asset row -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
 
       <section class="panel panel-controls" data-panel="controls">
@@ -102,7 +91,7 @@
             </label>
             {% endfor %}
           </div>
-          <div style="font-size:11px;color:var(--fo-text-secondary,#8899a6);margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
+          <div class="muted small" style="margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
           <div class="control-group" role="group" aria-label="Trade size">
             {% for s in sizes %}
             <label class="chip">
@@ -122,7 +111,7 @@
       <section class="panel panel-target" data-panel="configured-target">
         <h2>Selected asset</h2>
         {% if selected %}
-        <p class="muted small" style="margin-bottom:8px;">identity from official Robinhood registry</p>
+        <p class="muted small" style="margin-bottom:8px;">Identity from official Robinhood registry</p>
         <dl class="kv">
           <dt>Symbol</dt><dd>{{ selected.token_symbol }}</dd>
           <dt>Name</dt><dd>{{ selected.token_name }}</dd>
@@ -136,22 +125,22 @@
         {% elif universe_error %}
         <p class="state-unavailable">Universe unavailable — {{ universe_error }}</p>
         {% else %}
-        <p class="muted">No asset selected.</p>
+        <p class="muted">No asset selected. Choose from the board above or use the selector.</p>
         {% endif %}
       </section>
 
     </div>
-
   </form>
 
-  <!-- E2: Corporate fundamentals — outside #radar-panels so quote Refresh
-       does not reload it.  Asset selection (GET) triggers a fresh read.
-       id="equity-details" is the stable anchor for Details CTA links. -->
+  {# ── Corporate Fundamentals ───────────────────────────────────────────────── #}
+  {# Outside #radar-panels so quote Refresh does not reload it.
+     Asset selection (GET) triggers a fresh read.
+     id="equity-details" is the stable anchor for Details CTA links. #}
   <div id="equity-details">
   {% include "radar/equity_fundamentals.html" %}
   </div>
 
-  <!-- Panels area -->
+  {# ── Simulation Result Panels ────────────────────────────────────────────── #}
   <div id="radar-panels" class="radar-panels">
     {% if snapshot_identity_note and not view %}
     <section class="panel panel-error">
@@ -168,8 +157,8 @@
     {% include "radar/panels.html" %}
     {% else %}
     <section class="panel panel-idle">
-      <h2>Panels</h2>
-      <p class="muted">No simulation yet. Choose a direction and trade size, then <strong style="color:#d7dee5;">Check Execution</strong>.</p>
+      <h2>Simulation Panels</h2>
+      <p class="muted">No simulation yet. Select an asset, choose a direction and size, then <strong style="color:#d7dee5;">Check Execution</strong>.</p>
       <p class="muted small">The panels will show Reference · Executable · Directional GAP · Settlement · Freshness · Evidence for each field.</p>
       <p class="muted small" style="font-style:italic;">Simulation only — no order is submitted.</p>
     </section>
