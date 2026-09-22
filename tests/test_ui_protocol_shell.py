@@ -1370,3 +1370,433 @@ class TestE3CompanyTerminal:
             390,
         )
         page.close()
+
+
+# ── E4 Execution Simulator browser fixtures ───────────────────────────────────
+
+class _E4FakeSnapshot:
+    """Offline snapshot for E4 browser tests."""
+
+    def __init__(self, direction: str = "BUY", size: str = "100") -> None:
+        self._direction = direction
+        self._size = size
+        self.snapshot_id = f"snap-e4-browser-{direction.lower()}-{size}"
+
+    def to_payload(self):
+        return {
+            "snapshot_id": self.snapshot_id,
+            "state": "COMPLETE",
+            "startedAt": "2026-01-01T11:59:00+00:00",
+            "completedAt": "2026-01-01T12:00:00+00:00",
+            "economicAssetUid": "rh-equity-nvda-001",
+            "chainId": 4663,
+            "contractAddress": "0xnvda001abc",
+            "request": {
+                "direction": self._direction,
+                "notionalUsd": self._size,
+            },
+            "providers": [
+                {
+                    "provider": "radar-core",
+                    "state": "COMPLETE",
+                    "errorClass": None,
+                    "elapsedMs": 100,
+                    "evidence": {
+                        "asset": {
+                            "symbol": "NVDA",
+                            "economicAssetUid": "rh-equity-nvda-001",
+                            "chainId": 4663,
+                            "contractAddress": "0xnvda001abc",
+                        },
+                        "observedAt": "2026-01-01T11:59:00+00:00",
+                        "reference": {
+                            "available": True,
+                            "price": "143.11",
+                            "bid": "143.00",
+                            "ask": "143.22",
+                            "source": "FROZEN::BoundReferencePrice",
+                            "observedAt": "2026-01-01T11:59:00+00:00",
+                            "isTradingHalt": False,
+                        },
+                        "execution": {
+                            "available": True,
+                            "side": self._direction,
+                            "notionalUsd": self._size,
+                            "status": "QUOTE_OK",
+                            "effectivePrice": "142.77" if self._direction == "BUY" else "143.45",
+                            "source": "LiFi",
+                            "quotedAt": "2026-01-01T11:59:30+00:00",
+                        },
+                        "gap": {
+                            "available": True,
+                            "side": self._direction,
+                            "gapBps": "-24" if self._direction == "BUY" else "24",
+                            "gapToMidBps": "-29" if self._direction == "BUY" else "29",
+                            "executionPrice": "142.77" if self._direction == "BUY" else "143.45",
+                            "referencePrice": "143.11",
+                            "referenceSide": "bid" if self._direction == "BUY" else "ask",
+                            "source": "FROZEN::DirectionalGap",
+                            "quotedAt": "2026-01-01T11:59:30+00:00",
+                        },
+                    },
+                }
+            ],
+        }
+
+
+class _E4FakeAcqService:
+    """Offline AcquisitionService for E4 browser acceptance tests."""
+
+    def __init__(self) -> None:
+        self._calls: list = []
+
+    def acquire(self, request):
+        self._calls.append(request)
+        return _E4FakeSnapshot(direction=request.direction,
+                               size=request.notional_usd)
+
+    def get_snapshot(self, snapshot_id: str):
+        return _E4FakeSnapshot()
+
+    def close(self):
+        pass
+
+
+@pytest.fixture(scope="module")
+def live_url_e4():
+    """Uvicorn server with E3 DB + E4 fake AcquisitionService for simulate route."""
+    from app.radar_ui import router as radar_router
+    from app.radar_ui import equity_terminal, equity_enrichment
+    from app.radar_ui.equity_enrichment import EquityEnrichmentResult, EnrichmentState
+    from finco_radar.equity import get_equity_company_history
+    import main_web
+    import uvicorn
+
+    tmp = _build_e3_browser_db()
+
+    _orig_fetch    = radar_router._fetch_universe_safe
+    _orig_featured = radar_router._get_featured_symbols
+    _orig_many     = equity_enrichment.enrich_many_selected_assets
+    _orig_single   = equity_enrichment.enrich_selected_asset
+    _orig_history  = equity_terminal.get_history_for_terminal
+
+    _e4_svc = _E4FakeAcqService()
+    radar_router.set_service(_e4_svc)
+
+    def _fake_fetch():
+        return ([_NVDA_SA, _JPM_SA], None)
+
+    def _fake_featured():
+        return ("NVDA", "JPM")
+
+    def _fake_enrich_many(pairs):
+        return [
+            EquityEnrichmentResult(
+                state=EnrichmentState.SOURCE_UNAVAILABLE,
+                bundle=None,
+                identity_note=None,
+            )
+            for _ in pairs
+        ]
+
+    def _fake_enrich_single(token_symbol, contract_address, **kwargs):
+        return EquityEnrichmentResult(
+            state=EnrichmentState.SOURCE_UNAVAILABLE,
+            bundle=None,
+            identity_note=None,
+        )
+
+    def _fake_history(token_symbol, **kwargs):
+        return get_equity_company_history(token_symbol, db_path=tmp, db_mode="snapshot")
+
+    radar_router._fetch_universe_safe             = _fake_fetch
+    radar_router._get_featured_symbols            = _fake_featured
+    equity_enrichment.enrich_many_selected_assets = _fake_enrich_many
+    equity_enrichment.enrich_selected_asset       = _fake_enrich_single
+    equity_terminal.get_history_for_terminal      = _fake_history
+
+    port = _free_port()
+    config = uvicorn.Config(main_web.app, host="127.0.0.1", port=port,
+                            log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(0.05)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(5)
+        radar_router.set_service(None)
+        radar_router._fetch_universe_safe             = _orig_fetch
+        radar_router._get_featured_symbols            = _orig_featured
+        equity_enrichment.enrich_many_selected_assets = _orig_many
+        equity_enrichment.enrich_selected_asset       = _orig_single
+        equity_terminal.get_history_for_terminal      = _orig_history
+        tmp.unlink(missing_ok=True)
+
+
+class TestE4ExecutionSimulator:
+    """E4 Execution Simulator browser acceptance (B1–B13).
+
+    B1:  Token Market tab shows Execution Simulator heading.
+    B2:  Form contains "Simulate Buy" and "Simulate Sell" labels.
+    B3:  Form contains "Check Execution" button.
+    B4:  Disclosure "Simulation only" present on Token Market tab.
+    B5:  Simulate Buy POST → result fragment with reference price 143.11.
+    B6:  Simulate Buy POST → result fragment with effective price 142.77.
+    B7:  Simulate Buy POST → result fragment with gap -24.
+    B8:  Simulate Sell POST → result fragment with gap 24 (positive side).
+    B9:  Simulate result fragment contains "COMPLETE" state.
+    B10: Simulate result fragment contains UID rh-equity-nvda-001.
+    B11: Simulate result always contains disclosure.
+    B12: Radar index page h2 reads "Execution Simulator".
+    B13: Radar index page "Simulate Buy" and "Simulate Sell" labels visible.
+    """
+
+    def test_b1_token_market_execution_simulator_heading(
+            self, live_url_e4, browser):
+        """B1: Token Market tab renders Execution Simulator heading."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        body_text = page.inner_text("body")
+        assert "Execution Simulator" in body_text, (
+            "Execution Simulator heading not found on Token Market tab"
+        )
+        page.close()
+
+    def test_b2_form_simulate_buy_sell_labels(self, live_url_e4, browser):
+        """B2: Form has 'Simulate Buy' and 'Simulate Sell' radio labels."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        # Use page.content() (raw HTML) to avoid CSS text-transform:uppercase
+        # distorting inner_text() results.
+        page_html = page.content()
+        assert "Simulate Buy" in page_html, (
+            "'Simulate Buy' label not found in Token Market form HTML"
+        )
+        assert "Simulate Sell" in page_html, (
+            "'Simulate Sell' label not found in Token Market form HTML"
+        )
+        page.close()
+
+    def test_b3_form_check_execution_button(self, live_url_e4, browser):
+        """B3: Form has 'Check Execution' submit button."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page_html = page.content()
+        assert "Check Execution" in page_html, (
+            "'Check Execution' button text not found in Token Market form HTML"
+        )
+        page.close()
+
+    def test_b4_token_market_disclosure_present(self, live_url_e4, browser):
+        """B4: Token Market tab contains 'Simulation only — no order is submitted.'"""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        body_text = page.inner_text("body")
+        assert "Simulation only" in body_text, (
+            "Disclosure 'Simulation only' not found on Token Market tab"
+        )
+        assert "no order is submitted" in body_text, (
+            "Disclosure 'no order is submitted' not found on Token Market tab"
+        )
+        page.close()
+
+    def test_b5_simulate_buy_reference_price(self, live_url_e4, browser):
+        """B5: Simulate Buy result fragment contains reference price 143.11."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        # Click Simulate Buy radio (should already be checked) then submit
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        # HTMX swaps in the result; wait for sim-result div to have content
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(
+            f'#sim-result-rh-equity-nvda-001')
+        assert "143.11" in result_text, (
+            f"Reference price 143.11 not in BUY simulation result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b6_simulate_buy_effective_price(self, live_url_e4, browser):
+        """B6: Simulate Buy result fragment contains effective price 142.77."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        assert "142.77" in result_text, (
+            f"Effective price 142.77 not in BUY simulation result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b7_simulate_buy_gap_bps(self, live_url_e4, browser):
+        """B7: Simulate Buy result fragment contains gap -24."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        assert "-24" in result_text, (
+            f"Gap -24 bps not in BUY simulation result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b8_simulate_sell_gap_bps_positive(self, live_url_e4, browser):
+        """B8: Simulate Sell result fragment contains positive gap 24."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="SELL"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        # SELL gap should be +24 (not negative)
+        assert "24" in result_text, (
+            f"Gap 24 bps not in SELL simulation result: {result_text[:500]}"
+        )
+        assert "143.45" in result_text, (
+            f"Effective SELL price 143.45 not in result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b9_simulate_result_state_complete(self, live_url_e4, browser):
+        """B9: Simulate result fragment shows COMPLETE state."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        assert "COMPLETE" in result_text, (
+            f"State COMPLETE not in simulation result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b10_simulate_result_uid_present(self, live_url_e4, browser):
+        """B10: Simulate result fragment shows asset UID."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        assert "rh-equity-nvda-001" in result_text, (
+            f"Asset UID not in simulation result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b11_simulate_result_disclosure_always_present(
+            self, live_url_e4, browser):
+        """B11: Every simulation result contains the disclosure."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(
+            f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        page.check('input[name="direction"][value="BUY"]')
+        page.click('button[type="submit"]:has-text("Check Execution")')
+        page.wait_for_selector(
+            f'#sim-result-rh-equity-nvda-001', state="attached", timeout=5000)
+        page.wait_for_function(
+            'document.querySelector("#sim-result-rh-equity-nvda-001").innerText.trim().length > 0',
+            timeout=5000)
+        result_text = page.inner_text(f'#sim-result-rh-equity-nvda-001')
+        assert "Simulation only" in result_text, (
+            f"Disclosure 'Simulation only' missing from result: {result_text[:500]}"
+        )
+        assert "no order is submitted" in result_text, (
+            f"Disclosure 'no order is submitted' missing from result: {result_text[:500]}"
+        )
+        page.close()
+
+    def test_b12_radar_index_heading_execution_simulator(
+            self, live_url_e4, browser):
+        """B12: Radar index page h2 reads 'Execution Simulator'."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url_e4}/radar")
+        page.wait_for_load_state("domcontentloaded")
+        # Use page.content() to bypass CSS text-transform:uppercase in inner_text
+        page_html = page.content()
+        assert "Execution Simulator" in page_html, (
+            "Radar index 'Execution Simulator' heading not found in HTML"
+        )
+        assert "Quote controls" not in page_html, (
+            "Old 'Quote controls' heading still present in Radar index HTML"
+        )
+        page.close()
+
+    def test_b13_radar_index_simulate_buy_sell_labels(
+            self, live_url_e4, browser):
+        """B13: Radar index page shows 'Simulate Buy' and 'Simulate Sell' labels."""
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.goto(f"{live_url_e4}/radar")
+        page.wait_for_load_state("domcontentloaded")
+        page_html = page.content()
+        assert "Simulate Buy" in page_html, (
+            "Radar index 'Simulate Buy' label not found in HTML"
+        )
+        assert "Simulate Sell" in page_html, (
+            "Radar index 'Simulate Sell' label not found in HTML"
+        )
+        assert "Check Execution" in page_html, (
+            "Radar index 'Check Execution' button text not found in HTML"
+        )
+        page.close()

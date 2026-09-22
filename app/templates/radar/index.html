@@ -91,17 +91,19 @@
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
 
       <section class="panel panel-controls" data-panel="controls">
-        <h2>Quote controls</h2>
+        <h2>Execution Simulator</h2>
         <div class="radar-controls">
-          <div class="control-group" role="group" aria-label="Quote direction">
+          <div class="control-group" role="group" aria-label="Simulation direction">
             {% for d in directions %}
             <label class="chip">
               <input type="radio" name="direction" value="{{ d }}"
-                     {% if d == 'BUY' %}checked{% endif %}> {{ d }}
+                     {% if d == 'BUY' %}checked{% endif %}>
+              {% if d == 'BUY' %}Simulate Buy{% elif d == 'SELL' %}Simulate Sell{% else %}{{ d }}{% endif %}
             </label>
             {% endfor %}
           </div>
-          <div class="control-group" role="group" aria-label="Notional size">
+          <div style="font-size:11px;color:var(--fo-text-secondary,#8899a6);margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
+          <div class="control-group" role="group" aria-label="Trade size">
             {% for s in sizes %}
             <label class="chip">
               <input type="radio" name="size" value="{{ s }}"
@@ -111,9 +113,10 @@
           </div>
           <button type="submit"
                   class="refresh-btn"
-                  {% if universe_error or not universe or not selected %}disabled{% endif %}>Refresh</button>
+                  {% if universe_error or not universe or not selected %}disabled{% endif %}>Check Execution</button>
         </div>
-        <p class="muted small">One refresh = one immutable acquisition snapshot. Every panel references that exact snapshot.</p>
+        <p class="muted small">One simulation = one immutable acquisition snapshot. Every panel references that exact snapshot.</p>
+        <p class="muted small" style="font-style:italic;">Simulation only — no order is submitted.</p>
       </section>
 
       <section class="panel panel-target" data-panel="configured-target">
@@ -166,8 +169,9 @@
     {% else %}
     <section class="panel panel-idle">
       <h2>Panels</h2>
-      <p class="muted">No acquisition yet. Choose a direction and size, then <strong style="color:#d7dee5;">Refresh</strong>.</p>
+      <p class="muted">No simulation yet. Choose a direction and trade size, then <strong style="color:#d7dee5;">Check Execution</strong>.</p>
       <p class="muted small">The panels will show Reference · Executable · Directional GAP · Settlement · Freshness · Evidence for each field.</p>
+      <p class="muted small" style="font-style:italic;">Simulation only — no order is submitted.</p>
     </section>
     {% endif %}
   </div>

@@ -658,8 +658,9 @@ def test_t18_token_market_tab_links_to_radar():
             resp = client.get("/radar/equity/rh-equity-aapl-001")
             assert resp.status_code == 200
             assert "tab-token-market" in resp.text
-            assert "Open Execution Simulator" in resp.text
-            assert "/radar" in resp.text  # links back to radar
+            # E4: Token Market tab now embeds the Execution Simulator form
+            assert "Execution Simulator" in resp.text
+            assert "/simulate" in resp.text  # form action points to simulate route
     finally:
         db.unlink(missing_ok=True)
 

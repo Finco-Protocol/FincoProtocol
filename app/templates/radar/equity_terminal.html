@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <script src="/static/radar/vendor/htmx.min.js" defer></script>
 </head>
 <body class="radar">
 
@@ -340,23 +341,55 @@
   <section class="panel panel-token-market" data-panel="token-market">
     <h2 style="font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--fo-text-secondary,#8899a6);margin:0 0 16px;">Token Market</h2>
     {% if tv.selected_token %}
-    <dl class="kv" style="max-width:600px;">
+    <dl class="kv" style="max-width:600px;margin-bottom:20px;">
       <dt>Token symbol</dt><dd>{{ tv.selected_token.symbol }}</dd>
       <dt>Economic asset UID</dt><dd class="mono">{{ tv.selected_token.economic_asset_uid }}</dd>
       <dt>Chain ID</dt><dd class="mono">{{ tv.selected_token.chain_id }}</dd>
       <dt>Contract address</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
     </dl>
     {% endif %}
-    <p class="muted small" style="margin-top:16px;">
-      No quote/execution acquisition occurs on Company Terminal GET.
-      This page shows reference identity information only.
+
+    {# ── Execution Simulator form ──────────────────────────────────────────── #}
+    <h3 style="font-size:13px;font-weight:600;margin:0 0 12px;color:var(--fo-text-primary,#d7dee5);">Execution Simulator</h3>
+    <p class="muted small" style="margin:0 0 14px;">
+      No quote/execution acquisition occurs on this page GET.
+      Use the form below to simulate a single execution against the live market.
     </p>
-    <p style="margin-top:12px;">
-      <a href="{{ tv.execution_simulator_url }}"
-         style="display:inline-block;padding:8px 18px;background:var(--fo-accent,#3b82f6);color:#fff;border-radius:4px;text-decoration:none;font-weight:600;">
-        Open Execution Simulator →
-      </a>
-    </p>
+    <form method="post"
+          action="/radar/equity/{{ tv.economic_asset_uid }}/simulate"
+          hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate"
+          hx-target="#sim-result-{{ tv.economic_asset_uid }}"
+          hx-swap="innerHTML"
+          style="max-width:420px;">
+
+      <div style="margin-bottom:12px;">
+        <div class="control-group" role="group" aria-label="Simulation direction" style="margin-bottom:8px;">
+          <label class="chip">
+            <input type="radio" name="direction" value="BUY" checked> Simulate Buy
+          </label>
+          <label class="chip">
+            <input type="radio" name="direction" value="SELL"> Simulate Sell
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--fo-text-secondary,#8899a6);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
+        <div class="control-group" role="group" aria-label="Trade size">
+          <label class="chip">
+            <input type="radio" name="size" value="100" checked> $100
+          </label>
+          <label class="chip">
+            <input type="radio" name="size" value="1000"> $1,000
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" class="refresh-btn" style="margin-bottom:8px;">Check Execution</button>
+      <p class="muted small" style="margin:0;font-style:italic;">Simulation only — no order is submitted.</p>
+    </form>
+
+    <div id="sim-result-{{ tv.economic_asset_uid }}" style="margin-top:18px;"></div>
   </section>
 </div>
 

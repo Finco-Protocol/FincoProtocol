@@ -527,6 +527,64 @@ async def radar_equity_terminal(
     )
 
 
+@router.post("/radar/equity/{economic_asset_uid}/simulate",
+             response_class=HTMLResponse)
+async def radar_equity_simulate(
+    request: Request,
+    economic_asset_uid: str,
+    direction: str = Form("BUY"),
+    size: str = Form("100"),
+):
+    """Execution Simulator for one equity asset.
+
+    Exactly one acquisition per POST.  UID-first: resolves SelectedAsset
+    from the canonical Robinhood universe before any acquisition.  Fails
+    closed on unknown UID, invalid direction/size, or universe unavailability.
+    Returns the HTMX partial fragment (no full-page render).
+    Read-only: no wallet, no signing, no transaction submission.
+    """
+    universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
+    if universe_error and not universe:
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/partials/execution_simulator_result.html",
+            context={"sim": None,
+                     "sim_error": "ASSET_UNIVERSE_UNAVAILABLE"},
+            status_code=200,
+        )
+
+    selected = _resolve_selected(universe, economic_asset_uid)
+    if selected is None:
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/partials/execution_simulator_result.html",
+            context={"sim": None,
+                     "sim_error": f"ASSET_NOT_FOUND_IN_UNIVERSE: {economic_asset_uid!r}"},
+            status_code=200,
+        )
+
+    try:
+        request_obj = composition.build_request(direction, size, selected)
+    except RadarRuntimeError as exc:
+        return _templates.TemplateResponse(
+            request=request,
+            name="radar/partials/execution_simulator_result.html",
+            context={"sim": None,
+                     "sim_error": f"INVALID_REQUEST: {exc}"},
+            status_code=200,
+        )
+
+    snapshot = await run_in_threadpool(get_service().acquire, request_obj)
+
+    sim = view_model.build_radar_view(snapshot)
+    return _templates.TemplateResponse(
+        request=request,
+        name="radar/partials/execution_simulator_result.html",
+        context={"sim": sim, "sim_error": None},
+        status_code=200,
+    )
+
+
 @router.get("/radar/inspector/{snapshot_id}/{field_id}",
             response_class=HTMLResponse)
 async def radar_inspector(request: Request, snapshot_id: str,
