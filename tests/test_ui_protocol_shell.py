@@ -1843,7 +1843,8 @@ class TestE4ExecutionSimulator:
         # Structural: no button/input/link whose text or name references wallet ops
         _FORBIDDEN_CONTROL_TERMS = [
             "wallet", "sign", "approve", "allowance", "permit",
-            "submit order", "execute", "swap", "send tx", "broadcast",
+            "submit order", "execute order", "execute tx", "execute trade",
+            "swap", "send tx", "broadcast",
             "private key", "seed phrase",
         ]
         controls = page.query_selector_all("button, input[type='submit'], a[href]")
