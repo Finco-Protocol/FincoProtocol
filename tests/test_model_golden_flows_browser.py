@@ -191,9 +191,25 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         _click_tab(page, "tab-returns", "panel-returns")
         assert page.locator('[data-testid="returns-last-run-scenario"]').inner_text() == scenario_name
 
+        calls_before_compare = len(golden_app["calls"])
         _click_tab(page, "tab-compare", "panel-compare")
+        # GF-F03: fresh-on-open — Compare must reflect current scenario state
+        # WITHOUT a page reload.  The tab HTMX GET fires on click; wait for it.
+        page.locator(".v2-compare-chip").first.wait_for(state="visible", timeout=10_000)
         chips = page.locator(".v2-compare-chip")
-        assert chips.count() >= 2
+        assert chips.count() >= 2, (
+            "Compare tab must show ≥2 chips after fresh-on-open GET; "
+            "GF-F03: scenario created after initial page load must appear"
+        )
+        base_chip = page.locator(".v2-compare-chip", has_text="Base Case")
+        assert base_chip.count() >= 1, "Base Case chip must be present"
+        scenario_chip_fresh = page.locator(".v2-compare-chip", has_text=scenario_name)
+        assert scenario_chip_fresh.count() >= 1, (
+            f"Scenario '{scenario_name}' chip must appear after tab click (GF-F03)"
+        )
+        assert len(golden_app["calls"]) == calls_before_compare, (
+            "Opening Compare tab must not execute the engine"
+        )
         chips.nth(0).click()
         scenario_chip = page.locator(".v2-compare-chip", has_text=scenario_name)
         scenario_chip.click()
