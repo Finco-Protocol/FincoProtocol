@@ -435,16 +435,25 @@ class TestB01B02UnifiedRead:
         )
 
     def test_b01_featured_get_route_zero_single_reads(self, client_11asset):
-        """GET /radar?asset_uid=AAPL (featured) → enrich_selected_asset not called."""
+        """GET /radar?asset_uid=<AAPL_UID> (featured) → enrich_selected_asset not called."""
         client, _, universe, _, mock_single, mock_many = client_11asset
         mock_single.reset_mock()
         mock_many.reset_mock()
 
-        resp = client.get("/radar?asset_uid=AAPL")
+        # Resolve the real economic_asset_uid for AAPL — not the token_symbol.
+        aapl_uid = next(
+            a.economic_asset_uid for a in universe if a.token_symbol == "AAPL"
+        )
+
+        resp = client.get(f"/radar?asset_uid={aapl_uid}")
         assert resp.status_code == 200
+        # AAPL must actually be selected
+        assert "AAPL" in resp.text
+        # Featured selected → batch reuse, zero single reads
         assert mock_many.call_count == 1
         assert mock_single.call_count == 0, (
-            f"GET /radar?asset_uid=AAPL (featured) triggered {mock_single.call_count} single reads"
+            f"GET /radar?asset_uid={aapl_uid} (featured) triggered "
+            f"{mock_single.call_count} single reads"
         )
 
     def test_b02_non_featured_get_route_one_single_read(self, client_11asset):
@@ -790,12 +799,41 @@ class TestB10NonFeaturedDropdown:
         assert "XYZ" in resp.text
 
     def test_b10_xyz_selectable_get(self, client_11asset):
-        """GET /radar?asset_uid=rh-equity-xyz-099 renders XYZ asset."""
-        client, _, universe, _, _, _ = client_11asset
+        """GET /radar?asset_uid=rh-equity-xyz-099 renders XYZ asset.
+
+        Uses the real UID, scopes #equity-details to prove XYZ identity and
+        confirm one featured batch read + one non-featured single read.
+        """
+        client, _, universe, _, mock_single, mock_many = client_11asset
+        mock_single.reset_mock()
+        mock_many.reset_mock()
+
         xyz = next(a for a in universe if a.token_symbol == "XYZ")
+        assert xyz.economic_asset_uid == "rh-equity-xyz-099"
+
         resp = client.get(f"/radar?asset_uid={xyz.economic_asset_uid}")
         assert resp.status_code == 200
-        assert "XYZ" in resp.text
+        html = resp.text
+
+        # Scope proof: XYZ Corp present in #equity-details
+        section = _extract_section(html, "equity-details")
+        assert section and len(section.strip()) > 10, (
+            "#equity-details section not found or empty"
+        )
+        assert "XYZ Corp" in section, (
+            f"XYZ Corp not found within #equity-details. Section: {section[:500]!r}"
+        )
+        # Featured detail data must not bleed into non-featured selected section
+        assert "AAPL Corp" not in section
+        assert "NVDA Corp" not in section
+
+        # Read contract: one featured batch + one selected single
+        assert mock_many.call_count == 1, (
+            f"Expected exactly one batch read; got {mock_many.call_count}"
+        )
+        assert mock_single.call_count == 1, (
+            f"Non-featured XYZ expected 1 single read; got {mock_single.call_count}"
+        )
 
 
 class TestB11B12BoardFailureIdentity:

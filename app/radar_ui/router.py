@@ -29,7 +29,6 @@ Stale-identity prevention:
 from __future__ import annotations
 
 import os
-from typing import List
 
 from fastapi import APIRouter, Form, Request
 from fastapi.concurrency import run_in_threadpool
@@ -139,17 +138,35 @@ def _load_equity_and_featured_board(
     set).  When selected is featured, its EquityEnrichmentResult is reused from
     the batch — zero extra single reads.
 
+    Selected-detail reuse is UID-first: a featured batch result is reused only
+    when the featured SelectedAsset is the SAME canonical identity as selected,
+    proven by equal economic_asset_uid, chain_id, and contract_address
+    (case-insensitive).  Token symbol alone is never sufficient.
+
+    Featured resolution is duplicate-safe: a configured symbol with >1 live
+    matches is skipped from the board rather than silently choosing one.
+
     Returns (equity_view_dict, featured_board_rows).
     """
     featured_symbols = _get_featured_symbols()
-    universe_by_symbol: dict = {a.token_symbol.upper(): a for a in universe}
 
-    # Featured assets in configured order, filtered to live universe.
-    featured_assets = [
-        universe_by_symbol[sym.upper()]
-        for sym in featured_symbols
-        if sym.upper() in universe_by_symbol
-    ]
+    # Build per-symbol match lists to detect duplicates — fail closed on ambiguity.
+    symbol_to_assets: dict = {}
+    for a in universe:
+        sym_upper = a.token_symbol.upper()
+        if sym_upper not in symbol_to_assets:
+            symbol_to_assets[sym_upper] = []
+        symbol_to_assets[sym_upper].append(a)
+
+    # Featured assets in configured order:
+    #   0 matches  → skip (not in live universe)
+    #   1 match    → include
+    #   >1 matches → skip (ambiguous; do not silently choose)
+    featured_assets = []
+    for sym in featured_symbols:
+        matches = symbol_to_assets.get(sym.upper(), [])
+        if len(matches) == 1:
+            featured_assets.append(matches[0])
 
     # ONE batch read for all featured assets.
     if featured_assets:
@@ -157,6 +174,9 @@ def _load_equity_and_featured_board(
         featured_results = equity_enrichment.enrich_many_selected_assets(pairs)
     else:
         featured_results = ()
+
+    # featured_pairs carries both identity and result for UID-first reuse below.
+    featured_pairs = list(zip(featured_assets, featured_results))
 
     # Build board rows — pass token_symbol separately so UID never leaks into
     # the symbol column.
@@ -167,24 +187,31 @@ def _load_equity_and_featured_board(
             fallback_name=asset.token_name,
             token_symbol=asset.token_symbol,
         )
-        for asset, result in zip(featured_assets, featured_results)
+        for asset, result in featured_pairs
     ]
 
     # Equity view for the selected asset.
     equity_view: dict = {}
     if selected is not None:
-        # Prefer reusing the batch result when selected is in the featured set.
-        batch_by_symbol: dict = {
-            a.token_symbol.upper(): result
-            for a, result in zip(featured_assets, featured_results)
-        }
-        sel_upper = selected.token_symbol.upper()
-        if sel_upper in batch_by_symbol:
+        # UID-first reuse: selected may reuse a featured batch result ONLY when
+        # the featured SelectedAsset is the SAME canonical identity — equal
+        # economic_asset_uid, chain_id, and contract_address (case-insensitive).
+        selected_result = None
+        for feat_asset, feat_result in featured_pairs:
+            if (
+                feat_asset.economic_asset_uid == selected.economic_asset_uid
+                and feat_asset.chain_id == selected.chain_id
+                and feat_asset.contract_address.lower() == selected.contract_address.lower()
+            ):
+                selected_result = feat_result
+                break
+
+        if selected_result is not None:
             equity_view = equity_view_model.build_equity_view(
-                batch_by_symbol[sel_upper], fallback_name=fallback_name,
+                selected_result, fallback_name=fallback_name,
             )
         else:
-            # Not featured — one additional single read.
+            # Not featured (or ambiguous) — one additional single read.
             single = equity_enrichment.enrich_selected_asset(
                 selected.token_symbol, selected.contract_address,
             )
