@@ -38,7 +38,7 @@
 
     <dt>Executable price</dt>
     <dd>
-      {% if sim.execution.available and sim.execution.fields.effectivePrice %}
+      {% if sim.execution.available and sim.execution.fields.effectivePrice is not none %}
       <strong>{{ sim.execution.fields.effectivePrice }}</strong>
       <span class="muted small" style="margin-left:4px;">{{ sim.execution.fields.status }}</span>
       {% elif sim.execution.available %}
