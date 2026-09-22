@@ -913,63 +913,142 @@ _NVDA_SA = _SA_E3("rh-equity-nvda-001", "NVDA", "NVIDIA Corporation", 4663, "0xn
 _JPM_SA  = _SA_E3("rh-equity-jpm-002",  "JPM",  "JPMorgan Chase",      4663, "0xjpm002def",  0)
 
 
+_E3_BROWSER_PROVIDER   = "SYNTH_E3_BROWSER"
+_E3_BROWSER_CONTRACT   = "E3_BROWSER_CONTRACT_V1"
+_E3_BROWSER_PAYLDHASH  = "e3browser_payldhash_001"
+
+_E3_PER_SYM = {
+    "NVDA": {
+        "sa": None,  # assigned in _build_e3_browser_db after module-level init
+        "name": "NVIDIA Corporation",
+        "annual_income":    {"revenues": 26001111000, "gross_profit": 16000222000,
+                             "operating_income_loss": 12000333000, "net_income_loss": 9000444000},
+        "quarterly_income": {"revenues":  7001111000, "gross_profit":  4400222000,
+                             "operating_income_loss":  3200333000, "net_income_loss": 2300444000},
+        "annual_balance":    {"assets": 65000555000, "cash": 5000666000,
+                              "liabilities": 15000777000, "equity": 50000888000},
+        "quarterly_balance": {"assets": 63000555000, "cash": 4800666000,
+                              "liabilities": 14500777000, "equity": 48500888000},
+        "annual_cashflow":    {"net_cash_flow_from_operating_activities": 11000999000,
+                               "net_cash_flow_from_investing_activities": -3000111000,
+                               "net_cash_flow_from_financing_activities": -4000222000,
+                               "net_cash_flow": 4000666000},
+        "quarterly_cashflow": {"net_cash_flow_from_operating_activities":  3000999000,
+                               "net_cash_flow_from_investing_activities":  -800111000,
+                               "net_cash_flow_from_financing_activities": -1000222000,
+                               "net_cash_flow": 1200666000},
+    },
+    "JPM": {
+        "sa": None,
+        "name": "JPMorgan Chase",
+        "annual_income":    {"revenues": 49001111000, "gross_profit": 30000222000,
+                             "operating_income_loss": 22000333000, "net_income_loss": 15500444000},
+        "quarterly_income": {"revenues": 12001111000, "gross_profit":  7500222000,
+                             "operating_income_loss":  5500333000, "net_income_loss":  4000444000},
+        "annual_balance":    {"assets": 180000555000, "cash": 30000666000,
+                              "liabilities": 160000777000, "equity": 20000888000},
+        "quarterly_balance": {"assets": 178000555000, "cash": 28000666000,
+                              "liabilities": 158000777000, "equity": 20000888000},
+        "annual_cashflow":    {"net_cash_flow_from_operating_activities": 25000999000,
+                               "net_cash_flow_from_investing_activities": -10000111000,
+                               "net_cash_flow_from_financing_activities":  -8000222000,
+                               "net_cash_flow": 7000666000},
+        "quarterly_cashflow": {"net_cash_flow_from_operating_activities":  6000999000,
+                               "net_cash_flow_from_investing_activities":  -2500111000,
+                               "net_cash_flow_from_financing_activities":  -2000222000,
+                               "net_cash_flow": 1500666000},
+    },
+}
+
+
 def _build_e3_browser_db() -> Path:
     """Create a temp SQLite DB with NVDA and JPM financial data for E3 browser tests."""
+    # Bind SAs after they are defined (populated below after namedtuple definition)
+    _E3_PER_SYM["NVDA"]["sa"] = _NVDA_SA
+    _E3_PER_SYM["JPM"]["sa"]  = _JPM_SA
+
     tmp = Path(tempfile.mktemp(suffix=".db"))
     conn = sqlite3.connect(str(tmp))
     conn.executescript(_E3_SCHEMA)
-    for symbol, name in [("NVDA", "NVIDIA Corporation"), ("JPM", "JPMorgan Chase")]:
+
+    for symbol, d in _E3_PER_SYM.items():
+        sa   = d["sa"]
+        name = d["name"]
+        # Fix #1: use exact per-symbol contract so validate_terminal_identity returns VERIFIED
         conn.execute(
             "INSERT INTO equity_assets (robinhood_token_symbol,underlying_ticker,name,"
             "token_contract_address,chain_network,currency,active) VALUES (?,?,?,?,?,?,1)",
-            (symbol, symbol, name, "0x000", "ethereum", "USD"),
+            (symbol, symbol, name, sa.contract_address, "ethereum", "USD"),
         )
         conn.execute(
-            "INSERT INTO equity_company_profiles (ticker,profile_json,provider,fetched_at) "
-            "VALUES (?,?,?,?)",
-            (symbol, json.dumps({"name": name, "sector": "Technology"}), "SYNTH", "2024-10-01"),
+            "INSERT INTO equity_company_profiles "
+            "(ticker,profile_json,provider,source_contract,payload_hash,fetched_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (symbol, json.dumps({"name": name, "sector": "Technology"}),
+             _E3_BROWSER_PROVIDER, _E3_BROWSER_CONTRACT, _E3_BROWSER_PAYLDHASH, "2024-10-01"),
         )
         for pe in ["2023-09-30", "2022-09-24", "2021-09-25"]:
             conn.execute(
                 "INSERT INTO equity_financial_snapshots "
-                "(ticker,timeframe,period_end,filing_date,provider,derived_json,"
+                "(ticker,timeframe,period_end,filing_date,provider,source_contract,"
+                "payload_hash,derived_json,"
                 "income_statement_json,balance_sheet_json,cash_flow_statement_json,"
-                "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    symbol, "annual", pe, f"{pe[:4]}-11-01", "SYNTH", _E3_DERIVED,
-                    json.dumps({"totalRevenue": 60000000000}),
-                    json.dumps({"totalAssets": 100000000000}),
-                    json.dumps({"operatingCashflow": 15000000000}),
+                    symbol, "annual", pe, f"{pe[:4]}-11-01",
+                    _E3_BROWSER_PROVIDER, _E3_BROWSER_CONTRACT, "e3brw_snap_annual_001",
+                    _E3_DERIVED,
+                    json.dumps(d["annual_income"]),
+                    json.dumps(d["annual_balance"]),
+                    json.dumps(d["annual_cashflow"]),
                     "2024-11-05",
                 ),
             )
         for pe in ["2024-06-30", "2024-03-31", "2023-12-31"]:
             conn.execute(
                 "INSERT INTO equity_financial_snapshots "
-                "(ticker,timeframe,period_end,filing_date,provider,derived_json,"
+                "(ticker,timeframe,period_end,filing_date,provider,source_contract,"
+                "payload_hash,derived_json,"
                 "income_statement_json,balance_sheet_json,cash_flow_statement_json,"
-                "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    symbol, "quarterly", pe, f"{pe[:7]}-20", "SYNTH", _E3_DERIVED,
-                    json.dumps({"totalRevenue": 15000000000}),
-                    json.dumps({"totalAssets": 100000000000}),
-                    json.dumps({"operatingCashflow": 4000000000}),
+                    symbol, "quarterly", pe, f"{pe[:7]}-20",
+                    _E3_BROWSER_PROVIDER, _E3_BROWSER_CONTRACT, "e3brw_snap_qtr_001",
+                    _E3_DERIVED,
+                    json.dumps(d["quarterly_income"]),
+                    json.dumps(d["quarterly_balance"]),
+                    json.dumps(d["quarterly_cashflow"]),
                     "2024-11-05",
                 ),
             )
         conn.execute(
             "INSERT INTO equity_financial_snapshots "
-            "(ticker,timeframe,period_end,filing_date,provider,derived_json,"
+            "(ticker,timeframe,period_end,filing_date,provider,source_contract,"
+            "payload_hash,derived_json,"
             "income_statement_json,balance_sheet_json,cash_flow_statement_json,"
-            "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
-                symbol, "ttm", "2024-06-30", "2024-08-01", "SYNTH", _E3_DERIVED,
-                json.dumps({"totalRevenue": 60000000000}),
-                json.dumps({"totalAssets": 100000000000}),
-                json.dumps({"operatingCashflow": 15000000000}),
+                symbol, "ttm", "2024-06-30", "2024-08-01",
+                _E3_BROWSER_PROVIDER, _E3_BROWSER_CONTRACT, "e3brw_snap_ttm_001",
+                _E3_DERIVED,
+                json.dumps(d["annual_income"]),
+                json.dumps(d["annual_balance"]),
+                json.dumps(d["annual_cashflow"]),
                 "2024-11-05",
             ),
         )
+
+    # Anti-false-green: verify inserted contracts exactly match SelectedAsset contracts
+    for sym, sa in [("NVDA", _NVDA_SA), ("JPM", _JPM_SA)]:
+        row = conn.execute(
+            "SELECT token_contract_address FROM equity_assets WHERE robinhood_token_symbol=?",
+            (sym,)
+        ).fetchone()
+        assert row and row[0] == sa.contract_address, (
+            f"{sym} DB contract {row!r} != SA contract {sa.contract_address!r}; "
+            "fixture drift would cause IDENTITY_MISMATCH"
+        )
+
     conn.commit()
     conn.close()
     return tmp
@@ -1046,13 +1125,31 @@ def live_url_e3():
 
 
 class TestE3CompanyTerminal:
-    """F16 — E3 Company Terminal browser acceptance (B1–B13).
+    """F16 — E3 Company Terminal browser acceptance (B00–B13).
 
-    Exercises the full NVDA terminal journey: Featured Equities board →
-    Details → terminal header → Financials tab navigation (Annual Income,
-    Quarterly, Balance Sheet, Cash Flow) → Evidence tab → asset switcher
-    (URL + identity change) → Back to Radar → 390px mobile no overflow.
+    B00: Anti-false-green fixture contract proof.
+    B01–B03: Featured Equities board → Details → terminal URL.
+    B04: NVDA identity + IDENTITY_VERIFIED (not MISMATCH).
+    B05: Financials tab click → panel visible.
+    B06: Annual income — Revenue label + distinctive NVDA value.
+    B07: Quarterly income — quarterly value present, annual value absent.
+    B08: Balance Sheet — Total Assets label + distinctive NVDA value.
+    B09: Cash Flow — Operating Cash Flow label + distinctive NVDA value.
+    B10: Evidence tab — SYNTH_E3_BROWSER + E3_BROWSER_CONTRACT_V1 + payload_hash.
+    B11: Asset switcher via select_option → JPM VERIFIED, NVDA value absent.
+    B12: ← Radar link click (not go_back) → /radar URL.
+    B13: 390px financials URL — no page-level horizontal overflow.
     """
+
+    def test_b00_fixture_contracts_match_selected_assets(self):
+        """B00: Anti-false-green — SelectedAsset contracts are the exact expected values."""
+        assert _NVDA_SA.contract_address == "0xnvda001abc", (
+            f"NVDA SA contract drift: {_NVDA_SA.contract_address!r}"
+        )
+        assert _JPM_SA.contract_address == "0xjpm002def", (
+            f"JPM SA contract drift: {_JPM_SA.contract_address!r}"
+        )
+        # DB-level proof is asserted inside _build_e3_browser_db() at fixture build time.
 
     def test_b01_radar_loads_featured_equities(self, live_url_e3, browser):
         """B1: /radar loads and Featured Equities section is visible."""
@@ -1090,28 +1187,40 @@ class TestE3CompanyTerminal:
         )
         page.close()
 
-    def test_b04_terminal_header_shows_nvda(self, live_url_e3, browser):
-        """B4: NVDA terminal header shows NVDA symbol or NVIDIA in page."""
+    def test_b04_terminal_header_shows_nvda_verified(self, live_url_e3, browser):
+        """B4: NVDA terminal — exact UID in URL, NVDA/NVIDIA identity, IDENTITY_VERIFIED, no MISMATCH."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
         page.wait_for_load_state("domcontentloaded")
+        assert "rh-equity-nvda-001" in page.url, f"UID missing from URL: {page.url}"
         body_text = page.inner_text("body")
         assert "NVDA" in body_text or "NVIDIA" in body_text, (
-            "NVDA symbol or NVIDIA name not found in terminal header"
+            "NVDA symbol or NVIDIA name not found in terminal"
+        )
+        assert "IDENTITY_VERIFIED" in body_text, (
+            "IDENTITY_VERIFIED not visible — DB contract may not match SA contract"
+        )
+        assert "IDENTITY_MISMATCH" not in body_text, (
+            "IDENTITY_MISMATCH present — DB token_contract_address does not match SA contract_address"
         )
         page.close()
 
-    def test_b05_financials_tab_visible_and_clickable(self, live_url_e3, browser):
-        """B5: Financials tab button is present on the terminal."""
+    def test_b05_financials_tab_click_shows_panel(self, live_url_e3, browser):
+        """B5: Clicking Financials tab navigates and makes the financials panel visible."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
         page.wait_for_load_state("domcontentloaded")
         fin_btn = page.query_selector('a.tab-btn[onclick*="tab-financials"]')
-        assert fin_btn is not None, "Financials tab link not found on terminal"
+        assert fin_btn is not None, "Financials tab link (a.tab-btn[onclick*=tab-financials]) not found"
+        fin_btn.click()
+        page.wait_for_load_state("domcontentloaded")
+        fin_panel = page.query_selector("#tab-financials")
+        assert fin_panel is not None, "#tab-financials panel not found after tab click"
+        assert fin_panel.is_visible(), "#tab-financials panel not visible after tab click"
         page.close()
 
     def test_b06_annual_income_statement_renders(self, live_url_e3, browser):
-        """B6: Annual Income Statement table renders via URL nav params."""
+        """B6: Annual income — Revenue label + distinctive NVDA annual revenue value."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e3}/radar/equity/rh-equity-nvda-001"
@@ -1119,13 +1228,18 @@ class TestE3CompanyTerminal:
         )
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "Annual History" in body_text or "annual" in body_text.lower(), (
-            "Annual Income panel not visible with tab=financials&timeframe=annual&statement=income"
+        assert "Revenue" in body_text, "Revenue label missing from annual income statement"
+        assert "26,001,111,000" in body_text, (
+            "Distinctive NVDA annual revenue (26,001,111,000) missing from income statement matrix"
+        )
+        assert "Net Income" in body_text, "Net Income label missing from annual income statement"
+        assert "9,000,444,000" in body_text, (
+            "Distinctive NVDA annual net income (9,000,444,000) missing from income statement matrix"
         )
         page.close()
 
     def test_b07_quarterly_navigation(self, live_url_e3, browser):
-        """B7: Quarterly timeframe nav renders correctly."""
+        """B7: Quarterly income — quarterly value present, annual-only value absent."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e3}/radar/equity/rh-equity-nvda-001"
@@ -1133,13 +1247,16 @@ class TestE3CompanyTerminal:
         )
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "Quarterly History" in body_text or "quarterly" in body_text.lower(), (
-            "Quarterly panel not visible with timeframe=quarterly"
+        assert "7,001,111,000" in body_text, (
+            "Distinctive NVDA quarterly revenue (7,001,111,000) missing from quarterly income statement"
+        )
+        assert "26,001,111,000" not in body_text, (
+            "Annual-only NVDA revenue (26,001,111,000) unexpectedly present in quarterly view"
         )
         page.close()
 
     def test_b08_balance_sheet_navigation(self, live_url_e3, browser):
-        """B8: Balance Sheet statement renders."""
+        """B8: Balance Sheet — Total Assets label + distinctive NVDA value."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e3}/radar/equity/rh-equity-nvda-001"
@@ -1147,13 +1264,14 @@ class TestE3CompanyTerminal:
         )
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "Balance Sheet" in body_text or "balance" in body_text.lower(), (
-            "Balance Sheet panel not visible with statement=balance"
+        assert "Total Assets" in body_text, "Total Assets label missing from balance sheet"
+        assert "65,000,555,000" in body_text, (
+            "Distinctive NVDA annual total assets (65,000,555,000) missing from balance sheet"
         )
         page.close()
 
     def test_b09_cash_flow_navigation(self, live_url_e3, browser):
-        """B9: Cash Flow statement renders."""
+        """B9: Cash Flow — Operating Cash Flow label + distinctive NVDA value."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e3}/radar/equity/rh-equity-nvda-001"
@@ -1161,24 +1279,33 @@ class TestE3CompanyTerminal:
         )
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "Cash Flow" in body_text or "cashflow" in body_text.lower(), (
-            "Cash Flow panel not visible with statement=cashflow"
+        assert "Operating Cash Flow" in body_text, (
+            "Operating Cash Flow label missing from cash flow statement"
+        )
+        assert "11,000,999,000" in body_text, (
+            "Distinctive NVDA annual operating cash flow (11,000,999,000) missing from cash flow statement"
         )
         page.close()
 
     def test_b10_evidence_tab_renders(self, live_url_e3, browser):
-        """B10: Evidence tab renders profile and snapshot evidence."""
+        """B10: Evidence tab — SYNTH_E3_BROWSER provider, E3_BROWSER_CONTRACT_V1, payload_hash sentinel."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001?tab=evidence")
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "Evidence" in body_text, (
-            "Evidence tab content not visible with tab=evidence"
+        assert "SYNTH_E3_BROWSER" in body_text, (
+            "provider SYNTH_E3_BROWSER missing from evidence tab"
+        )
+        assert "E3_BROWSER_CONTRACT_V1" in body_text, (
+            "source_contract E3_BROWSER_CONTRACT_V1 missing from evidence tab"
+        )
+        assert _E3_BROWSER_PAYLDHASH in body_text, (
+            f"payload_hash sentinel {_E3_BROWSER_PAYLDHASH!r} missing from evidence tab"
         )
         page.close()
 
     def test_b11_asset_switcher_changes_url_and_identity(self, live_url_e3, browser):
-        """B11: Asset switcher shows both NVDA and JPM; selecting JPM navigates to JPM terminal."""
+        """B11: select_option switches to JPM; JPM IDENTITY_VERIFIED, NVDA revenue absent."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
         page.wait_for_load_state("domcontentloaded")
@@ -1188,36 +1315,58 @@ class TestE3CompanyTerminal:
         option_values = [o.get_attribute("value") for o in options]
         assert "rh-equity-nvda-001" in option_values, "NVDA option missing from switcher"
         assert "rh-equity-jpm-002" in option_values, "JPM option missing from switcher"
-        # Navigate to JPM terminal directly and verify identity change
-        page.goto(f"{live_url_e3}/radar/equity/rh-equity-jpm-002")
+        # Use select_option (not page.goto) to switch — this exercises the UI control
+        page.select_option("select[onchange*=\"location='/radar/equity/'\"]", "rh-equity-jpm-002")
+        page.wait_for_url("**/rh-equity-jpm-002**", timeout=5000)
         page.wait_for_load_state("domcontentloaded")
-        assert "rh-equity-jpm-002" in page.url, (
-            f"URL did not change to JPM terminal: {page.url}"
-        )
+        assert "rh-equity-jpm-002" in page.url, f"URL did not navigate to JPM terminal: {page.url}"
         body_text = page.inner_text("body")
         assert "JPM" in body_text or "JPMorgan" in body_text, (
-            "JPM identity not reflected in terminal after asset switch"
+            "JPM identity not visible after switcher navigation"
+        )
+        assert "IDENTITY_VERIFIED" in body_text, (
+            "IDENTITY_VERIFIED not visible on JPM terminal"
+        )
+        # Prove JPM-specific financial sentinel and NVDA value absent
+        page.goto(f"{live_url_e3}/radar/equity/rh-equity-jpm-002"
+                  "?tab=financials&timeframe=annual&statement=income")
+        page.wait_for_load_state("domcontentloaded")
+        body_text = page.inner_text("body")
+        assert "49,001,111,000" in body_text, (
+            "JPM-specific annual revenue sentinel (49,001,111,000) missing from JPM financial panel"
+        )
+        assert "26,001,111,000" not in body_text, (
+            "NVDA annual revenue (26,001,111,000) unexpectedly present on JPM terminal"
         )
         page.close()
 
     def test_b12_back_to_radar_navigation(self, live_url_e3, browser):
-        """B12: Navigating back from terminal returns to /radar."""
+        """B12: Clicking ← Radar link (not go_back) returns to /radar URL."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e3}/radar")
-        page.wait_for_load_state("domcontentloaded")
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
         page.wait_for_load_state("domcontentloaded")
-        page.go_back()
+        back_link = page.query_selector('a[href="/radar"]')
+        assert back_link is not None, (
+            "← Radar back link (a[href='/radar']) not found on terminal"
+        )
+        back_link.click()
         page.wait_for_load_state("domcontentloaded")
         assert page.url.rstrip("/").endswith("/radar"), (
-            f"Back navigation did not return to /radar; got: {page.url}"
+            f"← Radar link did not navigate to /radar; got: {page.url}"
         )
         page.close()
 
     def test_b13_terminal_no_page_overflow_mobile(self, live_url_e3, browser):
-        """B13: NVDA terminal at 390px has no destructive page-level horizontal overflow."""
+        """B13: NVDA financials URL at 390px has no page-level horizontal overflow."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
-        page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
+        page.goto(
+            f"{live_url_e3}/radar/equity/rh-equity-nvda-001"
+            "?tab=financials&timeframe=annual&statement=income"
+        )
         page.wait_for_load_state("domcontentloaded")
-        _assert_no_overflow(page, "/radar/equity/rh-equity-nvda-001", 390)
+        _assert_no_overflow(
+            page,
+            "/radar/equity/rh-equity-nvda-001?tab=financials&timeframe=annual&statement=income",
+            390,
+        )
         page.close()
