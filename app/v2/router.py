@@ -1311,7 +1311,7 @@ async def v2_inputs_slice1_update(
             request=request,
             project_record=project_record,
             project=project,
-            workspace_owner=_workspace_owner,
+            workspace_owner=workspace_owner,
         )
         final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
         return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
