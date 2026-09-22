@@ -1,419 +1,764 @@
-"""Staging preflight validator tests — E5 deployment contract correction.
+"""Staging preflight tests — P7 base contract + E5 equity fundamentals additive.
 
-Tests that the staging preflight fails closed when equity DB configuration
-is absent, invalid, or points at wrong paths, and passes for correct staging
-snapshot configuration.
+Coverage:
+  P7 regression tests (validate_staging_env base contract):
+    - missing required key
+    - FINCO_ENV != staging
+    - non-pilot app mode
+    - insecure cookie
+    - placeholder secret / admin / password
+    - deploy SHA format and mismatch
+    - staging root / port / host identity
+    - path outside staging root (lexical and traversal)
+    - DB / storage must be distinct
+    - concurrency bounds
+    - repo root must equal staging root
+    - filesystem checks: env file permissions, directory existence
+    - parse_env_file malformed / empty-key (no secret leakage)
+    - _git_head is PATH-independent
 
-T01  — FINCO_EQUITY_FUNDAMENTALS_DB_PATH missing → fails with MISSING
-T02  — FINCO_EQUITY_FUNDAMENTALS_DB_MODE missing → fails with MISSING
-T03  — equity DB path outside staging root → fails
-T04  — equity DB path under production root → fails (belt-and-suspenders)
-T05  — invalid mode value → fails with invalid
-T06  — DB file missing when filesystem checks enabled → fails with not found
-T07  — valid staging snapshot configuration passes (no-fs variant)
-T08  — valid staging snapshot configuration passes (real file present)
-T09  — relative path → fails (not absolute)
-T10  — empty/whitespace path → treated as MISSING
-T11  — mode 'live' → rejected for E5 staging (requires snapshot)
-T12  — mode with surrounding whitespace → normalised, passes
-T13  — FINCO_ENV=production → refused immediately (exit code 2)
-T14  — equity DB path != FINCO_DB_PATH is valid (different databases)
-T15  — readable file passes filesystem check
-T16  — unreadable file fails filesystem check (skipped when running as root)
-T17  — check_not_production: case-insensitive 'PRODUCTION' rejected
-T18  — production refused before equity checks: only one failure returned
-T19  — run_preflight exit via main() returns 1 on missing path
-T20  — staging_preflight.py --no-fs passes without a real file
+  E5 equity fundamentals additive contract:
+    - path missing / relative / empty
+    - path outside staging root
+    - symlink escape (6 scenarios)
+    - path under production root
+    - mode missing / invalid / 'live' rejected
+    - mode case normalisation
+    - filesystem checks: missing, not-a-file, unreadable
+    - valid snapshot no-fs passes
+    - FINCO_ENV=production → P7_STAGING_PREFLIGHT_BLOCKED exit 2
+    - staging env example passes parse; placeholder contract prevents it from
+      passing validate (intentional — example must not be deployable as-is)
 """
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-from tools.staging_preflight import (  # noqa: E402
-    PreflightFailure,
-    check_equity_db_file,
-    check_equity_db_mode,
-    check_equity_db_path,
-    check_not_production,
-    run_preflight,
+import tools.staging_preflight as staging_preflight
+from tools.staging_preflight import (
+    StagingPreflightError,
+    _git_head,
+    parse_env_file,
+    validate_staging_env,
 )
 
-# Canonical test roots matching the real deployment topology
-_STAGING = "/opt/finco_staging"
-_PRODUCTION = "/opt/finco_protocol"
-_VALID_PATH = f"{_STAGING}/storage/equity_fundamentals_20260922T191856Z.db"
+ROOT = Path(__file__).resolve().parents[1]
+HEAD = "a" * 40
 
 
-def _env(**kwargs) -> dict[str, str]:
-    """Minimal valid staging env with optional overrides."""
-    base: dict[str, str] = {
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _env() -> dict[str, str]:
+    """Minimal fully-valid staging environment (no filesystem access needed)."""
+    return {
         "FINCO_ENV": "staging",
-        "FINCO_EQUITY_FUNDAMENTALS_DB_PATH": _VALID_PATH,
+        "FINCO_APP_MODE": "pilot",
+        "FINCO_SECRET_KEY": "s" * 128,
+        "FINCO_ADMIN_USER": "staging_admin",
+        "FINCO_ADMIN_PASSWORD": "strong-staging-password-123",
+        "FINCO_COOKIE_SECURE": "true",
+        "FINCO_DB_PATH": "/opt/finco_staging/storage/finco_staging.db",
+        "FINCO_STORAGE_PATH": "/opt/finco_staging/storage/exports",
+        "FINCO_MAX_CONCURRENT_RUNS": "3",
+        "FINCO_DEMO_RESET_ALLOWED": "true",
+        "FINCO_STAGING_ROOT": "/opt/finco_staging",
+        "FINCO_STAGING_PORT": "8100",
+        "FINCO_STAGING_HOST": "staging.finco.one",
+        "FINCO_DEPLOY_SHA": HEAD,
+        "FINCO_EQUITY_FUNDAMENTALS_DB_PATH": "/opt/finco_staging/storage/equity_fundamentals.db",
         "FINCO_EQUITY_FUNDAMENTALS_DB_MODE": "snapshot",
     }
-    base.update(kwargs)
-    return base
 
 
-# ── T01: equity DB path missing ───────────────────────────────────────────────
+def _validate(env: dict[str, str], *, repo_root: Path | None = None) -> None:
+    validate_staging_env(
+        env,
+        repo_root=repo_root or Path("/opt/finco_staging"),
+        repo_head=HEAD,
+        check_filesystem=False,
+    )
 
-def test_t01_equity_db_path_missing_raises():
-    """T01: absent FINCO_EQUITY_FUNDAMENTALS_DB_PATH → PreflightFailure MISSING."""
+
+# ── P7 regression: base contract ─────────────────────────────────────────────
+
+def test_valid_staging_contract_passes() -> None:
+    _validate(_env())
+
+
+def test_missing_required_key_is_rejected() -> None:
     env = _env()
-    del env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"]
-    with pytest.raises(PreflightFailure, match="MISSING"):
-        check_equity_db_path(env)
+    del env["FINCO_SECRET_KEY"]
+    with pytest.raises(StagingPreflightError, match="missing required staging keys"):
+        _validate(env)
 
 
-def test_t01b_equity_db_path_missing_in_run_preflight():
+def test_production_environment_is_rejected() -> None:
     env = _env()
-    del env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"]
-    failures = run_preflight(env, check_fs=False)
-    assert failures, "expected at least one failure"
-    assert any("MISSING" in f for f in failures)
+    env["FINCO_ENV"] = "production"
+    with pytest.raises(StagingPreflightError, match="FINCO_ENV"):
+        _validate(env)
 
 
-# ── T02: equity DB mode missing ───────────────────────────────────────────────
-
-def test_t02_equity_db_mode_missing_raises():
-    """T02: absent FINCO_EQUITY_FUNDAMENTALS_DB_MODE → PreflightFailure MISSING."""
+def test_non_pilot_app_mode_is_rejected() -> None:
     env = _env()
-    del env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"]
-    with pytest.raises(PreflightFailure, match="MISSING"):
-        check_equity_db_mode(env)
+    env["FINCO_APP_MODE"] = "production"
+    with pytest.raises(StagingPreflightError, match="FINCO_APP_MODE"):
+        _validate(env)
 
 
-def test_t02b_mode_missing_in_run_preflight():
+def test_demo_reset_opt_in_must_be_true() -> None:
     env = _env()
-    del env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"]
-    failures = run_preflight(env, check_fs=False)
-    assert failures
-    assert any("MISSING" in f for f in failures)
+    env["FINCO_DEMO_RESET_ALLOWED"] = "false"
+    with pytest.raises(StagingPreflightError, match="FINCO_DEMO_RESET_ALLOWED"):
+        _validate(env)
 
 
-# ── T03: path outside staging root ────────────────────────────────────────────
-
-def test_t03_path_outside_staging_root():
-    """T03: path not under /opt/finco_staging → fails."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH="/var/data/equity.db")
-    with pytest.raises(PreflightFailure, match=_STAGING):
-        check_equity_db_path(env, staging_root=_STAGING, production_root=_PRODUCTION)
+def test_production_root_db_is_rejected() -> None:
+    env = _env()
+    env["FINCO_DB_PATH"] = "/opt/finco_protocol/storage/finco.db"
+    with pytest.raises(StagingPreflightError, match="FINCO_DB_PATH"):
+        _validate(env)
 
 
-def test_t03b_tmp_path_outside_staging_root():
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH="/tmp/equity_fundamentals.db")
-    failures = run_preflight(env, check_fs=False, staging_root=_STAGING, production_root=_PRODUCTION)
-    assert failures
-    assert any(_STAGING in f for f in failures)
+def test_path_traversal_out_of_staging_root_is_rejected() -> None:
+    env = _env()
+    env["FINCO_DB_PATH"] = "/opt/finco_staging/../finco_protocol/finco.db"
+    with pytest.raises(StagingPreflightError, match="FINCO_DB_PATH"):
+        _validate(env)
 
 
-def test_t03c_production_path_fails_staging_check():
-    """T03c: path under production root also fails the staging-root check."""
-    prod_path = f"{_PRODUCTION}/data/equity_fundamentals.db"
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH=prod_path)
-    failures = run_preflight(env, check_fs=False, staging_root=_STAGING, production_root=_PRODUCTION)
-    assert failures
+def test_database_and_storage_paths_must_be_distinct() -> None:
+    env = _env()
+    env["FINCO_STORAGE_PATH"] = env["FINCO_DB_PATH"]
+    with pytest.raises(StagingPreflightError, match="must be distinct"):
+        _validate(env)
 
 
-# ── T04: path under production root (belt-and-suspenders) ────────────────────
+def test_insecure_cookie_is_rejected() -> None:
+    env = _env()
+    env["FINCO_COOKIE_SECURE"] = "false"
+    with pytest.raises(StagingPreflightError, match="FINCO_COOKIE_SECURE"):
+        _validate(env)
 
-def test_t04_path_under_production_root_rejected():
-    """T04: path under production root rejected even when staging root is broad."""
-    prod_path = f"{_PRODUCTION}/equity.db"
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH=prod_path)
-    # Use broad staging_root so the path passes the staging check — only the
-    # production-root guard should fire here.
-    with pytest.raises(PreflightFailure, match="production"):
-        check_equity_db_path(
+
+def test_placeholder_secret_is_rejected() -> None:
+    env = _env()
+    env["FINCO_SECRET_KEY"] = "changeme_" + "x" * 80
+    with pytest.raises(StagingPreflightError, match="FINCO_SECRET_KEY"):
+        _validate(env)
+
+
+def test_blank_admin_user_is_rejected() -> None:
+    env = _env()
+    env["FINCO_ADMIN_USER"] = "   "
+    with pytest.raises(StagingPreflightError, match="FINCO_ADMIN_USER"):
+        _validate(env)
+
+
+def test_placeholder_admin_user_is_rejected() -> None:
+    env = _env()
+    env["FINCO_ADMIN_USER"] = "placeholder_admin"
+    with pytest.raises(StagingPreflightError, match="FINCO_ADMIN_USER"):
+        _validate(env)
+
+
+def test_weak_admin_password_is_rejected() -> None:
+    env = _env()
+    env["FINCO_ADMIN_PASSWORD"] = "short"
+    with pytest.raises(StagingPreflightError, match="FINCO_ADMIN_PASSWORD"):
+        _validate(env)
+
+
+def test_production_hostname_is_rejected() -> None:
+    env = _env()
+    env["FINCO_STAGING_HOST"] = "app.finco.one"
+    with pytest.raises(StagingPreflightError, match="FINCO_STAGING_HOST"):
+        _validate(env)
+
+
+def test_unpinned_deploy_sha_is_rejected() -> None:
+    env = _env()
+    env["FINCO_DEPLOY_SHA"] = "main"
+    with pytest.raises(StagingPreflightError, match="FINCO_DEPLOY_SHA"):
+        _validate(env)
+
+
+def test_checked_out_sha_mismatch_is_rejected() -> None:
+    env = _env()
+    env["FINCO_DEPLOY_SHA"] = "b" * 40
+    with pytest.raises(StagingPreflightError, match="git HEAD"):
+        _validate(env)
+
+
+def test_staging_port_cannot_fall_back_to_production_port() -> None:
+    env = _env()
+    env["FINCO_STAGING_PORT"] = "8000"
+    with pytest.raises(StagingPreflightError, match="FINCO_STAGING_PORT"):
+        _validate(env)
+
+
+def test_staging_root_is_fixed_and_separate() -> None:
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = "/opt/finco_protocol"
+    with pytest.raises(StagingPreflightError, match="FINCO_STAGING_ROOT"):
+        _validate(env)
+
+
+def test_actual_repo_root_must_equal_staging_root() -> None:
+    with pytest.raises(StagingPreflightError, match="repository must be deployed"):
+        _validate(_env(), repo_root=Path("/tmp/finco_staging"))
+
+
+@pytest.mark.parametrize("value", ["not-an-int", "0", "9"])
+def test_concurrency_must_be_integer_within_bounds(value: str) -> None:
+    env = _env()
+    env["FINCO_MAX_CONCURRENT_RUNS"] = value
+    with pytest.raises(StagingPreflightError, match="FINCO_MAX_CONCURRENT_RUNS"):
+        _validate(env)
+
+
+def test_git_head_is_independent_of_service_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path))
+    head = _git_head(ROOT)
+    assert len(head) == 40
+    assert all(ch in "0123456789abcdef" for ch in head.lower())
+
+
+def test_parse_env_malformed_line_does_not_echo_secret(tmp_path: Path) -> None:
+    secret = "DO_NOT_ECHO_THIS_SECRET"
+    env_file = tmp_path / ".env.staging"
+    env_file.write_text(f"FINCO_SECRET_KEY: {secret}\n", encoding="utf-8")
+    with pytest.raises(StagingPreflightError) as exc_info:
+        parse_env_file(env_file)
+    message = str(exc_info.value)
+    assert "line 1" in message
+    assert secret not in message
+
+
+def test_parse_env_empty_key_reports_line_only(tmp_path: Path) -> None:
+    secret = "DO_NOT_ECHO_THIS_VALUE"
+    env_file = tmp_path / ".env.staging"
+    env_file.write_text(f"={secret}\n", encoding="utf-8")
+    with pytest.raises(StagingPreflightError) as exc_info:
+        parse_env_file(env_file)
+    message = str(exc_info.value)
+    assert "line 1" in message
+    assert secret not in message
+
+
+def test_filesystem_checks_accept_secure_isolated_layout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage_root = staging_root / "storage"
+    exports = storage_root / "exports"
+    exports.mkdir(parents=True)
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# secret values omitted in unit test\n", encoding="utf-8")
+    env_file.chmod(0o600)
+    equity_db = storage_root / "equity_fundamentals.db"
+    equity_db.write_bytes(b"")
+    equity_db.chmod(0o600)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage_root / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(equity_db)
+
+    validate_staging_env(
+        env,
+        repo_root=staging_root,
+        repo_head=HEAD,
+        check_filesystem=True,
+        env_file=env_file,
+    )
+
+
+def test_filesystem_checks_reject_group_readable_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage_root = staging_root / "storage"
+    exports = storage_root / "exports"
+    exports.mkdir(parents=True)
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# unit test\n", encoding="utf-8")
+    env_file.chmod(0o640)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage_root / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(storage_root / "equity.db")
+
+    with pytest.raises(StagingPreflightError, match="group/world accessible"):
+        validate_staging_env(
             env,
-            staging_root="/opt",
-            production_root=_PRODUCTION,
+            repo_root=staging_root,
+            repo_head=HEAD,
+            check_filesystem=True,
+            env_file=env_file,
         )
 
 
-def test_t04b_production_root_guard_message():
-    """T04b: error message explicitly names the production root."""
-    prod_path = f"{_PRODUCTION}/storage/equity.db"
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH=prod_path)
-    try:
-        check_equity_db_path(env, staging_root="/opt", production_root=_PRODUCTION)
-        pytest.fail("expected PreflightFailure")
-    except PreflightFailure as exc:
-        assert _PRODUCTION in str(exc)
+def test_filesystem_checks_reject_missing_storage_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage_root = staging_root / "storage"
+    storage_root.mkdir(parents=True)
+    missing_exports = storage_root / "exports"
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# unit test\n", encoding="utf-8")
+    env_file.chmod(0o600)
 
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
 
-# ── T05: invalid mode value ───────────────────────────────────────────────────
-
-def test_t05_mode_walmode_invalid():
-    """T05: mode 'walmode' is not a valid value."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="walmode")
-    with pytest.raises(PreflightFailure, match="invalid"):
-        check_equity_db_mode(env)
-
-
-def test_t05b_mode_readonly_invalid():
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="readonly")
-    failures = run_preflight(env, check_fs=False)
-    assert failures
-    assert any("invalid" in f.lower() for f in failures)
-
-
-def test_t05c_mode_empty_string_after_strip():
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="   ")
-    with pytest.raises(PreflightFailure, match="MISSING"):
-        check_equity_db_mode(env)
-
-
-# ── T06: DB file missing when fs checks enabled ───────────────────────────────
-
-def test_t06_db_file_missing_raises(tmp_path):
-    """T06: non-existent file → PreflightFailure 'not found'."""
-    nonexistent = str(tmp_path / "equity_fundamentals.db")
-    with pytest.raises(PreflightFailure, match="not found"):
-        check_equity_db_file(nonexistent)
-
-
-def test_t06b_missing_file_in_run_preflight(tmp_path):
-    staging_root = str(tmp_path / "finco_staging")
-    prod_root = str(tmp_path / "finco_protocol")
-    db_path = str(tmp_path / "finco_staging" / "equity.db")
-    env = _env(
-        FINCO_EQUITY_FUNDAMENTALS_DB_PATH=db_path,
-        FINCO_EQUITY_FUNDAMENTALS_DB_MODE="snapshot",
-    )
-    failures = run_preflight(
-        env,
-        check_fs=True,
-        staging_root=staging_root,
-        production_root=prod_root,
-    )
-    assert failures
-    assert any("not found" in f.lower() for f in failures)
-
-
-# ── T07: valid staging snapshot passes (no-fs) ────────────────────────────────
-
-def test_t07_valid_snapshot_no_fs_passes():
-    """T07: valid env with check_fs=False → no failures."""
     env = _env()
-    failures = run_preflight(env, check_fs=False, staging_root=_STAGING, production_root=_PRODUCTION)
-    assert not failures, f"unexpected failures: {failures}"
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage_root / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(missing_exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(storage_root / "equity.db")
+
+    with pytest.raises(StagingPreflightError, match="required staging directory missing"):
+        validate_staging_env(
+            env,
+            repo_root=staging_root,
+            repo_head=HEAD,
+            check_filesystem=True,
+            env_file=env_file,
+        )
 
 
-# ── T08: valid staging snapshot passes (real file) ────────────────────────────
+def test_staging_env_example_declares_separate_operational_identity() -> None:
+    path = ROOT / "deploy/staging.env.example"
+    text = path.read_text(encoding="utf-8")
+    assert "FINCO_ENV=staging" in text
+    assert "FINCO_STAGING_ROOT=/opt/finco_staging" in text
+    assert "FINCO_STAGING_PORT=8100" in text
+    assert "FINCO_STAGING_HOST=staging.finco.one" in text
+    assert "FINCO_DB_PATH=/opt/finco_staging/storage/finco_staging.db" in text
 
-def test_t08_valid_snapshot_with_real_file(tmp_path):
-    """T08: valid env with an existing readable file → no failures."""
-    staging_root = str(tmp_path / "finco_staging")
-    storage = tmp_path / "finco_staging" / "storage"
+    example_env = parse_env_file(path)
+    with pytest.raises(StagingPreflightError):
+        validate_staging_env(
+            example_env,
+            repo_root=Path("/opt/finco_staging"),
+            repo_head=HEAD,
+            check_filesystem=False,
+        )
+
+
+# ── E5 equity fundamentals additive contract ─────────────────────────────────
+
+def test_equity_path_missing_raises() -> None:
+    env = _env()
+    del env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"]
+    with pytest.raises(StagingPreflightError, match="MISSING"):
+        _validate(env)
+
+
+def test_equity_path_empty_raises() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = "   "
+    with pytest.raises(StagingPreflightError, match="MISSING"):
+        _validate(env)
+
+
+def test_equity_path_relative_raises() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = "storage/equity.db"
+    with pytest.raises(StagingPreflightError, match="absolute"):
+        _validate(env)
+
+
+def test_equity_path_outside_staging_root_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    staging_root.mkdir()
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(staging_root / "storage" / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(staging_root / "storage" / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(tmp_path / "other" / "equity.db")
+
+    with pytest.raises(StagingPreflightError, match="must be under"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
+
+
+def test_equity_path_under_production_root_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path
+    production_root = tmp_path / "finco_protocol"
+    production_root.mkdir()
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", production_root)
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(staging_root / "storage" / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(staging_root / "storage" / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(
+        production_root / "equity_fundamentals.db"
+    )
+
+    with pytest.raises(StagingPreflightError, match="production root"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
+
+
+# ── Symlink escape tests (6 scenarios) ───────────────────────────────────────
+
+def test_equity_symlink_escape_outside_staging_root_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Symlink inside staging that resolves outside staging root must be rejected."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
     storage.mkdir(parents=True)
-    db_file = storage / "equity_fundamentals_20260922T191856Z.db"
-    db_file.write_bytes(b"SQLite format 3\x00")
+    outside = tmp_path / "outside_equity.db"
+    outside.write_bytes(b"")
+    link = storage / "equity.db"
+    link.symlink_to(outside)
 
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH=str(db_file))
-    failures = run_preflight(
-        env,
-        check_fs=True,
-        staging_root=staging_root,
-        production_root=str(tmp_path / "finco_protocol"),
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(link)
+
+    with pytest.raises(StagingPreflightError, match="must be under"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
+
+
+def test_equity_symlink_to_production_root_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Symlink inside staging pointing into production root must be rejected."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    storage.mkdir(parents=True)
+    prod_root = tmp_path / "finco_protocol"
+    prod_storage = prod_root / "storage"
+    prod_storage.mkdir(parents=True)
+    prod_equity = prod_storage / "equity.db"
+    prod_equity.write_bytes(b"")
+    link = storage / "equity_link.db"
+    link.symlink_to(prod_equity)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", prod_root)
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(link)
+
+    with pytest.raises(StagingPreflightError):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
+
+
+def test_equity_dotdot_traversal_outside_staging_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Lexical ../ traversal that resolves outside staging root must be rejected."""
+    staging_root = tmp_path / "finco_staging"
+    staging_root.mkdir()
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(staging_root / "storage" / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(staging_root / "storage" / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(
+        staging_root / ".." / "equity.db"
     )
-    assert not failures, f"unexpected failures: {failures}"
+
+    with pytest.raises(StagingPreflightError, match="must be under"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
 
 
-# ── T09: relative path fails ─────────────────────────────────────────────────
+def test_equity_chained_symlink_escape_rejected(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Chained symlinks that ultimately resolve outside staging must be rejected."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    storage.mkdir(parents=True)
+    outside = tmp_path / "prod_data"
+    outside.mkdir()
+    real_equity = outside / "equity.db"
+    real_equity.write_bytes(b"")
+    intermediate = storage / "link_a"
+    intermediate.symlink_to(outside)
+    final_link = storage / "equity.db"
+    final_link.symlink_to(intermediate / "equity.db")
 
-def test_t09_relative_path_not_accepted():
-    """T09: relative path is rejected — must be absolute."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH="storage/equity.db")
-    with pytest.raises(PreflightFailure, match="absolute"):
-        check_equity_db_path(env, staging_root=_STAGING, production_root=_PRODUCTION)
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
 
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(final_link)
 
-# ── T10: empty/whitespace path → MISSING ──────────────────────────────────────
-
-def test_t10_whitespace_only_path_treated_as_missing():
-    """T10: value of only whitespace is treated as absent."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH="   ")
-    with pytest.raises(PreflightFailure, match="MISSING"):
-        check_equity_db_path(env)
-
-
-def test_t10b_empty_string_path_treated_as_missing():
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_PATH="")
-    with pytest.raises(PreflightFailure, match="MISSING"):
-        check_equity_db_path(env)
-
-
-# ── T11: mode 'live' rejected for E5 ─────────────────────────────────────────
-
-def test_t11_live_mode_rejected_for_e5():
-    """T11: 'live' is a valid mode name but rejected for E5 staging (requires snapshot)."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="live")
-    with pytest.raises(PreflightFailure, match="snapshot"):
-        check_equity_db_mode(env)
+    with pytest.raises(StagingPreflightError, match="must be under"):
+        validate_staging_env(
+            env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+        )
 
 
-def test_t11b_live_mode_failure_message_explains_requirement():
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="live")
-    try:
-        check_equity_db_mode(env)
-        pytest.fail("expected PreflightFailure")
-    except PreflightFailure as exc:
-        assert "snapshot" in str(exc).lower()
+def test_equity_symlink_within_staging_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Symlink inside staging that resolves inside staging must be accepted."""
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    storage.mkdir(parents=True)
+    real_file = storage / "equity_real.db"
+    real_file.write_bytes(b"")
+    link = storage / "equity.db"
+    link.symlink_to(real_file)
 
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
 
-# ── T12: mode whitespace normalised ──────────────────────────────────────────
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(storage / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(link)
 
-def test_t12_mode_whitespace_stripped_and_accepted():
-    """T12: '  snapshot  ' is accepted after stripping."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="  snapshot  ")
-    mode = check_equity_db_mode(env)
-    assert mode == "snapshot"
-
-
-def test_t12b_mode_uppercase_normalised():
-    """T12b: 'SNAPSHOT' is normalised to 'snapshot' and accepted."""
-    env = _env(FINCO_EQUITY_FUNDAMENTALS_DB_MODE="SNAPSHOT")
-    mode = check_equity_db_mode(env)
-    assert mode == "snapshot"
-
-
-# ── T13: FINCO_ENV=production → refused ──────────────────────────────────────
-
-def test_t13_production_env_raises():
-    """T13: FINCO_ENV=production → PreflightFailure before any other checks."""
-    env = _env(FINCO_ENV="production")
-    with pytest.raises(PreflightFailure, match="production"):
-        check_not_production(env)
-
-
-def test_t13b_production_refused_in_run_preflight():
-    env = _env(FINCO_ENV="production")
-    failures = run_preflight(env, check_fs=False)
-    assert failures
-    assert any("production" in f.lower() for f in failures)
-
-
-def test_t13c_production_refused_exit_code_2():
-    """T13c: staging_preflight.py main() exits 2 when FINCO_ENV=production."""
-    env_copy = os.environ.copy()
-    env_copy["FINCO_ENV"] = "production"
-    result = subprocess.run(
-        [sys.executable, "tools/staging_preflight.py"],
-        capture_output=True,
-        text=True,
-        env=env_copy,
-        cwd=str(REPO_ROOT),
-        timeout=30,
+    validate_staging_env(
+        env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
     )
-    assert result.returncode == 2
 
 
-# ── T14: equity DB != main DB is valid ───────────────────────────────────────
+def test_equity_nonexistent_path_under_staging_accepted_no_fs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """resolve(strict=False) allows paths that do not yet exist on this machine."""
+    staging_root = tmp_path / "finco_staging"
+    staging_root.mkdir()
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
 
-def test_t14_equity_db_different_from_main_db_passes():
-    """T14: equity DB path distinct from FINCO_DB_PATH is correct and passes."""
-    main_db = f"{_STAGING}/storage/finco_staging.db"
-    equity_db = _VALID_PATH
-    assert main_db != equity_db
-    env = _env(
-        FINCO_DB_PATH=main_db,
-        FINCO_EQUITY_FUNDAMENTALS_DB_PATH=equity_db,
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(staging_root / "storage" / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(staging_root / "storage" / "exports")
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(
+        staging_root / "storage" / "equity_does_not_exist.db"
     )
-    failures = run_preflight(env, check_fs=False, staging_root=_STAGING, production_root=_PRODUCTION)
-    assert not failures, f"different DB paths should both pass: {failures}"
+
+    validate_staging_env(
+        env, repo_root=staging_root, repo_head=HEAD, check_filesystem=False
+    )
 
 
-# ── T15: readable file passes fs check ───────────────────────────────────────
+# ── Equity mode checks ────────────────────────────────────────────────────────
 
-def test_t15_readable_file_passes_fs_check(tmp_path):
-    """T15: existing, readable file passes check_equity_db_file."""
-    db = tmp_path / "equity.db"
-    db.write_bytes(b"SQLite format 3\x00")
-    check_equity_db_file(str(db))  # must not raise
+def test_equity_mode_missing_raises() -> None:
+    env = _env()
+    del env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"]
+    with pytest.raises(StagingPreflightError, match="MISSING"):
+        _validate(env)
 
 
-# ── T16: unreadable file fails fs check ──────────────────────────────────────
+def test_equity_mode_invalid_raises() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"] = "wal"
+    with pytest.raises(StagingPreflightError, match="invalid"):
+        _validate(env)
+
+
+def test_equity_mode_live_rejected_for_e5() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"] = "live"
+    with pytest.raises(StagingPreflightError, match="snapshot"):
+        _validate(env)
+
+
+def test_equity_mode_uppercase_normalised() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"] = "SNAPSHOT"
+    _validate(env)
+
+
+def test_equity_mode_whitespace_normalised() -> None:
+    env = _env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"] = "  snapshot  "
+    _validate(env)
+
+
+# ── Equity filesystem checks ──────────────────────────────────────────────────
+
+def test_equity_db_file_missing_with_fs_check_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    exports = storage / "exports"
+    exports.mkdir(parents=True)
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# unit test\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(storage / "equity_missing.db")
+
+    with pytest.raises(StagingPreflightError, match="file not found"):
+        validate_staging_env(
+            env,
+            repo_root=staging_root,
+            repo_head=HEAD,
+            check_filesystem=True,
+            env_file=env_file,
+        )
+
+
+def test_equity_db_not_a_file_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    exports = storage / "exports"
+    exports.mkdir(parents=True)
+    equity_dir = storage / "equity_dir.db"
+    equity_dir.mkdir()
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# unit test\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(equity_dir)
+
+    with pytest.raises(StagingPreflightError, match="not a regular file"):
+        validate_staging_env(
+            env,
+            repo_root=staging_root,
+            repo_head=HEAD,
+            check_filesystem=True,
+            env_file=env_file,
+        )
+
 
 @pytest.mark.skipif(os.getuid() == 0, reason="root can read any file")
-def test_t16_unreadable_file_fails_fs_check(tmp_path):
-    """T16: file with mode 000 → PreflightFailure 'readable'."""
-    db = tmp_path / "equity_noperm.db"
-    db.write_bytes(b"SQLite")
-    db.chmod(0o000)
+def test_equity_db_unreadable_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    staging_root = tmp_path / "finco_staging"
+    storage = staging_root / "storage"
+    exports = storage / "exports"
+    exports.mkdir(parents=True)
+    equity_db = storage / "equity.db"
+    equity_db.write_bytes(b"")
+    equity_db.chmod(0o000)
+    env_file = staging_root / ".env.staging"
+    env_file.write_text("# unit test\n", encoding="utf-8")
+    env_file.chmod(0o600)
+
+    monkeypatch.setattr(staging_preflight, "STAGING_ROOT", staging_root)
+    monkeypatch.setattr(staging_preflight, "PRODUCTION_ROOT", tmp_path / "finco_protocol")
+
+    env = _env()
+    env["FINCO_STAGING_ROOT"] = str(staging_root)
+    env["FINCO_DB_PATH"] = str(storage / "finco_staging.db")
+    env["FINCO_STORAGE_PATH"] = str(exports)
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = str(equity_db)
+
     try:
-        with pytest.raises(PreflightFailure, match="readable"):
-            check_equity_db_file(str(db))
+        with pytest.raises(StagingPreflightError, match="not readable"):
+            validate_staging_env(
+                env,
+                repo_root=staging_root,
+                repo_head=HEAD,
+                check_filesystem=True,
+                env_file=env_file,
+            )
     finally:
-        db.chmod(0o644)
+        equity_db.chmod(0o644)
 
 
-# ── T17: case-insensitive production refusal ──────────────────────────────────
-
-def test_t17_production_check_case_insensitive():
-    """T17: FINCO_ENV='PRODUCTION' and 'Production' both refused."""
-    for value in ("PRODUCTION", "Production", "pRoDuCtIoN"):
-        env = _env(FINCO_ENV=value)
-        with pytest.raises(PreflightFailure, match="production"):
-            check_not_production(env)
+def test_equity_valid_snapshot_no_fs_passes() -> None:
+    _validate(_env())
 
 
-# ── T18: production refusal short-circuits other checks ──────────────────────
+# ── CLI regression ────────────────────────────────────────────────────────────
 
-def test_t18_production_refused_yields_exactly_one_failure():
-    """T18: production refusal fires before equity checks — only one failure."""
-    env = _env(
-        FINCO_ENV="production",
-        FINCO_EQUITY_FUNDAMENTALS_DB_PATH="",  # also broken — but not reached
-        FINCO_EQUITY_FUNDAMENTALS_DB_MODE="bad",
+def test_main_exits_2_on_blocked(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    env_file = tmp_path / ".env.staging"
+    env_file.write_text(
+        "FINCO_ENV=production\nFINCO_SECRET_KEY=x\n", encoding="utf-8"
     )
-    failures = run_preflight(env, check_fs=False)
-    assert len(failures) == 1
-    assert "production" in failures[0].lower()
-
-
-# ── T19: main() exits 1 on missing path ──────────────────────────────────────
-
-def test_t19_main_exits_1_on_missing_path():
-    """T19: main() returns 1 when equity DB path is not set."""
-    env_copy = {k: v for k, v in os.environ.items() if "EQUITY" not in k}
-    env_copy["FINCO_ENV"] = "staging"
-    env_copy.pop("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", None)
     result = subprocess.run(
-        [sys.executable, "tools/staging_preflight.py", "--no-fs"],
+        [
+            sys.executable, "tools/staging_preflight.py",
+            "--env-file", str(env_file),
+            "--repo-root", str(tmp_path),
+            "--skip-filesystem-checks",
+        ],
         capture_output=True,
         text=True,
-        env=env_copy,
-        cwd=str(REPO_ROOT),
-        timeout=30,
+        cwd=str(ROOT),
     )
-    assert result.returncode == 1
-    assert "MISSING" in result.stderr or "FAIL" in result.stderr
+    assert result.returncode == 2
+    assert "P7_STAGING_PREFLIGHT_BLOCKED" in result.stdout
 
 
-# ── T20: --no-fs passes with valid env but no real file ──────────────────────
+# ── Staging env example has equity section ────────────────────────────────────
 
-def test_t20_no_fs_flag_passes_without_real_file():
-    """T20: --no-fs skips filesystem access; valid env passes without a real file."""
-    env_copy = os.environ.copy()
-    env_copy["FINCO_ENV"] = "staging"
-    env_copy["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = _VALID_PATH
-    env_copy["FINCO_EQUITY_FUNDAMENTALS_DB_MODE"] = "snapshot"
-    result = subprocess.run(
-        [sys.executable, "tools/staging_preflight.py", "--no-fs"],
-        capture_output=True,
-        text=True,
-        env=env_copy,
-        cwd=str(REPO_ROOT),
-        timeout=30,
-    )
-    assert result.returncode == 0, f"stderr: {result.stderr}"
-    assert "STAGING_PREFLIGHT_PASS" in result.stdout
-    assert "CONFIGURED" in result.stdout
+def test_staging_env_example_has_equity_section() -> None:
+    text = (ROOT / "deploy/staging.env.example").read_text(encoding="utf-8")
+    assert "FINCO_EQUITY_FUNDAMENTALS_DB_PATH" in text
+    assert "FINCO_EQUITY_FUNDAMENTALS_DB_MODE=snapshot" in text
+    assert "equity_fundamentals" in text

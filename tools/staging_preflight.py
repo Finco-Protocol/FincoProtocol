@@ -1,234 +1,370 @@
-"""Staging environment preflight validator for FINCO Radar E5 deployment.
+"""Fail-closed preflight checks for the FINCO Model corporate staging host.
 
-Validates FINCO Radar staging deployment configuration before service start.
-Fails closed on any misconfiguration.
+Validates deployment identity, filesystem isolation, and the E1/E2/E3 equity
+fundamentals DB contract before the staging service is allowed to start.
+Intentionally never prints secret values.
 
 Exit codes:
   0 — all checks pass
-  1 — one or more validation failures
-  2 — refused (FINCO_ENV=production)
+  2 — blocked (any misconfiguration; refused production environment)
 
-Checks enforced:
-  • FINCO_EQUITY_FUNDAMENTALS_DB_PATH must be present, absolute, under the
-    staging storage root (/opt/finco_staging), and must NOT be under the
-    production root (/opt/finco_protocol).
-  • FINCO_EQUITY_FUNDAMENTALS_DB_MODE must be 'snapshot' or 'live'.
-    E5 staging deployment requires 'snapshot' — a WAL-checkpointed standalone
-    immutable SQLite file.  Do NOT point snapshot mode at a mutating WAL DB.
-  • The equity fundamentals DB is SEPARATE from FINCO_DB_PATH (the main
-    application DB).  They serve different subsystems; they must not be
-    confused or pointed at the same file.
-  • When filesystem checks are enabled (default) the DB file must exist and
-    be readable by the current process user.
+P7 base contract (validate_staging_env):
+  FINCO_ENV, FINCO_APP_MODE, FINCO_SECRET_KEY, FINCO_ADMIN_USER,
+  FINCO_ADMIN_PASSWORD, FINCO_COOKIE_SECURE, FINCO_DB_PATH,
+  FINCO_STORAGE_PATH, FINCO_MAX_CONCURRENT_RUNS, FINCO_DEMO_RESET_ALLOWED,
+  FINCO_STAGING_ROOT, FINCO_STAGING_PORT, FINCO_STAGING_HOST, FINCO_DEPLOY_SHA
 
-Never prints secret or env-var values.  Reports only CONFIGURED / MISSING /
-INVALID / PASS / FAIL.
+Additive E5 equity contract (_validate_equity_fundamentals):
+  FINCO_EQUITY_FUNDAMENTALS_DB_PATH  — absolute path under /opt/finco_staging,
+    never under /opt/finco_protocol; validated with resolve(strict=False) so
+    symlinks cannot escape the staging root.
+  FINCO_EQUITY_FUNDAMENTALS_DB_MODE  — must be 'snapshot' for E5 staging.
 
 Usage:
-  python tools/staging_preflight.py          # full checks including fs
-  python tools/staging_preflight.py --no-fs  # skip filesystem access checks
+  python tools/staging_preflight.py --env-file /opt/finco_staging/.env.staging
+  python tools/staging_preflight.py --env-file ... --repo-root /opt/finco_staging
+  python tools/staging_preflight.py --env-file ... --skip-filesystem-checks
 """
 from __future__ import annotations
 
+import argparse
 import os
-import sys
+import re
+import stat
+import subprocess
 from pathlib import Path
+from typing import Mapping
 
-_STAGING_ROOT = "/opt/finco_staging"
-_PRODUCTION_ROOT = "/opt/finco_protocol"
-_VALID_MODES = frozenset({"snapshot", "live"})
+STAGING_ROOT = Path("/opt/finco_staging")
+STAGING_PORT = "8100"
+STAGING_HOST = "staging.finco.one"
+PRODUCTION_ROOT = Path("/opt/finco_protocol")
+GIT_BIN = Path("/usr/bin/git")
+PLACEHOLDER_MARKERS = ("changeme", "replace_with", "example", "placeholder")
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_EQUITY_VALID_MODES = frozenset({"snapshot", "live"})
 _E5_REQUIRED_MODE = "snapshot"
 
 
-class PreflightFailure(Exception):
-    """Raised by a single preflight check that fails."""
+class StagingPreflightError(RuntimeError):
+    """Raised when the corporate staging isolation contract is violated."""
 
 
-# ── individual checks ─────────────────────────────────────────────────────────
+def parse_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise StagingPreflightError(
+                f"invalid environment syntax at line {line_number}"
+            )
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if not key:
+            raise StagingPreflightError(
+                f"empty environment key at line {line_number}"
+            )
+        values[key] = value
+    return values
 
-def check_not_production(env: dict[str, str]) -> None:
-    """Raise PreflightFailure when FINCO_ENV=production."""
-    if env.get("FINCO_ENV", "").strip().lower() == "production":
-        raise PreflightFailure(
-            "FINCO_ENV=production: staging preflight refuses to run against a "
-            "production environment; use the production deployment procedure instead"
-        )
+
+def _is_placeholder(value: str) -> bool:
+    lower = value.lower()
+    return any(marker in lower for marker in PLACEHOLDER_MARKERS)
 
 
-def check_equity_db_path(
-    env: dict[str, str],
-    *,
-    staging_root: str = _STAGING_ROOT,
-    production_root: str = _PRODUCTION_ROOT,
-) -> str:
-    """Validate FINCO_EQUITY_FUNDAMENTALS_DB_PATH.
-
-    Returns the resolved path string on success.
-    Raises PreflightFailure on any violation.
-    """
-    raw = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", "").strip()
-    if not raw:
-        raise PreflightFailure(
-            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: MISSING — "
-            "equity fundamentals DB path is required for E1/E2/E3 Radar features; "
-            "without it the Company Terminal degrades to SOURCE_UNAVAILABLE"
-        )
-
-    path = Path(raw)
+def _require_absolute_under(path_text: str, root: Path, field: str) -> Path:
+    path = Path(path_text)
     if not path.is_absolute():
-        raise PreflightFailure(
+        raise StagingPreflightError(f"{field} must be an absolute path")
+    resolved = path.resolve(strict=False)
+    root_resolved = root.resolve(strict=False)
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError as exc:
+        raise StagingPreflightError(f"{field} must stay under {root_resolved}") from exc
+    return resolved
+
+
+def _validate_equity_fundamentals(
+    env: Mapping[str, str],
+    *,
+    staging_root: Path = STAGING_ROOT,
+    production_root: Path = PRODUCTION_ROOT,
+    check_filesystem: bool = False,
+) -> None:
+    """Additive equity fundamentals contract for E1/E2/E3 Radar features.
+
+    Uses resolve(strict=False) so symlinks inside staging_root that resolve
+    outside it are caught and rejected — lexical Path.relative_to alone would
+    miss a symlink escape.
+    """
+    raw_path = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", "").strip()
+    if not raw_path:
+        raise StagingPreflightError(
+            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: MISSING — required for E1/E2/E3 "
+            "Radar features; without it the Company Terminal degrades to "
+            "SOURCE_UNAVAILABLE"
+        )
+
+    eq_path = Path(raw_path)
+    if not eq_path.is_absolute():
+        raise StagingPreflightError(
             "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must be an absolute path"
         )
 
+    resolved = eq_path.resolve(strict=False)
+    staging_resolved = staging_root.resolve(strict=False)
+    production_resolved = production_root.resolve(strict=False)
+
     try:
-        path.relative_to(staging_root)
+        resolved.relative_to(staging_resolved)
     except ValueError:
-        raise PreflightFailure(
-            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: path must be under {staging_root}; "
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must be under {staging_resolved}; "
             "staging equity DB must be stored in the staging storage area, "
             "separate from the production deployment"
         )
 
+    # resolved outside staging_root may still be under production_root
     try:
-        path.relative_to(production_root)
-        # reaching here means path IS under production root — forbidden
-        raise PreflightFailure(
-            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: path must not be under the "
-            f"production root {production_root}; "
+        resolved.relative_to(production_resolved)
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must not be under the "
+            f"production root {production_resolved}; "
             "staging must never read from the production equity DB"
         )
     except ValueError:
-        pass  # not under production root — correct
+        pass  # correct — not under production root
 
-    return raw
-
-
-def check_equity_db_mode(env: dict[str, str]) -> str:
-    """Validate FINCO_EQUITY_FUNDAMENTALS_DB_MODE.
-
-    Returns the normalised mode string on success.
-    Raises PreflightFailure on any violation.
-    """
-    raw = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "").strip()
-    if not raw:
-        raise PreflightFailure(
+    raw_mode = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "").strip()
+    if not raw_mode:
+        raise StagingPreflightError(
             f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: MISSING — "
-            f"must be set to '{_E5_REQUIRED_MODE}' for E5 staging deployment"
+            f"must be '{_E5_REQUIRED_MODE}' for E5 staging deployment"
         )
-
-    mode = raw.lower()
-    if mode not in _VALID_MODES:
-        raise PreflightFailure(
-            f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: invalid value {raw!r}; "
-            f"must be one of {sorted(_VALID_MODES)}"
+    mode = raw_mode.lower()
+    if mode not in _EQUITY_VALID_MODES:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: invalid value {raw_mode!r}; "
+            f"must be one of {sorted(_EQUITY_VALID_MODES)}"
         )
-
     if mode != _E5_REQUIRED_MODE:
-        raise PreflightFailure(
+        raise StagingPreflightError(
             f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: E5 staging deployment requires "
             f"'{_E5_REQUIRED_MODE}' (WAL-checkpointed standalone immutable SQLite "
-            f"snapshot); got '{mode}'.  Do not point snapshot mode at a mutating "
-            "WAL database."
+            f"snapshot); got '{mode}'"
         )
 
-    return mode
+    if check_filesystem:
+        db = Path(str(resolved))
+        if not db.exists():
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file not found at configured "
+                "path; upload/transfer the versioned equity snapshot before "
+                "starting the service"
+            )
+        if not db.is_file():
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: configured path is not a "
+                "regular file"
+            )
+        if not os.access(str(db), os.R_OK):
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file exists but is not "
+                "readable by the service user; check ownership and permissions"
+            )
 
 
-def check_equity_db_file(path_str: str) -> None:
-    """Verify the equity DB file exists and is readable.
-
-    Raises PreflightFailure if the file is absent, not a file, or unreadable.
-    """
-    path = Path(path_str)
-    if not path.exists():
-        raise PreflightFailure(
-            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file not found at configured path; "
-            "upload/transfer the versioned equity snapshot before starting the service"
-        )
-    if not path.is_file():
-        raise PreflightFailure(
-            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: configured path is not a regular file"
-        )
-    if not os.access(str(path), os.R_OK):
-        raise PreflightFailure(
-            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file exists but is not readable "
-            "by the service user; check ownership and permissions"
-        )
-
-
-# ── orchestrator ──────────────────────────────────────────────────────────────
-
-def run_preflight(
-    env: dict[str, str],
+def validate_staging_env(
+    env: Mapping[str, str],
     *,
-    check_fs: bool = True,
-    staging_root: str = _STAGING_ROOT,
-    production_root: str = _PRODUCTION_ROOT,
-) -> list[str]:
-    """Run all preflight checks and return a list of failure messages.
+    repo_root: Path,
+    repo_head: str,
+    check_filesystem: bool = False,
+    env_file: Path | None = None,
+) -> None:
+    """Validate the full staging environment contract (P7 base + E5 equity additive).
 
-    An empty list means all checks passed.  Raises nothing — failures are
-    collected and returned so callers can decide how to report them.
-
-    When check_fs=True (the default) the equity DB file is tested for
-    existence and readability.  Pass check_fs=False in unit tests that do
-    not create real files.
+    Raises StagingPreflightError on the first violation found.
     """
-    failures: list[str] = []
+    required = {
+        "FINCO_ENV",
+        "FINCO_APP_MODE",
+        "FINCO_SECRET_KEY",
+        "FINCO_ADMIN_USER",
+        "FINCO_ADMIN_PASSWORD",
+        "FINCO_COOKIE_SECURE",
+        "FINCO_DB_PATH",
+        "FINCO_STORAGE_PATH",
+        "FINCO_MAX_CONCURRENT_RUNS",
+        "FINCO_DEMO_RESET_ALLOWED",
+        "FINCO_STAGING_ROOT",
+        "FINCO_STAGING_PORT",
+        "FINCO_STAGING_HOST",
+        "FINCO_DEPLOY_SHA",
+    }
+    missing = sorted(required - set(env))
+    if missing:
+        raise StagingPreflightError(
+            "missing required staging keys: " + ", ".join(missing)
+        )
 
-    def _collect(check, *args, **kwargs):
-        try:
-            return check(*args, **kwargs)
-        except PreflightFailure as exc:
-            failures.append(str(exc))
-            return None
+    if env["FINCO_ENV"] != "staging":
+        raise StagingPreflightError("FINCO_ENV must be exactly 'staging'")
+    if env["FINCO_APP_MODE"] != "pilot":
+        raise StagingPreflightError("FINCO_APP_MODE must be exactly 'pilot'")
+    if env["FINCO_COOKIE_SECURE"].lower() != "true":
+        raise StagingPreflightError("FINCO_COOKIE_SECURE must be true")
+    if env["FINCO_DEMO_RESET_ALLOWED"].lower() != "true":
+        raise StagingPreflightError(
+            "FINCO_DEMO_RESET_ALLOWED must be true on corporate staging"
+        )
 
-    # 1 — environment guard: refuse production environments immediately
-    _collect(check_not_production, env)
-    if failures:
-        return failures
+    root = Path(env["FINCO_STAGING_ROOT"])
+    if root != STAGING_ROOT:
+        raise StagingPreflightError(f"FINCO_STAGING_ROOT must be {STAGING_ROOT}")
+    if env["FINCO_STAGING_PORT"] != STAGING_PORT:
+        raise StagingPreflightError(f"FINCO_STAGING_PORT must be {STAGING_PORT}")
+    if env["FINCO_STAGING_HOST"].lower() != STAGING_HOST:
+        raise StagingPreflightError(f"FINCO_STAGING_HOST must be {STAGING_HOST}")
 
-    # 2 — equity fundamentals DB path
-    path_str = _collect(
-        check_equity_db_path,
+    admin_user = env["FINCO_ADMIN_USER"].strip()
+    secret = env["FINCO_SECRET_KEY"]
+    password = env["FINCO_ADMIN_PASSWORD"]
+    if not admin_user or _is_placeholder(admin_user):
+        raise StagingPreflightError(
+            "FINCO_ADMIN_USER must be a non-placeholder staging account"
+        )
+    if len(secret) < 64 or _is_placeholder(secret):
+        raise StagingPreflightError(
+            "FINCO_SECRET_KEY must be a non-placeholder staging secret >=64 chars"
+        )
+    if len(password) < 16 or _is_placeholder(password):
+        raise StagingPreflightError(
+            "FINCO_ADMIN_PASSWORD must be a non-placeholder value >=16 chars"
+        )
+
+    deploy_sha = env["FINCO_DEPLOY_SHA"].lower()
+    if not _SHA_RE.fullmatch(deploy_sha):
+        raise StagingPreflightError(
+            "FINCO_DEPLOY_SHA must be an exact 40-character commit SHA"
+        )
+    if deploy_sha != repo_head.lower():
+        raise StagingPreflightError(
+            "checked-out git HEAD does not match FINCO_DEPLOY_SHA"
+        )
+
+    db_path = _require_absolute_under(
+        env["FINCO_DB_PATH"], STAGING_ROOT, "FINCO_DB_PATH"
+    )
+    storage_path = _require_absolute_under(
+        env["FINCO_STORAGE_PATH"], STAGING_ROOT, "FINCO_STORAGE_PATH"
+    )
+    if db_path == storage_path:
+        raise StagingPreflightError("database path and storage path must be distinct")
+    if str(db_path).startswith(str(PRODUCTION_ROOT)) or str(storage_path).startswith(
+        str(PRODUCTION_ROOT)
+    ):
+        raise StagingPreflightError(
+            "staging paths must never use the production root"
+        )
+
+    try:
+        concurrent_runs = int(env["FINCO_MAX_CONCURRENT_RUNS"])
+    except ValueError as exc:
+        raise StagingPreflightError(
+            "FINCO_MAX_CONCURRENT_RUNS must be an integer"
+        ) from exc
+    if concurrent_runs < 1 or concurrent_runs > 8:
+        raise StagingPreflightError(
+            "FINCO_MAX_CONCURRENT_RUNS must be between 1 and 8"
+        )
+
+    if repo_root.resolve(strict=False) != STAGING_ROOT.resolve(strict=False):
+        raise StagingPreflightError(
+            f"repository must be deployed at {STAGING_ROOT}"
+        )
+
+    if check_filesystem:
+        if env_file is None:
+            raise StagingPreflightError(
+                "env_file is required for filesystem checks"
+            )
+        mode = stat.S_IMODE(env_file.stat().st_mode)
+        if mode & 0o077:
+            raise StagingPreflightError(
+                "staging env file must not be group/world accessible"
+            )
+        for directory in (db_path.parent, storage_path):
+            if not directory.exists() or not directory.is_dir():
+                raise StagingPreflightError(
+                    f"required staging directory missing: {directory}"
+                )
+            if not os.access(directory, os.W_OK):
+                raise StagingPreflightError(
+                    f"required staging directory is not writable: {directory}"
+                )
+
+    # Additive E5 equity fundamentals contract (E1/E2/E3 Radar features).
+    # Pass module globals explicitly so monkeypatching in tests takes effect.
+    _validate_equity_fundamentals(
         env,
-        staging_root=staging_root,
-        production_root=production_root,
+        staging_root=STAGING_ROOT,
+        production_root=PRODUCTION_ROOT,
+        check_filesystem=check_filesystem,
     )
 
-    # 3 — equity fundamentals DB mode
-    _collect(check_equity_db_mode, env)
 
-    # 4 — filesystem check only when path passed validation
-    if check_fs and path_str is not None:
-        _collect(check_equity_db_file, path_str)
+def _git_head(repo_root: Path) -> str:
+    """Resolve the deployed revision via absolute git binary (PATH-independent).
 
-    return failures
+    The systemd unit intentionally uses a minimal PATH containing only the
+    staging virtualenv; this calls /usr/bin/git directly so that path is never
+    required on PATH.
+    """
+    result = subprocess.run(
+        [str(GIT_BIN), "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
 
 
-# ── CLI entry ────────────────────────────────────────────────────────────────
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate FINCO corporate staging isolation (P7 + E5 equity)"
+    )
+    parser.add_argument("--env-file", required=True, type=Path)
+    parser.add_argument("--repo-root", default=STAGING_ROOT, type=Path)
+    parser.add_argument(
+        "--skip-filesystem-checks",
+        action="store_true",
+        help="Validate contract values only; intended for CI/tests, not deployment",
+    )
+    args = parser.parse_args()
 
-def main(argv: list[str] | None = None) -> int:
-    """Run staging preflight; exit 0 (pass), 1 (fail) or 2 (refused)."""
-    args = list(argv) if argv is not None else sys.argv[1:]
-    env = dict(os.environ)
-
-    if env.get("FINCO_ENV", "").strip().lower() == "production":
-        print("STAGING_PREFLIGHT_REFUSED: FINCO_ENV=production", file=sys.stderr)
+    try:
+        env = parse_env_file(args.env_file)
+        head = _git_head(args.repo_root)
+        validate_staging_env(
+            env,
+            repo_root=args.repo_root,
+            repo_head=head,
+            check_filesystem=not args.skip_filesystem_checks,
+            env_file=args.env_file,
+        )
+    except (OSError, subprocess.CalledProcessError, StagingPreflightError) as exc:
+        print(f"P7_STAGING_PREFLIGHT_BLOCKED: {exc}")
         return 2
 
-    check_fs = "--no-fs" not in args
-    failures = run_preflight(env, check_fs=check_fs)
-
-    if failures:
-        for msg in failures:
-            print(f"FAIL: {msg}", file=sys.stderr)
-        print(f"\nSTAGING_PREFLIGHT_FAIL ({len(failures)} error(s))", file=sys.stderr)
-        return 1
-
-    print("FINCO_EQUITY_FUNDAMENTALS_DB_PATH = CONFIGURED")
-    print("FINCO_EQUITY_FUNDAMENTALS_DB_MODE = snapshot")
-    print("STAGING_PREFLIGHT_PASS")
+    print("P7_STAGING_PREFLIGHT_PASS")
     return 0
 
 
