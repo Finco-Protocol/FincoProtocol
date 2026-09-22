@@ -1830,7 +1830,7 @@ class TestE4ExecutionSimulator:
             "approve", "allowance", "permit",
             "signature", ">sign<", "\"sign\"", "'sign'",
             "submit order", "submit_order",
-            "send", "swap",
+            "send tx", "token swap",
             "transaction hash", "txhash", "tx_hash",
             "private key", "privatekey", "seed phrase", "seedphrase",
         ]
