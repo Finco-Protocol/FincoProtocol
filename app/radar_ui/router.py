@@ -1,12 +1,15 @@
 """Radar v1 UI router (P2/P6/P7/P9).
 
-Browser-reachable surface.  Routes NEVER call providers directly and
-NEVER import private live_proof helpers:
+Browser-reachable surface. Snapshot/details routes never call providers
+directly and never import private live_proof helpers. The separate read-only
+market endpoints use the canonical Robinhood bound-reference adapter:
 
 - ``GET  /radar``                                 page shell with live universe
 - ``POST /radar/refresh``                         ONE acquire -> ONE snapshot_id
 - ``GET  /radar/snapshot/{snapshot_id}``          re-render panels (network-free)
 - ``GET  /radar/inspector/{snapshot_id}/{field}`` Evidence Inspector (network-free)
+- ``GET  /radar/market/board``                 cached featured references
+- ``GET  /radar/market/asset/{uid}``          cached selected reference
 
 Every detail endpoint takes the exact ``snapshot_id`` and reads through
 the P1 ``AcquisitionService.get_snapshot`` network-free path.  No HTMX
@@ -33,11 +36,12 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
 from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
+from app.radar_ui.market_read import MarketReadService
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
 # Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
@@ -93,6 +97,35 @@ def _market_price_display(value):
 _templates.env.filters["market_price"] = _market_price_display
 
 _service_instance = None
+_market_read_service = MarketReadService()
+
+
+def set_market_read_service(service) -> None:
+    """Inject a deterministic read-only market service for offline tests."""
+    global _market_read_service
+    _market_read_service = service
+
+
+def _market_display(row: dict) -> dict:
+    return {**row,
+            "price_display": _market_price_display(row.get("price")) if row.get("price") is not None else "—",
+            "bid_display": _market_price_display(row.get("bid")) if row.get("bid") is not None else "—",
+            "ask_display": _market_price_display(row.get("ask")) if row.get("ask") is not None else "—"}
+
+
+@router.get("/radar/market/board")
+async def featured_market_state():
+    rows = await run_in_threadpool(
+        _market_read_service.read, featured_symbols=_get_featured_symbols())
+    return JSONResponse({"assets": [_market_display(row) for row in rows]})
+
+
+@router.get("/radar/market/asset/{economic_asset_uid}")
+async def selected_market_state(economic_asset_uid: str):
+    rows = await run_in_threadpool(
+        _market_read_service.read, uids=(economic_asset_uid,))
+    row = rows[0] if rows else MarketReadService._unavailable(economic_asset_uid)
+    return JSONResponse({"asset": _market_display(row)})
 
 
 def get_service():

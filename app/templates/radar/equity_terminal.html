@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <script src="/static/radar/vendor/htmx.min.js" defer></script>
+  <script src="/static/radar/market-poll.js" defer></script>
 </head>
 <body class="radar">
 
@@ -18,6 +19,12 @@
 {% set tv = terminal %}
 
 <div class="page-container">
+<section class="panel" data-market-terminal-uid="{{ tv.economic_asset_uid if tv else '' }}" aria-label="Market reference" style="margin:0 0 14px;">
+  <strong>Market reference</strong> <span data-market-price>—</span>
+  <span class="muted small" data-market-state>Waiting for official reference.</span>
+  <span class="muted small" data-market-observed></span>
+  <span class="muted small">Day % — (previous close unavailable)</span>
+</section>
 
 {# ── Error / unavailable ──────────────────────────────────────────────────── #}
 {% if tv and tv.state in ("ASSET_UNIVERSE_UNAVAILABLE", "ASSET_NOT_FOUND_IN_UNIVERSE", "FUNDAMENTALS_NOT_FOUND", "SOURCE_UNAVAILABLE", "FUNDAMENTALS_CONFIG_INVALID") %}
@@ -131,7 +138,22 @@
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 <div id="tab-overview" class="tab-panel" style="display:{% if tv.nav.tab == 'overview' %}block{% else %}none{% endif %};">
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px;">
+  {% if tv.ttm_history %}
+  {% set latest = tv.ttm_history[0] %}
+  <section class="panel" aria-label="Key fundamentals">
+    <h2>Key Fundamentals · TTM {{ latest.period_end }}</h2>
+    <div class="terminal-fundamentals-grid">
+      <div><span>Revenue</span><strong>{{ latest.revenues }}</strong></div>
+      <div><span>Revenue growth</span><strong>{{ latest.revenue_growth }}</strong></div>
+      <div><span>Gross margin</span><strong>{{ latest.gross_margin }}</strong></div>
+      <div><span>EBIT margin</span><strong>{{ latest.ebit_margin }}</strong></div>
+      <div><span>Net margin</span><strong>{{ latest.net_margin }}</strong></div>
+      <div><span>ROE</span><strong>{{ latest.return_on_equity }}</strong></div>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="terminal-overview-grid">
 
     {# Identity card #}
     <section class="panel panel-identity" data-panel="identity">
@@ -143,8 +165,7 @@
         {% if tv.identity.exchange %}<dt>Exchange</dt><dd>{{ tv.identity.exchange }}</dd>{% endif %}
         {% if tv.identity.currency %}<dt>Currency</dt><dd>{{ tv.identity.currency }}</dd>{% endif %}
         {% if tv.identity.security_type %}<dt>Security type</dt><dd>{{ tv.identity.security_type }}</dd>{% endif %}
-        {% if tv.identity.cik %}<dt>CIK</dt><dd class="mono">{{ tv.identity.cik }}</dd>{% endif %}
-        {% if tv.identity.figi %}<dt>FIGI</dt><dd class="mono">{{ tv.identity.figi }}</dd>{% endif %}
+        {# CIK/FIGI remain available in Evidence, not the ordinary overview. #}
       </dl>
       {% else %}
       <p class="muted small">Identity data not available.</p>
@@ -416,6 +437,21 @@
 {# TAB: EVIDENCE                                                               #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 <div id="tab-evidence" class="tab-panel" style="display:{% if tv.nav.tab == 'evidence' %}block{% else %}none{% endif %};">
+
+  {% if tv.identity %}
+  <section class="panel" aria-label="Market identity evidence">
+    <h2>Market Identity</h2>
+    <dl class="kv">
+      <dt>Economic asset UID</dt><dd class="mono">{{ tv.economic_asset_uid }}</dd>
+      {% if tv.identity.cik %}<dt>CIK</dt><dd class="mono">{{ tv.identity.cik }}</dd>{% endif %}
+      {% if tv.identity.figi %}<dt>FIGI</dt><dd class="mono">{{ tv.identity.figi }}</dd>{% endif %}
+      {% if tv.selected_token %}
+      <dt>Chain</dt><dd>{{ tv.selected_token.chain_id }}</dd>
+      <dt>Contract</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
 
   {# Profile evidence #}
   <section class="panel panel-profile-evidence" data-panel="profile-evidence">
