@@ -17,6 +17,18 @@
       price.title = state.price == null ? 'Official reference unavailable' :
         'Exact official reference: ' + state.price;
     }
+    // Tab-panel price elements outside the terminal header section.
+    document.querySelectorAll('[data-market-tab-price]').forEach(function (el) {
+      el.textContent = state.price_display || '—';
+      el.title = state.price == null ? 'Official reference unavailable' :
+        'Exact official reference: ' + state.price;
+    });
+    document.querySelectorAll('[data-market-bid]').forEach(function (bid) {
+      bid.textContent = state.bid_display || (state.bid != null ? state.bid : '—');
+    });
+    document.querySelectorAll('[data-market-ask]').forEach(function (ask) {
+      ask.textContent = state.ask_display || (state.ask != null ? state.ask : '—');
+    });
     const badge = node.querySelector('[data-market-state]');
     if (badge) badge.textContent = state.state + (state.market_state === 'HALTED' ? ' · Trading halted' : '');
     const observed = node.querySelector('[data-market-observed]');

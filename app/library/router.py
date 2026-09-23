@@ -233,7 +233,7 @@ async def project_library_clone(
         message = ("Could not create a working copy. Please try again or contact support "
                    f"with reference {request_id}.")
         if request.headers.get("HX-Request") == "true":
-            return HTMLResponse(f'<p role="alert">{message}</p>')
+            return HTMLResponse(f'<p role="alert">{message}</p>', status_code=500)
         return HTMLResponse(
             f'<!doctype html><html><title>Working copy unavailable</title><body><h1>Working copy unavailable</h1><p>{message}</p><a href="/library">Back to Model Workspace</a></body></html>',
             status_code=500,

@@ -378,13 +378,34 @@
 
   <section class="panel panel-token-market" data-panel="token-market">
     <h2>Token Market</h2>
+
+    {# MARKET REFERENCE — live-updated by market-poll.js via data-market-* targets #}
+    <section class="terminal-section-heading terminal-section-heading--feature" style="margin-bottom:14px;" aria-label="Market reference">
+      <h3 class="terminal-section-heading terminal-section-heading--feature" style="margin-top:0;">Market Reference</h3>
+      <dl class="kv" style="max-width:520px;">
+        <dt>Reference Price</dt>
+        <dd><span data-market-tab-price data-market-price style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>Bid</dt>
+        <dd><span data-market-bid style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>Ask</dt>
+        <dd><span data-market-ask style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>State</dt>
+        <dd><span data-market-state class="muted small">Waiting for official reference.</span></dd>
+        <dt>Observed</dt>
+        <dd><span data-market-observed class="muted small"></span></dd>
+      </dl>
+    </section>
+
     {% if tv.selected_token %}
-    <dl class="kv" style="max-width:600px;margin-bottom:20px;">
-      <dt>Token symbol</dt><dd>{{ tv.selected_token.symbol }}</dd>
-      <dt>Economic asset UID</dt><dd class="mono">{{ tv.selected_token.economic_asset_uid }}</dd>
-      <dt>Chain ID</dt><dd class="mono">{{ tv.selected_token.chain_id }}</dd>
-      <dt>Contract address</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
-    </dl>
+    <details style="margin-bottom:20px;">
+      <summary class="muted small" style="cursor:pointer;">Token identity</summary>
+      <dl class="kv" style="max-width:600px;margin-top:8px;">
+        <dt>Token symbol</dt><dd>{{ tv.selected_token.symbol }}</dd>
+        <dt>Economic asset UID</dt><dd class="mono">{{ tv.selected_token.economic_asset_uid }}</dd>
+        <dt>Chain ID</dt><dd class="mono">{{ tv.selected_token.chain_id }}</dd>
+        <dt>Contract address</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
+      </dl>
+    </details>
     {% endif %}
 
     {# Execution Simulator #}

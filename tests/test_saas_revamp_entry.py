@@ -91,7 +91,7 @@ def test_reference_templates_are_independent_of_working_project_pages(client_wit
     assert 'class="fo-library-reference-card"' not in working_only
 
 
-def test_clone_unexpected_error_has_safe_reference_and_structured_log(client_with_references, monkeypatch, caplog):
+def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services import project_library_service
     reference = get_reference_by_template_source("generic_solar_reference")
@@ -105,8 +105,32 @@ def test_clone_unexpected_error_has_safe_reference_and_structured_log(client_wit
         f"/library/clone/{reference.project_id}", cookies=cookies,
         headers={"HX-Request": "true"},
     )
-    assert response.status_code == 200 and "Could not create a working copy" in response.text
-    assert "private-payload-marker" not in response.text and "private-payload-marker" not in caplog.text
+    assert response.status_code == 500
+    assert "Could not create a working copy" in response.text
+    assert "private-payload-marker" not in response.text
+    assert "private-payload-marker" not in caplog.text
+    assert "route=project_library_clone" in caplog.text
+    assert f"source_project_id={reference.project_id}" in caplog.text
+    assert "exception_type=RuntimeError" in caplog.text
+
+
+def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services import project_library_service
+    reference = get_reference_by_template_source("generic_solar_reference")
+    _, cookies = _cookie()
+
+    def failed_clone(**kwargs):
+        raise RuntimeError("private-payload-marker")
+
+    monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
+    response = client_with_references.post(
+        f"/library/clone/{reference.project_id}", cookies=cookies,
+    )
+    assert response.status_code == 500
+    assert "Could not create a working copy" in response.text
+    assert "private-payload-marker" not in response.text
+    assert "private-payload-marker" not in caplog.text
     assert "route=project_library_clone" in caplog.text
     assert f"source_project_id={reference.project_id}" in caplog.text
     assert "exception_type=RuntimeError" in caplog.text

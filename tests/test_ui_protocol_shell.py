@@ -2028,21 +2028,49 @@ def test_saas_visual_capture(live_url, live_url_e4, browser):
     shot("08b-inputs-390")
     page.close()
 
-    radar = browser.new_page(viewport={"width": 1280, "height": 900})
-    radar.goto(f"{live_url_e4}/radar")
-    radar.wait_for_load_state("domcontentloaded")
-    radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
-    radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
-    radar.wait_for_load_state("domcontentloaded")
-    for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
-                      ("token-market", "12-market-execution"), ("evidence", "13-evidence")):
-        radar.locator(f'a[href^="?tab={tab}"]').first.click()
-        radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
-    radar.set_viewport_size({"width": 390, "height": 844})
-    radar.goto(f"{live_url_e4}/radar")
-    _assert_no_overflow(radar, "/radar", 390)
-    radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
-    radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
-    _assert_no_overflow(radar, "/radar/equity", 390)
-    radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
-    radar.close()
+    from app.radar_ui import router as _radar_router
+
+    class _FixedMarketService:
+        """Deterministic market fixture — NVDA reference at $143.11 / bid $142.77 / ask $143.45."""
+        def read(self, *, uids=(), featured_symbols=()):
+            def _row(uid, symbol):
+                return {
+                    "uid": uid, "symbol": symbol,
+                    "chain_id": "polygon-mainnet",
+                    "contract_address": "0x0001000000000000000000000000000000000000",
+                    "state": "FRESH", "market_state": "REFERENCE",
+                    "price": "143.11", "price_display": "$143.11",
+                    "bid": "142.77", "bid_display": "$142.77",
+                    "ask": "143.45", "ask_display": "$143.45",
+                    "observed_at": "2026-01-01T00:00:00+00:00",
+                    "source": "visual-fixture",
+                }
+            if uids:
+                return [_row(uid, None) for uid in uids]
+            return [_row(None, sym) for sym in featured_symbols]
+
+    _radar_router.set_market_read_service(_FixedMarketService())
+    try:
+        radar = browser.new_page(viewport={"width": 1280, "height": 900})
+        radar.goto(f"{live_url_e4}/radar")
+        radar.wait_for_load_state("domcontentloaded")
+        radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
+        radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+        radar.wait_for_load_state("domcontentloaded")
+        for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
+                          ("token-market", "12-market-execution"), ("evidence", "13-evidence")):
+            radar.locator(f'a[href^="?tab={tab}"]').first.click()
+            if tab == "token-market":
+                # Wait for the market poll to fire and populate the Reference Price.
+                radar.locator('[data-market-tab-price]:not(:text("—"))').wait_for(timeout=20000)
+            radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
+        radar.set_viewport_size({"width": 390, "height": 844})
+        radar.goto(f"{live_url_e4}/radar")
+        _assert_no_overflow(radar, "/radar", 390)
+        radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
+        radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+        _assert_no_overflow(radar, "/radar/equity", 390)
+        radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
+        radar.close()
+    finally:
+        _radar_router.set_market_read_service(None)

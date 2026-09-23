@@ -62,3 +62,19 @@
 </section>
 {% endif %}
 <div id="library-clone-error" aria-live="polite"></div>
+<script>
+(function () {
+  document.body.addEventListener('htmx:responseError', function (evt) {
+    var xhr = evt.detail && evt.detail.xhr;
+    if (!xhr) return;
+    var target = document.getElementById('library-clone-error');
+    if (!target) return;
+    var body = xhr.responseText || '';
+    if (body.indexOf('role="alert"') !== -1) {
+      target.innerHTML = body;
+    } else {
+      target.innerHTML = '<p role="alert">Could not create a working copy. Please try again or contact support.</p>';
+    }
+  });
+}());
+</script>
