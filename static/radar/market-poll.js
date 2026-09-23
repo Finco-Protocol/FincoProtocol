@@ -10,6 +10,15 @@
   let stopped = false;
   const cadence = board ? 12000 : 8000;
 
+  function _stateText(s) {
+    if (!s || !s.state) return '—';
+    if (s.state === 'FRESH') {
+      return s.market_state === 'HALTED' ? 'Fresh · Trading halted' : 'Fresh / Reference';
+    }
+    if (s.state === 'STALE') return 'Stale';
+    return '—';
+  }
+
   function apply(node, state) {
     const price = node.querySelector('[data-market-price]');
     if (price) {
@@ -30,9 +39,15 @@
       ask.textContent = state.ask_display || (state.ask != null ? state.ask : '—');
     });
     const badge = node.querySelector('[data-market-state]');
-    if (badge) badge.textContent = state.state + (state.market_state === 'HALTED' ? ' · Trading halted' : '');
+    if (badge) badge.textContent = _stateText(state);
+    document.querySelectorAll('[data-market-tab-state]').forEach(function (el) {
+      el.textContent = _stateText(state);
+    });
     const observed = node.querySelector('[data-market-observed]');
     if (observed) observed.textContent = state.observed_at ? 'Observed ' + state.observed_at : '';
+    document.querySelectorAll('[data-market-tab-observed]').forEach(function (el) {
+      el.textContent = state.observed_at ? 'Observed ' + state.observed_at : '';
+    });
   }
 
   async function tick() {

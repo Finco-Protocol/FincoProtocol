@@ -939,6 +939,12 @@ _SA_E3 = namedtuple("_SA_E3", [
 _NVDA_SA = _SA_E3("rh-equity-nvda-001", "NVDA", "NVIDIA Corporation", 4663, "0xnvda001abc", 0)
 _JPM_SA  = _SA_E3("rh-equity-jpm-002",  "JPM",  "JPMorgan Chase",      4663, "0xjpm002def",  0)
 
+# Visual-market fixture — canonical UID required by normalize_asset_uid().
+# Distinct from _NVDA_SA; same symbol ("NVDA") so E3 history DB data is reused.
+# Contract matches DB so identity is VERIFIED in visual screenshots.
+_NVDA_VISUAL_UID      = "0x" + "11" * 32   # 0x1111...1111 (64 hex chars)
+_NVDA_VISUAL_SA = _SA_E3(_NVDA_VISUAL_UID, "NVDA", "NVIDIA Corporation", 4663, "0xnvda001abc", 0)
+
 
 _E3_BROWSER_PROVIDER   = "SYNTH_E3_BROWSER"
 _E3_BROWSER_CONTRACT   = "E3_BROWSER_CONTRACT_V1"
@@ -1564,6 +1570,76 @@ def live_url_e4():
         tmp.unlink(missing_ok=True)
 
 
+@pytest.fixture(scope="module")
+def live_url_radar_visual():
+    """Uvicorn server for visual capture — uses canonical-UID NVDA visual asset."""
+    from app.radar_ui import router as radar_router
+    from app.radar_ui import equity_terminal, equity_enrichment
+    from app.radar_ui.equity_enrichment import EquityEnrichmentResult, EnrichmentState
+    from finco_radar.equity import get_equity_company_history
+    import main_web
+    import uvicorn
+
+    tmp = _build_e3_browser_db()
+
+    _orig_fetch    = radar_router._fetch_universe_safe
+    _orig_featured = radar_router._get_featured_symbols
+    _orig_many     = equity_enrichment.enrich_many_selected_assets
+    _orig_single   = equity_enrichment.enrich_selected_asset
+    _orig_history  = equity_terminal.get_history_for_terminal
+
+    def _fake_fetch():
+        return ([_NVDA_VISUAL_SA, _JPM_SA], None)
+
+    def _fake_featured():
+        return ("NVDA", "JPM")
+
+    def _fake_enrich_many(pairs):
+        return [
+            EquityEnrichmentResult(
+                state=EnrichmentState.SOURCE_UNAVAILABLE,
+                bundle=None,
+                identity_note=None,
+            )
+            for _ in pairs
+        ]
+
+    def _fake_enrich_single(token_symbol, contract_address, **kwargs):
+        return EquityEnrichmentResult(
+            state=EnrichmentState.SOURCE_UNAVAILABLE,
+            bundle=None,
+            identity_note=None,
+        )
+
+    def _fake_history(token_symbol, **kwargs):
+        return get_equity_company_history(token_symbol, db_path=tmp, db_mode="snapshot")
+
+    radar_router._fetch_universe_safe             = _fake_fetch
+    radar_router._get_featured_symbols            = _fake_featured
+    equity_enrichment.enrich_many_selected_assets = _fake_enrich_many
+    equity_enrichment.enrich_selected_asset       = _fake_enrich_single
+    equity_terminal.get_history_for_terminal      = _fake_history
+
+    port = _free_port()
+    config = uvicorn.Config(main_web.app, host="127.0.0.1", port=port, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(0.05)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(5)
+        radar_router._fetch_universe_safe             = _orig_fetch
+        radar_router._get_featured_symbols            = _orig_featured
+        equity_enrichment.enrich_many_selected_assets = _orig_many
+        equity_enrichment.enrich_selected_asset       = _orig_single
+        equity_terminal.get_history_for_terminal      = _orig_history
+        tmp.unlink(missing_ok=True)
+
+
 class TestE4ExecutionSimulator:
     """E4 Execution Simulator browser acceptance — original B1–B13 journey.
 
@@ -1991,7 +2067,7 @@ class TestCBH:
 
 
 @pytest.mark.skipif(os.getenv("FINCO_VISUAL_CAPTURE") != "1", reason="visual artifact capture is enabled in CI")
-def test_saas_visual_capture(live_url, live_url_e4, browser):
+def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     """Capture actual rendered product surfaces at this workflow's checked-out HEAD."""
     out = REPO / "artifacts" / "saas-visual"
     out.mkdir(parents=True, exist_ok=True)
@@ -2031,7 +2107,11 @@ def test_saas_visual_capture(live_url, live_url_e4, browser):
     from app.radar_ui import router as _radar_router
 
     class _FixedMarketService:
-        """Deterministic market fixture — NVDA reference at $143.11 / bid $142.77 / ask $143.45."""
+        """Deterministic visual fixture — NVDA at $143.11 / bid $142.77 / ask $143.45.
+
+        Uses _NVDA_VISUAL_UID (canonical 0x-prefixed 64 hex chars) so the
+        /radar/market/asset/{uid} endpoint passes normalize_asset_uid().
+        """
         def read(self, *, uids=(), featured_symbols=()):
             def _row(uid, symbol):
                 return {
@@ -2049,28 +2129,55 @@ def test_saas_visual_capture(live_url, live_url_e4, browser):
                 return [_row(uid, None) for uid in uids]
             return [_row(None, sym) for sym in featured_symbols]
 
+    previous_market_service = _radar_router._market_read_service
     _radar_router.set_market_read_service(_FixedMarketService())
     try:
         radar = browser.new_page(viewport={"width": 1280, "height": 900})
-        radar.goto(f"{live_url_e4}/radar")
+        radar.goto(f"{live_url_radar_visual}/radar")
         radar.wait_for_load_state("domcontentloaded")
+        # Wait for board market prices to populate before screenshot.
+        radar.wait_for_function(
+            'Array.from(document.querySelectorAll("[data-market-uid] [data-market-price]"))'
+            '.some(function(el) { return el.textContent !== "—" && el.textContent !== ""; })',
+            timeout=10000,
+        )
         radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
-        radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
         radar.wait_for_load_state("domcontentloaded")
         for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
                           ("token-market", "12-market-execution"), ("evidence", "13-evidence")):
             radar.locator(f'a[href^="?tab={tab}"]').first.click()
+            if tab == "overview":
+                # Wait for header market price to populate.
+                radar.locator(
+                    'section[data-market-terminal-uid] [data-market-price]:not(:text("—"))'
+                ).wait_for(timeout=10000)
             if tab == "token-market":
-                # Wait for the market poll to fire and populate the Reference Price.
+                # Wait for tab Reference Price and state to populate.
                 radar.locator('[data-market-tab-price]:not(:text("—"))').wait_for(timeout=20000)
+                radar.wait_for_function(
+                    '(document.querySelector("[data-market-tab-state]") || {}).textContent.includes("Fresh")',
+                    timeout=5000,
+                )
+                # Assert all market values before capturing.
+                price_text = radar.locator('[data-market-tab-price]').first.text_content()
+                assert '$143.11' in price_text, f"Market price: {price_text!r}"
+                bid_text = radar.locator('[data-market-bid]').first.text_content()
+                assert '$142.77' in bid_text, f"Market bid: {bid_text!r}"
+                ask_text = radar.locator('[data-market-ask]').first.text_content()
+                assert '$143.45' in ask_text, f"Market ask: {ask_text!r}"
+                state_text = radar.locator('[data-market-tab-state]').first.text_content()
+                assert 'Fresh' in state_text, f"Market state: {state_text!r}"
+                observed_text = radar.locator('[data-market-tab-observed]').first.text_content()
+                assert '2026-01-01' in observed_text, f"Market observed: {observed_text!r}"
             radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
         radar.set_viewport_size({"width": 390, "height": 844})
-        radar.goto(f"{live_url_e4}/radar")
+        radar.goto(f"{live_url_radar_visual}/radar")
         _assert_no_overflow(radar, "/radar", 390)
         radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
-        radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
         _assert_no_overflow(radar, "/radar/equity", 390)
         radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
         radar.close()
     finally:
-        _radar_router.set_market_read_service(None)
+        _radar_router.set_market_read_service(previous_market_service)

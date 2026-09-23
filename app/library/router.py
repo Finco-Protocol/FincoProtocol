@@ -27,6 +27,7 @@ from __future__ import annotations
 import math
 import os
 import logging
+import traceback as _traceback
 from typing import Optional
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -224,11 +225,22 @@ async def project_library_clone(
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:
         request_id = request.scope.get("request_id", "unknown")
+        _tb = exc.__traceback__
+        if _tb is not None:
+            while _tb.tb_next is not None:
+                _tb = _tb.tb_next
+            _tb_module = os.path.basename(_tb.tb_frame.f_code.co_filename).replace("\n", "_").replace("\r", "_")
+            _tb_function = _tb.tb_frame.f_code.co_name.replace("\n", "_").replace("\r", "_")
+            _tb_lineno = _tb.tb_lineno
+        else:
+            _tb_module = _tb_function = "unknown"
+            _tb_lineno = 0
         logger.error(
             "clone_failed request_id=%s route=project_library_clone source_project_id=%s "
-            "session_type=%s exception_type=%s",
+            "session_type=%s exception_type=%s module=%s function=%s lineno=%d",
             request_id, source_project_id.replace("\n", "_").replace("\r", "_")[:128],
             type(user).__name__, type(exc).__name__,
+            _tb_module, _tb_function, _tb_lineno,
         )
         message = ("Could not create a working copy. Please try again or contact support "
                    f"with reference {request_id}.")

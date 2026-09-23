@@ -112,6 +112,9 @@ def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_refe
     assert "route=project_library_clone" in caplog.text
     assert f"source_project_id={reference.project_id}" in caplog.text
     assert "exception_type=RuntimeError" in caplog.text
+    assert "module=" in caplog.text
+    assert "function=failed_clone" in caplog.text
+    assert "lineno=" in caplog.text
 
 
 def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
@@ -134,3 +137,6 @@ def test_clone_unexpected_error_non_htmx_returns_500_with_safe_body(client_with_
     assert "route=project_library_clone" in caplog.text
     assert f"source_project_id={reference.project_id}" in caplog.text
     assert "exception_type=RuntimeError" in caplog.text
+    assert "module=" in caplog.text
+    assert "function=failed_clone" in caplog.text
+    assert "lineno=" in caplog.text
