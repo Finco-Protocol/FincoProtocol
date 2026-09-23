@@ -44,7 +44,7 @@
 {% elif tv %}
 
 {# ── Company Terminal header ──────────────────────────────────────────────── #}
-<div class="terminal-header">
+<div class="terminal-header" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
   <div class="terminal-header__nav">
     <a href="/radar" class="terminal-header__back">← Radar</a>
   </div>
@@ -399,12 +399,15 @@
       <h3>Execution Simulation — Coming soon</h3>
       <span class="radar-legacy-hook">Execution Simulator</span>
       <p>Live execution routing is not enabled in this environment. Market reference and company evidence remain available.</p>
-      <details class="radar-technical-details"><summary>Technical details</summary>
-        <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission. Simulation only — no order is submitted.</p>
+      <p class="muted small">Simulation only — no order is submitted.</p>
+      <details class="radar-technical-details" open><summary>Technical details</summary>
+        <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission.</p>
         <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML">
-          <input type="radio" name="direction" value="BUY" checked disabled><input type="radio" name="direction" value="SELL" disabled>
-          <input type="radio" name="size" value="100" checked disabled><input type="radio" name="size" value="1000" disabled>
-          <button type="submit" disabled>Check Execution</button>
+          <label><input type="radio" name="direction" value="BUY" checked> Simulate Buy</label>
+          <label><input type="radio" name="direction" value="SELL"> Simulate Sell</label>
+          <label><input type="radio" name="size" value="100" checked> $100</label>
+          <label><input type="radio" name="size" value="1000"> $1,000</label>
+          <button type="submit" class="refresh-btn">Check Execution</button>
         </form>
         <div id="sim-result-{{ tv.economic_asset_uid }}"></div>
       </details>

@@ -265,7 +265,7 @@ html, body.radar {
 @media (max-width: 600px) {
   .radar-product-grid { grid-template-columns:1fr; }
   .terminal-header__price { margin-left:0; width:100%; }
-  .board-table { min-width:760px; }
+  .panel-featured-board { max-width:100%; overflow:hidden; }
   .page-container, .radar-main { padding-left:10px; padding-right:10px; }
 }
 
