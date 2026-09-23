@@ -2218,12 +2218,17 @@ def test_reference_driven_correction_a_22_capture_journey(
 
     # Change MW through the actual bound Project Setup control.
     page.locator("#tab-project-setup").click()
-    capacity_row = page.locator('[data-field-id="project_setup.technical.capacity_mw"]')
+    capacity_row = page.locator(
+        '#panel-project-setup [data-field-id="project_setup.technical.capacity_mw"]'
+    )
     capacity_input = capacity_row.locator('input[name="value"]')
     capacity_input.fill("150")
     with page.expect_response(lambda response: "/v2/workbook/update" in response.url):
         capacity_row.locator("button.v2-field-save").click()
-    capacity_selector = '[data-field-id="project_setup.technical.capacity_mw"] input[name="value"]'
+    capacity_selector = (
+        '#panel-project-setup '
+        '[data-field-id="project_setup.technical.capacity_mw"] input[name="value"]'
+    )
     page.locator(capacity_selector).wait_for()
     assert float(page.locator(capacity_selector).input_value()) == 150.0
     shot("08-capacity-change")
