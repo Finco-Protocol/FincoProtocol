@@ -59,7 +59,6 @@
           {% endfor %}
         </select>
         <button type="submit" class="refresh-btn" style="white-space:nowrap;">Load Asset</button>
-        {% if selected %}<a class="board-details-cta" href="/radar/equity/{{ selected.economic_asset_uid }}">Open Company Terminal →</a>{% endif %}
       </div>
       <p class="muted small" style="margin:6px 0 0;">
         {{ universe | length }} asset{{ 's' if universe | length != 1 else '' }} from Robinhood canonical registry.
