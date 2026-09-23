@@ -16,6 +16,12 @@
 </div>
 
 {% if projects %}
+{% set working = projects | rejectattr('project_role', 'equalto', 'reference') | list %}
+{% set references = projects | selectattr('project_role', 'equalto', 'reference') | list %}
+{% if working %}<h2 class="fo-library-section-title">Working Projects</h2>{% endif %}
+{% if not working and not search and not role_filter %}
+<div class="fo-library-empty fo-library-empty--compact">No working projects yet. Start with a reference below or <a href="/projects/new">create a new project</a>.</div>
+{% endif %}
 <div class="fo-library-table-wrapper">
 <table class="fo-library-table">
   <thead>
@@ -33,6 +39,9 @@
     {% set is_selected = (proj.project_code == selected_project) %}
     {% set is_ref = (proj.project_role == 'reference') %}
     {% set is_wc  = (proj.project_role == 'working_copy') %}
+    {% if is_ref and (loop.first or projects[loop.index0-1].project_role != 'reference') %}
+      <tr class="fo-library-group-row"><th colspan="6" scope="rowgroup">Reference Templates <small>Protected starting points for your own editable copy</small></th></tr>
+    {% endif %}
     <tr data-testid="library-row-{{ proj.project_code }}"
         {% if is_selected %}data-selected="true"{% endif %}>
 
@@ -64,7 +73,7 @@
           <a href="{{ workbook_destination_fn(proj.project_code) }}"
              data-testid="open-{{ proj.project_code }}"
              data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}"
-             class="fo-library-link">Open</a>
+             class="fo-library-link">{{ 'View Reference' if is_ref else 'Open' }}</a>
 
           {# Create working copy for references #}
           {% if is_ref %}
@@ -72,6 +81,7 @@
                   action="/library/clone/{{ proj.project_id }}"
                   hx-post="/library/clone/{{ proj.project_id }}"
                   hx-swap="none"
+                  hx-disabled-elt="find button"
                   style="display:inline;">
               <button type="submit"
                       data-testid="clone-{{ proj.project_code }}"

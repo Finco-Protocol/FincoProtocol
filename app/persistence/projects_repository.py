@@ -353,7 +353,7 @@ def list_projects_paged(
     data_sql = (
         f"SELECT * FROM projects WHERE {base_where}"
         " ORDER BY"
-        "  CASE WHEN project_role='reference' THEN 0 ELSE 1 END,"
+        "  CASE WHEN project_role='reference' THEN 1 ELSE 0 END,"
         "  updated_at DESC"
         f" LIMIT {int(page_size)} OFFSET {int((page - 1) * page_size)}"
     )

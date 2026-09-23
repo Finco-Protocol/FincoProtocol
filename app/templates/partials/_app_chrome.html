@@ -18,12 +18,13 @@
 <div class="fo-chrome" id="fo-app-chrome" role="presentation">
 
   {% include "partials/_brand_bar.html" %}
-  {% include "partials/_command_bar.html" %}
-  {% include "partials/_kpi_strip.html" %}
+  {% if project_record is defined and project_record is not none %}
+    {% include "partials/_command_bar.html" %}
 
   {# UI-3: spreadsheet-style worksheet navigation. Replaces the UI-2
      reserved-placeholder row with the actual navigation component.
      Reads only `dirty` + `request.path` from context. #}
-  {% include "partials/_sheet_tabs.html" %}
+    {% include "partials/_sheet_tabs.html" %}
+  {% endif %}
 
 </div>
