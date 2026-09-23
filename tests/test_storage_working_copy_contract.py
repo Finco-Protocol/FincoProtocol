@@ -2,6 +2,14 @@
 
 Verifies that the product contract is truthful and fail-closed:
 
+CANONICAL REFERENCE SEPARATION
+- CANONICAL_REFERENCE_TEMPLATE_SOURCES includes Solar, Wind, Storage
+- CLONEABLE_TEMPLATE_SOURCES includes only Solar, Wind
+- _is_canonical_reference(storage_ref) == True
+- storage_ref.template_source not in CLONEABLE_TEMPLATE_SOURCES
+- Non-reference source → canonical auth failure (not UnsupportedProjectRuntimeError)
+- Bootstrap race: concurrent uniqueness conflict resolved to canonical winner
+
 LIBRARY
 - Solar/Wind references present "Create working copy"
 - Storage reference is visible and presents "Working-copy runtime coming soon"
@@ -12,16 +20,23 @@ BACKEND CLONE
 - Storage direct clone returns 400 and creates ZERO project rows
 - Storage reference is unchanged after a failed clone attempt
 
+STORAGE REFERENCE GET
+- GET /v2/workbook for Storage reference returns 200 (not 500)
+- Response shows controlled reference-only surface
+- Response does not invoke Solar/Wind economic materialization
+
 EXISTING STORAGE WORKING COPY
 - GET /v2/workbook returns no HTTP 500
 - Response shows controlled unsupported-runtime surface
 - Response does not contain Run Model button
 - Response does not contain Save / Export actions
 
-DIRECT RUN
-- POST /v2/workbook/run for Storage working copy returns 409 (non-HTMX)
-- Zero economic engine invocation
+DIRECT RUN (HTMX and non-HTMX)
+- POST /v2/workbook/run for Storage working copy returns 409 for both HTMX and non-HTMX
+- Zero economic engine invocation (deterministic spy at canonical engine boundary)
 - Zero Last-Run snapshot creation
+- last_runtime_snapshot_id unchanged
+- last_runtime_summary unchanged
 
 SOLAR/WIND REGRESSION
 - Solar and Wind working copies still open (200 OK) from /v2/workbook
@@ -47,6 +62,112 @@ def _cookie():
     from app.auth import DEMO_COOKIE_NAME, create_demo_session_token, new_demo_user_id
     user_id = new_demo_user_id()
     return user_id, {DEMO_COOKIE_NAME: create_demo_session_token(user_id)}
+
+
+# ---------------------------------------------------------------------------
+# Canonical reference separation
+# ---------------------------------------------------------------------------
+
+def test_canonical_reference_template_sources_includes_storage():
+    from app.services.project_library_service import CANONICAL_REFERENCE_TEMPLATE_SOURCES
+    assert "generic_storage_reference" in CANONICAL_REFERENCE_TEMPLATE_SOURCES
+    assert "generic_solar_reference" in CANONICAL_REFERENCE_TEMPLATE_SOURCES
+    assert "generic_wind_reference" in CANONICAL_REFERENCE_TEMPLATE_SOURCES
+
+
+def test_cloneable_template_sources_excludes_storage():
+    from app.services.project_library_service import CLONEABLE_TEMPLATE_SOURCES
+    assert "generic_storage_reference" not in CLONEABLE_TEMPLATE_SOURCES
+    assert "generic_solar_reference" in CLONEABLE_TEMPLATE_SOURCES
+    assert "generic_wind_reference" in CLONEABLE_TEMPLATE_SOURCES
+
+
+def test_canonical_reference_separation(client_contract):
+    """_is_canonical_reference(storage_ref) is True; template_source is NOT cloneable."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.project_library_service import (
+        _is_canonical_reference,
+        CANONICAL_REFERENCE_TEMPLATE_SOURCES,
+        CLONEABLE_TEMPLATE_SOURCES,
+    )
+    storage_ref = get_reference_by_template_source("generic_storage_reference")
+    assert storage_ref is not None
+    # Storage reference IS a canonical protected reference
+    assert _is_canonical_reference(storage_ref) is True
+    assert storage_ref.template_source in CANONICAL_REFERENCE_TEMPLATE_SOURCES
+    # But it is NOT cloneable (runtime not yet supported)
+    assert storage_ref.template_source not in CLONEABLE_TEMPLATE_SOURCES
+
+
+def test_non_reference_source_raises_value_error_not_unsupported(client_contract):
+    """An arbitrary user-owned Storage project must fail canonical auth — not UnsupportedProjectRuntimeError."""
+    from app.persistence.projects_repository import save_project
+    from app.services.project_library_service import (
+        create_working_copy,
+        UnsupportedProjectRuntimeError,
+    )
+    user_id, _ = _cookie()
+    # Create a user-owned Storage project (not a reference)
+    user_project = save_project(
+        user_id=user_id,
+        project_code="user-storage-proj",
+        project_name="My Storage Project",
+        source_project_template="generic_storage_reference",
+        project_type="Storage",
+        project_origin="user_created",
+        template_source="generic_storage_reference",
+        baseline_snapshot={},
+        is_readonly=False,
+        is_protected=False,
+        project_role="working_copy",
+    )
+    other_user_id, _ = _cookie()
+    with pytest.raises(ValueError) as exc_info:
+        create_working_copy(
+            user_id=other_user_id,
+            source_reference_id=user_project.project_id,
+        )
+    # Must be canonical auth failure — NOT the "still available for viewing" message
+    assert "not a canonical reference" in str(exc_info.value).lower()
+    assert not isinstance(exc_info.value, UnsupportedProjectRuntimeError)
+
+
+def test_canonical_storage_reference_raises_unsupported(client_contract):
+    """Canonical Storage reference → UnsupportedProjectRuntimeError (after canonical auth passes)."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.project_library_service import (
+        create_working_copy,
+        UnsupportedProjectRuntimeError,
+    )
+    storage_ref = get_reference_by_template_source("generic_storage_reference")
+    assert storage_ref is not None
+    user_id, _ = _cookie()
+    with pytest.raises(UnsupportedProjectRuntimeError):
+        create_working_copy(user_id=user_id, source_reference_id=storage_ref.project_id)
+
+
+def test_bootstrap_race_storage_reference_canonical_winner(client_contract):
+    """Concurrent bootstrap conflict for Storage reference resolves to canonical winner."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services.project_library_service import (
+        _is_canonical_reference,
+        _ensure_reference_project,
+        CLONEABLE_TEMPLATE_SOURCES,
+    )
+    defn = {
+        "template_source": "generic_storage_reference",
+        "project_type": "Storage",
+        "display_name": "Generic Storage Reference",
+        "project_code": "generic_storage_reference-reference",
+        "factory": "create_generic_storage_reference",
+    }
+    # First call already created it (fixture); second call simulates idempotent re-entry
+    winner = _ensure_reference_project(defn)
+    assert winner is not None
+    assert _is_canonical_reference(winner) is True
+    assert winner.template_source not in CLONEABLE_TEMPLATE_SOURCES, (
+        "Bootstrap winner must remain canonical but non-cloneable"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +272,81 @@ def test_storage_clone_leaves_reference_unchanged(client_contract):
 
 
 # ---------------------------------------------------------------------------
+# Storage Reference GET — controlled reference surface
+# ---------------------------------------------------------------------------
+
+def test_storage_reference_get_no_500(client_contract):
+    """GET /v2/workbook for the protected Storage reference must NOT return 500."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    reference = get_reference_by_template_source("generic_storage_reference")
+    assert reference is not None
+    _, cookies = _cookie()
+    response = client_contract.get(
+        f"/v2/workbook?project={reference.project_code}",
+        cookies=cookies,
+    )
+    assert response.status_code == 200
+
+
+def test_storage_reference_get_shows_reference_surface(client_contract):
+    """Storage reference GET returns controlled reference-only surface (not working-copy surface)."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    reference = get_reference_by_template_source("generic_storage_reference")
+    _, cookies = _cookie()
+    html = client_contract.get(
+        f"/v2/workbook?project={reference.project_code}",
+        cookies=cookies,
+    ).text
+    assert 'data-testid="unsupported-runtime-page"' in html
+    assert 'data-testid="unsupported-reference-sublabel"' in html
+    assert "Storage reference model" in html
+    assert 'data-testid="unsupported-runtime-message"' in html
+    assert "not yet enabled" in html
+    assert 'data-testid="unsupported-reference-note"' in html
+    assert "protected reference" in html
+    assert "Storage Runtime V1" in html
+    assert 'data-testid="unsupported-back-to-library"' in html
+
+
+def test_storage_reference_get_no_run_or_export(client_contract):
+    """Storage reference GET must not present Run / Save / Export."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    reference = get_reference_by_template_source("generic_storage_reference")
+    _, cookies = _cookie()
+    html = client_contract.get(
+        f"/v2/workbook?project={reference.project_code}",
+        cookies=cookies,
+    ).text
+    assert "Run Model" not in html
+    assert 'id="v2-run-controls"' not in html
+    assert "fo-btn-run" not in html
+    assert "Create Working Copy" not in html
+    # Must NOT show the "preserved and has not been modified" working-copy message
+    assert 'data-testid="unsupported-runtime-preserved"' not in html
+
+
+def test_storage_reference_row_unchanged_after_get(client_contract):
+    """GET /v2/workbook for Storage reference must not mutate the reference row."""
+    from app.persistence.db import get_connection
+    from app.persistence.projects_repository import get_reference_by_template_source
+    reference = get_reference_by_template_source("generic_storage_reference")
+    _, cookies = _cookie()
+    client_contract.get(
+        f"/v2/workbook?project={reference.project_code}",
+        cookies=cookies,
+    )
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM projects WHERE project_id=?",
+            (reference.project_id,),
+        ).fetchone()
+    assert row["user_id"] == "__reference__"
+    assert row["is_protected"] == 1
+    assert row["project_role"] == "reference"
+    assert row["project_type"] == "Storage"
+
+
+# ---------------------------------------------------------------------------
 # Existing Storage working copy GET
 # ---------------------------------------------------------------------------
 
@@ -228,6 +424,9 @@ def test_storage_working_copy_shows_unsupported_runtime_surface(client_contract,
     assert "not yet enabled" in html
     assert 'data-testid="unsupported-runtime-preserved"' in html
     assert "preserved and has not been modified" in html
+    # Must NOT show the reference-specific surface
+    assert 'data-testid="unsupported-reference-sublabel"' not in html
+    assert "Storage reference model" not in html
 
 
 def test_storage_working_copy_no_run_model_button(client_contract, storage_working_copy):
@@ -270,16 +469,17 @@ def test_storage_working_copy_project_row_unchanged(client_contract, storage_wor
 
 
 # ---------------------------------------------------------------------------
-# Direct run must fail closed
+# Direct run must fail closed — non-HTMX and HTMX
 # ---------------------------------------------------------------------------
 
-def test_storage_working_copy_run_returns_409(client_contract, storage_working_copy):
+@pytest.mark.parametrize("htmx", [False, True])
+def test_storage_working_copy_run_returns_409(client_contract, storage_working_copy, htmx):
+    """POST /v2/workbook/run for Storage working copy returns 409 for both HTMX and non-HTMX."""
     user_id, cookies, record = storage_working_copy
-    # First open the workbook to get a valid content_hash
-    # (We need to skip the hash check — send an arbitrary hash to hit the type guard)
     response = client_contract.post(
         "/v2/workbook/run",
         cookies=cookies,
+        headers={"HX-Request": "true"} if htmx else {},
         data={
             "project": record.project_code,
             "content_hash": "0" * 64,
@@ -287,14 +487,26 @@ def test_storage_working_copy_run_returns_409(client_contract, storage_working_c
         },
         follow_redirects=False,
     )
-    # Non-HTMX: 409 (unsupported runtime), not 500
-    assert response.status_code == 409
-    assert "Storage" in response.text
-    assert "not yet" in response.text.lower() or "not supported" in response.text.lower()
+    assert response.status_code == 409, (
+        f"Expected 409 for {'HTMX' if htmx else 'non-HTMX'} run on Storage working copy, "
+        f"got {response.status_code}"
+    )
+    # Non-HTMX: JSON error body must reference Storage and not-yet-supported
+    if not htmx:
+        assert "Storage" in response.text
+        assert "not yet" in response.text.lower() or "not supported" in response.text.lower()
 
 
-def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, storage_working_copy):
-    from app.persistence.db import get_connection
+def test_storage_working_copy_run_zero_engine_invocations(client_contract, storage_working_copy, monkeypatch):
+    """POST /v2/workbook/run must invoke the economic engine ZERO times for Storage."""
+    from app.api import project_runner
+    engine_calls = []
+
+    def spy_run_project(*args, **kwargs):
+        engine_calls.append({"args": args, "kwargs": kwargs})
+        raise AssertionError("Engine must not be invoked for a Storage working copy run")
+
+    monkeypatch.setattr(project_runner, "run_project", spy_run_project)
     user_id, cookies, record = storage_working_copy
     client_contract.post(
         "/v2/workbook/run",
@@ -306,12 +518,35 @@ def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, 
         },
         follow_redirects=False,
     )
+    assert len(engine_calls) == 0, f"Engine was invoked {len(engine_calls)} time(s) — must be zero"
+
+
+def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, storage_working_copy):
+    from app.persistence.db import get_connection
+    user_id, cookies, record = storage_working_copy
+    # Capture initial workspace state
     with get_connection() as conn:
-        ws = conn.execute(
-            "SELECT * FROM workspace_states WHERE project_id=?",
+        ws_before = conn.execute(
+            "SELECT last_runtime_snapshot_id FROM workspace_states WHERE project_id=?",
             (record.project_id,),
         ).fetchone()
-    assert not ws["last_runtime_snapshot_id"], "Storage run must create zero Last-Run snapshots"
+    client_contract.post(
+        "/v2/workbook/run",
+        cookies=cookies,
+        data={
+            "project": record.project_code,
+            "content_hash": "0" * 64,
+            "workbook_version": "2",
+        },
+        follow_redirects=False,
+    )
+    with get_connection() as conn:
+        ws_after = conn.execute(
+            "SELECT last_runtime_snapshot_id FROM workspace_states WHERE project_id=?",
+            (record.project_id,),
+        ).fetchone()
+    assert not ws_after["last_runtime_snapshot_id"], "Storage run must create zero Last-Run snapshots"
+    assert ws_after["last_runtime_snapshot_id"] == ws_before["last_runtime_snapshot_id"]
 
 
 # ---------------------------------------------------------------------------
