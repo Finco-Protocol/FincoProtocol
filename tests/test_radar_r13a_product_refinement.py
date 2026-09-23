@@ -43,6 +43,12 @@ from finco_radar.equity.models import (
 from app.radar_ui.equity_enrichment import EnrichmentState, EquityEnrichmentResult
 from app.radar_ui.equity_terminal import (
     _build_snapshot_evidence_row,
+    _build_statement_matrix,
+    _fmt_stmt_field,
+    _STMT_FIELD_TYPE_MAPS,
+    _STMT_TYPE_CURRENCY,
+    _STMT_TYPE_PER_SHARE,
+    _STMT_TYPE_SHARES,
     build_terminal_view,
 )
 from finco_radar.equity.models import (
@@ -957,3 +963,250 @@ class TestRevenueGrowthComparability:
         history[4] = replace(history[4], fiscal_quarter=None)
         result = compute_ttm_revenue_growth(history)
         assert result is not None  # fiscal check skipped; pairwise date check passes
+
+
+# ══ GROUP O: Statement compact formatting ═════════════════════════════════════
+
+def _make_stmt_snap(
+    stmt_key: str,
+    stmt_data: dict,
+    timeframe: str = "annual",
+    period_end: str = "2025-09-27",
+    ticker: str = "AAPL",
+) -> FinancialSnapshot:
+    """FinancialSnapshot with real statement data for statement matrix tests."""
+    income = _make_json_available(stmt_data) if stmt_key == "income_statement" else _make_json_absent()
+    balance = _make_json_available(stmt_data) if stmt_key == "balance_sheet" else _make_json_absent()
+    cashflow = _make_json_available(stmt_data) if stmt_key == "cash_flow_statement" else _make_json_absent()
+    return FinancialSnapshot(
+        ticker=ticker,
+        cik=None,
+        timeframe=timeframe,
+        fiscal_year="2025",
+        fiscal_quarter=None,
+        period_end=period_end,
+        filing_date=None,
+        provider="MASSIVE",
+        source_contract="MASSIVE_v2",
+        fetched_at="2026-09-21T12:46:12+00:00",
+        normalized_at=None,
+        payload_hash="abc123",
+        income_statement=income,
+        balance_sheet=balance,
+        cash_flow_statement=cashflow,
+        derived_source=_make_json_absent(),
+        derived=_make_derived(),
+    )
+
+
+def _income_row(matrix: dict, field_key: str) -> dict:
+    return next(r for r in matrix["rows"] if r["field_key"] == field_key)
+
+
+class TestStatementCompactFormatting:
+    """O — Statement matrix uses typed compact formatting for known monetary fields.
+
+    A. Revenue 416_161_000_000 USD → $416.2B
+    B. EUR monetary field → €...
+    C. GBP monetary field → £...
+    D. unknown ISO does not become $
+    E. missing currency does not become $
+    F. negative monetary amount preserved
+    G. zero monetary amount preserved
+    H. EPS is NOT displayed as B/M currency
+    I. share count is NOT currency
+    J. share count may compact as quantity
+    K. unknown numeric statement field stays raw/fail-closed
+    L. None remains —
+    M. raw JSON value remains unchanged
+    N. Income / Balance / Cash Flow matrices all covered
+    """
+
+    # A — Revenue USD compact
+    def test_a_revenue_usd_compact(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 416_161_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        row = _income_row(matrix, "revenues")
+        assert row["cells"][0] == "$416.2B"
+
+    # B — EUR monetary field
+    def test_b_revenue_eur_uses_euro_sign(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 12_300_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="EUR")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert "€" in cell
+        assert "$" not in cell
+
+    # C — GBP monetary field
+    def test_c_revenue_gbp_uses_pound_sign(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 8_100_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="GBP")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert "£" in cell
+        assert "$" not in cell
+
+    # D — unknown ISO does not fabricate $
+    def test_d_unknown_iso_no_dollar(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 12_300_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="JPY")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert "JPY" in cell
+        assert "$" not in cell
+
+    # E — missing currency does not fabricate $
+    def test_e_missing_currency_no_dollar(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 416_161_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency=None)
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert "$" not in cell
+        assert "B" in cell  # compact notation still applied
+
+    # F — negative monetary amount preserved
+    def test_f_negative_monetary_preserved(self):
+        snap = _make_stmt_snap("income_statement", {"net_income_loss": -5_000_000_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "net_income_loss")["cells"][0]
+        assert "-" in cell
+        assert "$" in cell
+        assert "B" in cell
+
+    # G — zero monetary amount preserved (not "—")
+    def test_g_zero_monetary_preserved(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": 0.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert cell == "$0"
+        assert cell != "—"
+
+    # H — EPS not displayed as B/M currency
+    def test_h_eps_not_compact_currency(self):
+        snap = _make_stmt_snap("income_statement", {"basic_earnings_per_share": 6.11})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "basic_earnings_per_share")["cells"][0]
+        assert "B" not in cell
+        assert "M" not in cell
+        assert cell == "6.11"
+
+    def test_h_diluted_eps_not_compact_currency(self):
+        snap = _make_stmt_snap("income_statement", {"diluted_earnings_per_share": 6.08})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "diluted_earnings_per_share")["cells"][0]
+        assert cell == "6.08"
+        assert "$" not in cell
+
+    # I — share count is NOT currency
+    def test_i_share_count_no_currency_symbol(self):
+        snap = _make_stmt_snap("income_statement", {"basic_average_shares": 15_408_095_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "basic_average_shares")["cells"][0]
+        assert "$" not in cell
+
+    # J — share count may compact as quantity
+    def test_j_share_count_compact_quantity(self):
+        snap = _make_stmt_snap("income_statement", {"basic_average_shares": 15_408_095_000.0})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "basic_average_shares")["cells"][0]
+        assert "B" in cell  # compact notation applied
+        assert "$" not in cell
+        assert "15.4" in cell
+
+    # K — unknown numeric statement field stays raw
+    def test_k_unknown_field_stays_raw(self):
+        snap = _make_stmt_snap("income_statement", {"some_unknown_metric": 12345.67})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        unknown_row = next(
+            (r for r in matrix["rows"] if r["field_key"] == "some_unknown_metric"), None
+        )
+        assert unknown_row is not None
+        # Raw fallback: _fmt_float(12345.67, precision=2) → "12,345.67"
+        assert "$" not in unknown_row["cells"][0]
+        assert "12,345" in unknown_row["cells"][0]
+
+    # L — None remains "—"
+    def test_l_none_remains_dash(self):
+        snap = _make_stmt_snap("income_statement", {"revenues": None})
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert cell == "—"
+
+    # M — raw JSON value remains unchanged (presentation only)
+    def test_m_raw_json_value_unchanged(self):
+        raw_value = 416_161_000_000.0
+        snap = _make_stmt_snap("income_statement", {"revenues": raw_value})
+        # Source value in the snapshot's income_statement JSON is not mutated
+        assert snap.income_statement.value["revenues"] == raw_value
+        # Matrix cell is formatted for display
+        matrix = _build_statement_matrix([snap], "income_statement", currency="USD")
+        cell = _income_row(matrix, "revenues")["cells"][0]
+        assert cell == "$416.2B"
+        # Source still unmodified after building matrix
+        assert snap.income_statement.value["revenues"] == raw_value
+
+    # N — all three statement matrices covered
+
+    def test_n_balance_sheet_monetary_compact(self):
+        snap = _make_stmt_snap("balance_sheet", {"assets": 364_980_000_000.0})
+        matrix = _build_statement_matrix([snap], "balance_sheet", currency="USD")
+        row = next(r for r in matrix["rows"] if r["field_key"] == "assets")
+        assert row["cells"][0] == "$365.0B"
+
+    def test_n_balance_sheet_eur(self):
+        snap = _make_stmt_snap("balance_sheet", {"equity": 22_140_000_000.0})
+        matrix = _build_statement_matrix([snap], "balance_sheet", currency="EUR")
+        row = next(r for r in matrix["rows"] if r["field_key"] == "equity")
+        assert "€" in row["cells"][0]
+        assert "$" not in row["cells"][0]
+
+    def test_n_cash_flow_monetary_compact(self):
+        snap = _make_stmt_snap("cash_flow_statement",
+                               {"net_cash_flow_from_operating_activities": 118_254_000_000.0})
+        matrix = _build_statement_matrix([snap], "cash_flow_statement", currency="USD")
+        row = next(r for r in matrix["rows"]
+                   if r["field_key"] == "net_cash_flow_from_operating_activities")
+        assert row["cells"][0] == "$118.3B"
+
+    def test_n_cash_flow_negative_preserved(self):
+        snap = _make_stmt_snap("cash_flow_statement",
+                               {"net_cash_flow_from_investing_activities": -30_000_000_000.0})
+        matrix = _build_statement_matrix([snap], "cash_flow_statement", currency="USD")
+        row = next(r for r in matrix["rows"]
+                   if r["field_key"] == "net_cash_flow_from_investing_activities")
+        assert "-" in row["cells"][0]
+        assert "$" in row["cells"][0]
+
+    # _fmt_stmt_field direct unit tests
+
+    def test_fmt_stmt_field_currency_none_returns_dash(self):
+        assert _fmt_stmt_field(None, _STMT_TYPE_CURRENCY, "USD") == "—"
+
+    def test_fmt_stmt_field_per_share_none_returns_dash(self):
+        assert _fmt_stmt_field(None, _STMT_TYPE_PER_SHARE, "USD") == "—"
+
+    def test_fmt_stmt_field_shares_none_returns_dash(self):
+        assert _fmt_stmt_field(None, _STMT_TYPE_SHARES, "USD") == "—"
+
+    def test_fmt_stmt_field_unknown_none_returns_dash(self):
+        assert _fmt_stmt_field(None, None, "USD") == "—"
+
+    def test_fmt_stmt_field_currency_non_numeric_raw_fallback(self):
+        # A string value for a typed field → raw fallback, not crash
+        result = _fmt_stmt_field("N/A", _STMT_TYPE_CURRENCY, "USD")
+        assert result == "N/A"
+
+    def test_fmt_stmt_field_type_maps_cover_all_income_currency_fields(self):
+        income_types = _STMT_FIELD_TYPE_MAPS["income_statement"]
+        assert income_types["revenues"] == _STMT_TYPE_CURRENCY
+        assert income_types["basic_earnings_per_share"] == _STMT_TYPE_PER_SHARE
+        assert income_types["diluted_earnings_per_share"] == _STMT_TYPE_PER_SHARE
+        assert income_types["basic_average_shares"] == _STMT_TYPE_SHARES
+        assert income_types["diluted_average_shares"] == _STMT_TYPE_SHARES
+
+    def test_fmt_stmt_field_type_maps_balance_all_currency(self):
+        balance_types = _STMT_FIELD_TYPE_MAPS["balance_sheet"]
+        for field_key, ftype in balance_types.items():
+            assert ftype == _STMT_TYPE_CURRENCY, f"{field_key} expected CURRENCY_AMOUNT"
+
+    def test_fmt_stmt_field_type_maps_cashflow_all_currency(self):
+        cashflow_types = _STMT_FIELD_TYPE_MAPS["cash_flow_statement"]
+        for field_key, ftype in cashflow_types.items():
+            assert ftype == _STMT_TYPE_CURRENCY, f"{field_key} expected CURRENCY_AMOUNT"

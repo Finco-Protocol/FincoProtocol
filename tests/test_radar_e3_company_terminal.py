@@ -2364,9 +2364,9 @@ def test_t92_matrix_real_data_key_labels():
     assert row_map["diluted_earnings_per_share"] == "EPS (Diluted)"
     assert row_map["basic_average_shares"] == "Shares (Basic)"
     assert row_map["diluted_average_shares"] == "Shares (Diluted)"
-    # Values formatted correctly
+    # Values formatted correctly (Correction B: monetary fields compact, EPS decimal)
     cells_map = {r["field_key"]: r["cells"][0] for r in result["rows"]}
-    assert cells_map["net_income_loss"] == "96,150,000,000.00"
+    assert cells_map["net_income_loss"] == "96.2B"
     assert cells_map["basic_earnings_per_share"] == "6.16"
 
 
