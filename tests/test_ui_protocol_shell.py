@@ -1229,12 +1229,12 @@ class TestE3CompanyTerminal:
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
         assert "Revenue" in body_text, "Revenue label missing from annual income statement"
-        assert "26,001,111,000" in body_text, (
-            "Distinctive NVDA annual revenue (26,001,111,000) missing from income statement matrix"
+        assert "$26.0B" in body_text, (
+            "Distinctive NVDA annual revenue ($26.0B compact) missing from income statement matrix"
         )
         assert "Net Income" in body_text, "Net Income label missing from annual income statement"
-        assert "9,000,444,000" in body_text, (
-            "Distinctive NVDA annual net income (9,000,444,000) missing from income statement matrix"
+        assert "$9.0B" in body_text, (
+            "Distinctive NVDA annual net income ($9.0B compact) missing from income statement matrix"
         )
         page.close()
 
@@ -1247,11 +1247,11 @@ class TestE3CompanyTerminal:
         )
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "7,001,111,000" in body_text, (
-            "Distinctive NVDA quarterly revenue (7,001,111,000) missing from quarterly income statement"
+        assert "$7.0B" in body_text, (
+            "Distinctive NVDA quarterly revenue ($7.0B compact) missing from quarterly income statement"
         )
-        assert "26,001,111,000" not in body_text, (
-            "Annual-only NVDA revenue (26,001,111,000) unexpectedly present in quarterly view"
+        assert "$26.0B" not in body_text, (
+            "Annual-only NVDA revenue ($26.0B compact) unexpectedly present in quarterly view"
         )
         page.close()
 
@@ -1265,8 +1265,8 @@ class TestE3CompanyTerminal:
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
         assert "Total Assets" in body_text, "Total Assets label missing from balance sheet"
-        assert "65,000,555,000" in body_text, (
-            "Distinctive NVDA annual total assets (65,000,555,000) missing from balance sheet"
+        assert "$65.0B" in body_text, (
+            "Distinctive NVDA annual total assets ($65.0B compact) missing from balance sheet"
         )
         page.close()
 
@@ -1282,8 +1282,8 @@ class TestE3CompanyTerminal:
         assert "Operating Cash Flow" in body_text, (
             "Operating Cash Flow label missing from cash flow statement"
         )
-        assert "11,000,999,000" in body_text, (
-            "Distinctive NVDA annual operating cash flow (11,000,999,000) missing from cash flow statement"
+        assert "$11.0B" in body_text, (
+            "Distinctive NVDA annual operating cash flow ($11.0B compact) missing from cash flow statement"
         )
         page.close()
 
@@ -1332,11 +1332,11 @@ class TestE3CompanyTerminal:
                   "?tab=financials&timeframe=annual&statement=income")
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
-        assert "49,001,111,000" in body_text, (
-            "JPM-specific annual revenue sentinel (49,001,111,000) missing from JPM financial panel"
+        assert "$49.0B" in body_text, (
+            "JPM-specific annual revenue ($49.0B compact) missing from JPM financial panel"
         )
-        assert "26,001,111,000" not in body_text, (
-            "NVDA annual revenue (26,001,111,000) unexpectedly present on JPM terminal"
+        assert "$26.0B" not in body_text, (
+            "NVDA annual revenue ($26.0B compact) unexpectedly present on JPM terminal"
         )
         page.close()
 
