@@ -1104,6 +1104,47 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
 
     project_editable = not is_protected_reference(project_record)
 
+    # Fail-closed unsupported-runtime guard — covers ALL Storage projects before
+    # any resolver (CAPEX/OPEX/tax/debt) is invoked.  The Solar/Wind-only adapter
+    # must never be reached with an unsupported project type.
+    # Two surfaces are distinguished: canonical protected reference vs user-owned.
+    _project_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
+    if _project_type_lower == "storage":
+        from app.utils.workbook_flag import project_workbook_url as _wbu
+        _storage_ref_url = _wbu("generic_storage_reference-reference")
+        if is_protected_reference(project_record):
+            # Storage canonical reference — reference-only controlled surface.
+            return _templates.TemplateResponse(
+                request=request,
+                name="unsupported_workbook.html",
+                context={
+                    "user": user,
+                    "project_code": project,
+                    "project_name": project_record.project_name or project,
+                    "project_type": project_record.project_type or "Storage",
+                    "is_reference": True,
+                    "library_url": "/library",
+                    "reference_url": _storage_ref_url,
+                    "reference_label": "Back to Model Workspace",
+                },
+            )
+        # User-owned Storage project (any role) — controlled unsupported surface.
+        # The project row is not touched.
+        return _templates.TemplateResponse(
+            request=request,
+            name="unsupported_workbook.html",
+            context={
+                "user": user,
+                "project_code": project,
+                "project_name": project_record.project_name or project,
+                "project_type": project_record.project_type or "Storage",
+                "is_reference": False,
+                "library_url": "/library",
+                "reference_url": _storage_ref_url,
+                "reference_label": "View Storage Reference",
+            },
+        )
+
     flash_error = ""
     raw_err = request.query_params.get("v2_err", "")
     if raw_err:
@@ -1728,6 +1769,32 @@ async def v2_workbook_run(
         msg = "Workspace not found."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
 
+    # ── Step 2b: unsupported project-type guard ───────────────────────────── #
+    # Must come BEFORE the hash check so Storage projects always receive 409
+    # (both HTMX and non-HTMX) rather than a stale-hash 303 redirect.
+    # Covers all user-owned Storage projects (not just working_copy role) via
+    # the is_protected_reference check — the capability boundary is
+    # "protected reference" vs "user-owned editable project".
+    _run_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
+    if _run_type_lower not in ("solar", "wind") and not is_protected_reference(project_record):
+        _raw_type = project_record.project_type or "Unknown"
+        msg = (
+            f"{_raw_type} working-copy runtime is not yet supported. "
+            "This project has not been modified. Return to the Model Workspace."
+        )
+        if is_htmx:
+            # Return 409 with banner fragment; HTMX callers must also receive
+            # a real non-success status — do not return 200 for HTMX here.
+            banner_html = _templates.get_template("partials/_v2_status_banner.html").render({
+                "ws_dirty": getattr(ws, "dirty", True),
+                "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
+                "field_error": msg,
+                "flash_error": "",
+            })
+            oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+            return HTMLResponse(content=oob, status_code=409)
+        return JSONResponse({"error": msg}, status_code=409)
+
     # ── Step 3: V2 runtime origin ──────────────────────────────────────────── #
     # V2 runs always materialise from draft_snapshot and promote it to
     # saved_snapshot atomically.  The legacy runtime_guard_for_snapshot blocks
@@ -1801,11 +1868,17 @@ async def v2_workbook_run(
     elif project_type_raw == "wind":
         runtime_project_key = "Wind"
     else:
+        # Unsupported runtime — Storage and any future unimplemented types.
+        # HTMX: 200 + banner fragment (HTMX pattern); non-HTMX: 409 Conflict so
+        # callers and tests receive a distinct 4xx rather than a redirect.
+        _raw_type = project_record.project_type or "Unknown"
         msg = (
-            f"Unsupported project type {project_record.project_type!r}. "
-            "Only Solar and Wind projects can be run from Workbook V2."
+            f"{_raw_type} working-copy runtime is not yet supported. "
+            "This project has not been modified. Return to the Model Workspace."
         )
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if is_htmx:
+            return _htmx_error(msg, ws)
+        return JSONResponse({"error": msg}, status_code=409)
 
     # ── Step 7: materialise from draft snapshot ────────────────────────────── #
     # draft_snapshot is the V2 canonical run boundary: it contains the exact

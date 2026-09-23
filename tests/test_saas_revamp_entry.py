@@ -23,7 +23,7 @@ def _cookie():
 
 
 @pytest.mark.parametrize("source", [
-    "generic_solar_reference", "generic_wind_reference", "generic_storage_reference",
+    "generic_solar_reference", "generic_wind_reference",
 ])
 @pytest.mark.parametrize("htmx", [False, True])
 def test_reference_clone_opens_independent_working_project(client_with_references, source, htmx):
@@ -52,13 +52,37 @@ def test_reference_clone_opens_independent_working_project(client_with_reference
     assert copy["project_code"] in destination and destination.startswith("/v2/workbook?")
 
 
+@pytest.mark.parametrize("htmx", [False, True])
+def test_storage_reference_clone_returns_400_and_creates_no_project(client_with_references, htmx):
+    from app.persistence.db import get_connection
+    from app.persistence.projects_repository import get_reference_by_template_source
+    reference = get_reference_by_template_source("generic_storage_reference")
+    assert reference and reference.project_role == "reference" and reference.is_protected
+    user_id, cookies = _cookie()
+    response = client_with_references.post(
+        f"/library/clone/{reference.project_id}",
+        cookies=cookies,
+        headers={"HX-Request": "true"} if htmx else {},
+        follow_redirects=False,
+    )
+    assert response.status_code == 400
+    assert "Storage" in response.text
+    assert "coming soon" in response.text.lower() or "not yet" in response.text.lower()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM projects WHERE user_id=?", (user_id,)).fetchall()
+        original = conn.execute("SELECT * FROM projects WHERE project_id=?", (reference.project_id,)).fetchone()
+    assert len(rows) == 0, "Storage clone must create ZERO project rows"
+    assert original["user_id"] == "__reference__" and original["is_protected"], "Reference must be unchanged"
+
+
 def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     _, cookies = _cookie()
     response = client_with_references.get("/library", cookies=cookies)
     assert response.status_code == 200
     html = response.text
     assert "Model Workspace" in html and "Reference Templates" in html
-    assert html.count("Create working copy") == 3
+    assert html.count("Create working copy") == 2
+    assert "Working-copy runtime coming soon" in html
     assert 'id="fo-kpi-strip"' not in html
     assert 'id="fo-btn-run"' not in html
     assert 'id="project-sidebar"' not in html

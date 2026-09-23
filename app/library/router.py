@@ -213,6 +213,7 @@ async def project_library_clone(
     from app.services.project_library_service import (
         create_working_copy,
         ProtectedProjectError,
+        UnsupportedProjectRuntimeError,
     )
 
     try:
@@ -221,6 +222,11 @@ async def project_library_clone(
             source_reference_id=source_project_id,
             requested_name=requested_name or None,
         )
+    except UnsupportedProjectRuntimeError as exc:
+        msg = f"{exc.project_type} working-copy runtime is not yet available. The reference model is still accessible for viewing."
+        if request.headers.get("HX-Request") == "true":
+            return HTMLResponse(f'<p role="alert">{msg}</p>', status_code=400)
+        return JSONResponse({"error": msg}, status_code=400)
     except (ValueError, ProtectedProjectError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except Exception as exc:

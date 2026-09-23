@@ -48,6 +48,20 @@ class ProtectedProjectError(Exception):
         super().__init__(f"Project '{project_name}' is a protected reference and cannot be modified.")
 
 
+class UnsupportedProjectRuntimeError(Exception):
+    """Raised when a clone is requested for a project type whose user-project
+    runtime is not yet supported.  The reference remains available for viewing;
+    only working-copy creation is blocked until the corresponding runtime phase
+    is formally released.
+    """
+    def __init__(self, project_type: str = ""):
+        self.project_type = project_type
+        super().__init__(
+            f"{project_type} working-copy runtime is not yet supported. "
+            "The reference model is still available for viewing."
+        )
+
+
 class ReferenceBootstrapError(RuntimeError):
     """Raised when the canonical-reference bootstrap cannot resolve a
     uniqueness conflict to a winning canonical record.
@@ -96,22 +110,37 @@ def is_protected_reference(project_record) -> bool:
 # Strict clone authorization
 # ---------------------------------------------------------------------------
 
-CLONEABLE_TEMPLATE_SOURCES = frozenset({"generic_wind_reference", "generic_solar_reference", "generic_storage_reference"})
+# All canonical reference template sources — includes types not yet cloneable.
+# Used by _is_canonical_reference() to verify a protected reference row.
+CANONICAL_REFERENCE_TEMPLATE_SOURCES = frozenset({
+    "generic_wind_reference",
+    "generic_solar_reference",
+    "generic_storage_reference",
+})
+
+# Subset of CANONICAL_REFERENCE_TEMPLATE_SOURCES for which working-copy
+# creation is currently supported.  Storage remains canonical-but-not-cloneable
+# until Storage Runtime V1 is released.
+CLONEABLE_TEMPLATE_SOURCES = frozenset({"generic_wind_reference", "generic_solar_reference"})
 
 
 def _is_canonical_reference(source) -> bool:
-    """Strict clone authorization — source must satisfy ALL criteria.
+    """Return True iff source is a fully-explicit canonical protected reference.
+
+    Uses CANONICAL_REFERENCE_TEMPLATE_SOURCES (not CLONEABLE_TEMPLATE_SOURCES)
+    so that Storage remains a canonical protected reference even though its
+    working-copy runtime is not yet supported.
 
     This is stricter than is_protected_reference() which accepts legacy
-    composite combinations.  For cloning, we require the full explicit
-    contract so that user-owned factory_template rows (pre-migration)
+    composite combinations.  For clone authorization we require the full
+    explicit contract so that user-owned factory_template rows (pre-migration)
     cannot be cloned via this service.
     """
     return (
         getattr(source, "user_id", None) == "__reference__"
         and getattr(source, "project_role", None) == "reference"
         and bool(getattr(source, "is_protected", False))
-        and getattr(source, "template_source", None) in CLONEABLE_TEMPLATE_SOURCES
+        and getattr(source, "template_source", None) in CANONICAL_REFERENCE_TEMPLATE_SOURCES
         and not bool(getattr(source, "archived", True))
     )
 
@@ -317,11 +346,22 @@ def create_working_copy(
     source = get_project_by_id(source_reference_id)
     if source is None:
         raise ValueError(f"Source project {source_reference_id!r} not found.")
+    # Step 1b — canonical authorization first (before cloneability check).
+    # A non-reference source (user-owned project, arbitrary ID) must never reach
+    # the cloneability path.  An arbitrary user-owned Storage project ID must not
+    # receive the "reference model still available for viewing" message.
     if not _is_canonical_reference(source):
         raise ValueError(
             f"Project {source_reference_id!r} (role={getattr(source, 'project_role', None)!r}) "
             "is not a canonical reference model and cannot be cloned via this service."
         )
+    # Step 1c — cloneability check.
+    # Canonical references whose runtime is not yet supported raise a typed
+    # UnsupportedProjectRuntimeError so the clone route can return a helpful
+    # 400 response.  The reference itself remains viewable.
+    if getattr(source, "template_source", None) not in CLONEABLE_TEMPLATE_SOURCES:
+        _source_type = (getattr(source, "project_type", "") or "").strip()
+        raise UnsupportedProjectRuntimeError(_source_type)
 
     # Step 2 — determine default name
     if requested_name:
