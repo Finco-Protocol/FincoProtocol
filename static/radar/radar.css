@@ -678,3 +678,15 @@ html, body.radar {
   .stmt-ctrl-btn { padding: 4px 8px; font-size: 11.5px; }
   .terminal-header__title-row { gap: 8px; }
 }
+.radar-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-technical-details > summary { cursor: pointer; width: fit-content; }
+.radar-technical-details > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.radar-technical-details[open] > .panel { margin-top: 0.6rem; }
+.radar-market-meta { display: block; white-space: nowrap; font-size: 10px; color: var(--radar-muted); }
+.terminal-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 900px; }
+.terminal-fundamentals-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.terminal-fundamentals-grid div { min-width: 0; padding: 0.25rem 0; }
+.terminal-fundamentals-grid span { display: block; color: var(--radar-muted); font-size: 11px; }
+.terminal-fundamentals-grid strong { display: block; font-variant-numeric: tabular-nums; font-size: 17px; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .terminal-overview-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .terminal-fundamentals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

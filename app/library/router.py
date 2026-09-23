@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import math
 import os
+import logging
+import traceback as _traceback
 from typing import Optional
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -35,6 +37,7 @@ from app.utils.workbook_flag import project_workbook_url, workbook_v2_active
 router = APIRouter()
 
 PAGE_SIZE = 20
+logger = logging.getLogger("finco.library.clone")
 
 # ---------------------------------------------------------------------------
 # Workbook destination helper
@@ -73,6 +76,19 @@ def _templates():
     return templates
 
 
+def _reference_templates(search: str | None, role: str | None):
+    from app.persistence.projects_repository import get_reference_projects
+    if role in ("working_copy", "user_project"):
+        return []
+    term = (search or "").casefold().strip()
+    order = {"generic_solar_reference": 0, "generic_wind_reference": 1, "generic_storage_reference": 2}
+    return sorted(
+        (record for record in get_reference_projects()
+         if not term or term in record.project_name.casefold()),
+        key=lambda record: order.get(record.template_source, 3),
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /library — full page
 # ---------------------------------------------------------------------------
@@ -90,15 +106,14 @@ async def project_library_page(
         return RedirectResponse(url="/login", status_code=302)
 
     from app.persistence.projects_repository import (
-        list_projects_paged,
-        get_reference_projects,
+        list_workspace_projects_paged,
     )
     from app.services.project_library_service import ensure_reference_models
 
     ensure_reference_models()
 
     page = max(1, page)
-    records, total = list_projects_paged(
+    records, total = list_workspace_projects_paged(
         user_id=user.user_id,
         page=page,
         page_size=PAGE_SIZE,
@@ -110,6 +125,7 @@ async def project_library_page(
     ctx = {
         "user": user,
         "projects": records,
+        "references": _reference_templates(search, role),
         "search": search or "",
         "role_filter": role or "",
         "page": page,
@@ -149,10 +165,10 @@ async def project_library_list(
     if not user:
         return JSONResponse({"error": "Login required"}, status_code=401)
 
-    from app.persistence.projects_repository import list_projects_paged
+    from app.persistence.projects_repository import list_workspace_projects_paged
 
     page = max(1, page)
-    records, total = list_projects_paged(
+    records, total = list_workspace_projects_paged(
         user_id=user.user_id,
         page=page,
         page_size=PAGE_SIZE,
@@ -164,6 +180,7 @@ async def project_library_list(
     ctx = {
         "user": user,
         "projects": records,
+        "references": _reference_templates(search, role),
         "search": search or "",
         "role_filter": role or "",
         "page": page,
@@ -206,6 +223,33 @@ async def project_library_clone(
         )
     except (ValueError, ProtectedProjectError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        request_id = request.scope.get("request_id", "unknown")
+        _tb = exc.__traceback__
+        if _tb is not None:
+            while _tb.tb_next is not None:
+                _tb = _tb.tb_next
+            _tb_module = os.path.basename(_tb.tb_frame.f_code.co_filename).replace("\n", "_").replace("\r", "_")
+            _tb_function = _tb.tb_frame.f_code.co_name.replace("\n", "_").replace("\r", "_")
+            _tb_lineno = _tb.tb_lineno
+        else:
+            _tb_module = _tb_function = "unknown"
+            _tb_lineno = 0
+        logger.error(
+            "clone_failed request_id=%s route=project_library_clone source_project_id=%s "
+            "session_type=%s exception_type=%s module=%s function=%s lineno=%d",
+            request_id, source_project_id.replace("\n", "_").replace("\r", "_")[:128],
+            type(user).__name__, type(exc).__name__,
+            _tb_module, _tb_function, _tb_lineno,
+        )
+        message = ("Could not create a working copy. Please try again or contact support "
+                   f"with reference {request_id}.")
+        if request.headers.get("HX-Request") == "true":
+            return HTMLResponse(f'<p role="alert">{message}</p>', status_code=500)
+        return HTMLResponse(
+            f'<!doctype html><html><title>Working copy unavailable</title><body><h1>Working copy unavailable</h1><p>{message}</p><a href="/library">Back to Model Workspace</a></body></html>',
+            status_code=500,
+        )
 
     dest = workbook_destination(new_project.project_code)
     is_htmx = request.headers.get("HX-Request") == "true"

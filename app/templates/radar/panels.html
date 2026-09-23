@@ -11,8 +11,8 @@
   <div class="radar-summary__cell">
     <div class="radar-summary__label">Reference</div>
     {% if view.reference.available %}
-    <div class="radar-summary__value">{{ view.reference.fields.price }}</div>
-    <div class="radar-summary__sub">{{ view.reference.fields.source }}</div>
+    <div class="radar-summary__value" title="Exact price: {{ view.reference.fields.price }}">{{ view.reference.fields.price | market_price }}</div>
+    <div class="radar-summary__sub">Observed {{ view.reference.fields.observedAt or '—' }}</div>
     {% else %}
     <div class="radar-summary__value radar-summary__value--unavail">UNAVAILABLE</div>
     {% endif %}
@@ -20,7 +20,7 @@
   <div class="radar-summary__cell">
     <div class="radar-summary__label">Executable</div>
     {% if view.execution.available and view.execution.fields.effectivePrice %}
-    <div class="radar-summary__value">{{ view.execution.fields.effectivePrice }}</div>
+    <div class="radar-summary__value" title="Exact price: {{ view.execution.fields.effectivePrice }}">{{ view.execution.fields.effectivePrice | market_price }}</div>
     <div class="radar-summary__sub">{{ view.execution.fields.side }} ${{ view.execution.fields.notionalUsd | intcomma }}</div>
     {% elif view.execution.available %}
     <div class="radar-summary__value" style="font-size:13px;">{{ view.execution.fields.status }}</div>
@@ -51,7 +51,7 @@
 
 <!-- ── Identity ── -->
 <section class="panel panel-identity" data-panel="identity" data-snapshot-id="{{ view.snapshot_id }}">
-  <h2>Identity</h2>
+  <h2>Market Identity</h2>
   <dl class="kv">
     <dt>Asset / economic UID</dt>
     <dd>{% if view.identity.economicAssetUid %}{{ view.identity.economicAssetUid }}{% else %}<span class="state-unavailable">UNAVAILABLE</span>{% endif %}</dd>
@@ -63,6 +63,7 @@
 </section>
 
 <!-- ── Snapshot / Acquisition ── -->
+<details class="radar-technical-details"><summary>Acquisition and provider details</summary>
 <section class="panel panel-snapshot" data-panel="snapshot" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Acquisition snapshot</h2>
   <dl class="kv">
@@ -83,6 +84,7 @@
     </dd>
   </dl>
 </section>
+</details>
 
 <!-- ── Reference ── -->
 <section class="panel panel-reference" data-panel="reference" data-snapshot-id="{{ view.snapshot_id }}">
@@ -90,8 +92,8 @@
   {% if view.reference.available %}
   <dl class="kv">
     <dt>Reference price</dt>
-    <dd class="mono big">{{ inspector_link(view.snapshot_id, "reference.price", view.reference.fields.price) }}</dd>
-    <dt>Bid / Ask</dt><dd class="mono">{{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}</dd>
+    <dd class="mono big" title="Exact price: {{ view.reference.fields.price }}">{{ inspector_link(view.snapshot_id, "reference.price", view.reference.fields.price | market_price) }}</dd>
+    <dt>Bid / Ask</dt><dd class="mono" title="Exact: {{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}">{{ view.reference.fields.bid | market_price }} / {{ view.reference.fields.ask | market_price }}</dd>
     <dt>Source</dt><dd>{{ inspector_link(view.snapshot_id, "reference.source", view.reference.fields.source) }}</dd>
     <dt>Observed / source time</dt><dd>{{ view.reference.fields.observedAt }}</dd>
     <dt>Availability</dt><dd><span class="state-available">AVAILABLE</span> <span class="muted">{{ view.reference.phase }}</span></dd>
@@ -120,7 +122,9 @@
     <dt>Quote time</dt><dd>{{ view.execution.fields.quotedAt }}</dd>
   </dl>
   {% else %}
-  <p class="state-unavailable">UNAVAILABLE{% if view.execution.reason %} — {{ view.execution.reason }}{% endif %}</p>
+  <p class="state-unavailable">Execution quote unavailable in this environment.</p>
+  <details class="radar-technical-details"><summary>Technical details</summary>
+  {% if view.execution.reason %}<p class="mono small">{{ view.execution.reason }}</p>{% endif %}
   {% if view.execution.fields.status %}
   <dl class="kv">
     <dt>Status</dt><dd>{{ view.execution.fields.status }}</dd>
@@ -129,6 +133,7 @@
   </dl>
   {% endif %}
   <p class="muted small">{{ view.execution.phase }}</p>
+  </details>
   {% endif %}
 </section>
 
@@ -144,7 +149,8 @@
     <dt>USD per settlement asset</dt><dd class="mono">{{ view.settlement.usdPerAsset }}</dd>
   </dl>
   {% else %}
-  <p class="state-unavailable">NOT CONFIGURED{% if view.settlement.reason %} — {{ view.settlement.reason }}{% endif %}</p>
+  <p class="state-unavailable">Execution settlement context is unavailable.</p>
+  <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">{{ view.settlement.reason }}</p></details>
   <p class="muted small">Execution quotes require an explicitly configured settlement reference and taker routing context; nothing is assumed.</p>
   {% endif %}
 </section>
@@ -162,8 +168,8 @@
     <dt>Authority</dt><dd><span class="muted">{{ view.gap.phase }} — consumed, not recomputed</span></dd>
   </dl>
   {% else %}
-  <p class="state-unavailable">UNAVAILABLE{% if view.gap.reason %} — {{ view.gap.reason }}{% endif %}</p>
-  <p class="muted small">{{ view.gap.phase }}</p>
+  <p class="state-unavailable">Comparison available after reference and execution prices are both present.</p>
+  <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">{{ view.gap.reason }} · {{ view.gap.phase }}</p></details>
   {% endif %}
 </section>
 

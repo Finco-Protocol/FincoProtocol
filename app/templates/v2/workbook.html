@@ -36,6 +36,11 @@
       <span class="v2-toolbar-sep">·</span>
       <a class="v2-toolbar-scenario-link" href="{{ scenario_url }}">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></a>
     </div>
+    <nav class="v2-protocol-nav" aria-label="Protocol navigation">
+      <a href="/library" aria-current="page">Model</a>
+      <a href="/radar">Radar</a>
+      <a href="/verify">Verify</a>
+    </nav>
     <div class="v2-toolbar-runtime" id="v2-toolbar-runtime-state">
       {% include "partials/_v2_toolbar_state.html" %}
     </div>
@@ -46,7 +51,6 @@
       {% include "partials/_v2_export_controls.html" %}
     </div>
   </div>
-
   {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
   <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">
     <span class="fc-value-bar-addr" id="fc-value-bar-addr" aria-label="Cell address"></span>

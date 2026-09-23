@@ -161,10 +161,11 @@
 
 {# UI-1A: legacy top-header removed — actions relocated to brand bar. #}
 
-<div class="app-layout">
+<div class="app-layout{% if project_record is not defined or project_record is none %} app-layout--no-project{% endif %}">
   {# UI-1A: nav_compression superseded by sidebar Level-1 workflow nav below. #}
   {% include "partials/workspace_tabs.html" %}
 
+  {% if project_record is defined and project_record is not none %}
   <nav class="project-sidebar" id="project-sidebar">
     <div class="ps-brand">
       <div class="ps-brand-name">FINCO Protocol</div>
@@ -320,10 +321,13 @@
       </div>
     </div>
   </nav>
+  {% endif %}
 
+  {% if project_record is defined and project_record is not none %}
   <aside class="sidebar-input" id="sidebar-input">
     {% block sidebar_input %}{% endblock %}
   </aside>
+  {% endif %}
 
   <main class="content" id="main-canvas">
     {% block body %}{% endblock %}

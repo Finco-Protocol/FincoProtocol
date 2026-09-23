@@ -9,7 +9,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
   align-items: center;
   gap: 0;
   padding: 0 0.75rem;
-  height: 2.4rem;
+  min-height: 2.6rem;
   background: #1c2333;
   color: #e0e4ef;
   position: sticky;
@@ -67,6 +67,39 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
 .v2-toolbar-run {
   flex-shrink: 0;
   margin-left: 0.5rem;
+}
+.v2-protocol-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 .65rem;
+  border-left: 1px solid #2c3555;
+  flex-shrink: 0;
+}
+.v2-protocol-nav a {
+  color: #b0bcdd;
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.v2-protocol-nav a:hover, .v2-protocol-nav a:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+.v2-protocol-nav a[aria-current="page"] { color: #fff; font-weight: 600; }
+@media (max-width: 780px) {
+  .v2-toolbar { flex-wrap:wrap; gap:.25rem .4rem; padding:.35rem .6rem; }
+  .v2-toolbar-project { flex-basis:100%; }
+  .v2-toolbar-scenario-link { overflow:hidden; text-overflow:ellipsis; }
+  .v2-protocol-nav { order:1; padding:0; gap:.55rem; border:0; }
+  .v2-toolbar-runtime { order:2; margin-left:auto; padding:0; border:0; }
+  .v2-toolbar-run { order:3; margin-left:0; }
+  .v2-toolbar-export { order:4; }
+}
+@media (max-width: 480px) {
+  .v2-toolbar-project .v2-toolbar-type, .v2-toolbar-project .v2-toolbar-sep { display:none; }
+  .v2-toolbar-project .v2-toolbar-scenario-link { font-size:.7rem; padding-left:.3rem; margin-left:0; }
+  .v2-toolbar-runtime { margin-left:0; }
+  .v2-toolbar-run, .v2-toolbar-export { min-width:0; }
 }
 
 /* ── Toolbar runtime state chip ──────────────────────────────── */
@@ -248,6 +281,59 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
 }
 .v2-field-input:hover  { border-color: #d1d5db; background: #fafafa; }
 .v2-field-input:focus  { border-color: #2563eb; outline: none; background: #fff; }
+
+/* Model workspace form layout: keep registry bindings and Save behaviour. */
+#v2-sheet-project-setup .v2-section,
+#v2-sheet-revenue .v2-inputs-section,
+#v2-sheet-senior-debt .v2-inputs-section,
+#v2-sheet-capex .v2-capex-group,
+#v2-sheet-opex .v2-opex-group {
+  border: 1px solid #e1e6ef;
+  border-radius: 8px;
+  background: #fff;
+  margin-bottom: .85rem;
+  overflow: hidden;
+}
+#v2-sheet-project-setup .v2-section-label { padding:.75rem 1rem; margin:0; background:#f7f9fc; border-bottom:1px solid #e1e6ef; }
+#v2-sheet-project-setup .v2-section-fields,
+#v2-sheet-revenue .v2-section-fields,
+#v2-sheet-senior-debt #nav-debt-assumptions + .v2-section-fields {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.65rem;
+  padding:.8rem;
+}
+#v2-sheet-project-setup .v2-field-row,
+#v2-sheet-revenue .v2-section-fields > .v2-field-row,
+#v2-sheet-senior-debt #nav-debt-assumptions + .v2-section-fields > .v2-field-row {
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:.3rem;
+  align-content:start;
+  border:1px solid #e5e7eb;
+  border-radius:6px;
+  padding:.55rem .7rem;
+}
+#v2-sheet-project-setup .v2-field-input,
+#v2-sheet-revenue .v2-field-input,
+#v2-sheet-senior-debt .v2-field-input,
+#v2-sheet-capex .v2-field-input,
+#v2-sheet-opex .v2-field-input {
+  min-height:38px;
+  border:1px solid #cbd5e1;
+  border-radius:5px;
+  background:#fff;
+  font-variant-numeric:tabular-nums;
+}
+#v2-sheet-project-setup .v2-field-readonly .v2-field-value,
+#v2-sheet-revenue .v2-field-readonly .v2-field-value,
+#v2-sheet-senior-debt .v2-field-readonly .v2-field-value { min-height:38px; display:flex; align-items:center; }
+@media (max-width:700px) {
+  #v2-sheet-project-setup .v2-section-fields,
+  #v2-sheet-revenue .v2-section-fields,
+  #v2-sheet-senior-debt #nav-debt-assumptions + .v2-section-fields { grid-template-columns:minmax(0,1fr); }
+}
 .v2-field-save {
   font-size: 0.73rem;
   padding: 0.1rem 0.4rem;
@@ -1576,15 +1662,18 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 /* ── Charts ──────────────────────────────────────────────────── */
 .v2-overview-charts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2,minmax(0,1fr));
   gap: 1rem;
   margin-bottom: 1rem;
 }
+.v2-kpi-break { grid-column:1 / -1; height:1px; background:#e5e7eb; }
+.v2-chart-unit { font-size:.72rem; font-weight:400; color:#6b7280; white-space:nowrap; }
 @media (max-width: 768px) {
-  .v2-overview-charts { grid-template-columns: 1fr; }
+  .v2-overview-charts { grid-template-columns: minmax(0,1fr); }
 }
-.v2-overview-chart-section { margin-bottom: 0; }
+.v2-overview-chart-section { margin-bottom: 0; min-width:0; }
 .v2-overview-chart {
+  min-width:0;
   min-height: 120px;
   background: #fff;
   border: 1px solid #e5e7eb;

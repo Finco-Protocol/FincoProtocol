@@ -1,12 +1,15 @@
 """Radar v1 UI router (P2/P6/P7/P9).
 
-Browser-reachable surface.  Routes NEVER call providers directly and
-NEVER import private live_proof helpers:
+Browser-reachable surface. Snapshot/details routes never call providers
+directly and never import private live_proof helpers. The separate read-only
+market endpoints use the canonical Robinhood bound-reference adapter:
 
 - ``GET  /radar``                                 page shell with live universe
 - ``POST /radar/refresh``                         ONE acquire -> ONE snapshot_id
 - ``GET  /radar/snapshot/{snapshot_id}``          re-render panels (network-free)
 - ``GET  /radar/inspector/{snapshot_id}/{field}`` Evidence Inspector (network-free)
+- ``GET  /radar/market/board``                 cached featured references
+- ``GET  /radar/market/asset/{uid}``          cached selected reference
 
 Every detail endpoint takes the exact ``snapshot_id`` and reads through
 the P1 ``AcquisitionService.get_snapshot`` network-free path.  No HTMX
@@ -29,14 +32,16 @@ Stale-identity prevention:
 from __future__ import annotations
 
 import os
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
 from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
+from app.radar_ui.market_read import MarketReadService, board_metadata, normalize_asset_uid
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
 # Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
@@ -73,7 +78,59 @@ def _intcomma(v):
 
 _templates.env.filters["intcomma"] = _intcomma
 
+
+def _market_price_display(value):
+    """USD display precision only; the snapshot and inspector retain exact text."""
+    if value is None or str(value).strip() == "":
+        return "—"
+    try:
+        price = Decimal(str(value))
+        if not price.is_finite():
+            return str(value)
+        rounded = price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        sign = "-" if rounded.is_signed() and rounded != 0 else ""
+        return f"{sign}${abs(rounded):,.2f}"
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+
+_templates.env.filters["market_price"] = _market_price_display
+
 _service_instance = None
+_market_read_service = MarketReadService()
+
+
+def set_market_read_service(service) -> None:
+    """Inject a deterministic read-only market service for offline tests."""
+    global _market_read_service
+    _market_read_service = service
+
+
+def _market_display(row: dict) -> dict:
+    return {**row,
+            "price_display": _market_price_display(row.get("price")) if row.get("price") is not None else "—",
+            "bid_display": _market_price_display(row.get("bid")) if row.get("bid") is not None else "—",
+            "ask_display": _market_price_display(row.get("ask")) if row.get("ask") is not None else "—"}
+
+
+@router.get("/radar/market/board")
+async def featured_market_state():
+    rows = await run_in_threadpool(
+        _market_read_service.read, featured_symbols=_get_featured_symbols())
+    return JSONResponse({"assets": [_market_display(row) for row in rows],
+                         "board": board_metadata(rows)})
+
+
+@router.get("/radar/market/asset/{economic_asset_uid}")
+async def selected_market_state(economic_asset_uid: str):
+    try:
+        economic_asset_uid = normalize_asset_uid(economic_asset_uid)
+    except ValueError:
+        return JSONResponse({"error": "Invalid economic asset UID"}, status_code=400)
+    rows = await run_in_threadpool(
+        _market_read_service.read, uids=(economic_asset_uid,))
+    row = rows[0] if rows else MarketReadService._unavailable(economic_asset_uid)
+    return JSONResponse({"asset": _market_display(row)})
 
 
 def get_service():
@@ -162,37 +219,35 @@ def _load_equity_and_featured_board(
             symbol_to_assets[sym_upper] = []
         symbol_to_assets[sym_upper].append(a)
 
-    # Featured assets in configured order:
-    #   0 matches  → skip (not in live universe)
-    #   1 match    → include
-    #   >1 matches → skip (ambiguous; do not silently choose)
+    # Preserve one board position per requested symbol, including unresolved ones.
     featured_assets = []
     for sym in featured_symbols:
         matches = symbol_to_assets.get(sym.upper(), [])
-        if len(matches) == 1:
-            featured_assets.append(matches[0])
+        featured_assets.append(matches[0] if len(matches) == 1 else None)
 
     # ONE batch read for all featured assets.
-    if featured_assets:
-        pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
+    resolved_assets = [a for a in featured_assets if a is not None]
+    if resolved_assets:
+        pairs = [(a.token_symbol, a.contract_address) for a in resolved_assets]
         featured_results = equity_enrichment.enrich_many_selected_assets(pairs)
     else:
         featured_results = ()
 
     # featured_pairs carries both identity and result for UID-first reuse below.
-    featured_pairs = list(zip(featured_assets, featured_results))
+    featured_pairs = list(zip(resolved_assets, featured_results))
 
     # Build board rows — pass token_symbol separately so UID never leaks into
     # the symbol column.
-    rows = [
-        equity_view_model.build_equity_board_row(
-            result,
-            asset_uid=asset.economic_asset_uid,
-            fallback_name=asset.token_name,
-            token_symbol=asset.token_symbol,
-        )
-        for asset, result in featured_pairs
-    ]
+    by_symbol = {
+        asset.token_symbol.upper(): equity_view_model.build_equity_board_row(
+            result, asset_uid=asset.economic_asset_uid,
+            fallback_name=asset.token_name, token_symbol=asset.token_symbol,
+        ) for asset, result in featured_pairs
+    }
+    rows = [by_symbol.get(sym.upper()) or {
+        "asset_uid": "", "symbol": sym, "company_name": "Reference unavailable",
+        "state": "UNAVAILABLE", "details_url": "/radar",
+    } for sym in featured_symbols]
 
     # Equity view for the selected asset.
     equity_view: dict = {}

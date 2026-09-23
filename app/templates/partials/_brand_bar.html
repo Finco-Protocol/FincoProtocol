@@ -13,12 +13,16 @@
     <img src="/static/logo/finco-emblem.png" alt="FINCO" class="fo-brand-bar__logo" style="background:none;border-radius:0;width:auto;height:20px;">
     <span class="fo-brand-bar__wordmark">FINCO Protocol</span>
   </div>
+  <a class="fo-brand-bar__action fo-brand-bar__action--link fo-brand-bar__nav" href="/library">Model</a>
+  <a class="fo-brand-bar__action fo-brand-bar__action--link fo-brand-bar__nav" href="/radar">Radar</a>
+  <a class="fo-brand-bar__action fo-brand-bar__action--link fo-brand-bar__nav" href="/verify">Verify</a>
 
   <span class="fo-brand-bar__divider" aria-hidden="true"></span>
 
   {# Project selector. Reads the already-rendered project name from
      project_record (same source the legacy sidebar uses). No new
      route, no new state. #}
+  {% if project_record is defined and project_record is not none %}
   <div class="fo-brand-bar__select">
     <span class="fo-brand-bar__select-label">Project</span>
     <span class="fo-brand-bar__select-value" title="{{ project_record.project_name if project_record else 'No project' }}">
@@ -36,6 +40,9 @@
       {{- active_scenario_name|default('Workspace Base') -}}
     </span>
   </div>
+  {% else %}
+  <a class="fo-brand-bar__select" href="/library"{% if request.url.path.startswith('/library') %} aria-current="page"{% endif %}>Model Workspace · Project Library</a>
+  {% endif %}
 
   <span class="fo-brand-bar__spacer"></span>
 

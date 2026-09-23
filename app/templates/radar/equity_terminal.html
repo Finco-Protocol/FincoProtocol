@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <script src="/static/radar/vendor/htmx.min.js" defer></script>
+  <script src="/static/radar/market-poll.js" defer></script>
 </head>
 <body class="radar">
 
@@ -18,6 +19,11 @@
 {% set tv = terminal %}
 
 <div class="page-container">
+<section class="panel" data-market-terminal-uid="{{ tv.economic_asset_uid if tv else '' }}" aria-label="Market reference" style="margin:0 0 14px;">
+  <strong>Market reference</strong> <span data-market-price>—</span>
+  <span class="muted small" data-market-state>Waiting for official reference.</span>
+  <span class="muted small" data-market-observed></span>
+</section>
 
 {# ── Error / unavailable ──────────────────────────────────────────────────── #}
 {% if tv and tv.state in ("ASSET_UNIVERSE_UNAVAILABLE", "ASSET_NOT_FOUND_IN_UNIVERSE", "FUNDAMENTALS_NOT_FOUND", "SOURCE_UNAVAILABLE", "FUNDAMENTALS_CONFIG_INVALID") %}
@@ -131,7 +137,22 @@
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 <div id="tab-overview" class="tab-panel" style="display:{% if tv.nav.tab == 'overview' %}block{% else %}none{% endif %};">
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:900px;">
+  {% if tv.ttm_history %}
+  {% set latest = tv.ttm_history[0] %}
+  <section class="panel" aria-label="Key fundamentals">
+    <h2>Key Fundamentals · TTM {{ latest.period_end }}</h2>
+    <div class="terminal-fundamentals-grid">
+      <div><span>Revenue</span><strong>{{ latest.revenues }}</strong></div>
+      <div><span>Revenue growth</span><strong>{{ latest.revenue_growth }}</strong></div>
+      <div><span>Gross margin</span><strong>{{ latest.gross_margin }}</strong></div>
+      <div><span>EBIT margin</span><strong>{{ latest.ebit_margin }}</strong></div>
+      <div><span>Net margin</span><strong>{{ latest.net_margin }}</strong></div>
+      <div><span>ROE</span><strong>{{ latest.return_on_equity }}</strong></div>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="terminal-overview-grid">
 
     {# Identity card #}
     <section class="panel panel-identity" data-panel="identity">
@@ -143,8 +164,7 @@
         {% if tv.identity.exchange %}<dt>Exchange</dt><dd>{{ tv.identity.exchange }}</dd>{% endif %}
         {% if tv.identity.currency %}<dt>Currency</dt><dd>{{ tv.identity.currency }}</dd>{% endif %}
         {% if tv.identity.security_type %}<dt>Security type</dt><dd>{{ tv.identity.security_type }}</dd>{% endif %}
-        {% if tv.identity.cik %}<dt>CIK</dt><dd class="mono">{{ tv.identity.cik }}</dd>{% endif %}
-        {% if tv.identity.figi %}<dt>FIGI</dt><dd class="mono">{{ tv.identity.figi }}</dd>{% endif %}
+        {# CIK/FIGI remain available in Evidence, not the ordinary overview. #}
       </dl>
       {% else %}
       <p class="muted small">Identity data not available.</p>
@@ -182,7 +202,7 @@
       <dt>{{ row.key }}</dt><dd>{{ row.value }}</dd>
       {% endfor %}
     </dl>
-    <p class="muted small" style="margin-top:8px;">Provider: {{ prof.provider }} · Fetched: {{ prof.fetched_at }}</p>
+    <p class="muted small" style="margin-top:8px;">Profile updated {{ prof.fetched_at }}</p>
     {% else %}
     <p class="state-unavailable">PROFILE_UNAVAILABLE</p>
     {% if prof.parse_error %}<p class="muted small mono">{{ prof.parse_error }}</p>{% endif %}
@@ -358,13 +378,34 @@
 
   <section class="panel panel-token-market" data-panel="token-market">
     <h2>Token Market</h2>
+
+    {# MARKET REFERENCE — live-updated by market-poll.js via data-market-* targets #}
+    <section class="terminal-section-heading terminal-section-heading--feature" style="margin-bottom:14px;" aria-label="Market reference">
+      <h3 class="terminal-section-heading terminal-section-heading--feature" style="margin-top:0;">Market Reference</h3>
+      <dl class="kv" style="max-width:520px;">
+        <dt>Reference Price</dt>
+        <dd><span data-market-tab-price data-market-price style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>Bid</dt>
+        <dd><span data-market-bid style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>Ask</dt>
+        <dd><span data-market-ask style="font-variant-numeric:tabular-nums;">—</span></dd>
+        <dt>State</dt>
+        <dd><span data-market-tab-state class="muted small">Waiting for official reference.</span></dd>
+        <dt>Observed</dt>
+        <dd><span data-market-tab-observed class="muted small"></span></dd>
+      </dl>
+    </section>
+
     {% if tv.selected_token %}
-    <dl class="kv" style="max-width:600px;margin-bottom:20px;">
-      <dt>Token symbol</dt><dd>{{ tv.selected_token.symbol }}</dd>
-      <dt>Economic asset UID</dt><dd class="mono">{{ tv.selected_token.economic_asset_uid }}</dd>
-      <dt>Chain ID</dt><dd class="mono">{{ tv.selected_token.chain_id }}</dd>
-      <dt>Contract address</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
-    </dl>
+    <details style="margin-bottom:20px;">
+      <summary class="muted small" style="cursor:pointer;">Token identity</summary>
+      <dl class="kv" style="max-width:600px;margin-top:8px;">
+        <dt>Token symbol</dt><dd>{{ tv.selected_token.symbol }}</dd>
+        <dt>Economic asset UID</dt><dd class="mono">{{ tv.selected_token.economic_asset_uid }}</dd>
+        <dt>Chain ID</dt><dd class="mono">{{ tv.selected_token.chain_id }}</dd>
+        <dt>Contract address</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
+      </dl>
+    </details>
     {% endif %}
 
     {# Execution Simulator #}
@@ -416,6 +457,21 @@
 {# TAB: EVIDENCE                                                               #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 <div id="tab-evidence" class="tab-panel" style="display:{% if tv.nav.tab == 'evidence' %}block{% else %}none{% endif %};">
+
+  {% if tv.identity %}
+  <section class="panel" aria-label="Market identity evidence">
+    <h2>Market Identity</h2>
+    <dl class="kv">
+      <dt>Economic asset UID</dt><dd class="mono">{{ tv.economic_asset_uid }}</dd>
+      {% if tv.identity.cik %}<dt>CIK</dt><dd class="mono">{{ tv.identity.cik }}</dd>{% endif %}
+      {% if tv.identity.figi %}<dt>FIGI</dt><dd class="mono">{{ tv.identity.figi }}</dd>{% endif %}
+      {% if tv.selected_token %}
+      <dt>Chain</dt><dd>{{ tv.selected_token.chain_id }}</dd>
+      <dt>Contract</dt><dd class="mono">{{ tv.selected_token.contract_address }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+  {% endif %}
 
   {# Profile evidence #}
   <section class="panel panel-profile-evidence" data-panel="profile-evidence">

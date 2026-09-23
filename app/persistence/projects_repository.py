@@ -353,7 +353,7 @@ def list_projects_paged(
     data_sql = (
         f"SELECT * FROM projects WHERE {base_where}"
         " ORDER BY"
-        "  CASE WHEN project_role='reference' THEN 0 ELSE 1 END,"
+        "  CASE WHEN project_role='reference' THEN 1 ELSE 0 END,"
         "  updated_at DESC"
         f" LIMIT {int(page_size)} OFFSET {int((page - 1) * page_size)}"
     )
@@ -364,6 +364,38 @@ def list_projects_paged(
         cur.execute(data_sql, tuple(params))
         records = [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
+    return records, total
+
+
+def list_workspace_projects_paged(
+    *, user_id: str, page: int = 1, page_size: int = 20,
+    search: Optional[str] = None, role_filter: Optional[str] = None,
+) -> "tuple[list[ProjectRecord], int]":
+    """Paginate only the user's editable workspace; references are read separately.
+
+    A reference-only filter deliberately yields an empty working list. Both
+    count and rows share the same predicate so paging cannot hide templates.
+    """
+    from app.persistence.records import ProjectRecord
+    where = "user_id=? AND archived=0 AND is_protected=0 AND is_readonly=0 AND project_role!='reference'"
+    params: list[Any] = [user_id]
+    if role_filter == "reference":
+        where += " AND 1=0"
+    elif role_filter in ("working_copy", "user_project"):
+        where += " AND project_role=?"
+        params.append(role_filter)
+    if search:
+        safe = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where += " AND project_name LIKE ? ESCAPE '\\'"
+        params.append(f"%{safe}%")
+    with get_cursor() as cur:
+        cur.execute(f"SELECT COUNT(*) FROM projects WHERE {where}", tuple(params))
+        total = cur.fetchone()[0]
+        cur.execute(
+            f"SELECT * FROM projects WHERE {where} ORDER BY updated_at DESC, project_id DESC LIMIT ? OFFSET ?",
+            (*params, max(1, page_size), max(0, page - 1) * max(1, page_size)),
+        )
+        records = [ProjectRecord.from_row(row) for row in cur.fetchall()]
     return records, total
 
 

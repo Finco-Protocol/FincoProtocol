@@ -124,6 +124,7 @@ KPI_CATALOG: list[tuple] = [
     ("total_ebitda_keur",  "Total EBITDA",   "kEUR", "keur",  "runtime_summary"),
     ("total_cfads_keur",   "Total CFADS",    "kEUR", "keur",  "runtime_summary"),
     ("equity_npv_keur",    "Equity NPV",     "kEUR", "keur",  "runtime_summary"),
+    ("project_npv_keur",   "Project NPV",    "kEUR", "keur",  "runtime_summary"),
 ]
 
 # Fast lookup sets derived from catalog

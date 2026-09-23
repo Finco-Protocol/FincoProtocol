@@ -579,10 +579,9 @@ class TestC06DuplicateSymbolNoCollapse:
             mock_many.return_value = ()
             _, rows = _load_equity_and_featured_board(universe, None)
 
-        # DUP is ambiguous → board must be empty (skipped, not arbitrarily chosen)
-        assert rows == [], (
-            f"Ambiguous symbol DUP must not appear in featured board; got: {rows}"
-        )
+        # Preserve the requested slot without choosing either identity.
+        assert len(rows) == 1 and rows[0]["symbol"] == "DUP"
+        assert rows[0]["state"] == "UNAVAILABLE" and rows[0]["asset_uid"] == ""
         # enrich_many must not have been called with DUP (nothing to enrich)
         assert mock_many.call_count == 0 or mock_many.call_args_list == [] or all(
             len(args[0]) == 0 for args, _ in mock_many.call_args_list
@@ -623,9 +622,10 @@ class TestC06DuplicateSymbolNoCollapse:
             mock_many.return_value = (_not_found_result(),)
             _, rows = _load_equity_and_featured_board(universe, None)
 
-        # Only UNIQUE in rows; DUP skipped
-        assert len(rows) == 1
-        assert rows[0]["symbol"] == "UNIQUE"
+        assert len(rows) == 2
+        assert rows[0]["symbol"] == "DUP" and rows[0]["state"] == "UNAVAILABLE"
+        assert rows[0]["asset_uid"] == ""
+        assert rows[1]["symbol"] == "UNIQUE"
 
 
 # ── C07: selected reuse requires exact UID ────────────────────────────────────
@@ -770,7 +770,8 @@ class TestC10AmbiguousFeaturedSymbolSkipped:
             mock_many.return_value = ()
             _, rows = _load_equity_and_featured_board(universe, None)
 
-        assert rows == [], "Ambiguous DUP must be skipped from featured board"
+        assert len(rows) == 1 and rows[0]["symbol"] == "DUP"
+        assert rows[0]["state"] == "UNAVAILABLE" and rows[0]["asset_uid"] == ""
         assert "DUP Corp A" not in str(rows)
         assert "DUP Corp B" not in str(rows)
 
@@ -819,9 +820,8 @@ class TestC10AmbiguousFeaturedSymbolSkipped:
             _, rows = _load_equity_and_featured_board(universe, None)
 
         symbols_in_rows = [r["symbol"] for r in rows]
-        assert "DUP" not in symbols_in_rows, (
-            f"Ambiguous DUP must not appear in board; got: {symbols_in_rows}"
-        )
+        assert symbols_in_rows == ["DUP", "AONE", "BONE"]
+        assert rows[0]["state"] == "UNAVAILABLE" and rows[0]["asset_uid"] == ""
         assert "AONE" in symbols_in_rows
         assert "BONE" in symbols_in_rows
-        assert len(rows) == 2
+        assert len(rows) == 3

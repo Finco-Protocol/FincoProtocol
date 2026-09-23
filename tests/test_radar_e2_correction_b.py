@@ -753,10 +753,10 @@ class TestB08UidDistinctFromTokenSymbol:
 
 
 class TestB09MissingSymbolSkipped:
-    """B09: featured symbol not in live universe is silently skipped."""
+    """B09: missing featured symbol remains a fail-closed board row."""
 
     def test_b09_missing_symbol_not_in_board(self, client_11asset):
-        """Configured symbol absent from universe does not appear in board."""
+        """Configured symbol absent from universe appears as unavailable."""
         client, _, _, _, _, _ = client_11asset
 
         # Override featured to include a symbol not in the 11-asset universe
@@ -765,7 +765,8 @@ class TestB09MissingSymbolSkipped:
         }):
             resp = client.get("/radar")
         assert resp.status_code == 200
-        assert "FAKESYM999" not in resp.text
+        assert 'data-market-symbol="FAKESYM999"' in resp.text
+        assert 'data-market-uid="" data-market-symbol="FAKESYM999"' in resp.text
 
     def test_b09_only_universe_symbols_rendered(self):
         """_load_equity_and_featured_board filters to universe only."""
@@ -782,11 +783,11 @@ class TestB09MissingSymbolSkipped:
             )
             _, rows = _load_equity_and_featured_board(universe, None)
 
-        # Only AAPL and NVDA are in universe; FAKESYM999 is skipped
-        assert len(rows) == 2
+        # One deterministic slot per requested symbol; no fabricated identity.
+        assert len(rows) == 3
         syms = [r["symbol"] for r in rows]
-        assert "AAPL" in syms
-        assert "NVDA" in syms
+        assert syms == ["AAPL", "FAKESYM999", "NVDA"]
+        assert rows[1]["state"] == "UNAVAILABLE" and rows[1]["asset_uid"] == ""
 
 
 class TestB10NonFeaturedDropdown:

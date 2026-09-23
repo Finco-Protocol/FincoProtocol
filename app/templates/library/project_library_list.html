@@ -1,136 +1,80 @@
-{#
-  Project Library List partial — rendered inline and via HTMX swap.
-  Context variables: projects, search, role_filter, page, page_size,
-                     total, total_pages, has_prev, has_next, selected_project
-#}
-
-{# Results summary #}
-<div class="fo-library-results-meta">
-  {% if total == 0 %}
-    No projects match your search.
-  {% elif total == 1 %}
-    1 project
-  {% else %}
-    {{ total }} projects — page {{ page }} of {{ total_pages }}
-  {% endif %}
-</div>
-
-{% if projects %}
-<div class="fo-library-table-wrapper">
-<table class="fo-library-table">
-  <thead>
-    <tr>
-      <th>Project</th>
-      <th>Role</th>
-      <th>Technology</th>
-      <th>Template</th>
-      <th>Last updated</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody>
-  {% for proj in projects %}
-    {% set is_selected = (proj.project_code == selected_project) %}
-    {% set is_ref = (proj.project_role == 'reference') %}
-    {% set is_wc  = (proj.project_role == 'working_copy') %}
-    <tr data-testid="library-row-{{ proj.project_code }}"
-        {% if is_selected %}data-selected="true"{% endif %}>
-
-      <td>
-        <span class="fo-library-row-name">{{ proj.project_name }}</span>
-        <span class="fo-library-row-meta">{{ proj.project_code }}</span>
-        {% if is_ref %}
-          <span class="fo-library-badge fo-library-badge--reference" data-testid="badge-reference-{{ proj.project_code }}">Reference</span>
-        {% elif is_wc %}
-          <span class="fo-library-badge fo-library-badge--working-copy" data-testid="badge-working-copy-{{ proj.project_code }}">Working copy</span>
-        {% endif %}
-      </td>
-
-      <td style="color:var(--fo-ink-faint);">
-        {% if is_ref %}Reference{% elif is_wc %}Working copy{% else %}My project{% endif %}
-      </td>
-
-      <td>{{ proj.project_type or '—' }}</td>
-
-      <td style="color:var(--fo-ink-faint);">{{ (proj.template_source or '—') | replace("generic_", "") | replace("_", " ") | title }}</td>
-
-      <td style="color:var(--fo-ink-faint);white-space:nowrap;font-variant-numeric:tabular-nums;">
-        {{ proj.updated_at.strftime('%Y-%m-%d') if proj.updated_at else '—' }}
-      </td>
-
-      <td>
-        <div class="fo-library-actions">
-          {# Open link — flag-aware via workbook_destination_fn. #}
-          <a href="{{ workbook_destination_fn(proj.project_code) }}"
-             data-testid="open-{{ proj.project_code }}"
-             data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}"
-             class="fo-library-link">Open</a>
-
-          {# Create working copy for references #}
-          {% if is_ref %}
-            <form method="POST"
-                  action="/library/clone/{{ proj.project_id }}"
-                  hx-post="/library/clone/{{ proj.project_id }}"
-                  hx-swap="none"
-                  style="display:inline;">
-              <button type="submit"
-                      data-testid="clone-{{ proj.project_code }}"
-                      class="fo-library-btn-clone">
-                Create working copy
-              </button>
-            </form>
-          {% endif %}
-        </div>
-      </td>
-    </tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div>
-
-{# Pagination controls #}
-<div class="fo-library-pagination">
-  <div class="fo-library-pagination__info">
-    Showing {{ ((page-1)*page_size)+1 }}–{{ [page*page_size, total]|min }} of {{ total }}
+{# Working projects are paged independently; canonical references stay on every page. #}
+<section aria-label="Working Projects">
+  <div class="fo-library-section-heading">
+    <h2 class="fo-library-section-title">Recent / Working Projects</h2>
+    <span class="fo-library-results-meta">{{ total }} {{ 'project' if total == 1 else 'projects' }}{% if total_pages > 1 %} · page {{ page }} of {{ total_pages }}{% endif %}</span>
   </div>
-  <div class="fo-library-pagination__pages">
-    {% if has_prev %}
-      <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page-1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-         hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page-1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-         hx-target="#library-list-region"
-         hx-push-url="true"
-         data-testid="library-prev"
-         class="fo-library-page-btn">← Prev</a>
-    {% endif %}
-    {% for p in range(1, total_pages+1) %}
-      {% if p == page %}
-        <span class="fo-library-page-btn fo-library-page-btn--active">{{ p }}</span>
-      {% elif (p <= 2) or (p >= total_pages-1) or (p|abs - page|abs <= 1) %}
-        <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-           hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-           hx-target="#library-list-region"
-           hx-push-url="true"
-           class="fo-library-page-btn">{{ p }}</a>
-      {% endif %}
+  {% if projects %}
+  <div class="fo-library-table-wrapper">
+    <table class="fo-library-table">
+      <thead><tr><th>Project</th><th>Technology</th><th>Role</th><th>Updated</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for proj in projects %}
+        <tr data-testid="library-row-{{ proj.project_code }}"{% if proj.project_code == selected_project %} data-selected="true"{% endif %}>
+          <td><span class="fo-library-row-name">{{ proj.project_name }}</span></td>
+          <td>{{ proj.project_type or '—' }}</td>
+          <td>{% if proj.project_role == 'working_copy' %}<span class="fo-library-badge fo-library-badge--working-copy" data-testid="badge-working-copy-{{ proj.project_code }}">Working copy</span>{% else %}My project{% endif %}</td>
+          <td class="fo-library-date">{{ proj.updated_at.strftime('%Y-%m-%d') if proj.updated_at else '—' }}</td>
+          <td><a href="{{ workbook_destination_fn(proj.project_code) }}" data-testid="open-{{ proj.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-open">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="fo-library-empty fo-library-empty--compact">
+    {% if search or role_filter %}No working projects match these filters.{% else %}No working projects yet. Start with a reference below or <a href="/projects/new">create a new project</a>.{% endif %}
+  </div>
+  {% endif %}
+  {% if total_pages > 1 %}
+  <nav class="fo-library-pagination" aria-label="Working projects pages">
+    <span class="fo-library-pagination__info">Showing {{ ((page-1)*page_size)+1 }}–{{ [page*page_size, total]|min }} of {{ total }}</span>
+    <span class="fo-library-pagination__pages">
+      {% for p in range(1, total_pages+1) %}
+        {% if p == page %}<span class="fo-library-page-btn fo-library-page-btn--active">{{ p }}</span>
+        {% else %}<a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}" hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ p }}" hx-target="#library-list-region" hx-push-url="true" class="fo-library-page-btn">{{ p }}</a>{% endif %}
+      {% endfor %}
+    </span>
+  </nav>
+  {% endif %}
+</section>
+{% if references %}
+<section class="fo-library-reference-section" aria-label="Reference Templates">
+  <div class="fo-library-section-heading">
+    <h2 class="fo-library-section-title">Reference Templates</h2>
+    <span class="fo-library-results-meta">Protected starting points for an editable working copy</span>
+  </div>
+  <div class="fo-library-reference-grid">
+    {% for proj in references %}
+    <article class="fo-library-reference-card" data-testid="library-row-{{ proj.project_code }}">
+      <span class="fo-library-reference-technology">{{ proj.project_type or 'Reference' }}</span>
+      <h3>{{ proj.project_name }}</h3>
+      <p>Explore the {{ proj.project_type or 'project' }} reference model, then create your own working copy.</p>
+      <div class="fo-library-reference-actions">
+        <a href="{{ workbook_destination_fn(proj.project_code) }}" data-testid="open-{{ proj.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-link">View Reference</a>
+        <form method="POST" action="/library/clone/{{ proj.project_id }}" hx-post="/library/clone/{{ proj.project_id }}" hx-target="#library-clone-error" hx-swap="innerHTML" hx-disabled-elt="find button">
+          <button type="submit" data-testid="clone-{{ proj.project_code }}" class="fo-library-btn-clone">Create working copy</button>
+        </form>
+      </div>
+    </article>
     {% endfor %}
-    {% if has_next %}
-      <a href="/library?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page+1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-         hx-get="/library/list?search={{ search|urlencode }}&role={{ role_filter|urlencode }}&page={{ page+1 }}{% if selected_project %}&project={{ selected_project|urlencode }}{% endif %}"
-         hx-target="#library-list-region"
-         hx-push-url="true"
-         data-testid="library-next"
-         class="fo-library-page-btn">Next →</a>
-    {% endif %}
   </div>
-</div>
-
-{% else %}
-<div class="fo-library-empty">
-  {% if search %}
-    No projects matching <strong>{{ search }}</strong>
-    {% if role_filter %} with role <strong>{{ role_filter }}</strong>{% endif %}.
-  {% else %}
-    No projects yet. <a href="/projects/new">Create your first project</a>.
-  {% endif %}
-</div>
+</section>
 {% endif %}
+<div id="library-clone-error" aria-live="polite"></div>
+<script>
+(function () {
+  document.body.addEventListener('htmx:responseError', function (evt) {
+    var xhr = evt.detail && evt.detail.xhr;
+    if (!xhr) return;
+    var target = document.getElementById('library-clone-error');
+    if (!target) return;
+    var body = xhr.responseText || '';
+    if (body.indexOf('role="alert"') !== -1) {
+      target.innerHTML = body;
+    } else {
+      target.innerHTML = '<p role="alert">Could not create a working copy. Please try again or contact support.</p>';
+    }
+  });
+}());
+</script>

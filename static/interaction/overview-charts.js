@@ -263,6 +263,54 @@
     container.appendChild(svg);
   }
 
+  // Financial statement cash waterfall series are persisted Last-Run values.
+  // Missing values break a line; they are never turned into zero.
+  function renderCashSeries(container, periods, series) {
+    const pts = periods.filter(p => p.date && series.some(s =>
+      typeof p[s.key] === 'number' && Number.isFinite(p[s.key])));
+    if (!pts.length) { container.textContent = 'No Last-Run series available.'; return; }
+    const W = 620, H = 178, P = {t: 18, r: 12, b: 30, l: 65};
+    const values = pts.flatMap(p => series.map(s => p[s.key]).filter(v => typeof v === 'number' && Number.isFinite(v)));
+    const low = Math.min(0, ...values), high = Math.max(0, ...values);
+    const max = high === low ? low + 1 : high;
+    const svg = svgRoot(W, H);
+    const baseline = scaleY(0, low, max, P.t, H - P.b);
+    svg.appendChild(el('line', {x1:P.l, y1:baseline, x2:W-P.r, y2:baseline, stroke:C.axis, 'stroke-width':1}));
+    series.forEach((s, si) => {
+      let path = '';
+      pts.forEach((p, i) => {
+        const val = p[s.key];
+        if (typeof val !== 'number' || !Number.isFinite(val)) { path = path.trim() + ' '; return; }
+        const x = P.l + i / (pts.length - 1 || 1) * (W - P.l - P.r);
+        const y = scaleY(val, low, max, P.t, H - P.b);
+        const previous = i > 0 ? pts[i-1][s.key] : null;
+        path += `${typeof previous === 'number' && Number.isFinite(previous) ? 'L' : 'M'} ${x} ${y} `;
+        const c = el('circle', {cx:x, cy:y, r:2.2, fill:s.color});
+        c.appendChild(makeTitle(`${p.date.slice(0,10)} · ${s.label}: ${val.toLocaleString('en-GB', {maximumFractionDigits:2})} kEUR`));
+        svg.appendChild(c);
+      });
+      svg.appendChild(el('path', {d:path, fill:'none', stroke:s.color, 'stroke-width':2}));
+      const tx = el('text', {x:P.l + si * 165, y:12, fill:s.color, 'font-size':10});
+      tx.textContent = s.label;
+      svg.appendChild(tx);
+    });
+    const step = Math.max(1, Math.ceil(pts.length / 6));
+    pts.forEach((p, i) => {
+      if (i % step && i !== pts.length-1) return;
+      const x = P.l + i / (pts.length-1 || 1) * (W-P.l-P.r);
+      const label = el('text', {x, y:H-6, 'text-anchor':'middle', fill:C.label, 'font-size':9});
+      label.textContent = p.date.slice(0,7);
+      svg.appendChild(label);
+    });
+    [low, max].forEach(v => {
+      const label = el('text', {x:P.l-6, y:scaleY(v, low, max, P.t, H-P.b)+3,
+                                'text-anchor':'end', fill:C.label, 'font-size':9});
+      label.textContent = v.toLocaleString('en-GB', {maximumFractionDigits:0});
+      svg.appendChild(label);
+    });
+    container.appendChild(svg);
+  }
+
   // ── Tab navigation from Overview links ─────────────────────────────── //
   function initNavLinks() {
     document.querySelectorAll('[data-goto-tab]').forEach(function (link) {
@@ -286,8 +334,19 @@
       try { periods = JSON.parse(raw); } catch (e) { return; }
       if (!Array.isArray(periods) || !periods.length) return;
 
+      el.replaceChildren();
+
       if (type === 'debt-balance') renderDebtBalance(el, periods);
       else if (type === 'dscr')    renderDscr(el, periods, target);
+      else if (type === 'operating') renderCashSeries(el, periods, [
+        {key:'revenue_cash_keur', label:'Revenue', color:'#1e40af'},
+        {key:'opex_cash_keur', label:'OPEX (outflow)', color:'#b45309'},
+        {key:'ebitda_cash_keur', label:'EBITDA', color:'#0f766e'},
+      ]);
+      else if (type === 'cash-service') renderCashSeries(el, periods, [
+        {key:'fcf_banks_keur', label:'FCF Banks', color:'#0f766e'},
+        {key:'senior_total_ds_keur', label:'Debt service (outflow)', color:'#6366f1'},
+      ]);
     });
   }
 

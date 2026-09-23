@@ -218,9 +218,38 @@ class TestProtocolHomeMobile:
 # ─── Model Library ─────────────────────────────────────────────────────────────
 
 class TestModelLibrary:
+    def test_clone_repeated_click_sends_one_request(self, live_url, browser):
+        """HTMX disables the clone button before a second click can submit."""
+        from app.persistence.db import get_connection
+        from app.persistence.projects_repository import get_reference_by_template_source
+        reference = get_reference_by_template_source("generic_solar_reference")
+        assert reference is not None
+        with get_connection() as conn:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
+                (reference.project_id,),
+            ).fetchone()[0]
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        _auth_cookie(live_url, page)
+        requests = []
+        page.on("request", lambda request: requests.append(request.url)
+                if "/library/clone/" in request.url else None)
+        page.goto(f"{live_url}/library")
+        page.locator(f'[data-testid="clone-{reference.project_code}"]').evaluate(
+            "button => { button.click(); button.click(); }"
+        )
+        page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
+        with get_connection() as conn:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
+                (reference.project_id,),
+            ).fetchone()[0]
+        assert after - before == 1
+        assert len(requests) == 1, f"Duplicate clone requests: {requests}"
+        page.close()
+
     def test_library_loads_and_has_protocol_links(self, live_url, browser):
-        """Library must load as the project listing page AND expose
-        Protocol-level Home/Radar/Verify links in the sidebar (base.html)."""
+        """Library exposes cross-product navigation without project controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         page.goto(f"{live_url}/library")
@@ -235,16 +264,11 @@ class TestModelLibrary:
         assert "Project Library" in page_text, (
             "Library heading not found — page may not have rendered"
         )
-        # Protocol section in sidebar (added to base.html)
-        proto_section = page.query_selector("#ps-protocol-surfaces")
-        assert proto_section is not None, (
-            "Protocol sidebar section (#ps-protocol-surfaces) missing on /library"
-        )
-        # Protocol links present
-        links_text = proto_section.inner_text()
-        assert "Home" in links_text, "Home link missing from Protocol sidebar"
-        assert "Radar" in links_text, "Radar link missing from Protocol sidebar"
-        assert "Verify" in links_text, "Verify link missing from Protocol sidebar"
+        assert page.query_selector("#project-sidebar") is None
+        assert page.query_selector("#fo-btn-run") is None
+        assert page.query_selector("#fo-kpi-strip") is None
+        for destination in ("/library", "/radar", "/verify"):
+            assert page.query_selector(f".fo-brand-bar__nav[href='{destination}']") is not None
 
     def test_library_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -269,35 +293,37 @@ class TestModelJourney:
     Home → Library → Workbook → Radar → Verify → Home."""
 
     def test_workbook_has_protocol_links(self, live_url, browser):
-        """Workbook V2 must expose Protocol links in sidebar (base.html)."""
+        """Workbook V2 exposes links to the other Protocol surfaces."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         # Open workbook with a reference project (always exists for admin).
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
-        # Must not redirect to login
-        assert "workbook" in page.url or "library" in page.url or "/" in page.url
-        proto_section = page.query_selector("#ps-protocol-surfaces")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
+        proto_section = page.query_selector(".v2-protocol-nav")
         assert proto_section is not None, (
-            "Protocol sidebar section missing on Workbook V2"
+            "Protocol navigation missing on Workbook V2"
         )
         links_text = proto_section.inner_text()
-        assert "Radar" in links_text, "Radar link missing from Workbook sidebar"
-        assert "Verify" in links_text, "Verify link missing from Workbook sidebar"
+        assert "Model" in links_text, "Model link missing from Workbook navigation"
+        assert "Radar" in links_text, "Radar link missing from Workbook navigation"
+        assert "Verify" in links_text, "Verify link missing from Workbook navigation"
 
     def test_workbook_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         _assert_no_overflow(page, "/v2/workbook", 1280)
 
     def test_workbook_no_overflow_390(self, live_url, browser):
         """Full page must not overflow at 390px after chrome.css mobile fix."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         _assert_no_overflow(page, "/v2/workbook", 390)
 
     def test_full_cross_surface_journey(self, live_url, browser):
@@ -316,15 +342,16 @@ class TestModelJourney:
         assert "/library" in page.url
 
         # 3. Open Workbook via direct URL (simulates library click)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
-        proto = page.query_selector("#ps-protocol-surfaces")
-        assert proto is not None, "Protocol section missing on Workbook"
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
+        proto = page.query_selector(".v2-protocol-nav")
+        assert proto is not None, "Protocol navigation missing on Workbook"
 
-        # 4. Navigate to Radar via protocol sidebar link
+        # 4. Navigate to Radar via Workbook navigation
         radar_link = proto.query_selector("a[href='/radar']")
-        assert radar_link is not None, "Radar link missing from Workbook sidebar"
-        page.goto(f"{live_url}/radar")
+        assert radar_link is not None, "Radar link missing from Workbook navigation"
+        radar_link.click()
         page.wait_for_load_state("domcontentloaded")
         assert "READ-ONLY" in page.inner_text("body")
 
@@ -911,6 +938,12 @@ _SA_E3 = namedtuple("_SA_E3", [
 
 _NVDA_SA = _SA_E3("rh-equity-nvda-001", "NVDA", "NVIDIA Corporation", 4663, "0xnvda001abc", 0)
 _JPM_SA  = _SA_E3("rh-equity-jpm-002",  "JPM",  "JPMorgan Chase",      4663, "0xjpm002def",  0)
+
+# Visual-market fixture — canonical UID required by normalize_asset_uid().
+# Distinct from _NVDA_SA; same symbol ("NVDA") so E3 history DB data is reused.
+# Contract matches DB so identity is VERIFIED in visual screenshots.
+_NVDA_VISUAL_UID      = "0x" + "11" * 32   # 0x1111...1111 (64 hex chars)
+_NVDA_VISUAL_SA = _SA_E3(_NVDA_VISUAL_UID, "NVDA", "NVIDIA Corporation", 4663, "0xnvda001abc", 0)
 
 
 _E3_BROWSER_PROVIDER   = "SYNTH_E3_BROWSER"
@@ -1537,6 +1570,76 @@ def live_url_e4():
         tmp.unlink(missing_ok=True)
 
 
+@pytest.fixture(scope="module")
+def live_url_radar_visual():
+    """Uvicorn server for visual capture — uses canonical-UID NVDA visual asset."""
+    from app.radar_ui import router as radar_router
+    from app.radar_ui import equity_terminal, equity_enrichment
+    from app.radar_ui.equity_enrichment import EquityEnrichmentResult, EnrichmentState
+    from finco_radar.equity import get_equity_company_history
+    import main_web
+    import uvicorn
+
+    tmp = _build_e3_browser_db()
+
+    _orig_fetch    = radar_router._fetch_universe_safe
+    _orig_featured = radar_router._get_featured_symbols
+    _orig_many     = equity_enrichment.enrich_many_selected_assets
+    _orig_single   = equity_enrichment.enrich_selected_asset
+    _orig_history  = equity_terminal.get_history_for_terminal
+
+    def _fake_fetch():
+        return ([_NVDA_VISUAL_SA, _JPM_SA], None)
+
+    def _fake_featured():
+        return ("NVDA", "JPM")
+
+    def _fake_enrich_many(pairs):
+        return [
+            EquityEnrichmentResult(
+                state=EnrichmentState.SOURCE_UNAVAILABLE,
+                bundle=None,
+                identity_note=None,
+            )
+            for _ in pairs
+        ]
+
+    def _fake_enrich_single(token_symbol, contract_address, **kwargs):
+        return EquityEnrichmentResult(
+            state=EnrichmentState.SOURCE_UNAVAILABLE,
+            bundle=None,
+            identity_note=None,
+        )
+
+    def _fake_history(token_symbol, **kwargs):
+        return get_equity_company_history(token_symbol, db_path=tmp, db_mode="snapshot")
+
+    radar_router._fetch_universe_safe             = _fake_fetch
+    radar_router._get_featured_symbols            = _fake_featured
+    equity_enrichment.enrich_many_selected_assets = _fake_enrich_many
+    equity_enrichment.enrich_selected_asset       = _fake_enrich_single
+    equity_terminal.get_history_for_terminal      = _fake_history
+
+    port = _free_port()
+    config = uvicorn.Config(main_web.app, host="127.0.0.1", port=port, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(0.05)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(5)
+        radar_router._fetch_universe_safe             = _orig_fetch
+        radar_router._get_featured_symbols            = _orig_featured
+        equity_enrichment.enrich_many_selected_assets = _orig_many
+        equity_enrichment.enrich_selected_asset       = _orig_single
+        equity_terminal.get_history_for_terminal      = _orig_history
+        tmp.unlink(missing_ok=True)
+
+
 class TestE4ExecutionSimulator:
     """E4 Execution Simulator browser acceptance — original B1–B13 journey.
 
@@ -1733,6 +1836,8 @@ class TestE4ExecutionSimulator:
         assert "-24" in result_text, (
             f"Directional GAP -24 missing from BUY result: {result_text[:500]}"
         )
+        page.locator(".radar-technical-details summary").click()
+        result_text = page.locator("#sim-result-rh-equity-nvda-001").inner_text()
         assert "rh-equity-nvda-001" in result_text, (
             f"Asset UID missing from BUY result: {result_text[:500]}"
         )
@@ -1959,3 +2064,120 @@ class TestCBH:
         page.wait_for_load_state("domcontentloaded")
         _assert_no_overflow(page, "/library", 390)
         page.close()
+
+
+@pytest.mark.skipif(os.getenv("FINCO_VISUAL_CAPTURE") != "1", reason="visual artifact capture is enabled in CI")
+def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
+    """Capture actual rendered product surfaces at this workflow's checked-out HEAD."""
+    out = REPO / "artifacts" / "saas-visual"
+    out.mkdir(parents=True, exist_ok=True)
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    _auth_cookie(live_url, page)
+
+    def shot(name):
+        page.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
+
+    page.goto(f"{live_url}/library")
+    page.wait_for_load_state("domcontentloaded")
+    shot("01-library-desktop")
+    page.set_viewport_size({"width": 390, "height": 844})
+    _assert_no_overflow(page, "/library", 390)
+    shot("02-library-390")
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.locator('[data-testid="clone-generic_solar_reference-reference"]').click()
+    page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
+    page.locator('[data-testid="overview-no-run-state"]').wait_for()
+    shot("03-overview-no-run")
+    page.locator('#v2-canonical-run-form button[type="submit"]').click()
+    page.locator('[data-testid="toolbar-runtime-state"]').filter(has_text="Current").wait_for(timeout=90000)
+    shot("04-overview-last-run")
+    for tab, name in (("inputs", "05-inputs"), ("revenue", "06-revenue"),
+                      ("debt", "07-debt"), ("fs", "08-financials")):
+        page.locator(f"#tab-{tab}").click()
+        shot(name)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.locator("#tab-overview").click()
+    _assert_no_overflow(page, "/v2/workbook overview", 390)
+    shot("08a-overview-390")
+    page.locator("#tab-inputs").click()
+    _assert_no_overflow(page, "/v2/workbook inputs", 390)
+    shot("08b-inputs-390")
+    page.close()
+
+    from app.radar_ui import router as _radar_router
+
+    class _FixedMarketService:
+        """Deterministic visual fixture — NVDA at $143.11 / bid $142.77 / ask $143.45.
+
+        Uses _NVDA_VISUAL_UID (canonical 0x-prefixed 64 hex chars) so the
+        /radar/market/asset/{uid} endpoint passes normalize_asset_uid().
+        """
+        def read(self, *, uids=(), featured_symbols=()):
+            def _row(uid, symbol):
+                return {
+                    "uid": uid, "symbol": symbol,
+                    "chain_id": "polygon-mainnet",
+                    "contract_address": "0x0001000000000000000000000000000000000000",
+                    "state": "FRESH", "market_state": "REFERENCE",
+                    "price": "143.11", "price_display": "$143.11",
+                    "bid": "142.77", "bid_display": "$142.77",
+                    "ask": "143.45", "ask_display": "$143.45",
+                    "observed_at": "2026-01-01T00:00:00+00:00",
+                    "source": "visual-fixture",
+                }
+            if uids:
+                return [_row(uid, None) for uid in uids]
+            return [_row(None, sym) for sym in featured_symbols]
+
+    previous_market_service = _radar_router._market_read_service
+    _radar_router.set_market_read_service(_FixedMarketService())
+    try:
+        radar = browser.new_page(viewport={"width": 1280, "height": 900})
+        radar.goto(f"{live_url_radar_visual}/radar")
+        radar.wait_for_load_state("domcontentloaded")
+        # Wait for board market prices to populate before screenshot.
+        radar.wait_for_function(
+            'Array.from(document.querySelectorAll("[data-market-uid] [data-market-price]"))'
+            '.some(function(el) { return el.textContent !== "—" && el.textContent !== ""; })',
+            timeout=10000,
+        )
+        radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
+        radar.wait_for_load_state("domcontentloaded")
+        for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
+                          ("token-market", "12-market-execution"), ("evidence", "13-evidence")):
+            radar.locator(f'a[href^="?tab={tab}"]').first.click()
+            if tab == "overview":
+                # Wait for header market price to populate.
+                radar.locator(
+                    'section[data-market-terminal-uid] [data-market-price]:not(:text("—"))'
+                ).wait_for(timeout=10000)
+            if tab == "token-market":
+                # Wait for tab Reference Price and state to populate.
+                radar.locator('[data-market-tab-price]:not(:text("—"))').wait_for(timeout=20000)
+                radar.wait_for_function(
+                    '(document.querySelector("[data-market-tab-state]") || {}).textContent.includes("Fresh")',
+                    timeout=5000,
+                )
+                # Assert all market values before capturing.
+                price_text = radar.locator('[data-market-tab-price]').first.text_content()
+                assert '$143.11' in price_text, f"Market price: {price_text!r}"
+                bid_text = radar.locator('[data-market-bid]').first.text_content()
+                assert '$142.77' in bid_text, f"Market bid: {bid_text!r}"
+                ask_text = radar.locator('[data-market-ask]').first.text_content()
+                assert '$143.45' in ask_text, f"Market ask: {ask_text!r}"
+                state_text = radar.locator('[data-market-tab-state]').first.text_content()
+                assert 'Fresh' in state_text, f"Market state: {state_text!r}"
+                observed_text = radar.locator('[data-market-tab-observed]').first.text_content()
+                assert '2026-01-01' in observed_text, f"Market observed: {observed_text!r}"
+            radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
+        radar.set_viewport_size({"width": 390, "height": 844})
+        radar.goto(f"{live_url_radar_visual}/radar")
+        _assert_no_overflow(radar, "/radar", 390)
+        radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
+        _assert_no_overflow(radar, "/radar/equity", 390)
+        radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
+        radar.close()
+    finally:
+        _radar_router.set_market_read_service(previous_market_service)

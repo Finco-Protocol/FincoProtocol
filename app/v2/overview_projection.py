@@ -90,6 +90,8 @@ class OverviewProjection:
     # Each period dict has: date, is_operation, senior_balance_keur,
     # senior_ds_keur, senior_principal_keur, senior_interest_keur, dscr.
     chart_debt_periods: Optional[List[Dict]] = field(default=None)
+    # Persisted financial_statements.pf_cash_waterfall.periods, presentation only.
+    chart_operating_periods: Optional[List[Dict]] = field(default=None)
 
     # ── Project context (from ProjectInputs — display strings) ──────────── #
     project_name: str = ""
@@ -198,6 +200,18 @@ def build_overview_projection(
         _all = extract_periods(debt_schedule, operational_only=False)
         if _all is not None:
             chart_debt_periods = _all
+    chart_operating_periods: Optional[List[Dict]] = None
+    _fs_raw = getattr(rr, "financial_statements", None) if rr else None
+    _fs = thaw_runtime_payload(_fs_raw) if _fs_raw else None
+    if isinstance(_fs, dict):
+        _cash = _fs.get("pf_cash_waterfall")
+        if isinstance(_cash, dict) and isinstance(_cash.get("periods"), list):
+            _periods = _cash["periods"]
+            if any(isinstance(p, dict) and p.get("date") and
+                   any(p.get(k) is not None for k in (
+                       "revenue_cash_keur", "opex_cash_keur", "ebitda_cash_keur",
+                       "fcf_banks_keur", "senior_total_ds_keur")) for p in _periods):
+                chart_operating_periods = _periods
 
     # ── Project context from pis ──────────────────────────────────────── #
     _project_name = ""
@@ -273,6 +287,7 @@ def build_overview_projection(
         target_dscr=target_dscr_str,
         periods_in_lockup=periods_lockup,
         chart_debt_periods=chart_debt_periods,
+        chart_operating_periods=chart_operating_periods,
         project_name=_project_name,
         project_type=_project_type,
         country_iso=_country_iso,

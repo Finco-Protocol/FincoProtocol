@@ -1,12 +1,10 @@
 {% if featured_board is defined and featured_board %}
-{# E2-CA: Featured Equities Board — compact terminal table.
-   Sits above #equity-details / selected-asset panel.
-   Zero live price acquisitions; identity + fundamentals only. #}
+{# Fundamentals are persisted snapshots; the market cells update through one read-only board request. #}
 <section id="featured-board" class="panel panel-featured-board" data-panel="featured-board" style="margin-bottom:14px;">
 
   <div class="radar-board-header">
     <h2 class="radar-board-title" style="margin:0;">Featured Equities</h2>
-    <span class="radar-board-meta">{{ featured_board | length }} asset{{ 's' if featured_board | length != 1 else '' }} · fundamentals only · no live prices</span>
+    <span class="radar-board-meta">{{ featured_board | length }} assets · market references refresh while visible</span>
   </div>
 
   <div style="overflow-x:auto;">
@@ -15,6 +13,7 @@
         <tr>
           <th>Symbol</th>
           <th style="text-align:left;">Company</th>
+          <th>Reference Price</th>
           <th>Revenue TTM</th>
           <th>Rev Growth</th>
           <th>Gross Margin</th>
@@ -26,9 +25,14 @@
       </thead>
       <tbody>
         {% for row in featured_board %}
-        <tr>
+        <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
           <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--radar-muted);" title="{{ row.company_name }}">{{ row.company_name }}</td>
+          <td class="num">
+            <strong data-market-price title="Waiting for the official Robinhood reference">—</strong>
+            <small class="radar-market-meta" data-market-state>UNAVAILABLE</small>
+            <small class="radar-market-meta" data-market-observed></small>
+          </td>
 
           {% if row.state in ("AVAILABLE", "PARTIAL") %}
           <td class="num">{{ row.revenues | default("—") }}</td>
@@ -61,6 +65,6 @@
       </tbody>
     </table>
   </div>
-  <p class="muted small" style="margin-top:8px;">Featured symbols from canonical Robinhood universe. Select asset below for market state and execution simulation.</p>
+  <p class="muted small" style="margin-top:8px;">Robinhood multiplier-adjusted token reference midpoint. <span data-market-board-state>Waiting for market reference.</span></p>
 </section>
 {% endif %}
