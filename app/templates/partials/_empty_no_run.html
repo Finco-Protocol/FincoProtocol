@@ -18,11 +18,11 @@
 {% set _rs_last_run_at = _rs.last_run_at|default('') %}
 {% set _has_run = (_rs_run_id|length > 0) or (_rs_last_run_at|length > 0) %}
 {% if not _has_run %}
-<div class="empty-state-notice empty-state-notice--info empty-state-notice--no-run"
+<div class="empty-state-notice empty-state-notice--info empty-state-notice--no-run fo-empty-run"
      role="status" aria-label="No run performed yet">
   <div class="esn-icon esn-icon--no-run" aria-hidden="true">▶</div>
-  <div class="esn-title">No run performed yet</div>
-  <div class="esn-desc">
+  <div class="esn-title fo-empty-run__label">No run performed yet</div>
+  <div class="esn-desc fo-empty-run__msg">
     Save your inputs and click <strong>Run Model</strong> to
     produce model outputs. Exports always use the last clean
     backend run, not unsaved draft edits.

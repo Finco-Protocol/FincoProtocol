@@ -32,16 +32,16 @@
   <div class="sponsor-summary-bar" id="sponsor-summary-bar">
     <!-- Populated by JS from lastSponsorSchedule.summary -->
   </div>
-  <div class="schedule-table-wrapper">
-    <table class="schedule-table" id="sponsor-cashflow-table">
+  <div class="schedule-table-wrapper" style="overflow-x:auto;">
+    <table class="schedule-table fo-fin-table" id="sponsor-cashflow-table">
       <thead>
         <tr>
           <th>Period</th>
-          <th>Equity Injected (kEUR)</th>
-          <th>Distribution Received (kEUR)</th>
-          <th>WHT (kEUR)</th>
-          <th>Net Cashflow (kEUR)</th>
-          <th>Capital Account Balance (kEUR)</th>
+          <th class="fo-fin-table__num-col">Equity Injected (kEUR)</th>
+          <th class="fo-fin-table__num-col">Distribution Received (kEUR)</th>
+          <th class="fo-fin-table__num-col">WHT (kEUR)</th>
+          <th class="fo-fin-table__num-col">Net Cashflow (kEUR)</th>
+          <th class="fo-fin-table__num-col">Capital Account Balance (kEUR)</th>
         </tr>
       </thead>
       <tbody id="sponsor-cashflow-tbody">

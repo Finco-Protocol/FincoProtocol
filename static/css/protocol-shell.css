@@ -135,11 +135,11 @@
 .proto-home__hero-inner {
   max-width: 1260px;
   margin: 0 auto;
-  padding: 72px 32px 64px;
+  padding: 56px 32px 56px;
   display: grid;
-  grid-template-columns: 1fr 480px;
-  gap: 72px;
-  align-items: center;
+  grid-template-columns: 1fr 460px;
+  gap: 60px;
+  align-items: start;
 }
 
 .proto-home__hero-copy {
@@ -275,7 +275,112 @@
   color: #374151;
 }
 
-/* ── Product Composite Terminal ── */
+/* ── Product Capability Split — replaces illustrative composite ── */
+
+.proto-capability-split {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+}
+
+.proto-capability-card {
+  padding: 20px 22px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proto-capability-card:last-child { border-bottom: none; }
+
+.proto-capability-card--dark {
+  background: #0f1318;
+  border-bottom-color: #1e2530;
+}
+
+.proto-capability-card__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.proto-capability-card__label--teal { color: #3fb8af; }
+
+.proto-capability-card__headline {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+
+.proto-capability-card--dark .proto-capability-card__headline { color: #d7dee5; }
+
+.proto-capability-card__list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proto-capability-card__list li {
+  font-size: 12px;
+  color: #6b7280;
+  padding-left: 14px;
+  position: relative;
+  line-height: 1.4;
+}
+
+.proto-capability-card--dark .proto-capability-card__list li { color: #7d8a96; }
+
+.proto-capability-card__list li::before {
+  content: '·';
+  position: absolute;
+  left: 3px;
+  color: #3fb8af;
+  font-weight: 700;
+}
+
+.proto-capability-card__cta {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  text-decoration: none;
+  margin-top: 6px;
+  display: inline-block;
+  letter-spacing: 0.01em;
+  transition: color 100ms ease;
+}
+
+.proto-capability-card__cta:hover { color: #111827; }
+
+.proto-capability-card__cta--teal { color: #3fb8af; }
+.proto-capability-card__cta--teal:hover { color: #35a09a; }
+
+.proto-capability-card__badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c9a55c;
+  border: 1px solid rgba(201,165,92,0.45);
+  border-radius: 2px;
+  padding: 2px 6px;
+  display: inline-block;
+  margin-top: 2px;
+}
+
+/* ── Product Composite Terminal (kept for backward compat) ── */
 
 .proto-composite {
   background: #0f1318;

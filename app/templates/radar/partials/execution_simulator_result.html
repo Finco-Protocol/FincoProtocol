@@ -10,13 +10,13 @@
 </div>
 {% else %}
 <div class="sim-result" role="region" aria-label="Simulation result" aria-live="polite">
-  <dl class="kv sim-kv" style="max-width:480px;margin:0 0 12px;">
+  <dl class="kv sim-kv">
     <dt>State</dt>
     <dd>
       {% if sim.state == 'COMPLETE' %}
-      <span style="color:var(--fo-ok,#34d399);">{{ sim.state }}</span>
+      <span class="state-chip state-chip--available">{{ sim.state }}</span>
       {% else %}
-      <span style="color:var(--fo-warn,#e8a838);">{{ sim.state or 'UNAVAILABLE' }}</span>
+      <span class="state-chip state-chip--unavail">{{ sim.state or 'UNAVAILABLE' }}</span>
       {% endif %}
     </dd>
 
@@ -61,10 +61,10 @@
     </dd>
 
     <dt>Asset UID</dt>
-    <dd class="mono" style="font-size:11px;">{{ sim.identity.economicAssetUid or '—' }}</dd>
+    <dd class="mono small">{{ sim.identity.economicAssetUid or '—' }}</dd>
 
     <dt>Contract</dt>
-    <dd class="mono" style="font-size:11px;">{{ sim.identity.contractAddress or '—' }}</dd>
+    <dd class="mono small">{{ sim.identity.contractAddress or '—' }}</dd>
   </dl>
 
   {% if sim.freshness.completedAt %}

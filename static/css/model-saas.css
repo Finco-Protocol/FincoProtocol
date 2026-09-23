@@ -1,0 +1,834 @@
+/* ============================================================================
+   FINCO PROTOCOL — MODEL SaaS UX LAYER  ·  static/css/model-saas.css
+   ----------------------------------------------------------------------------
+   Institutional SaaS UX improvements for FINCO Model workspace.
+   Additive only — no existing class edits. Uses --fo-* tokens exclusively.
+   Namespaced under .fo-saas-*, .fo-library-*, .fo-auth-*, .fo-input-*
+   ========================================================================== */
+
+/* ============================================================================
+   1. BRAND BAR — PROJECT IDENTITY IMPROVEMENTS
+   ========================================================================== */
+
+/* Give the project/scenario fields a more prominent, institutional feel */
+.fo-brand-bar__select-value {
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fo-brand-bar__select-label {
+  color: var(--fo-ink-faint);
+  font-size: 10px;
+}
+
+/* ============================================================================
+   2. COMMAND BAR — AUTHORITY STATE INDICATOR
+   ============================================================================
+   .fo-auth-strip: compact horizontal strip showing Working / Last-Run /
+   Export state. Inserted above the KPI strip in _command_bar.html.
+   Uses existing template variables (dirty, runtime_origin, runtime_generated_at).
+   ========================================================================== */
+
+.fo-auth-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s1);
+  padding: 0 var(--fo-s4);
+  height: 24px;
+  background: var(--fo-surface);
+  border-bottom: 1px solid var(--fo-line);
+  font-size: var(--fo-text-xs);
+  font-family: var(--fo-font-ui);
+}
+
+.fo-auth-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: var(--fo-r-sm);
+  font-size: 10.5px;
+  font-weight: var(--fo-weight-medium);
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.fo-auth-item__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+/* Working — the editable inputs boundary */
+.fo-auth-item--working {
+  color: var(--fo-rag-amber);
+  background: var(--fo-rag-amber-bg);
+  border-color: rgba(180, 83, 9, 0.15);
+}
+.fo-auth-item--working .fo-auth-item__dot {
+  background: var(--fo-rag-amber);
+}
+
+/* Working clean — inputs saved, aligned with last run */
+.fo-auth-item--working-clean {
+  color: var(--fo-rag-green);
+  background: var(--fo-rag-green-bg);
+  border-color: rgba(4, 120, 87, 0.15);
+}
+.fo-auth-item--working-clean .fo-auth-item__dot {
+  background: var(--fo-rag-green);
+}
+
+/* Last Run — canonical computed results */
+.fo-auth-item--lastrun {
+  color: var(--fo-brand-600);
+  background: var(--fo-brand-50);
+  border-color: rgba(26, 86, 219, 0.15);
+}
+.fo-auth-item--lastrun .fo-auth-item__dot {
+  background: var(--fo-brand-600);
+}
+
+/* Last Run unavailable */
+.fo-auth-item--lastrun-none {
+  color: var(--fo-ink-faint);
+  background: var(--fo-rag-neutral-bg);
+  border-color: var(--fo-line);
+}
+.fo-auth-item--lastrun-none .fo-auth-item__dot {
+  background: var(--fo-rag-neutral);
+}
+
+/* Export */
+.fo-auth-item--export {
+  color: var(--fo-ink-soft);
+  background: var(--fo-surface-alt);
+  border-color: var(--fo-line);
+}
+.fo-auth-item--export .fo-auth-item__dot {
+  background: var(--fo-ink-faint);
+}
+
+.fo-auth-strip__sep {
+  color: var(--fo-line-strong);
+  user-select: none;
+}
+
+.fo-auth-strip__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+  margin-right: var(--fo-s1);
+}
+
+/* ============================================================================
+   3. KPI STRIP — POLISH
+   ========================================================================== */
+
+/* Improve the KPI strip cell layout */
+.fo-kpi {
+  border-right: 1px solid var(--fo-line);
+}
+.fo-kpi:last-child {
+  border-right: none;
+}
+
+.fo-kpi__value {
+  font-size: 17px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.fo-kpi__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-kpi__hint {
+  font-size: 10px;
+  color: var(--fo-brand-600);
+  cursor: default;
+}
+
+/* Stale treatment on KPI strip */
+.fo-kpi-strip--stale .fo-kpi__value:not(.fo-kpi__value--placeholder) {
+  color: var(--fo-state-stale);
+}
+
+/* ============================================================================
+   4. WORKSPACE STATE STRIP — INSTITUTIONAL POLISH
+   ========================================================================== */
+
+.workspace-state-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s4);
+  padding: var(--fo-s2) var(--fo-s5);
+  background: var(--fo-surface);
+  border-bottom: 1px solid var(--fo-line);
+  font-size: var(--fo-text-xs);
+}
+
+.workspace-state-strip__label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+  margin-right: 2px;
+}
+
+.workspace-state-strip__item {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s1);
+}
+
+/* ============================================================================
+   5. LIBRARY PAGE
+   ========================================================================== */
+
+.fo-library-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--fo-s6) var(--fo-s5);
+}
+
+.fo-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--fo-s6);
+  padding-bottom: var(--fo-s4);
+  border-bottom: 2px solid var(--fo-line);
+}
+
+.fo-library-title {
+  font-size: var(--fo-text-xl);
+  font-weight: var(--fo-weight-bold);
+  color: var(--fo-ink);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.fo-library-eyebrow {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-faint);
+  margin-bottom: var(--fo-s1);
+}
+
+.fo-library-filter-bar {
+  display: flex;
+  gap: var(--fo-s3);
+  flex-wrap: wrap;
+  margin-bottom: var(--fo-s5);
+  align-items: flex-end;
+  padding: var(--fo-s3) var(--fo-s4);
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+}
+
+.fo-library-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--fo-s1);
+  flex: 1;
+  min-width: 180px;
+}
+
+.fo-library-filter-label {
+  font-size: 10px;
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-faint);
+}
+
+.fo-library-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-family: var(--fo-font-ui);
+  background: var(--fo-surface);
+  color: var(--fo-ink);
+  line-height: 1.4;
+  transition: border-color var(--fo-t-fast) var(--fo-ease),
+              box-shadow var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-library-input:focus {
+  outline: none;
+  border-color: var(--fo-brand-400);
+  box-shadow: 0 0 0 3px rgba(59, 111, 246, 0.12);
+}
+
+.fo-library-select {
+  padding: 6px 10px;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-family: var(--fo-font-ui);
+  background: var(--fo-surface);
+  color: var(--fo-ink);
+  cursor: pointer;
+}
+
+.fo-library-select:focus {
+  outline: none;
+  border-color: var(--fo-brand-400);
+  box-shadow: 0 0 0 3px rgba(59, 111, 246, 0.12);
+}
+
+/* Project table */
+.fo-library-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  background: var(--fo-surface);
+}
+
+.fo-library-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fo-text-md);
+}
+
+.fo-library-table thead {
+  background: var(--fo-surface-alt);
+}
+
+.fo-library-table th {
+  padding: var(--fo-s2) var(--fo-s3);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fo-ink-soft);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--fo-line-strong);
+}
+
+.fo-library-table td {
+  padding: 10px var(--fo-s3);
+  border-bottom: 1px solid var(--fo-line);
+  vertical-align: middle;
+}
+
+.fo-library-table tr:last-child td {
+  border-bottom: none;
+}
+
+.fo-library-table tr:hover td {
+  background: var(--fo-surface-alt);
+}
+
+.fo-library-table tr[data-selected="true"] td {
+  background: var(--fo-brand-50);
+}
+
+.fo-library-row-name {
+  font-weight: var(--fo-weight-medium);
+  color: var(--fo-ink);
+}
+
+.fo-library-row-meta {
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin-top: 2px;
+}
+
+.fo-library-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: var(--fo-s2);
+}
+
+.fo-library-badge--reference {
+  background: var(--fo-brand-100);
+  color: var(--fo-brand-700);
+}
+
+.fo-library-badge--working-copy {
+  background: var(--fo-rag-green-bg);
+  color: var(--fo-rag-green);
+}
+
+.fo-library-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  white-space: nowrap;
+}
+
+.fo-library-link {
+  font-size: var(--fo-text-sm);
+  color: var(--fo-link);
+  text-decoration: none;
+  font-weight: var(--fo-weight-medium);
+}
+
+.fo-library-link:hover {
+  text-decoration: underline;
+}
+
+.fo-library-btn-clone {
+  font-size: var(--fo-text-sm);
+  padding: 3px 8px;
+  border-radius: var(--fo-r-sm);
+  border: 1px solid var(--fo-brand-300);
+  background: transparent;
+  color: var(--fo-brand-600);
+  cursor: pointer;
+  font-family: var(--fo-font-ui);
+  transition: background var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-library-btn-clone:hover {
+  background: var(--fo-brand-50);
+}
+
+/* New project CTA */
+.fo-library-cta-new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: 7px 14px;
+  background: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  border: none;
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  font-family: var(--fo-font-ui);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-library-cta-new:hover {
+  background: var(--fo-brand-700);
+}
+
+/* Empty state */
+.fo-library-empty {
+  padding: var(--fo-s8) var(--fo-s5);
+  text-align: center;
+  border: 1px dashed var(--fo-line-strong);
+  border-radius: var(--fo-r-md);
+  background: var(--fo-surface);
+}
+
+.fo-library-empty__icon {
+  font-size: 28px;
+  margin-bottom: var(--fo-s3);
+  opacity: 0.35;
+}
+
+.fo-library-empty__title {
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink-soft);
+  margin-bottom: var(--fo-s2);
+}
+
+.fo-library-empty__sub {
+  font-size: var(--fo-text-md);
+  color: var(--fo-ink-faint);
+}
+
+.fo-library-results-meta {
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-faint);
+  margin-bottom: var(--fo-s3);
+}
+
+/* Pagination */
+.fo-library-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--fo-s4);
+  font-size: var(--fo-text-md);
+}
+
+.fo-library-pagination__info {
+  color: var(--fo-ink-faint);
+}
+
+.fo-library-pagination__pages {
+  display: flex;
+  gap: var(--fo-s1);
+}
+
+.fo-library-page-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  text-decoration: none;
+  color: var(--fo-ink);
+  font-size: var(--fo-text-sm);
+  background: var(--fo-surface);
+  transition: border-color var(--fo-t-fast) var(--fo-ease),
+              background var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-library-page-btn:hover {
+  border-color: var(--fo-brand-400);
+  background: var(--fo-brand-50);
+}
+
+.fo-library-page-btn--active {
+  background: var(--fo-brand-600);
+  border-color: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  font-weight: var(--fo-weight-semibold);
+  pointer-events: none;
+}
+
+/* ============================================================================
+   6. INPUT FORMS — SAAS FORM GROUPS
+   ========================================================================== */
+
+/* Input section cards — wraps existing .inp-card */
+.fo-input-section {
+  background: var(--fo-surface);
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-md);
+  margin-bottom: var(--fo-s4);
+  overflow: hidden;
+}
+
+.fo-input-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--fo-s3) var(--fo-s4);
+  background: var(--fo-surface-alt);
+  border-bottom: 1px solid var(--fo-line);
+}
+
+.fo-input-section__title {
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink);
+  letter-spacing: -0.01em;
+}
+
+.fo-input-section__subtitle {
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin-top: 1px;
+}
+
+.fo-input-section__body {
+  padding: var(--fo-s4);
+}
+
+/* Two-column form grid */
+.fo-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--fo-s3) var(--fo-s4);
+}
+
+@media (max-width: 600px) {
+  .fo-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form field */
+.fo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fo-field__label {
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fo-ink-soft);
+}
+
+.fo-field__unit {
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.fo-field__input {
+  padding: 6px 10px;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-family: var(--fo-font-ui);
+  background: var(--fo-surface);
+  color: var(--fo-ink);
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--fo-t-fast) var(--fo-ease),
+              box-shadow var(--fo-t-fast) var(--fo-ease);
+}
+
+.fo-field__input:focus {
+  outline: none;
+  border-color: var(--fo-brand-400);
+  box-shadow: 0 0 0 3px rgba(59, 111, 246, 0.12);
+}
+
+.fo-field__input:disabled,
+.fo-field__input[readonly] {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink-faint);
+  cursor: not-allowed;
+}
+
+.fo-field__hint {
+  font-size: var(--fo-text-xs);
+  color: var(--fo-ink-faint);
+}
+
+/* ============================================================================
+   7. FINANCIAL TABLES — INSTITUTIONAL TREATMENT
+   ========================================================================== */
+
+/* Override table styles within .fo-fin-table namespace */
+.fo-fin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fo-text-sm);
+  font-family: var(--fo-font-ui);
+}
+
+.fo-fin-table thead tr {
+  background: var(--fo-surface-alt);
+  border-bottom: 2px solid var(--fo-line-strong);
+}
+
+.fo-fin-table th {
+  padding: var(--fo-s2) var(--fo-s3);
+  font-size: var(--fo-text-xs);
+  font-weight: var(--fo-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fo-ink-soft);
+  white-space: nowrap;
+}
+
+.fo-fin-table th.fo-fin-table__num-col,
+.fo-fin-table td.fo-fin-table__num-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.fo-fin-table td {
+  padding: var(--fo-s2) var(--fo-s3);
+  border-bottom: 1px solid var(--fo-line);
+  color: var(--fo-ink);
+  line-height: var(--fo-lh-table);
+}
+
+.fo-fin-table tr:hover td {
+  background: var(--fo-brand-50);
+}
+
+.fo-fin-table tr.fo-fin-table__subtotal td {
+  font-weight: var(--fo-weight-semibold);
+  border-top: 1px solid var(--fo-line-strong);
+  background: var(--fo-surface-alt);
+}
+
+.fo-fin-table tr.fo-fin-table__total td {
+  font-weight: var(--fo-weight-bold);
+  border-top: 2px solid var(--fo-line-strong);
+  border-bottom: 2px solid var(--fo-line-strong);
+}
+
+.fo-fin-table td.fo-fin-table__neg {
+  color: var(--fo-rag-red);
+}
+
+.fo-fin-table td.fo-fin-table__pos {
+  color: var(--fo-rag-green);
+}
+
+/* ============================================================================
+   8. EMPTY STATES — USEFUL AND CLEAR
+   ========================================================================== */
+
+.fo-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--fo-s8) var(--fo-s5);
+  text-align: center;
+  min-height: 200px;
+}
+
+.fo-empty-state__icon {
+  font-size: 32px;
+  margin-bottom: var(--fo-s3);
+  opacity: 0.4;
+}
+
+.fo-empty-state__title {
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink-soft);
+  margin-bottom: var(--fo-s2);
+}
+
+.fo-empty-state__body {
+  font-size: var(--fo-text-md);
+  color: var(--fo-ink-faint);
+  max-width: 340px;
+  line-height: var(--fo-lh-prose);
+}
+
+.fo-empty-state__cta {
+  margin-top: var(--fo-s4);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  padding: 7px 16px;
+  background: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  border: none;
+  border-radius: var(--fo-r-sm);
+  font-size: var(--fo-text-md);
+  font-weight: var(--fo-weight-semibold);
+  font-family: var(--fo-font-ui);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.fo-empty-state__cta:hover {
+  background: var(--fo-brand-700);
+}
+
+/* "Run model to see results" empty state variant */
+.fo-empty-run {
+  border: 1px dashed var(--fo-line-strong);
+  border-radius: var(--fo-r-md);
+  background: var(--fo-surface);
+  padding: var(--fo-s6) var(--fo-s5);
+  text-align: center;
+}
+
+.fo-empty-run__label {
+  font-size: var(--fo-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fo-ink-faint);
+  margin-bottom: var(--fo-s2);
+}
+
+.fo-empty-run__msg {
+  font-size: var(--fo-text-md);
+  color: var(--fo-ink-soft);
+  margin-bottom: var(--fo-s3);
+}
+
+/* ============================================================================
+   9. SIDEBAR — PROTOCOL SECTION IMPROVEMENTS
+   ========================================================================== */
+
+/* Make the "Protocol" section in the sidebar feel more like a nav section */
+#ps-protocol-surfaces .ps-section-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fo-ink-faint);
+  padding: var(--fo-s3) var(--fo-s4) var(--fo-s1);
+}
+
+#ps-protocol-surfaces .ps-download-item {
+  font-size: var(--fo-text-sm);
+  padding: 5px var(--fo-s4);
+  display: flex;
+  align-items: center;
+  gap: var(--fo-s2);
+  color: var(--fo-ink-soft);
+  text-decoration: none;
+  border-radius: var(--fo-r-sm);
+  margin: 1px var(--fo-s2);
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease);
+}
+
+#ps-protocol-surfaces .ps-download-item:hover {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+}
+
+/* Sidebar workflow nav level-1 active state improvements */
+.ps-workflow-item--active {
+  background: var(--fo-brand-50);
+  color: var(--fo-brand-700);
+  font-weight: var(--fo-weight-semibold);
+}
+
+/* Actions section */
+.ps-action-btn--primary {
+  background: var(--fo-brand-600);
+  color: var(--fo-slate-0);
+  border: none;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.01em;
+}
+
+.ps-action-btn--primary:hover {
+  background: var(--fo-brand-700);
+}
+
+/* ============================================================================
+   10. MOBILE RESPONSIVE — 390px
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .fo-auth-strip {
+    display: none; /* collapsed on very small screens */
+  }
+
+  .fo-library-filter-bar {
+    flex-direction: column;
+  }
+
+  .fo-library-filter-group {
+    min-width: 100%;
+  }
+
+  .fo-library-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--fo-s3);
+  }
+
+  .fo-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

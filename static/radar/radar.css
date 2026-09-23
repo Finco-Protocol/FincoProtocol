@@ -193,3 +193,488 @@ html, body.radar {
   .kv { grid-template-columns: 1fr; }
   .radar-main { padding: 12px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPANY TERMINAL — layout, tabs, tables, state chips
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page container ─────────────────────────────────────────────────────── */
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+
+/* ── Terminal header ─────────────────────────────────────────────────────── */
+.terminal-header {
+  padding: 16px 0 14px;
+  border-bottom: 1px solid var(--radar-border);
+  margin-bottom: 16px;
+}
+
+.terminal-header__nav {
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.terminal-header__back {
+  color: var(--radar-muted);
+  text-decoration: none;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  transition: color 80ms ease;
+}
+.terminal-header__back:hover { color: var(--radar-text); }
+
+.terminal-header__breadcrumb {
+  color: var(--radar-muted);
+  font-size: 12px;
+}
+
+.terminal-header__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.terminal-header__company {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--radar-text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.terminal-header__meta {
+  color: var(--radar-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.terminal-header__state-strip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.terminal-header__switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Tab bar (keep .tab-btn/.tab-active for test compatibility) ─────────── */
+.terminal-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--radar-border);
+  margin-bottom: 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tab-btn {
+  padding: 8px 18px;
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--radar-muted);
+  font-size: 13px;
+  font-family: var(--fo-font-ui, inherit);
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  display: inline-block;
+  letter-spacing: 0.01em;
+  transition: color 100ms ease, border-color 100ms ease;
+}
+
+.tab-btn:hover {
+  color: var(--radar-text);
+  border-bottom-color: rgba(63,184,175,0.4);
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--radar-teal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.tab-btn.tab-active,
+.tab-btn[aria-selected="true"] {
+  color: var(--radar-teal);
+  border-bottom-color: var(--radar-teal);
+  font-weight: 600;
+}
+
+/* ── State chips ──────────────────────────────────────────────────────────── */
+.state-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid;
+}
+
+.state-chip--available {
+  color: var(--radar-green);
+  border-color: rgba(127,191,127,0.35);
+  background: rgba(127,191,127,0.08);
+}
+.state-chip--partial {
+  color: var(--radar-gold);
+  border-color: rgba(201,165,92,0.35);
+  background: rgba(201,165,92,0.08);
+}
+.state-chip--unavail, .state-chip--not-available, .state-chip--not-found,
+.state-chip--source-unavailable, .state-chip--fundamentals-not-found {
+  color: var(--radar-red);
+  border-color: rgba(208,122,106,0.35);
+  background: rgba(208,122,106,0.08);
+}
+.state-chip--identity-mismatch, .state-chip--mismatch {
+  color: var(--radar-red);
+  border-color: rgba(208,122,106,0.5);
+  background: rgba(208,122,106,0.12);
+}
+.state-chip--verified, .state-chip--identity-verified {
+  color: var(--radar-green);
+  border-color: rgba(127,191,127,0.5);
+  background: rgba(127,191,127,0.12);
+}
+.state-chip--partial-identity {
+  color: var(--radar-gold);
+  border-color: rgba(201,165,92,0.5);
+  background: rgba(201,165,92,0.12);
+}
+.state-chip--readonly {
+  color: var(--radar-gold);
+  border-color: rgba(201,165,92,0.4);
+  background: rgba(201,165,92,0.08);
+}
+
+/* ── Section headings within terminal tabs ───────────────────────────────── */
+.terminal-section-heading {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--radar-muted);
+  margin: 20px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--radar-border);
+  font-weight: 500;
+}
+.terminal-section-heading:first-child { margin-top: 0; }
+
+/* Feature-level headings (e.g. "Execution Simulator") — larger, preserve case */
+.terminal-section-heading--feature {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--radar-text);
+  font-weight: 600;
+  border-bottom: none;
+  margin-bottom: 12px;
+}
+
+/* ── Statement selector controls ─────────────────────────────────────────── */
+.stmt-ctrl-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.stmt-ctrl-group {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stmt-ctrl-label {
+  font-size: 11px;
+  color: var(--radar-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 2px;
+}
+
+.stmt-ctrl-btn {
+  padding: 4px 10px;
+  border-radius: 2px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--radar-muted);
+  border: 1px solid var(--radar-border);
+  background: transparent;
+  display: inline-block;
+  white-space: nowrap;
+  transition: background 80ms ease, color 80ms ease, border-color 80ms ease;
+}
+
+.stmt-ctrl-btn:hover { color: var(--radar-text); border-color: rgba(63,184,175,0.5); }
+
+.stmt-ctrl-btn--active {
+  background: rgba(63,184,175,0.12);
+  color: var(--radar-teal);
+  border-color: var(--radar-teal);
+}
+
+/* ── Financial statement table ───────────────────────────────────────────── */
+.fin-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 400px;
+  width: 100%;
+  font-variant-numeric: tabular-nums lining-nums;
+  table-layout: auto;
+}
+
+.fin-table thead th {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--radar-border);
+  font-weight: 600;
+  color: var(--radar-muted);
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-align: right;
+  background: var(--radar-panel);
+}
+
+.fin-table thead th:first-child { text-align: left; min-width: 180px; }
+
+.fin-table tbody td {
+  padding: 3px 8px;
+  text-align: right;
+  border-bottom: 1px solid rgba(35,43,51,0.55);
+}
+
+.fin-table tbody td:first-child {
+  text-align: left;
+  color: var(--radar-muted);
+  font-size: 11.5px;
+  padding-right: 16px;
+}
+
+.fin-table .cell-missing { color: rgba(125,138,150,0.5); }
+.fin-table .cell-neg { color: var(--radar-red); }
+.fin-table .cell-pos { color: var(--radar-green); }
+
+/* ── Evidence tables (snapshot, lineage, dividends, splits) ──────────────── */
+.evidence-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+  font-family: var(--fo-font-ui, inherit);
+}
+
+.evidence-table th {
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--radar-border);
+  color: var(--radar-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.evidence-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid rgba(35,43,51,0.45);
+  vertical-align: top;
+}
+
+.evidence-table td.mono { word-break: break-all; }
+
+/* ── Featured market board ───────────────────────────────────────────────── */
+.board-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.board-table th {
+  padding: 5px 8px;
+  text-align: right;
+  border-bottom: 1px solid var(--radar-border);
+  color: var(--radar-muted);
+  font-weight: 500;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.board-table th:first-child { text-align: left; padding-left: 0; }
+
+.board-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(35,43,51,0.5);
+  vertical-align: middle;
+}
+
+.board-table td:first-child { padding-left: 0; }
+
+.board-table td.num {
+  text-align: right;
+  font-family: var(--radar-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-table td.state-cell { white-space: nowrap; }
+
+.board-table tr:last-child td { border-bottom: none; }
+.board-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+.board-details-cta {
+  color: var(--radar-teal);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  display: inline-block;
+  border-bottom: 1px solid transparent;
+  transition: border-color 80ms ease;
+}
+.board-details-cta:hover { border-bottom-color: var(--radar-teal); }
+
+/* ── Sim result area ──────────────────────────────────────────────────────── */
+.sim-result {
+  padding: 14px 16px;
+  background: rgba(0,0,0,0.12);
+  border: 1px solid var(--radar-border);
+  border-radius: 2px;
+  margin-top: 12px;
+}
+
+.sim-result--error {
+  border-color: rgba(208,122,106,0.35);
+  background: rgba(208,122,106,0.05);
+}
+
+.sim-kv {
+  display: grid;
+  grid-template-columns: minmax(0,150px) minmax(0,1fr);
+  gap: 4px 12px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  max-width: 520px;
+}
+
+.sim-kv dt { color: var(--radar-muted); }
+.sim-kv dd { margin: 0; }
+
+.sim-gap--pos { color: var(--radar-green); font-weight: 600; }
+.sim-gap--neg { color: var(--radar-red); font-weight: 600; }
+
+/* ── Metric strip (compact horizontal KPIs) ───────────────────────────────── */
+.metric-strip {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--radar-border);
+  margin-bottom: 16px;
+}
+
+.metric-strip__item { display: flex; flex-direction: column; gap: 2px; min-width: 70px; }
+
+.metric-strip__label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--radar-muted);
+}
+
+.metric-strip__value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--radar-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-strip__value--pos { color: var(--radar-green); }
+.metric-strip__value--neg { color: var(--radar-red); }
+.metric-strip__value--muted { color: var(--radar-muted); font-weight: 400; }
+
+/* ── Radar board / index page layout improvements ────────────────────────── */
+.radar-board-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.radar-board-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--radar-text);
+  margin: 0;
+}
+
+.radar-board-meta {
+  font-size: 11px;
+  color: var(--radar-muted);
+}
+
+/* ── Corporate Fundamentals panel (equity_fundamentals.html) ─────────────── */
+.fundamentals-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.fundamentals-identity__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--radar-text);
+}
+
+.fundamentals-identity__meta {
+  font-size: 12px;
+  color: var(--radar-muted);
+}
+
+.fundamentals-security-type {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+/* shared utility: .small for smaller mono text without a full .muted combo */
+.small { font-size: 11px; }
+
+/* ── Responsive additions ─────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .page-container { padding: 14px 12px 40px; }
+  .terminal-header__company { font-size: 17px; }
+  .terminal-tabs { gap: 0; }
+  .tab-btn { padding: 8px 12px; font-size: 12px; }
+  .metric-strip { gap: 16px; }
+  .stmt-ctrl-row { gap: 8px; }
+  .stmt-ctrl-btn { padding: 4px 8px; font-size: 11.5px; }
+  .terminal-header__title-row { gap: 8px; }
+}
