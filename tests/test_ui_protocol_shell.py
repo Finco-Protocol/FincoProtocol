@@ -219,8 +219,7 @@ class TestProtocolHomeMobile:
 
 class TestModelLibrary:
     def test_library_loads_and_has_protocol_links(self, live_url, browser):
-        """Library must load as the project listing page AND expose
-        Protocol-level Home/Radar/Verify links in the sidebar (base.html)."""
+        """Library exposes cross-product navigation without project controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         page.goto(f"{live_url}/library")
@@ -235,16 +234,11 @@ class TestModelLibrary:
         assert "Project Library" in page_text, (
             "Library heading not found — page may not have rendered"
         )
-        # Protocol section in sidebar (added to base.html)
-        proto_section = page.query_selector("#ps-protocol-surfaces")
-        assert proto_section is not None, (
-            "Protocol sidebar section (#ps-protocol-surfaces) missing on /library"
-        )
-        # Protocol links present
-        links_text = proto_section.inner_text()
-        assert "Home" in links_text, "Home link missing from Protocol sidebar"
-        assert "Radar" in links_text, "Radar link missing from Protocol sidebar"
-        assert "Verify" in links_text, "Verify link missing from Protocol sidebar"
+        assert page.query_selector("#project-sidebar") is None
+        assert page.query_selector("#fo-btn-run") is None
+        assert page.query_selector("#fo-kpi-strip") is None
+        for destination in ("/library", "/radar", "/verify"):
+            assert page.query_selector(f".fo-brand-bar__nav[href='{destination}']") is not None
 
     def test_library_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
