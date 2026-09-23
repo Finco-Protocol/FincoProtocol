@@ -263,7 +263,7 @@ class TestModelJourney:
     Home → Library → Workbook → Radar → Verify → Home."""
 
     def test_workbook_has_protocol_links(self, live_url, browser):
-        """Workbook V2 must expose Protocol links in sidebar (base.html)."""
+        """Workbook V2 exposes links to the other Protocol surfaces."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         # Open workbook with a reference project (always exists for admin).
@@ -271,13 +271,14 @@ class TestModelJourney:
         page.wait_for_load_state("domcontentloaded")
         # Must not redirect to login
         assert "workbook" in page.url or "library" in page.url or "/" in page.url
-        proto_section = page.query_selector("#ps-protocol-surfaces")
+        proto_section = page.query_selector(".v2-protocol-nav")
         assert proto_section is not None, (
-            "Protocol sidebar section missing on Workbook V2"
+            "Protocol navigation missing on Workbook V2"
         )
         links_text = proto_section.inner_text()
-        assert "Radar" in links_text, "Radar link missing from Workbook sidebar"
-        assert "Verify" in links_text, "Verify link missing from Workbook sidebar"
+        assert "Model" in links_text, "Model link missing from Workbook navigation"
+        assert "Radar" in links_text, "Radar link missing from Workbook navigation"
+        assert "Verify" in links_text, "Verify link missing from Workbook navigation"
 
     def test_workbook_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -312,13 +313,13 @@ class TestModelJourney:
         # 3. Open Workbook via direct URL (simulates library click)
         page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
         page.wait_for_load_state("domcontentloaded")
-        proto = page.query_selector("#ps-protocol-surfaces")
-        assert proto is not None, "Protocol section missing on Workbook"
+        proto = page.query_selector(".v2-protocol-nav")
+        assert proto is not None, "Protocol navigation missing on Workbook"
 
-        # 4. Navigate to Radar via protocol sidebar link
+        # 4. Navigate to Radar via Workbook navigation
         radar_link = proto.query_selector("a[href='/radar']")
-        assert radar_link is not None, "Radar link missing from Workbook sidebar"
-        page.goto(f"{live_url}/radar")
+        assert radar_link is not None, "Radar link missing from Workbook navigation"
+        radar_link.click()
         page.wait_for_load_state("domcontentloaded")
         assert "READ-ONLY" in page.inner_text("body")
 
@@ -1727,6 +1728,8 @@ class TestE4ExecutionSimulator:
         assert "-24" in result_text, (
             f"Directional GAP -24 missing from BUY result: {result_text[:500]}"
         )
+        page.locator(".radar-technical-details summary").click()
+        result_text = page.locator("#sim-result-rh-equity-nvda-001").inner_text()
         assert "rh-equity-nvda-001" in result_text, (
             f"Asset UID missing from BUY result: {result_text[:500]}"
         )

@@ -68,6 +68,24 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
   flex-shrink: 0;
   margin-left: 0.5rem;
 }
+.v2-protocol-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0.75rem;
+  background: #1c2333;
+  border-bottom: 1px solid #2c3555;
+}
+.v2-protocol-nav a {
+  color: #b0bcdd;
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.v2-protocol-nav a:hover, .v2-protocol-nav a:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+.v2-protocol-nav a[aria-current="page"] { color: #fff; font-weight: 600; }
 
 /* ── Toolbar runtime state chip ──────────────────────────────── */
 .v2-toolbar-state {
