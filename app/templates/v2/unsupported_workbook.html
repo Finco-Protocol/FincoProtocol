@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ project_name }} — Workbook</title>
+  <link rel="stylesheet" href="/static/css/workbook_v2.css">
+</head>
+<body>
+  <div class="v2-unsupported-runtime" role="main" data-testid="unsupported-runtime-page">
+    <div class="v2-unsupported-runtime__card">
+      <div class="v2-unsupported-runtime__type">{{ project_type }}</div>
+      <h1 class="v2-unsupported-runtime__title">{{ project_name }}</h1>
+      <p class="v2-unsupported-runtime__message" data-testid="unsupported-runtime-message">
+        {{ project_type }} working-copy runtime is not yet enabled.
+      </p>
+      <p class="v2-unsupported-runtime__note" data-testid="unsupported-runtime-preserved">
+        This project is preserved and has not been modified.
+      </p>
+      <div class="v2-unsupported-runtime__actions">
+        <a href="{{ library_url }}" class="v2-unsupported-runtime__btn v2-unsupported-runtime__btn--primary" data-testid="unsupported-back-to-library">Back to Model Workspace</a>
+        <a href="{{ reference_url }}" class="v2-unsupported-runtime__btn v2-unsupported-runtime__btn--secondary" data-testid="unsupported-view-reference">{{ reference_label }}</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

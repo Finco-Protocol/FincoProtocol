@@ -52,9 +52,13 @@
       <p>Explore the {{ proj.project_type or 'project' }} reference model, then create your own working copy.</p>
       <div class="fo-library-reference-actions">
         <a href="{{ workbook_destination_fn(proj.project_code) }}" data-testid="open-{{ proj.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-link">View Reference</a>
+        {% if proj.project_type and proj.project_type.lower() == 'storage' %}
+        <span data-testid="clone-unavailable-{{ proj.project_code }}" class="fo-library-btn-clone-unavailable">Working-copy runtime coming soon</span>
+        {% else %}
         <form method="POST" action="/library/clone/{{ proj.project_id }}" hx-post="/library/clone/{{ proj.project_id }}" hx-target="#library-clone-error" hx-swap="innerHTML" hx-disabled-elt="find button">
           <button type="submit" data-testid="clone-{{ proj.project_code }}" class="fo-library-btn-clone">Create working copy</button>
         </form>
+        {% endif %}
       </div>
     </article>
     {% endfor %}

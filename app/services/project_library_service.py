@@ -48,6 +48,20 @@ class ProtectedProjectError(Exception):
         super().__init__(f"Project '{project_name}' is a protected reference and cannot be modified.")
 
 
+class UnsupportedProjectRuntimeError(Exception):
+    """Raised when a clone is requested for a project type whose user-project
+    runtime is not yet supported.  The reference remains available for viewing;
+    only working-copy creation is blocked until the corresponding runtime phase
+    is formally released.
+    """
+    def __init__(self, project_type: str = ""):
+        self.project_type = project_type
+        super().__init__(
+            f"{project_type} working-copy runtime is not yet supported. "
+            "The reference model is still available for viewing."
+        )
+
+
 class ReferenceBootstrapError(RuntimeError):
     """Raised when the canonical-reference bootstrap cannot resolve a
     uniqueness conflict to a winning canonical record.
@@ -96,7 +110,7 @@ def is_protected_reference(project_record) -> bool:
 # Strict clone authorization
 # ---------------------------------------------------------------------------
 
-CLONEABLE_TEMPLATE_SOURCES = frozenset({"generic_wind_reference", "generic_solar_reference", "generic_storage_reference"})
+CLONEABLE_TEMPLATE_SOURCES = frozenset({"generic_wind_reference", "generic_solar_reference"})
 
 
 def _is_canonical_reference(source) -> bool:
@@ -317,6 +331,12 @@ def create_working_copy(
     source = get_project_by_id(source_reference_id)
     if source is None:
         raise ValueError(f"Source project {source_reference_id!r} not found.")
+    # Unsupported-runtime guard: block Storage clones before touching any rows.
+    # The Storage reference remains viewable; only working-copy creation is blocked
+    # until a dedicated Storage runtime phase is formally released.
+    _source_type = (getattr(source, "project_type", "") or "").strip()
+    if _source_type.lower() == "storage":
+        raise UnsupportedProjectRuntimeError(_source_type)
     if not _is_canonical_reference(source):
         raise ValueError(
             f"Project {source_reference_id!r} (role={getattr(source, 'project_role', None)!r}) "
