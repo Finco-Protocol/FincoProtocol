@@ -36,7 +36,7 @@ import pytest
 pytest.importorskip("playwright")
 pytest.importorskip("uvicorn")
 
-from playwright.sync_api import sync_playwright  # noqa: E402
+from playwright.sync_api import expect, sync_playwright  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 WIDTH_TOLERANCE = 2  # demonstrable browser rounding tolerance, px
@@ -2229,8 +2229,7 @@ def test_reference_driven_correction_a_22_capture_journey(
         '#panel-project-setup '
         '[data-field-id="project_setup.technical.capacity_mw"] input[name="value"]'
     )
-    page.locator(capacity_selector).wait_for()
-    assert float(page.locator(capacity_selector).input_value()) == 150.0
+    expect(page.locator(capacity_selector)).to_have_value("150.0", timeout=10000)
     shot("08-capacity-change")
 
     page.locator("#tab-opex").click()
