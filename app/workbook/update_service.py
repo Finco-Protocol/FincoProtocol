@@ -394,4 +394,17 @@ class WorkbookUpdateService:
                 "Reload and try again."
             )
 
+        if field_id == "project_setup.technical.capacity_mw":
+            from app.persistence.workspace_repository import get_workspace_state
+            from app.services.reference_seed_service import rescale_reference_seeded_project
+
+            rescale_reference_seeded_project(
+                user_id=ws.user_id,
+                project_code=project_record.project_code,
+                capacity_mw=float(validation.typed_value),
+            )
+            refreshed = get_workspace_state(ws.user_id, ws.project_id)
+            if refreshed is not None:
+                return ProjectInputSet.from_snapshot(refreshed.draft_snapshot, workbook=WORKBOOK)
+
         return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)

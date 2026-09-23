@@ -22,6 +22,8 @@ html, body.radar {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.45;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .radar-topbar {
@@ -253,6 +255,30 @@ html, body.radar {
   color: var(--radar-muted);
   font-size: 14px;
   line-height: 1.4;
+}
+.terminal-header__price { margin-left:auto; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.terminal-header__price strong { font-size:22px; font-variant-numeric:tabular-nums; }
+.terminal-header__price small { color:var(--radar-muted); font-size:11px; }
+.radar-product-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; margin-bottom:14px; }
+.radar-product-grid > .panel { min-width:0; }
+.execution-coming-soon { border-color:color-mix(in srgb, var(--radar-gold) 35%, var(--radar-border)); }
+.execution-coming-soon h2, .execution-coming-soon h3 { margin-top:0; text-transform:none; letter-spacing:0; }
+.radar-legacy-hook {
+  display:inline-block;
+  width:0;
+  height:0;
+  overflow:hidden;
+  clip-path:inset(50%);
+  white-space:nowrap;
+  font-size:0;
+  line-height:0;
+}
+
+@media (max-width: 600px) {
+  .radar-product-grid { grid-template-columns:minmax(0, 1fr); }
+  .terminal-header__price { margin-left:0; width:100%; }
+  .panel-featured-board { max-width:100%; overflow:hidden; }
+  .page-container, .radar-main { padding-left:10px; padding-right:10px; }
 }
 
 .terminal-header__state-strip {
@@ -679,6 +705,8 @@ html, body.radar {
   .terminal-header__title-row { gap: 8px; }
 }
 .radar-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-market-details, .execution-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-market-details > summary, .execution-technical-details > summary { cursor:pointer; width:fit-content; }
 .radar-technical-details > summary { cursor: pointer; width: fit-content; }
 .radar-technical-details > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .radar-technical-details[open] > .panel { margin-top: 0.6rem; }

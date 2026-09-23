@@ -19,12 +19,6 @@
 {% set tv = terminal %}
 
 <div class="page-container">
-<section class="panel" data-market-terminal-uid="{{ tv.economic_asset_uid if tv else '' }}" aria-label="Market reference" style="margin:0 0 14px;">
-  <strong>Market reference</strong> <span data-market-price>—</span>
-  <span class="muted small" data-market-state>Waiting for official reference.</span>
-  <span class="muted small" data-market-observed></span>
-</section>
-
 {# ── Error / unavailable ──────────────────────────────────────────────────── #}
 {% if tv and tv.state in ("ASSET_UNIVERSE_UNAVAILABLE", "ASSET_NOT_FOUND_IN_UNIVERSE", "FUNDAMENTALS_NOT_FOUND", "SOURCE_UNAVAILABLE", "FUNDAMENTALS_CONFIG_INVALID") %}
 <section class="panel panel-error" data-panel="equity-terminal-error">
@@ -50,7 +44,7 @@
 {% elif tv %}
 
 {# ── Company Terminal header ──────────────────────────────────────────────── #}
-<div class="terminal-header">
+<section class="terminal-header" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
   <div class="terminal-header__nav">
     <a href="/radar" class="terminal-header__back">← Radar</a>
   </div>
@@ -64,6 +58,13 @@
       {% if tv.identity.currency %} · {{ tv.identity.currency }}{% endif %}
     </span>
     {% endif %}
+    <span class="terminal-header__price" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
+      <strong data-market-price>—</strong>
+      <small>Bid <span data-market-bid>—</span></small>
+      <small>Ask <span data-market-ask>—</span></small>
+      <small data-market-state>UNAVAILABLE</small>
+      <small data-market-source>Source unavailable</small>
+    </span>
   </div>
 
   <div class="terminal-header__state-strip">
@@ -102,7 +103,7 @@
     </select>
   </div>
   {% endif %}
-</div>
+</section>
 
 {# ── Tab bar ─────────────────────────────────────────────────────────────── #}
 <div class="terminal-tabs" role="tablist">
@@ -181,8 +182,6 @@
         <dt>TTM filing date</dt><dd>{{ fr.ttm_filing_date }}</dd>
         <dt>Latest quarter</dt><dd>{{ fr.quarterly_period_end }}</dd>
         <dt>Latest annual</dt><dd>{{ fr.annual_period_end }}</dd>
-        <dt>Profile fetched</dt><dd title="{{ fr.profile_fetched_at }}">{{ fr.profile_fetched_at_display | default(fr.profile_fetched_at) }}</dd>
-        <dt>Asset last seen</dt><dd title="{{ fr.asset_last_seen_at }}">{{ fr.asset_last_seen_at_display | default(fr.asset_last_seen_at) }}</dd>
       </dl>
       {% else %}
       <p class="muted small">Reporting context not available.</p>
@@ -379,9 +378,7 @@
   <section class="panel panel-token-market" data-panel="token-market">
     <h2>Token Market</h2>
 
-    {# MARKET REFERENCE — live-updated by market-poll.js via data-market-* targets #}
-    <section class="terminal-section-heading terminal-section-heading--feature" style="margin-bottom:14px;" aria-label="Market reference">
-      <h3 class="terminal-section-heading terminal-section-heading--feature" style="margin-top:0;">Market Reference</h3>
+    <details class="radar-market-details" style="margin-bottom:18px;" open><summary>Market details</summary>
       <dl class="kv" style="max-width:520px;">
         <dt>Reference Price</dt>
         <dd><span data-market-tab-price data-market-price style="font-variant-numeric:tabular-nums;">—</span></dd>
@@ -392,9 +389,9 @@
         <dt>State</dt>
         <dd><span data-market-tab-state class="muted small">Waiting for official reference.</span></dd>
         <dt>Observed</dt>
-        <dd><span data-market-tab-observed class="muted small"></span></dd>
+        <dd><span data-market-tab-observed class="muted small">—</span></dd>
       </dl>
-    </section>
+    </details>
 
     {% if tv.selected_token %}
     <details style="margin-bottom:20px;">
@@ -408,47 +405,23 @@
     </details>
     {% endif %}
 
-    {# Execution Simulator #}
-    <h3 class="terminal-section-heading terminal-section-heading--feature" style="margin-top:0;">Execution Simulator</h3>
-    <p class="muted small" style="margin:0 0 14px;">
-      No quote acquisition occurs on page load.
-      Use the form below to simulate a single execution against the live market.
-    </p>
-    <form method="post"
-          action="/radar/equity/{{ tv.economic_asset_uid }}/simulate"
-          hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate"
-          hx-target="#sim-result-{{ tv.economic_asset_uid }}"
-          hx-swap="innerHTML"
-          style="max-width:460px;">
-
-      <div style="margin-bottom:12px;">
-        <div class="control-group" role="group" aria-label="Simulation direction" style="margin-bottom:8px;">
-          <label class="chip">
-            <input type="radio" name="direction" value="BUY" checked> Simulate Buy
-          </label>
-          <label class="chip">
-            <input type="radio" name="direction" value="SELL"> Simulate Sell
-          </label>
-        </div>
-      </div>
-
-      <div style="margin-bottom:12px;">
-        <div class="muted small" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
-        <div class="control-group" role="group" aria-label="Trade size">
-          <label class="chip">
-            <input type="radio" name="size" value="100" checked> $100
-          </label>
-          <label class="chip">
-            <input type="radio" name="size" value="1000"> $1,000
-          </label>
-        </div>
-      </div>
-
-      <button type="submit" class="refresh-btn" style="margin-bottom:10px;">Check Execution</button>
-      <p class="muted small" style="margin:0;font-style:italic;">Simulation only — no order is submitted.</p>
-    </form>
-
-    <div id="sim-result-{{ tv.economic_asset_uid }}" style="margin-top:16px;"></div>
+    <section class="execution-coming-soon" aria-label="Execution simulation status">
+      <h3>Execution Simulation — Coming soon</h3>
+      <span class="radar-legacy-hook">Execution Simulator</span>
+      <p>Live execution routing is not enabled in this environment. Market reference and company evidence remain available.</p>
+      <p class="muted small">Simulation only — no order is submitted.</p>
+      <details class="execution-technical-details" open><summary>Technical details</summary>
+        <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission.</p>
+        <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML" aria-label="Legacy execution simulation controls — unavailable">
+          <label><input type="radio" name="direction" value="BUY" checked disabled> Simulate Buy</label>
+          <label><input type="radio" name="direction" value="SELL" disabled> Simulate Sell</label>
+          <label><input type="radio" name="size" value="100" checked disabled> $100</label>
+          <label><input type="radio" name="size" value="1000" disabled> $1,000</label>
+          <button type="submit" class="refresh-btn" disabled>Unavailable — Coming soon</button>
+        </form>
+        <div id="sim-result-{{ tv.economic_asset_uid }}"></div>
+      </details>
+    </section>
   </section>
 
 </div>

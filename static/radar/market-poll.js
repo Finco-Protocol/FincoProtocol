@@ -11,12 +11,12 @@
   const cadence = board ? 12000 : 8000;
 
   function _stateText(s) {
-    if (!s || !s.state) return '—';
+    if (!s || !s.state) return 'UNAVAILABLE';
     if (s.state === 'FRESH') {
-      return s.market_state === 'HALTED' ? 'Fresh · Trading halted' : 'Fresh / Reference';
+      return s.market_state === 'HALTED' ? 'HALTED' : 'FRESH / REFERENCE';
     }
-    if (s.state === 'STALE') return 'Stale';
-    return '—';
+    if (s.state === 'STALE') return 'STALE';
+    return 'UNAVAILABLE';
   }
 
   function apply(node, state) {
@@ -37,6 +37,9 @@
     });
     document.querySelectorAll('[data-market-ask]').forEach(function (ask) {
       ask.textContent = state.ask_display || (state.ask != null ? state.ask : '—');
+    });
+    document.querySelectorAll('[data-market-source]').forEach(function (source) {
+      source.textContent = state.source ? 'Source ' + state.source : 'Source unavailable';
     });
     const badge = node.querySelector('[data-market-state]');
     if (badge) badge.textContent = _stateText(state);

@@ -80,7 +80,7 @@
 {% endmacro %}
 
 {# Macro: custom user-added row #}
-{% macro opex_custom_row(line, project_code, workbook_version, project_editable) %}
+{% macro opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
 <div class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
      data-fc-row>
   {%- if project_editable %}
@@ -93,6 +93,7 @@
       <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
       <input type="hidden" name="row_version" value="{{ line.row_version }}">
       <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+      <input type="hidden" name="content_hash" value="{{ content_hash }}">
       <span class="v2-fc-cell-wrap"
             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
             data-fc-editable="true" data-fc-kind="text">
@@ -146,6 +147,7 @@
       <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
       <input type="hidden" name="row_version" value="{{ line.row_version }}">
       <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+      <input type="hidden" name="content_hash" value="{{ content_hash }}">
       <button type="submit" class="v2-opex-deactivate-btn" aria-label="Deactivate"
               data-testid="opex-custom-deactivate-{{ line.sub_line_id }}">✕</button>
     </form>
@@ -210,6 +212,7 @@
   {% endif %}
 
   {# ── KPI strip ────────────────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
       <span class="v2-opex-kpi-label">OPEX Y1</span>
@@ -285,6 +288,7 @@
   </div>
 
   {# ── Canonical B.01–B.13 groups (always 13, fixed order) ─────── #}
+  <div class="v2-sheet-section-heading"><span>Detailed OPEX</span><small>Reference-scaled operating cost lines and escalation</small></div>
   {% for sg in opex_sheet_groups %}
     <details class="v2-opex-group{% if sg.is_derived %} v2-opex-group-contingency{% endif %}{% if not sg.has_vm_data and not sg.is_custom_eligible %} v2-opex-group-no-data{% endif %}"
              open
@@ -372,14 +376,16 @@
             <div class="v2-opex-custom-lines-container"
                  data-testid="opex-custom-lines-{{ sg.code }}">
               {% for line in sg.custom_lines %}
-                {{ opex_custom_row(line, project_code, workbook_version, project_editable) }}
+                {{ opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) }}
               {% endfor %}
             </div>
           {%- endif -%}
 
           {# Add Row form — only for editable projects #}
           {%- if project_editable -%}
+          <details class="v2-add-row-disclosure"><summary>+ Add custom line</summary>
             {{ opex_add_row_form(sg.code, project_code, workbook_version, content_hash) }}
+          </details>
           {%- endif -%}
         {%- endif -%}
 
@@ -410,6 +416,7 @@
   {% endif %}
 
   {# ── Year projection table ─────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>Year Projection</span><small>Escalated annual operating costs</small></div>
   <details class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
     <summary class="v2-opex-projection-toggle">
       Year Projection (Y1–Y{{ opex_vm.display_years }})

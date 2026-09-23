@@ -135,7 +135,14 @@ def _render_opex_sheet_with_oob(
         "content_hash": pis.content_hash,
     })
     run_controls_oob = '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
-    return HTMLResponse(content=resp.body.decode() + "\n" + oob + "\n" + run_controls_oob)
+    response = HTMLResponse(content=resp.body.decode() + "\n" + oob + "\n" + run_controls_oob)
+    # Custom-row commands mutate the composite workbook identity just like
+    # scalar field saves.  Notify the shell so every still-mounted form (for
+    # example Project Setup) receives the new CAS token before the user's next
+    # edit.  Without this signal, a valid cross-sheet edit is rejected stale.
+    from app.v2.router import _add_field_saved_trigger
+
+    return _add_field_saved_trigger(response, "opex.custom_lines", pis.content_hash)
 
 
 def _handle_command_error(exc: OpexCommandError) -> JSONResponse:

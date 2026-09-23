@@ -9141,6 +9141,21 @@ tr.fc-grid-header--sub th {
   margin: 0;
   line-height: 1.5;
 }
+.create-form-reference-picker { border:0; padding:0; margin:0; display:grid; gap:10px; }
+.create-form-reference-picker legend { font-weight:700; margin-bottom:8px; }
+.create-form-reference-card { display:flex; gap:12px; align-items:flex-start; border:1px solid var(--border-color, #d7dde7); border-radius:10px; padding:14px; cursor:pointer; }
+.create-form-reference-card:has(input:checked) { border-color:#1a56db; box-shadow:0 0 0 2px rgba(26,86,219,.12); }
+.create-form-reference-card span { display:grid; gap:4px; }
+.create-form-reference-card small { color:var(--text-muted, #667085); font-weight:400; }
+.v2-sheet-section-heading { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:22px 0 10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+.v2-sheet-section-heading small { color:var(--text-muted, #667085); font-weight:400; text-transform:none; letter-spacing:0; }
+.v2-add-row-disclosure > summary { cursor:pointer; color:var(--text-muted, #667085); font-size:12px; padding:8px 0; }
+@media (max-width: 390px) {
+  .create-form-reference-card { padding:12px; }
+  .create-form-actions { flex-direction:column; }
+  .create-form-actions .btn { width:100%; justify-content:center; }
+  .v2-sheet-section-heading { align-items:flex-start; flex-direction:column; gap:3px; }
+}
 .create-form-errors {
   background: #fee2e2;
   border: 1px solid #fca5a5;

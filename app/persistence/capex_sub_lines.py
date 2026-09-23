@@ -1179,6 +1179,7 @@ def update_sub_line(
             """
             UPDATE capex_sub_lines
             SET label = ?, amount_keur = ?, comments = ?,
+                source = CASE WHEN source = 'reference_seed' THEN 'user_override' ELSE source END,
                 display_order = ?, updated_at = ?
             WHERE project_id = ? AND sub_line_id = ?
               AND is_active = 1 AND updated_at = ?
@@ -1194,6 +1195,7 @@ def update_sub_line(
             """
             UPDATE capex_sub_lines
             SET label = ?, amount_keur = ?, comments = ?,
+                source = CASE WHEN source = 'reference_seed' THEN 'user_override' ELSE source END,
                 updated_at = ?
             WHERE project_id = ? AND sub_line_id = ?
               AND is_active = 1 AND updated_at = ?

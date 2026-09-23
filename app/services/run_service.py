@@ -374,6 +374,8 @@ async def _execute_user_created_path(
         if _seed_base_uc is not None and runtime_snapshot is not None:
             from app.input_adapter import _resolve_user_inputs as _rui, _snapshot_to_dict as _s2d
             override = _rui(base_inputs=_seed_base_uc, **_s2d(runtime_snapshot))
+            from app.services.reference_seed_service import restore_reference_seed_technical_authority
+            override = restore_reference_seed_technical_authority(override, runtime_snapshot)
         else:
             override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
 
