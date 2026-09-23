@@ -501,6 +501,7 @@ def test_t17_get_token_market_renders_execution_simulator_heading():
         resp = client.get("/radar/equity/rh-equity-nvda-001?tab=token-market")
     assert resp.status_code == 200
     assert "Execution Simulator" in resp.text
+    assert "Execution Simulation — Coming soon" in resp.text
 
 
 def test_t18_token_market_form_action_contains_simulate_path():
@@ -520,6 +521,8 @@ def test_t20_token_market_page_contains_disclosure():
         resp = client.get("/radar/equity/rh-equity-nvda-001?tab=token-market")
     assert "Simulation only" in resp.text
     assert "no order is submitted" in resp.text
+    assert 'type="submit" class="refresh-btn" disabled' in resp.text
+    assert "Unavailable — Coming soon" in resp.text
 
 
 # ── Fragment content tests (T21–T33) ─────────────────────────────────────────

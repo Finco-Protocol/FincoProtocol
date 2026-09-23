@@ -53,3 +53,11 @@ jobs:
           name: saas-visual-acceptance
           path: artifacts/saas-visual/*.png
           if-no-files-found: warn
+
+      - name: Upload Reference-Driven Correction A captures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reference-driven-correction-a-22-captures
+          path: artifacts/reference-driven-correction-a/*.png
+          if-no-files-found: error

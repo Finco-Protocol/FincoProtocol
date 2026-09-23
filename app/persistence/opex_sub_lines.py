@@ -8,8 +8,9 @@ Schema differences from capex_sub_lines:
   - parent_group_code  TEXT  (B.NN format, not C.NN)
   - business_code      TEXT  (B.NN.UNNN format)
   - inflation_pct      REAL  (escalation rate — needed for year projection)
-  - No schedule_json / governance_state_json / replay_metadata_json
-    (OPEX custom rows are simpler; those fields can be added later)
+  - No schedule_json / governance_state_json
+  - replay_metadata_json stores immutable reference-seed provenance when a
+    canonical Solar/Wind OPEX item is materialized as an editable row.
 
 Protected groups (never accept custom rows):
   B.13 — Contingencies (always DERIVED/computed)
@@ -20,8 +21,9 @@ All other groups B.01–B.12 accept custom rows, including:
 from __future__ import annotations
 
 import re
+import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
 from app.persistence.db import get_cursor
@@ -66,6 +68,7 @@ class OpexSubLine:
     inflation_pct: float = 0.0     # annual escalation rate
     comments: str = ""
     source: str = "user"
+    replay_metadata: dict[str, Any] = field(default_factory=dict)
     is_active: bool = True
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -79,6 +82,13 @@ class OpexSubLine:
             except (KeyError, IndexError):
                 return default
 
+        raw_metadata = _get("replay_metadata_json", "{}") or "{}"
+        try:
+            replay_metadata = json.loads(raw_metadata)
+        except (TypeError, ValueError):
+            replay_metadata = {}
+        if not isinstance(replay_metadata, dict):
+            replay_metadata = {}
         return cls(
             id=_get("id"),
             sub_line_id=_get("sub_line_id"),
@@ -91,6 +101,7 @@ class OpexSubLine:
             inflation_pct=float(_get("inflation_pct", 0.0) or 0.0),
             comments=_get("comments", "") or "",
             source=_get("source", "user") or "user",
+            replay_metadata=replay_metadata,
             is_active=bool(_get("is_active", 0)),
             created_at=_get("created_at"),
             updated_at=_get("updated_at"),
@@ -264,6 +275,7 @@ def create_sub_line(
     inflation_pct: float = 0.0,
     comments: str = "",
     source: str = "user",
+    replay_metadata: Optional[Mapping[str, Any]] = None,
     business_code: Optional[str] = None,
 ) -> OpexSubLine:
     """Insert a new OPEX sub-line row.
@@ -310,8 +322,8 @@ def create_sub_line(
         INSERT INTO opex_sub_lines (
             sub_line_id, project_id, parent_group_code, business_code,
             display_order, label, amount_keur, inflation_pct, comments,
-            source, is_active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            source, replay_metadata_json, is_active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         """,
         (
             sub_line_id,
@@ -324,6 +336,7 @@ def create_sub_line(
             float(inflation_pct),
             comments,
             source,
+            json.dumps(dict(replay_metadata or {}), sort_keys=True),
             now,
             now,
         ),
@@ -341,6 +354,7 @@ def create_sub_line(
         inflation_pct=float(inflation_pct),
         comments=comments,
         source=source,
+        replay_metadata=dict(replay_metadata or {}),
         is_active=True,
         created_at=now,
         updated_at=now,

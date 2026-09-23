@@ -57,8 +57,9 @@ def test_reference_seed_creation_preserves_lineage_and_scales_per_mw(
         rate = line.replay_metadata["unit_rate_keur_per_mw"]
         assert line.amount_keur == pytest.approx(rate * requested_capacity)
     for line in opex_lines:
-        rate = profile["opex_unit_rates_keur_per_mw"][line.label]
+        rate = line.replay_metadata["unit_rate_keur_per_mw"]
         assert line.amount_keur == pytest.approx(rate * requested_capacity)
+        assert line.replay_metadata["canonical_key"] in profile["opex_items"]
 
 
 def test_capacity_rescale_preserves_user_override(seeded_db):

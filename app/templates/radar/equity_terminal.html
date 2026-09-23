@@ -58,7 +58,13 @@
       {% if tv.identity.currency %} · {{ tv.identity.currency }}{% endif %}
     </span>
     {% endif %}
-    <span class="terminal-header__price" data-market-terminal-uid="{{ tv.economic_asset_uid }}"><strong data-market-price>—</strong><small data-market-state>Waiting for market reference</small></span>
+    <span class="terminal-header__price" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
+      <strong data-market-price>—</strong>
+      <small>Bid <span data-market-bid>—</span></small>
+      <small>Ask <span data-market-ask>—</span></small>
+      <small data-market-state>UNAVAILABLE</small>
+      <small data-market-source>Source unavailable</small>
+    </span>
   </div>
 
   <div class="terminal-header__state-strip">
@@ -406,12 +412,12 @@
       <p class="muted small">Simulation only — no order is submitted.</p>
       <details class="execution-technical-details" open><summary>Technical details</summary>
         <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission.</p>
-        <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML">
-          <label><input type="radio" name="direction" value="BUY" checked> Simulate Buy</label>
-          <label><input type="radio" name="direction" value="SELL"> Simulate Sell</label>
-          <label><input type="radio" name="size" value="100" checked> $100</label>
-          <label><input type="radio" name="size" value="1000"> $1,000</label>
-          <button type="submit" class="refresh-btn">Check Execution</button>
+        <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML" aria-label="Legacy execution simulation controls — unavailable">
+          <label><input type="radio" name="direction" value="BUY" checked disabled> Simulate Buy</label>
+          <label><input type="radio" name="direction" value="SELL" disabled> Simulate Sell</label>
+          <label><input type="radio" name="size" value="100" checked disabled> $100</label>
+          <label><input type="radio" name="size" value="1000" disabled> $1,000</label>
+          <button type="submit" class="refresh-btn" disabled>Unavailable — Coming soon</button>
         </form>
         <div id="sim-result-{{ tv.economic_asset_uid }}"></div>
       </details>

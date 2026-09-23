@@ -1592,7 +1592,9 @@ def live_url_radar_visual():
         return ([_NVDA_VISUAL_SA, _JPM_SA], None)
 
     def _fake_featured():
-        return ("NVDA", "JPM")
+        # Keep JPM in the canonical universe but outside the featured board so
+        # the Correction A capture can prove the non-featured asset path.
+        return ("NVDA",)
 
     def _fake_enrich_many(pairs):
         return [
@@ -1648,11 +1650,8 @@ class TestE4ExecutionSimulator:
     B3:  Click/open Token Market tab → tab content visible.
     B4:  Execution Simulator heading visible on Token Market tab.
     B5:  Exact disclosure "Simulation only — no order is submitted." visible.
-    B6:  Choose Simulate Buy via actual radio control.
-    B7:  Choose $100 via actual size radio control.
-    B8:  Click Check Execution via actual submit button → HTMX result appears.
-    B9:  Result contains distinctive ref price + exec price + GAP + NVDA UID.
-    B10: Simulate Sell → different effective price + different GAP direction.
+    B6–B10: legacy controls remain structurally present but disabled; normal
+             product UX exposes no active simulation CTA while Coming Soon.
     B11: Switch asset via Company Terminal selector → URL changes, old NVDA
          result absent, new result region initially empty.
     B12: Structural proof of ZERO wallet/signing controls across buttons/forms/inputs/links.
@@ -1760,7 +1759,7 @@ class TestE4ExecutionSimulator:
     # ── B6 ──────────────────────────────────────────────────────────────────
 
     def test_b06_simulate_buy_via_actual_radio(self, live_url_e4, browser):
-        """B6: Simulate Buy radio control is present and checkable."""
+        """B6: legacy BUY control is present but unavailable."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
@@ -1768,14 +1767,14 @@ class TestE4ExecutionSimulator:
         page.wait_for_load_state("domcontentloaded")
         buy_radio = page.query_selector('input[name="direction"][value="BUY"]')
         assert buy_radio is not None, "BUY radio input not found on Token Market form"
-        page.check('input[name="direction"][value="BUY"]')
         assert buy_radio.is_checked(), "BUY radio did not become checked"
+        assert buy_radio.is_disabled(), "Coming Soon BUY control must be disabled"
         page.close()
 
     # ── B7 ──────────────────────────────────────────────────────────────────
 
     def test_b07_size_100_via_actual_control(self, live_url_e4, browser):
-        """B7: $100 size radio control is present and checkable."""
+        """B7: legacy size control is present but unavailable."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
@@ -1783,112 +1782,68 @@ class TestE4ExecutionSimulator:
         page.wait_for_load_state("domcontentloaded")
         size_radio = page.query_selector('input[name="size"][value="100"]')
         assert size_radio is not None, "$100 size radio not found on Token Market form"
-        page.check('input[name="size"][value="100"]')
         assert size_radio.is_checked(), "$100 size radio did not become checked"
+        assert size_radio.is_disabled(), "Coming Soon size control must be disabled"
         page.close()
 
     # ── B8 ──────────────────────────────────────────────────────────────────
 
-    def test_b08_check_execution_button_triggers_htmx_result(
+    def test_b08_check_execution_button_is_not_active(
             self, live_url_e4, browser):
-        """B8: Clicking Check Execution button triggers HTMX result swap."""
+        """B8: normal product surface exposes no active execution CTA."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
         )
         page.wait_for_load_state("domcontentloaded")
-        page.check('input[name="direction"][value="BUY"]')
-        page.check('input[name="size"][value="100"]')
         btn = page.query_selector('button[type="submit"]')
         assert btn is not None, "Submit button not found on Token Market form"
-        # Verify button text in raw HTML (CSS may uppercase it)
-        btn_html = page.content()
-        assert "Check Execution" in btn_html, (
-            "'Check Execution' not found in page HTML"
-        )
-        btn.click()
-        result_text = self._wait_sim_result(page, "rh-equity-nvda-001")
-        assert len(result_text.strip()) > 0, (
-            "HTMX sim-result region is empty after clicking Check Execution"
-        )
+        assert btn.is_disabled(), "Coming Soon execution button must be disabled"
+        assert "Coming soon" in btn.inner_text()
         page.close()
 
     # ── B9 ──────────────────────────────────────────────────────────────────
 
-    def test_b09_buy_result_distinctive_values_and_uid(
+    def test_b09_coming_soon_has_no_runtime_result(
             self, live_url_e4, browser):
-        """B9: BUY result — distinctive ref 143.11, exec 142.77, GAP -24, NVDA UID."""
+        """B9: disabled normal UX does not create a simulation result."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
         )
         page.wait_for_load_state("domcontentloaded")
-        page.check('input[name="direction"][value="BUY"]')
-        page.check('input[name="size"][value="100"]')
-        page.click('button[type="submit"]')
-        result_text = self._wait_sim_result(page, "rh-equity-nvda-001")
-        assert "143.11" in result_text, (
-            f"Distinctive reference price 143.11 missing from BUY result: {result_text[:500]}"
-        )
-        assert "142.77" in result_text, (
-            f"Distinctive effective price 142.77 missing from BUY result: {result_text[:500]}"
-        )
-        assert "-24" in result_text, (
-            f"Directional GAP -24 missing from BUY result: {result_text[:500]}"
-        )
-        page.locator(".radar-technical-details summary").click()
-        result_text = page.locator("#sim-result-rh-equity-nvda-001").inner_text()
-        assert "rh-equity-nvda-001" in result_text, (
-            f"Asset UID missing from BUY result: {result_text[:500]}"
-        )
+        assert page.locator("#sim-result-rh-equity-nvda-001").inner_text().strip() == ""
         page.close()
 
     # ── B10 ─────────────────────────────────────────────────────────────────
 
-    def test_b10_sell_result_different_price_and_gap(
+    def test_b10_sell_control_is_disabled(
             self, live_url_e4, browser):
-        """B10: SELL result — different effective price (143.45) and positive GAP (+24)."""
+        """B10: SELL control cannot contradict the Coming Soon state."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
         )
         page.wait_for_load_state("domcontentloaded")
-        page.check('input[name="direction"][value="SELL"]')
-        page.check('input[name="size"][value="100"]')
-        page.click('button[type="submit"]')
-        result_text = self._wait_sim_result(page, "rh-equity-nvda-001")
-        # SELL-specific: effective price 143.45 (not 142.77 BUY price)
-        assert "143.45" in result_text, (
-            f"SELL effective price 143.45 missing from SELL result: {result_text[:500]}"
-        )
-        # SELL gap is positive (+24, not negative)
-        assert "24" in result_text, (
-            f"SELL GAP +24 missing from SELL result: {result_text[:500]}"
-        )
-        # BUY effective price must NOT appear (proves directionality)
-        assert "142.77" not in result_text, (
-            f"BUY effective price 142.77 unexpectedly present in SELL result: {result_text[:500]}"
-        )
+        sell = page.query_selector('input[name="direction"][value="SELL"]')
+        assert sell is not None and sell.is_disabled()
         page.close()
 
     # ── B11 ─────────────────────────────────────────────────────────────────
 
     def test_b11_asset_selector_clears_old_result_new_empty(
             self, live_url_e4, browser):
-        """B11: Switch NVDA → JPM via selector — URL changes, old NVDA result absent, JPM empty."""
+        """B11: Switch NVDA → JPM without exposing or retaining runtime results."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         # Start on NVDA terminal, Token Market tab
         page.goto(
             f"{live_url_e4}/radar/equity/rh-equity-nvda-001?tab=token-market"
         )
         page.wait_for_load_state("domcontentloaded")
-        # Simulate NVDA first to produce a result
-        page.check('input[name="direction"][value="BUY"]')
-        page.click('button[type="submit"]')
-        self._wait_sim_result(page, "rh-equity-nvda-001")
-        # Confirm NVDA result is present before switching
+        # Coming Soon keeps the legacy result region stable and empty.
         nvda_result_pre = page.query_selector("#sim-result-rh-equity-nvda-001")
         assert nvda_result_pre is not None, "NVDA sim-result div not found before switch"
+        assert nvda_result_pre.inner_text().strip() == ""
         # Switch to JPM via the Company Terminal asset selector
         page.select_option(
             "select[onchange*=\"location='/radar/equity/'\"]",
@@ -2181,3 +2136,196 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
         radar.close()
     finally:
         _radar_router.set_market_read_service(previous_market_service)
+
+
+@pytest.mark.skipif(
+    os.getenv("FINCO_VISUAL_CAPTURE") != "1",
+    reason="workstream browser evidence capture is enabled in CI",
+)
+def test_reference_driven_correction_a_22_capture_journey(
+        live_url, live_url_radar_visual, browser):
+    """Produce the dedicated 22-capture Correction A acceptance inventory."""
+    from app.radar_ui import router as _radar_router
+    from app.services.reference_seed_service import create_reference_seeded_project
+
+    out = REPO / "artifacts" / "reference-driven-correction-a"
+    out.mkdir(parents=True, exist_ok=True)
+
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    _auth_cookie(live_url, page)
+
+    def shot(name, locator=None):
+        if locator is None:
+            page.screenshot(
+                path=str(out / f"{name}.png"), full_page=True,
+                animations="disabled",
+            )
+        else:
+            locator.screenshot(
+                path=str(out / f"{name}.png"), animations="disabled",
+            )
+
+    # 01 — actual New Project reference chooser.
+    page.goto(f"{live_url}/projects/new")
+    page.wait_for_load_state("domcontentloaded")
+    assert page.locator('input[value="generic_solar_reference"]').count() == 1
+    assert page.locator('input[value="generic_wind_reference"]').count() == 1
+    shot("01-new-project-reference-chooser")
+
+    # Create independent projects through the same service invoked by the
+    # rendered POST route, then exercise their actual workbook paths.
+    suffix = f"{os.getpid()}-{time.time_ns()}"
+    solar = create_reference_seeded_project(
+        user_id="1",
+        template_source="generic_solar_reference",
+        requested_name=f"Correction A Solar {suffix}",
+        capacity_mw=100.0,
+    )
+    wind = create_reference_seeded_project(
+        user_id="1",
+        template_source="generic_wind_reference",
+        requested_name=f"Correction A Wind {suffix}",
+        capacity_mw=72.0,
+    )
+
+    solar_url = f"{live_url}/v2/workbook?project={solar.project_code}"
+    page.goto(solar_url)
+    page.wait_for_load_state("domcontentloaded")
+    page.locator("#v2-workbook-shell").wait_for()
+    shot("02-solar-project")
+
+    page.locator("#tab-capex").click()
+    page.locator('[data-testid="capex-totals-bar"]').wait_for()
+    shot("03-solar-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
+    assert page.locator('[data-testid="total-capex-keur"]').inner_text().strip() not in {"", "0"}
+    shot("04-solar-detailed-capex", page.locator("#v2-sheet-capex"))
+
+    page.locator("#tab-opex").click()
+    page.locator('[data-testid="opex-kpi-bar"]').wait_for()
+    shot("05-solar-opex-summary", page.locator('[data-testid="opex-kpi-bar"]'))
+    shot("06-solar-detailed-opex", page.locator("#v2-sheet-opex"))
+    shot("07-opex-year-projection", page.locator('[data-testid="opex-projection-panel"]'))
+
+    # Rename and override one immutable-provenance OPEX seed through the UI.
+    seed_row = page.locator('[data-testid^="opex-custom-row-"]').first
+    seed_row.wait_for()
+    label_input = seed_row.locator(".v2-opex-custom-label-input")
+    amount_input = seed_row.locator(".v2-opex-custom-amount-input")
+    overridden_label = "Renamed operating line — immutable seed identity"
+    overridden_amount = float(amount_input.input_value()) + 37.0
+    label_input.fill(overridden_label)
+    amount_input.fill(f"{overridden_amount:.6f}")
+    with page.expect_response(lambda response: "/v2/opex/line/update" in response.url):
+        seed_row.locator(".v2-opex-custom-save-btn").click()
+    page.locator(f'input.v2-opex-custom-label-input[value="{overridden_label}"]').wait_for()
+
+    # Change MW through the actual bound Project Setup control.
+    page.locator("#tab-project-setup").click()
+    capacity_row = page.locator('[data-field-id="capacity_mw"]')
+    capacity_input = capacity_row.locator('input[name="value"]')
+    capacity_input.fill("150")
+    with page.expect_response(lambda response: "/v2/workbook/update" in response.url):
+        capacity_row.locator("button.v2-field-save").click()
+    page.locator('[data-field-id="capacity_mw"] input[name="value"]').wait_for()
+    assert float(page.locator('[data-field-id="capacity_mw"] input[name="value"]').input_value()) == 150.0
+    shot("08-capacity-change")
+
+    page.locator("#tab-opex").click()
+    renamed = page.locator(f'input.v2-opex-custom-label-input[value="{overridden_label}"]')
+    renamed.wait_for()
+    survivor_row = renamed.locator("xpath=ancestor::div[contains(@class, 'v2-opex-custom-row')]")
+    assert float(survivor_row.locator(".v2-opex-custom-amount-input").input_value()) == pytest.approx(
+        overridden_amount
+    )
+    shot("09-override-survival", survivor_row)
+
+    page.goto(f"{live_url}/v2/workbook?project={wind.project_code}")
+    page.wait_for_load_state("domcontentloaded")
+    page.locator("#tab-capex").click()
+    shot("10-wind-capex-summary", page.locator('[data-testid="capex-totals-bar"]'))
+    shot("11-wind-detailed-capex", page.locator("#v2-sheet-capex"))
+    page.locator("#tab-opex").click()
+    shot("12-wind-opex", page.locator("#v2-sheet-opex"))
+    page.set_viewport_size({"width": 390, "height": 844})
+    _assert_no_overflow(page, "/v2/workbook wind", 390)
+    shot("13-model-390")
+    page.close()
+
+    class _FixedMarketService:
+        def read(self, *, uids=(), featured_symbols=()):
+            def row(uid, symbol):
+                return {
+                    "uid": uid, "symbol": symbol,
+                    "chain_id": "polygon-mainnet",
+                    "contract_address": "0x0001000000000000000000000000000000000000",
+                    "state": "FRESH", "market_state": "REFERENCE",
+                    "price": "143.11", "price_display": "$143.11",
+                    "bid": "142.77", "bid_display": "$142.77",
+                    "ask": "143.45", "ask_display": "$143.45",
+                    "observed_at": "2026-01-01T00:00:00+00:00",
+                    "source": "correction-a-browser-fixture",
+                }
+            if uids:
+                return [row(uid, None) for uid in uids]
+            return [row(None, symbol) for symbol in featured_symbols]
+
+    previous_market_service = _radar_router._market_read_service
+    _radar_router.set_market_read_service(_FixedMarketService())
+    try:
+        radar = browser.new_page(viewport={"width": 1280, "height": 900})
+
+        def radar_shot(name, locator=None):
+            if locator is None:
+                radar.screenshot(
+                    path=str(out / f"{name}.png"), full_page=True,
+                    animations="disabled",
+                )
+            else:
+                locator.screenshot(
+                    path=str(out / f"{name}.png"), animations="disabled",
+                )
+
+        radar.goto(f"{live_url_radar_visual}/radar")
+        radar.wait_for_load_state("domcontentloaded")
+        radar.locator('#featured-board [data-market-price]:not(:text("—"))').wait_for(timeout=10000)
+        radar_shot("14-radar-featured-board", radar.locator("#featured-board"))
+
+        radar.goto(f"{live_url_radar_visual}/radar?asset_uid=rh-equity-jpm-002")
+        radar.wait_for_load_state("domcontentloaded")
+        assert "JPM" in radar.locator('[data-panel="configured-target"]').inner_text()
+        radar_shot("15-non-featured-canonical-asset")
+
+        radar.goto(f"{live_url_radar_visual}/radar")
+        cta = radar.locator("#featured-board .board-details-cta").first
+        assert "Open Company Terminal" in cta.inner_text()
+        radar_shot("16-open-company-terminal-cta", cta)
+
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
+        radar.wait_for_load_state("domcontentloaded")
+        header = radar.locator(".terminal-header")
+        header.locator('[data-market-price]:not(:text("—"))').wait_for(timeout=10000)
+        assert "$142.77" in header.locator("[data-market-bid]").inner_text()
+        assert "$143.45" in header.locator("[data-market-ask]").inner_text()
+        radar_shot("17-company-header-market-price-bid-ask", header)
+
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}?tab=financials")
+        radar_shot("18-financials")
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}?tab=token-market")
+        radar.locator('[data-market-tab-price]:not(:text("—"))').wait_for(timeout=10000)
+        radar_shot("19-token-market")
+        coming_soon = radar.locator(".execution-coming-soon")
+        assert "Execution Simulation — Coming soon" in coming_soon.inner_text()
+        assert coming_soon.locator('button[type="submit"]').is_disabled()
+        radar_shot("20-execution-coming-soon", coming_soon)
+        radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}?tab=evidence")
+        radar_shot("21-evidence")
+        radar.set_viewport_size({"width": 390, "height": 844})
+        radar.goto(f"{live_url_radar_visual}/radar")
+        _assert_no_overflow(radar, "/radar", 390)
+        radar_shot("22-radar-390")
+        radar.close()
+    finally:
+        _radar_router.set_market_read_service(previous_market_service)
+
+    captures = sorted(out.glob("*.png"))
+    assert len(captures) == 22, [path.name for path in captures]

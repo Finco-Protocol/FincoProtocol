@@ -194,14 +194,20 @@ def apply_user_sub_lines_to_opex(
 
     sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
 
-    # Reference seed rows are a detailed representation of the corresponding
-    # canonical aggregate item, not an additive user cost.  Remove only the
-    # exact seeded base names before folding; ordinary custom rows stay additive.
-    seeded_names = {
-        sub.label for sub in user_sub_lines
+    # Reference seed rows are a detailed representation of canonical items,
+    # not additive user costs.  Identity comes only from immutable replay
+    # provenance; the editable display label is never an authority key.
+    seeded_canonical_keys = {
+        sub.replay_metadata.get("canonical_key")
+        for sub in user_sub_lines
         if sub.source in {"reference_seed", "user_override"}
+        and sub.replay_metadata.get("reference_seed") is True
+        and sub.replay_metadata.get("canonical_key")
     }
-    base_opex = tuple(item for item in opex if getattr(item, "name", None) not in seeded_names)
+    base_opex = tuple(
+        item for item in opex
+        if getattr(item, "name", None) not in seeded_canonical_keys
+    )
 
     result = fold_sub_lines_into_opex(
         base_opex,
