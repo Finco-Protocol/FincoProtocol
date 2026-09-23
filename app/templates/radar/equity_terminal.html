@@ -44,7 +44,7 @@
 {% elif tv %}
 
 {# ── Company Terminal header ──────────────────────────────────────────────── #}
-<div class="terminal-header" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
+<section class="terminal-header" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
   <div class="terminal-header__nav">
     <a href="/radar" class="terminal-header__back">← Radar</a>
   </div>
@@ -97,7 +97,7 @@
     </select>
   </div>
   {% endif %}
-</div>
+</section>
 
 {# ── Tab bar ─────────────────────────────────────────────────────────────── #}
 <div class="terminal-tabs" role="tablist">
@@ -372,8 +372,10 @@
   <section class="panel panel-token-market" data-panel="token-market">
     <h2>Token Market</h2>
 
-    <details class="radar-technical-details" style="margin-bottom:18px;"><summary>Market details</summary>
+    <details class="radar-market-details" style="margin-bottom:18px;"><summary>Market details</summary>
       <dl class="kv" style="max-width:520px;">
+        <dt>Reference Price</dt>
+        <dd><span data-market-tab-price data-market-price style="font-variant-numeric:tabular-nums;">—</span></dd>
         <dt>Bid</dt>
         <dd><span data-market-bid style="font-variant-numeric:tabular-nums;">—</span></dd>
         <dt>Ask</dt>
@@ -400,7 +402,7 @@
       <span class="radar-legacy-hook">Execution Simulator</span>
       <p>Live execution routing is not enabled in this environment. Market reference and company evidence remain available.</p>
       <p class="muted small">Simulation only — no order is submitted.</p>
-      <details class="radar-technical-details" open><summary>Technical details</summary>
+      <details class="execution-technical-details" open><summary>Technical details</summary>
         <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission.</p>
         <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML">
           <label><input type="radio" name="direction" value="BUY" checked> Simulate Buy</label>

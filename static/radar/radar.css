@@ -22,6 +22,8 @@ html, body.radar {
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.45;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .radar-topbar {
@@ -693,6 +695,8 @@ html, body.radar {
   .terminal-header__title-row { gap: 8px; }
 }
 .radar-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-market-details, .execution-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-market-details > summary, .execution-technical-details > summary { cursor:pointer; width:fit-content; }
 .radar-technical-details > summary { cursor: pointer; width: fit-content; }
 .radar-technical-details > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .radar-technical-details[open] > .panel { margin-top: 0.6rem; }
