@@ -1,10 +1,11 @@
-"""A2 Execution Simulation API adapter — Correction A.
+"""A2 Execution Simulation API adapter — Correction B.
 
 Owns:
 - execution service test seam (get_execution_service / set_execution_service)
 - universe resolution seam (set_universe_fn / _get_universe)
 - snapshot serializer (serialize_snapshot)
 - identity invariant enforcement (asset + direction + notional)
+- provider invariant enforcement (radar-core must be present)
 - radar-core provider selection by canonical name
 - outward-string safety boundary for metadata fields
 
@@ -16,6 +17,7 @@ DOES NOT:
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, List, Optional
 
 import httpx
@@ -88,6 +90,10 @@ class IdentityInvariantError(RuntimeError):
     """The immutable snapshot does not bind to the requested canonical identity."""
 
 
+class ProviderInvariantError(RuntimeError):
+    """The immutable snapshot does not contain the canonical radar-core provider."""
+
+
 def _check_identity_invariant(
     payload: dict,
     selected_asset: SelectedAsset,
@@ -150,25 +156,41 @@ def _find_radar_core_provider(providers: list) -> dict:
 
 _SAFE_METADATA_FALLBACK = "INTERNAL_DETAIL_REDACTED"
 
+_WINDOWS_DRIVE_RE = re.compile(r'^[A-Za-z]:[/\\]')
+
+_SECRET_PATTERNS = (
+    "api_key=",
+    "api_key:",
+    "apikey=",
+    "authorization:",
+    "bearer ",
+    "password=",
+    "credential=",
+    "secret=",
+)
+
 
 def _safe_metadata_string(s: Any, fallback: str = _SAFE_METADATA_FALLBACK) -> Optional[str]:
     """Return s if it looks like a safe canonical metadata string, else fallback.
 
-    Canonical source labels (e.g. 'LiFi', 'FROZEN::BoundReferencePrice') and
-    reason codes (e.g. 'NO_ROUTE', 'EXECUTION_UNAVAILABLE') contain no digits,
-    no URL schemes, and no filesystem paths.  Strings that match any of those
-    unsafe patterns are replaced with the stable fallback."""
+    Redacts strings that contain URL schemes, filesystem paths (Unix, Windows
+    drive, UNC), or obvious secret-bearing key=value patterns.  Canonical
+    source labels and reason codes containing digits (e.g. LIFI_V1_QUOTE,
+    HTTP_429, R2_GAP) are preserved."""
     if s is None:
         return None
     if not isinstance(s, str):
         return fallback
-    if '://' in s:           # URL scheme present
+    if '://' in s:
         return fallback
-    if s.startswith('/'):    # Unix filesystem path
+    if s.startswith('/'):
         return fallback
-    if s.startswith('\\'):   # Windows filesystem path
+    if s.startswith('\\'):
         return fallback
-    if any(c.isdigit() for c in s):  # Digits (suspicious in metadata labels)
+    if _WINDOWS_DRIVE_RE.match(s):
+        return fallback
+    s_lower = s.lower()
+    if any(p in s_lower for p in _SECRET_PATTERNS):
         return fallback
     return s
 
@@ -279,8 +301,11 @@ def serialize_snapshot(
     snap_request = payload.get("request") or {}
 
     # Select radar-core provider by canonical name — not by list position.
+    # Absence of radar-core is an invariant failure, not a quote-unavailable state.
     providers = payload.get("providers") or []
     rc_provider = _find_radar_core_provider(providers)
+    if not rc_provider:
+        raise ProviderInvariantError("radar-core provider is absent from snapshot")
     evidence: dict = rc_provider.get("evidence") or {}
 
     ref = evidence.get("reference") or {}

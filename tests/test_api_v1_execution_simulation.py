@@ -1,4 +1,4 @@
-"""A2 Execution Simulation API v1 tests — A2-01 through A2-55 + Correction-A C01-C22.
+"""A2 Execution Simulation API v1 tests — A2-01 through A2-55 + C01-C22 + CB01-CB14.
 
 All tests use deterministic offline fakes injected via A2 test seams:
   - set_execution_service()  — fake AcquisitionService
@@ -52,7 +52,7 @@ Test inventory:
   A2-43  no transaction hash / order id fields
   A2-44  raw_payload_json absent recursively
   A2-45  raw_evidence absent recursively
-  A2-46  adversarial private path / API-key sentinel absent (real leakage test)
+  A2-46  adversarial private path / credential sentinel absent (real leakage test)
   A2-47  unexpected RuntimeError("PROGRAMMING_SENTINEL") is NOT swallowed
   A2-48  route handler is synchronous (not a coroutine)
   A2-49  snapshot UID mismatch fails closed
@@ -71,7 +71,7 @@ Test inventory:
   C05  exact UID+chain+contract+BUY+1000 → serializes successfully
   C06  providers=[other-provider, radar-core] → canonical values from radar-core
   C07  providers=[radar-core, other-provider] → same result
-  C08  providers=[other-provider only] → no foreign provider evidence serialized
+  C08  providers=[other-provider only] → radar-core absent → HTTP 500 (invariant fail)
   C09  execution unavailableReason="NO_ROUTE" → response reason == "NO_ROUTE"
   C10  both unavailableReason and reason present → unavailableReason wins
   C11  reason only → reason preserved
@@ -86,6 +86,22 @@ Test inventory:
   C20  list / dict → 400 (zero acquire)
   C21  missing direction → 400 (zero acquire)
   C22  missing notional_usd → 400 (zero acquire)
+
+  Correction B:
+  CB01  LIFI_V1_QUOTE execution source → not redacted (digit-containing canonical label)
+  CB02  R2_GAP reason → not redacted (digit-containing canonical code)
+  CB03  HTTP_429 reason → not redacted (digit-containing canonical code)
+  CB04  C:\\private\\secret.txt (Windows drive path) → redacted
+  CB05  D:/finco/private.db (Windows drive path, forward slash) → redacted
+  CB06  \\\\server\\share\\secret (UNC path) → redacted
+  CB07  apikey=... credential pattern → redacted
+  CB08  providers=[] → ProviderInvariantError → HTTP 500
+  CB09  radar-core present but all evidence unavailable → HTTP 200 partial
+  CB10  OpenAPI direction: type=string enum [BUY, SELL]
+  CB11  OpenAPI notional_usd: type=string enum [100, 1000]
+  CB12  OpenAPI both fields required
+  CB13  OpenAPI documents 200/400/404/503
+  CB14  malformed inputs still return 400 (not 422) after OpenAPI schema override
 """
 from __future__ import annotations
 
@@ -816,17 +832,17 @@ def test_a2_45_raw_evidence_absent_recursively(client):
 # All must be absent from the public JSON response.
 _SENTINEL_URL = "https://private.internal.example/secret"
 _SENTINEL_PATH_DB = "/srv/finco/private/db.sqlite"
-_SENTINEL_TOKEN = "API_KEY_SENTINEL_123"
+_SENTINEL_TOKEN = "apikey=REDACT_SENTINEL"   # credential pattern sentinel
 _SENTINEL_PATH_AWS = "/root/.aws/credentials"
 
 
 def test_a2_46_adversarial_sentinel_absent(fake_universe):
     """Adversarial evidence with private paths/API-key sentinels must not leak.
 
-    Injects distinct sentinels into reference.source, execution.source,
-    execution.unavailableReason, and gap.reason.  Verifies the outward-string
-    safety boundary redacts all of them.  Also verifies that canonical source
-    labels and reason codes remain visible."""
+    Injects distinct sentinels into reference.source, execution.unavailableReason,
+    execution.source, and gap.reason.  Verifies the outward-string safety boundary
+    redacts all of them.  Also verifies that canonical source labels and reason
+    codes remain visible."""
     import main_api
 
     adversarial_evidence = {
@@ -835,20 +851,19 @@ def test_a2_46_adversarial_sentinel_absent(fake_universe):
             "price": "143.11",
             "bid": "143.00",
             "ask": "143.22",
-            "source": _SENTINEL_URL,          # URL sentinel in source
+            "source": _SENTINEL_URL,                    # URL scheme → redacted
             "observedAt": _COMPLETED_AT,
         },
         "execution": {
             "available": False,
-            "unavailableReason": _SENTINEL_PATH_AWS,   # path sentinel in unavailableReason
-            "reason": _SENTINEL_TOKEN,                 # token sentinel in reason
-            "source": _SENTINEL_PATH_DB,               # path sentinel in source
+            "unavailableReason": _SENTINEL_TOKEN,       # credential pattern → redacted
+            "source": _SENTINEL_PATH_DB,                # Unix path → redacted
             "status": "QUOTE_FAILED",
             "quotedAt": _COMPLETED_AT,
         },
         "gap": {
             "available": False,
-            "reason": _SENTINEL_URL,           # URL sentinel in gap.reason
+            "reason": _SENTINEL_PATH_AWS,               # Unix path → redacted
         },
     }
     svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=adversarial_evidence))
@@ -1264,11 +1279,13 @@ def test_ca_c07_radar_core_at_index_0_is_used(fake_universe):
     assert body["execution"]["effective_price"] == "142.77"
 
 
-# ── C08: providers=[other-provider only] → no foreign evidence serialized ──────
+# ── C08: providers=[other-provider only] → ProviderInvariantError → HTTP 500 ──
 
 
-def test_ca_c08_no_foreign_provider_evidence_serialized(fake_universe):
-    """When radar-core is absent, no other provider's evidence is used."""
+def test_ca_c08_radar_core_absent_hard_fail(fake_universe):
+    """When radar-core is absent from providers, serialization must fail closed (HTTP 500).
+
+    Provider absent = invariant failure, not a quote-unavailable state."""
     import main_api
 
     foreign_evidence = {
@@ -1305,17 +1322,13 @@ def test_ca_c08_no_foreign_provider_evidence_serialized(fake_universe):
         r = _post(client)
     _exec_module.set_execution_service(None)
 
-    assert r.status_code == 200
-    body = r.json()
-    # Foreign provider's evidence must NOT appear in the response
-    body_text = json.dumps(body)
+    # radar-core absent → ProviderInvariantError propagates as HTTP 500
+    assert r.status_code == 500, (
+        f"Expected 500 for absent radar-core, got {r.status_code}"
+    )
+    body_text = r.text
     assert "999.99" not in body_text, "Foreign reference price leaked"
     assert "888.88" not in body_text, "Foreign execution price leaked"
-    assert "9999" not in body_text, "Foreign GAP value leaked"
-    # All sections must be unavailable (no radar-core evidence)
-    assert body["reference"]["available"] is False
-    assert body["execution"]["available"] is False
-    assert body["gap"]["available"] is False
 
 
 # ── C09: execution unavailableReason preserved ────────────────────────────────
@@ -1545,5 +1558,383 @@ def test_ca_c22_missing_notional_returns_400(client, fake_svc):
         json={"direction": "BUY"},
     )
     assert r.status_code == 400
+    assert r.json()["error"] == "SIMULATION_REQUEST_INVALID"
+    fake_svc.acquire.assert_not_called()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CORRECTION B TESTS (CB01-CB14)
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── CB01-CB03: canonical source labels are NOT redacted ───────────────────────
+
+
+def test_cb01_lifi_v1_quote_source_not_redacted(fake_universe):
+    """LIFI_V1_QUOTE is a canonical source label and must not be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": True, "price": "143.11",
+                      "source": "FROZEN::BoundReferencePrice",
+                      "bid": "143.00", "ask": "143.22",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {
+            "available": True,
+            "effectivePrice": "142.77",
+            "status": "QUOTE_OK",
+            "source": "LIFI_V1_QUOTE",
+            "quotedAt": _COMPLETED_AT,
+        },
+        "gap": {"available": True, "gapBps": "55", "gapToMidBps": "43",
+                "quotedAt": _COMPLETED_AT},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["execution"]["source"] == "LIFI_V1_QUOTE", (
+        f"Canonical source label redacted: {body['execution']['source']!r}"
+    )
+
+
+def test_cb02_r2_gap_reason_not_redacted(fake_universe):
+    """R2_GAP is a canonical reason code and must not be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": True, "price": "143.11",
+                      "source": "FROZEN::BoundReferencePrice",
+                      "bid": "143.00", "ask": "143.22",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {"available": False, "unavailableReason": "NO_ROUTE"},
+        "gap": {"available": False, "reason": "R2_GAP"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="PARTIAL"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["gap"]["reason"] == "R2_GAP", (
+        f"Canonical reason code redacted: {body['gap']['reason']!r}"
+    )
+
+
+def test_cb03_http_429_reason_not_redacted(fake_universe):
+    """HTTP_429 is a canonical reason code and must not be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": True, "price": "143.11",
+                      "source": "FROZEN::BoundReferencePrice",
+                      "bid": "143.00", "ask": "143.22",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {
+            "available": False,
+            "unavailableReason": "HTTP_429",
+            "status": "QUOTE_FAILED",
+            "quotedAt": _COMPLETED_AT,
+        },
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="PARTIAL"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["execution"]["reason"] == "HTTP_429", (
+        f"Canonical reason code redacted: {body['execution']['reason']!r}"
+    )
+
+
+# ── CB04-CB06: Windows/UNC path patterns are redacted ────────────────────────
+
+
+def test_cb04_windows_drive_c_backslash_redacted(fake_universe):
+    """C:\\private\\secret.txt (Windows backslash drive path) must be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "unavailableReason": r"C:\private\secret.txt",
+        },
+        "gap": {"available": False, "reason": "GAP_UNAVAILABLE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body_text = json.dumps(r.json())
+    assert r"C:\private\secret.txt" not in body_text, "Windows drive path leaked"
+    # Redaction active: section-specific fallback replaces the path
+    body = r.json()
+    assert body["execution"]["available"] is False
+    assert body["execution"]["reason"] == "EXECUTION_UNAVAILABLE"
+
+
+def test_cb05_windows_drive_d_slash_redacted(fake_universe):
+    """D:/finco/private.db (Windows forward-slash drive path) must be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "unavailableReason": "D:/finco/private.db",
+        },
+        "gap": {"available": False, "reason": "GAP_UNAVAILABLE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body_text = json.dumps(r.json())
+    assert "D:/finco/private.db" not in body_text, "Windows forward-slash path leaked"
+    body = r.json()
+    assert body["execution"]["available"] is False
+    assert body["execution"]["reason"] == "EXECUTION_UNAVAILABLE"
+
+
+def test_cb06_unc_path_redacted(fake_universe):
+    r"""\\server\share\secret (UNC path) must be redacted."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "unavailableReason": r"\\server\share\secret",
+        },
+        "gap": {"available": False, "reason": "GAP_UNAVAILABLE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body_text = json.dumps(r.json())
+    assert r"\\server\share\secret" not in body_text, "UNC path leaked"
+    body = r.json()
+    assert body["execution"]["available"] is False
+    assert body["execution"]["reason"] == "EXECUTION_UNAVAILABLE"
+
+
+# ── CB07: credential pattern in source is redacted ───────────────────────────
+
+
+def test_cb07_apikey_credential_pattern_redacted(fake_universe):
+    """apikey=... in execution.source triggers the credential pattern redaction."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "unavailableReason": "EXECUTION_UNAVAILABLE",
+            "source": "apikey=REDACT_SENTINEL",
+        },
+        "gap": {"available": False, "reason": "GAP_UNAVAILABLE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body_text = json.dumps(r.json())
+    assert "apikey=REDACT_SENTINEL" not in body_text, "Credential pattern leaked"
+    assert "INTERNAL_DETAIL_REDACTED" in body_text
+
+
+# ── CB08: providers=[] → HTTP 500 ────────────────────────────────────────────
+
+
+def test_cb08_empty_providers_list_hard_fail(fake_universe):
+    """providers=[] → ProviderInvariantError → HTTP 500."""
+    import main_api
+
+    class _EmptyProvidersSnapshot:
+        snapshot_id = _SNAP_ID
+        def to_payload(self) -> dict:
+            return {
+                "state": "COMPLETE",
+                "economicAssetUid": _UID,
+                "chainId": _CHAIN_ID,
+                "contractAddress": _CONTRACT,
+                "completedAt": _COMPLETED_AT,
+                "request": _make_request_block("BUY", "1000"),
+                "providers": [],
+            }
+
+    svc = _FakeAcqService(snapshot=_EmptyProvidersSnapshot())
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 500, (
+        f"Expected 500 for empty providers list, got {r.status_code}"
+    )
+
+
+# ── CB09: radar-core present with all-unavailable evidence → HTTP 200 ─────────
+
+
+def test_cb09_radar_core_present_all_unavailable_returns_200(fake_universe):
+    """radar-core present but all evidence unavailable → HTTP 200 partial state.
+
+    Provider present with no evidence is not an invariant failure."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {"available": False, "unavailableReason": "NO_ROUTE"},
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+
+    class _RadarCoreUnavailableSnapshot:
+        snapshot_id = _SNAP_ID
+        def to_payload(self) -> dict:
+            return {
+                "state": "PARTIAL",
+                "economicAssetUid": _UID,
+                "chainId": _CHAIN_ID,
+                "contractAddress": _CONTRACT,
+                "completedAt": _COMPLETED_AT,
+                "request": _make_request_block("BUY", "1000"),
+                "providers": [
+                    {"provider": "radar-core", "state": "PARTIAL",
+                     "elapsedMs": 80, "evidence": ev,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                ],
+            }
+
+    svc = _FakeAcqService(snapshot=_RadarCoreUnavailableSnapshot())
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200, (
+        f"Expected 200 for radar-core present (all unavailable), got {r.status_code}"
+    )
+    body = r.json()
+    assert body["reference"]["available"] is False
+    assert body["execution"]["available"] is False
+    assert body["gap"]["available"] is False
+
+
+# ── CB10-CB13: OpenAPI contract ───────────────────────────────────────────────
+
+
+def test_cb10_openapi_direction_string_enum(client):
+    """OpenAPI schema for direction must be type=string with enum [BUY, SELL]."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    req_schema = (
+        schema["components"]["schemas"]["ExecutionSimulationRequest"]
+    )
+    direction = req_schema["properties"]["direction"]
+    assert direction["type"] == "string", (
+        f"direction type must be string, got {direction.get('type')!r}"
+    )
+    assert set(direction["enum"]) == {"BUY", "SELL"}, (
+        f"direction enum must be [BUY, SELL], got {direction.get('enum')!r}"
+    )
+
+
+def test_cb11_openapi_notional_usd_string_enum(client):
+    """OpenAPI schema for notional_usd must be type=string with enum [100, 1000]."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    req_schema = (
+        schema["components"]["schemas"]["ExecutionSimulationRequest"]
+    )
+    notional = req_schema["properties"]["notional_usd"]
+    assert notional["type"] == "string", (
+        f"notional_usd type must be string, got {notional.get('type')!r}"
+    )
+    assert set(notional["enum"]) == {"100", "1000"}, (
+        f"notional_usd enum must be ['100', '1000'], got {notional.get('enum')!r}"
+    )
+
+
+def test_cb12_openapi_both_fields_required(client):
+    """OpenAPI schema must mark both direction and notional_usd as required."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    req_schema = (
+        schema["components"]["schemas"]["ExecutionSimulationRequest"]
+    )
+    required = set(req_schema.get("required", []))
+    assert "direction" in required, "direction not in required"
+    assert "notional_usd" in required, "notional_usd not in required"
+
+
+def test_cb13_openapi_documents_400_404_503(client):
+    """OpenAPI must document 400, 404, and 503 responses for execution-simulation."""
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    schema = r.json()
+    paths = schema.get("paths", {})
+    sim_path = None
+    for path_key in paths:
+        if path_key.endswith("/execution-simulation"):
+            sim_path = paths[path_key]
+            break
+    assert sim_path is not None, "execution-simulation path not in OpenAPI"
+    post_op = sim_path.get("post", {})
+    responses = post_op.get("responses", {})
+    for code in ("400", "404", "503"):
+        assert code in responses, f"HTTP {code} not documented in OpenAPI responses"
+
+
+# ── CB14: malformed inputs still 400 (not 422) with overridden schema ─────────
+
+
+@pytest.mark.parametrize("direction,notional,label", [
+    ("BUY",  100,    "notional int"),
+    ("BUY",  100.0,  "notional float"),
+    ("BUY",  True,   "notional bool"),
+    ("BUY",  None,   "notional null"),
+    (1,      "100",  "direction int"),
+    (None,   "100",  "direction null"),
+    (True,   "100",  "direction bool"),
+    ("BUY",  "200",  "notional out-of-range string"),
+    ("HOLD", "100",  "direction invalid string"),
+])
+def test_cb14_malformed_inputs_return_400_not_422(client, fake_svc, direction, notional, label):
+    """Malformed request body must produce 400, not 422, even with schema override."""
+    r = client.post(
+        f"/api/v1/radar/assets/{_UID}/execution-simulation",
+        json={"direction": direction, "notional_usd": notional},
+    )
+    assert r.status_code == 400, (
+        f"Expected 400 for {label!r}, got {r.status_code}"
+    )
     assert r.json()["error"] == "SIMULATION_REQUEST_INVALID"
     fake_svc.acquire.assert_not_called()

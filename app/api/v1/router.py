@@ -349,13 +349,13 @@ def post_execution_simulation(
     if not isinstance(direction, str) or direction not in _ALLOWED_DIRECTIONS:
         return _simulation_request_invalid(
             None,
-            f"direction must be BUY or SELL, got {direction!r}",
+            "direction must be 'BUY' or 'SELL'.",
         )
 
     if not isinstance(notional_usd, str) or notional_usd not in _ALLOWED_NOTIONALS:
         return _simulation_request_invalid(
             None,
-            f"notional_usd must be '100' or '1000', got {notional_usd!r}",
+            "notional_usd must be '100' or '1000'.",
         )
 
     # 2. Validate UID format
