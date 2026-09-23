@@ -29,22 +29,21 @@
     <dt>Reference price</dt>
     <dd>
       {% if sim.reference.available %}
-      <strong>{{ sim.reference.fields.price }}</strong>
-      <span class="muted small" style="margin-left:4px;">{{ sim.reference.fields.source }}</span>
+      <strong title="Exact price: {{ sim.reference.fields.price }}">{{ sim.reference.fields.price | market_price }}</strong>
       {% else %}
-      <span class="state-unavailable">UNAVAILABLE — {{ sim.reference.reason }}</span>
+      <span class="state-unavailable">Reference price unavailable</span>
       {% endif %}
     </dd>
 
     <dt>Executable price</dt>
     <dd>
       {% if sim.execution.available and sim.execution.fields.effectivePrice is not none %}
-      <strong>{{ sim.execution.fields.effectivePrice }}</strong>
+      <strong title="Exact price: {{ sim.execution.fields.effectivePrice }}">{{ sim.execution.fields.effectivePrice | market_price }}</strong>
       <span class="muted small" style="margin-left:4px;">{{ sim.execution.fields.status }}</span>
       {% elif sim.execution.available %}
       <span>{{ sim.execution.fields.status }}</span>
       {% else %}
-      <span class="state-unavailable">UNAVAILABLE — {{ sim.execution.reason }}</span>
+      <span class="state-unavailable">Execution quote unavailable in this environment</span>
       {% endif %}
     </dd>
 
@@ -56,16 +55,23 @@
       </strong>
       <span class="muted small" style="margin-left:4px;">mid GAP: {{ sim.gap.fields.gapToMidBps }} bps</span>
       {% else %}
-      <span class="state-unavailable">UNAVAILABLE — {{ sim.gap.reason }}</span>
+      <span class="state-unavailable">Comparison unavailable until both prices are present</span>
       {% endif %}
     </dd>
 
-    <dt>Asset UID</dt>
-    <dd class="mono small">{{ sim.identity.economicAssetUid or '—' }}</dd>
-
-    <dt>Contract</dt>
-    <dd class="mono small">{{ sim.identity.contractAddress or '—' }}</dd>
   </dl>
+  <details class="radar-technical-details">
+    <summary>Technical details</summary>
+    <dl class="kv sim-kv">
+      <dt>Reference state</dt><dd class="mono small">{{ sim.reference.reason or sim.reference.fields.source or '—' }}</dd>
+      <dt>Execution state</dt><dd class="mono small">{{ sim.execution.reason or sim.execution.fields.status or '—' }}</dd>
+      <dt>GAP state</dt><dd class="mono small">{{ sim.gap.reason or '—' }}</dd>
+      <dt>Exact reference price</dt><dd class="mono small">{{ sim.reference.fields.price or '—' }}</dd>
+      <dt>Exact executable price</dt><dd class="mono small">{{ sim.execution.fields.effectivePrice or '—' }}</dd>
+      <dt>Asset UID</dt><dd class="mono small">{{ sim.identity.economicAssetUid or '—' }}</dd>
+      <dt>Contract</dt><dd class="mono small">{{ sim.identity.contractAddress or '—' }}</dd>
+    </dl>
+  </details>
 
   {% if sim.freshness.completedAt %}
   <p class="muted small" style="margin:0;">

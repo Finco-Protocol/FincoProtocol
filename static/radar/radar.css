@@ -678,3 +678,7 @@ html, body.radar {
   .stmt-ctrl-btn { padding: 4px 8px; font-size: 11.5px; }
   .terminal-header__title-row { gap: 8px; }
 }
+.radar-technical-details { margin: 0.75rem 0; color: var(--radar-muted); }
+.radar-technical-details > summary { cursor: pointer; width: fit-content; }
+.radar-technical-details > summary:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.radar-technical-details[open] > .panel { margin-top: 0.6rem; }

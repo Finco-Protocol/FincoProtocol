@@ -29,6 +29,7 @@ Stale-identity prevention:
 from __future__ import annotations
 
 import os
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -72,6 +73,24 @@ def _intcomma(v):
 
 
 _templates.env.filters["intcomma"] = _intcomma
+
+
+def _market_price_display(value):
+    """USD display precision only; the snapshot and inspector retain exact text."""
+    if value is None or str(value).strip() == "":
+        return "—"
+    try:
+        price = Decimal(str(value))
+        if not price.is_finite():
+            return str(value)
+        rounded = price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        sign = "-" if rounded.is_signed() and rounded != 0 else ""
+        return f"{sign}${abs(rounded):,.2f}"
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+
+_templates.env.filters["market_price"] = _market_price_display
 
 _service_instance = None
 

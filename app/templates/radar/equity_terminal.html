@@ -182,7 +182,7 @@
       <dt>{{ row.key }}</dt><dd>{{ row.value }}</dd>
       {% endfor %}
     </dl>
-    <p class="muted small" style="margin-top:8px;">Provider: {{ prof.provider }} · Fetched: {{ prof.fetched_at }}</p>
+    <p class="muted small" style="margin-top:8px;">Profile updated {{ prof.fetched_at }}</p>
     {% else %}
     <p class="state-unavailable">PROFILE_UNAVAILABLE</p>
     {% if prof.parse_error %}<p class="muted small mono">{{ prof.parse_error }}</p>{% endif %}
