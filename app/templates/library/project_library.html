@@ -2,11 +2,11 @@
 {% block title %}Project Library — FINCO Protocol{% endblock %}
 
 {% block body %}
-<div class="fo-library-page" style="max-width:1200px;margin:0 auto;padding:2rem 1.5rem;">
+<div class="fo-library-page">
 
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
-    <h1 style="font-size:1.5rem;font-weight:700;margin:0;">Project Library</h1>
-    <a href="/projects/new" class="fo-btn fo-btn-primary" style="text-decoration:none;padding:.5rem 1rem;border-radius:6px;font-size:.875rem;">+ New Project</a>
+  <div class="fo-library-header">
+    <h1 class="fo-library-title">Project Library</h1>
+    <a href="/projects/new" class="fo-library-cta-new">+ New Project</a>
   </div>
 
   {# Filter / search bar #}
@@ -15,22 +15,22 @@
         hx-target="#library-list-region"
         hx-push-url="false"
         hx-trigger="submit, change from:[data-auto-submit]"
-        style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.5rem;align-items:flex-end;">
-    <div style="flex:1;min-width:200px;">
-      <label style="display:block;font-size:.75rem;font-weight:600;margin-bottom:.25rem;color:var(--fo-text-muted,#6b7280);">SEARCH</label>
+        class="fo-library-filter-bar">
+    <div class="fo-library-filter-group">
+      <label class="fo-library-filter-label">SEARCH</label>
       <input type="text" name="search" value="{{ search }}" placeholder="Project name…"
-             style="width:100%;padding:.5rem .75rem;border:1px solid var(--fo-border,#d1d5db);border-radius:6px;font-size:.875rem;" />
+             class="fo-library-input" />
     </div>
-    <div>
-      <label style="display:block;font-size:.75rem;font-weight:600;margin-bottom:.25rem;color:var(--fo-text-muted,#6b7280);">FILTER</label>
-      <select name="role" data-auto-submit style="padding:.5rem .75rem;border:1px solid var(--fo-border,#d1d5db);border-radius:6px;font-size:.875rem;background:var(--fo-surface,#fff);">
+    <div class="fo-library-filter-group" style="flex:0 0 auto;min-width:auto;">
+      <label class="fo-library-filter-label">FILTER</label>
+      <select name="role" data-auto-submit class="fo-library-select">
         <option value="" {% if not role_filter %}selected{% endif %}>All</option>
         <option value="reference"    {% if role_filter=='reference'    %}selected{% endif %}>References</option>
         <option value="working_copy" {% if role_filter=='working_copy' %}selected{% endif %}>Working copies</option>
         <option value="user_project" {% if role_filter=='user_project' %}selected{% endif %}>My projects</option>
       </select>
     </div>
-    <button type="submit" style="padding:.5rem 1rem;border-radius:6px;border:1px solid var(--fo-border,#d1d5db);background:var(--fo-surface,#fff);font-size:.875rem;cursor:pointer;">Search</button>
+    <button type="submit" style="padding:6px 14px;border-radius:var(--fo-r-sm,5px);border:1px solid var(--fo-line,#d1d5db);background:var(--fo-surface,#fff);font-size:var(--fo-text-md,.875rem);cursor:pointer;align-self:flex-end;">Search</button>
     <input type="hidden" name="page" value="1" />
     {% if selected_project %}<input type="hidden" name="project" value="{{ selected_project }}" />{% endif %}
   </form>
