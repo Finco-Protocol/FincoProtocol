@@ -168,6 +168,12 @@ def _build_one_bundle(
     dividends = session.get_dividends(ticker, limit=dividends_limit)
     splits = session.get_splits(ticker, limit=splits_limit)
 
+    # Fetch up to 8 quarterly periods for YoY TTM revenue growth derivation.
+    # Same read session / same SQLite snapshot — no network N+1.
+    quarterly_history_limited = session.get_financial_history(
+        ticker, "quarterly", limit=8
+    )
+
     best_hash: Optional[str] = None
     for snap in (ttm, quarterly, annual):
         if snap is not None and snap.payload_hash:
@@ -188,6 +194,7 @@ def _build_one_bundle(
         source_lineage_summary=tuple(lineage),
         availability=_compute_availability(asset, profile, ttm, quarterly, annual),
         freshness=_make_freshness(asset, profile, ttm, quarterly, annual),
+        quarterly_history=tuple(quarterly_history_limited),
     )
 
 

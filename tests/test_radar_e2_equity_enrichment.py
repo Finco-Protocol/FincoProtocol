@@ -407,7 +407,7 @@ class TestT4MissingNotZero:
         view = build_equity_view(result)
         fields = view["ttm_metrics"]["fields"]
         assert fields["revenues"]["raw"] == 0.0
-        assert fields["revenues"]["value"] == "0.00"
+        assert fields["revenues"]["value"] == "$0"  # R13-A compact display
         assert fields["revenues"]["is_missing"] is False
 
     def test_null_fcf_renders_as_dash(self):
@@ -437,7 +437,7 @@ class TestT4MissingNotZero:
         rev_zero = v_zero["ttm_metrics"]["fields"]["revenues"]["value"]
         fcf_null = v_null["ttm_metrics"]["fields"]["free_cash_flow"]["value"]
         assert rev_zero != fcf_null
-        assert rev_zero == "0.00"
+        assert rev_zero == "$0"  # R13-A compact display
         assert fcf_null == "—"
 
 
@@ -958,7 +958,7 @@ class TestT18GenuineNegativeNumeric:
         view = build_equity_view(result)
         nd = view["ttm_metrics"]["fields"]["net_debt"]
         assert nd["raw"] == -100.0
-        assert nd["value"] == "-100.00"
+        assert nd["value"] == "-$100.00"  # R13-A compact display with currency symbol
         assert nd["is_missing"] is False
 
     def test_negative_not_clamped(self):

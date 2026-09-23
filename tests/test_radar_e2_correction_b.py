@@ -944,20 +944,19 @@ class TestB13B14RatioSemantics:
         assert f["return_on_equity"]["value"] == "147.00%"
 
     def test_b14_revenue_growth_raw_not_percent(self):
-        """B14: revenue_growth=0.08 → '0.08' (raw); NOT '8.00%'."""
+        """R13-A: revenue_growth is now derived from quarterly history.
+        The source field (revenue_growth=0.08 in derived_json) is ignored.
+        Without 8 quarterly snapshots in the test DB, derived value is '—'.
+        When derivable, it renders as +X.X% (formatted fraction, not raw float).
+        The raw field in the view reflects the derived value (None when not derivable)."""
         db = self._make_aapl_db()
         result = enrich_selected_asset(
             "AAPL", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", db_path=db)
         view = build_equity_view(result)
         f = view["ttm_metrics"]["fields"]
         val = f["revenue_growth"]["value"]
-        assert "%" not in val, (
-            f"revenue_growth must not display as percentage; got '{val}'"
-        )
-        assert val == "0.08", (
-            f"revenue_growth=0.08 must render as '0.08'; got '{val}'"
-        )
-        assert f["revenue_growth"]["raw"] == pytest.approx(0.08)
+        # Without quarterly history: derived value is "—"
+        assert val == "—" or "%" in val
 
     def test_b14_revenue_growth_board_row_raw(self):
         """Board row revenue_growth also uses raw float."""
@@ -979,15 +978,16 @@ class TestB13B14RatioSemantics:
         assert "%" not in f["debt_to_equity"]["value"]
 
     def test_b13_unit_rule_strings_are_accurate(self):
-        """unit_rule strings in view match documented semantics."""
+        """unit_rule strings in view match documented semantics.
+        R13-A: revenue_growth unit_rule reflects YoY quarterly derivation."""
         db = self._make_aapl_db()
         result = enrich_selected_asset(
             "AAPL", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", db_path=db)
         view = build_equity_view(result)
         f = view["ttm_metrics"]["fields"]
-        # revenue_growth must say "not proven" or "raw"
+        # revenue_growth must describe derivation from quarterly history
         rg_rule = f["revenue_growth"]["unit_rule"].lower()
-        assert "not proven" in rg_rule or "raw" in rg_rule
+        assert "quarterly" in rg_rule or "derived" in rg_rule or "yoy" in rg_rule
         # gross_margin must mention fraction/denominator/percent
         gm_rule = f["gross_margin"]["unit_rule"].lower()
         assert "fraction" in gm_rule or "%" in gm_rule or "100" in gm_rule

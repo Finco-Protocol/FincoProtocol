@@ -697,15 +697,18 @@ class TestRatioDisplaySemantics:
         assert f["gross_margin"]["raw"] == pytest.approx(0.44)
 
     def test_revenue_growth_is_raw_float_not_percent(self):
-        """revenue_growth unit not proven; rendered as raw float (no ×100)."""
+        """R13-A: revenue_growth is derived from quarterly history, not the source field.
+        The source field (revenue_growth=0.08 in derived_json) is ignored per R13-A;
+        without 8 comparable quarterly snapshots, the derived value is '—' (fail-closed).
+        When derivable, it is formatted as +X.X%."""
         db = _aapl_db()
         result = enrich_selected_asset(
             "AAPL", "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1", db_path=db)
         view = build_equity_view(result)
         f = view["ttm_metrics"]["fields"]
-        # raw 0.08 → "0.08" (not "8.00%")
-        assert "%" not in f["revenue_growth"]["value"]
-        assert f["revenue_growth"]["value"] == "0.08"
+        # Without quarterly history in the test DB, derived value is "—"
+        val = f["revenue_growth"]["value"]
+        assert val == "—" or "%" in val  # derived: either missing or formatted as percent
 
     def test_return_on_equity_147pct(self):
         db = _aapl_db()

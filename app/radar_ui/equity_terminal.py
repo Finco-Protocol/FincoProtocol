@@ -3,9 +3,12 @@
 Builds presentation dicts for GET /radar/equity/{economic_asset_uid}.
 
 Rules:
-- MISSING != ZERO: None → "—"; 0.0 → "0.00"
-- Statement adapter: JSON rendered as-is; no unit conversions; no field
-  hardcoding; nested dicts flattened deterministically as "parent.child"
+- MISSING != ZERO: None → "—"; 0.0 → display zero
+- Statement adapter: known typed fields receive presentation-only compact
+  formatting (monetary → compact M/B/T with asset currency; EPS → decimal;
+  share counts → compact quantity); unknown fields rendered raw; source values
+  never mutated; no economic transformation or derivation
+- nested dict keys flattened deterministically as "parent.child"
 - SOURCE_DATA_MALFORMED when a statement field is present but not valid JSON
 - No market prices, no quotes, no spreads, no GAP fields
 - identity_state: VERIFIED/IDENTITY_MISMATCH/PARTIAL_IDENTITY/NOT_AVAILABLE
@@ -23,7 +26,15 @@ from finco_radar.equity.models import (
     FundamentalsFreshness,
     JsonField,
 )
-from app.radar_ui.equity_view_model import _fmt_float, _fmt_currency, _fmt_percent, _fmt_ratio_raw
+from app.radar_ui.equity_view_model import (
+    _fmt_compact_currency,
+    _fmt_float,
+    _fmt_currency,
+    _fmt_percent,
+    _fmt_ratio_raw,
+    _fmt_revenue_growth,
+    _fmt_human_timestamp,
+)
 
 
 def get_history_for_terminal(
@@ -123,7 +134,7 @@ def _flatten_dict(d: dict, prefix: str = "") -> List[Tuple[str, Any]]:
 
 
 def _fmt_statement_value(v: Any) -> str:
-    """Format one statement field value for display.
+    """Format one statement field value for display (raw fallback for unknown fields).
 
     None  → "—"   (genuinely missing)
     0     → "0"   (explicit zero; not "—")
@@ -261,6 +272,109 @@ _STMT_FIELD_MAPS: Dict[str, Dict[str, str]] = {
     "cash_flow_statement": _CASHFLOW_FIELD_MAP,
 }
 
+# ── statement field presentation types ───────────────────────────────────────
+# Explicit typed presentation metadata for known statement fields.
+# Unknown fields have no type entry and fall back to _fmt_statement_value.
+# Defined after the field maps so dict comprehensions can reference them.
+
+_STMT_TYPE_CURRENCY = "CURRENCY_AMOUNT"  # monetary absolute → compact M/B/T + currency symbol
+_STMT_TYPE_PER_SHARE = "PER_SHARE"       # per-share metric → decimal precision; no compact scaling
+_STMT_TYPE_SHARES = "SHARES"             # share count → compact quantity; no currency symbol
+
+# Income statement field types (MASSIVE / LEGACY_MASSIVE_VX snake_case keys)
+_INCOME_FIELD_TYPES: Dict[str, str] = {
+    "revenues": _STMT_TYPE_CURRENCY,
+    "cost_of_revenue": _STMT_TYPE_CURRENCY,
+    "cost_of_revenue_goods": _STMT_TYPE_CURRENCY,
+    "cost_of_revenue_services": _STMT_TYPE_CURRENCY,
+    "gross_profit": _STMT_TYPE_CURRENCY,
+    "research_and_development": _STMT_TYPE_CURRENCY,
+    "selling_general_and_administrative_expenses": _STMT_TYPE_CURRENCY,
+    "operating_expenses": _STMT_TYPE_CURRENCY,
+    "other_operating_expenses": _STMT_TYPE_CURRENCY,
+    "benefits_costs_expenses": _STMT_TYPE_CURRENCY,
+    "costs_and_expenses": _STMT_TYPE_CURRENCY,
+    "operating_income_loss": _STMT_TYPE_CURRENCY,
+    "interest_expense_operating": _STMT_TYPE_CURRENCY,
+    "nonoperating_income_loss": _STMT_TYPE_CURRENCY,
+    "income_loss_before_equity_method_investments": _STMT_TYPE_CURRENCY,
+    "income_loss_from_continuing_operations_before_tax": _STMT_TYPE_CURRENCY,
+    "income_tax_expense_benefit": _STMT_TYPE_CURRENCY,
+    "income_tax_expense_benefit_current": _STMT_TYPE_CURRENCY,
+    "income_tax_expense_benefit_deferred": _STMT_TYPE_CURRENCY,
+    "income_loss_from_continuing_operations_after_tax": _STMT_TYPE_CURRENCY,
+    "net_income_loss": _STMT_TYPE_CURRENCY,
+    "net_income_loss_attributable_to_parent": _STMT_TYPE_CURRENCY,
+    "net_income_loss_attributable_to_noncontrolling_interest": _STMT_TYPE_CURRENCY,
+    "net_income_loss_available_to_common_stockholders_basic": _STMT_TYPE_CURRENCY,
+    "participating_securities_distributed_and_undistributed_earnings_loss_basic": _STMT_TYPE_CURRENCY,
+    "preferred_stock_dividends_and_other_adjustments": _STMT_TYPE_CURRENCY,
+    "common_stock_dividends": _STMT_TYPE_CURRENCY,
+    "depreciation_and_amortization": _STMT_TYPE_CURRENCY,
+    # Per-share metrics — decimal precision; not scaled to M/B/T
+    "basic_earnings_per_share": _STMT_TYPE_PER_SHARE,
+    "diluted_earnings_per_share": _STMT_TYPE_PER_SHARE,
+    # Share counts — compact quantity; no currency symbol
+    "basic_average_shares": _STMT_TYPE_SHARES,
+    "diluted_average_shares": _STMT_TYPE_SHARES,
+}
+
+# Balance sheet: all known fields are monetary amounts
+_BALANCE_FIELD_TYPES: Dict[str, str] = {
+    k: _STMT_TYPE_CURRENCY for k in _BALANCE_FIELD_MAP
+}
+
+# Cash flow: all known fields are monetary amounts
+_CASHFLOW_FIELD_TYPES: Dict[str, str] = {
+    k: _STMT_TYPE_CURRENCY for k in _CASHFLOW_FIELD_MAP
+}
+
+_STMT_FIELD_TYPE_MAPS: Dict[str, Dict[str, str]] = {
+    "income_statement": _INCOME_FIELD_TYPES,
+    "balance_sheet": _BALANCE_FIELD_TYPES,
+    "cash_flow_statement": _CASHFLOW_FIELD_TYPES,
+}
+
+_STMT_UNIT_NOTE = (
+    "Monetary fields compact M/B/T with asset currency (known fields only); "
+    "EPS decimal; share counts compact quantity; unknown fields raw. "
+    "Source values unchanged."
+)
+
+
+def _fmt_stmt_field(
+    v: Any,
+    field_type: Optional[str],
+    currency: Optional[str],
+) -> str:
+    """Format one statement field using its typed presentation contract.
+
+    CURRENCY_AMOUNT → compact M/B/T with canonical currency symbol (e.g. $416.2B)
+    PER_SHARE       → decimal 2 dp; no compact scaling (e.g. 6.11)
+    SHARES          → compact quantity without currency symbol (e.g. 15.4B)
+    None/unknown    → raw fallback via _fmt_statement_value
+
+    None → "—" in all cases (MISSING != ZERO).
+    0.0 → display zero. Negative values preserved.
+    Non-numeric values for a typed field fall back to raw.
+    """
+    if v is None:
+        return "—"
+    if field_type == _STMT_TYPE_CURRENCY:
+        if not isinstance(v, (int, float)):
+            return _fmt_statement_value(v)
+        return _fmt_currency(float(v), board=True, currency=currency)
+    if field_type == _STMT_TYPE_PER_SHARE:
+        if not isinstance(v, (int, float)):
+            return _fmt_statement_value(v)
+        return _fmt_float(float(v), precision=2)
+    if field_type == _STMT_TYPE_SHARES:
+        if not isinstance(v, (int, float)):
+            return _fmt_statement_value(v)
+        return _fmt_compact_currency(float(v), board=True, currency_symbol="")
+    return _fmt_statement_value(v)
+
+
 _NAV_STMT_TO_FIELD_KEY: Dict[str, str] = {
     "income": "income_statement",
     "balance": "balance_sheet",
@@ -283,10 +397,12 @@ def _period_label(snap: FinancialSnapshot) -> str:
 def _build_statement_matrix(
     snapshots: Sequence,
     stmt_key: str,
+    currency: Optional[str] = None,
 ) -> dict:
     """Build a multi-period statement cross-tab for the Financials tab.
 
     stmt_key: "income_statement" | "balance_sheet" | "cash_flow_statement"
+    currency: asset's canonical ISO currency code for monetary field formatting.
 
     Matrix-level state (F07 — SOURCE_DATA_MALFORMED != NOT_AVAILABLE):
       AVAILABLE            all periods available (at least one)
@@ -297,17 +413,19 @@ def _build_statement_matrix(
     Returns:
       period_headers: list[{label, period_end, timeframe, fiscal_year, fiscal_quarter, state}]
       rows: list[{field_key, label, cells: list[str]}]
-      unit_note: "Source values — no unit conversion applied."
+      unit_note: see _STMT_UNIT_NOTE
       available: bool  (True when AVAILABLE or PARTIAL)
       state: str       matrix-level state
       stmt_key: str
 
     Cell values: "—" for missing/absent/malformed; formatted value otherwise.
-    0/0.0 → displayed zero (MISSING != ZERO invariant).
-    Negative values preserved.
-    No unit conversions, no derived calculations.
+    Known monetary fields: compact M/B/T with canonical currency symbol.
+    EPS fields: decimal precision. Share counts: compact quantity.
+    Unknown fields: raw. 0/0.0 → displayed zero (MISSING != ZERO).
+    Negative values preserved. No economic transformation; source values unchanged.
     """
     field_map = _STMT_FIELD_MAPS.get(stmt_key, {})
+    field_type_map = _STMT_FIELD_TYPE_MAPS.get(stmt_key, {})
 
     period_data: List[Tuple[dict, Optional[dict], str]] = []
     for snap in snapshots:
@@ -370,13 +488,13 @@ def _build_statement_matrix(
             elif fkey not in fdict:
                 cells.append("—")
             else:
-                cells.append(_fmt_statement_value(fdict[fkey]))
+                cells.append(_fmt_stmt_field(fdict[fkey], field_type_map.get(fkey), currency))
         rows.append({"field_key": fkey, "label": label, "cells": cells})
 
     return {
         "period_headers": period_headers,
         "rows": rows,
-        "unit_note": "Source values — no unit conversion applied.",
+        "unit_note": _STMT_UNIT_NOTE,
         "available": matrix_available,
         "state": matrix_state,
         "stmt_key": stmt_key,
@@ -385,8 +503,12 @@ def _build_statement_matrix(
 
 # ── snapshot row builder ──────────────────────────────────────────────────────
 
-def _build_snapshot_row(snap: FinancialSnapshot) -> dict:
-    """Build a compact derived-metrics row for the financial history table."""
+def _build_snapshot_row(snap: FinancialSnapshot, currency: Optional[str] = None) -> dict:
+    """Build a compact derived-metrics row for the financial history table.
+
+    currency: the asset's canonical ISO currency code, passed through from
+    EquityAssetIdentity.currency so monetary fields display the correct symbol.
+    """
     d = snap.derived
     return {
         "timeframe": snap.timeframe,
@@ -395,16 +517,16 @@ def _build_snapshot_row(snap: FinancialSnapshot) -> dict:
         "fiscal_year": snap.fiscal_year or "—",
         "fiscal_quarter": snap.fiscal_quarter or "—",
         "provider": snap.provider or "—",
-        "revenues": _fmt_currency(d.revenues) if d else "—",
-        "revenue_growth": _fmt_float(d.revenue_growth) if d else "—",
+        "revenues": _fmt_currency(d.revenues, currency=currency) if d else "—",
+        "revenue_growth": _fmt_revenue_growth(d.revenue_growth) if d else "—",
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
         "ebit_margin": _fmt_percent(d.ebit_margin) if d else "—",
         "ebitda_margin": _fmt_percent(d.ebitda_margin) if d else "—",
         "net_margin": _fmt_percent(d.net_margin) if d else "—",
-        "free_cash_flow": _fmt_currency(d.free_cash_flow) if d else "—",
+        "free_cash_flow": _fmt_currency(d.free_cash_flow, currency=currency) if d else "—",
         "fcf_margin": _fmt_percent(d.fcf_margin) if d else "—",
         "return_on_equity": _fmt_percent(d.return_on_equity) if d else "—",
-        "net_debt": _fmt_currency(d.net_debt) if d else "—",
+        "net_debt": _fmt_currency(d.net_debt, currency=currency) if d else "—",
         "debt_to_equity": _fmt_ratio_raw(d.debt_to_equity) if d else "—",
         "income_statement": _adapt_statement(snap.income_statement),
         "balance_sheet": _adapt_statement(snap.balance_sheet),
@@ -423,7 +545,9 @@ def _build_snapshot_evidence_row(snap: FinancialSnapshot) -> dict:
         "provider": snap.provider or "—",
         "source_contract": snap.source_contract or "—",
         "fetched_at": snap.fetched_at or "—",
+        "fetched_at_display": _fmt_human_timestamp(snap.fetched_at),
         "normalized_at": snap.normalized_at or "—",
+        "normalized_at_display": _fmt_human_timestamp(snap.normalized_at),
         "payload_hash": snap.payload_hash or "—",
     }
 
@@ -511,7 +635,7 @@ def build_terminal_view(
         "state": "NOT_AVAILABLE",
         "period_headers": [],
         "rows": [],
-        "unit_note": "Source values — no unit conversion applied.",
+        "unit_note": _STMT_UNIT_NOTE,
         "stmt_key": _NAV_STMT_TO_FIELD_KEY.get(nav.get("statement", "income"), "income_statement"),
     }
 
@@ -533,6 +657,7 @@ def build_terminal_view(
             "profile": None,
             "profile_evidence": _empty_profile_evidence,
             "snapshot_evidence": [],
+            "snapshot_evidence_meta": {"uniform_provider": None, "uniform_source_contract": None, "row_count": 0},
             "annual_history": [],
             "quarterly_history": [],
             "ttm_history": [],
@@ -624,10 +749,30 @@ def build_terminal_view(
         )
     ]
 
-    # Financial history rows
-    annual_rows = [_build_snapshot_row(s) for s in bundle.annual_history]
-    quarterly_rows = [_build_snapshot_row(s) for s in bundle.quarterly_history]
-    ttm_rows = [_build_snapshot_row(s) for s in bundle.ttm_history]
+    # Evidence deduplication meta: uniform_provider is set ONLY when every row
+    # has a real (non-"—") provider AND all rows share the same value.
+    # A single missing provider breaks uniformity — [MASSIVE, MASSIVE, "—"] is NOT uniform.
+    def _uniform_value(values: list) -> Optional[str]:
+        if not values:
+            return None
+        unique = set(values)
+        if len(unique) == 1 and "—" not in unique:
+            return next(iter(unique))
+        return None
+
+    _all_providers = [r["provider"] for r in snapshot_evidence_rows]
+    _all_contracts = [r["source_contract"] for r in snapshot_evidence_rows]
+    snapshot_evidence_meta = {
+        "uniform_provider": _uniform_value(_all_providers),
+        "uniform_source_contract": _uniform_value(_all_contracts),
+        "row_count": len(snapshot_evidence_rows),
+    }
+
+    # Financial history rows — pass asset currency for truthful monetary display
+    _asset_currency: Optional[str] = asset.currency if asset is not None else None
+    annual_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.annual_history]
+    quarterly_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.quarterly_history]
+    ttm_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.ttm_history]
 
     # Statement matrix for Financials tab
     nav_timeframe = nav.get("timeframe", "annual")
@@ -639,7 +784,7 @@ def build_terminal_view(
         "ttm": bundle.ttm_history,
     }
     snapshots_for_matrix = timeframe_snapshots_map.get(nav_timeframe, bundle.annual_history)
-    statement_matrix = _build_statement_matrix(snapshots_for_matrix, stmt_key)
+    statement_matrix = _build_statement_matrix(snapshots_for_matrix, stmt_key, currency=_asset_currency)
 
     # Corporate actions — all authority fields
     dividend_rows = [
@@ -692,6 +837,7 @@ def build_terminal_view(
         "profile": profile_section,
         "profile_evidence": profile_evidence,
         "snapshot_evidence": snapshot_evidence_rows,
+        "snapshot_evidence_meta": snapshot_evidence_meta,
         "annual_history": annual_rows,
         "quarterly_history": quarterly_rows,
         "ttm_history": ttm_rows,
@@ -707,7 +853,9 @@ def build_terminal_view(
             "quarterly_period_end": freshness.quarterly_period_end or "—",
             "annual_period_end": freshness.annual_period_end or "—",
             "profile_fetched_at": freshness.profile_fetched_at or "—",
+            "profile_fetched_at_display": _fmt_human_timestamp(freshness.profile_fetched_at),
             "asset_last_seen_at": freshness.asset_last_seen_at or "—",
+            "asset_last_seen_at_display": _fmt_human_timestamp(freshness.asset_last_seen_at),
         },
         "execution_simulator_url": f"/radar?asset_uid={economic_asset_uid}#radar-panels",
         "radar_url": "/radar",
