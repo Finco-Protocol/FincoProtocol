@@ -203,20 +203,25 @@ def lineage_out(lin) -> Dict[str, Any]:
 class ExecutionSimulationRequest(BaseModel):
     """A2 POST body: direction and notional_usd.
 
-    Both fields are accepted as Optional[str] to avoid Pydantic 422 on
-    invalid values; the route handler validates and returns 400 explicitly.
-    Integer notionals (100, 1000) are coerced to their string equivalents by
-    Pydantic's lax mode.
+    Both fields use Any internally so Pydantic never raises 422 for field
+    value errors; the route handler owns all public validation and returns
+    400 explicitly.
+
+    Public contract: STRICT STRING INPUT ONLY.
+    Valid:    "100", "1000" for notional_usd; "BUY", "SELL" for direction.
+    Invalid:  integers, floats, booleans, null, arrays, objects — all → 400.
     """
     model_config = ConfigDict(populate_by_name=True)
 
-    direction: Optional[str] = Field(
+    direction: Any = Field(
         default=None,
         description="Trade direction: 'BUY' or 'SELL'.",
+        examples=["BUY", "SELL"],
     )
-    notional_usd: Optional[str] = Field(
+    notional_usd: Any = Field(
         default=None,
         description="Requested notional in USD (exact string: '100' or '1000').",
+        examples=["100", "1000"],
     )
 
 

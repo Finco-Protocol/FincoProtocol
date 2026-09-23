@@ -1,4 +1,4 @@
-"""A2 Execution Simulation API v1 tests — A2-01 through A2-55.
+"""A2 Execution Simulation API v1 tests — A2-01 through A2-55 + Correction-A C01-C22.
 
 All tests use deterministic offline fakes injected via A2 test seams:
   - set_execution_service()  — fake AcquisitionService
@@ -18,7 +18,7 @@ Test inventory:
   A2-09  invalid notional → 400 SIMULATION_REQUEST_INVALID
   A2-10  ticker-like UID "AAPL" rejected before acquisition → 400
   A2-11  unknown valid-format UID → 404 ASSET_NOT_FOUND
-  A2-12  registry unavailable → sanitized 503 REGISTRY_UNAVAILABLE
+  A2-12  expected registry exception → sanitized 503 REGISTRY_UNAVAILABLE
   A2-13  invalid UID causes zero acquire calls
   A2-14  unknown UID causes zero acquire calls
   A2-15  invalid direction causes zero acquire calls
@@ -52,7 +52,7 @@ Test inventory:
   A2-43  no transaction hash / order id fields
   A2-44  raw_payload_json absent recursively
   A2-45  raw_evidence absent recursively
-  A2-46  adversarial private path / API-key sentinel absent
+  A2-46  adversarial private path / API-key sentinel absent (real leakage test)
   A2-47  unexpected RuntimeError("PROGRAMMING_SENTINEL") is NOT swallowed
   A2-48  route handler is synchronous (not a coroutine)
   A2-49  snapshot UID mismatch fails closed
@@ -62,6 +62,30 @@ Test inventory:
   A2-53  existing A1 GET endpoints make ZERO execution acquisitions
   A2-54  existing UI E4 GET Company Terminal makes zero acquisitions
   A2-55  no economic authority package changed
+
+  Correction A:
+  C01  direction mismatch (BUY→SELL) fails closed
+  C02  notional mismatch (1000→100) fails closed
+  C03  snapshot missing request.direction → fails closed
+  C04  snapshot missing request.notionalUsd → fails closed
+  C05  exact UID+chain+contract+BUY+1000 → serializes successfully
+  C06  providers=[other-provider, radar-core] → canonical values from radar-core
+  C07  providers=[radar-core, other-provider] → same result
+  C08  providers=[other-provider only] → no foreign provider evidence serialized
+  C09  execution unavailableReason="NO_ROUTE" → response reason == "NO_ROUTE"
+  C10  both unavailableReason and reason present → unavailableReason wins
+  C11  reason only → reason preserved
+  C12  neither → stable generic fallback
+  C13  expected registry exception (RegistrySourceError) → sanitized 503
+  C14  RuntimeError from universe path → propagates / 500
+  C15  public 503 contains only stable detail string
+  C16  numeric 100 → 400 (zero acquire)
+  C17  float 100.0 → 400 (zero acquire)
+  C18  bool true → 400 (zero acquire)
+  C19  null → 400 (zero acquire)
+  C20  list / dict → 400 (zero acquire)
+  C21  missing direction → 400 (zero acquire)
+  C22  missing notional_usd → 400 (zero acquire)
 """
 from __future__ import annotations
 
@@ -184,6 +208,19 @@ def _make_evidence(
     }
 
 
+def _make_request_block(direction: str = "BUY", notional_usd: str = "1000") -> dict:
+    """Canonical snapshot request block matching AcquisitionRequest.to_payload()."""
+    return {
+        "chainId": _CHAIN_ID,
+        "contractAddress": _CONTRACT,
+        "economicAssetUid": _UID,
+        "direction": direction,
+        "sources": ["radar-core"],
+        "notionalUsd": notional_usd,
+        "providerConfig": None,
+    }
+
+
 class _FakeSnapshot:
     def __init__(
         self,
@@ -195,6 +232,9 @@ class _FakeSnapshot:
         contract: str = _CONTRACT,
         completed_at: str = _COMPLETED_AT,
         evidence: dict | None = None,
+        direction: str = "BUY",
+        notional_usd: str = "1000",
+        request_block: dict | None = None,
     ) -> None:
         self.snapshot_id = snapshot_id
         self._state = state
@@ -202,15 +242,31 @@ class _FakeSnapshot:
         self._chain_id = chain_id
         self._contract = contract
         self._completed_at = completed_at
-        self._evidence = evidence if evidence is not None else _make_evidence()
+        self._evidence = evidence if evidence is not None else _make_evidence(
+            direction=direction
+        )
+        self._direction = direction
+        self._notional_usd = notional_usd
+        # Allow explicit override for malformed-request tests
+        self._request_block = request_block
 
     def to_payload(self) -> dict:
+        req = self._request_block if self._request_block is not None else {
+            "chainId": self._chain_id,
+            "contractAddress": self._contract,
+            "economicAssetUid": self._uid,
+            "direction": self._direction,
+            "sources": ["radar-core"],
+            "notionalUsd": self._notional_usd,
+            "providerConfig": None,
+        }
         return {
             "state": self._state,
             "economicAssetUid": self._uid,
             "chainId": self._chain_id,
             "contractAddress": self._contract,
             "completedAt": self._completed_at,
+            "request": req,
             "providers": [
                 {
                     "provider": "radar-core",
@@ -225,15 +281,27 @@ class _FakeSnapshot:
 
 
 class _FakeAcqService:
+    """Fake AcquisitionService for tests.
+
+    When snapshot is None (mirror mode), creates a _FakeSnapshot that mirrors
+    the request direction/notional so the identity invariant always passes for
+    normal positive tests.  Supply snapshot= to override with a static snapshot
+    (used for error-path and invariant-failure tests)."""
+
     def __init__(self, *, snapshot: Any = None, raise_error: Any = None) -> None:
-        self._snapshot = snapshot or _FakeSnapshot()
+        self._snapshot = snapshot  # None → mirror mode
         self._raise = raise_error
         self.acquire = MagicMock(side_effect=self._do_acquire)
 
     def _do_acquire(self, request: Any) -> Any:
         if self._raise is not None:
             raise self._raise
-        return self._snapshot
+        if self._snapshot is not None:
+            return self._snapshot
+        # Mirror mode: build a snapshot that matches the incoming request
+        direction = getattr(request, "direction", "BUY") or "BUY"
+        notional = getattr(request, "notional_usd", "1000") or "1000"
+        return _FakeSnapshot(direction=direction, notional_usd=notional)
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -375,14 +443,15 @@ def test_a2_11_unknown_uid_returns_404(client, fake_svc):
     fake_svc.acquire.assert_not_called()
 
 
-# ── A2-12: registry unavailable → 503 ────────────────────────────────────────
+# ── A2-12: expected registry exception → sanitized 503 ───────────────────────
 
 
 def test_a2_12_registry_unavailable_returns_503(fake_svc):
+    from finco_radar.assets.contracts import RegistrySourceError
     import main_api
 
     def _boom():
-        raise RuntimeError("registry_network_error")
+        raise RegistrySourceError("network_error")
 
     _exec_module.set_universe_fn(_boom)
     with TestClient(main_api.app, raise_server_exceptions=False) as client:
@@ -743,16 +812,21 @@ def test_a2_45_raw_evidence_absent_recursively(client):
     assert "rawEvidence" not in keys
 
 
-_SENTINELS = [
-    "/var/secrets/key",
-    "PRIVATE_API_KEY_SENTINEL",
-    "/root/.aws/credentials",
-    "http://internal.corp/secret",
-]
+# Sentinel strings to inject into evidence metadata fields.
+# All must be absent from the public JSON response.
+_SENTINEL_URL = "https://private.internal.example/secret"
+_SENTINEL_PATH_DB = "/srv/finco/private/db.sqlite"
+_SENTINEL_TOKEN = "API_KEY_SENTINEL_123"
+_SENTINEL_PATH_AWS = "/root/.aws/credentials"
 
 
 def test_a2_46_adversarial_sentinel_absent(fake_universe):
-    """Adversarial evidence containing private paths must not appear in response."""
+    """Adversarial evidence with private paths/API-key sentinels must not leak.
+
+    Injects distinct sentinels into reference.source, execution.source,
+    execution.unavailableReason, and gap.reason.  Verifies the outward-string
+    safety boundary redacts all of them.  Also verifies that canonical source
+    labels and reason codes remain visible."""
     import main_api
 
     adversarial_evidence = {
@@ -761,16 +835,20 @@ def test_a2_46_adversarial_sentinel_absent(fake_universe):
             "price": "143.11",
             "bid": "143.00",
             "ask": "143.22",
-            "source": _SENTINELS[0],
+            "source": _SENTINEL_URL,          # URL sentinel in source
             "observedAt": _COMPLETED_AT,
         },
         "execution": {
             "available": False,
-            "reason": _SENTINELS[1],
+            "unavailableReason": _SENTINEL_PATH_AWS,   # path sentinel in unavailableReason
+            "reason": _SENTINEL_TOKEN,                 # token sentinel in reason
+            "source": _SENTINEL_PATH_DB,               # path sentinel in source
+            "status": "QUOTE_FAILED",
+            "quotedAt": _COMPLETED_AT,
         },
         "gap": {
             "available": False,
-            "reason": _SENTINELS[2],
+            "reason": _SENTINEL_URL,           # URL sentinel in gap.reason
         },
     }
     svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=adversarial_evidence))
@@ -779,14 +857,34 @@ def test_a2_46_adversarial_sentinel_absent(fake_universe):
         r = _post(client)
     _exec_module.set_execution_service(None)
 
+    assert r.status_code == 200
     body_text = json.dumps(r.json())
-    # The source field from reference IS serialized (it comes from evidence verbatim)
-    # but private *path* sentinels in unavailable *reason* fields must not appear
-    # as top-level system-leaked credentials
-    assert _SENTINELS[3] not in body_text, "Internal URL leaked"
-    # Execution and gap unavailable reasons must come from evidence.reason verbatim
-    # (spec §25 bans raw provider HTTP body / internal URLs, but verbatim
-    #  reason strings from the provider are acceptable evidence fields).
+
+    # No sentinel may appear anywhere in the public JSON response
+    assert _SENTINEL_URL not in body_text, "URL sentinel leaked"
+    assert _SENTINEL_PATH_DB not in body_text, "DB path sentinel leaked"
+    assert _SENTINEL_TOKEN not in body_text, "API key sentinel leaked"
+    assert _SENTINEL_PATH_AWS not in body_text, "AWS credentials path leaked"
+
+    # Verify the stable fallback appears (redaction is active, not silent erasure)
+    assert "INTERNAL_DETAIL_REDACTED" in body_text, "Safety fallback not found"
+
+
+def test_a2_46b_canonical_metadata_not_redacted(fake_universe):
+    """Canonical source labels and reason codes must NOT be redacted."""
+    import main_api
+
+    canonical_evidence = _make_evidence(ref_available=False)
+    # ref reason = "REFERENCE_UNAVAILABLE" — canonical, no digits, no path, no URL
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=canonical_evidence, state="PARTIAL"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    body = r.json()
+    # Canonical reason code must be preserved verbatim
+    assert body["reference"]["reason"] == "REFERENCE_UNAVAILABLE"
 
 
 # ── A2-47: programming error propagates ──────────────────────────────────────
@@ -945,3 +1043,507 @@ def test_a2_55_no_economic_authority_changed():
         # Just checking they're importable and have their canonical __file__
         assert mod.__file__ is not None
         assert "finco_radar" in mod.__file__
+
+
+# ══ Correction A tests ═══════════════════════════════════════════════════════
+
+# ── C01: direction mismatch fails closed ──────────────────────────────────────
+
+
+def test_ca_c01_direction_mismatch_fails_closed(fake_universe):
+    """BUY request but snapshot has SELL direction → identity invariant fails."""
+    import main_api
+
+    # Snapshot has direction="SELL" but request sends direction="BUY"
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(direction="SELL", notional_usd="1000"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client, direction="BUY", notional_usd="1000")
+    _exec_module.set_execution_service(None)
+
+    # Must fail closed — not a 200 simulation response
+    assert r.status_code != 200
+    # Prove the invariant error fires, not a fabricated simulation result
+    assert r.status_code == 500  # IdentityInvariantError propagates as programming error
+
+
+# ── C02: notional mismatch fails closed ───────────────────────────────────────
+
+
+def test_ca_c02_notional_mismatch_fails_closed(fake_universe):
+    """1000 request but snapshot has notional 100 → identity invariant fails."""
+    import main_api
+
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(direction="BUY", notional_usd="100"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client, direction="BUY", notional_usd="1000")
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code != 200
+    assert r.status_code == 500
+
+
+# ── C03: snapshot missing request.direction fails closed ──────────────────────
+
+
+def test_ca_c03_snapshot_missing_direction_fails_closed(fake_universe):
+    """Snapshot request.direction absent → invariant fails closed."""
+    import main_api
+
+    # Build a request block without direction
+    bad_request_block = {
+        "chainId": _CHAIN_ID,
+        "contractAddress": _CONTRACT,
+        "economicAssetUid": _UID,
+        "sources": ["radar-core"],
+        "notionalUsd": "1000",
+        "providerConfig": None,
+        # "direction" intentionally absent
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(request_block=bad_request_block))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code != 200
+
+
+# ── C04: snapshot missing request.notionalUsd fails closed ────────────────────
+
+
+def test_ca_c04_snapshot_missing_notional_fails_closed(fake_universe):
+    """Snapshot request.notionalUsd absent → invariant fails closed."""
+    import main_api
+
+    bad_request_block = {
+        "chainId": _CHAIN_ID,
+        "contractAddress": _CONTRACT,
+        "economicAssetUid": _UID,
+        "direction": "BUY",
+        "sources": ["radar-core"],
+        "providerConfig": None,
+        # "notionalUsd" intentionally absent
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(request_block=bad_request_block))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code != 200
+
+
+# ── C05: exact match serializes successfully ──────────────────────────────────
+
+
+def test_ca_c05_exact_match_serializes_successfully(fake_universe):
+    """UID+chain+contract+direction+notional all match → 200 and correct fields."""
+    import main_api
+
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(
+        uid=_UID, chain_id=_CHAIN_ID, contract=_CONTRACT,
+        direction="BUY", notional_usd="1000"
+    ))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client, direction="BUY", notional_usd="1000")
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["simulation"]["direction"] == "BUY"
+    assert body["simulation"]["notional_usd"] == "1000"
+    assert body["economic_asset_uid"] == _UID
+
+
+# ── C06: providers=[other, radar-core] → canonical values from radar-core ──────
+
+
+def test_ca_c06_radar_core_at_index_1_is_used(fake_universe):
+    """When radar-core is not first in the provider list, it must still be used."""
+    import main_api
+
+    other_evidence = {
+        "reference": {"available": True, "price": "999.99", "source": "OtherProvider",
+                      "bid": "999.00", "ask": "999.98",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {"available": True, "effectivePrice": "888.88",
+                      "status": "QUOTE_OK", "source": "OtherProvider",
+                      "quotedAt": _COMPLETED_AT},
+        "gap": {"available": True, "gapBps": "9999", "gapToMidBps": "9999",
+                "quotedAt": _COMPLETED_AT},
+    }
+    radar_core_evidence = _make_evidence(ref_price="143.11", exec_price="142.77")
+
+    # Snapshot with two providers: other first, radar-core second
+    class _MultiProviderSnapshot:
+        snapshot_id = _SNAP_ID
+        def to_payload(self) -> dict:
+            return {
+                "state": "COMPLETE",
+                "economicAssetUid": _UID,
+                "chainId": _CHAIN_ID,
+                "contractAddress": _CONTRACT,
+                "completedAt": _COMPLETED_AT,
+                "request": _make_request_block("BUY", "1000"),
+                "providers": [
+                    {"provider": "other-provider", "state": "SUCCESS",
+                     "elapsedMs": 50, "evidence": other_evidence,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                    {"provider": "radar-core", "state": "SUCCESS",
+                     "elapsedMs": 120, "evidence": radar_core_evidence,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                ],
+            }
+
+    svc = _FakeAcqService(snapshot=_MultiProviderSnapshot())
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    # Values must come from radar-core, NOT from other-provider
+    assert body["reference"]["price"] == "143.11"
+    assert body["execution"]["effective_price"] == "142.77"
+    assert body["reference"]["price"] != "999.99"
+    assert body["execution"]["effective_price"] != "888.88"
+
+
+# ── C07: providers=[radar-core, other] → same canonical result ────────────────
+
+
+def test_ca_c07_radar_core_at_index_0_is_used(fake_universe):
+    """When radar-core is first, it must still be selected by name."""
+    import main_api
+
+    radar_core_evidence = _make_evidence(ref_price="143.11", exec_price="142.77")
+    other_evidence = {
+        "reference": {"available": True, "price": "999.99", "source": "OtherProvider",
+                      "bid": "999.00", "ask": "999.98",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {"available": True, "effectivePrice": "888.88",
+                      "status": "QUOTE_OK", "source": "OtherProvider",
+                      "quotedAt": _COMPLETED_AT},
+        "gap": {"available": True, "gapBps": "9999", "gapToMidBps": "9999",
+                "quotedAt": _COMPLETED_AT},
+    }
+
+    class _MultiProviderSnapshot:
+        snapshot_id = _SNAP_ID
+        def to_payload(self) -> dict:
+            return {
+                "state": "COMPLETE",
+                "economicAssetUid": _UID,
+                "chainId": _CHAIN_ID,
+                "contractAddress": _CONTRACT,
+                "completedAt": _COMPLETED_AT,
+                "request": _make_request_block("BUY", "1000"),
+                "providers": [
+                    {"provider": "radar-core", "state": "SUCCESS",
+                     "elapsedMs": 120, "evidence": radar_core_evidence,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                    {"provider": "other-provider", "state": "SUCCESS",
+                     "elapsedMs": 50, "evidence": other_evidence,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                ],
+            }
+
+    svc = _FakeAcqService(snapshot=_MultiProviderSnapshot())
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["reference"]["price"] == "143.11"
+    assert body["execution"]["effective_price"] == "142.77"
+
+
+# ── C08: providers=[other-provider only] → no foreign evidence serialized ──────
+
+
+def test_ca_c08_no_foreign_provider_evidence_serialized(fake_universe):
+    """When radar-core is absent, no other provider's evidence is used."""
+    import main_api
+
+    foreign_evidence = {
+        "reference": {"available": True, "price": "999.99",
+                      "source": "ForeignProvider", "bid": "999.00", "ask": "999.98",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {"available": True, "effectivePrice": "888.88",
+                      "status": "QUOTE_OK", "source": "ForeignProvider",
+                      "quotedAt": _COMPLETED_AT},
+        "gap": {"available": True, "gapBps": "9999", "gapToMidBps": "9999",
+                "quotedAt": _COMPLETED_AT},
+    }
+
+    class _ForeignOnlySnapshot:
+        snapshot_id = _SNAP_ID
+        def to_payload(self) -> dict:
+            return {
+                "state": "COMPLETE",
+                "economicAssetUid": _UID,
+                "chainId": _CHAIN_ID,
+                "contractAddress": _CONTRACT,
+                "completedAt": _COMPLETED_AT,
+                "request": _make_request_block("BUY", "1000"),
+                "providers": [
+                    {"provider": "other-provider", "state": "SUCCESS",
+                     "elapsedMs": 50, "evidence": foreign_evidence,
+                     "observedAt": _COMPLETED_AT, "errorClass": None},
+                ],
+            }
+
+    svc = _FakeAcqService(snapshot=_ForeignOnlySnapshot())
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    assert r.status_code == 200
+    body = r.json()
+    # Foreign provider's evidence must NOT appear in the response
+    body_text = json.dumps(body)
+    assert "999.99" not in body_text, "Foreign reference price leaked"
+    assert "888.88" not in body_text, "Foreign execution price leaked"
+    assert "9999" not in body_text, "Foreign GAP value leaked"
+    # All sections must be unavailable (no radar-core evidence)
+    assert body["reference"]["available"] is False
+    assert body["execution"]["available"] is False
+    assert body["gap"]["available"] is False
+
+
+# ── C09: execution unavailableReason preserved ────────────────────────────────
+
+
+def test_ca_c09_execution_unavailable_reason_from_unavailable_reason_field(fake_universe):
+    """unavailableReason="NO_ROUTE" in evidence → response reason == "NO_ROUTE"."""
+    import main_api
+
+    ev = {
+        "reference": {"available": True, "price": "143.11",
+                      "source": "FROZEN::BoundReferencePrice",
+                      "bid": "143.00", "ask": "143.22",
+                      "observedAt": _COMPLETED_AT},
+        "execution": {
+            "available": False,
+            "unavailableReason": "NO_ROUTE",
+            "status": "QUOTE_FAILED",
+            "source": "LiFi",
+            "quotedAt": _COMPLETED_AT,
+        },
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="PARTIAL"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    exec_sec = r.json()["execution"]
+    assert exec_sec["available"] is False
+    assert exec_sec["reason"] == "NO_ROUTE"
+
+
+# ── C10: unavailableReason wins over reason ────────────────────────────────────
+
+
+def test_ca_c10_unavailable_reason_wins_over_reason(fake_universe):
+    """When both unavailableReason and reason are present, unavailableReason wins."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "unavailableReason": "NO_ROUTE",     # this should win
+            "reason": "EXECUTION_UNAVAILABLE",   # this should be ignored
+        },
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    exec_sec = r.json()["execution"]
+    assert exec_sec["available"] is False
+    assert exec_sec["reason"] == "NO_ROUTE"
+
+
+# ── C11: reason only preserved ────────────────────────────────────────────────
+
+
+def test_ca_c11_reason_only_preserved(fake_universe):
+    """When only reason is present (no unavailableReason), reason is preserved."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            "reason": "SLIPPAGE_EXCEEDED",   # only reason, no unavailableReason
+        },
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    exec_sec = r.json()["execution"]
+    assert exec_sec["available"] is False
+    assert exec_sec["reason"] == "SLIPPAGE_EXCEEDED"
+
+
+# ── C12: neither unavailableReason nor reason → stable fallback ───────────────
+
+
+def test_ca_c12_neither_reason_gives_stable_fallback(fake_universe):
+    """When neither unavailableReason nor reason is present, stable fallback is used."""
+    import main_api
+
+    ev = {
+        "reference": {"available": False, "reason": "REFERENCE_UNAVAILABLE"},
+        "execution": {
+            "available": False,
+            # no reason, no unavailableReason
+        },
+        "gap": {"available": False, "reason": "GAP_REQUIRES_EXECUTION_AND_REFERENCE"},
+    }
+    svc = _FakeAcqService(snapshot=_FakeSnapshot(evidence=ev, state="UNAVAILABLE"))
+    _exec_module.set_execution_service(svc)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_execution_service(None)
+
+    exec_sec = r.json()["execution"]
+    assert exec_sec["available"] is False
+    assert exec_sec["reason"] == "EXECUTION_UNAVAILABLE"
+
+
+# ── C13: expected registry exception → sanitized 503 ─────────────────────────
+
+
+def test_ca_c13_registry_source_error_returns_503(fake_svc):
+    """RegistrySourceError from universe → sanitized 503 REGISTRY_UNAVAILABLE."""
+    from finco_radar.assets.contracts import RegistrySourceError
+    import main_api
+
+    def _boom():
+        raise RegistrySourceError("connection refused to registry")
+
+    _exec_module.set_universe_fn(_boom)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_universe_fn(None)
+
+    assert r.status_code == 503
+    body = r.json()
+    assert body["error"] == "REGISTRY_UNAVAILABLE"
+    assert body["detail"] == "Asset registry is temporarily unavailable."
+    # Raw exception text must NOT appear in the response
+    assert "connection refused" not in json.dumps(body)
+    fake_svc.acquire.assert_not_called()
+
+
+# ── C14: programming error from universe propagates as 500 ───────────────────
+
+
+def test_ca_c14_programming_error_from_universe_propagates(fake_svc):
+    """RuntimeError from the universe path must propagate as 500, not become 503."""
+    import main_api
+
+    def _programming_error():
+        raise RuntimeError("PROGRAMMING_SENTINEL_UNIVERSE")
+
+    _exec_module.set_universe_fn(_programming_error)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_universe_fn(None)
+
+    assert r.status_code == 500
+    assert "PROGRAMMING_SENTINEL_UNIVERSE" not in json.dumps(r.json()) if r.headers.get("content-type", "").startswith("application/json") else True
+    # Must NOT be converted to a 503 REGISTRY_UNAVAILABLE
+    fake_svc.acquire.assert_not_called()
+
+
+# ── C15: public 503 contains only stable detail ───────────────────────────────
+
+
+def test_ca_c15_public_503_stable_detail(fake_svc):
+    """The 503 response detail must be the stable string, no raw exception text."""
+    from finco_radar.assets.contracts import RegistryConflictError
+    import main_api
+
+    def _boom():
+        raise RegistryConflictError("uid=0xdeadbeef conflict hash=abc123 source=internal")
+
+    _exec_module.set_universe_fn(_boom)
+    with TestClient(main_api.app, raise_server_exceptions=False) as client:
+        r = _post(client)
+    _exec_module.set_universe_fn(None)
+
+    assert r.status_code == 503
+    body = r.json()
+    assert body["detail"] == "Asset registry is temporarily unavailable."
+    # No raw exception internals must appear
+    body_text = json.dumps(body)
+    assert "uid=0xdeadbeef" not in body_text
+    assert "hash=abc123" not in body_text
+    assert "source=internal" not in body_text
+
+
+# ── C16-C22: strict string contract — no accidental 422, all → 400 ────────────
+
+
+@pytest.mark.parametrize("notional_value,label", [
+    (100,     "numeric int"),
+    (100.0,   "float"),
+    (True,    "bool true"),
+    (None,    "null"),
+    ([],      "empty list"),
+    ({},      "empty dict"),
+])
+def test_ca_c16_to_c20_invalid_notional_types_return_400(
+    client, fake_svc, notional_value, label
+):
+    """Non-string notional_usd values must produce 400, never 422."""
+    r = client.post(
+        f"/api/v1/radar/assets/{_UID}/execution-simulation",
+        json={"direction": "BUY", "notional_usd": notional_value},
+    )
+    assert r.status_code == 400, (
+        f"Expected 400 for notional_usd={label!r}, got {r.status_code}"
+    )
+    assert r.json()["error"] == "SIMULATION_REQUEST_INVALID"
+    fake_svc.acquire.assert_not_called()
+
+
+def test_ca_c21_missing_direction_returns_400(client, fake_svc):
+    """Missing direction → 400 SIMULATION_REQUEST_INVALID, zero acquire."""
+    r = client.post(
+        f"/api/v1/radar/assets/{_UID}/execution-simulation",
+        json={"notional_usd": "1000"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"] == "SIMULATION_REQUEST_INVALID"
+    fake_svc.acquire.assert_not_called()
+
+
+def test_ca_c22_missing_notional_returns_400(client, fake_svc):
+    """Missing notional_usd → 400 SIMULATION_REQUEST_INVALID, zero acquire."""
+    r = client.post(
+        f"/api/v1/radar/assets/{_UID}/execution-simulation",
+        json={"direction": "BUY"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"] == "SIMULATION_REQUEST_INVALID"
+    fake_svc.acquire.assert_not_called()

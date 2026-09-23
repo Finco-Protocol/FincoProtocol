@@ -341,20 +341,18 @@ def post_execution_simulation(
     order_submitted: false — no transaction is sent or signed.
     """
     # 1. Validate direction and notional — return 400 before any UID work
+    # Strict string contract: only exact string values are accepted; integers,
+    # floats, booleans, null, arrays, and objects all produce 400.
     direction = body.direction
     notional_usd = body.notional_usd
 
-    if direction not in _ALLOWED_DIRECTIONS:
+    if not isinstance(direction, str) or direction not in _ALLOWED_DIRECTIONS:
         return _simulation_request_invalid(
             None,
             f"direction must be BUY or SELL, got {direction!r}",
         )
 
-    # Coerce integer notionals to string (option B per spec §5)
-    if isinstance(notional_usd, int) and not isinstance(notional_usd, bool):
-        notional_usd = str(notional_usd)
-
-    if notional_usd not in _ALLOWED_NOTIONALS:
+    if not isinstance(notional_usd, str) or notional_usd not in _ALLOWED_NOTIONALS:
         return _simulation_request_invalid(
             None,
             f"notional_usd must be '100' or '1000', got {notional_usd!r}",
