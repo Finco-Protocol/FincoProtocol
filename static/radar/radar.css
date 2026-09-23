@@ -263,7 +263,16 @@ html, body.radar {
 .radar-product-grid > .panel { min-width:0; }
 .execution-coming-soon { border-color:color-mix(in srgb, var(--radar-gold) 35%, var(--radar-border)); }
 .execution-coming-soon h2, .execution-coming-soon h3 { margin-top:0; text-transform:none; letter-spacing:0; }
-.radar-legacy-hook { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.radar-legacy-hook {
+  display:inline-block;
+  width:0;
+  height:0;
+  overflow:hidden;
+  clip-path:inset(50%);
+  white-space:nowrap;
+  font-size:0;
+  line-height:0;
+}
 
 @media (max-width: 600px) {
   .radar-product-grid { grid-template-columns:minmax(0, 1fr); }
