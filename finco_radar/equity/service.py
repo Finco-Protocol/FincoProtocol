@@ -169,7 +169,7 @@ def _build_one_bundle(
     splits = session.get_splits(ticker, limit=splits_limit)
 
     # Fetch up to 8 quarterly periods for YoY TTM revenue growth derivation.
-    # Still within this same read session — no N+1 queries.
+    # Same read session / same SQLite snapshot — no network N+1.
     quarterly_history_limited = session.get_financial_history(
         ticker, "quarterly", limit=8
     )

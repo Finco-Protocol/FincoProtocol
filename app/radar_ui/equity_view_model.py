@@ -7,20 +7,23 @@ Rules enforced by construction:
 - negative values remain negative (never clamped)
 - margin and return fields (gross_margin, ebit_margin, ebitda_margin,
   net_margin, fcf_margin, return_on_equity) are source fractions → × 100 → "%"
-- revenues, free_cash_flow, net_debt: raw base-currency absolute values
-  (e.g. 466_823_000_000 == USD 466.8B); formatted as compact $M/$B/$T
-- revenue_growth: source field is universally NULL; derived from comparable
-  quarterly snapshots via finco_radar.equity.derived.compute_ttm_revenue_growth
+- revenues, free_cash_flow, net_debt: raw base-currency absolute values;
+  formatted as compact M/B/T with the asset's canonical currency symbol
+- currency symbol derived from EquityAssetIdentity.currency; never fabricated
+- revenue_growth: source field NULL for current providers; derived from
+  comparable quarterly snapshots via finco_radar.equity.derived.compute_ttm_revenue_growth
 - debt_to_equity: dimensionless ratio; raw float (4 dp)
 - company name follows deterministic precedence (see _company_name)
 - no market prices, quotes, spreads or GAP fields
 
-PROVEN UNIT CONTRACTS (equity_fundamentals.db, 2026-09-23):
+UNIT CONTRACTS (from normalization pipeline; verified against DB sample 2026-09-23):
   revenues / free_cash_flow / net_debt:
-    raw base-currency absolute values (USD absolute, not thousands/millions)
-    AAPL TTM 2026-06-27 = 466,823,000,000 → $466.8B
-  margin/return fields: fractions (0.4865 == 48.65%)
-  revenue_growth (source field): NULL universally → derive from quarterly history
+    raw base-currency absolute values (not thousands/millions)
+    normalization contract: absolute base-currency unit
+    sample: AAPL TTM 2026-06-27 = 466,823,000,000
+  margin/return fields: source fractions (0.4865 == 48.65%)
+  revenue_growth (source field): NULL for LEGACY_MASSIVE_VX/current MASSIVE
+    snapshots → derive from quarterly history
 """
 from __future__ import annotations
 
@@ -39,17 +42,37 @@ from finco_radar.equity.models import (
     JsonField,
 )
 
-# Per-field unit authority (proven from DB sample, 2026-09-23):
+# Per-field unit authority (normalization pipeline contract; DB sample verified 2026-09-23):
 # - revenues/free_cash_flow/net_debt: raw absolute base-currency; compact display
 # - margin/return fields: source fraction → × 100 → "%"
-# - revenue_growth: NULL in source → derived from quarterly history as fraction
+# - revenue_growth: NULL in source (current providers) → derived from quarterly history
 # - debt_to_equity: dimensionless ratio; raw float (4 dp)
+# - currency symbol: from EquityAssetIdentity.currency; never fabricated
 UNIT_SEMANTICS_NOTE = (
     "monetary fields (revenues, FCF, net_debt) are raw base-currency absolute values "
-    "displayed in compact units ($M/$B/$T); "
+    "displayed in compact units (M/B/T) with the asset canonical currency symbol; "
     "margin/return fields displayed as % (source fraction × 100); "
     "revenue_growth derived from quarterly history as YoY fraction"
 )
+
+# Currency symbol lookup — only well-known symbols; others use ISO code prefix.
+_CURRENCY_SYMBOLS: dict[str, str] = {
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+}
+
+
+def _currency_symbol(currency: Optional[str]) -> str:
+    """Return the display prefix for a currency code.
+
+    USD → "$", EUR → "€", GBP → "£".
+    Other known ISO codes → "ISO " prefix (e.g. "JPY 12.3B").
+    None or empty → "" (no symbol; never fabricate one).
+    """
+    if not currency:
+        return ""
+    return _CURRENCY_SYMBOLS.get(currency.upper(), f"{currency.upper()} ")
 
 
 # ── numeric formatters ────────────────────────────────────────────────────────
@@ -112,14 +135,21 @@ def _fmt_compact_currency(
     return f"{sign}{currency_symbol}{fmt_str.format(abs_val / 1_000_000_000_000)}T"
 
 
-def _fmt_currency(value: Optional[float], *, board: bool = False) -> str:
+def _fmt_currency(
+    value: Optional[float],
+    *,
+    board: bool = False,
+    currency: Optional[str] = None,
+) -> str:
     """Format a raw base-currency absolute value using compact notation.
 
-    Delegates to _fmt_compact_currency with the proven unit contract:
-    revenues/free_cash_flow/net_debt are raw absolute base-currency values.
-    Raw values are never modified; only the display string is compacted.
+    currency: the asset's canonical ISO currency code (from
+    EquityAssetIdentity.currency).  When None/empty the symbol prefix is
+    omitted — never a fabricated "$".
+
+    Delegates to _fmt_compact_currency; raw values are never modified.
     """
-    return _fmt_compact_currency(value, board=board)
+    return _fmt_compact_currency(value, board=board, currency_symbol=_currency_symbol(currency))
 
 
 def _fmt_revenue_growth(value: Optional[float]) -> str:
@@ -165,36 +195,43 @@ def _fmt_ratio_raw(value: Optional[float]) -> str:
 def _fmt_human_timestamp(ts_str: Optional[str]) -> str:
     """Format an ISO timestamp string as a human-readable display value.
 
+    Timezone-aware inputs are converted to UTC before formatting:
+      +00:00 / Z → same clock time
+      +02:00     → subtract 2 h  (e.g. 12:46 → 10:46 UTC)
+      -05:00     → add 5 h       (e.g. 12:46 → 17:46 UTC)
+
+    Naive inputs (no timezone info) are displayed without the "UTC" label
+    because labelling a naive timestamp "UTC" would be incorrect unless
+    the source contract explicitly guarantees UTC storage.
+
     Input:  "2026-09-21T12:46:12.350937+00:00"
     Output: "21 Sep 2026 · 12:46 UTC"
 
+    Input:  "2026-09-21T12:46:00+02:00"
+    Output: "21 Sep 2026 · 10:46 UTC"
+
+    Input:  "2026-09-21T12:46:00"   (naive)
+    Output: "21 Sep 2026 · 12:46"
+
     The raw value must be preserved in a 'title' attribute or '_raw' field
     for full precision access.  Returns "—" on None or parse failure.
-    Timezone is always displayed as UTC to avoid ambiguity.
     """
     if not ts_str or ts_str == "—":
         return "—"
     try:
-        # Strip fractional seconds and timezone; work in UTC
+        from datetime import datetime, timezone
         ts = ts_str.strip()
-        # Handle +00:00 / Z / no-tz variants
+        # Normalize trailing Z → +00:00 (fromisoformat rejects bare Z pre-3.11)
         if ts.endswith("Z"):
-            ts = ts[:-1]
-        elif "+" in ts[10:]:
-            ts = ts[: ts.rindex("+", 10)]
-        elif ts[10:].count("-") > 0:
-            # negative UTC offset — remove it
-            tail = ts[10:]
-            idx = tail.rfind("-")
-            if idx >= 0:
-                ts = ts[: 10 + idx]
-        # Remove sub-second
-        if "." in ts:
-            ts = ts[: ts.index(".")]
-        from datetime import datetime
+            ts = ts[:-1] + "+00:00"
         dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+            suffix = " UTC"
+        else:
+            suffix = ""
         month_abbr = dt.strftime("%b")
-        return f"{dt.day} {month_abbr} {dt.year} · {dt.strftime('%H:%M')} UTC"
+        return f"{dt.day} {month_abbr} {dt.year} · {dt.strftime('%H:%M')}{suffix}"
     except (ValueError, AttributeError, TypeError):
         return ts_str or "—"
 
@@ -297,6 +334,7 @@ def _reporting_section(
 def _ttm_metrics_section(
     latest_ttm: Optional[FinancialSnapshot],
     quarterly_history: tuple = (),
+    currency: Optional[str] = None,
 ) -> dict[str, Any]:
     if latest_ttm is None:
         return {"available": False, "reason": "TTM_UNAVAILABLE", "fields": {}}
@@ -332,10 +370,10 @@ def _ttm_metrics_section(
         "fields": {
             "revenues": {
                 "label": "Revenue",
-                "value": _fmt_currency(d.revenues),
+                "value": _fmt_currency(d.revenues, currency=currency),
                 "raw": d.revenues,
                 "is_missing": d.revenues is None,
-                "unit_rule": "raw source value; currency unit from asset.currency if available",
+                "unit_rule": "raw source value; currency unit from asset.currency",
             },
             "revenue_growth": {
                 "label": "Revenue Growth",
@@ -374,10 +412,10 @@ def _ttm_metrics_section(
             },
             "free_cash_flow": {
                 "label": "Free Cash Flow",
-                "value": _fmt_currency(d.free_cash_flow),
+                "value": _fmt_currency(d.free_cash_flow, currency=currency),
                 "raw": d.free_cash_flow,
                 "is_missing": d.free_cash_flow is None,
-                "unit_rule": "raw source value; currency unit from asset.currency if available",
+                "unit_rule": "raw source value; currency unit from asset.currency",
             },
             "fcf_margin": {
                 "label": "FCF Margin",
@@ -395,10 +433,10 @@ def _ttm_metrics_section(
             },
             "net_debt": {
                 "label": "Net Debt",
-                "value": _fmt_currency(d.net_debt),
+                "value": _fmt_currency(d.net_debt, currency=currency),
                 "raw": d.net_debt,
                 "is_missing": d.net_debt is None,
-                "unit_rule": "raw source value; currency unit from asset.currency if available",
+                "unit_rule": "raw source value; currency unit from asset.currency",
             },
             "debt_to_equity": {
                 "label": "Debt / Equity",
@@ -507,7 +545,11 @@ def build_equity_view(
             bundle.latest_quarterly,
             bundle.latest_annual,
         ),
-        "ttm_metrics": _ttm_metrics_section(bundle.latest_ttm, bundle.quarterly_history),
+        "ttm_metrics": _ttm_metrics_section(
+            bundle.latest_ttm,
+            bundle.quarterly_history,
+            currency=bundle.asset.currency if bundle.asset else None,
+        ),
         "lineage": _lineage_section(bundle),
         "identity_note": None,
     }
@@ -564,9 +606,10 @@ def build_equity_board_row(
     d = ttm.derived if ttm is not None else None
 
     derived_rev_growth = compute_ttm_revenue_growth(bundle.quarterly_history)
+    _currency = bundle.asset.currency if bundle.asset else None
 
     base.update({
-        "revenues": _fmt_currency(d.revenues, board=True) if d else "—",
+        "revenues": _fmt_currency(d.revenues, board=True, currency=_currency) if d else "—",
         "revenue_growth": _fmt_revenue_growth(derived_rev_growth),
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
         "ebit_margin": _fmt_percent(d.ebit_margin) if d else "—",

@@ -266,7 +266,7 @@ class TestRawValueUnchanged:
 
     def test_zero_raw_preserved(self):
         snap = _make_snapshot(timeframe="ttm", revenues=0.0)
-        section = _ttm_metrics_section(snap)
+        section = _ttm_metrics_section(snap, currency="USD")
         assert section["fields"]["revenues"]["raw"] == 0.0
         assert section["fields"]["revenues"]["value"] == "$0"
         assert section["fields"]["revenues"]["is_missing"] is False
@@ -542,7 +542,7 @@ class TestMissingNotZero:
 
     def test_zero_revenues_is_zero_display(self):
         snap = _make_snapshot(timeframe="ttm", revenues=0.0)
-        section = _ttm_metrics_section(snap)
+        section = _ttm_metrics_section(snap, currency="USD")
         assert section["fields"]["revenues"]["value"] == "$0"
         assert section["fields"]["revenues"]["is_missing"] is False
         assert section["fields"]["revenues"]["raw"] == 0.0
@@ -626,3 +626,334 @@ class TestFixtureStructure:
         assert section["available"]
         assert section["fields"]["revenue_growth"]["value"] == "—"
         assert section["fields"]["revenue_growth"]["is_missing"] is True
+
+
+# ══ GROUP K: Currency truth ════════════════════════════════════════════════════
+
+from app.radar_ui.equity_view_model import _fmt_currency, _currency_symbol  # noqa: E402
+
+
+class TestCurrencyTruth:
+    """K — monetary formatter uses the canonical asset currency; never fabricates '$'."""
+
+    def test_usd_uses_dollar_sign(self):
+        assert _fmt_currency(466_823_000_000.0, board=True, currency="USD") == "$466.8B"
+
+    def test_eur_uses_euro_sign(self):
+        result = _fmt_currency(12_300_000_000.0, board=True, currency="EUR")
+        assert "€" in result or result.startswith("EUR")
+        assert "$" not in result
+
+    def test_gbp_uses_pound_sign(self):
+        result = _fmt_currency(12_300_000_000.0, board=True, currency="GBP")
+        assert "£" in result or result.startswith("GBP")
+        assert "$" not in result
+
+    def test_unknown_iso_uses_code_not_dollar(self):
+        result = _fmt_currency(12_300_000_000.0, board=True, currency="JPY")
+        assert "JPY" in result
+        assert "$" not in result
+
+    def test_missing_currency_no_fabricated_dollar(self):
+        result = _fmt_currency(12_300_000_000.0, board=True, currency=None)
+        assert "$" not in result
+        assert "B" in result  # compact notation still applied
+
+    def test_none_value_returns_dash_regardless_of_currency(self):
+        assert _fmt_currency(None, currency="EUR") == "—"
+
+    def test_zero_with_currency_no_dollar(self):
+        result = _fmt_currency(0.0, currency="EUR")
+        assert "$" not in result
+        assert "0" in result
+
+    def test_negative_with_eur_no_dollar(self):
+        result = _fmt_currency(-50_000_000_000.0, board=True, currency="EUR")
+        assert "-" in result
+        assert "$" not in result
+        assert "B" in result
+
+    def test_negative_with_usd(self):
+        result = _fmt_currency(-50_000_000_000.0, board=True, currency="USD")
+        assert result == "-$50.0B"
+
+    def test_currency_symbol_lookup_usd(self):
+        assert _currency_symbol("USD") == "$"
+
+    def test_currency_symbol_lookup_eur(self):
+        assert _currency_symbol("EUR") == "€"
+
+    def test_currency_symbol_lookup_gbp(self):
+        assert _currency_symbol("GBP") == "£"
+
+    def test_currency_symbol_lookup_none(self):
+        assert _currency_symbol(None) == ""
+
+    def test_currency_symbol_unknown_iso(self):
+        sym = _currency_symbol("SEK")
+        assert "SEK" in sym
+        assert "$" not in sym
+
+    def test_board_row_usd_asset_uses_dollar(self):
+        # Full round-trip: board row for a USD asset shows "$" in revenues
+        ttm = _make_snapshot(timeframe="ttm", revenues=466_823_000_000.0, ebit_margin=0.30)
+        bundle = _make_bundle(latest_ttm=ttm)  # _make_asset uses currency="USD"
+        result = _make_enrichment_result(bundle)
+        row = build_equity_board_row(result, asset_uid="rh-equity-aapl-001", fallback_name="AAPL")
+        assert "$" in row["revenues"]
+
+    def test_ttm_section_usd_asset_uses_dollar(self):
+        snap = _make_snapshot(timeframe="ttm", revenues=466_823_000_000.0)
+        section = _ttm_metrics_section(snap, currency="USD")
+        assert "$" in section["fields"]["revenues"]["value"]
+
+    def test_ttm_section_no_currency_no_dollar(self):
+        snap = _make_snapshot(timeframe="ttm", revenues=466_823_000_000.0)
+        section = _ttm_metrics_section(snap, currency=None)
+        assert "$" not in section["fields"]["revenues"]["value"]
+        assert "B" in section["fields"]["revenues"]["value"]
+
+
+# ══ GROUP L: UTC conversion ════════════════════════════════════════════════════
+
+class TestUtcConversion:
+    """L — _fmt_human_timestamp correctly converts offsets to UTC; never labels naive as UTC."""
+
+    def test_plus_offset_converts(self):
+        # +02:00 → subtract 2 h
+        assert _fmt_human_timestamp("2026-09-21T12:46:00+02:00") == "21 Sep 2026 · 10:46 UTC"
+
+    def test_minus_offset_converts(self):
+        # -05:00 → add 5 h
+        assert _fmt_human_timestamp("2026-09-21T12:46:00-05:00") == "21 Sep 2026 · 17:46 UTC"
+
+    def test_z_suffix_is_utc(self):
+        assert _fmt_human_timestamp("2026-09-21T12:46:12Z") == "21 Sep 2026 · 12:46 UTC"
+
+    def test_utc_plus00_preserved(self):
+        assert _fmt_human_timestamp("2026-09-21T12:46:00+00:00") == "21 Sep 2026 · 12:46 UTC"
+
+    def test_fractional_seconds_accepted(self):
+        assert _fmt_human_timestamp("2026-09-21T12:46:12.350937+00:00") == "21 Sep 2026 · 12:46 UTC"
+
+    def test_naive_timestamp_no_utc_label(self):
+        # Naive input must NOT be labelled UTC
+        result = _fmt_human_timestamp("2026-09-21T12:46:00")
+        assert result == "21 Sep 2026 · 12:46"
+        assert "UTC" not in result
+
+    def test_malformed_returns_raw_or_dash(self):
+        result = _fmt_human_timestamp("not-a-timestamp")
+        assert result in ("not-a-timestamp", "—")
+
+    def test_none_returns_dash(self):
+        assert _fmt_human_timestamp(None) == "—"
+
+    def test_midnight_crossing_plus_offset(self):
+        # 2026-09-21T01:00:00+03:00 → 2026-09-20T22:00:00 UTC
+        result = _fmt_human_timestamp("2026-09-21T01:00:00+03:00")
+        assert result == "20 Sep 2026 · 22:00 UTC"
+
+    def test_midnight_crossing_minus_offset(self):
+        # 2026-09-20T23:00:00-05:00 → 2026-09-21T04:00:00 UTC
+        result = _fmt_human_timestamp("2026-09-20T23:00:00-05:00")
+        assert result == "21 Sep 2026 · 04:00 UTC"
+
+
+# ══ GROUP M: Evidence dedup — missing lineage must not hide columns ════════════
+
+class TestEvidenceDedupMissingLineage:
+    """M — [MASSIVE, MASSIVE, "—"] is NOT uniform; per-row column must stay visible."""
+
+    def test_all_real_same_provider_is_uniform(self):
+        bundle = _make_history_bundle(["MASSIVE", "MASSIVE"], ["MASSIVE_v2", "MASSIVE_v2"])
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        assert view["snapshot_evidence_meta"]["uniform_provider"] == "MASSIVE"
+
+    def test_any_missing_provider_breaks_uniformity(self):
+        # One "—" means provider is unknown for that row → not uniform
+        snaps = [
+            _make_snapshot(provider="MASSIVE", source_contract="MASSIVE_v2"),
+            _make_snapshot(provider="MASSIVE", source_contract="MASSIVE_v2"),
+            _make_snapshot(provider=None, source_contract="MASSIVE_v2"),  # → "—"
+        ]
+        bundle = EquityCompanyHistoryBundle(
+            robinhood_token_symbol="AAPL",
+            asset=_make_asset("AAPL"),
+            company_profile=None,
+            annual_history=tuple(snaps),
+            quarterly_history=(),
+            ttm_history=(),
+            recent_dividends=(),
+            recent_splits=(),
+            source_lineage=(),
+            availability=AvailabilityState.AVAILABLE,
+            freshness=_make_freshness(),
+        )
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        assert view["snapshot_evidence_meta"]["uniform_provider"] is None
+
+    def test_all_missing_provider_not_uniform(self):
+        snaps = [
+            _make_snapshot(provider=None, source_contract=None),
+            _make_snapshot(provider=None, source_contract=None),
+        ]
+        bundle = EquityCompanyHistoryBundle(
+            robinhood_token_symbol="AAPL",
+            asset=_make_asset("AAPL"),
+            company_profile=None,
+            annual_history=tuple(snaps),
+            quarterly_history=(),
+            ttm_history=(),
+            recent_dividends=(),
+            recent_splits=(),
+            source_lineage=(),
+            availability=AvailabilityState.AVAILABLE,
+            freshness=_make_freshness(),
+        )
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        assert view["snapshot_evidence_meta"]["uniform_provider"] is None
+        assert view["snapshot_evidence_meta"]["uniform_source_contract"] is None
+
+    def test_mixed_providers_not_uniform(self):
+        bundle = _make_history_bundle(["MASSIVE", "OTHER_PROVIDER"], ["c1", "c2"])
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        assert view["snapshot_evidence_meta"]["uniform_provider"] is None
+
+    def test_uniform_provider_mixed_contract_breaks_contract_only(self):
+        bundle = _make_history_bundle(["MASSIVE", "MASSIVE"], ["MASSIVE_v1", "MASSIVE_v2"])
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        meta = view["snapshot_evidence_meta"]
+        assert meta["uniform_provider"] == "MASSIVE"  # provider uniform
+        assert meta["uniform_source_contract"] is None  # contract not uniform
+
+    def test_provider_field_preserved_in_evidence_rows(self):
+        bundle = _make_history_bundle(["MASSIVE", "MASSIVE", "MASSIVE"], ["v2", "v2", "v2"])
+        view = build_terminal_view(bundle, economic_asset_uid="x", identity_state="VERIFIED")
+        for row in view["snapshot_evidence"]:
+            assert row["provider"] == "MASSIVE"
+
+
+# ══ GROUP N: Strengthened revenue growth comparability ════════════════════════
+
+class TestRevenueGrowthComparability:
+    """N — compute_ttm_revenue_growth strengthened validation."""
+
+    def test_valid_8_quarter_sequence(self):
+        current = [1_100_000_000.0] * 4
+        prior = [1_000_000_000.0] * 4
+        history = _make_quarterly_history(current + prior)
+        result = compute_ttm_revenue_growth(history)
+        assert result is not None
+        assert abs(result - 0.10) < 0.01
+
+    def test_missing_period_end_fails(self):
+        history = list(_make_quarterly_history([1e9] * 8))
+        history[2] = replace(history[2], period_end=None)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_duplicate_period_end_fails(self):
+        history = list(_make_quarterly_history([1e9] * 8))
+        # Make history[1] same as history[0] → strictly descending violated
+        history[1] = replace(history[1], period_end=history[0].period_end)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_unsorted_periods_fails(self):
+        history = list(_make_quarterly_history([1e9] * 8))
+        history[0], history[2] = history[2], history[0]
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_wrong_timeframe_fails(self):
+        history = list(_make_quarterly_history([1e9] * 8))
+        history[0] = replace(history[0], timeframe="annual")
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_mixed_ticker_fails(self):
+        history = list(_make_quarterly_history([1e9] * 8))
+        history[0] = replace(history[0], ticker="MSFT")
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_pairwise_gap_above_400_fails(self):
+        # 101-day adjacent gaps → pairwise = 404 days > 400; adjacent passes (101 < 120)
+        base = datetime.date(2026, 6, 27)
+        history = [
+            _make_snapshot(
+                period_end=(base - datetime.timedelta(days=101 * i)).isoformat(),
+                revenues=1e9,
+            )
+            for i in range(8)
+        ]
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_pairwise_gap_below_330_fails(self):
+        # 82-day adjacent gaps → pairwise = 328 days < 330; adjacent passes (82 > 60)
+        base = datetime.date(2026, 6, 27)
+        history = [
+            _make_snapshot(
+                period_end=(base - datetime.timedelta(days=82 * i)).isoformat(),
+                revenues=1e9,
+            )
+            for i in range(8)
+        ]
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_adjacent_gap_too_small_fails(self):
+        # 10-day gaps → not plausibly quarterly
+        base = datetime.date(2026, 6, 27)
+        history = [
+            _make_snapshot(
+                period_end=(base - datetime.timedelta(days=10 * i)).isoformat(),
+                revenues=1e9,
+            )
+            for i in range(8)
+        ]
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_adjacent_gap_too_large_fails(self):
+        # 200-day gaps → not plausibly quarterly (semi-annual / annual)
+        base = datetime.date(2026, 6, 27)
+        history = [
+            _make_snapshot(
+                period_end=(base - datetime.timedelta(days=200 * i)).isoformat(),
+                revenues=1e9,
+            )
+            for i in range(8)
+        ]
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_missing_revenue_in_current_block_fails(self):
+        revenues = [1e9, None, 1e9, 1e9, 1e9, 1e9, 1e9, 1e9]
+        history = _make_quarterly_history(revenues)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_missing_revenue_in_prior_block_fails(self):
+        revenues = [1e9, 1e9, 1e9, 1e9, 1e9, None, 1e9, 1e9]
+        history = _make_quarterly_history(revenues)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_zero_prior_sum_fails(self):
+        current = [1e9] * 4
+        prior = [0.0] * 4
+        history = _make_quarterly_history(current + prior)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_fewer_than_8_fails(self):
+        history = _make_quarterly_history([1e9] * 7)
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_fiscal_quarter_mismatch_fails(self):
+        # If fiscal_quarter is present on both sides of a pair and they differ → fail
+        history = list(_make_quarterly_history([1e9] * 8))
+        # Set current[0] to Q2, prior[0] to Q3 → mismatch
+        history[0] = replace(history[0], fiscal_quarter="Q2")
+        history[4] = replace(history[4], fiscal_quarter="Q3")
+        assert compute_ttm_revenue_growth(history) is None
+
+    def test_fiscal_quarter_absent_does_not_block(self):
+        # fiscal_quarter=None on any snapshot → fiscal check skipped for that pair
+        history = list(_make_quarterly_history([1e9, 1.1e9, 1.2e9, 1.3e9,
+                                                0.9e9, 1.0e9, 1.1e9, 1.2e9]))
+        history[0] = replace(history[0], fiscal_quarter=None)
+        history[4] = replace(history[4], fiscal_quarter=None)
+        result = compute_ttm_revenue_growth(history)
+        assert result is not None  # fiscal check skipped; pairwise date check passes

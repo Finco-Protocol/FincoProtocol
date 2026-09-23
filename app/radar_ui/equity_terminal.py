@@ -392,8 +392,12 @@ def _build_statement_matrix(
 
 # ── snapshot row builder ──────────────────────────────────────────────────────
 
-def _build_snapshot_row(snap: FinancialSnapshot) -> dict:
-    """Build a compact derived-metrics row for the financial history table."""
+def _build_snapshot_row(snap: FinancialSnapshot, currency: Optional[str] = None) -> dict:
+    """Build a compact derived-metrics row for the financial history table.
+
+    currency: the asset's canonical ISO currency code, passed through from
+    EquityAssetIdentity.currency so monetary fields display the correct symbol.
+    """
     d = snap.derived
     return {
         "timeframe": snap.timeframe,
@@ -402,16 +406,16 @@ def _build_snapshot_row(snap: FinancialSnapshot) -> dict:
         "fiscal_year": snap.fiscal_year or "—",
         "fiscal_quarter": snap.fiscal_quarter or "—",
         "provider": snap.provider or "—",
-        "revenues": _fmt_currency(d.revenues) if d else "—",
+        "revenues": _fmt_currency(d.revenues, currency=currency) if d else "—",
         "revenue_growth": _fmt_revenue_growth(d.revenue_growth) if d else "—",
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
         "ebit_margin": _fmt_percent(d.ebit_margin) if d else "—",
         "ebitda_margin": _fmt_percent(d.ebitda_margin) if d else "—",
         "net_margin": _fmt_percent(d.net_margin) if d else "—",
-        "free_cash_flow": _fmt_currency(d.free_cash_flow) if d else "—",
+        "free_cash_flow": _fmt_currency(d.free_cash_flow, currency=currency) if d else "—",
         "fcf_margin": _fmt_percent(d.fcf_margin) if d else "—",
         "return_on_equity": _fmt_percent(d.return_on_equity) if d else "—",
-        "net_debt": _fmt_currency(d.net_debt) if d else "—",
+        "net_debt": _fmt_currency(d.net_debt, currency=currency) if d else "—",
         "debt_to_equity": _fmt_ratio_raw(d.debt_to_equity) if d else "—",
         "income_statement": _adapt_statement(snap.income_statement),
         "balance_sheet": _adapt_statement(snap.balance_sheet),
@@ -634,20 +638,30 @@ def build_terminal_view(
         )
     ]
 
-    # Evidence deduplication meta: detect when all rows share the same provider/contract.
-    # Templates use this to show provider/contract once at top and omit repeated columns.
-    _ev_providers = {r["provider"] for r in snapshot_evidence_rows if r["provider"] != "—"}
-    _ev_contracts = {r["source_contract"] for r in snapshot_evidence_rows if r["source_contract"] != "—"}
+    # Evidence deduplication meta: uniform_provider is set ONLY when every row
+    # has a real (non-"—") provider AND all rows share the same value.
+    # A single missing provider breaks uniformity — [MASSIVE, MASSIVE, "—"] is NOT uniform.
+    def _uniform_value(values: list) -> Optional[str]:
+        if not values:
+            return None
+        unique = set(values)
+        if len(unique) == 1 and "—" not in unique:
+            return next(iter(unique))
+        return None
+
+    _all_providers = [r["provider"] for r in snapshot_evidence_rows]
+    _all_contracts = [r["source_contract"] for r in snapshot_evidence_rows]
     snapshot_evidence_meta = {
-        "uniform_provider": next(iter(_ev_providers)) if len(_ev_providers) == 1 else None,
-        "uniform_source_contract": next(iter(_ev_contracts)) if len(_ev_contracts) == 1 else None,
+        "uniform_provider": _uniform_value(_all_providers),
+        "uniform_source_contract": _uniform_value(_all_contracts),
         "row_count": len(snapshot_evidence_rows),
     }
 
-    # Financial history rows
-    annual_rows = [_build_snapshot_row(s) for s in bundle.annual_history]
-    quarterly_rows = [_build_snapshot_row(s) for s in bundle.quarterly_history]
-    ttm_rows = [_build_snapshot_row(s) for s in bundle.ttm_history]
+    # Financial history rows — pass asset currency for truthful monetary display
+    _asset_currency: Optional[str] = asset.currency if asset is not None else None
+    annual_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.annual_history]
+    quarterly_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.quarterly_history]
+    ttm_rows = [_build_snapshot_row(s, currency=_asset_currency) for s in bundle.ttm_history]
 
     # Statement matrix for Financials tab
     nav_timeframe = nav.get("timeframe", "annual")
