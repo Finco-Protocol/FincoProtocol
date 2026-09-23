@@ -13,6 +13,7 @@ from typing import Callable
 
 from app.radar_ui import composition
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
+from finco_radar.assets.contracts import normalize_asset_uid
 from finco_radar.gap.engine import build_bound_reference_price
 
 
