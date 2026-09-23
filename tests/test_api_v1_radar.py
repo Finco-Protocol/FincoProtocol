@@ -53,6 +53,29 @@ Test inventory:
   A46 — financials IDENTITY_MISMATCH when contract mismatch
   A47 — 503 REGISTRY_UNAVAILABLE on list when registry broken
   A48 — raw_payload_json never appears in any response field
+
+Correction B:
+  B01 — F1 fix: E1 contract present + no chain-4663 deployment → IDENTITY_MISMATCH
+  B02 — symbol mismatch (injected bundle) → IDENTITY_MISMATCH
+  B03 — fundamentals_state matrix: AVAILABLE bundle → state=AVAILABLE, fstate=AVAILABLE
+  B04 — fundamentals_state matrix: PARTIAL bundle → fstate=PARTIAL
+  B05 — fundamentals_state matrix: NOT_AVAILABLE bundle → fstate=NOT_AVAILABLE
+  B06 — fundamentals_state matrix: NOT_FOUND bundle → fstate=NOT_FOUND
+  B07 — fundamentals_state matrix: SOURCE_UNAVAILABLE bundle → fstate=SOURCE_UNAVAILABLE
+  B08 — fundamentals_state matrix: FUNDAMENTALS_CONFIG_INVALID → fstate=FUNDAMENTALS_CONFIG_INVALID
+  B09 — fundamentals_state matrix: IDENTITY_MISMATCH → fstate=IDENTITY_MISMATCH
+  B10 — BOUND never appears in any public response field
+  B11 — mismatch suppression: /fundamentals fields absent
+  B12 — mismatch suppression: /financials fields absent
+  B13 — mismatch suppression: /corporate-actions fields absent
+  B14 — mismatch suppression: /evidence fields absent
+  B15 — /assets/{uid} mismatch: only registry identity + null equity fields
+  B16 — close on programming error: RuntimeError propagates + close() called
+  B17 — adversarial 503: sensitive URL/path/key sentinel absent from public detail
+  B18 — OpenAPI: all A1 routes present in schema
+  B19 — OpenAPI: success envelopes on data endpoints
+  B20 — OpenAPI: error envelopes on all relevant endpoints
+  B21 — raw_evidence sentinel never exposed in any endpoint
 """
 from __future__ import annotations
 
@@ -63,7 +86,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import List
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -662,7 +685,9 @@ def _make_db_wrong_contract(tmp_path: Path) -> Path:
 # ── A25 — BOUND when symbol matches + no E1 contract address ─────────────────
 
 def test_a25_bound_when_no_e1_contract(tmp_path, monkeypatch, aapl_record):
-    """Missing E1 contract address is NOT a mismatch — binding is BOUND."""
+    """Missing E1 contract address is NOT a mismatch — identity is safely bound.
+    fundamentals_state reflects DB availability (NOT_AVAILABLE: asset present, no snapshots).
+    """
     _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
     db = _make_db_no_contract(tmp_path)
     monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
@@ -674,20 +699,26 @@ def test_a25_bound_when_no_e1_contract(tmp_path, monkeypatch, aapl_record):
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "AVAILABLE"
-    assert body["data"]["fundamentals_state"] == "BOUND"
+    # BOUND is internal; fundamentals_state = DB availability when bound
+    assert body["data"]["fundamentals_state"] == "NOT_AVAILABLE"
     assert body["data"]["equity_identity"] is not None
 
 
 # ── A26 — BOUND when symbol + contract match ─────────────────────────────────
 
 def test_a26_bound_when_symbol_and_contract_match(client):
-    """Default client: AAPL in DB with matching contract → BOUND."""
+    """Default client: AAPL in DB with matching contract → identity safely bound.
+    fundamentals_state is DB availability (PARTIAL: TTM present, no profile).
+    BOUND must NOT appear as fundamentals_state.
+    """
     resp = client.get(f"/api/v1/radar/assets/{_UID_AAPL}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "AVAILABLE"
     data = body["data"]
-    assert data["fundamentals_state"] == "BOUND"
+    # BOUND is internal — public field is DB availability state
+    assert data["fundamentals_state"] in ("PARTIAL", "AVAILABLE")
+    assert data["fundamentals_state"] != "BOUND"
     assert data["equity_identity"] is not None
     assert data["equity_identity"]["robinhood_token_symbol"] == _TICKER_AAPL
 
@@ -724,7 +755,10 @@ def test_a28_missing_e1_contract_not_a_mismatch(tmp_path, monkeypatch, aapl_reco
     c = TestClient(app)
     resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
     assert resp.status_code == 200
-    assert resp.json()["data"]["fundamentals_state"] == "BOUND"
+    data = resp.json()["data"]
+    # BOUND is internal; DB has asset but no snapshots → NOT_AVAILABLE
+    assert data["fundamentals_state"] == "NOT_AVAILABLE"
+    assert data["equity_identity"] is not None
 
 
 # ── A29 — /assets/{uid} state always AVAILABLE when registry resolves ────────
@@ -934,12 +968,15 @@ def test_a41_openapi_error_responses(client):
 # ── A42 — AVAILABLE when identity bound + DB has data ────────────────────────
 
 def test_a42_identity_available_when_bound(client):
+    """state=AVAILABLE when registry resolves; fundamentals_state is DB availability, never BOUND."""
     resp = client.get(f"/api/v1/radar/assets/{_UID_AAPL}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "AVAILABLE"
-    assert body["data"]["fundamentals_state"] == "BOUND"
-    assert body["data"]["equity_identity"] is not None
+    data = body["data"]
+    assert data["fundamentals_state"] != "BOUND"
+    assert data["fundamentals_state"] in ("AVAILABLE", "PARTIAL")
+    assert data["equity_identity"] is not None
 
 
 # ── A43 — NOT_FOUND propagates as state when equity asset absent ──────────────
@@ -1039,4 +1076,544 @@ def test_a48_raw_payload_json_never_exposed(client):
         body_text = resp.text
         assert "raw_payload_json" not in body_text, (
             f"raw_payload_json leaked in response for {path}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction B tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Correction-B bundle / record helpers ──────────────────────────────────────
+
+def _make_record_other_chain(uid: str, symbol: str, address: str) -> CanonicalAssetRecord:
+    """Registry record whose only deployment is on chain 1 (NOT chain 4663)."""
+    return CanonicalAssetRecord(
+        asset_uid=uid,
+        token_symbol=symbol,
+        token_name=f"{symbol} Inc.",
+        deployments=(AssetKey(1, address),),   # Ethereum mainnet, NOT finco chain
+        current_multiplier=Decimal("1"),
+        pending_multiplier=None,
+        pending_multiplier_effective_at=None,
+        status=RegistryAssetStatus.ACTIVE,
+    )
+
+
+def _make_fundamentals_bundle(
+    symbol: str,
+    availability,
+    *,
+    asset=None,
+):
+    """Build a minimal EquityFundamentalsBundle for injection via monkeypatch."""
+    from finco_radar.equity.models import (
+        EquityFundamentalsBundle,
+        FundamentalsFreshness,
+    )
+    empty_freshness = FundamentalsFreshness(
+        ttm_period_end=None, ttm_filing_date=None, ttm_fetched_at=None,
+        ttm_normalized_at=None, quarterly_period_end=None, quarterly_fetched_at=None,
+        annual_period_end=None, annual_fetched_at=None, profile_fetched_at=None,
+        asset_last_seen_at=None,
+    )
+    return EquityFundamentalsBundle(
+        robinhood_token_symbol=symbol,
+        asset=asset,
+        company_profile=None,
+        latest_ttm=None,
+        latest_quarterly=None,
+        latest_annual=None,
+        recent_dividends=(),
+        recent_splits=(),
+        source_lineage_summary=(),
+        availability=availability,
+        freshness=empty_freshness,
+    )
+
+
+def _make_equity_asset_identity(symbol: str, contract_address: str | None = None):
+    """Build a minimal EquityAssetIdentity for test bundles."""
+    from finco_radar.equity.models import EquityAssetIdentity
+    return EquityAssetIdentity(
+        robinhood_token_symbol=symbol,
+        underlying_ticker=symbol,
+        name=f"{symbol} Inc.",
+        token_contract_address=contract_address,
+        chain_network="ethereum" if contract_address else None,
+        underlying_exchange="NASDAQ",
+        cik=None,
+        figi=None,
+        currency="USD",
+        security_type="CS",
+        active=True,
+        first_seen_at=None,
+        last_seen_at=None,
+    )
+
+
+# ── B01 — F1 fix: E1 contract present + no chain-4663 deployment → IDENTITY_MISMATCH
+
+def test_b01_e1_contract_present_no_chain4663_deployment(tmp_path, monkeypatch):
+    """F1 fail-closed: E1 supplies a contract but registry has no chain-4663 deployment.
+    Ticker/symbol alone must not authorize the supplied contract address.
+    """
+    from finco_radar.equity.models import AvailabilityState
+
+    # Registry record is on chain 1 only (no chain 4663 deployment)
+    other_chain_record = _make_record_other_chain(_UID_AAPL, _TICKER_AAPL, _ADDR_AAPL)
+    _radar_svc.set_registry_factory(_fake_registry_factory([other_chain_record]))
+
+    # E1 has a contract address → must be verified against chain-4663 deployment
+    asset_identity = _make_equity_asset_identity(_TICKER_AAPL, contract_address=_ADDR_AAPL)
+    bundle = _make_fundamentals_bundle(
+        _TICKER_AAPL,
+        AvailabilityState.AVAILABLE,
+        asset=asset_identity,
+    )
+
+    from main_api import app
+    c = TestClient(app)
+
+    with patch.object(_radar_svc, "get_fundamentals_bundle", return_value=bundle):
+        resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    data = body["data"]
+    assert data["fundamentals_state"] == "IDENTITY_MISMATCH", (
+        "E1 contract present but no chain-4663 deployment must be IDENTITY_MISMATCH"
+    )
+    assert data["equity_identity"] is None
+    assert body.get("freshness") is None
+
+
+# ── B02 — symbol mismatch (injected bundle) ───────────────────────────────────
+
+def test_b02_symbol_mismatch_identity_mismatch(monkeypatch, aapl_record):
+    """Registry token_symbol=AAPL but E1 bundle robinhood_token_symbol=MSFT → IDENTITY_MISMATCH."""
+    from finco_radar.equity.models import AvailabilityState
+
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+
+    # Inject a bundle whose symbol does NOT match the registry record
+    msft_identity = _make_equity_asset_identity("MSFT", contract_address=None)
+    bundle = _make_fundamentals_bundle(
+        "MSFT",
+        AvailabilityState.AVAILABLE,
+        asset=msft_identity,
+    )
+
+    from main_api import app
+    c = TestClient(app)
+
+    with patch.object(_radar_svc, "get_fundamentals_bundle", return_value=bundle):
+        resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    data = body["data"]
+    assert data["fundamentals_state"] == "IDENTITY_MISMATCH"
+    assert data["equity_identity"] is None
+    assert body.get("freshness") is None
+
+
+def test_b02_symbol_mismatch_sub_endpoints_suppress_all(monkeypatch, aapl_record):
+    """Symbol mismatch: fundamentals/financials/corporate-actions/evidence all suppressed."""
+    from finco_radar.equity.models import AvailabilityState
+    from finco_radar.equity.models import EquityCompanyHistoryBundle, FundamentalsFreshness
+
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+
+    msft_identity = _make_equity_asset_identity("MSFT")
+    fund_bundle = _make_fundamentals_bundle("MSFT", AvailabilityState.AVAILABLE, asset=msft_identity)
+    empty_freshness = FundamentalsFreshness(
+        ttm_period_end=None, ttm_filing_date=None, ttm_fetched_at=None,
+        ttm_normalized_at=None, quarterly_period_end=None, quarterly_fetched_at=None,
+        annual_period_end=None, annual_fetched_at=None, profile_fetched_at=None,
+        asset_last_seen_at=None,
+    )
+    hist_bundle = EquityCompanyHistoryBundle(
+        robinhood_token_symbol="MSFT",
+        asset=msft_identity,
+        company_profile=None,
+        annual_history=(), quarterly_history=(), ttm_history=(),
+        recent_dividends=(), recent_splits=(), source_lineage=(),
+        availability=AvailabilityState.AVAILABLE,
+        freshness=empty_freshness,
+    )
+
+    from main_api import app
+    c = TestClient(app)
+
+    with patch.object(_radar_svc, "get_fundamentals_bundle", return_value=fund_bundle), \
+         patch.object(_radar_svc, "get_history_bundle", return_value=hist_bundle):
+        for path, forbidden_keys in [
+            ("fundamentals", ["ttm", "quarterly", "annual", "company_profile", "source_lineage"]),
+            ("financials", ["annual_history", "quarterly_history", "ttm_history"]),
+            ("corporate-actions", ["dividends", "splits"]),
+            ("evidence", ["source_lineage"]),
+        ]:
+            resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/{path}")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["state"] == "IDENTITY_MISMATCH", f"/{path} must be IDENTITY_MISMATCH on symbol mismatch"
+            assert body.get("freshness") is None, f"/{path} must not expose freshness on mismatch"
+            for key in forbidden_keys:
+                assert key not in body.get("data", {}), f"/{path} must not expose {key!r} on mismatch"
+
+
+# ── B03–B09 — fundamentals_state truth table ──────────────────────────────────
+
+@pytest.mark.parametrize("av_name,fstate", [
+    ("AVAILABLE",                  "AVAILABLE"),
+    ("PARTIAL",                    "PARTIAL"),
+    ("NOT_AVAILABLE",              "NOT_AVAILABLE"),
+    ("NOT_FOUND",                  "NOT_FOUND"),
+    ("SOURCE_UNAVAILABLE",         "SOURCE_UNAVAILABLE"),
+    ("FUNDAMENTALS_CONFIG_INVALID", "FUNDAMENTALS_CONFIG_INVALID"),
+])
+def test_b03_fundamentals_state_matrix(monkeypatch, aapl_record, av_name, fstate):
+    """/assets/{uid}: state always AVAILABLE; fundamentals_state matches availability."""
+    from finco_radar.equity.models import AvailabilityState
+
+    av = AvailabilityState[av_name]
+    asset = (
+        _make_equity_asset_identity(_TICKER_AAPL, contract_address=_ADDR_AAPL)
+        if av in (AvailabilityState.AVAILABLE, AvailabilityState.PARTIAL, AvailabilityState.NOT_AVAILABLE)
+        else None
+    )
+    bundle = _make_fundamentals_bundle(_TICKER_AAPL, av, asset=asset)
+
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+
+    from main_api import app
+    c = TestClient(app)
+
+    with patch.object(_radar_svc, "get_fundamentals_bundle", return_value=bundle):
+        resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE", "top-level state must always be AVAILABLE when registry resolves"
+    assert body["data"]["fundamentals_state"] == fstate
+    assert "BOUND" not in resp.text, "BOUND must never appear in any public response"
+
+
+def test_b09_fundamentals_state_identity_mismatch(monkeypatch, aapl_record):
+    """/assets/{uid} with IDENTITY_MISMATCH: state=AVAILABLE, fundamentals_state=IDENTITY_MISMATCH."""
+    from finco_radar.equity.models import AvailabilityState
+
+    msft_identity = _make_equity_asset_identity("MSFT")
+    bundle = _make_fundamentals_bundle("MSFT", AvailabilityState.AVAILABLE, asset=msft_identity)
+
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+
+    from main_api import app
+    c = TestClient(app)
+
+    with patch.object(_radar_svc, "get_fundamentals_bundle", return_value=bundle):
+        resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["fundamentals_state"] == "IDENTITY_MISMATCH"
+
+
+# ── B10 — BOUND never appears in any public response ─────────────────────────
+
+def test_b10_bound_never_public(client, client_no_db):
+    """'BOUND' must never appear anywhere in any public API response."""
+    for c in (client, client_no_db):
+        for path in [
+            f"/api/v1/radar/assets/{_UID_AAPL}",
+            f"/api/v1/radar/assets/{_UID_AAPL}/fundamentals",
+            f"/api/v1/radar/assets/{_UID_AAPL}/financials",
+            f"/api/v1/radar/assets/{_UID_AAPL}/corporate-actions",
+            f"/api/v1/radar/assets/{_UID_AAPL}/evidence",
+            "/api/v1/radar/assets",
+        ]:
+            resp = c.get(path)
+            assert "BOUND" not in resp.text, (
+                f"'BOUND' must not appear in response for {path}"
+            )
+
+
+# ── B11–B15 — fail-closed payload suppression ─────────────────────────────────
+
+def test_b11_fundamentals_mismatch_suppresses_all_fields(tmp_path, monkeypatch, aapl_record):
+    """/fundamentals on IDENTITY_MISMATCH: ttm/quarterly/annual/company_profile/freshness suppressed."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/fundamentals")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "IDENTITY_MISMATCH"
+    assert body.get("freshness") is None
+    assert body.get("evidence") is None
+    data = body.get("data", {})
+    for key in ("ttm", "quarterly", "annual", "company_profile", "source_lineage"):
+        assert key not in data, f"/fundamentals must not expose {key!r} on IDENTITY_MISMATCH"
+
+
+def test_b12_financials_mismatch_suppresses_all_fields(tmp_path, monkeypatch, aapl_record):
+    """/financials on IDENTITY_MISMATCH: annual_history/quarterly_history/ttm_history/freshness suppressed."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/financials")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "IDENTITY_MISMATCH"
+    assert body.get("freshness") is None
+    data = body.get("data", {})
+    for key in ("annual_history", "quarterly_history", "ttm_history"):
+        assert key not in data, f"/financials must not expose {key!r} on IDENTITY_MISMATCH"
+
+
+def test_b13_corporate_actions_mismatch_suppresses_all_fields(tmp_path, monkeypatch, aapl_record):
+    """/corporate-actions on IDENTITY_MISMATCH: dividends/splits suppressed."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/corporate-actions")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "IDENTITY_MISMATCH"
+    assert body.get("freshness") is None
+    data = body.get("data", {})
+    assert "dividends" not in data
+    assert "splits" not in data
+
+
+def test_b14_evidence_mismatch_suppresses_source_lineage(tmp_path, monkeypatch, aapl_record):
+    """/evidence on IDENTITY_MISMATCH: source_lineage suppressed."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/evidence")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "IDENTITY_MISMATCH"
+    assert body.get("freshness") is None
+    data = body.get("data", {})
+    assert "source_lineage" not in data
+
+
+def test_b15_identity_mismatch_exposes_only_registry_data(tmp_path, monkeypatch, aapl_record):
+    """/assets/{uid} on IDENTITY_MISMATCH: only safe registry fields + null equity fields."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    data = body["data"]
+    assert data["fundamentals_state"] == "IDENTITY_MISMATCH"
+    assert data["equity_identity"] is None
+    assert body.get("freshness") is None
+    # Safe registry fields must still be present
+    assert data["token_symbol"] == _TICKER_AAPL
+    assert data["token_name"] == "AAPL Inc."
+    assert "deployments" in data
+    assert "status" in data
+
+
+# ── B16 — close on programming error: RuntimeError propagates + close() called ─
+
+def test_b16_close_on_programming_error(monkeypatch):
+    """An unexpected exception propagates AND close() is still called (finally)."""
+    close_calls: list = []
+
+    def factory():
+        m = MagicMock()
+        m.fetch_snapshot.side_effect = RuntimeError("PROGRAMMING_SENTINEL")
+        m.close.side_effect = lambda: close_calls.append("close")
+        return m
+
+    _radar_svc.set_registry_factory(factory)
+    from main_api import app
+    c = TestClient(app, raise_server_exceptions=True)
+    with pytest.raises(RuntimeError, match="PROGRAMMING_SENTINEL"):
+        c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert close_calls == ["close"], (
+        "close() must be called exactly once even when an unexpected exception propagates"
+    )
+
+
+# ── B17 — adversarial 503 sanitizer ──────────────────────────────────────────
+
+def test_b17_adversarial_503_sanitizer():
+    """Public 503 must not leak any sensitive internal detail."""
+    import httpx as _httpx
+
+    SENSITIVE_URL = "https://private.internal.example/secret"
+    SENSITIVE_PATH = "/srv/finco/private/db.sqlite"
+    SENSITIVE_KEY = "API_KEY_SENTINEL_123"
+
+    def factory():
+        m = MagicMock()
+        m.fetch_snapshot.side_effect = _httpx.ConnectError(
+            f"{SENSITIVE_URL} {SENSITIVE_PATH} {SENSITIVE_KEY}"
+        )
+        return m
+
+    _radar_svc.set_registry_factory(factory)
+    from main_api import app
+    c = TestClient(app)
+
+    for path in [
+        f"/api/v1/radar/assets/{_UID_AAPL}",
+        "/api/v1/radar/assets",
+    ]:
+        resp = c.get(path)
+        assert resp.status_code == 503
+        body = resp.json()
+        detail = body["detail"]
+        assert SENSITIVE_URL not in detail
+        assert SENSITIVE_PATH not in detail
+        assert SENSITIVE_KEY not in detail
+        assert "private.internal.example" not in detail
+        assert "/srv/finco" not in detail
+        assert detail == "Asset registry is temporarily unavailable."
+
+
+# ── B18 — OpenAPI: all A1 routes present ─────────────────────────────────────
+
+_ALL_A1_PATHS = [
+    "/api/v1/meta",
+    "/api/v1/radar/assets",
+    "/api/v1/radar/assets/{economic_asset_uid}",
+    "/api/v1/radar/assets/{economic_asset_uid}/fundamentals",
+    "/api/v1/radar/assets/{economic_asset_uid}/financials",
+    "/api/v1/radar/assets/{economic_asset_uid}/corporate-actions",
+    "/api/v1/radar/assets/{economic_asset_uid}/evidence",
+]
+
+
+def test_b18_openapi_all_routes_present(client):
+    resp = client.get("/openapi.json")
+    assert resp.status_code == 200
+    schema = resp.json()
+    paths = schema["paths"]
+    for path in _ALL_A1_PATHS:
+        assert path in paths, f"Route {path!r} missing from OpenAPI schema"
+
+
+# ── B19 — OpenAPI: success envelopes on data endpoints ────────────────────────
+
+def test_b19_openapi_success_envelopes(client):
+    """Data endpoints must declare a success response schema."""
+    resp = client.get("/openapi.json")
+    schema = resp.json()
+    paths = schema["paths"]
+
+    radar_envelope_paths = [
+        "/api/v1/radar/assets/{economic_asset_uid}",
+        "/api/v1/radar/assets/{economic_asset_uid}/fundamentals",
+        "/api/v1/radar/assets/{economic_asset_uid}/financials",
+        "/api/v1/radar/assets/{economic_asset_uid}/corporate-actions",
+        "/api/v1/radar/assets/{economic_asset_uid}/evidence",
+    ]
+    for path in radar_envelope_paths:
+        responses = paths[path]["get"]["responses"]
+        assert "200" in responses, f"{path} missing 200 response in OpenAPI"
+
+    # List endpoint uses AssetListEnvelope
+    list_responses = paths["/api/v1/radar/assets"]["get"]["responses"]
+    assert "200" in list_responses
+
+
+# ── B20 — OpenAPI: error envelopes on all relevant endpoints ──────────────────
+
+def test_b20_openapi_error_envelopes(client):
+    """All asset-lookup endpoints must declare 400/404/503 responses."""
+    resp = client.get("/openapi.json")
+    schema = resp.json()
+    paths = schema["paths"]
+
+    asset_endpoints = [
+        "/api/v1/radar/assets/{economic_asset_uid}",
+        "/api/v1/radar/assets/{economic_asset_uid}/fundamentals",
+        "/api/v1/radar/assets/{economic_asset_uid}/financials",
+        "/api/v1/radar/assets/{economic_asset_uid}/corporate-actions",
+        "/api/v1/radar/assets/{economic_asset_uid}/evidence",
+    ]
+    for path in asset_endpoints:
+        responses = paths[path]["get"]["responses"]
+        assert "400" in responses, f"{path} missing 400 in OpenAPI"
+        assert "404" in responses, f"{path} missing 404 in OpenAPI"
+        assert "503" in responses, f"{path} missing 503 in OpenAPI"
+
+    # List endpoint only has 503 (no uid → no 400/404)
+    list_responses = paths["/api/v1/radar/assets"]["get"]["responses"]
+    assert "503" in list_responses
+
+
+# ── B21 — raw_evidence sentinel never exposed ─────────────────────────────────
+
+_RAW_EVIDENCE_SENTINEL = "PRIVATE_RAW_REGISTRY_SENTINEL_987"
+
+
+def test_b21_raw_evidence_sentinel_never_exposed(tmp_path, monkeypatch):
+    """CanonicalAssetRecord.raw_evidence must never appear in any API response."""
+    # Build a record that carries a raw_evidence sentinel value
+    record_with_evidence = CanonicalAssetRecord(
+        asset_uid=_UID_AAPL,
+        token_symbol=_TICKER_AAPL,
+        token_name="AAPL Inc.",
+        deployments=(AssetKey(_CHAIN_ID, _ADDR_AAPL),),
+        current_multiplier=Decimal("1"),
+        pending_multiplier=None,
+        pending_multiplier_effective_at=None,
+        status=RegistryAssetStatus.ACTIVE,
+        raw_evidence={"secret": _RAW_EVIDENCE_SENTINEL},
+    )
+    _radar_svc.set_registry_factory(_fake_registry_factory([record_with_evidence]))
+
+    db = _make_db_path(tmp_path, with_aapl=True)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+
+    for path in [
+        "/api/v1/radar/assets",
+        f"/api/v1/radar/assets/{_UID_AAPL}",
+        f"/api/v1/radar/assets/{_UID_AAPL}/fundamentals",
+        f"/api/v1/radar/assets/{_UID_AAPL}/evidence",
+        f"/api/v1/radar/assets/{_UID_AAPL}/corporate-actions",
+    ]:
+        resp = c.get(path)
+        assert resp.status_code == 200
+        assert _RAW_EVIDENCE_SENTINEL not in resp.text, (
+            f"raw_evidence sentinel leaked in response for {path}"
+        )
+        assert "raw_evidence" not in resp.text, (
+            f"raw_evidence key leaked in response for {path}"
         )

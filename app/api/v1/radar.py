@@ -131,14 +131,19 @@ def list_assets() -> List["CanonicalAssetRecord"]:
 def bind_equity_identity(record: "CanonicalAssetRecord", bundle: Any) -> str:
     """Validate that the equity bundle's asset identity matches the registry record.
 
-    Checks:
-      (A) bundle.asset.robinhood_token_symbol matches record.token_symbol (case-insensitive)
-      (B) When E1 token_contract_address present AND chain 4663 deployment present:
-          the addresses must match (case-insensitive).
-          Missing E1 contract address is NOT a mismatch.
+    Truth table:
+      E1 contract missing
+        → permitted (BOUND when symbol matches)
+      E1 contract present + chain-4663 deployment exists + addresses match
+        → BOUND
+      E1 contract present + chain-4663 deployment exists + addresses differ
+        → IDENTITY_MISMATCH
+      E1 contract present + NO chain-4663 deployment
+        → IDENTITY_MISMATCH (fail-closed; ticker alone must not authorize a contract)
 
     Returns one of: BOUND, IDENTITY_MISMATCH, NOT_FOUND, SOURCE_UNAVAILABLE,
     FUNDAMENTALS_CONFIG_INVALID, NOT_AVAILABLE.
+    BOUND is an internal result; it must never appear in a public response field.
     """
     av: AvailabilityState = bundle.availability
     if av not in (
@@ -154,7 +159,11 @@ def bind_equity_identity(record: "CanonicalAssetRecord", bundle: Any) -> str:
         return "IDENTITY_MISMATCH"
     if asset.token_contract_address:
         dep = record.deployment_for_chain(_TARGET_CHAIN_ID)
-        if dep is not None and asset.token_contract_address.lower() != dep.contract_address.lower():
+        if dep is None:
+            # E1 supplies a contract but the registry has no chain-4663 deployment:
+            # ticker alone must not authorize the supplied contract address.
+            return "IDENTITY_MISMATCH"
+        if asset.token_contract_address.lower() != dep.contract_address.lower():
             return "IDENTITY_MISMATCH"
     return "BOUND"
 
@@ -255,16 +264,20 @@ def build_identity_data(
 ) -> Dict[str, Any]:
     """Build the identity response data dict.
 
-    When binding == 'BOUND': equity_identity is populated.
-    Otherwise: equity_identity is null and DB-derived content suppressed.
+    fundamentals_state is NEVER 'BOUND' (BOUND is internal).
+    When binding == 'BOUND': fundamentals_state = bundle.availability.value.
+    Otherwise: fundamentals_state = binding (IDENTITY_MISMATCH or an availability state).
+
+    equity_identity is populated only when identity is safely bound.
     """
     from app.api.v1.schemas import deployment_out, equity_identity_out
+    fundamentals_state = bundle.availability.value if binding == "BOUND" else binding
     return {
         "token_symbol": record.token_symbol,
         "token_name": record.token_name,
         "status": record.status.value,
         "deployments": [deployment_out(k) for k in record.deployments],
-        "fundamentals_state": binding,
+        "fundamentals_state": fundamentals_state,
         "equity_identity": equity_identity_out(bundle.asset) if binding == "BOUND" else None,
     }
 
