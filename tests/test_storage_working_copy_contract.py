@@ -146,9 +146,10 @@ def test_canonical_storage_reference_raises_unsupported(client_contract):
         create_working_copy(user_id=user_id, source_reference_id=storage_ref.project_id)
 
 
-def test_bootstrap_race_storage_reference_canonical_winner(client_contract):
+def test_bootstrap_race_storage_reference_canonical_winner(client_contract, monkeypatch):
     """Concurrent bootstrap conflict for Storage reference resolves to canonical winner."""
     from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services import project_library_service as service
     from app.services.project_library_service import (
         _is_canonical_reference,
         _ensure_reference_project,
@@ -161,7 +162,21 @@ def test_bootstrap_race_storage_reference_canonical_winner(client_contract):
         "project_code": "generic_storage_reference-reference",
         "factory": "create_generic_storage_reference",
     }
-    # First call already created it (fixture); second call simulates idempotent re-entry
+    winner = get_reference_by_template_source("generic_storage_reference")
+    assert winner is not None
+
+    # Exercise the actual conflict path: the first lookup observes no row, the
+    # insert loses a uniqueness race, and the re-fetch returns the winner.
+    lookups = iter((None, winner))
+    monkeypatch.setattr(service, "get_reference_by_template_source", lambda _source: next(lookups))
+
+    class IntegrityError(Exception):
+        pass
+
+    def lose_insert_race(**_kwargs):
+        raise IntegrityError("simulated concurrent winner")
+
+    monkeypatch.setattr(service, "save_project", lose_insert_race)
     winner = _ensure_reference_project(defn)
     assert winner is not None
     assert _is_canonical_reference(winner) is True
@@ -308,6 +323,36 @@ def test_storage_reference_get_shows_reference_surface(client_contract):
     assert 'data-testid="unsupported-back-to-library"' in html
 
 
+def test_storage_reference_get_stops_before_materialization(client_contract, monkeypatch):
+    """The actual Storage reference route must return before every runtime resolver boundary."""
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services import revenue_backfill
+    from app.v2 import router as v2_router
+    from app.workbook.service import WorkbookService
+
+    calls = []
+
+    def forbidden(name):
+        def _raise(*_args, **_kwargs):
+            calls.append(name)
+            raise AssertionError(f"Storage reference reached forbidden boundary: {name}")
+        return _raise
+
+    monkeypatch.setattr(revenue_backfill, "persist_revenue_backfill", forbidden("revenue_backfill"))
+    monkeypatch.setattr(v2_router, "_build_pis_with_composite_identity", forbidden("project_input_set"))
+    monkeypatch.setattr(WorkbookService, "to_projectinputs", forbidden("input_adapter"))
+    monkeypatch.setattr(v2_router, "build_capex_view_model", forbidden("capex"))
+    monkeypatch.setattr(v2_router, "build_opex_view_model", forbidden("opex"))
+
+    reference = get_reference_by_template_source("generic_storage_reference")
+    _, cookies = _cookie()
+    response = client_contract.get(
+        f"/v2/workbook?project={reference.project_code}", cookies=cookies
+    )
+    assert response.status_code == 200
+    assert calls == []
+
+
 def test_storage_reference_get_no_run_or_export(client_contract):
     """Storage reference GET must not present Run / Save / Export."""
     from app.persistence.projects_repository import get_reference_by_template_source
@@ -331,19 +376,29 @@ def test_storage_reference_row_unchanged_after_get(client_contract):
     from app.persistence.projects_repository import get_reference_by_template_source
     reference = get_reference_by_template_source("generic_storage_reference")
     _, cookies = _cookie()
-    client_contract.get(
-        f"/v2/workbook?project={reference.project_code}",
-        cookies=cookies,
-    )
     with get_connection() as conn:
-        row = conn.execute(
+        row_before = dict(conn.execute(
             "SELECT * FROM projects WHERE project_id=?",
             (reference.project_id,),
-        ).fetchone()
-    assert row["user_id"] == "__reference__"
-    assert row["is_protected"] == 1
-    assert row["project_role"] == "reference"
-    assert row["project_type"] == "Storage"
+        ).fetchone())
+        ws_before = dict(conn.execute(
+            "SELECT * FROM workspace_states WHERE project_id=?",
+            (reference.project_id,),
+        ).fetchone())
+    client_contract.get(
+        f"/v2/workbook?project={reference.project_code}", cookies=cookies
+    )
+    with get_connection() as conn:
+        row_after = dict(conn.execute(
+            "SELECT * FROM projects WHERE project_id=?",
+            (reference.project_id,),
+        ).fetchone())
+        ws_after = dict(conn.execute(
+            "SELECT * FROM workspace_states WHERE project_id=?",
+            (reference.project_id,),
+        ).fetchone())
+    assert row_after == row_before
+    assert ws_after == ws_before
 
 
 # ---------------------------------------------------------------------------
@@ -454,18 +509,80 @@ def test_storage_working_copy_no_save_export(client_contract, storage_working_co
 def test_storage_working_copy_project_row_unchanged(client_contract, storage_working_copy):
     from app.persistence.db import get_connection
     user_id, cookies, record = storage_working_copy
-    client_contract.get(
-        f"/v2/workbook?project={record.project_code}",
-        cookies=cookies,
-    )
     with get_connection() as conn:
-        row = conn.execute(
+        row_before = dict(conn.execute(
             "SELECT * FROM projects WHERE project_id=?",
             (record.project_id,),
-        ).fetchone()
-    assert row["project_role"] == "working_copy"
-    assert row["project_type"] == "Storage"
-    assert row["user_id"] == user_id
+        ).fetchone())
+        ws_before = dict(conn.execute(
+            "SELECT * FROM workspace_states WHERE project_id=?",
+            (record.project_id,),
+        ).fetchone())
+    client_contract.get(
+        f"/v2/workbook?project={record.project_code}", cookies=cookies
+    )
+    with get_connection() as conn:
+        row_after = dict(conn.execute(
+            "SELECT * FROM projects WHERE project_id=?",
+            (record.project_id,),
+        ).fetchone())
+        ws_after = dict(conn.execute(
+            "SELECT * FROM workspace_states WHERE project_id=?",
+            (record.project_id,),
+        ).fetchone())
+    assert row_after == row_before
+    assert ws_after == ws_before
+
+
+@pytest.mark.parametrize("project_role", ["user_project", "legacy_editable"])
+def test_all_user_owned_storage_roles_fail_closed(client_contract, project_role, monkeypatch):
+    """Historical editable role labels share the same unsupported Storage capability boundary."""
+    from app.api import project_runner
+    from app.auth import DEMO_COOKIE_NAME, create_demo_session_token, new_demo_user_id
+    from app.persistence.projects_repository import save_project
+    from app.persistence.workspace_repository import save_workspace_state
+
+    user_id = new_demo_user_id()
+    cookies = {DEMO_COOKIE_NAME: create_demo_session_token(user_id)}
+    code = f"storage-{project_role.replace('_', '-')}"
+    snapshot = {"project_type": "Storage", "active_project": code}
+    record = save_project(
+        user_id=user_id,
+        project_code=code,
+        project_name="Historical Storage Project",
+        source_project_template="generic_storage_reference",
+        project_type="Storage",
+        project_origin="user_created",
+        template_source="generic_storage_reference",
+        baseline_snapshot=snapshot,
+        is_readonly=False,
+        is_protected=False,
+        project_role=project_role,
+    )
+    save_workspace_state(
+        user_id=user_id,
+        project_id=record.project_id,
+        project_code=code,
+        draft_snapshot=snapshot,
+        saved_snapshot=snapshot,
+        last_runtime_snapshot={},
+        last_runtime_summary={},
+        governance_state={},
+    )
+    calls = []
+    monkeypatch.setattr(project_runner, "run_project", lambda *_a, **_k: calls.append(True))
+
+    get_response = client_contract.get(f"/v2/workbook?project={code}", cookies=cookies)
+    assert get_response.status_code == 200
+    assert 'data-testid="unsupported-runtime-page"' in get_response.text
+    run_response = client_contract.post(
+        "/v2/workbook/run",
+        cookies=cookies,
+        data={"project": code, "content_hash": "0" * 64, "workbook_version": "2"},
+        follow_redirects=False,
+    )
+    assert run_response.status_code == 409
+    assert calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +644,7 @@ def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, 
     # Capture initial workspace state
     with get_connection() as conn:
         ws_before = conn.execute(
-            "SELECT last_runtime_snapshot_id FROM workspace_states WHERE project_id=?",
+            "SELECT last_runtime_snapshot_id, last_runtime_summary_json FROM workspace_states WHERE project_id=?",
             (record.project_id,),
         ).fetchone()
     client_contract.post(
@@ -542,11 +659,12 @@ def test_storage_working_copy_run_creates_no_last_run_snapshot(client_contract, 
     )
     with get_connection() as conn:
         ws_after = conn.execute(
-            "SELECT last_runtime_snapshot_id FROM workspace_states WHERE project_id=?",
+            "SELECT last_runtime_snapshot_id, last_runtime_summary_json FROM workspace_states WHERE project_id=?",
             (record.project_id,),
         ).fetchone()
     assert not ws_after["last_runtime_snapshot_id"], "Storage run must create zero Last-Run snapshots"
     assert ws_after["last_runtime_snapshot_id"] == ws_before["last_runtime_snapshot_id"]
+    assert ws_after["last_runtime_summary_json"] == ws_before["last_runtime_summary_json"]
 
 
 # ---------------------------------------------------------------------------
@@ -576,3 +694,20 @@ def test_solar_wind_workbook_opens_without_regression(client_contract, source):
     html = response.text
     assert "unsupported-runtime" not in html
     assert "Run Model" in html or "v2-run-controls" in html
+
+    # Exercise the normal canonical run path with the identity emitted by GET.
+    import re
+    hash_match = re.search(r'name="content_hash"\s+value="([^"]+)"', html)
+    version_match = re.search(r'name="workbook_version"\s+value="([^"]+)"', html)
+    assert hash_match and version_match
+    run_response = client_contract.post(
+        "/v2/workbook/run",
+        cookies=cookies,
+        data={
+            "project": project_code,
+            "content_hash": hash_match.group(1),
+            "workbook_version": version_match.group(1),
+        },
+        follow_redirects=False,
+    )
+    assert run_response.status_code == 303
