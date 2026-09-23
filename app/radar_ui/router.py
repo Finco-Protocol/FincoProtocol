@@ -41,7 +41,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
 from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
-from app.radar_ui.market_read import MarketReadService, normalize_asset_uid
+from app.radar_ui.market_read import MarketReadService, board_metadata, normalize_asset_uid
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
 # Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
@@ -117,7 +117,8 @@ def _market_display(row: dict) -> dict:
 async def featured_market_state():
     rows = await run_in_threadpool(
         _market_read_service.read, featured_symbols=_get_featured_symbols())
-    return JSONResponse({"assets": [_market_display(row) for row in rows]})
+    return JSONResponse({"assets": [_market_display(row) for row in rows],
+                         "board": board_metadata(rows)})
 
 
 @router.get("/radar/market/asset/{economic_asset_uid}")
@@ -218,37 +219,35 @@ def _load_equity_and_featured_board(
             symbol_to_assets[sym_upper] = []
         symbol_to_assets[sym_upper].append(a)
 
-    # Featured assets in configured order:
-    #   0 matches  → skip (not in live universe)
-    #   1 match    → include
-    #   >1 matches → skip (ambiguous; do not silently choose)
+    # Preserve one board position per requested symbol, including unresolved ones.
     featured_assets = []
     for sym in featured_symbols:
         matches = symbol_to_assets.get(sym.upper(), [])
-        if len(matches) == 1:
-            featured_assets.append(matches[0])
+        featured_assets.append(matches[0] if len(matches) == 1 else None)
 
     # ONE batch read for all featured assets.
-    if featured_assets:
-        pairs = [(a.token_symbol, a.contract_address) for a in featured_assets]
+    resolved_assets = [a for a in featured_assets if a is not None]
+    if resolved_assets:
+        pairs = [(a.token_symbol, a.contract_address) for a in resolved_assets]
         featured_results = equity_enrichment.enrich_many_selected_assets(pairs)
     else:
         featured_results = ()
 
     # featured_pairs carries both identity and result for UID-first reuse below.
-    featured_pairs = list(zip(featured_assets, featured_results))
+    featured_pairs = list(zip(resolved_assets, featured_results))
 
     # Build board rows — pass token_symbol separately so UID never leaks into
     # the symbol column.
-    rows = [
-        equity_view_model.build_equity_board_row(
-            result,
-            asset_uid=asset.economic_asset_uid,
-            fallback_name=asset.token_name,
-            token_symbol=asset.token_symbol,
-        )
-        for asset, result in featured_pairs
-    ]
+    by_symbol = {
+        asset.token_symbol.upper(): equity_view_model.build_equity_board_row(
+            result, asset_uid=asset.economic_asset_uid,
+            fallback_name=asset.token_name, token_symbol=asset.token_symbol,
+        ) for asset, result in featured_pairs
+    }
+    rows = [by_symbol.get(sym.upper()) or {
+        "asset_uid": "", "symbol": sym, "company_name": "Reference unavailable",
+        "state": "UNAVAILABLE", "details_url": "/radar",
+    } for sym in featured_symbols]
 
     # Equity view for the selected asset.
     equity_view: dict = {}

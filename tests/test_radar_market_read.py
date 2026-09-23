@@ -1,8 +1,9 @@
 """Read-only live market cache: canonical binding, TTL, stale and call counts."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from threading import Event
 
-from app.radar_ui.market_read import MarketReadService
+from app.radar_ui.market_read import MarketReadService, board_metadata
 from app.radar_ui import router as radar_router
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.registry import validate_reference_price_payload
@@ -97,6 +98,90 @@ def test_simultaneous_board_reads_are_coalesced():
         results = list(pool.map(lambda _: service.read(featured_symbols=("AAPL", "NVDA")), range(5)))
     assert all(result == results[0] for result in results)
     assert adapter.registry_calls == 1 and len(adapter.price_calls) == 2
+
+
+def test_board_cache_is_keyed_by_requested_symbols_and_missing_row_is_explicit():
+    adapter = FakeRegistry()
+    service = MarketReadService(lambda: adapter)
+    first = service.read(featured_symbols=("AAPL", "NVDA"))
+    second = service.read(featured_symbols=("AAPL", "MISSING"))
+    assert [row["symbol"] for row in first] == ["AAPL", "NVDA"]
+    assert [row["symbol"] for row in second] == ["AAPL", "MISSING"]
+    assert second[1]["state"] == "UNAVAILABLE" and second[1]["price"] is None
+    assert adapter.registry_calls == 2
+    assert board_metadata(second) == {
+        "state": "PARTIAL", "refreshed_at": second[0]["observed_at"],
+        "asset_count": 2, "fresh_count": 1, "stale_count": 0, "unavailable_count": 1,
+    }
+
+
+def test_first_provider_failure_is_unavailable_without_fabricated_time():
+    adapter = FakeRegistry()
+    adapter.fail = True
+    rows = MarketReadService(lambda: adapter).read(featured_symbols=("AAPL", "NVDA"))
+    assert [row["state"] for row in rows] == ["UNAVAILABLE", "UNAVAILABLE"]
+    assert board_metadata(rows) == {
+        "state": "UNAVAILABLE", "refreshed_at": None,
+        "asset_count": 2, "fresh_count": 0, "stale_count": 0, "unavailable_count": 2,
+    }
+
+
+def test_board_outage_preserves_each_observation_and_price():
+    adapter = FakeRegistry()
+    service = MarketReadService(lambda: adapter, ttl_seconds=0)
+    first = service.read(featured_symbols=("AAPL", "NVDA"))
+    adapter.fail = True
+    stale = service.read(featured_symbols=("AAPL", "NVDA"))
+    assert [(row["state"], row["price"], row["observed_at"]) for row in stale] == [
+        ("STALE", row["price"], row["observed_at"]) for row in first
+    ]
+    assert board_metadata(stale)["refreshed_at"] is None
+
+
+def test_partial_provider_failure_keeps_other_fresh_row_and_stale_observation():
+    class PartialRegistry(FakeRegistry):
+        failing_symbol = None
+
+        def fetch_bound_reference(self, snapshot, key):
+            if snapshot.require_by_key(key).token_symbol == self.failing_symbol:
+                raise RuntimeError("one provider row failed")
+            return super().fetch_bound_reference(snapshot, key)
+
+    adapter = PartialRegistry()
+    service = MarketReadService(lambda: adapter, ttl_seconds=0)
+    before = service.read(featured_symbols=("AAPL", "NVDA"))
+    adapter.failing_symbol = "NVDA"
+    after = service.read(featured_symbols=("AAPL", "NVDA"))
+    assert after[0]["state"] == "FRESH"
+    assert after[1]["state"] == "STALE"
+    assert after[1]["price"] == before[1]["price"]
+    assert after[1]["observed_at"] == before[1]["observed_at"]
+    assert board_metadata(after)["fresh_count"] == 1
+    assert board_metadata(after)["stale_count"] == 1
+
+
+def test_selected_uid_is_not_serialized_behind_unrelated_board_fanout():
+    entered, release = Event(), Event()
+
+    class SlowBoardRegistry(FakeRegistry):
+        def fetch_bound_reference(self, snapshot, key):
+            if key.contract_address.lower() == ("0x" + "bb" * 20):
+                entered.set()
+                assert release.wait(3), "test failed to release blocked board read"
+            return super().fetch_bound_reference(snapshot, key)
+
+    adapter = SlowBoardRegistry()
+    adapter.assets.append(_asset("0x" + "33" * 32, "MSFT", "0x" + "cc" * 20))
+    service = MarketReadService(lambda: adapter, ttl_seconds=0)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        board = pool.submit(service.read, featured_symbols=("NVDA",))
+        assert entered.wait(2)
+        try:
+            selected = pool.submit(service.read, uids=("0x" + "33" * 32,))
+            assert selected.result(timeout=1)[0]["state"] == "FRESH"
+        finally:
+            release.set()
+        assert board.result(timeout=2)[0]["state"] == "FRESH"
 
 
 def test_market_endpoints_never_invoke_executable_acquisition():

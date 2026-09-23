@@ -218,6 +218,36 @@ class TestProtocolHomeMobile:
 # ─── Model Library ─────────────────────────────────────────────────────────────
 
 class TestModelLibrary:
+    def test_clone_repeated_click_sends_one_request(self, live_url, browser):
+        """HTMX disables the clone button before a second click can submit."""
+        from app.persistence.db import get_connection
+        from app.persistence.projects_repository import get_reference_by_template_source
+        reference = get_reference_by_template_source("generic_solar_reference")
+        assert reference is not None
+        with get_connection() as conn:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
+                (reference.project_id,),
+            ).fetchone()[0]
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        _auth_cookie(live_url, page)
+        requests = []
+        page.on("request", lambda request: requests.append(request.url)
+                if "/library/clone/" in request.url else None)
+        page.goto(f"{live_url}/library")
+        page.locator(f'[data-testid="clone-{reference.project_code}"]').evaluate(
+            "button => { button.click(); button.click(); }"
+        )
+        page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
+        with get_connection() as conn:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='1' AND source_project_id=?",
+                (reference.project_id,),
+            ).fetchone()[0]
+        assert after - before == 1
+        assert len(requests) == 1, f"Duplicate clone requests: {requests}"
+        page.close()
+
     def test_library_loads_and_has_protocol_links(self, live_url, browser):
         """Library exposes cross-product navigation without project controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -1958,3 +1988,61 @@ class TestCBH:
         page.wait_for_load_state("domcontentloaded")
         _assert_no_overflow(page, "/library", 390)
         page.close()
+
+
+@pytest.mark.skipif(os.getenv("FINCO_VISUAL_CAPTURE") != "1", reason="visual artifact capture is enabled in CI")
+def test_saas_visual_capture(live_url, live_url_e4, browser):
+    """Capture actual rendered product surfaces at this workflow's checked-out HEAD."""
+    out = REPO / "artifacts" / "saas-visual"
+    out.mkdir(parents=True, exist_ok=True)
+    page = browser.new_page(viewport={"width": 1280, "height": 900})
+    _auth_cookie(live_url, page)
+
+    def shot(name):
+        page.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
+
+    page.goto(f"{live_url}/library")
+    page.wait_for_load_state("domcontentloaded")
+    shot("01-library-desktop")
+    page.set_viewport_size({"width": 390, "height": 844})
+    _assert_no_overflow(page, "/library", 390)
+    shot("02-library-390")
+    page.set_viewport_size({"width": 1280, "height": 900})
+    page.locator('[data-testid="clone-generic_solar_reference-reference"]').click()
+    page.wait_for_url("**/v2/workbook?project=*", timeout=15000)
+    page.locator('[data-testid="overview-no-run-state"]').wait_for()
+    shot("03-overview-no-run")
+    page.locator('#v2-canonical-run-form button[type="submit"]').click()
+    page.locator('[data-testid="toolbar-runtime-state"]').filter(has_text="Current").wait_for(timeout=90000)
+    shot("04-overview-last-run")
+    for tab, name in (("inputs", "05-inputs"), ("revenue", "06-revenue"),
+                      ("debt", "07-debt"), ("fs", "08-financials")):
+        page.locator(f"#tab-{tab}").click()
+        shot(name)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.locator("#tab-overview").click()
+    _assert_no_overflow(page, "/v2/workbook overview", 390)
+    shot("08a-overview-390")
+    page.locator("#tab-inputs").click()
+    _assert_no_overflow(page, "/v2/workbook inputs", 390)
+    shot("08b-inputs-390")
+    page.close()
+
+    radar = browser.new_page(viewport={"width": 1280, "height": 900})
+    radar.goto(f"{live_url_e4}/radar")
+    radar.wait_for_load_state("domcontentloaded")
+    radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
+    radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+    radar.wait_for_load_state("domcontentloaded")
+    for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
+                      ("token-market", "12-market-execution"), ("evidence", "13-evidence")):
+        radar.locator(f'a[href^="?tab={tab}"]').first.click()
+        radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
+    radar.set_viewport_size({"width": 390, "height": 844})
+    radar.goto(f"{live_url_e4}/radar")
+    _assert_no_overflow(radar, "/radar", 390)
+    radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
+    radar.goto(f"{live_url_e4}/radar/equity/rh-equity-nvda-001")
+    _assert_no_overflow(radar, "/radar/equity", 390)
+    radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
+    radar.close()

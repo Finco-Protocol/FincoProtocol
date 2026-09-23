@@ -39,7 +39,17 @@ jobs:
 
       - name: Run Protocol UI browser acceptance suite
         run: pytest -v tests/test_ui_protocol_shell.py
+        env:
+          FINCO_VISUAL_CAPTURE: "1"
         # FINCO_TEST_CHROMIUM_PATH is intentionally unset here so Playwright
         # uses its own installed browser (playwright install chromium above).
         # The test fixture falls back to pw.chromium.launch() when the env var
         # is not set, which resolves the version installed in the previous step.
+
+      - name: Upload SaaS visual acceptance captures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: saas-visual-acceptance
+          path: artifacts/saas-visual/*.png
+          if-no-files-found: warn

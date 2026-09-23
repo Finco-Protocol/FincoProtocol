@@ -43,7 +43,7 @@ def thaw_runtime_payload(obj: Any) -> Any:
         return {k: thaw_runtime_payload(v) for k, v in obj.items()}
     if isinstance(obj, dict):
         return {k: thaw_runtime_payload(v) for k, v in obj.items()}
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [thaw_runtime_payload(i) for i in obj]
     return obj
 

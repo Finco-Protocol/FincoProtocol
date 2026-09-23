@@ -13,7 +13,7 @@
         <tr>
           <th>Symbol</th>
           <th style="text-align:left;">Company</th>
-          <th>Price</th><th>Day %</th>
+          <th>Reference Price</th>
           <th>Revenue TTM</th>
           <th>Rev Growth</th>
           <th>Gross Margin</th>
@@ -25,7 +25,7 @@
       </thead>
       <tbody>
         {% for row in featured_board %}
-        <tr data-market-uid="{{ row.asset_uid }}">
+        <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
           <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--radar-muted);" title="{{ row.company_name }}">{{ row.company_name }}</td>
           <td class="num">
@@ -33,7 +33,6 @@
             <small class="radar-market-meta" data-market-state>UNAVAILABLE</small>
             <small class="radar-market-meta" data-market-observed></small>
           </td>
-          <td class="num" title="Previous close is not available in this authority">—</td>
 
           {% if row.state in ("AVAILABLE", "PARTIAL") %}
           <td class="num">{{ row.revenues | default("—") }}</td>
@@ -66,6 +65,6 @@
       </tbody>
     </table>
   </div>
-  <p class="muted small" style="margin-top:8px;">Price is the official multiplier-adjusted token reference midpoint. Day % is unavailable without a canonical previous close. <span data-market-board-state>Waiting for market reference.</span></p>
+  <p class="muted small" style="margin-top:8px;">Robinhood multiplier-adjusted token reference midpoint. <span data-market-board-state>Waiting for market reference.</span></p>
 </section>
 {% endif %}

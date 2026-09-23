@@ -33,13 +33,24 @@
       if (!response.ok) throw new Error('Market read unavailable');
       const payload = await response.json();
       if (board) {
-        const rows = new Map((payload.assets || []).map(function (row) { return [row.uid, row]; }));
+        const rows = new Map((payload.assets || []).map(function (row) { return [row.symbol, row]; }));
         board.querySelectorAll('[data-market-uid]').forEach(function (node) {
-          const row = rows.get(node.dataset.marketUid);
+          const row = rows.get(node.dataset.marketSymbol);
           if (row) apply(node, row);
         });
         const status = board.querySelector('[data-market-board-state]');
-        if (status) status.textContent = 'Official reference read at ' + new Date().toLocaleTimeString() + '.';
+        if (status && payload.board) {
+          const state = payload.board;
+          const stale = (payload.assets || []).find(function (row) { return row.state === 'STALE' && row.observed_at; });
+          if (state.state === 'UNAVAILABLE') status.textContent = 'Market data unavailable.';
+          else if (state.stale_count || state.unavailable_count) {
+            status.textContent = 'Showing stale or partial market reference' +
+              (stale ? ' · last observed ' + stale.observed_at : '') + '.';
+          } else if (state.refreshed_at) {
+            status.textContent = 'Updated ' + new Date(state.refreshed_at).toLocaleTimeString('en-GB',
+              {timeZone: 'UTC', hour12: false}) + ' UTC.';
+          } else status.textContent = 'Market data unavailable.';
+        }
       } else if (payload.asset && payload.asset.uid === uid) {
         apply(terminal, payload.asset);
       }
@@ -47,7 +58,12 @@
       if (error.name !== 'AbortError') {
         const status = board ? board.querySelector('[data-market-board-state]') :
           terminal.querySelector('[data-market-state]');
-        if (status) status.textContent = 'Market refresh unavailable; last observed value shown.';
+        if (status) {
+          const hasValue = board ? !!board.querySelector('[data-market-price]:not(:empty)') &&
+            Array.from(board.querySelectorAll('[data-market-price]')).some(function (node) { return node.textContent !== '—'; }) :
+            !!terminal.querySelector('[data-market-price]') && terminal.querySelector('[data-market-price]').textContent !== '—';
+          status.textContent = hasValue ? 'Market refresh unavailable; last observed value shown.' : 'Market data unavailable.';
+        }
       }
     } finally {
       active = null;

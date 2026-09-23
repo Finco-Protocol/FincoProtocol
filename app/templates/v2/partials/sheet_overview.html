@@ -76,7 +76,7 @@
       Run the model to see project returns, debt coverage and cash flow from the saved inputs.
     </p>
     {% if project_editable %}
-    <button type="button" class="v2-run-btn" onclick="document.querySelector('#v2-run-controls button[type=submit]').click()">Run Model</button>
+    <button type="submit" form="v2-canonical-run-form" class="v2-run-btn">Run Model</button>
     {% endif %}
     <p class="v2-overview-no-run-hint">
       The Overview displays Project IRR, Equity IRR, DSCR, LLCR, CAPEX, and senior
@@ -113,6 +113,28 @@
       </div>
       {% endif %}
 
+      {% if "project_npv_keur" in ov.output_metrics and ov.output_metrics["project_npv_keur"].raw_value is not none %}
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-project-npv">
+        <span class="v2-kpi-label">Project NPV</span>
+        <span class="v2-kpi-value">{{ kpi_metric("project_npv_keur") }}</span>
+      </div>
+      {% endif %}
+
+      {% if "total_capex_keur" in ov.output_metrics and ov.output_metrics["total_capex_keur"].raw_value is not none %}
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-total-capex">
+        <span class="v2-kpi-label">Total CAPEX</span>
+        <span class="v2-kpi-value">{{ kpi_metric("total_capex_keur") }}</span>
+      </div>
+      {% endif %}
+
+      {% if "senior_debt_keur" in ov.output_metrics and ov.output_metrics["senior_debt_keur"].raw_value is not none %}
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}" data-testid="kpi-senior-debt">
+        <span class="v2-kpi-label">Senior Debt</span>
+        <span class="v2-kpi-value">{{ kpi_metric("senior_debt_keur") }}</span>
+      </div>
+      {% endif %}
+
+      <div class="v2-kpi-break" aria-hidden="true"></div>
       {% if "min_dscr" in ov.output_metrics and ov.output_metrics["min_dscr"].raw_value is not none %}
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-min-dscr">
@@ -134,22 +156,6 @@
            data-testid="kpi-min-llcr">
         <span class="v2-kpi-label">Min LLCR</span>
         <span class="v2-kpi-value">{{ kpi_metric("min_llcr") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "senior_debt_keur" in ov.output_metrics and ov.output_metrics["senior_debt_keur"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-senior-debt">
-        <span class="v2-kpi-label">Senior Debt</span>
-        <span class="v2-kpi-value">{{ kpi_metric("senior_debt_keur") }}</span>
-      </div>
-      {% endif %}
-
-      {% if "total_capex_keur" in ov.output_metrics and ov.output_metrics["total_capex_keur"].raw_value is not none %}
-      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
-           data-testid="kpi-total-capex">
-        <span class="v2-kpi-label">Total CAPEX</span>
-        <span class="v2-kpi-value">{{ kpi_metric("total_capex_keur") }}</span>
       </div>
       {% endif %}
 
@@ -250,6 +256,21 @@
   </div>{# v2-overview-body #}
 
   {# ── Charts ──────────────────────────────────────────────────────────── #}
+  {% if ov.chart_operating_periods %}
+  {% set operating_json = ov.chart_operating_periods | tojson %}
+  <div class="v2-overview-charts">
+    <section class="v2-overview-section v2-overview-chart-section" aria-label="Operating cash performance">
+      <div class="v2-overview-section-title">Revenue, OPEX &amp; EBITDA <span class="v2-chart-unit">kEUR · Last Run</span></div>
+      <div class="v2-overview-chart" data-testid="chart-operating-performance" data-chart-type="operating"
+           data-periods='{{ operating_json }}' aria-label="Revenue, OPEX and EBITDA by period"></div>
+    </section>
+    <section class="v2-overview-section v2-overview-chart-section" aria-label="Cash available for debt service">
+      <div class="v2-overview-section-title">Cash to Banks vs Debt Service <span class="v2-chart-unit">kEUR · Last Run</span></div>
+      <div class="v2-overview-chart" data-testid="chart-cash-service" data-chart-type="cash-service"
+           data-periods='{{ operating_json }}' aria-label="FCF Banks and senior debt service by period"></div>
+    </section>
+  </div>
+  {% endif %}
   {% if ov.chart_debt_periods %}
   {%   set periods_json = ov.chart_debt_periods | tojson %}
   <div class="v2-overview-charts">

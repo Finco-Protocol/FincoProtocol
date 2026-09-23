@@ -63,3 +63,50 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     assert 'id="fo-btn-run"' not in html
     assert 'id="project-sidebar"' not in html
     assert 'class="app-layout app-layout--no-project"' in html
+
+
+@pytest.mark.parametrize("count", [0, 1, 25, 50])
+def test_reference_templates_are_independent_of_working_project_pages(client_with_references, count):
+    from app.persistence.projects_repository import save_project
+    user_id, cookies = _cookie()
+    for i in range(count):
+        save_project(
+            user_id=user_id, project_code=f"project-{i:02d}",
+            project_name=f"Working {i:02d}", source_project_template="generic_solar_reference",
+            project_type="Solar", project_origin="user_created", project_role="working_copy",
+            baseline_snapshot={},
+        )
+    for url in ("/library", "/library/list?page=2") if count > 20 else ("/library",):
+        response = client_with_references.get(url, cookies=cookies)
+        assert response.status_code == 200
+        html = response.text
+        assert html.count('class="fo-library-reference-card"') == 3
+        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference"):
+            assert f'library-row-{template}-reference' in html
+        assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
+    search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text
+    assert 'library-row-generic_solar_reference-reference' in search
+    assert 'library-row-generic_wind_reference-reference' not in search
+    working_only = client_with_references.get("/library/list?role=working_copy", cookies=cookies).text
+    assert 'class="fo-library-reference-card"' not in working_only
+
+
+def test_clone_unexpected_error_has_safe_reference_and_structured_log(client_with_references, monkeypatch, caplog):
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.services import project_library_service
+    reference = get_reference_by_template_source("generic_solar_reference")
+    _, cookies = _cookie()
+
+    def failed_clone(**kwargs):
+        raise RuntimeError("private-payload-marker")
+
+    monkeypatch.setattr(project_library_service, "create_working_copy", failed_clone)
+    response = client_with_references.post(
+        f"/library/clone/{reference.project_id}", cookies=cookies,
+        headers={"HX-Request": "true"},
+    )
+    assert response.status_code == 200 and "Could not create a working copy" in response.text
+    assert "private-payload-marker" not in response.text and "private-payload-marker" not in caplog.text
+    assert "route=project_library_clone" in caplog.text
+    assert f"source_project_id={reference.project_id}" in caplog.text
+    assert "exception_type=RuntimeError" in caplog.text
