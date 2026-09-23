@@ -1089,31 +1089,15 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     if ws is None:
         return RedirectResponse(url="/library", status_code=302)
 
-    # Migration: backfill missing canonical revenue keys for old Generic Solar Reference working
-    # copies created before C2B3 (idempotent — only writes when keys are absent).
-    try:
-        from app.services.revenue_backfill import persist_revenue_backfill
-        if persist_revenue_backfill(project_record.project_id, workspace_owner, project_record):
-            ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
-    except Exception:
-        pass  # migration failure must never block page render
-
-    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
-    runtime_freshness = _runtime_freshness(ws, pis)
-    hydration_script = WorkbookService.runtime_hydration_script(ws)
-
-    project_editable = not is_protected_reference(project_record)
-
-    # Fail-closed unsupported-runtime guard — covers ALL Storage projects before
-    # any resolver (CAPEX/OPEX/tax/debt) is invoked.  The Solar/Wind-only adapter
-    # must never be reached with an unsupported project type.
-    # Two surfaces are distinguished: canonical protected reference vs user-owned.
+    # Decide unsupported runtime capability immediately after access and
+    # workspace resolution.  Storage must return its controlled surface before
+    # migrations, ProjectInputSet construction, hydration, or any economic
+    # resolver can read or mutate its persisted state.
     _project_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
     if _project_type_lower == "storage":
         from app.utils.workbook_flag import project_workbook_url as _wbu
         _storage_ref_url = _wbu("generic_storage_reference-reference")
         if is_protected_reference(project_record):
-            # Storage canonical reference — reference-only controlled surface.
             return _templates.TemplateResponse(
                 request=request,
                 name="unsupported_workbook.html",
@@ -1128,8 +1112,6 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
                     "reference_label": "Back to Model Workspace",
                 },
             )
-        # User-owned Storage project (any role) — controlled unsupported surface.
-        # The project row is not touched.
         return _templates.TemplateResponse(
             request=request,
             name="unsupported_workbook.html",
@@ -1144,6 +1126,21 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
                 "reference_label": "View Storage Reference",
             },
         )
+
+    # Migration: backfill missing canonical revenue keys for old Generic Solar Reference working
+    # copies created before C2B3 (idempotent — only writes when keys are absent).
+    try:
+        from app.services.revenue_backfill import persist_revenue_backfill
+        if persist_revenue_backfill(project_record.project_id, workspace_owner, project_record):
+            ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
+    except Exception:
+        pass  # migration failure must never block page render
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    runtime_freshness = _runtime_freshness(ws, pis)
+    hydration_script = WorkbookService.runtime_hydration_script(ws)
+
+    project_editable = not is_protected_reference(project_record)
 
     flash_error = ""
     raw_err = request.query_params.get("v2_err", "")
