@@ -63,6 +63,8 @@ def test_unknown_uid_fails_closed_without_ticker_lookup():
     service = MarketReadService(lambda: adapter)
     assert service.read(uids=("0x" + "33" * 32,))[0]["state"] == "UNAVAILABLE"
     assert adapter.price_calls == []
+    assert service.read(uids=("0x" + "33" * 32,))[0]["state"] == "UNAVAILABLE"
+    assert adapter.registry_calls == 1
 
 
 def test_provider_failure_preserves_last_known_value_as_stale():
@@ -124,6 +126,9 @@ def test_market_endpoints_never_invoke_executable_acquisition():
             assert selected.json()["asset"]["price_display"] == "$340.68"
             assert selected.json()["asset"]["price"] == "340.675"
             assert selected.json()["asset"]["uid"] == uid
+            malformed = client.get("/radar/market/asset/AAPL")
+            assert malformed.status_code == 400
+            assert adapter.registry_calls == 1
     finally:
         radar_router.set_market_read_service(old_market)
         radar_router.set_service(old_acquisition)

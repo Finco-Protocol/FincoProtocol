@@ -95,7 +95,7 @@ class MarketReadService:
                         resolved_ids = {asset.asset_uid for asset, _ in resolved}
                         for uid in uids:
                             if uid not in resolved_ids:
-                                self._cache.pop(uid, None)
+                                self._cache[uid] = (time.monotonic(), self._unavailable(uid))
                     if featured_symbols:
                         self._last_board = [asset.asset_uid for asset, _ in resolved]
                     for asset, key in resolved:

@@ -42,6 +42,7 @@ from fastapi.templating import Jinja2Templates
 from app.radar_runtime.contracts import RadarRuntimeError
 from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
 from app.radar_ui.market_read import MarketReadService
+from finco_radar.assets.contracts import RegistrySourceError, normalize_asset_uid
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
 # Override with RADAR_FEATURED_EQUITY_SYMBOLS (comma-separated).
@@ -122,6 +123,10 @@ async def featured_market_state():
 
 @router.get("/radar/market/asset/{economic_asset_uid}")
 async def selected_market_state(economic_asset_uid: str):
+    try:
+        economic_asset_uid = normalize_asset_uid(economic_asset_uid)
+    except RegistrySourceError:
+        return JSONResponse({"error": "Invalid economic asset UID"}, status_code=400)
     rows = await run_in_threadpool(
         _market_read_service.read, uids=(economic_asset_uid,))
     row = rows[0] if rows else MarketReadService._unavailable(economic_asset_uid)
