@@ -31,3 +31,11 @@ class RegistryUnavailableError(RuntimeError):
 
 class FundamentalsUnavailableError(RuntimeError):
     """The equity fundamentals DB is unconfigured or unreadable."""
+
+
+class SimulationRequestInvalidError(ValueError):
+    """The request body (direction or notional_usd) failed validation."""
+
+    def __init__(self, detail: str = "") -> None:
+        self.detail = detail
+        super().__init__(detail or "Simulation request is invalid")

@@ -1,4 +1,4 @@
-"""A1 Radar API Pydantic response schemas.
+"""A1/A2 Radar API Pydantic response schemas.
 
 All response bodies follow the standard envelope:
   {
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 API_VERSION = "v1"
 
@@ -196,3 +196,41 @@ def lineage_out(lin) -> Dict[str, Any]:
         "normalized_ref": lin.normalized_ref,
         "fetched_at": lin.fetched_at,
     }
+
+
+# ── A2: execution simulation schemas ─────────────────────────────────────────
+
+class ExecutionSimulationRequest(BaseModel):
+    """A2 POST body: direction and notional_usd.
+
+    Both fields are accepted as Optional[str] to avoid Pydantic 422 on
+    invalid values; the route handler validates and returns 400 explicitly.
+    Integer notionals (100, 1000) are coerced to their string equivalents by
+    Pydantic's lax mode.
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+    direction: Optional[str] = Field(
+        default=None,
+        description="Trade direction: 'BUY' or 'SELL'.",
+    )
+    notional_usd: Optional[str] = Field(
+        default=None,
+        description="Requested notional in USD (exact string: '100' or '1000').",
+    )
+
+
+class ExecutionSimulationEnvelope(BaseModel):
+    """A2 POST /execution-simulation response envelope."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    state: str
+    economic_asset_uid: Optional[str] = None
+    snapshot_id: Optional[str] = None
+    simulation: Optional[Dict[str, Any]] = None
+    identity: Optional[Dict[str, Any]] = None
+    reference: Optional[Dict[str, Any]] = None
+    execution: Optional[Dict[str, Any]] = None
+    gap: Optional[Dict[str, Any]] = None
+    freshness: Optional[Dict[str, Any]] = None
