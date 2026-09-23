@@ -267,10 +267,9 @@ class TestModelJourney:
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         # Open workbook with a reference project (always exists for admin).
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
-        # Must not redirect to login
-        assert "workbook" in page.url or "library" in page.url or "/" in page.url
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         proto_section = page.query_selector(".v2-protocol-nav")
         assert proto_section is not None, (
             "Protocol navigation missing on Workbook V2"
@@ -283,16 +282,18 @@ class TestModelJourney:
     def test_workbook_no_overflow_1280(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         _assert_no_overflow(page, "/v2/workbook", 1280)
 
     def test_workbook_no_overflow_390(self, live_url, browser):
         """Full page must not overflow at 390px after chrome.css mobile fix."""
         page = browser.new_page(viewport={"width": 390, "height": 844})
         _auth_cookie(live_url, page)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         _assert_no_overflow(page, "/v2/workbook", 390)
 
     def test_full_cross_surface_journey(self, live_url, browser):
@@ -311,8 +312,9 @@ class TestModelJourney:
         assert "/library" in page.url
 
         # 3. Open Workbook via direct URL (simulates library click)
-        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference")
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
         page.wait_for_load_state("domcontentloaded")
+        assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         proto = page.query_selector(".v2-protocol-nav")
         assert proto is not None, "Protocol navigation missing on Workbook"
 
