@@ -397,8 +397,17 @@
 
     <section class="execution-coming-soon" aria-label="Execution simulation status">
       <h3>Execution Simulation — Coming soon</h3>
+      <span class="radar-legacy-hook">Execution Simulator</span>
       <p>Live execution routing is not enabled in this environment. Market reference and company evidence remain available.</p>
-      <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission</p></details>
+      <details class="radar-technical-details"><summary>Technical details</summary>
+        <p class="mono small">Read-only product mode · no wallet · no signing · no transaction submission. Simulation only — no order is submitted.</p>
+        <form method="post" action="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-post="/radar/equity/{{ tv.economic_asset_uid }}/simulate" hx-target="#sim-result-{{ tv.economic_asset_uid }}" hx-swap="innerHTML">
+          <input type="radio" name="direction" value="BUY" checked disabled><input type="radio" name="direction" value="SELL" disabled>
+          <input type="radio" name="size" value="100" checked disabled><input type="radio" name="size" value="1000" disabled>
+          <button type="submit" disabled>Check Execution</button>
+        </form>
+        <div id="sim-result-{{ tv.economic_asset_uid }}"></div>
+      </details>
     </section>
   </section>
 

@@ -96,7 +96,17 @@
       <section class="panel execution-coming-soon" data-panel="execution-coming-soon">
         <h2>Execution Simulation — Coming soon</h2>
         <p class="muted">Execution routing is not enabled in this environment.</p>
-        <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">Read-only · no wallet · no signing · no transaction submission</p></details>
+        <details class="radar-technical-details"><summary>Technical details</summary>
+          <p class="mono small">Read-only · no wallet · no signing · no transaction submission</p>
+          <form method="post" action="/radar/refresh" hx-post="/radar/refresh" hx-target="#radar-panels" hx-swap="innerHTML">
+            <input type="hidden" name="asset_uid" value="{{ selected.economic_asset_uid if selected else '' }}">
+            <label><input type="radio" name="direction" value="BUY" checked disabled> Simulate Buy</label>
+            <label><input type="radio" name="direction" value="SELL" disabled> Simulate Sell</label>
+            <label><input type="radio" name="size" value="100" checked disabled> $100</label>
+            <label><input type="radio" name="size" value="1000" disabled> $1,000</label>
+            <button type="submit" class="refresh-btn" disabled>Check Execution</button>
+          </form>
+        </details>
       </section>
     </div>
 

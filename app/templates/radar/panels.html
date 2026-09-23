@@ -138,7 +138,7 @@
 </section>
 
 <!-- ── Settlement ── -->
-{% if view.settlement.configured %}<section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}">
+<section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}"{% if not view.settlement.configured %} hidden{% endif %}>
   <h2>Settlement context</h2>
   {% if view.settlement.configured %}
   <dl class="kv">
@@ -150,10 +150,9 @@
   </dl>
   {% endif %}
 </section>
-{% endif %}
 
 <!-- ── GAP ── -->
-{% if view.gap.available %}<section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
+<section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}"{% if not view.gap.available %} hidden{% endif %}>
   <h2>GAP</h2>
   {% if view.gap.available %}
   <dl class="kv">
@@ -164,9 +163,10 @@
     <dt>Quoted at</dt><dd>{{ view.gap.fields.quotedAt }}</dd>
     <dt>Authority</dt><dd><span class="muted">{{ view.gap.phase }} — consumed, not recomputed</span></dd>
   </dl>
+  {% else %}
+  <span class="mono small">{{ view.gap.reason }} · {{ view.gap.phase }}</span>
   {% endif %}
 </section>
-{% endif %}
 
 <!-- ── Evidence Inspector ── -->
 <section class="panel panel-inspector-host" data-panel="inspector" data-snapshot-id="{{ view.snapshot_id }}">

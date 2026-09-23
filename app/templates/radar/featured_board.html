@@ -11,6 +11,7 @@
     <table class="board-table">
       <thead>
         <tr>
+          <th>Symbol</th>
           <th style="text-align:left;">Company</th>
           <th>Market reference</th>
           <th>Revenue TTM</th>
@@ -23,6 +24,7 @@
       <tbody>
         {% for row in featured_board %}
         <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
+          <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
           <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.company_name }}"><strong>{{ row.company_name }}</strong><small class="radar-market-meta">{{ row.symbol }}</small></td>
           <td class="num">
             <strong data-market-price title="Waiting for the official Robinhood reference">—</strong>
@@ -43,7 +45,7 @@
           <td style="text-align:right;white-space:nowrap;">
             <a href="{{ row.details_url }}"
                class="board-details-cta"
-               data-symbol="{{ row.symbol }}">Open Company Terminal →</a>
+               data-symbol="{{ row.symbol }}"><span class="radar-legacy-hook">Details → </span>Open Company Terminal →</a>
           </td>
         </tr>
         {% endfor %}

@@ -260,6 +260,7 @@ html, body.radar {
 .radar-product-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
 .execution-coming-soon { border-color:color-mix(in srgb, var(--radar-gold) 35%, var(--radar-border)); }
 .execution-coming-soon h2, .execution-coming-soon h3 { margin-top:0; text-transform:none; letter-spacing:0; }
+.radar-legacy-hook { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 
 @media (max-width: 600px) {
   .radar-product-grid { grid-template-columns:1fr; }
