@@ -57,7 +57,7 @@ def test_reference_seed_creation_preserves_lineage_and_scales_per_mw(
         rate = line.replay_metadata["unit_rate_keur_per_mw"]
         assert line.amount_keur == pytest.approx(rate * requested_capacity)
     for line in opex_lines:
-        rate = json.loads(line.comments)["unit_rate_keur_per_mw"]
+        rate = profile["opex_unit_rates_keur_per_mw"][line.label]
         assert line.amount_keur == pytest.approx(rate * requested_capacity)
 
 
@@ -110,3 +110,31 @@ def test_storage_is_not_supported_by_reference_seed_service(seeded_db):
             requested_name="No Storage",
             capacity_mw=10.0,
         )
+
+
+@pytest.mark.parametrize(
+    ("template_source", "capacity"),
+    [("generic_solar_reference", 64.0), ("generic_wind_reference", 48.0)],
+)
+def test_same_mw_materialization_reproduces_reference_economic_inputs(
+    seeded_db, template_source, capacity
+):
+    from app.input_adapter import build_projectinputs_from_snapshot
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.project_factories import create_generic_solar_reference, create_generic_wind_reference
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+    from app.services.reference_seed_service import create_reference_seeded_project
+
+    reference = (create_generic_solar_reference() if "solar" in template_source else create_generic_wind_reference())
+    record = create_reference_seeded_project(
+        user_id=f"same-mw-{template_source}", template_source=template_source,
+        requested_name="Same MW", capacity_mw=capacity,
+    )
+    ws = get_workspace_state(f"same-mw-{template_source}", record.project_id)
+    materialized = build_projectinputs_from_snapshot(ws.draft_snapshot)
+    capex = apply_user_sub_lines_replacing_base(materialized.capex, project_id=record.project_id)
+    opex = apply_user_sub_lines_to_opex(materialized.opex, project_id=record.project_id)
+    assert capex.total_capex == pytest.approx(reference.capex.total_capex)
+    assert sum(x.y1_amount_keur for x in opex) == pytest.approx(sum(x.y1_amount_keur for x in reference.opex))
+    assert materialized.financing.target_dscr == reference.financing.target_dscr

@@ -179,7 +179,7 @@
   {% endif %}
 
   {# ── Summary totals bar ──────────────────────────────────────────── #}
-  <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small></div>
+  <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Hard CAPEX</span>

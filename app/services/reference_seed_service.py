@@ -186,13 +186,7 @@ def create_reference_seeded_project(
                 amount_keur=amount * ratio,
                 inflation_pct=float(item.annual_inflation) * 100,
                 source="reference_seed",
-                comments=json.dumps({
-                    "reference_seed": True,
-                    "reference_amount_keur": amount,
-                    "reference_capacity_mw": reference_capacity,
-                    "unit_rate_keur_per_mw": amount / reference_capacity,
-                    "scaling_mode": ScalingMode.PER_MW.value,
-                }, sort_keys=True),
+                comments="Seeded from canonical reference; edit to override.",
             )
     return record
 
@@ -238,12 +232,10 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
             (record.project_id,),
         )
         for row in cur.fetchall():
-            try:
-                metadata = json.loads(row["comments"] or "{}")
-            except (TypeError, ValueError):
-                metadata = {}
-            rate = metadata.get("unit_rate_keur_per_mw")
-            if rate is not None and metadata.get("scaling_mode") == ScalingMode.PER_MW.value:
+            cur.execute("SELECT label FROM opex_sub_lines WHERE sub_line_id=?", (row["sub_line_id"],))
+            label_row = cur.fetchone()
+            rate = opex_rates.get(label_row["label"] if label_row else "")
+            if rate is not None:
                 cur.execute(
                     "UPDATE opex_sub_lines SET amount_keur=?, updated_at=datetime('now') "
                     "WHERE project_id=? AND sub_line_id=?",
@@ -261,6 +253,59 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
         project_id=record.project_id,
         project_code=record.project_code,
         draft_snapshot=snapshot,
+        saved_snapshot=ws.saved_snapshot,
+        dirty=True,
+        governance_state=ws.governance_state,
+        replay_metadata=ws.replay_metadata,
+    )
+
+
+def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
+    """Restore all overridden seed rows to their canonical per-MW values."""
+    from app.persistence.projects_repository import get_project_by_code
+
+    record = get_project_by_code(user_id, project_code)
+    if record is None:
+        raise ValueError("Project not found.")
+    ws = get_workspace_state(user_id, record.project_id)
+    profile = ws.draft_snapshot.get("_reference_seed_profile") if ws else None
+    if not isinstance(profile, dict):
+        raise ValueError("Project has no reference seed profile.")
+    capacity = float(ws.draft_snapshot["capacity_mw"])
+    opex_rates = profile.get("opex_unit_rates_keur_per_mw", {})
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT sub_line_id, replay_metadata_json FROM capex_sub_lines "
+            "WHERE project_id=? AND is_active=1 AND source='user_override'",
+            (record.project_id,),
+        )
+        for row in cur.fetchall():
+            metadata = json.loads(row["replay_metadata_json"] or "{}")
+            rate = metadata.get("unit_rate_keur_per_mw")
+            if metadata.get("reference_seed") is True and rate is not None:
+                cur.execute(
+                    "UPDATE capex_sub_lines SET amount_keur=?, source='reference_seed', updated_at=datetime('now') "
+                    "WHERE sub_line_id=?",
+                    (float(rate) * capacity, row["sub_line_id"]),
+                )
+        cur.execute(
+            "SELECT sub_line_id, label FROM opex_sub_lines "
+            "WHERE project_id=? AND is_active=1 AND source='user_override'",
+            (record.project_id,),
+        )
+        for row in cur.fetchall():
+            rate = opex_rates.get(row["label"])
+            if rate is not None:
+                cur.execute(
+                    "UPDATE opex_sub_lines SET amount_keur=?, source='reference_seed', updated_at=datetime('now') "
+                    "WHERE sub_line_id=?",
+                    (float(rate) * capacity, row["sub_line_id"]),
+                )
+    save_workspace_state(
+        user_id=user_id,
+        project_id=record.project_id,
+        project_code=record.project_code,
+        draft_snapshot=ws.draft_snapshot,
         saved_snapshot=ws.saved_snapshot,
         dirty=True,
         governance_state=ws.governance_state,

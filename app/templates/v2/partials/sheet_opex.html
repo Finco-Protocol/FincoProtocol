@@ -210,7 +210,7 @@
   {% endif %}
 
   {# ── KPI strip ────────────────────────────────────────────────── #}
-  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small></div>
+  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small>{% if project_editable %}<form method="post" action="/v2/reference-seed/reset"><input type="hidden" name="project" value="{{ project_code }}"><button class="btn btn-ghost btn-sm" type="submit">Reset to reference</button></form>{% endif %}</div>
   <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
       <span class="v2-opex-kpi-label">OPEX Y1</span>

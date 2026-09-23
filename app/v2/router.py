@@ -2384,6 +2384,32 @@ async def v2_scenario_create(
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
+@router.post("/reference-seed/reset")
+async def v2_reference_seed_reset(
+    request: Request,
+    project: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Restore overridden CAPEX/OPEX seed lines to canonical unit rates."""
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.services.project_library_service import is_protected_reference
+    from app.services.reference_seed_service import reset_reference_seeded_lines
+
+    record, owner = resolve_accessible_project(user.user_id, project)
+    if record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+    if owner != user.user_id or is_protected_reference(record):
+        return JSONResponse({"error": "Editable working copy required."}, status_code=403)
+    try:
+        reset_reference_seeded_lines(user_id=owner, project_code=project)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
 @router.post("/workbook/scenarios/select")
 async def v2_scenario_select(
     request: Request,
