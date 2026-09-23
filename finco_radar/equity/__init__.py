@@ -22,6 +22,7 @@ from .models import (
     SourceLineage,
     SplitRecord,
 )
+from .derived import compute_ttm_revenue_growth
 from .service import (
     get_equity_company_history,
     get_equity_fundamentals,
@@ -31,6 +32,7 @@ from .service import (
 __all__ = [
     "AvailabilityState",
     "CompanyProfile",
+    "compute_ttm_revenue_growth",
     "DerivedFundamentals",
     "DividendRecord",
     "EquityAssetIdentity",

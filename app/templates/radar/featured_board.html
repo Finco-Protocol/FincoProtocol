@@ -18,7 +18,7 @@
           <th>Revenue TTM</th>
           <th>Rev Growth</th>
           <th>Gross Margin</th>
-          <th>FCF Margin</th>
+          <th>EBIT Margin</th>
           <th style="text-align:left;">Period</th>
           <th style="text-align:left;">State</th>
           <th style="text-align:right;"></th>
@@ -34,7 +34,7 @@
           <td class="num">{{ row.revenues | default("—") }}</td>
           <td class="num">{{ row.revenue_growth | default("—") }}</td>
           <td class="num">{{ row.gross_margin | default("—") }}</td>
-          <td class="num">{{ row.fcf_margin | default("—") }}</td>
+          <td class="num">{{ row.ebit_margin | default("—") }}</td>
           <td style="color:var(--radar-muted);white-space:nowrap;font-size:11px;">{{ row.period_end | default("—") }}</td>
           {% else %}
           <td colspan="5" style="color:var(--radar-muted);">
@@ -44,11 +44,11 @@
 
           <td class="state-cell">
             {% if row.state == "AVAILABLE" %}
-            <span class="state-chip state-chip--available">{{ row.state }}</span>
+            <span class="state-chip state-chip--available" title="AVAILABLE">●</span>
             {% elif row.state == "PARTIAL" %}
-            <span class="state-chip state-chip--partial">{{ row.state }}</span>
+            <span class="state-chip state-chip--partial" title="PARTIAL">◐</span>
             {% else %}
-            <span class="state-chip state-chip--unavail">{{ row.state }}</span>
+            <span class="state-chip state-chip--unavail" title="{{ row.state }}">○</span>
             {% endif %}
           </td>
           <td style="text-align:right;white-space:nowrap;">

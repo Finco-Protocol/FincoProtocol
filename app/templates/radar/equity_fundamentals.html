@@ -65,13 +65,13 @@
   {% endif %}
   {% endif %}
 
-  {# ── availability badge ────────────────────────────────────────────── #}
+  {# ── availability badge (compact dot) ─────────────────────────────── #}
   {% if estate == "AVAILABLE" %}
-  <span class="state-chip state-chip--available" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  <span class="state-chip state-chip--available" style="display:inline-block;margin-bottom:10px;" title="AVAILABLE">●</span>
   {% elif estate == "PARTIAL" %}
-  <span class="state-chip state-chip--partial" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  <span class="state-chip state-chip--partial" style="display:inline-block;margin-bottom:10px;" title="PARTIAL">◐</span>
   {% else %}
-  <span class="state-chip state-chip--unavail" style="display:inline-block;margin-bottom:10px;">{{ estate }}</span>
+  <span class="state-chip state-chip--unavail" style="display:inline-block;margin-bottom:10px;" title="{{ estate }}">○</span>
   {% endif %}
 
   {# ── reporting status ──────────────────────────────────────────────── #}
@@ -83,10 +83,6 @@
     <dt>TTM filed</dt><dd>{{ rep.ttm_filing_date }}</dd>
     <dt>Latest quarter</dt><dd>{{ rep.quarterly_period_end }}</dd>
     <dt>Latest annual</dt><dd>{{ rep.annual_period_end }}</dd>
-    <dt>Provider</dt><dd>{{ rep.provider }}</dd>
-    <dt>Source</dt><dd class="mono small" style="word-break:break-all;">{{ rep.source_contract }}</dd>
-    <dt>Fetched</dt><dd>{{ rep.fetched_at }}</dd>
-    <dt>Normalised</dt><dd>{{ rep.normalized_at }}</dd>
   </dl>
   {% endif %}
 

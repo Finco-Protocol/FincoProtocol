@@ -236,6 +236,11 @@ class EquityFundamentalsBundle:
 
     Contains no market prices, no token prices, no OHLCV, no quotes,
     no execution prices, no spreads, no liquidity data.
+
+    quarterly_history: up to 8 recent quarterly snapshots, period_end DESC.
+    Used by the derived-metrics layer to compute YoY TTM revenue growth.
+    Defaults to () for backward compatibility with tests that construct
+    the bundle without this field.
     """
 
     robinhood_token_symbol: str
@@ -249,3 +254,4 @@ class EquityFundamentalsBundle:
     source_lineage_summary: tuple[SourceLineage, ...]
     availability: AvailabilityState
     freshness: FundamentalsFreshness
+    quarterly_history: tuple = ()

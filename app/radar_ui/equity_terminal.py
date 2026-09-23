@@ -23,7 +23,14 @@ from finco_radar.equity.models import (
     FundamentalsFreshness,
     JsonField,
 )
-from app.radar_ui.equity_view_model import _fmt_float, _fmt_currency, _fmt_percent, _fmt_ratio_raw
+from app.radar_ui.equity_view_model import (
+    _fmt_float,
+    _fmt_currency,
+    _fmt_percent,
+    _fmt_ratio_raw,
+    _fmt_revenue_growth,
+    _fmt_human_timestamp,
+)
 
 
 def get_history_for_terminal(
@@ -396,7 +403,7 @@ def _build_snapshot_row(snap: FinancialSnapshot) -> dict:
         "fiscal_quarter": snap.fiscal_quarter or "—",
         "provider": snap.provider or "—",
         "revenues": _fmt_currency(d.revenues) if d else "—",
-        "revenue_growth": _fmt_float(d.revenue_growth) if d else "—",
+        "revenue_growth": _fmt_revenue_growth(d.revenue_growth) if d else "—",
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
         "ebit_margin": _fmt_percent(d.ebit_margin) if d else "—",
         "ebitda_margin": _fmt_percent(d.ebitda_margin) if d else "—",
@@ -423,7 +430,9 @@ def _build_snapshot_evidence_row(snap: FinancialSnapshot) -> dict:
         "provider": snap.provider or "—",
         "source_contract": snap.source_contract or "—",
         "fetched_at": snap.fetched_at or "—",
+        "fetched_at_display": _fmt_human_timestamp(snap.fetched_at),
         "normalized_at": snap.normalized_at or "—",
+        "normalized_at_display": _fmt_human_timestamp(snap.normalized_at),
         "payload_hash": snap.payload_hash or "—",
     }
 
@@ -533,6 +542,7 @@ def build_terminal_view(
             "profile": None,
             "profile_evidence": _empty_profile_evidence,
             "snapshot_evidence": [],
+            "snapshot_evidence_meta": {"uniform_provider": None, "uniform_source_contract": None, "row_count": 0},
             "annual_history": [],
             "quarterly_history": [],
             "ttm_history": [],
@@ -624,6 +634,16 @@ def build_terminal_view(
         )
     ]
 
+    # Evidence deduplication meta: detect when all rows share the same provider/contract.
+    # Templates use this to show provider/contract once at top and omit repeated columns.
+    _ev_providers = {r["provider"] for r in snapshot_evidence_rows if r["provider"] != "—"}
+    _ev_contracts = {r["source_contract"] for r in snapshot_evidence_rows if r["source_contract"] != "—"}
+    snapshot_evidence_meta = {
+        "uniform_provider": next(iter(_ev_providers)) if len(_ev_providers) == 1 else None,
+        "uniform_source_contract": next(iter(_ev_contracts)) if len(_ev_contracts) == 1 else None,
+        "row_count": len(snapshot_evidence_rows),
+    }
+
     # Financial history rows
     annual_rows = [_build_snapshot_row(s) for s in bundle.annual_history]
     quarterly_rows = [_build_snapshot_row(s) for s in bundle.quarterly_history]
@@ -692,6 +712,7 @@ def build_terminal_view(
         "profile": profile_section,
         "profile_evidence": profile_evidence,
         "snapshot_evidence": snapshot_evidence_rows,
+        "snapshot_evidence_meta": snapshot_evidence_meta,
         "annual_history": annual_rows,
         "quarterly_history": quarterly_rows,
         "ttm_history": ttm_rows,
@@ -707,7 +728,9 @@ def build_terminal_view(
             "quarterly_period_end": freshness.quarterly_period_end or "—",
             "annual_period_end": freshness.annual_period_end or "—",
             "profile_fetched_at": freshness.profile_fetched_at or "—",
+            "profile_fetched_at_display": _fmt_human_timestamp(freshness.profile_fetched_at),
             "asset_last_seen_at": freshness.asset_last_seen_at or "—",
+            "asset_last_seen_at_display": _fmt_human_timestamp(freshness.asset_last_seen_at),
         },
         "execution_simulator_url": f"/radar?asset_uid={economic_asset_uid}#radar-panels",
         "radar_url": "/radar",

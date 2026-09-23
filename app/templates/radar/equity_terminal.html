@@ -161,8 +161,8 @@
         <dt>TTM filing date</dt><dd>{{ fr.ttm_filing_date }}</dd>
         <dt>Latest quarter</dt><dd>{{ fr.quarterly_period_end }}</dd>
         <dt>Latest annual</dt><dd>{{ fr.annual_period_end }}</dd>
-        <dt>Profile fetched</dt><dd>{{ fr.profile_fetched_at }}</dd>
-        <dt>Asset last seen</dt><dd>{{ fr.asset_last_seen_at }}</dd>
+        <dt>Profile fetched</dt><dd title="{{ fr.profile_fetched_at }}">{{ fr.profile_fetched_at_display | default(fr.profile_fetched_at) }}</dd>
+        <dt>Asset last seen</dt><dd title="{{ fr.asset_last_seen_at }}">{{ fr.asset_last_seen_at_display | default(fr.asset_last_seen_at) }}</dd>
       </dl>
       {% else %}
       <p class="muted small">Reporting context not available.</p>
@@ -257,7 +257,7 @@
   <h3 class="terminal-section-heading" style="margin-top:24px;">TTM (Trailing Twelve Months)</h3>
   {% if tv.ttm_history %}
   {% set snap = tv.ttm_history[0] %}
-  <p class="muted small">Period end: {{ snap.period_end }} · Filed: {{ snap.filing_date }} · Provider: {{ snap.provider }}</p>
+  <p class="muted small">Period end: {{ snap.period_end }} · Filed: {{ snap.filing_date }}</p>
   <dl class="kv" style="max-width:600px;margin-bottom:16px;">
     <dt>Revenue</dt><dd{% if snap.revenues == '—' %} class="muted"{% endif %}>{{ snap.revenues }}</dd>
     <dt>Revenue growth</dt><dd{% if snap.revenue_growth == '—' %} class="muted"{% endif %}>{{ snap.revenue_growth }}</dd>
@@ -287,7 +287,7 @@
           <th>Rev growth</th>
           <th>Gross margin</th>
           <th>Net margin</th>
-          <th>FCF margin</th>
+          <th>EBIT margin</th>
           <th>ROE</th>
           <th>Debt/equity</th>
         </tr>
@@ -300,7 +300,7 @@
         <td>{{ row.revenue_growth }}</td>
         <td>{{ row.gross_margin }}</td>
         <td>{{ row.net_margin }}</td>
-        <td>{{ row.fcf_margin }}</td>
+        <td>{{ row.ebit_margin }}</td>
         <td>{{ row.return_on_equity }}</td>
         <td>{{ row.debt_to_equity }}</td>
       </tr>
@@ -325,7 +325,7 @@
           <th>Rev growth</th>
           <th>Gross margin</th>
           <th>Net margin</th>
-          <th>FCF margin</th>
+          <th>EBIT margin</th>
           <th>ROE</th>
         </tr>
       </thead>
@@ -338,7 +338,7 @@
         <td>{{ row.revenue_growth }}</td>
         <td>{{ row.gross_margin }}</td>
         <td>{{ row.net_margin }}</td>
-        <td>{{ row.fcf_margin }}</td>
+        <td>{{ row.ebit_margin }}</td>
         <td>{{ row.return_on_equity }}</td>
       </tr>
       {% endfor %}
@@ -438,6 +438,16 @@
     <h2>Snapshot Evidence</h2>
     <p class="muted small" style="margin-bottom:10px;">Financial reporting periods available in the equity fundamentals database.</p>
     {% if tv.snapshot_evidence %}
+    {# Show uniform provider/contract once at top when all periods share the same source #}
+    {% if tv.snapshot_evidence_meta and tv.snapshot_evidence_meta.uniform_provider %}
+    <p class="muted small" style="margin-bottom:8px;">
+      Source: <strong>{{ tv.snapshot_evidence_meta.uniform_provider }}</strong>
+      {% if tv.snapshot_evidence_meta.uniform_source_contract %}
+      · <span class="mono">{{ tv.snapshot_evidence_meta.uniform_source_contract }}</span>
+      {% endif %}
+      · {{ tv.snapshot_evidence_meta.row_count }} period{{ 's' if tv.snapshot_evidence_meta.row_count != 1 else '' }}
+    </p>
+    {% endif %}
     <div style="overflow-x:auto;">
       <table class="evidence-table">
         <thead>
@@ -447,8 +457,8 @@
             <th>Q</th>
             <th>Period end</th>
             <th>Filing date</th>
-            <th>Provider</th>
-            <th>Source contract</th>
+            {% if not (tv.snapshot_evidence_meta and tv.snapshot_evidence_meta.uniform_provider) %}<th>Provider</th>{% endif %}
+            {% if not (tv.snapshot_evidence_meta and tv.snapshot_evidence_meta.uniform_source_contract) %}<th>Source contract</th>{% endif %}
             <th>Fetched at</th>
             <th>Normalised at</th>
             <th>Payload hash</th>
@@ -462,10 +472,10 @@
           <td>{{ ev.fiscal_quarter }}</td>
           <td class="mono">{{ ev.period_end }}</td>
           <td class="mono">{{ ev.filing_date }}</td>
-          <td>{{ ev.provider }}</td>
-          <td>{{ ev.source_contract }}</td>
-          <td class="mono">{{ ev.fetched_at }}</td>
-          <td class="mono">{{ ev.normalized_at }}</td>
+          {% if not (tv.snapshot_evidence_meta and tv.snapshot_evidence_meta.uniform_provider) %}<td>{{ ev.provider }}</td>{% endif %}
+          {% if not (tv.snapshot_evidence_meta and tv.snapshot_evidence_meta.uniform_source_contract) %}<td>{{ ev.source_contract }}</td>{% endif %}
+          <td class="mono" title="{{ ev.fetched_at }}">{{ ev.fetched_at_display | default(ev.fetched_at) }}</td>
+          <td class="mono" title="{{ ev.normalized_at }}">{{ ev.normalized_at_display | default(ev.normalized_at) }}</td>
           <td class="mono" style="word-break:break-all;max-width:120px;">{{ ev.payload_hash }}</td>
         </tr>
         {% endfor %}
@@ -477,38 +487,40 @@
     {% endif %}
   </section>
 
-  {# Source lineage #}
+  {# Source lineage — collapsed by default to reduce visual noise #}
   <section class="panel panel-lineage" data-panel="source-lineage" style="margin-top:14px;">
-    <h2>Source Lineage</h2>
-    <p class="muted small" style="margin-bottom:10px;">Acquisition and normalisation chain for this asset's financial data.</p>
-    {% if tv.lineage %}
-    <table class="evidence-table" style="width:100%;">
-      <thead>
-        <tr>
-          <th>Lineage ID</th>
-          <th>Stage</th>
-          <th>Provider</th>
-          <th>Fetched</th>
-          <th>Payload hash</th>
+    <details>
+      <summary style="cursor:pointer;font-weight:600;font-size:14px;padding:4px 0;">Source Lineage</summary>
+      <p class="muted small" style="margin:8px 0 10px;">Acquisition and normalisation chain for this asset's financial data.</p>
+      {% if tv.lineage %}
+      <table class="evidence-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>Lineage ID</th>
+            <th>Stage</th>
+            <th>Provider</th>
+            <th>Fetched</th>
+            <th>Payload hash</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for lin in tv.lineage %}
+        <tr class="lineage-row">
+          <td class="mono">{{ lin.lineage_id }}</td>
+          <td>{{ lin.stage }}</td>
+          <td>{{ lin.provider }}</td>
+          <td class="mono" style="font-size:10.5px;">{{ lin.fetched_at }}</td>
+          <td class="mono" style="font-size:10.5px;word-break:break-all;">
+            {% if lin.payload_hash != '—' %}{{ lin.payload_hash[:16] }}…{% else %}—{% endif %}
+          </td>
         </tr>
-      </thead>
-      <tbody>
-      {% for lin in tv.lineage %}
-      <tr class="lineage-row">
-        <td class="mono">{{ lin.lineage_id }}</td>
-        <td>{{ lin.stage }}</td>
-        <td>{{ lin.provider }}</td>
-        <td class="mono" style="font-size:10.5px;">{{ lin.fetched_at }}</td>
-        <td class="mono" style="font-size:10.5px;word-break:break-all;">
-          {% if lin.payload_hash != '—' %}{{ lin.payload_hash[:16] }}…{% else %}—{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="muted small">No lineage records available.</p>
-    {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted small">No lineage records available.</p>
+      {% endif %}
+    </details>
   </section>
 
   {# Dividends #}

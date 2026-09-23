@@ -2,23 +2,32 @@
 
 Rules enforced by construction:
 
-- formats only; never derives financial metrics from raw statement JSON
-- MISSING != ZERO: value is None → "—"; value == 0.0 → "0.00"
+- formats only; no new financial derivation except revenue_growth (see below)
+- MISSING != ZERO: value is None → "—"; value == 0.0 → display zero
 - negative values remain negative (never clamped)
 - margin and return fields (gross_margin, ebit_margin, ebitda_margin,
-  net_margin, fcf_margin, return_on_equity) are derived as
-  numerator/denominator ratios; displayed as percentages (raw × 100)
-- revenue_growth unit semantics are not proven from a canonical source
-  contract; rendered as raw float (no × 100)
-- debt_to_equity is a dimensionless ratio; rendered as raw float (4 dp)
+  net_margin, fcf_margin, return_on_equity) are source fractions → × 100 → "%"
+- revenues, free_cash_flow, net_debt: raw base-currency absolute values
+  (e.g. 466_823_000_000 == USD 466.8B); formatted as compact $M/$B/$T
+- revenue_growth: source field is universally NULL; derived from comparable
+  quarterly snapshots via finco_radar.equity.derived.compute_ttm_revenue_growth
+- debt_to_equity: dimensionless ratio; raw float (4 dp)
 - company name follows deterministic precedence (see _company_name)
 - no market prices, quotes, spreads or GAP fields
+
+PROVEN UNIT CONTRACTS (equity_fundamentals.db, 2026-09-23):
+  revenues / free_cash_flow / net_debt:
+    raw base-currency absolute values (USD absolute, not thousands/millions)
+    AAPL TTM 2026-06-27 = 466,823,000,000 → $466.8B
+  margin/return fields: fractions (0.4865 == 48.65%)
+  revenue_growth (source field): NULL universally → derive from quarterly history
 """
 from __future__ import annotations
 
 from typing import Any, Optional
 
 from app.radar_ui.equity_enrichment import EnrichmentState, EquityEnrichmentResult  # noqa: F401
+from finco_radar.equity.derived import compute_ttm_revenue_growth
 from finco_radar.equity.models import (
     AvailabilityState,
     CompanyProfile,
@@ -30,14 +39,16 @@ from finco_radar.equity.models import (
     JsonField,
 )
 
-# Per-field unit authority:
-# - margin/return fields: source fraction → × 100 → "%"; canonical derivation
-#   is numerator/denominator so fraction storage is authoritative
-# - revenue_growth: unit not proven from source contract; raw float displayed
+# Per-field unit authority (proven from DB sample, 2026-09-23):
+# - revenues/free_cash_flow/net_debt: raw absolute base-currency; compact display
+# - margin/return fields: source fraction → × 100 → "%"
+# - revenue_growth: NULL in source → derived from quarterly history as fraction
 # - debt_to_equity: dimensionless ratio; raw float (4 dp)
 UNIT_SEMANTICS_NOTE = (
-    "margin/return fields displayed as % (numerator/denominator derivation); "
-    "revenue_growth displayed as raw float (unit not proven from source contract)"
+    "monetary fields (revenues, FCF, net_debt) are raw base-currency absolute values "
+    "displayed in compact units ($M/$B/$T); "
+    "margin/return fields displayed as % (source fraction × 100); "
+    "revenue_growth derived from quarterly history as YoY fraction"
 )
 
 
@@ -56,13 +67,75 @@ def _fmt_float(value: Optional[float], precision: int = 2) -> str:
     return fmt.format(value)
 
 
-def _fmt_currency(value: Optional[float]) -> str:
-    """Format a raw currency amount (revenues, FCF, net_debt).
+def _fmt_compact_currency(
+    value: Optional[float],
+    *,
+    board: bool = False,
+    currency_symbol: str = "$",
+) -> str:
+    """Format a raw base-currency absolute value in compact M/B/T units.
 
-    Source unit is preserved verbatim — no billions/millions conversion
-    because unit semantics are not proven from the source contract.
+    PROVEN CONTRACT: revenues/free_cash_flow/net_debt are raw base-currency
+    absolute values (e.g. 466_823_000_000 == USD 466.8B).  This formatter
+    applies compact notation only — raw values are never mutated.
+
+    None  → "—"   (missing; NOT zero)
+    0.0   → "$0"  (genuine zero)
+    board=True  → 1 decimal: $466.8B
+    board=False → 2 decimals: $466.82B
+
+    Thresholds (absolute value):
+      < 1_000       → "$X" (or negative)
+      < 1_000_000   → "$X.XK" / "$X.XXK"
+      < 1_000_000_000 → "$X.XM" / "$X.XXM"
+      < 1_000_000_000_000 → "$X.XB" / "$X.XXB"
+      else          → "$X.XT" / "$X.XXT"
+
+    Negative values: display "-$466.8B" form (minus before currency symbol).
     """
-    return _fmt_float(value, precision=2)
+    if value is None:
+        return "—"
+    decimals = 1 if board else 2
+    fmt_str = f"{{:.{decimals}f}}"
+    sign = "-" if value < 0 else ""
+    abs_val = abs(value)
+    if abs_val == 0:
+        return f"{currency_symbol}0"
+    if abs_val < 1_000:
+        return f"{sign}{currency_symbol}{fmt_str.format(abs_val)}"
+    if abs_val < 1_000_000:
+        return f"{sign}{currency_symbol}{fmt_str.format(abs_val / 1_000)}K"
+    if abs_val < 1_000_000_000:
+        return f"{sign}{currency_symbol}{fmt_str.format(abs_val / 1_000_000)}M"
+    if abs_val < 1_000_000_000_000:
+        return f"{sign}{currency_symbol}{fmt_str.format(abs_val / 1_000_000_000)}B"
+    return f"{sign}{currency_symbol}{fmt_str.format(abs_val / 1_000_000_000_000)}T"
+
+
+def _fmt_currency(value: Optional[float], *, board: bool = False) -> str:
+    """Format a raw base-currency absolute value using compact notation.
+
+    Delegates to _fmt_compact_currency with the proven unit contract:
+    revenues/free_cash_flow/net_debt are raw absolute base-currency values.
+    Raw values are never modified; only the display string is compacted.
+    """
+    return _fmt_compact_currency(value, board=board)
+
+
+def _fmt_revenue_growth(value: Optional[float]) -> str:
+    """Format a revenue growth fraction for display.
+
+    value is a fraction (0.145 = +14.5%) as returned by
+    compute_ttm_revenue_growth.  Displayed as +14.5% / -3.2% / 0.0%.
+
+    None → "—"  (not available / not derivable)
+    0.0  → "0.0%"  (genuine zero growth)
+    """
+    if value is None:
+        return "—"
+    pct = value * 100
+    sign = "+" if pct > 0 else ""
+    return f"{sign}{pct:.1f}%"
 
 
 def _fmt_percent(value: Optional[float]) -> str:
@@ -73,8 +146,7 @@ def _fmt_percent(value: Optional[float]) -> str:
     Multiplies by 100 and appends %; the raw value is preserved in the view
     dict's 'raw' key for evidence purposes.
 
-    Do NOT use for revenue_growth — its unit semantics are not proven from a
-    canonical source contract; use _fmt_float instead.
+    Do NOT use for revenue_growth — use _fmt_revenue_growth instead.
     """
     if value is None:
         return "—"
@@ -88,6 +160,43 @@ def _fmt_ratio_raw(value: Optional[float]) -> str:
     semantics are best expressed as a plain multiplier.
     """
     return _fmt_float(value, precision=4)
+
+
+def _fmt_human_timestamp(ts_str: Optional[str]) -> str:
+    """Format an ISO timestamp string as a human-readable display value.
+
+    Input:  "2026-09-21T12:46:12.350937+00:00"
+    Output: "21 Sep 2026 · 12:46 UTC"
+
+    The raw value must be preserved in a 'title' attribute or '_raw' field
+    for full precision access.  Returns "—" on None or parse failure.
+    Timezone is always displayed as UTC to avoid ambiguity.
+    """
+    if not ts_str or ts_str == "—":
+        return "—"
+    try:
+        # Strip fractional seconds and timezone; work in UTC
+        ts = ts_str.strip()
+        # Handle +00:00 / Z / no-tz variants
+        if ts.endswith("Z"):
+            ts = ts[:-1]
+        elif "+" in ts[10:]:
+            ts = ts[: ts.rindex("+", 10)]
+        elif ts[10:].count("-") > 0:
+            # negative UTC offset — remove it
+            tail = ts[10:]
+            idx = tail.rfind("-")
+            if idx >= 0:
+                ts = ts[: 10 + idx]
+        # Remove sub-second
+        if "." in ts:
+            ts = ts[: ts.index(".")]
+        from datetime import datetime
+        dt = datetime.fromisoformat(ts)
+        month_abbr = dt.strftime("%b")
+        return f"{dt.day} {month_abbr} {dt.year} · {dt.strftime('%H:%M')} UTC"
+    except (ValueError, AttributeError, TypeError):
+        return ts_str or "—"
 
 
 # ── company name precedence ────────────────────────────────────────────────────
@@ -187,6 +296,7 @@ def _reporting_section(
 
 def _ttm_metrics_section(
     latest_ttm: Optional[FinancialSnapshot],
+    quarterly_history: tuple = (),
 ) -> dict[str, Any]:
     if latest_ttm is None:
         return {"available": False, "reason": "TTM_UNAVAILABLE", "fields": {}}
@@ -212,6 +322,9 @@ def _ttm_metrics_section(
     if d is None:
         return {"available": False, "reason": "TTM_DERIVED_NOT_EXTRACTED", "fields": {}}
 
+    # Revenue growth is universally NULL in source; derive from comparable quarterly history.
+    derived_rev_growth = compute_ttm_revenue_growth(quarterly_history)
+
     return {
         "available": True,
         "reason": None,
@@ -226,10 +339,10 @@ def _ttm_metrics_section(
             },
             "revenue_growth": {
                 "label": "Revenue Growth",
-                "value": _fmt_float(d.revenue_growth),
-                "raw": d.revenue_growth,
-                "is_missing": d.revenue_growth is None,
-                "unit_rule": "source semantics not proven from canonical contract; rendered as raw float",
+                "value": _fmt_revenue_growth(derived_rev_growth),
+                "raw": derived_rev_growth,
+                "is_missing": derived_rev_growth is None,
+                "unit_rule": "YoY TTM fraction derived from 8 comparable quarterly snapshots",
             },
             "gross_margin": {
                 "label": "Gross Margin",
@@ -394,7 +507,7 @@ def build_equity_view(
             bundle.latest_quarterly,
             bundle.latest_annual,
         ),
-        "ttm_metrics": _ttm_metrics_section(bundle.latest_ttm),
+        "ttm_metrics": _ttm_metrics_section(bundle.latest_ttm, bundle.quarterly_history),
         "lineage": _lineage_section(bundle),
         "identity_note": None,
     }
@@ -450,11 +563,13 @@ def build_equity_board_row(
     ttm = bundle.latest_ttm
     d = ttm.derived if ttm is not None else None
 
+    derived_rev_growth = compute_ttm_revenue_growth(bundle.quarterly_history)
+
     base.update({
-        "revenues": _fmt_currency(d.revenues) if d else "—",
-        "revenue_growth": _fmt_float(d.revenue_growth) if d else "—",
+        "revenues": _fmt_currency(d.revenues, board=True) if d else "—",
+        "revenue_growth": _fmt_revenue_growth(derived_rev_growth),
         "gross_margin": _fmt_percent(d.gross_margin) if d else "—",
-        "fcf_margin": _fmt_percent(d.fcf_margin) if d else "—",
+        "ebit_margin": _fmt_percent(d.ebit_margin) if d else "—",
         "period_end": (ttm.period_end or "—") if ttm else "—",
     })
     return base
