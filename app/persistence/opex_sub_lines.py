@@ -375,6 +375,7 @@ def update_sub_line(
         """
         UPDATE opex_sub_lines
         SET label = ?, amount_keur = ?, inflation_pct = ?, comments = ?,
+            source = CASE WHEN source = 'reference_seed' THEN 'user_override' ELSE source END,
             updated_at = ?
         WHERE project_id = ? AND sub_line_id = ?
           AND is_active = 1 AND updated_at = ?

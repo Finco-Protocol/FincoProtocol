@@ -356,6 +356,29 @@ async def execute_projects_create_route(
             status_code=400,
         )
 
+    # The normal product path is a clone of the selected canonical reference,
+    # not a fresh snapshot that merely happens to share factory defaults.
+    if normalized_source in {"generic_solar_reference", "generic_wind_reference"}:
+        from app.services.reference_seed_service import create_reference_seeded_project
+
+        project_record = create_reference_seeded_project(
+            user_id=user.user_id,
+            template_source=normalized_source,
+            requested_name=clean_name,
+            capacity_mw=float(submitted["capacity_mw"]),
+        )
+        return ProjectsCreateRouteOutcome(
+            template_name="partials/new_project_result.html",
+            context={
+                "project_record": project_record,
+                "template_source_label": deps.template_source_label(normalized_source),
+            },
+            status_code=200,
+            headers={
+                "HX-Redirect": project_workbook_url(project_record.project_code, sheet="overview")
+            },
+        )
+
     # ── Project code slugification + uniqueness loop (Quirk 4) ────────
     base_slug = deps.slugify_project_code(clean_name)
     project_code = base_slug

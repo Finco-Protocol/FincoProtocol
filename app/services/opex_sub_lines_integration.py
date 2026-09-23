@@ -194,8 +194,21 @@ def apply_user_sub_lines_to_opex(
 
     sub_line_overrides = _extract_sub_line_overrides(scenario_overrides)
 
+    # Reference seed rows are a detailed representation of the corresponding
+    # canonical aggregate item, not an additive user cost.  Remove only the
+    # exact seeded base names before folding; ordinary custom rows stay additive.
+    seeded_names: set[str] = set()
+    for sub in user_sub_lines:
+        try:
+            seed_meta = __import__("json").loads(sub.comments or "{}")
+        except (TypeError, ValueError):
+            seed_meta = {}
+        if seed_meta.get("reference_seed") is True:
+            seeded_names.add(sub.label)
+    base_opex = tuple(item for item in opex if getattr(item, "name", None) not in seeded_names)
+
     result = fold_sub_lines_into_opex(
-        opex,
+        base_opex,
         user_sub_lines,
         scenario_overrides=sub_line_overrides,
     )

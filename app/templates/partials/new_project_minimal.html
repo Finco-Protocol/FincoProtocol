@@ -1,11 +1,10 @@
 {# ── UX-2E: Minimal New Project form ───────────────────────────────
-   Required: Project name, Technology, Country, Capacity (MW).
-   Optional: Currency. Everything else is entered later in Inputs.
+   Primary path: choose a canonical Solar/Wind reference, then name + MW.
 #}
 
 <div class="create-form-header">
   <h2 class="create-form-title">New project</h2>
-  <p class="create-form-desc">Just the basics for now — you'll fill in the rest on the Inputs sheet.</p>
+  <p class="create-form-desc">Start from a protected FINCO reference model. Review and refine every assumption in your independent working copy.</p>
 </div>
 
 {% if validation_errors %}
@@ -22,44 +21,37 @@
       hx-on:after-request=""
       class="create-form"
       id="new-project-minimal-form">
+  <fieldset class="create-form-reference-picker">
+    <legend>Reference model</legend>
+    <label class="create-form-reference-card">
+      <input type="radio" name="template_source" value="generic_solar_reference" {% if submitted.project_type == 'Solar' %}checked{% endif %} required />
+      <span><strong>Generic Solar Reference</strong><small>Solar assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
+    </label>
+    <label class="create-form-reference-card">
+      <input type="radio" name="template_source" value="generic_wind_reference" {% if submitted.project_type != 'Solar' %}checked{% endif %} required />
+      <span><strong>Generic Wind Reference</strong><small>Wind assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
+    </label>
+  </fieldset>
   <label class="create-form-label">
     Project name
-    <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="e.g. Dalmatia Solar 1" />
-  </label>
-  <label class="create-form-label">
-    Technology
-    <select class="create-form-select" name="project_type" id="npm-project_type" required>
-      {% for item in project_types %}
-      <option value="{{ item }}" {% if submitted.project_type == item %}selected{% endif %}>{{ item }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <label class="create-form-label">
-    Country or market
-    <input class="create-form-input" type="text" name="country_market" id="npm-country_market" value="{{ submitted.country_market or '' }}" required placeholder="e.g. Generic Market A" />
+    <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="Project name" />
   </label>
   <label class="create-form-label">
     Capacity (MW)
-    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0" value="{{ submitted.capacity_mw or '' }}" required placeholder="e.g. 50" />
+    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0.001" value="{{ submitted.capacity_mw or '' }}" required placeholder="Capacity in MW" />
   </label>
-  <label class="create-form-label">
-    Currency <span class="create-form-optional">(optional)</span>
-    <select class="create-form-select" name="currency" id="npm-currency">
-      <option value="EUR" {% if not submitted.currency or submitted.currency == 'EUR' %}selected{% endif %}>EUR</option>
-      <option value="USD" {% if submitted.currency == 'USD' %}selected{% endif %}>USD</option>
-      <option value="HRK" {% if submitted.currency == 'HRK' %}selected{% endif %}>HRK</option>
-    </select>
-  </label>
-  {# Hidden: template source is intentionally left blank here. The
-     server derives the correct generic template (Solar/Wind) from the
-     Technology field above via _normalize_template_source(), so a
-     hardcoded value here would silently mismatch whenever the user
-     picks a technology other than the hardcoded default and fail
-     validation ("X templates require project type X"). #}
-  <input type="hidden" name="template_source" id="npm-template_source" value="" />
+  <input type="hidden" name="project_type" value="Wind" data-project-type-from-reference />
+  <input type="hidden" name="country_market" value="Generic Market A" />
   <div id="new-project-result"></div>
   <div class="create-form-actions">
     <button class="btn btn-primary" type="submit">Create project</button>
     <a class="btn btn-ghost" href="/library">Cancel</a>
   </div>
 </form>
+<script>
+  document.querySelectorAll('#new-project-minimal-form input[name="template_source"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      document.querySelector('[data-project-type-from-reference]').value = radio.value.indexOf('solar') !== -1 ? 'Solar' : 'Wind';
+    });
+  });
+</script>
