@@ -72,9 +72,9 @@
 
 {# ── Helper: section card ──────────────────────────────────────────────── #}
 {%- macro section_card(title, rows, section_note=None) -%}
-<div class="inp-card">
-  <div class="inp-section-header">{{ title }}</div>
-  <div class="inp-rows">
+<div class="inp-card fo-input-section">
+  <div class="inp-section-header fo-input-section__header"><span class="fo-input-section__title">{{ title }}</span></div>
+  <div class="inp-rows fo-input-section__body">
     {{ rows }}
   </div>
   {% if section_note %}

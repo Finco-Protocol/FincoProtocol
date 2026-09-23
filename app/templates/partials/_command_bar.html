@@ -78,27 +78,38 @@
     </button>
   </div>
 
-  <span class="fo-command-bar__divider" aria-hidden="true"></span>
+  {# Authority state strip — Working / Last-Run only.
+     Rendered ONLY when a real project workspace context exists
+     (project_record is set). On Library and non-workspace pages
+     project_record is None so the strip does not appear.
 
-  {# Authority state strip — Working / Last-Run / Export.
-     Uses existing dirty and runtime_snapshot_id template variables only.
+     Semantics:
+       dirty=true  → Working changed/unsaved
+       dirty=false → Working saved (does NOT imply matches Last-Run)
+       runtime_snapshot_id present → Last-Run has a snapshot
+       runtime_snapshot_id absent  → Last-Run — no run yet
+
+     Export is a separate command action; it is NOT an authority-state
+     indicator here because the resolved export authority mode is not
+     available in this context.
+
+     Uses ONLY existing dirty and runtime_snapshot_id variables.
      No new finance metrics; purely a UX visibility layer. #}
+  {% if project_record is not none %}
   {% set _dirty = dirty|default(false) %}
   {% set _has_runtime = (runtime_snapshot_id|default('unavailable')) != 'unavailable' %}
-  <div class="fo-auth-strip" aria-label="Authority state">
+  <span class="fo-command-bar__divider" aria-hidden="true"></span>
+  <div class="fo-auth-strip" aria-label="Working state">
     <span class="fo-auth-item {% if _dirty %}fo-auth-item--working{% else %}fo-auth-item--working-clean{% endif %}"
-          title="Working inputs{% if _dirty %} — unsaved changes since last run{% else %} — matches last run{% endif %}">
+          title="Working inputs{% if _dirty %} — unsaved changes{% else %} — saved{% endif %}">
       Working
     </span>
     <span class="fo-auth-item {% if _has_runtime %}fo-auth-item--lastrun{% else %}fo-auth-item--lastrun-none{% endif %}"
           title="Last-run results{% if not _has_runtime %} — no run yet{% endif %}">
       Last-Run
     </span>
-    <span class="fo-auth-item fo-auth-item--export"
-          title="Export authority — institutional output">
-      Export
-    </span>
   </div>
+  {% endif %}
 
   <span class="fo-command-bar__spacer"></span>
 

@@ -1937,3 +1937,25 @@ class TestKeyboardFocusRing:
             f":focus-visible ring is suppressed. outline-style={outline_style!r}"
         )
         page.close()
+
+
+# ─── Correction B: 390px Model Workspace Overflow ─────────────────────────────
+
+class TestCBH:
+    """CBH: 390px viewport on the model workspace shell (library page) —
+    the base.html shell with the command bar and model-saas.css applied must
+    produce no destructive horizontal page-level overflow.
+
+    The library page uses base.html → _app_chrome.html → _command_bar.html,
+    exercising the same CSS layer (tokens → chrome → command bar → model-saas)
+    that the model workspace shell depends on.
+    """
+
+    def test_cbh1_390px_library_no_overflow(self, live_url, browser):
+        """CBH1: 390px viewport on /library — no horizontal page-level overflow."""
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        _auth_cookie(live_url, page)
+        page.goto(f"{live_url}/library")
+        page.wait_for_load_state("domcontentloaded")
+        _assert_no_overflow(page, "/library", 390)
+        page.close()

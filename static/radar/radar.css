@@ -302,10 +302,6 @@ html, body.radar {
   border-bottom-color: rgba(63,184,175,0.4);
 }
 
-.tab-btn:focus {
-  outline: none; /* removed; keyboard state uses :focus-visible below */
-}
-
 .tab-btn:focus-visible {
   outline: 2px solid var(--radar-teal);
   outline-offset: 2px;
