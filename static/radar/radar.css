@@ -254,6 +254,19 @@ html, body.radar {
   font-size: 14px;
   line-height: 1.4;
 }
+.terminal-header__price { margin-left:auto; display:flex; align-items:baseline; gap:8px; }
+.terminal-header__price strong { font-size:22px; font-variant-numeric:tabular-nums; }
+.terminal-header__price small { color:var(--radar-muted); font-size:11px; }
+.radar-product-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+.execution-coming-soon { border-color:color-mix(in srgb, var(--radar-gold) 35%, var(--radar-border)); }
+.execution-coming-soon h2, .execution-coming-soon h3 { margin-top:0; text-transform:none; letter-spacing:0; }
+
+@media (max-width: 600px) {
+  .radar-product-grid { grid-template-columns:1fr; }
+  .terminal-header__price { margin-left:0; width:100%; }
+  .board-table { min-width:760px; }
+  .page-container, .radar-main { padding-left:10px; padding-right:10px; }
+}
 
 .terminal-header__state-strip {
   display: flex;

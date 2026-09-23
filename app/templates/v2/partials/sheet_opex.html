@@ -210,6 +210,7 @@
   {% endif %}
 
   {# ── KPI strip ────────────────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>OPEX Summary</span><small>Year 1 cost, unit metrics and contingency</small></div>
   <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
     <div class="v2-opex-kpi-item">
       <span class="v2-opex-kpi-label">OPEX Y1</span>
@@ -285,6 +286,7 @@
   </div>
 
   {# ── Canonical B.01–B.13 groups (always 13, fixed order) ─────── #}
+  <div class="v2-sheet-section-heading"><span>Detailed OPEX</span><small>Reference-scaled operating cost lines and escalation</small></div>
   {% for sg in opex_sheet_groups %}
     <details class="v2-opex-group{% if sg.is_derived %} v2-opex-group-contingency{% endif %}{% if not sg.has_vm_data and not sg.is_custom_eligible %} v2-opex-group-no-data{% endif %}"
              open
@@ -379,7 +381,9 @@
 
           {# Add Row form — only for editable projects #}
           {%- if project_editable -%}
+          <details class="v2-add-row-disclosure"><summary>+ Add custom line</summary>
             {{ opex_add_row_form(sg.code, project_code, workbook_version, content_hash) }}
+          </details>
           {%- endif -%}
         {%- endif -%}
 
@@ -410,6 +414,7 @@
   {% endif %}
 
   {# ── Year projection table ─────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>Year Projection</span><small>Escalated annual operating costs</small></div>
   <details class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
     <summary class="v2-opex-projection-toggle">
       Year Projection (Y1–Y{{ opex_vm.display_years }})

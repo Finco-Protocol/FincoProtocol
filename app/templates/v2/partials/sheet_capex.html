@@ -179,6 +179,7 @@
   {% endif %}
 
   {# ── Summary totals bar ──────────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>CAPEX Summary</span><small>Reference-scaled totals and unit cost</small></div>
   <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Hard CAPEX</span>
@@ -214,6 +215,7 @@
   </div>
 
   {# ── Column header ───────────────────────────────────────────────── #}
+  <div class="v2-sheet-section-heading"><span>Detailed CAPEX</span><small>Expand a category to review or override seeded line items</small></div>
   <div class="v2-capex-col-header" aria-hidden="true">
     <span class="v2-capex-col-code">Code</span>
     <span class="v2-capex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
@@ -228,7 +230,6 @@
     {% set alias = capex_alias_groups.get(group.code) %}
     {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency and (not group.is_alias or group.alias_allows_custom_rows) %}
     <details class="v2-capex-group{% if group.is_readonly %} v2-capex-group-engine{% endif %}{% if alias %} v2-capex-group-alias{% endif %}"
-             open
              data-group-code="{{ group.code }}">
 
       <summary class="v2-capex-group-header">
@@ -315,7 +316,9 @@
         {# Add Row control — eligible groups only, no controls on protected references #}
         {% if is_eligible %}
           <div class="v2-capex-add-row-container">
-            {{ add_row_form(group.code, project_code, workbook_version, content_hash) }}
+            <details class="v2-add-row-disclosure"><summary>+ Add custom line</summary>
+              {{ add_row_form(group.code, project_code, workbook_version, content_hash) }}
+            </details>
           </div>
         {% endif %}
 

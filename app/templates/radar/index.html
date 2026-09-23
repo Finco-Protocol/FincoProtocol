@@ -59,6 +59,7 @@
           {% endfor %}
         </select>
         <button type="submit" class="refresh-btn" style="white-space:nowrap;">Load Asset</button>
+        {% if selected %}<a class="board-details-cta" href="/radar/equity/{{ selected.economic_asset_uid }}">Open Company Terminal →</a>{% endif %}
       </div>
       <p class="muted small" style="margin:6px 0 0;">
         {{ universe | length }} asset{{ 's' if universe | length != 1 else '' }} from Robinhood canonical registry.
@@ -71,46 +72,7 @@
     </section>
   </form>
 
-  {# ── Execution Simulator ─────────────────────────────────────────────────── #}
-  <form method="post" action="/radar/refresh"
-        hx-post="/radar/refresh"
-        hx-target="#radar-panels"
-        hx-swap="innerHTML"
-        class="radar-controls-form">
-    <input type="hidden" name="asset_uid"
-           value="{{ selected.economic_asset_uid if selected else '' }}">
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-
-      <section class="panel panel-controls" data-panel="controls">
-        <h2>Execution Simulator</h2>
-        <div class="radar-controls">
-          <div class="control-group" role="group" aria-label="Simulation direction">
-            {% for d in directions %}
-            <label class="chip">
-              <input type="radio" name="direction" value="{{ d }}"
-                     {% if d == 'BUY' %}checked{% endif %}>
-              {% if d == 'BUY' %}Simulate Buy{% elif d == 'SELL' %}Simulate Sell{% else %}{{ d }}{% endif %}
-            </label>
-            {% endfor %}
-          </div>
-          <div class="muted small" style="margin-top:8px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;">Trade Size</div>
-          <div class="control-group" role="group" aria-label="Trade size">
-            {% for s in sizes %}
-            <label class="chip">
-              <input type="radio" name="size" value="{{ s }}"
-                     {% if s == '100' %}checked{% endif %}> ${{ s | intcomma }}
-            </label>
-            {% endfor %}
-          </div>
-          <button type="submit"
-                  class="refresh-btn"
-                  {% if universe_error or not universe or not selected %}disabled{% endif %}>Check Execution</button>
-        </div>
-        <p class="muted small">One simulation = one immutable acquisition snapshot. Every panel references that exact snapshot.</p>
-        <p class="muted small" style="font-style:italic;">Simulation only — no order is submitted.</p>
-      </section>
-
+    <div class="radar-product-grid">
       <section class="panel panel-target" data-panel="configured-target">
         <h2>Selected asset</h2>
         {% if selected %}
@@ -131,9 +93,12 @@
         <p class="muted">No asset selected. Choose from the board above or use the selector.</p>
         {% endif %}
       </section>
-
+      <section class="panel execution-coming-soon" data-panel="execution-coming-soon">
+        <h2>Execution Simulation — Coming soon</h2>
+        <p class="muted">Execution routing is not enabled in this environment.</p>
+        <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">Read-only · no wallet · no signing · no transaction submission</p></details>
+      </section>
     </div>
-  </form>
 
   {# ── Corporate Fundamentals ───────────────────────────────────────────────── #}
   {# Outside #radar-panels so quote Refresh does not reload it.

@@ -11,23 +11,19 @@
     <table class="board-table">
       <thead>
         <tr>
-          <th>Symbol</th>
           <th style="text-align:left;">Company</th>
-          <th>Reference Price</th>
+          <th>Market reference</th>
           <th>Revenue TTM</th>
           <th>Rev Growth</th>
           <th>Gross Margin</th>
           <th>EBIT Margin</th>
-          <th style="text-align:left;">Period</th>
-          <th style="text-align:left;">State</th>
           <th style="text-align:right;"></th>
         </tr>
       </thead>
       <tbody>
         {% for row in featured_board %}
         <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
-          <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
-          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--radar-muted);" title="{{ row.company_name }}">{{ row.company_name }}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.company_name }}"><strong>{{ row.company_name }}</strong><small class="radar-market-meta">{{ row.symbol }}</small></td>
           <td class="num">
             <strong data-market-price title="Waiting for the official Robinhood reference">—</strong>
             <small class="radar-market-meta" data-market-state>UNAVAILABLE</small>
@@ -39,32 +35,21 @@
           <td class="num">{{ row.revenue_growth | default("—") }}</td>
           <td class="num">{{ row.gross_margin | default("—") }}</td>
           <td class="num">{{ row.ebit_margin | default("—") }}</td>
-          <td style="color:var(--radar-muted);white-space:nowrap;font-size:11px;">{{ row.period_end | default("—") }}</td>
           {% else %}
-          <td colspan="5" style="color:var(--radar-muted);">
-            <span class="state-chip state-chip--unavail" style="font-size:10px;">{{ row.state }}</span>
+          <td colspan="4" style="color:var(--radar-muted);">
+            Fundamentals not available
           </td>
           {% endif %}
-
-          <td class="state-cell">
-            {% if row.state == "AVAILABLE" %}
-            <span class="state-chip state-chip--available" title="AVAILABLE">●</span>
-            {% elif row.state == "PARTIAL" %}
-            <span class="state-chip state-chip--partial" title="PARTIAL">◐</span>
-            {% else %}
-            <span class="state-chip state-chip--unavail" title="{{ row.state }}">○</span>
-            {% endif %}
-          </td>
           <td style="text-align:right;white-space:nowrap;">
             <a href="{{ row.details_url }}"
                class="board-details-cta"
-               data-symbol="{{ row.symbol }}">Details →</a>
+               data-symbol="{{ row.symbol }}">Open Company Terminal →</a>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="muted small" style="margin-top:8px;">Robinhood multiplier-adjusted token reference midpoint. <span data-market-board-state>Waiting for market reference.</span></p>
+  <p class="muted small" style="margin-top:8px;"><span data-market-board-state>Waiting for official market references.</span></p>
 </section>
 {% endif %}

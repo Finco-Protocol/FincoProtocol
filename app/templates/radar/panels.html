@@ -106,7 +106,7 @@
 
 <!-- ── Execution ── -->
 <section class="panel panel-execution" data-panel="execution" data-snapshot-id="{{ view.snapshot_id }}">
-  <h2>Execution</h2>
+  <h2>{% if view.execution.available %}Execution{% else %}Execution Simulation — Coming soon{% endif %}</h2>
   {% if view.execution.available %}
   <dl class="kv">
     <dt>Direction / size</dt><dd>{{ view.execution.fields.side }} — ${{ view.execution.fields.notionalUsd | intcomma }}</dd>
@@ -122,7 +122,7 @@
     <dt>Quote time</dt><dd>{{ view.execution.fields.quotedAt }}</dd>
   </dl>
   {% else %}
-  <p class="state-unavailable">Execution quote unavailable in this environment.</p>
+  <p class="muted">Live execution routing is not enabled in this environment. Reference and evidence data remain available.</p>
   <details class="radar-technical-details"><summary>Technical details</summary>
   {% if view.execution.reason %}<p class="mono small">{{ view.execution.reason }}</p>{% endif %}
   {% if view.execution.fields.status %}
@@ -138,7 +138,7 @@
 </section>
 
 <!-- ── Settlement ── -->
-<section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}">
+{% if view.settlement.configured %}<section class="panel panel-settlement" data-panel="settlement" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>Settlement context</h2>
   {% if view.settlement.configured %}
   <dl class="kv">
@@ -148,15 +148,12 @@
     <dt>Chain / contract</dt><dd>{{ view.settlement.chainId }} — <span class="mono">{{ view.settlement.contractAddress }}</span></dd>
     <dt>USD per settlement asset</dt><dd class="mono">{{ view.settlement.usdPerAsset }}</dd>
   </dl>
-  {% else %}
-  <p class="state-unavailable">Execution settlement context is unavailable.</p>
-  <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">{{ view.settlement.reason }}</p></details>
-  <p class="muted small">Execution quotes require an explicitly configured settlement reference and taker routing context; nothing is assumed.</p>
   {% endif %}
 </section>
+{% endif %}
 
 <!-- ── GAP ── -->
-<section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
+{% if view.gap.available %}<section class="panel panel-gap" data-panel="gap" data-snapshot-id="{{ view.snapshot_id }}">
   <h2>GAP</h2>
   {% if view.gap.available %}
   <dl class="kv">
@@ -167,23 +164,9 @@
     <dt>Quoted at</dt><dd>{{ view.gap.fields.quotedAt }}</dd>
     <dt>Authority</dt><dd><span class="muted">{{ view.gap.phase }} — consumed, not recomputed</span></dd>
   </dl>
-  {% else %}
-  <p class="state-unavailable">Comparison available after reference and execution prices are both present.</p>
-  <details class="radar-technical-details"><summary>Technical details</summary><p class="mono small">{{ view.gap.reason }} · {{ view.gap.phase }}</p></details>
   {% endif %}
 </section>
-
-<!-- ── Freshness ── -->
-<section class="panel panel-freshness" data-panel="freshness" data-snapshot-id="{{ view.snapshot_id }}">
-  <h2>Freshness / availability</h2>
-  <dl class="kv">
-    <dt>Reference observed</dt><dd>{{ view.freshness.referenceObservedAt or 'UNAVAILABLE' }}</dd>
-    <dt>Quote time</dt><dd>{{ view.freshness.quoteTime or 'UNAVAILABLE' }}</dd>
-    <dt>GAP quoted</dt><dd>{{ view.freshness.gapQuotedAt or 'UNAVAILABLE' }}</dd>
-    <dt>Acquisition completed</dt><dd>{{ view.freshness.completedAt }}</dd>
-  </dl>
-  <p class="muted small">Independent source times and availability states — never collapsed into a single badge. Composition time does not refresh source evidence.</p>
-</section>
+{% endif %}
 
 <!-- ── Evidence Inspector ── -->
 <section class="panel panel-inspector-host" data-panel="inspector" data-snapshot-id="{{ view.snapshot_id }}">
