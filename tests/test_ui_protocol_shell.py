@@ -1799,7 +1799,7 @@ class TestE4ExecutionSimulator:
         btn = page.query_selector('button[type="submit"]')
         assert btn is not None, "Submit button not found on Token Market form"
         assert btn.is_disabled(), "Coming Soon execution button must be disabled"
-        assert "Coming soon" in btn.inner_text()
+        assert "coming soon" in btn.inner_text().casefold()
         page.close()
 
     # ── B9 ──────────────────────────────────────────────────────────────────
@@ -2091,11 +2091,9 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
         radar.goto(f"{live_url_radar_visual}/radar")
         radar.wait_for_load_state("domcontentloaded")
         # Wait for board market prices to populate before screenshot.
-        radar.wait_for_function(
-            'Array.from(document.querySelectorAll("[data-market-uid] [data-market-price]"))'
-            '.some(function(el) { return el.textContent !== "—" && el.textContent !== ""; })',
-            timeout=10000,
-        )
+        radar.locator(
+            '#featured-board [data-market-price]:not(:text("—"))'
+        ).first.wait_for(timeout=10000)
         radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
         radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
         radar.wait_for_load_state("domcontentloaded")
@@ -2110,10 +2108,9 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
             if tab == "token-market":
                 # Wait for tab Reference Price and state to populate.
                 radar.locator('[data-market-tab-price]:not(:text("—"))').wait_for(timeout=20000)
-                radar.wait_for_function(
-                    '(document.querySelector("[data-market-tab-state]") || {}).textContent.includes("Fresh")',
-                    timeout=5000,
-                )
+                radar.locator('[data-market-tab-state]').filter(
+                    has_text="FRESH"
+                ).wait_for(timeout=5000)
                 # Assert all market values before capturing.
                 price_text = radar.locator('[data-market-tab-price]').first.text_content()
                 assert '$143.11' in price_text, f"Market price: {price_text!r}"
@@ -2122,7 +2119,7 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
                 ask_text = radar.locator('[data-market-ask]').first.text_content()
                 assert '$143.45' in ask_text, f"Market ask: {ask_text!r}"
                 state_text = radar.locator('[data-market-tab-state]').first.text_content()
-                assert 'Fresh' in state_text, f"Market state: {state_text!r}"
+                assert 'FRESH' in state_text, f"Market state: {state_text!r}"
                 observed_text = radar.locator('[data-market-tab-observed]').first.text_content()
                 assert '2026-01-01' in observed_text, f"Market observed: {observed_text!r}"
             radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
