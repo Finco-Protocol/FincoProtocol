@@ -45,6 +45,7 @@
       {% if universe_error %}
       <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable — {{ universe_error }}</p>
       <p class="muted small">Acquisition is disabled until the registry is reachable.</p>
+      <select name="asset_uid" class="asset-selector-select" disabled aria-label="Select asset from Robinhood universe" style="display:none;"></select>
       {% elif universe %}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select name="asset_uid" class="asset-selector-select"
@@ -64,6 +65,7 @@
       </p>
       {% else %}
       <p class="state-unavailable" style="margin:0;">Robinhood asset universe unavailable</p>
+      <select name="asset_uid" class="asset-selector-select" disabled aria-label="Select asset from Robinhood universe" style="display:none;"></select>
       {% endif %}
     </section>
   </form>

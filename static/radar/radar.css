@@ -297,11 +297,19 @@ html, body.radar {
   transition: color 100ms ease, border-color 100ms ease;
 }
 
-.tab-btn:hover,
-.tab-btn:focus {
+.tab-btn:hover {
   color: var(--radar-text);
   border-bottom-color: rgba(63,184,175,0.4);
-  outline: none;
+}
+
+.tab-btn:focus {
+  outline: none; /* removed; keyboard state uses :focus-visible below */
+}
+
+.tab-btn:focus-visible {
+  outline: 2px solid var(--radar-teal);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .tab-btn.tab-active,
@@ -373,6 +381,17 @@ html, body.radar {
   font-weight: 500;
 }
 .terminal-section-heading:first-child { margin-top: 0; }
+
+/* Feature-level headings (e.g. "Execution Simulator") — larger, preserve case */
+.terminal-section-heading--feature {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--radar-text);
+  font-weight: 600;
+  border-bottom: none;
+  margin-bottom: 12px;
+}
 
 /* ── Statement selector controls ─────────────────────────────────────────── */
 .stmt-ctrl-row {
