@@ -11,6 +11,7 @@ Fail-closed contract:
   via ticker lookup.
 - Registry unavailable → RegistryUnavailableError (HTTP 503).
 - Equity DB unavailable → SOURCE_UNAVAILABLE state in envelope (not a 5xx).
+- EquityDBModeError → FUNDAMENTALS_CONFIG_INVALID state in envelope (not a 5xx).
 
 Test seam:
   set_registry_factory(factory) / clear_registry_factory()
@@ -21,13 +22,22 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import httpx
+
 from finco_radar.assets.contracts import (
     CanonicalAssetRecord,
+    RegistryConflictError,
     RegistrySourceError,
     normalize_asset_uid,
 )
-from finco_radar.equity.models import AvailabilityState, EquityFundamentalsBundle
+from finco_radar.equity.models import (
+    AvailabilityState,
+    EquityCompanyHistoryBundle,
+    EquityFundamentalsBundle,
+    FundamentalsFreshness,
+)
 from finco_radar.equity.service import (
+    EquityDBModeError,
     get_equity_company_history,
     get_equity_fundamentals,
 )
@@ -37,6 +47,8 @@ from app.api.v1.errors import (
     AssetUidInvalidError,
     RegistryUnavailableError,
 )
+
+_TARGET_CHAIN_ID = 4663
 
 # ── test seam ─────────────────────────────────────────────────────────────────
 
@@ -65,14 +77,25 @@ def _get_registry():
 # ── registry helpers ──────────────────────────────────────────────────────────
 
 def _fetch_snapshot():
-    """Fetch the current registry snapshot. Raises RegistryUnavailableError on failure."""
+    """Fetch the current registry snapshot.
+
+    Raises RegistryUnavailableError on expected network/parse failures.
+    Programming errors (AttributeError, TypeError, etc.) propagate as-is.
+    Registry adapter close() is always called when the adapter was created.
+    """
+    registry = None
     try:
         registry = _get_registry()
         return registry.fetch_snapshot()
-    except Exception as exc:
+    except (httpx.HTTPError, RegistrySourceError, RegistryConflictError) as exc:
         raise RegistryUnavailableError(
-            f"Asset registry is unavailable: {type(exc).__name__}: {exc}"
+            "Asset registry is temporarily unavailable."
         ) from exc
+    finally:
+        if registry is not None:
+            close = getattr(registry, "close", None)
+            if callable(close):
+                close()
 
 
 def validate_uid(raw_uid: str) -> str:
@@ -103,10 +126,86 @@ def list_assets() -> List["CanonicalAssetRecord"]:
     return list(snapshot.assets)
 
 
+# ── equity identity binding ───────────────────────────────────────────────────
+
+def bind_equity_identity(record: "CanonicalAssetRecord", bundle: Any) -> str:
+    """Validate that the equity bundle's asset identity matches the registry record.
+
+    Checks:
+      (A) bundle.asset.robinhood_token_symbol matches record.token_symbol (case-insensitive)
+      (B) When E1 token_contract_address present AND chain 4663 deployment present:
+          the addresses must match (case-insensitive).
+          Missing E1 contract address is NOT a mismatch.
+
+    Returns one of: BOUND, IDENTITY_MISMATCH, NOT_FOUND, SOURCE_UNAVAILABLE,
+    FUNDAMENTALS_CONFIG_INVALID, NOT_AVAILABLE.
+    """
+    av: AvailabilityState = bundle.availability
+    if av not in (
+        AvailabilityState.AVAILABLE,
+        AvailabilityState.PARTIAL,
+        AvailabilityState.NOT_AVAILABLE,
+    ):
+        return av.value
+    asset = bundle.asset
+    if asset is None:
+        return av.value
+    if asset.robinhood_token_symbol.upper() != record.token_symbol.upper():
+        return "IDENTITY_MISMATCH"
+    if asset.token_contract_address:
+        dep = record.deployment_for_chain(_TARGET_CHAIN_ID)
+        if dep is not None and asset.token_contract_address.lower() != dep.contract_address.lower():
+            return "IDENTITY_MISMATCH"
+    return "BOUND"
+
+
 # ── equity authority helpers ──────────────────────────────────────────────────
 
-def _availability_str(bundle: "EquityFundamentalsBundle") -> str:
-    return bundle.availability.value
+def _empty_freshness() -> FundamentalsFreshness:
+    return FundamentalsFreshness(
+        ttm_period_end=None,
+        ttm_filing_date=None,
+        ttm_fetched_at=None,
+        ttm_normalized_at=None,
+        quarterly_period_end=None,
+        quarterly_fetched_at=None,
+        annual_period_end=None,
+        annual_fetched_at=None,
+        profile_fetched_at=None,
+        asset_last_seen_at=None,
+    )
+
+
+def _make_config_invalid_bundle(token_symbol: str) -> "EquityFundamentalsBundle":
+    return EquityFundamentalsBundle(
+        robinhood_token_symbol=token_symbol,
+        asset=None,
+        company_profile=None,
+        latest_ttm=None,
+        latest_quarterly=None,
+        latest_annual=None,
+        recent_dividends=(),
+        recent_splits=(),
+        source_lineage_summary=(),
+        availability=AvailabilityState.FUNDAMENTALS_CONFIG_INVALID,
+        freshness=_empty_freshness(),
+    )
+
+
+def _make_config_invalid_history_bundle(token_symbol: str) -> "EquityCompanyHistoryBundle":
+    return EquityCompanyHistoryBundle(
+        robinhood_token_symbol=token_symbol,
+        asset=None,
+        company_profile=None,
+        annual_history=(),
+        quarterly_history=(),
+        ttm_history=(),
+        recent_dividends=(),
+        recent_splits=(),
+        source_lineage=(),
+        availability=AvailabilityState.FUNDAMENTALS_CONFIG_INVALID,
+        freshness=_empty_freshness(),
+    )
 
 
 def get_fundamentals_bundle(token_symbol: str) -> "EquityFundamentalsBundle":
@@ -114,13 +213,20 @@ def get_fundamentals_bundle(token_symbol: str) -> "EquityFundamentalsBundle":
 
     Returns a bundle whose availability field describes the data state.
     Never raises for normal unavailability (DB missing, symbol not found).
+    Returns FUNDAMENTALS_CONFIG_INVALID bundle if DB mode env var is invalid.
     """
-    return get_equity_fundamentals(token_symbol)
+    try:
+        return get_equity_fundamentals(token_symbol)
+    except EquityDBModeError:
+        return _make_config_invalid_bundle(token_symbol)
 
 
-def get_history_bundle(token_symbol: str):
+def get_history_bundle(token_symbol: str) -> "EquityCompanyHistoryBundle":
     """Fetch the full company history bundle for a token symbol from the equity DB."""
-    return get_equity_company_history(token_symbol)
+    try:
+        return get_equity_company_history(token_symbol)
+    except EquityDBModeError:
+        return _make_config_invalid_history_bundle(token_symbol)
 
 
 # ── response builders ─────────────────────────────────────────────────────────
@@ -144,15 +250,22 @@ def build_asset_list_data(records: List["CanonicalAssetRecord"]) -> Dict[str, An
 
 def build_identity_data(
     record: "CanonicalAssetRecord",
-    equity_asset,
+    bundle: "EquityFundamentalsBundle",
+    binding: str,
 ) -> Dict[str, Any]:
+    """Build the identity response data dict.
+
+    When binding == 'BOUND': equity_identity is populated.
+    Otherwise: equity_identity is null and DB-derived content suppressed.
+    """
     from app.api.v1.schemas import deployment_out, equity_identity_out
     return {
         "token_symbol": record.token_symbol,
         "token_name": record.token_name,
         "status": record.status.value,
         "deployments": [deployment_out(k) for k in record.deployments],
-        "equity_identity": equity_identity_out(equity_asset),
+        "fundamentals_state": binding,
+        "equity_identity": equity_identity_out(bundle.asset) if binding == "BOUND" else None,
     }
 
 
@@ -167,7 +280,7 @@ def build_fundamentals_data(bundle: "EquityFundamentalsBundle") -> Dict[str, Any
     }
 
 
-def build_financials_data(history_bundle) -> Dict[str, Any]:
+def build_financials_data(history_bundle: "EquityCompanyHistoryBundle") -> Dict[str, Any]:
     from app.api.v1.schemas import snapshot_out
     return {
         "availability": history_bundle.availability.value,

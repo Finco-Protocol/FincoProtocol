@@ -24,6 +24,15 @@ API_VERSION = "v1"
 
 # ── shared envelope ───────────────────────────────────────────────────────────
 
+class ApiErrorEnvelope(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    error: str
+    detail: str
+    economic_asset_uid: Optional[str] = None
+
+
 class RadarEnvelope(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

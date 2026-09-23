@@ -13,7 +13,7 @@ Test inventory:
   A06 — list assets returns all registry assets
   A07 — list assets registry unavailable → 503
   A08 — get asset identity: registry+equity data present → 200 AVAILABLE
-  A09 — get asset identity: equity DB unconfigured → 200 SOURCE_UNAVAILABLE
+  A09 — get asset identity: equity DB unconfigured → 200 AVAILABLE + fundamentals_state
   A10 — fundamentals: TTM+quarterly+annual present → AVAILABLE envelope
   A11 — fundamentals: equity DB unconfigured → SOURCE_UNAVAILABLE state
   A12 — fundamentals: evidence (source_lineage) included in envelope
@@ -29,6 +29,30 @@ Test inventory:
   A22 — normalize_asset_uid called: mixed-case uid is accepted + normalised
   A23 — list assets: empty registry returns empty list
   A24 — response Content-Type is application/json
+  A25 — identity binding: BOUND when symbol matches + no E1 contract address
+  A26 — identity binding: BOUND when symbol + contract both match
+  A27 — identity binding: IDENTITY_MISMATCH when contract address mismatches
+  A28 — identity binding: missing E1 contract is NOT a mismatch
+  A29 — /assets/{uid} state always AVAILABLE when registry resolves (F5)
+  A30 — /assets/{uid} fundamentals_state field present always (F5)
+  A31 — /assets/{uid} equity_identity null when IDENTITY_MISMATCH
+  A32 — sub-endpoints return IDENTITY_MISMATCH state when mismatched
+  A33 — EquityDBModeError yields FUNDAMENTALS_CONFIG_INVALID state
+  A34 — 503 detail is fixed sanitized string (no internal details)
+  A35 — close() called on registry adapter after successful fetch
+  A36 — close() called on registry adapter after fetch failure
+  A37 — narrow exception: programming error propagates as-is (not 503)
+  A38 — /assets/{uid} fundamentals_state=FUNDAMENTALS_CONFIG_INVALID when mode invalid
+  A39 — /assets/{uid} state=AVAILABLE when DB mode invalid (config error not a 503)
+  A40 — all route handlers are synchronous (not coroutines)
+  A41 — OpenAPI schema carries ApiErrorEnvelope for 400/404/503
+  A42 — AVAILABLE when identity bound + DB has data
+  A43 — NOT_FOUND propagates as state when equity asset absent
+  A44 — corporate-actions IDENTITY_MISMATCH when contract mismatch
+  A45 — evidence IDENTITY_MISMATCH when contract mismatch
+  A46 — financials IDENTITY_MISMATCH when contract mismatch
+  A47 — 503 REGISTRY_UNAVAILABLE on list when registry broken
+  A48 — raw_payload_json never appears in any response field
 """
 from __future__ import annotations
 
@@ -279,8 +303,10 @@ def test_a04_unknown_uid_returns_404(client):
 # ── A05 — registry unavailable ────────────────────────────────────────────────
 
 def test_a05_registry_unavailable_returns_503(monkeypatch):
+    import httpx as _httpx
+
     def _broken():
-        raise RuntimeError("network timeout")
+        raise _httpx.ConnectError("network timeout")
 
     _radar_svc.set_registry_factory(_broken)
     from main_api import app
@@ -317,8 +343,10 @@ def test_a06_list_includes_deployments(client):
 # ── A07 — list registry unavailable ──────────────────────────────────────────
 
 def test_a07_list_registry_unavailable_returns_503(monkeypatch):
+    import httpx as _httpx
+
     def _broken():
-        raise ConnectionError("registry down")
+        raise _httpx.ConnectError("registry down")
 
     _radar_svc.set_registry_factory(_broken)
     from main_api import app
@@ -345,11 +373,15 @@ def test_a08_get_asset_identity_available(client):
 # ── A09 — get asset identity no DB ───────────────────────────────────────────
 
 def test_a09_get_asset_identity_no_db(client_no_db):
+    """F5: state always AVAILABLE when registry resolves; DB state goes in fundamentals_state."""
     resp = client_no_db.get(f"/api/v1/radar/assets/{_UID_AAPL}")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["state"] == "SOURCE_UNAVAILABLE"
+    assert body["state"] == "AVAILABLE"
     assert body["economic_asset_uid"] == _UID_AAPL
+    data = body["data"]
+    assert data["fundamentals_state"] == "SOURCE_UNAVAILABLE"
+    assert data["equity_identity"] is None
 
 
 # ── A10 — fundamentals available ─────────────────────────────────────────────
@@ -584,3 +616,427 @@ def test_list_multiple_assets(monkeypatch, tmp_path, aapl_record, nvda_record):
     uids = {a["economic_asset_uid"] for a in assets}
     assert _UID_AAPL in uids
     assert _UID_NVDA in uids
+
+
+# ── identity-binding DB helpers ───────────────────────────────────────────────
+
+_ADDR_OTHER = "0x" + "99" * 20  # an address different from _ADDR_AAPL
+
+
+def _make_db_no_contract(tmp_path: Path) -> Path:
+    """DB with AAPL but token_contract_address = NULL (no E1 contract)."""
+    db = tmp_path / "equity_no_contract.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.executescript(_DDL)
+        conn.execute(
+            "INSERT INTO equity_assets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (_TICKER_AAPL, "AAPL", "Apple Inc.", None, None,
+             "NASDAQ", "0320193", None, "USD", "CS", 1,
+             "2024-01-01T00:00:00", "2024-12-01T00:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return db
+
+
+def _make_db_wrong_contract(tmp_path: Path) -> Path:
+    """DB with AAPL but token_contract_address points to a DIFFERENT address."""
+    db = tmp_path / "equity_wrong_contract.db"
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.executescript(_DDL)
+        conn.execute(
+            "INSERT INTO equity_assets VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (_TICKER_AAPL, "AAPL", "Apple Inc.", _ADDR_OTHER, "ethereum",
+             "NASDAQ", "0320193", None, "USD", "CS", 1,
+             "2024-01-01T00:00:00", "2024-12-01T00:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return db
+
+
+# ── A25 — BOUND when symbol matches + no E1 contract address ─────────────────
+
+def test_a25_bound_when_no_e1_contract(tmp_path, monkeypatch, aapl_record):
+    """Missing E1 contract address is NOT a mismatch — binding is BOUND."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_no_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["fundamentals_state"] == "BOUND"
+    assert body["data"]["equity_identity"] is not None
+
+
+# ── A26 — BOUND when symbol + contract match ─────────────────────────────────
+
+def test_a26_bound_when_symbol_and_contract_match(client):
+    """Default client: AAPL in DB with matching contract → BOUND."""
+    resp = client.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    data = body["data"]
+    assert data["fundamentals_state"] == "BOUND"
+    assert data["equity_identity"] is not None
+    assert data["equity_identity"]["robinhood_token_symbol"] == _TICKER_AAPL
+
+
+# ── A27 — IDENTITY_MISMATCH when contract address mismatches ─────────────────
+
+def test_a27_identity_mismatch_contract_address(tmp_path, monkeypatch, aapl_record):
+    """E1 has a different contract address for chain 4663 → IDENTITY_MISMATCH."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    data = body["data"]
+    assert data["fundamentals_state"] == "IDENTITY_MISMATCH"
+    assert data["equity_identity"] is None
+
+
+# ── A28 — missing E1 contract is NOT a mismatch (alias of A25) ───────────────
+
+def test_a28_missing_e1_contract_not_a_mismatch(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_no_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["fundamentals_state"] == "BOUND"
+
+
+# ── A29 — /assets/{uid} state always AVAILABLE when registry resolves ────────
+
+def test_a29_identity_state_always_available_when_registry_resolves(client_no_db):
+    """F5 contract: state=AVAILABLE regardless of DB state."""
+    resp = client_no_db.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "AVAILABLE"
+
+
+# ── A30 — /assets/{uid} fundamentals_state field always present ───────────────
+
+def test_a30_fundamentals_state_always_in_identity_data(client, client_no_db):
+    for c in (client, client_no_db):
+        resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+        assert resp.status_code == 200
+        assert "fundamentals_state" in resp.json()["data"]
+
+
+# ── A31 — equity_identity null when IDENTITY_MISMATCH ────────────────────────
+
+def test_a31_equity_identity_null_on_mismatch(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    data = resp.json()["data"]
+    assert data["equity_identity"] is None
+    assert data["fundamentals_state"] == "IDENTITY_MISMATCH"
+
+
+# ── A32 — sub-endpoints return IDENTITY_MISMATCH state when mismatched ────────
+
+@pytest.mark.parametrize("path", ["fundamentals", "corporate-actions", "evidence"])
+def test_a32_sub_endpoints_identity_mismatch(tmp_path, monkeypatch, aapl_record, path):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/{path}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "IDENTITY_MISMATCH"
+    assert body["data"]["availability"] == "IDENTITY_MISMATCH"
+
+
+# ── A33 — EquityDBModeError → FUNDAMENTALS_CONFIG_INVALID ────────────────────
+
+def test_a33_equity_db_mode_error_config_invalid(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_path(tmp_path, with_aapl=True)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "invalid_mode_xyz")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/fundamentals")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "FUNDAMENTALS_CONFIG_INVALID"
+
+
+# ── A34 — 503 detail is fixed sanitized string ───────────────────────────────
+
+def test_a34_503_detail_is_sanitized():
+    def _broken():
+        import httpx
+        raise httpx.ConnectError("tcp://internal.registry.finco.one:8443/api/secret")
+
+    _radar_svc.set_registry_factory(_broken)
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 503
+    body = resp.json()
+    detail = body["detail"]
+    assert "internal" not in detail.lower()
+    assert "finco.one" not in detail.lower()
+    assert "secret" not in detail.lower()
+    assert "tcp://" not in detail
+    assert detail == "Asset registry is temporarily unavailable."
+
+
+# ── A35 — close() called on registry adapter after successful fetch ───────────
+
+def test_a35_close_called_after_successful_fetch(tmp_path, monkeypatch, aapl_record):
+    close_calls: list = []
+    snapshot = _make_snapshot([aapl_record])
+
+    def factory():
+        m = MagicMock()
+        m.fetch_snapshot.return_value = snapshot
+        m.close.side_effect = lambda: close_calls.append("close")
+        return m
+
+    _radar_svc.set_registry_factory(factory)
+    monkeypatch.delenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", raising=False)
+
+    from main_api import app
+    c = TestClient(app)
+    c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert close_calls == ["close"], "close() must be called exactly once after successful fetch"
+
+
+# ── A36 — close() called on registry adapter after fetch failure ──────────────
+
+def test_a36_close_called_after_fetch_failure():
+    import httpx
+    close_calls: list = []
+
+    def factory():
+        m = MagicMock()
+        m.fetch_snapshot.side_effect = httpx.ConnectError("network failure")
+        m.close.side_effect = lambda: close_calls.append("close")
+        return m
+
+    _radar_svc.set_registry_factory(factory)
+    from main_api import app
+    c = TestClient(app)
+    c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert close_calls == ["close"], "close() must be called exactly once even when fetch fails"
+
+
+# ── A37 — narrow exception: programming error propagates (not 503) ────────────
+
+def test_a37_programming_error_is_not_swallowed():
+    """AttributeError or other programming bugs must NOT be silenced as 503."""
+    def factory():
+        m = MagicMock()
+        m.fetch_snapshot.side_effect = AttributeError("programming error in adapter")
+        return m
+
+    _radar_svc.set_registry_factory(factory)
+    from main_api import app
+    c = TestClient(app, raise_server_exceptions=True)
+    with pytest.raises(AttributeError, match="programming error"):
+        c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+
+
+# ── A38 — /assets/{uid} fundamentals_state=FUNDAMENTALS_CONFIG_INVALID ────────
+
+def test_a38_identity_fundamentals_state_config_invalid(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_path(tmp_path, with_aapl=True)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "bad_mode")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["fundamentals_state"] == "FUNDAMENTALS_CONFIG_INVALID"
+    assert body["data"]["equity_identity"] is None
+
+
+# ── A39 — /assets/{uid} state=AVAILABLE even when DB mode is bad ──────────────
+
+def test_a39_identity_state_available_even_when_db_mode_bad(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_path(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "bad_mode")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "AVAILABLE"
+
+
+# ── A40 — all route handlers are synchronous (not coroutines) ─────────────────
+
+def test_a40_route_handlers_are_not_coroutines():
+    import asyncio
+    import inspect
+    from app.api.v1 import router as router_module
+    for route in router_module.router.routes:
+        endpoint = route.endpoint
+        assert not asyncio.iscoroutinefunction(endpoint), (
+            f"Handler {endpoint.__name__!r} must be a plain def, not async def"
+        )
+
+
+# ── A41 — OpenAPI schema carries ApiErrorEnvelope for 400/404/503 ─────────────
+
+def test_a41_openapi_error_responses(client):
+    resp = client.get("/openapi.json")
+    assert resp.status_code == 200
+    schema = resp.json()
+    paths = schema["paths"]
+    asset_path = "/api/v1/radar/assets/{economic_asset_uid}"
+    responses = paths[asset_path]["get"]["responses"]
+    assert "400" in responses
+    assert "404" in responses
+    assert "503" in responses
+
+
+# ── A42 — AVAILABLE when identity bound + DB has data ────────────────────────
+
+def test_a42_identity_available_when_bound(client):
+    resp = client.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["fundamentals_state"] == "BOUND"
+    assert body["data"]["equity_identity"] is not None
+
+
+# ── A43 — NOT_FOUND propagates as state when equity asset absent ──────────────
+
+def test_a43_not_found_state_when_equity_asset_absent(tmp_path, monkeypatch, aapl_record):
+    """Registry has AAPL; equity DB has no record for AAPL → fundamentals_state=NOT_FOUND."""
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_path(tmp_path, with_aapl=False)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["fundamentals_state"] == "NOT_FOUND"
+    assert body["data"]["equity_identity"] is None
+
+
+# ── A44 — corporate-actions IDENTITY_MISMATCH ────────────────────────────────
+
+def test_a44_corporate_actions_identity_mismatch(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/corporate-actions")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "IDENTITY_MISMATCH"
+
+
+# ── A45 — evidence IDENTITY_MISMATCH ─────────────────────────────────────────
+
+def test_a45_evidence_identity_mismatch(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/evidence")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "IDENTITY_MISMATCH"
+
+
+# ── A46 — financials IDENTITY_MISMATCH ───────────────────────────────────────
+
+def test_a46_financials_identity_mismatch(tmp_path, monkeypatch, aapl_record):
+    _radar_svc.set_registry_factory(_fake_registry_factory([aapl_record]))
+    db = _make_db_wrong_contract(tmp_path)
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", str(db))
+    monkeypatch.setenv("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "snapshot")
+
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get(f"/api/v1/radar/assets/{_UID_AAPL}/financials")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "IDENTITY_MISMATCH"
+
+
+# ── A47 — 503 REGISTRY_UNAVAILABLE on list when registry broken ───────────────
+
+def test_a47_list_registry_unavailable_503_detail():
+    import httpx
+
+    def _broken():
+        raise httpx.ConnectTimeout("timeout")
+
+    _radar_svc.set_registry_factory(_broken)
+    from main_api import app
+    c = TestClient(app)
+    resp = c.get("/api/v1/radar/assets")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["error"] == "REGISTRY_UNAVAILABLE"
+    assert body["detail"] == "Asset registry is temporarily unavailable."
+
+
+# ── A48 — raw_payload_json never appears in any response field ────────────────
+
+def test_a48_raw_payload_json_never_exposed(client):
+    """raw_payload_json is an internal column and must never appear in any API response."""
+    for path in [
+        f"/api/v1/radar/assets/{_UID_AAPL}",
+        f"/api/v1/radar/assets/{_UID_AAPL}/fundamentals",
+        f"/api/v1/radar/assets/{_UID_AAPL}/evidence",
+        f"/api/v1/radar/assets/{_UID_AAPL}/corporate-actions",
+    ]:
+        resp = client.get(path)
+        assert resp.status_code == 200
+        body_text = resp.text
+        assert "raw_payload_json" not in body_text, (
+            f"raw_payload_json leaked in response for {path}"
+        )
