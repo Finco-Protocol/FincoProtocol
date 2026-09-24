@@ -130,6 +130,7 @@ def _financing_section(pi: Any) -> dict[str, Any]:
         "hedge_coverage": float(f.hedge_coverage),
         "target_dscr": float(f.target_dscr),
         "lockup_dscr": float(f.lockup_dscr),
+        "min_llcr": float(f.min_llcr),
         "dsra_months": int(f.dsra_months),
         "debt_sizing_method": _enum_val(f.debt_sizing_method),
         "debt_sizing_mode": _enum_val(f.debt_sizing_mode),

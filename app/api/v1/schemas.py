@@ -274,6 +274,62 @@ class ModelReferenceEnvelope(BaseModel):
     data: Optional[Dict[str, Any]] = None
 
 
+def _fix_preview_request_schema(schema: dict) -> None:
+    """Override OpenAPI schema for the A4 preview request body."""
+    schema["required"] = ["capacity_mw"]
+    schema["additionalProperties"] = False
+    props = schema.setdefault("properties", {})
+    props["capacity_mw"] = {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 10000,
+        "description": (
+            "Requested capacity in MW. "
+            "Must be a finite positive JSON number at most 10,000 MW."
+        ),
+        "examples": [64.0, 100.0, 250.5],
+        "title": "Capacity Mw",
+    }
+
+
+class ModelReferencePreviewRequest(BaseModel):
+    """A4 POST body: capacity_mw only.
+
+    Uses Any internally so Pydantic never raises 422 for field value errors;
+    the route handler owns all validation and returns 400 explicitly.
+
+    extra='allow' enables model_extra detection so the handler can return 400
+    for unexpected fields instead of silently ignoring them.
+
+    Public contract: finite positive JSON number only, 0 < capacity_mw <= 10,000.
+    Invalid: strings, booleans, null, arrays, objects, zero, negatives, non-finite.
+    Extra fields: always 400 MODEL_PREVIEW_REQUEST_INVALID.
+    """
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="allow",
+        json_schema_extra=_fix_preview_request_schema,
+    )
+
+    capacity_mw: Any = Field(
+        default=None,
+        description=(
+            "Requested capacity in MW. "
+            "Must be a finite positive JSON number at most 10,000 MW."
+        ),
+        examples=[64.0, 100.0, 250.5],
+    )
+
+
+class ModelReferencePreviewEnvelope(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    state: str
+    reference_key: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
 class ExecutionSimulationEnvelope(BaseModel):
     """A2 POST /execution-simulation response envelope."""
     model_config = ConfigDict(populate_by_name=True)
