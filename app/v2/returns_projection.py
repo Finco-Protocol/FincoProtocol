@@ -116,8 +116,11 @@ def build_returns_projection(
     metrics = (
         _metric("project_irr", "Project IRR", runtime.get("project_irr"), "percent",
                 "RuntimeResult.runtime_summary.project_irr"),
-        _metric("equity_irr", "Equity IRR", runtime.get("equity_irr"), "percent",
-                "RuntimeResult.runtime_summary.equity_irr"),
+        _metric("equity_irr", "Pure Equity IRR", runtime.get("equity_irr"), "percent",
+                "RuntimeResult.runtime_summary.equity_irr (clean G2C pure-equity authority)"),
+        _metric("total_sponsor_irr", "Total Sponsor IRR",
+                sponsor_summary.get("total_sponsor_xirr"), "percent",
+                "RuntimeResult.sponsor_schedule.summary.total_sponsor_xirr"),
         _metric("total_equity_invested", "Total Equity Invested",
                 sponsor_summary.get("total_legal_equity_contributed_keur"), "keur",
                 "RuntimeResult.sponsor_schedule.summary.total_legal_equity_contributed_keur"),

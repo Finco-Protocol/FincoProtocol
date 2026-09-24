@@ -46,8 +46,7 @@
     field_error            str
 #}
 
-{# ── helpers ─────────────────────────────────────────────────────────────── #}
-{% macro fmt_keur(v) %}{% if v is not none %}{{ "%.0f"|format(v) }}{% else %}—{% endif %}{% endmacro %}
+{% from "partials/_money_format.html" import grouped_keur %}
 
 {# fmt_period: convert YYYY-MM → "Jan 2028" style labels #}
 {% macro fmt_period(lbl) %}
@@ -181,7 +180,7 @@
               {{ row.label }}
             </td>
             {% for v in row['values'] %}
-            <td class="v2-statement-num">{{ fmt_keur(v) }}</td>
+            <td class="v2-statement-num">{{ grouped_keur(v) }}</td>
             {% endfor %}
           </tr>
           {% endif %}
@@ -200,7 +199,7 @@
               {% else %}<span style="margin-left:.35rem;">&#9888;</span>{% endif %}
             </td>
             {% for v in bc['values'] %}
-            <td class="v2-statement-num">{{ fmt_keur(v) }}</td>
+            <td class="v2-statement-num">{{ grouped_keur(v) }}</td>
             {% endfor %}
           </tr>
           {% endif %}

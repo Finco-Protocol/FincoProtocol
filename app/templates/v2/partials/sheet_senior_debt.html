@@ -177,6 +177,21 @@
                         hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
       {% endfor %}
 
+      <section class="v2-sponsor-funding-panel" aria-labelledby="sponsor-funding-title"
+               data-testid="sponsor-funding-panel">
+        <h3 id="sponsor-funding-title">Sponsor Funding / Shareholder Loan</h3>
+        <p>Read-only presentation of the existing financing authority and persisted Last Run evidence.</p>
+        <dl>
+          {% for label, value, status in sponsor_funding_rows %}
+          <div>
+            <dt>{{ label }}</dt>
+            <dd>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}
+              <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd>
+          </div>
+          {% endfor %}
+        </dl>
+      </section>
+
     </div>
   </details>
 

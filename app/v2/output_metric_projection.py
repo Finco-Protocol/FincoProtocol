@@ -113,7 +113,10 @@ class OutputMetricProjection:
 #   total_cfads_keur   — not in kpis; documented gap, raw_value=None until upstream provides it
 KPI_CATALOG: list[tuple] = [
     ("project_irr",        "Project IRR",    "%",    "pct",   "runtime_summary"),
-    ("equity_irr",         "Equity IRR",     "%",    "pct",   "runtime_summary"),
+    ("equity_irr",         "Pure Equity IRR", "%",   "pct",   "runtime_summary"),
+    # Persisted sponsor-schedule summary, injected by OverviewProjection;
+    # it is intentionally not read from runtime_summary.
+    ("sponsor_irr",        "Total Sponsor IRR", "%", "pct", "sponsor_schedule.summary"),
     ("min_dscr",           "Min DSCR",       "x",    "ratio", "runtime_summary"),
     ("avg_dscr",           "Avg DSCR",       "x",    "ratio", "runtime_summary"),
     ("min_llcr",           "Min LLCR",       "x",    "ratio", "debt_schedule.summary"),
@@ -241,6 +244,7 @@ def build_output_metric_projection(
 def build_overview_metric_projections(
     runtime_summary: dict,
     debt_summary: dict,
+    sponsor_summary: dict | None = None,
     *,
     freshness: str = "not_run",
     scenario_id: Optional[str] = None,
@@ -263,6 +267,8 @@ def build_overview_metric_projections(
         key, _label, _unit, _fmt, source = entry
         if source == "runtime_summary":
             val = runtime_summary.get(key)
+        elif source == "sponsor_schedule.summary":
+            val = (sponsor_summary or {}).get("total_sponsor_xirr")
         else:
             val = debt_summary.get(key)
         projections[key] = build_output_metric_projection(
