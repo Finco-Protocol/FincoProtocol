@@ -111,15 +111,15 @@
     {% if dashboard.predicted_funding_state == 'AVAILABLE' %}
     <div class="derivatives-table-wrap">
       <table class="derivatives-table derivatives-table--funding">
-        <thead><tr><th>Asset</th><th>Hyperliquid</th><th>Binance</th><th>Bybit</th><th>Max–Min Spread</th></tr></thead>
+        <thead><tr><th>Asset</th><th>Hyperliquid</th><th>Binance</th><th>Bybit</th><th>Hourly-Normalized Spread</th></tr></thead>
         <tbody>
         {% for row in dashboard.predicted_funding %}
           <tr>
             <td><strong>{{ row.symbol }}</strong></td>
-            <td><strong>{{ row.venues.HlPerp.rate_bps_display }}</strong><small>{{ row.venues.HlPerp.next_funding_at_display }}</small></td>
-            <td><strong>{{ row.venues.BinPerp.rate_bps_display }}</strong><small>{{ row.venues.BinPerp.next_funding_at_display }}</small></td>
-            <td><strong>{{ row.venues.BybitPerp.rate_bps_display }}</strong><small>{{ row.venues.BybitPerp.next_funding_at_display }}</small></td>
-            <td>{{ row.spread_bps_display }}</td>
+            <td><strong>{{ row.venues.HlPerp.rate_bps_display }}</strong><small>{{ row.venues.HlPerp.funding_interval_display }} native · {{ row.venues.HlPerp.hourly_rate_bps_display }}/h</small><small>{{ row.venues.HlPerp.next_funding_at_display }}</small></td>
+            <td><strong>{{ row.venues.BinPerp.rate_bps_display }}</strong><small>{{ row.venues.BinPerp.funding_interval_display }} native · {{ row.venues.BinPerp.hourly_rate_bps_display }}/h</small><small>{{ row.venues.BinPerp.next_funding_at_display }}</small></td>
+            <td><strong>{{ row.venues.BybitPerp.rate_bps_display }}</strong><small>{{ row.venues.BybitPerp.funding_interval_display }} native · {{ row.venues.BybitPerp.hourly_rate_bps_display }}/h</small><small>{{ row.venues.BybitPerp.next_funding_at_display }}</small></td>
+            <td>{{ row.hourly_spread_bps_display }}</td>
           </tr>
         {% endfor %}
         </tbody>
