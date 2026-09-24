@@ -1,0 +1,143 @@
+.radar-domain-nav {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--radar-border, #252b33);
+  background: var(--radar-surface, #11161c);
+}
+
+.radar-domain-nav a,
+.radar-domain-nav span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  color: var(--radar-muted, #8d98a5);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.radar-domain-nav a:hover { color: var(--radar-text, #e9edf2); }
+.radar-domain-nav .is-active {
+  color: var(--radar-text, #e9edf2);
+  background: rgba(255,255,255,.06);
+}
+.radar-domain-nav .is-disabled { opacity: .55; cursor: default; }
+.radar-domain-nav__soon {
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--radar-gold, #d1ad62);
+}
+
+.economy-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.economy-sidebar {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  border: 1px solid var(--radar-border, #252b33);
+  border-radius: 10px;
+  background: var(--radar-surface, #11161c);
+  padding: 10px;
+}
+
+.economy-sidebar__title {
+  padding: 8px 10px 10px;
+  color: var(--radar-text, #e9edf2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.economy-sidebar a {
+  display: block;
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: var(--radar-muted, #8d98a5);
+  text-decoration: none;
+  font-size: 13px;
+}
+.economy-sidebar a:hover { color: var(--radar-text, #e9edf2); background: rgba(255,255,255,.04); }
+
+.economy-content { min-width: 0; }
+.economy-hero { margin-bottom: 22px; }
+.economy-hero h1 { margin: 0 0 6px; font-size: 26px; color: var(--radar-text, #e9edf2); }
+.economy-hero p { margin: 0; color: var(--radar-muted, #8d98a5); }
+
+.economy-status {
+  display: inline-flex;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--radar-muted, #8d98a5);
+}
+.economy-status strong { color: var(--radar-text, #e9edf2); }
+
+.economy-section { scroll-margin-top: 20px; margin-bottom: 28px; }
+.economy-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.economy-section__head h2 { margin: 0; font-size: 16px; color: var(--radar-text, #e9edf2); }
+
+.economy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.economy-metric {
+  min-height: 142px;
+  padding: 14px;
+  border: 1px solid var(--radar-border, #252b33);
+  border-radius: 10px;
+  background: var(--radar-surface, #11161c);
+}
+.economy-metric__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.economy-metric__title { color: var(--radar-muted, #8d98a5); font-size: 12px; }
+.economy-metric__state { font-size: 9px; letter-spacing: .06em; }
+.economy-metric__state--FRESH { color: #77c99a; }
+.economy-metric__state--STALE { color: var(--radar-gold, #d1ad62); }
+.economy-metric__state--UNAVAILABLE { color: #cf8080; }
+.economy-metric__value { margin: 10px 0 4px; font-size: 25px; font-weight: 700; color: var(--radar-text, #e9edf2); }
+.economy-metric__meta { font-size: 11px; color: var(--radar-muted, #8d98a5); }
+.economy-metric__meta .up { color: #77c99a; }
+.economy-metric__meta .down { color: #cf8080; }
+.economy-metric__source { margin-top: 12px; font-size: 10px; color: var(--radar-muted, #8d98a5); }
+.economy-metric__source a { color: inherit; }
+
+.economy-warning {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border: 1px solid var(--radar-border, #252b33);
+  border-radius: 8px;
+  color: var(--radar-muted, #8d98a5);
+  font-size: 12px;
+}
+
+@media (max-width: 950px) {
+  .economy-shell { grid-template-columns: 1fr; }
+  .economy-sidebar { position: static; display: flex; overflow-x: auto; }
+  .economy-sidebar__title { display: none; }
+  .economy-sidebar a { white-space: nowrap; }
+  .economy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .radar-domain-nav { padding: 8px 12px; }
+  .economy-shell { padding: 16px 12px; }
+  .economy-grid { grid-template-columns: 1fr; }
+}
