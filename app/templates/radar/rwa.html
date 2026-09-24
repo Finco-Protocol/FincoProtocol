@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — RWA</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/rwa.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar rwa-page">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+{% include "radar/crypto_subnav.html" %}
+
+<main class="radar-main rwa-main">
+  <header class="rwa-hero">
+    <div>
+      <p class="rwa-eyebrow">FINCO RADAR / TOKENIZED REAL-WORLD ASSETS</p>
+      <h1>RWA Terminal</h1>
+      <p class="muted">Underlying RWA identities and aggregated tokenized-market data across tracked issuers.</p>
+    </div>
+    <div class="rwa-health" data-state="{{ dashboard.state }}">
+      <span class="rwa-health__state">{{ dashboard.state }}</span>
+      <span class="mono">retrieved {{ dashboard.retrieved_at }}</span>
+    </div>
+  </header>
+
+  <section class="panel rwa-boundary">
+    <strong>Authority boundary</strong>
+    <span>CoinGecko RWA market data describes the aggregated tokenized market. It is not the underlying stock, commodity, or ETF spot-price authority. No premium/discount or parity signal is inferred in this slice.</span>
+  </section>
+
+  {% if dashboard.reason %}
+  <section class="panel panel-error">
+    <h2>RWA data unavailable</h2>
+    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="muted small">No replacement identities or substitute market values are displayed.</p>
+  </section>
+  {% endif %}
+
+  {% if dashboard.counts %}
+  <section class="rwa-count-grid" aria-label="RWA universe counts">
+    {% for item in dashboard.counts %}
+    <article class="panel rwa-count"><span>{{ item.title }}</span><strong>{{ item.value }}</strong></article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% for section in dashboard.sections %}
+  <section class="rwa-section" id="rwa-{{ section.key }}">
+    <div class="rwa-section__heading"><div><h2>{{ section.title }}</h2><p class="muted small">{{ section.subtitle }}</p></div></div>
+    <div class="rwa-table-wrap panel">
+      <table class="rwa-table">
+        <thead><tr><th>Asset</th><th>Type</th><th>Price</th><th>Tokenized Mcap</th><th>24h Volume</th><th>24h</th><th>7d</th><th>30d</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for row in section.rows %}
+          <tr data-rwa-id="{{ row.id }}" data-state="{{ row.state }}">
+            <td><strong>{{ row.name }}</strong><span class="mono rwa-symbol">{{ row.symbol }} · {{ row.source_id }}</span></td>
+            <td>{{ row.asset_type }}</td>
+            <td>{{ row.current_price_display }}</td>
+            <td>{{ row.market_cap_display }}</td>
+            <td>{{ row.total_volume_display }}</td>
+            <td class="{% if row.change_24h is not none and row.change_24h > 0 %}rwa-up{% elif row.change_24h is not none and row.change_24h < 0 %}rwa-down{% endif %}">{{ row.change_24h_display }}</td>
+            <td class="{% if row.change_7d is not none and row.change_7d > 0 %}rwa-up{% elif row.change_7d is not none and row.change_7d < 0 %}rwa-down{% endif %}">{{ row.change_7d_display }}</td>
+            <td class="{% if row.change_30d is not none and row.change_30d > 0 %}rwa-up{% elif row.change_30d is not none and row.change_30d < 0 %}rwa-down{% endif %}">{{ row.change_30d_display }}</td>
+            <td><span class="rwa-state rwa-state--{{ row.state|lower }}">{{ row.state }}</span><span class="mono rwa-time">{{ row.observed_at }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+
+  <footer class="rwa-footnote">
+    <span>Source: <a href="{{ dashboard.markets_source_url }}" target="_blank" rel="noopener noreferrer">{{ dashboard.publisher }} {{ dashboard.transport }}</a></span>
+    <span>Universe identity: <a href="{{ dashboard.list_source_url }}" target="_blank" rel="noopener noreferrer">RWA List</a></span>
+  </footer>
+</main>
+</body>
+</html>

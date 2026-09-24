@@ -153,9 +153,9 @@ def test_derivatives_route_renders_exchange_bound_metrics():
     assert "whole-market aggregate" in response.text
 
 
-def test_crypto_subnav_exposes_derivatives_and_keeps_rwa_disabled():
+def test_crypto_subnav_exposes_derivatives_and_rwa():
     template = Path("app/templates/radar/crypto_subnav.html").read_text(encoding="utf-8")
     assert 'href="/radar/crypto/derivatives"' in template
     assert "Derivatives · next" not in template
-    assert "RWA · next" in template
-    assert 'href="/radar/crypto/rwa"' not in template
+    assert 'href="/radar/crypto/rwa"' in template
+    assert "RWA · next" not in template
