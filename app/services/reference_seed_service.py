@@ -268,8 +268,8 @@ def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, 
     Reference-driven working copies instead carry those values from the
     canonical reference.  Explicit later snapshot edits still win.
     """
-    profile = snapshot.get("_reference_seed_profile")
-    if not isinstance(profile, dict):
+    profile = _resolve_seed_profile(snapshot)
+    if profile is None:
         return inputs
     technical_seed = profile.get("technical_inputs")
     if not isinstance(technical_seed, dict):
@@ -292,6 +292,28 @@ def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, 
     )
 
 
+def _resolve_seed_profile(snapshot: dict) -> "dict | None":
+    """Return the ``_reference_seed_profile`` from a workspace snapshot as a dict.
+
+    Handles two storage forms:
+    - dict: stored before any CAS update (initial seed)
+    - JSON string: stored after a CAS round-trip through ProjectInputSet
+      (from_snapshot serialises dict values with json.dumps so they
+      survive the snapshot_origin str-normalisation pass intact)
+    """
+    profile = snapshot.get("_reference_seed_profile")
+    if isinstance(profile, dict):
+        return profile
+    if isinstance(profile, str) and profile:
+        try:
+            parsed = json.loads(profile)
+            if isinstance(parsed, dict):
+                return parsed
+        except (ValueError, KeyError):
+            pass
+    return None
+
+
 def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacity_mw: float) -> None:
     """Rescale only untouched PER_MW seed lines after a capacity edit.
 
@@ -307,8 +329,8 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
         return
-    profile = ws.draft_snapshot.get("_reference_seed_profile")
-    if not isinstance(profile, dict):
+    profile = _resolve_seed_profile(ws.draft_snapshot)
+    if profile is None:
         return
     opex_items = profile.get("opex_items", {})
     reconciled_capex_total = None
@@ -379,7 +401,7 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
     if record is None:
         raise ValueError("Project not found.")
     ws = get_workspace_state(user_id, record.project_id)
-    profile = ws.draft_snapshot.get("_reference_seed_profile") if ws else None
+    profile = _resolve_seed_profile(ws.draft_snapshot) if ws else None
     if not isinstance(profile, dict):
         raise ValueError("Project has no reference seed profile.")
     capacity = float(ws.draft_snapshot["capacity_mw"])

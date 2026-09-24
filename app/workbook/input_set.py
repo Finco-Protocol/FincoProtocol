@@ -329,8 +329,18 @@ class ProjectInputSet:
         ProjectInputSet
         """
         # Defensive copy + normalise all values to str for the verbatim origin.
+        # dict/list values are JSON-encoded so they round-trip through the DB
+        # correctly (json.dumps rather than Python repr, which is not parseable
+        # back with json.loads).
+        def _str(v: Any) -> str:
+            if v is None:
+                return ""
+            if isinstance(v, (dict, list)):
+                return json.dumps(v, ensure_ascii=True, sort_keys=True)
+            return str(v)
+
         snapshot_origin: dict[str, str] = {
-            k: (str(v) if v is not None else "")
+            k: _str(v)
             for k, v in snapshot.items()
         }
 

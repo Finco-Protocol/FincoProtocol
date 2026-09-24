@@ -179,7 +179,11 @@ class TestProtocolHomeDesktop:
         )
 
         page_text = page.inner_text("body")
-        assert "READ-ONLY" in page_text, "READ-ONLY badge missing on Radar card"
+        # Chrome cleanup pass removed READ-ONLY branding; Radar now surfaces
+        # "Execution simulation — coming soon" on the home architecture card.
+        assert "coming soon" in page_text.lower(), (
+            "Radar card must mention execution simulation coming soon"
+        )
 
     def test_home_no_overflow_desktop(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
@@ -353,7 +357,8 @@ class TestModelJourney:
         assert radar_link is not None, "Radar link missing from Workbook navigation"
         radar_link.click()
         page.wait_for_load_state("domcontentloaded")
-        assert "READ-ONLY" in page.inner_text("body")
+        # Chrome cleanup pass removed READ-ONLY; Radar now shows Coming soon.
+        assert "coming soon" in page.inner_text("body").lower()
 
         # 5. Navigate to Verify via protocol nav link
         verify_link = page.query_selector(".proto-nav a[href='/verify']")
@@ -376,13 +381,19 @@ class TestModelJourney:
 # ─── Radar ─────────────────────────────────────────────────────────────────────
 
 class TestRadar:
-    def test_radar_readonly_label_and_nav_desktop(self, live_url, browser):
+    def test_radar_execution_coming_soon_and_nav_desktop(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url}/radar")
         page.wait_for_load_state("domcontentloaded")
 
         page_text = page.inner_text("body")
-        assert "READ-ONLY" in page_text, "READ-ONLY label missing on Radar"
+        # Chrome cleanup pass removed READ-ONLY branding; execution is Coming soon.
+        assert "coming soon" in page_text.lower(), (
+            "Execution Coming soon label missing on Radar"
+        )
+        assert "READ-ONLY" not in page_text, (
+            "READ-ONLY branding must not appear in Radar chrome"
+        )
         nav = page.query_selector(".proto-nav")
         assert nav is not None, "Protocol nav missing on /radar"
 

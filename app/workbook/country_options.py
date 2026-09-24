@@ -7,20 +7,25 @@ and nowhere else — DO NOT duplicate this mapping.
 from __future__ import annotations
 
 # (iso_code, display_label) — order determines dropdown order.
-# XA/XB/XC are pseudo-ISO codes for the Generic Market references.
+# XA/XB/XC are pseudo-ISO codes for the three canonical FINCO synthetic-reference markets.
+# XA = Solar reference (create_generic_solar_reference, jurisdiction XA-generic-mvp-v1)
+# XB = Wind reference  (create_generic_wind_reference, jurisdiction XB-generic-mvp-v1)
+# XC = Storage/BESS reference (create_generic_storage_reference, jurisdiction XC-generic-mvp-v1)
+# Real country labels follow "Country Name (ISO)" convention; persisted value is always
+# the canonical 2-char code.
 COUNTRY_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("XA", "Generic Market A"),
-    ("XB", "Generic Market B"),
-    ("XC", "Generic Market C"),
-    ("DE", "Germany"),
-    ("ES", "Spain"),
-    ("FR", "France"),
-    ("GB", "United Kingdom"),
-    ("HR", "HR"),
-    ("IT", "Italy"),
-    ("PL", "Poland"),
-    ("RO", "Romania"),
-    ("US", "United States"),
+    ("XA", "Generic Solar Market (XA)"),
+    ("XB", "Generic Wind Market (XB)"),
+    ("XC", "Generic Storage Market (XC)"),
+    ("DE", "Germany (DE)"),
+    ("ES", "Spain (ES)"),
+    ("FR", "France (FR)"),
+    ("GB", "United Kingdom (GB)"),
+    ("HR", "HR"),  # display-name denylist — persisted as canonical code HR
+    ("IT", "Italy (IT)"),
+    ("PL", "Poland (PL)"),
+    ("RO", "Romania (RO)"),
+    ("US", "United States (US)"),
 )
 
 COUNTRY_CODES: tuple[str, ...] = tuple(code for code, _ in COUNTRY_OPTIONS)
