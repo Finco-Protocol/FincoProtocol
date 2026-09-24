@@ -236,6 +236,24 @@ def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
             sample_generation = f"{float(generation):,.0f} MWh"
         except (TypeError, ValueError):
             sample_generation = NOT_AVAILABLE
+
+    # Format the full authoritative period series for the detail table.
+    # Each row comes from WaterfallResult.periods[] — no economics recomputed here.
+    formatted_periods: list[dict[str, Any]] = []
+    for p in raw.get("revenue_periods", []):
+        gen = p.get("generation_mwh")
+        rev = p.get("revenue_keur")
+        try:
+            gen_fmt = f"{float(gen):,.0f} MWh" if gen is not None else NOT_AVAILABLE
+        except (TypeError, ValueError):
+            gen_fmt = NOT_AVAILABLE
+        formatted_periods.append({
+            "period_label": p.get("period_label", ""),
+            "generation_mwh": gen_fmt,
+            "revenue_keur": _keur(rev),
+            "revenue_keur_raw": rev,
+        })
+
     return {
         "display_value_keur": _keur(raw.get("display_value_keur")),
         "summary_method": raw.get("summary_method", ""),
@@ -245,6 +263,7 @@ def _format_revenue_derivation(raw: dict[str, Any]) -> dict[str, Any]:
         "sample_generation_mwh": sample_generation,
         "sample_revenue_keur": _keur(raw.get("sample_revenue_keur")),
         "audit_source": raw.get("audit_source", ""),
+        "revenue_periods": formatted_periods,
     }
 
 
