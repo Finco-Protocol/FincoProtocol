@@ -19,7 +19,7 @@
     <div>
       <p class="derivatives-eyebrow">FINCO RADAR / CRYPTO / DERIVATIVES</p>
       <h1>Perpetuals</h1>
-      <p class="muted">Exchange-bound BTC and ETH perpetual context from Hyperliquid. This is not presented as a whole-market aggregate.</p>
+      <p class="muted">Hyperliquid-bound BTC and ETH leverage, liquidity and funding context. Venue-specific evidence is never presented as a whole-market aggregate.</p>
     </div>
     <div class="derivatives-health" data-state="{{ dashboard.state }}">
       <span class="derivatives-health__state">{{ dashboard.state }}</span>
@@ -37,24 +37,35 @@
   <section class="derivatives-summary">
     <article class="panel derivatives-summary-card"><span>BTC + ETH Open Interest</span><strong>{{ dashboard.summary.combined_open_interest_usd_display }}</strong></article>
     <article class="panel derivatives-summary-card"><span>BTC + ETH 24h Notional Volume</span><strong>{{ dashboard.summary.combined_day_notional_volume_usd_display }}</strong></article>
-    <article class="panel derivatives-summary-card"><span>Venue</span><strong>Hyperliquid</strong><small>first perp dex</small></article>
+    <article class="panel derivatives-summary-card"><span>24h Volume / OI</span><strong>{{ dashboard.summary.combined_oi_turnover_display }}</strong><small>notional turnover vs current OI</small></article>
+    <article class="panel derivatives-summary-card"><span>Current Funding Sign</span><strong>{{ dashboard.summary.funding_sign }}</strong><small>BTC + ETH current Hyperliquid rates</small></article>
   </section>
 
   <section class="panel derivatives-table-panel">
-    <div class="derivatives-table-heading"><h2>BTC / ETH Perpetual Context</h2><span class="muted small">mark · oracle · funding · OI · basis · volume</span></div>
+    <div class="derivatives-table-heading"><h2>BTC / ETH Perpetual Context</h2><span class="muted small">price · leverage · liquidity · funding · OI</span></div>
     <div class="derivatives-table-wrap">
-      <table class="derivatives-table">
-        <thead><tr><th>Asset</th><th>Mark</th><th>Oracle</th><th>Mark/Oracle Basis</th><th>Current Funding</th><th>Open Interest</th><th>24h Notional Vol.</th><th>Premium</th></tr></thead>
+      <table class="derivatives-table derivatives-table--wide">
+        <thead>
+          <tr>
+            <th>Asset</th><th>Mark</th><th>24h</th><th>Oracle</th><th>Basis</th>
+            <th>Funding</th><th>Open Interest</th><th>24h Volume</th><th>Vol / OI</th>
+            <th>Impact Spread</th><th>Max Lev.</th><th>Premium</th>
+          </tr>
+        </thead>
         <tbody>
         {% for row in dashboard.assets %}
           <tr data-derivatives-symbol="{{ row.symbol }}">
             <td><strong>{{ row.symbol }}</strong><small class="mono">{{ row.source_id }}</small></td>
             <td>{{ row.mark_price_display }}</td>
+            <td class="{% if row.change_24h_pct > 0 %}derivatives-up{% elif row.change_24h_pct < 0 %}derivatives-down{% endif %}">{{ row.change_24h_display }}</td>
             <td>{{ row.oracle_price_display }}</td>
             <td class="{% if row.basis_bps > 0 %}derivatives-up{% elif row.basis_bps < 0 %}derivatives-down{% endif %}">{{ row.basis_bps_display }}</td>
             <td class="{% if row.funding_bps > 0 %}derivatives-up{% elif row.funding_bps < 0 %}derivatives-down{% endif %}">{{ row.funding_bps_display }}</td>
             <td>{{ row.open_interest_usd_display }}</td>
             <td>{{ row.day_notional_volume_usd_display }}</td>
+            <td>{{ row.oi_turnover_display }}</td>
+            <td>{{ row.impact_spread_bps_display }}</td>
+            <td>{{ row.max_leverage_display }}</td>
             <td>{{ row.premium_bps_display }}</td>
           </tr>
         {% endfor %}
@@ -62,11 +73,68 @@
       </table>
     </div>
   </section>
+
+  <section class="panel derivatives-table-panel">
+    <div class="derivatives-table-heading">
+      <h2>24h Funding History</h2>
+      <span class="derivatives-mini-state" data-state="{{ dashboard.funding_history_state }}">{{ dashboard.funding_history_state }}</span>
+    </div>
+    {% if dashboard.funding_history_state == 'AVAILABLE' %}
+    <div class="derivatives-table-wrap">
+      <table class="derivatives-table">
+        <thead><tr><th>Asset</th><th>Current</th><th>24h Avg Rate</th><th>24h Rate Sum</th><th>Samples</th><th>Latest Event</th></tr></thead>
+        <tbody>
+        {% for row in dashboard.funding_history %}
+          <tr>
+            <td><strong>{{ row.symbol }}</strong></td>
+            <td class="{% if row.current_funding_bps > 0 %}derivatives-up{% elif row.current_funding_bps < 0 %}derivatives-down{% endif %}">{{ row.current_funding_bps_display }}</td>
+            <td>{{ row.average_24h_bps_display }}</td>
+            <td>{{ row.sum_24h_bps_display }}</td>
+            <td>{{ row.sample_count }}</td>
+            <td class="mono small">{{ row.latest_observed_at_display }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="derivatives-note">24h rate sum is the simple sum of returned funding-rate observations; it is not realized funding P&amp;L.</p>
+    {% else %}
+    <div class="derivatives-aux-unavailable"><span>Funding history unavailable.</span><code>{{ dashboard.funding_history_reason }}</code></div>
+    {% endif %}
+  </section>
+
+  <section class="panel derivatives-table-panel">
+    <div class="derivatives-table-heading">
+      <h2>Cross-Venue Predicted Funding</h2>
+      <span class="derivatives-mini-state" data-state="{{ dashboard.predicted_funding_state }}">{{ dashboard.predicted_funding_state }}</span>
+    </div>
+    {% if dashboard.predicted_funding_state == 'AVAILABLE' %}
+    <div class="derivatives-table-wrap">
+      <table class="derivatives-table derivatives-table--funding">
+        <thead><tr><th>Asset</th><th>Hyperliquid</th><th>Binance</th><th>Bybit</th><th>Max–Min Spread</th></tr></thead>
+        <tbody>
+        {% for row in dashboard.predicted_funding %}
+          <tr>
+            <td><strong>{{ row.symbol }}</strong></td>
+            <td><strong>{{ row.venues.HlPerp.rate_bps_display }}</strong><small>{{ row.venues.HlPerp.next_funding_at_display }}</small></td>
+            <td><strong>{{ row.venues.BinPerp.rate_bps_display }}</strong><small>{{ row.venues.BinPerp.next_funding_at_display }}</small></td>
+            <td><strong>{{ row.venues.BybitPerp.rate_bps_display }}</strong><small>{{ row.venues.BybitPerp.next_funding_at_display }}</small></td>
+            <td>{{ row.spread_bps_display }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="derivatives-note">{{ dashboard.cross_venue_note }}</p>
+    {% else %}
+    <div class="derivatives-aux-unavailable"><span>Cross-venue predicted funding unavailable.</span><code>{{ dashboard.predicted_funding_reason }}</code></div>
+    {% endif %}
+  </section>
   {% endif %}
 
   <section class="panel derivatives-provenance">
     <div><strong>Source authority</strong><span>{{ dashboard.publisher }} · {{ dashboard.transport }}</span></div>
-    <div><strong>Endpoint</strong><span class="mono">{{ dashboard.source_endpoint }}</span></div>
+    <div><strong>Endpoint family</strong><span class="mono">{{ dashboard.source_endpoint }}</span></div>
     <div><strong>Freshness</strong><span>{{ dashboard.freshness_note }}</span></div>
     <a href="{{ dashboard.source_url }}" target="_blank" rel="noopener noreferrer">Hyperliquid API documentation →</a>
   </section>
