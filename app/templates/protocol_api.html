@@ -182,7 +182,7 @@
             <div class="papi__example">
               <div class="papi__example-label">List model references</div>
               <div class="papi__code-block" role="region" aria-label="curl example: list model references">
-                <pre><code>curl /api/v1/model/references</code></pre>
+                <pre><code>curl {{ api_base_url }}/model/references</code></pre>
               </div>
             </div>
 
@@ -190,7 +190,7 @@
               <div class="papi__example-label">Preview Solar at 100 MW (stateless — no project created)</div>
               <div class="papi__code-block" role="region" aria-label="curl example: preview solar reference at 100 MW">
                 <pre><code>curl -X POST \
-  /api/v1/model/references/generic_solar_reference/preview \
+  {{ api_base_url }}/model/references/generic_solar_reference/preview \
   -H "Content-Type: application/json" \
   -d '{"capacity_mw":100}'</code></pre>
               </div>

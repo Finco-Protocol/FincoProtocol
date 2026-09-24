@@ -460,3 +460,57 @@ def test_api45_a4_preview_available():
     data = r.json()
     assert data["state"] == "AVAILABLE"
     assert data["reference_key"] == "generic_solar_reference"
+
+
+# ── API46: curl examples contain an absolute URL with a scheme ───────────────
+
+def test_api46_curl_examples_absolute_url(client):
+    """Curl examples must use api_base_url — a full URL including scheme/host,
+    not a bare relative path like /api/v1/..."""
+    r = client.get("/api")
+    assert r.status_code == 200
+    # TestClient base_url is http://testserver, so api_base_url becomes
+    # http://testserver/api/v1 — the scheme must appear in curl examples.
+    assert "http://" in r.text or "https://" in r.text, (
+        "curl examples do not contain an absolute URL with a scheme"
+    )
+
+
+# ── API47: curl examples do not contain hardcoded production/staging hosts ───
+
+def test_api47_curl_no_hardcoded_host(client):
+    """Curl examples must derive origin from the request — not hardcode
+    finco.one, staging.finco.one, localhost or any other fixed hostname."""
+    r = client.get("/api")
+    assert r.status_code == 200
+    text_lower = r.text.lower()
+    for forbidden in ("finco.one", "staging.finco.one", "localhost:"):
+        assert forbidden not in text_lower, (
+            f"curl example contains hardcoded host '{forbidden}'"
+        )
+
+
+# ── API48: curl examples contain the correct /api/v1 path prefix ─────────────
+
+def test_api48_curl_correct_v1_path(client):
+    """Both curl examples must reference /api/v1/model/... paths."""
+    r = client.get("/api")
+    assert r.status_code == 200
+    assert "/api/v1/model/references" in r.text, (
+        "curl GET example path /api/v1/model/references not found"
+    )
+    assert "generic_solar_reference/preview" in r.text, (
+        "curl POST preview path not found"
+    )
+
+
+# ── API49: no API key in curl examples ───────────────────────────────────────
+
+def test_api49_curl_no_api_key(client):
+    """Curl examples must not invent Authorization or API-key headers."""
+    r = client.get("/api")
+    assert r.status_code == 200
+    assert "Authorization:" not in r.text
+    assert "X-API-Key" not in r.text
+    assert "Bearer " not in r.text
+    assert "api_key" not in r.text.lower()

@@ -549,6 +549,13 @@
   .fo-brand-bar__action:not(.fo-brand-bar__action--signout) {
     display: none;
   }
+  /* model-saas.css (specificity 0-2-0) overrides the ≤900px --soon hide rule and makes
+     fo-brand-bar__nav items visible at ≤480px. With 4 real nav items that's fine, but
+     --soon placeholders must stay hidden — a 0-3-0 rule beats model-saas.css regardless
+     of load order. */
+  .fo-brand-bar .fo-brand-bar__action.fo-brand-bar__nav--soon {
+    display: none;
+  }
 
   /* Command bar: scroll within its own container — does not expand the body */
   .fo-command-bar {

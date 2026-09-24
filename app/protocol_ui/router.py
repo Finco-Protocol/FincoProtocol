@@ -72,11 +72,13 @@ async def protocol_api_beta(request: Request):
     """FINCO API Beta documentation page. Public — no auth required."""
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
+    api_base_url = str(request.base_url).rstrip("/") + "/api/v1"
     return _templates.TemplateResponse(
         request=request,
         name="protocol_api.html",
         context={
             "user": user,
             "proto_active_page": "api",
+            "api_base_url": api_base_url,
         },
     )

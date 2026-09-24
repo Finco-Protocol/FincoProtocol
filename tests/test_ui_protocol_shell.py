@@ -2032,6 +2032,126 @@ class TestCBH:
         page.close()
 
 
+# ─── API Beta Surface Browser Tests (API-B01 – API-B09) ───────────────────────
+
+class TestApiBetaBrowser:
+    """Browser acceptance tests for the FINCO API Beta page (/api).
+
+    API-B01 – API-B09 cover viewport correctness, nav active state,
+    placeholder non-interactivity, endpoint tables, curl examples,
+    discovery links, and mobile readability.  The /api route is public
+    (no auth required) but we authenticate anyway to exercise the
+    sign-out button path.
+    """
+
+    def test_api_b01_desktop_no_overflow(self, live_url, browser):
+        """API-B01: /api at 1280px desktop — no horizontal page overflow."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        _assert_no_overflow(page, "/api", 1280)
+        page.close()
+
+    def test_api_b02_mobile_no_overflow(self, live_url, browser):
+        """API-B02: /api at 390px mobile — no horizontal page overflow."""
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        _assert_no_overflow(page, "/api", 390)
+        page.close()
+
+    def test_api_b03_nav_item_active(self, live_url, browser):
+        """API-B03: Protocol nav 'API' link is present and marked active on /api."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        active = page.query_selector(".proto-nav__link--active")
+        assert active is not None, "No active nav link found on /api"
+        assert "API" in active.inner_text(), (
+            f"Active nav link text '{active.inner_text()}' is not 'API'"
+        )
+        assert active.get_attribute("aria-current") == "page", (
+            "Active API nav link missing aria-current='page'"
+        )
+        page.close()
+
+    def test_api_b04_placeholders_not_links(self, live_url, browser):
+        """API-B04: Docs/Roadmap/$FINCO appear as non-interactive placeholders."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        nav_text = page.inner_text(".proto-nav")
+        for label in ("Docs", "Roadmap", "$FINCO"):
+            assert label in nav_text, f"Placeholder '{label}' not in nav"
+        # Placeholders must be spans, not anchors
+        for label in ("Docs", "Roadmap", "$FINCO"):
+            matches = page.query_selector_all(f"a:text('{label}')")
+            assert len(matches) == 0, (
+                f"Placeholder '{label}' is rendered as an anchor — must be non-interactive"
+            )
+        page.close()
+
+    def test_api_b05_model_endpoint_table_visible(self, live_url, browser):
+        """API-B05: Model API endpoint table is present and lists references endpoint."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        body = page.inner_text("body")
+        assert "/model/references" in body, (
+            "Model references endpoint path not found on /api page"
+        )
+        page.close()
+
+    def test_api_b06_radar_endpoint_table_visible(self, live_url, browser):
+        """API-B06: Radar API endpoint table is present and lists assets endpoint."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        body = page.inner_text("body")
+        assert "/radar/assets" in body, (
+            "Radar assets endpoint path not found on /api page"
+        )
+        page.close()
+
+    def test_api_b07_curl_examples_visible(self, live_url, browser):
+        """API-B07: curl examples section is rendered and contains a URL with a scheme."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        body = page.inner_text("body")
+        assert "curl" in body, "curl examples section not found on /api page"
+        # api_base_url must inject a full URL (http:// or https://) not a bare path
+        assert "http" in body, (
+            "curl examples must reference an absolute URL (http:// or https://)"
+        )
+        page.close()
+
+    def test_api_b08_docs_and_openapi_links(self, live_url, browser):
+        """API-B08: /docs and /openapi.json discovery anchor elements present on /api."""
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        docs_link = page.query_selector('a[href="/docs"]')
+        openapi_link = page.query_selector('a[href="/openapi.json"]')
+        assert docs_link is not None, "Link to /docs not found on /api page"
+        assert openapi_link is not None, "Link to /openapi.json not found on /api page"
+        page.close()
+
+    def test_api_b09_mobile_endpoint_content_visible(self, live_url, browser):
+        """API-B09: at 390px the endpoint paths are not clipped or off-screen."""
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.goto(f"{live_url}/api")
+        page.wait_for_load_state("domcontentloaded")
+        body = page.inner_text("body")
+        assert "/model/references" in body, (
+            "Model endpoint path not readable at 390px mobile"
+        )
+        assert "/radar/assets" in body, (
+            "Radar endpoint path not readable at 390px mobile"
+        )
+        page.close()
+
+
 @pytest.mark.skipif(os.getenv("FINCO_VISUAL_CAPTURE") != "1", reason="visual artifact capture is enabled in CI")
 def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     """Capture actual rendered product surfaces at this workflow's checked-out HEAD."""
