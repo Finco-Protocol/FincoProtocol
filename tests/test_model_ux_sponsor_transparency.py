@@ -220,3 +220,20 @@ def test_capex_compact_mobile_selector_matches_rendered_per_mw_class():
     assert ".v2-capex-compact-edit-row .v2-capex-subline-permw" in css
     assert ".v2-capex-child-per-mw" not in css
     assert "grid-template-columns: 3rem 1fr 5rem auto" in css
+
+
+def test_no_nul_bytes_in_python_source_files():
+    """Regression guard: NUL bytes in .py files cause SyntaxError at import."""
+    root = Path(__file__).resolve().parents[1]
+    corrupted = []
+    for py_file in root.rglob("*.py"):
+        # skip __pycache__ and venv directories
+        if "__pycache__" in py_file.parts or "venv" in py_file.parts or ".venv" in py_file.parts:
+            continue
+        try:
+            data = py_file.read_bytes()
+            if b"\x00" in data:
+                corrupted.append(str(py_file.relative_to(root)))
+        except OSError:
+            pass
+    assert corrupted == [], f"NUL bytes found in Python source files: {corrupted}"
