@@ -70,6 +70,12 @@
       </div>
       {% endfor %}
     </div>
+    <div class="v2-revenue-output-context" data-testid="revenue-output-context">
+      <span>Generation used in current output</span>
+      <strong>{% if revenue_output_context.generation is not none %}{{ revenue_output_context.generation }}{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
+      <span>Revenue persisted summary</span>
+      <strong>{% if revenue_output_context.persisted_revenue is not none %}{{ revenue_output_context.persisted_revenue }} kEUR{% else %}—{% endif %}</strong>
+    </div>
     {% if merchant_curve_rows %}
     <div class="v2-revenue-curve-preview" data-testid="merchant-curve-preview">
       <span>Merchant curve</span>

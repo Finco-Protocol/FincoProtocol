@@ -122,6 +122,27 @@ def test_radar_featured_market_reference_is_compact_and_auditable():
     assert "board-col-market { width: 185px; }" in css
 
 
+def test_post_pr72_radar_revenue_capex_and_debt_presentation_contracts():
+    """User-facing correction guardrails; no economic authority is exercised."""
+    root = Path(__file__).resolve().parents[1]
+    radar_router = (root / "app/radar_ui/router.py").read_text()
+    radar_poller = (root / "static/radar/market-poll.js").read_text()
+    revenue = (root / "app/templates/v2/partials/sheet_revenue.html").read_text()
+    capex = (root / "app/templates/v2/partials/sheet_capex.html").read_text()
+    field_editor = (root / "app/templates/v2/partials/field_editor.html").read_text()
+    debt_router = (root / "app/v2/router.py").read_text()
+
+    assert '"Reference unavailable"' not in radar_router
+    assert "data-featured-row" in radar_poller
+    assert "node.hidden = !usableReference" in radar_poller
+    assert "CO2 certificate price" in debt_router
+    assert 'data-testid="revenue-output-context"' in revenue
+    assert "grouped_keur(capex_vm.total_capex_keur)" in capex
+    assert "f.display_value if f.display_value is defined else f.value" in field_editor
+    assert '("Gearing", _pct(' in debt_router
+    assert '("All-in interest rate", _pct(' in debt_router
+
+
 def _financing(mode, share_capital=500.0):
     return SimpleNamespace(
         sponsor_funding_mode=SimpleNamespace(value=mode),

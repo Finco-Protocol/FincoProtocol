@@ -237,17 +237,21 @@ def _load_equity_and_featured_board(
     featured_pairs = list(zip(resolved_assets, featured_results))
 
     # Build board rows — pass token_symbol separately so UID never leaks into
-    # the symbol column.
+    # the symbol column.  Featured is a curated product surface: an asset
+    # without persisted fundamentals is not a candidate row.  Do not retain a
+    # ticker-shaped placeholder, because that would imply an identity and a
+    # usable Company Terminal that cannot be proven.
     by_symbol = {
         asset.token_symbol.upper(): equity_view_model.build_equity_board_row(
             result, asset_uid=asset.economic_asset_uid,
             fallback_name=asset.token_name, token_symbol=asset.token_symbol,
         ) for asset, result in featured_pairs
+        if result.state in (
+            equity_enrichment.EnrichmentState.AVAILABLE,
+            equity_enrichment.EnrichmentState.PARTIAL,
+        )
     }
-    rows = [by_symbol.get(sym.upper()) or {
-        "asset_uid": "", "symbol": sym, "company_name": "Reference unavailable",
-        "state": "UNAVAILABLE", "details_url": "/radar",
-    } for sym in featured_symbols]
+    rows = [by_symbol[sym.upper()] for sym in featured_symbols if sym.upper() in by_symbol]
 
     # Equity view for the selected asset.
     equity_view: dict = {}

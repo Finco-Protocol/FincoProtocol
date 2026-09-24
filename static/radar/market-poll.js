@@ -39,6 +39,14 @@
   }
 
   function apply(node, state) {
+    // The Featured board is an operational shortlist, not an error report.
+    // A row remains visible only while its canonical market reference is
+    // available.  This preserves the row's UID/terminal identity while
+    // fail-closing a runtime gap instead of presenting a broken CTA.
+    if (node.matches && node.matches('[data-featured-row]')) {
+      const usableReference = !!state && state.state === 'FRESH' && state.price != null;
+      node.hidden = !usableReference;
+    }
     const price = node.querySelector('[data-market-price]');
     if (price) {
       price.textContent = state.price_display || '—';
@@ -86,6 +94,7 @@
         board.querySelectorAll('[data-market-uid]').forEach(function (node) {
           const row = rows.get(node.dataset.marketSymbol);
           if (row) apply(node, row);
+          else if (node.matches('[data-featured-row]')) node.hidden = true;
         });
         const status = board.querySelector('[data-market-board-state]');
         if (status && payload.board) {

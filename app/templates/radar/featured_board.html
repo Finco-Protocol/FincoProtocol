@@ -27,7 +27,7 @@
       </thead>
       <tbody>
         {% for row in featured_board %}
-        <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
+        <tr data-featured-row data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
           <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
           <td class="board-company" title="{{ row.company_name }}"><strong>{{ row.company_name }}</strong><small class="radar-market-meta">{{ row.symbol }}</small></td>
           <td class="num board-market-reference">
