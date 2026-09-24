@@ -14,6 +14,7 @@ from app.radar_economy.contracts import (
 
 _FRED = "FRED"
 _BLS = "U.S. Bureau of Labor Statistics"
+_ETA = "U.S. Employment and Training Administration"
 _FRB = "Board of Governors of the Federal Reserve System (US)"
 _STL_FED = "Federal Reserve Bank of St. Louis"
 _NY_FED = "Federal Reserve Bank of New York"
@@ -163,7 +164,7 @@ SERIES: tuple[EconomySeriesDefinition, ...] = (
         title="Initial Jobless Claims",
         section=EconomySection.LABOR_MARKET,
         source_series_id="ICSA",
-        publisher=_BLS,
+        publisher=_ETA,
         transport=_FRED,
         unit="persons",
         frequency="weekly",
