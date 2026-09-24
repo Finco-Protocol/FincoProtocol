@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 36717)
-Total output lines: 3181
-
 """
 app.v2.router — Workbook V2 routes (always mounted; inactive-guard inside).
 
@@ -887,7 +884,1432 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
     senior_pricing_mode, senior_dscr_mode = _classify_senior_authority(pis)
-    debt_…16717 tokens truncated…or not accessible.</p>"
+    debt_fields = _lock_senior_fields_if_calibrated(
+        _build_sheet_fields("debt", pis),
+        senior_pricing_mode, senior_dscr_mode)
+    return {
+        "debt_fields": debt_fields,
+        "debt_state": d.state.value,
+        "debt_schedule": d.schedule,
+        "debt_operational_periods": d.operational_periods,
+        "runtime_summary": d.runtime_summary,
+        "senior_pricing_mode": senior_pricing_mode,
+        "senior_dscr_mode": senior_dscr_mode,
+        "senior_detail_rows": (
+            ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
+            ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
+            ("Commitment fee", f"{getattr(fin, 'commitment_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Arrangement fee", f"{getattr(fin, 'arrangement_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Structuring fee", f"{getattr(fin, 'structuring_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Lock-up DSCR", f"{getattr(fin, 'lockup_dscr', 0.0):.2f}x" if fin else None),
+            ("Minimum LLCR", f"{getattr(fin, 'min_llcr', 0.0):.2f}x" if fin else None),
+            ("Amortization", getattr(fin, "amortization_type", None) if fin else None),
+            ("DSRA coverage", f"{getattr(fin, 'dsra_months', 0)} months" if fin else None),
+        ),
+        **sponsor_funding,
+        "senior_lock_reason": (
+            _SENIOR_LOCK_NOTE if (
+                senior_pricing_mode == "CALIBRATED"
+                or senior_dscr_mode == "CALIBRATED")
+            else (
+                _SENIOR_UNRESOLVED_NOTE if (
+                    senior_pricing_mode == _SENIOR_UNRESOLVED
+                    or senior_dscr_mode == _SENIOR_UNRESOLVED) else "")
+        )
+    }
+
+
+def _render_debt_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+    projection=None,
+) -> HTMLResponse:
+    """Render the Senior Debt sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_debt_ctx(pis, ws, projection=projection))
+    sheet_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
+def _build_tax_ctx(pis, ws, projection=None) -> dict:
+    """Build Tax sheet context: registry fields + RuntimeResult output.
+
+    ``tax_fields`` contains the two BOUND Tax registry fields rendered in
+    Section A via the render_field macro (cit_rate_pct, loss_carryforward_years).
+
+    Option B hydration fills None values from pis.to_projectinputs().tax
+    without calling the engine or writing to the snapshot.
+
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    it is reused so that only one get_runtime_result call is made per request.
+    """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.workbook.service import WorkbookService
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
+    t = projection.tax
+    raw_fields = _build_sheet_fields("tax", pis)
+
+    # Option B — effective-value projection.
+    # When a Tax snapshot key is absent, pis.get(field_id) returns None even
+    # though the engine would use a concrete factory default.  Project the
+    # canonical effective value from pis.to_projectinputs().tax so the first
+    # load shows real defaults rather than empty fields.
+    # This path never calls the engine, never hard-codes a rate, never
+    # writes to the snapshot, and never marks the workspace dirty.
+    if any(f["value"] is None for f in raw_fields):
+        from app.revenue_input_validation import RevenueInputError
+        try:
+            effective_tax = pis.to_projectinputs().tax
+        except RevenueInputError:
+            _snap = dict(pis.to_snapshot())
+            _snap.pop("rev_ppa_indexation_start_policy", None)
+            from app.input_adapter import build_projectinputs_from_snapshot
+            effective_tax = build_projectinputs_from_snapshot(_snap).tax
+        _TAX_FIELD_MAP = {
+            "tax.assumptions.cit_rate_pct": lambda tx: round(tx.corporate_rate * 100, 10),
+            "tax.assumptions.loss_carryforward_years": lambda tx: tx.loss_carryforward_years,
+        }
+        for f in raw_fields:
+            if f["value"] is None:
+                proj_fn = _TAX_FIELD_MAP.get(f["field_id"])
+                if proj_fn is not None:
+                    f["value"] = proj_fn(effective_tax)
+
+    return {
+        "tax_fields": raw_fields,
+        "tax_state": t.state.value,
+        "tax_schedule": t.schedule,
+        "tax_operational_periods": t.operational_periods,
+        "runtime_summary": t.runtime_summary,
+    }
+
+
+def _render_tax_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+    projection=None,
+) -> HTMLResponse:
+    """Render the Tax sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_tax_ctx(pis, ws, projection=projection))
+    sheet_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
+# ── Legacy re-exports kept for backward compatibility with existing tests ──── #
+# The canonical implementations live in app.workbook.runtime_projection.
+from app.workbook.runtime_projection import (  # noqa: E402
+    FS_PNL_ROW_DEFS    as _FS_PNL_ROW_DEFS,
+    FS_PF_CF_ROW_DEFS  as _FS_PF_CF_ROW_DEFS,
+    FS_BS_ROW_DEFS     as _FS_BS_ROW_DEFS,
+    project_rows       as _fs_project_rows,
+    project_period_labels as _fs_period_labels,
+    fs_classify_statement as _fs_classify,
+)
+
+_FS_STATE_NOT_RUN        = "NOT_RUN"
+_FS_STATE_CLEAN          = "CLEAN"
+_FS_STATE_STALE          = "STALE"
+_FS_STATE_FS_UNAVAILABLE = "FS_UNAVAILABLE"
+
+
+def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
+    """Build Financial Statements sheet context from persisted RuntimeResult.
+
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    it is reused so that only one get_runtime_result call is made per request.
+    """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.workbook.service import WorkbookService
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        projection = build_runtime_projection_bundle(
+            rr, _runtime_freshness(ws, pis).is_stale)
+    f = projection.fs
+    # Map the FS UNAVAILABLE state to the legacy template key for backward compat
+    fs_state = f.state.value if f.state.value != "UNAVAILABLE" else "FS_UNAVAILABLE"
+    return {
+        "fs_state": fs_state,
+        "fs_available": f.fs_available,
+        "fs_pnl_rows": f.pnl_rows,
+        "fs_bs_rows": f.bs_rows,
+        "fs_pf_cf_rows": f.pf_cf_rows,
+        "fs_pnl_period_labels": f.pnl_period_labels,
+        "fs_bs_period_labels": f.bs_period_labels,
+        "fs_pf_cf_period_labels": f.pf_cf_period_labels,
+        "fs_pnl_classification": f.pnl_classification,
+        "fs_bs_classification": f.bs_classification,
+        "fs_pf_cf_classification": f.pf_cf_classification,
+        "runtime_summary": f.runtime_summary,
+        "fs_pnl_annual_rows": f.pnl_annual_rows,
+        "fs_bs_annual_rows": f.bs_annual_rows,
+        "fs_pf_cf_annual_rows": f.pf_cf_annual_rows,
+        "fs_pnl_annual_labels": f.pnl_annual_labels,
+        "fs_bs_annual_labels": f.bs_annual_labels,
+        "fs_pf_cf_annual_labels": f.pf_cf_annual_labels,
+        "fs_cit_rate_display": _cit_rate_display(pis),
+    }
+
+
+def _build_returns_ctx(ws, rr=None, *, runtime_is_stale=None) -> dict:
+    """Build Returns context from the persisted Last Run only."""
+    from app.v2.returns_projection import build_returns_projection
+    from app.workbook.service import WorkbookService
+
+    if rr is None:
+        rr = WorkbookService.get_runtime_result(ws)
+    return {"returns": build_returns_projection(
+        rr, ws, runtime_is_stale=runtime_is_stale)}
+
+
+def _build_all_oob(ws, *, request=None, project_record=None, project="",
+                   workspace_owner="") -> str:
+    """R6 Correction A: full post-Save stale-state refresh after a mutation.
+
+    A financially causal successful Save (workspace now dirty, prior runtime
+    still persisted) must make every visible runtime-state surface agree
+    STALE in the same HTMX response: toolbar, Overview stale classification,
+    debt/tax/FS runtime bars, scenario last-run statuses.  No engine call,
+    no financial calculation.  Must NOT be appended on validation-error
+    responses — those never mutate state.
+    """
+    from app.v2.post_run_ui import build_post_save_ui_state
+
+    return build_post_save_ui_state(
+        ws_fresh=ws, project_record=project_record, project=project,
+        workspace_owner=workspace_owner, request=request,
+    )
+
+
+# Legacy alias so tests that imported the old helper continue to pass.
+def _build_fs_runtime_bar_oob(ws) -> str:
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.v2.runtime_projection_views import build_fs_bar_oob
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    projection = build_runtime_projection_bundle(rr, ws.dirty)
+    return build_fs_bar_oob(projection)
+
+
+def _render_financial_statements_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the Financial Statements sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_financial_statements_ctx(pis, ws))
+    sheet_html = _templates.get_template("partials/sheet_financial_statements.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
+def _render_inputs_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+    slice1_submitted_values: Optional[dict[str, str]] = None,
+    slice1_field_errors: Optional[dict[str, str]] = None,
+) -> HTMLResponse:
+    """Render the inputs sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    project_editable = not is_protected_reference(project_record)
+    ctx.update({
+        "technical_fields": _build_sheet_fields("project_setup", pis),
+        "revenue_fields": _build_sheet_fields("revenue", pis),
+        "capex_fields": _build_sheet_fields("capex", pis),
+        "opex_fields": _build_sheet_fields("opex", pis),
+        "debt_fields": _lock_senior_fields_if_calibrated(
+            _build_sheet_fields("debt", pis),
+            *_classify_senior_authority(pis)),
+        "inputs_summary": _get_inputs_summary(project_record, pis, ws),
+        "inputs_slice1_enabled": inputs_slice1_active(),
+        "inputs_slice1_sections": build_inputs_slice1_sections(
+            pis,
+            project_editable=project_editable,
+            submitted_values=slice1_submitted_values,
+            field_errors=slice1_field_errors,
+        ),
+    })
+    sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
+@router.get("/workbook", response_class=HTMLResponse)
+async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Optional[str] = None):
+    """Workbook V2 shell page.
+
+    Renders the V2 template skeleton and injects a sessionStorage hydration
+    script from the persisted RuntimeResult (if one exists), so schedule
+    data is available to the page on load without a model re-run.
+
+    Protected reference projects (Generic Wind Reference/Generic Solar Reference factory_template origin)
+    render all fields read-only with a working-copy CTA.
+
+    Query parameters
+    ----------------
+    project : str, optional
+        Project code.  When absent, redirects to the project home.
+    sheet : str, optional
+        Sheet name (e.g. "inputs").  Preserved on inactive redirect so the
+        legacy URL fragment (#inputs) is reconstructed correctly.
+    v2_err : str, optional
+        URL-encoded error message from a failed non-HTMX POST.  Shown as
+        a flash error in the status banner.
+    """
+    if not workbook_v2_active():
+        if project:
+            dest = project_workbook_url(project, sheet=sheet)
+        else:
+            dest = "/library"
+        return RedirectResponse(url=dest, status_code=302)
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    if not project:
+        return RedirectResponse(url="/library", status_code=302)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return RedirectResponse(url="/library", status_code=302)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return RedirectResponse(url="/library", status_code=302)
+
+    # Decide unsupported runtime capability immediately after access and
+    # workspace resolution.  Storage must return its controlled surface before
+    # migrations, ProjectInputSet construction, hydration, or any economic
+    # resolver can read or mutate its persisted state.
+    _project_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
+    if _project_type_lower == "storage":
+        from app.utils.workbook_flag import project_workbook_url as _wbu
+        _storage_ref_url = _wbu("generic_storage_reference-reference")
+        if is_protected_reference(project_record):
+            return _templates.TemplateResponse(
+                request=request,
+                name="unsupported_workbook.html",
+                context={
+                    "user": user,
+                    "project_code": project,
+                    "project_name": project_record.project_name or project,
+                    "project_type": project_record.project_type or "Storage",
+                    "is_reference": True,
+                    "library_url": "/library",
+                    "reference_url": _storage_ref_url,
+                    "reference_label": "Back to Model Workspace",
+                },
+            )
+        return _templates.TemplateResponse(
+            request=request,
+            name="unsupported_workbook.html",
+            context={
+                "user": user,
+                "project_code": project,
+                "project_name": project_record.project_name or project,
+                "project_type": project_record.project_type or "Storage",
+                "is_reference": False,
+                "library_url": "/library",
+                "reference_url": _storage_ref_url,
+                "reference_label": "View Storage Reference",
+            },
+        )
+
+    # Migration: backfill missing canonical revenue keys for old Generic Solar Reference working
+    # copies created before C2B3 (idempotent — only writes when keys are absent).
+    try:
+        from app.services.revenue_backfill import persist_revenue_backfill
+        if persist_revenue_backfill(project_record.project_id, workspace_owner, project_record):
+            ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
+    except Exception:
+        pass  # migration failure must never block page render
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    runtime_freshness = _runtime_freshness(ws, pis)
+    hydration_script = WorkbookService.runtime_hydration_script(ws)
+
+    project_editable = not is_protected_reference(project_record)
+
+    flash_error = ""
+    raw_err = request.query_params.get("v2_err", "")
+    if raw_err:
+        try:
+            flash_error = urllib.parse.unquote_plus(raw_err)[:500]
+        except Exception:
+            pass
+
+    context = {
+        "project_code": project,
+        "project_name": project_record.project_name or project,
+        "project_type": (project_record.project_type or "").capitalize(),
+        "active_scenario_name": ws.active_scenario_name or "",
+        "active_scenario_id": ws.active_scenario_id or "",
+        "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "workbook_version": pis.workbook_version,
+        "content_hash": pis.content_hash,
+        "template_source": pis.template_source,
+        "hydration_script": hydration_script,
+        "ps_fields": _build_ps_fields(pis),
+        "technical_fields": _build_sheet_fields("project_setup", pis),
+        "capex_fields": _build_sheet_fields("capex", pis),
+        "opex_fields": _build_sheet_fields("opex", pis),
+        "debt_fields": _lock_senior_fields_if_calibrated(
+            _build_sheet_fields("debt", pis),
+            *_classify_senior_authority(pis)),
+        "inputs_summary": _get_inputs_summary(project_record, pis, ws),
+        "inputs_slice1_enabled": inputs_slice1_active(),
+        "inputs_slice1_sections": build_inputs_slice1_sections(
+            pis,
+            project_editable=project_editable,
+        ),
+        "user": user,
+        "project_editable": project_editable,
+        "ws_dirty": ws.dirty,
+        "runtime_is_stale": runtime_freshness.is_stale,
+        "runtime_state": runtime_freshness.state.value,
+        "has_runtime": bool(ws.last_runtime_snapshot_id),
+        "flash_error": flash_error,
+        "field_error": "",
+        "scenario_url": f"/scenarios?project={urllib.parse.quote(project, safe='')}",
+        "library_url": "/library",
+    }
+    context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
+    context.update(_build_opex_vm_ctx(project_record, pis))
+    # Build projection bundle once; pass it to all four output sheet builders.
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    _rr = WorkbookService.get_runtime_result(ws)
+    _projection = build_runtime_projection_bundle(
+        _rr, runtime_freshness.is_stale)
+    context.update(_build_revenue_ctx(pis, ws, projection=_projection))
+    context.update(_build_debt_ctx(pis, ws, projection=_projection))
+    context.update(_build_tax_ctx(pis, ws, projection=_projection))
+    context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
+    context.update(_build_returns_ctx(
+        ws, rr=_rr, runtime_is_stale=runtime_freshness.is_stale))
+    from app.v2.overview_projection import build_overview_projection
+    context["overview"] = build_overview_projection(
+        _rr, runtime_freshness.is_stale, pis,
+        active_scenario_name=ws.active_scenario_name or "")
+
+    # UI-3B: inject scenario presentations for the Scenarios tab.
+    # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
+    # apply the same canonical freshness decision to scenario cards.
+    try:
+        from app.persistence.scenarios_repository import list_scenarios
+        from app.v2.scenario_presentation import build_scenario_presentations
+        _sc_records = list_scenarios(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            include_archived=False,
+        )
+        _active_sc_id = ws.active_scenario_id if ws else None
+        context["scenarios"] = build_scenario_presentations(
+            _sc_records, _active_sc_id, global_is_stale=runtime_freshness.is_stale)
+        context["active_scenario_id"] = _active_sc_id
+    except Exception:
+        context["scenarios"] = []
+        context.setdefault("active_scenario_id", None)
+
+    return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
+
+
+@router.post("/workbook/inputs-slice1/update")
+async def v2_inputs_slice1_update(
+    request: Request,
+    field_id: str = Form(...),
+    value: Optional[str] = Form(default=""),
+    project: str = Form(...),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Feature-flagged Slice 1 edit endpoint.
+
+    The endpoint is intentionally narrower than the general V2 edit endpoint:
+    it accepts only fields classified as EDITABLE_BOUND in the Slice 1
+    projection, then delegates validation/persistence to
+    WorkbookUpdateService.apply_draft_update().
+    """
+    if not inputs_slice1_active():
+        return JSONResponse({"error": "Inputs Slice 1 is disabled by configuration."}, status_code=409)
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found."}, status_code=404)
+
+    def _json_error(message: str, status_code: int) -> JSONResponse:
+        return JSONResponse({"error": message}, status_code=status_code)
+
+    def _render_sheet_response(
+        message: str = "",
+        *,
+        status_code: int = 200,
+        preserve_submitted: bool = False,
+        pis_for_render=None,
+        ws_for_render=None,
+    ) -> HTMLResponse:
+        render_ws = ws_for_render or ws
+        render_pis = pis_for_render
+        if render_pis is None:
+            render_pis = _build_pis_with_composite_identity(
+                render_ws, project_record, workspace_owner
+            )
+        submitted = (
+            {field_id: value or ""}
+            if preserve_submitted and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
+            else None
+        )
+        errors = (
+            {field_id: message}
+            if message and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
+            else None
+        )
+        resp = _render_inputs_htmx_sheet(
+            request,
+            render_pis,
+            render_ws,
+            project_record,
+            project,
+            field_error=message,
+            slice1_submitted_values=submitted,
+            slice1_field_errors=errors,
+        )
+        resp.status_code = status_code
+        return resp
+
+    def _render_field_error(message: str, status_code: int, *, preserve_submitted: bool = False) -> HTMLResponse:
+        pis_for_render = _build_pis_with_composite_identity(
+            ws, project_record, workspace_owner
+        )
+        resp = _render_sheet_response(
+            message,
+            status_code=status_code,
+            preserve_submitted=preserve_submitted,
+            pis_for_render=pis_for_render,
+        )
+        return _add_field_error_trigger(resp, field_id, message)
+
+    field_classification = classify_slice1_field_id(field_id)
+    if field_classification != KNOWN_SLICE1_EDITABLE:
+        status_code = 422
+        msg = slice1_rejection_message(field_id, field_classification)
+        return (
+            _render_field_error(msg, status_code)
+            if is_htmx else _json_error(msg, status_code)
+        )
+
+    try:
+        updated_pis = WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id=field_id,
+            raw_value=value or "",
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            project_record=project_record,
+        )
+    except ProtectedReferenceError as exc:
+        return (
+            _render_field_error(str(exc), 409)
+            if is_htmx else _json_error(str(exc), 409)
+        )
+    except StaleContentError:
+        msg = "Draft changed since page loaded - values refreshed. Please try your edit again."
+        return _render_field_error(msg, 409) if is_htmx else _json_error(msg, 409)
+    except VersionMismatchError as exc:
+        if is_htmx:
+            return HTMLResponse(
+                content=str(exc),
+                status_code=409,
+                headers={"HX-Refresh": "true"},
+            )
+        return _json_error(str(exc), 409)
+    except (UnknownFieldError, NonEditableFieldError) as exc:
+        return (
+            _render_field_error(str(exc), 422)
+            if is_htmx else _json_error(str(exc), 422)
+        )
+    except FieldValidationError as exc:
+        return (
+            _render_field_error(str(exc), 422, preserve_submitted=True)
+            if is_htmx else _json_error(str(exc), 422)
+        )
+
+    updated_ws_after = get_workspace_state(
+        user_id=workspace_owner, project_id=project_record.project_id
+    ) or ws
+    try:
+        updated_identity = assemble_consistent_for_get(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            workbook_version=updated_pis.workbook_version,
+        )
+        updated_pis = updated_pis.with_composite_hash(updated_identity.composite_hash)
+    except Exception:
+        pass
+
+    if is_htmx:
+        resp = _render_sheet_response(
+            pis_for_render=updated_pis,
+            ws_for_render=updated_ws_after,
+        )
+        all_bars_oob = _build_all_oob(
+            updated_ws_after,
+            request=request,
+            project_record=project_record,
+            project=project,
+            workspace_owner=workspace_owner,
+        )
+        final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
+        return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
+
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@router.post("/workbook/update")
+async def v2_workbook_update(
+    request: Request,
+    field_id: str = Form(...),
+    value: Optional[str] = Form(default=""),
+    project: str = Form(...),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+    sheet_id: str = Form(default="project_setup"),
+    _: None = Depends(require_v2_active),
+):
+    """V2 field edit endpoint — canonical edit pipeline.
+
+    Accepts a single field update identified by semantic field_id (never a
+    legacy snapshot key).  Applies optimistic concurrency via content_hash.
+
+    HTMX (HX-Request: true):
+        success → re-rendered sheet partial + OOB status banner (HTTP 200)
+        error   → re-rendered sheet partial with error in status banner (HTTP 200)
+    Non-HTMX:
+        success → 303 redirect to GET /v2/workbook?project=<project>
+        error   → 303 redirect with ?v2_err=<encoded message>
+    """
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project_record, _workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    # Block mutations on protected reference projects.
+    from app.services.project_library_service import is_protected_reference
+    if is_protected_reference(project_record):
+        return JSONResponse(
+            {"error": "This is a protected reference model. Create a working copy to edit it."},
+            status_code=403,
+        )
+
+    ws = get_workspace_state(user_id=_workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found."}, status_code=404)
+
+    def _redirect_with_error(message: str) -> RedirectResponse:
+        """Non-HTMX error: redirect to GET with flash message in ?v2_err."""
+        err_param = urllib.parse.quote_plus(message)
+        return RedirectResponse(
+            url=f"/v2/workbook?project={project}&v2_err={err_param}",
+            status_code=303,
+        )
+
+    def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+        if sheet_id == "inputs":
+            return _render_inputs_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        if sheet_id == "revenue":
+            return _render_revenue_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        if sheet_id == "capex":
+            return _render_capex_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+                workspace_owner=_workspace_owner,
+            )
+        if sheet_id == "opex":
+            return _render_opex_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        if sheet_id == "debt":
+            return _render_debt_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        if sheet_id == "tax":
+            return _render_tax_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        if sheet_id == "financial_statements":
+            return _render_financial_statements_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        return _render_htmx_sheet(
+            request, pis_for_render, ws, project_record, project,
+            field_error=field_error,
+        )
+
+    try:
+        updated_pis = WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id=field_id,
+            raw_value=value or "",
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            project_record=project_record,
+        )
+    except ProtectedReferenceError as exc:
+        if is_htmx:
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
+            resp = _htmx_error(pis, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc))
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except StaleContentError as exc:
+        if is_htmx:
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
+            msg = (
+                "Draft changed since page loaded — values refreshed. "
+                "Please try your edit again."
+            )
+            resp = _htmx_error(pis, msg)
+            return _add_field_error_trigger(resp, field_id, msg)
+        return _redirect_with_error(str(exc))
+    except VersionMismatchError as exc:
+        return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
+    except (UnknownFieldError, NonEditableFieldError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except FieldValidationError as exc:
+        if is_htmx:
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
+            resp = _htmx_error(pis, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc))
+        return _redirect_with_error(str(exc))
+
+    # Success path — reload workspace and assemble composite identity consistently
+    # so the re-rendered sheet carries a hash over the full post-mutation state.
+    updated_ws_after = get_workspace_state(
+        user_id=_workspace_owner, project_id=project_record.project_id
+    ) or ws
+    try:
+        updated_identity = assemble_consistent_for_get(
+            user_id=_workspace_owner,
+            project_id=project_record.project_id,
+            workbook_version=updated_pis.workbook_version,
+        )
+        updated_pis = updated_pis.with_composite_hash(updated_identity.composite_hash)
+    except Exception:
+        pass  # scalar hash already set by v2_atomic_draft_update; best-effort only
+
+    if is_htmx:
+        # Dispatch to the correct sheet renderer.
+        if sheet_id == "inputs":
+            resp = _render_inputs_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        elif sheet_id == "revenue":
+            resp = _render_revenue_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        elif sheet_id == "capex":
+            resp = _render_capex_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+                workspace_owner=_workspace_owner,
+            )
+            # R6 Correction A: stale-state refresh (see opex branch).
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
+        elif sheet_id == "opex":
+            resp = _render_opex_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+            # R6 Correction B: OPEX field forms swap hx-target="#panel-opex"
+            # with hx-swap="outerHTML" — the response must re-emit the PANEL
+            # wrapper, otherwise the swap destroys #panel-opex and the OPEX
+            # tab can never be shown again.  hx-swap-oob fragments in the
+            # body are extracted by htmx before the swap, so they are not
+            # nested into the panel.
+            panel_open = (
+                '<div class="v2-sheet-panel" role="tabpanel" id="panel-opex" '
+                'aria-labelledby="tab-opex">'
+                '<div class="v2-sheet-body">'
+            )
+            resp = HTMLResponse(
+                content=panel_open + resp.body.decode() + "</div></div>")
+            # R6 Correction A: these sheets have no runtime-derived values,
+            # but the save made the workspace dirty — toolbar, Overview and
+            # scenario statuses must agree stale in this same response.
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
+        elif sheet_id == "debt":
+            # Build projection once — pass to both sheet renderer and OOB bars.
+            # ONE get_runtime_result call is made here (inside build_post_save_ui_state
+            # via the fallback path when projection is None, or zero extra calls when
+            # the caller already has a pre-built projection).
+            from app.workbook.runtime_projection import build_runtime_projection_bundle
+            from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+            from app.workbook.service import WorkbookService
+            from app.v2.post_run_ui import build_post_save_ui_state
+            _rr = WorkbookService.get_runtime_result(updated_ws_after)
+            _proj = build_runtime_projection_bundle(_rr, updated_ws_after.dirty)
+            resp = _render_debt_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+                projection=_proj,
+            )
+            body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            # R6 Correction A: stale-state refresh — pass pre-built rr+proj so
+            # build_post_save_ui_state skips its own get_runtime_result call.
+            # When _rr is None (no prior run), still pass it: the function
+            # guards with `if rr is None` and will not re-call get_runtime_result
+            # because _rr was already fetched above (it returned None once; no
+            # second fetch needed — projection was built from None correctly).
+            body += "\n" + build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+                include_runtime_bars=False,
+                rr=_rr,
+                projection=_proj,
+            )
+            return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
+        elif sheet_id == "tax":
+            from app.workbook.runtime_projection import build_runtime_projection_bundle
+            from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+            from app.workbook.service import WorkbookService
+            from app.v2.post_run_ui import build_post_save_ui_state
+            _rr = WorkbookService.get_runtime_result(updated_ws_after)
+            _proj = build_runtime_projection_bundle(_rr, updated_ws_after.dirty)
+            resp = _render_tax_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+                projection=_proj,
+            )
+            body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            # R6 Correction A: stale-state refresh (see debt branch).
+            body += "\n" + build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+                include_runtime_bars=False,
+                rr=_rr,
+                projection=_proj,
+            )
+            return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
+        elif sheet_id == "financial_statements":
+            # Full sheet re-render already contains #fs-runtime-bar; no OOB needed.
+            resp = _render_financial_statements_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+            return _add_field_saved_trigger(resp, field_id, updated_pis.content_hash)
+        else:
+            resp = _render_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        # Append OOB refresh of all three runtime bars so that editing any
+        # sheet immediately reflects the dirty/clean state on Debt, Tax, and
+        # Financial Statements without a full page reload.
+        all_bars_oob = _build_all_oob(
+            updated_ws_after,
+            request=request,
+            project_record=project_record,
+            project=project,
+            workspace_owner=_workspace_owner,
+        )
+        final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
+        return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
+
+    return RedirectResponse(
+        url=f"/v2/workbook?project={project}",
+        status_code=303,
+    )
+
+
+@router.post("/workbook/run")
+async def v2_workbook_run(
+    request: Request,
+    project: str = Form(...),
+    content_hash: str = Form(...),
+    workbook_version: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """V2 Run endpoint — canonical engine orchestration for Workbook V2.
+
+    Pipeline (all checks fail-closed):
+      1.  Auth
+      2.  Load project_record + workspace_state
+      3.  Runtime guard: check_runtime_allowed(ws, ws.draft_snapshot)
+      4.  Version check: workbook_version must match WORKBOOK.version
+      5.  Pre-engine identity CAS: content_hash must match current composite hash
+      6.  Project type validation: Solar→"Solar", Wind→"Wind", else error
+      7.  Materialise: build_draft_input_set_from_workspace(ws).to_projectinputs()
+          (draft_snapshot is the canonical V2 run boundary after V2 edits)
+      8.  Scenario resolution via get_scenario — fail closed on error
+      9.  CAPEX fold (replace-semantics)
+      10. OPEX fold (additive)
+      11. run_project(project_type, scenario_name, project_inputs_override=override)
+      12. v2_atomic_run_commit: final CAS + promote draft→saved + dirty=False
+          Raises V2RunCommitConflictError if workbook changed during engine run
+      13. ws_fresh = get_workspace_state(...); rr = WorkbookService.get_runtime_result(ws_fresh)
+      14. build_runtime_projection_bundle(rr, ws_fresh.dirty)
+      15. HTMX response: #v2-run-controls + #v2-status-banner + three sheet OOBs
+
+    HTMX: always responds with 200 + HTML fragments (success or user-safe error).
+    Non-HTMX: 303 redirect on success; redirect with ?v2_err=... on error.
+
+    Scope constraints — NO engine formula modifications, NO parity changes.
+    """
+    from datetime import datetime, timezone
+
+    from app.api.project_runner import run_project
+    from app.persistence.workspace_repository import (
+        V2RunCommitConflictError,
+        get_workspace_state,
+        v2_atomic_run_commit,
+    )
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.workbook.workbook_identity import WorkbookIdentityError
+
+    def _utc_compact() -> str:
+        return datetime.now(timezone.utc).isoformat().replace(":", "").replace("-", "")
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    def _htmx_error(msg: str, ws_for_render=None) -> HTMLResponse:
+        ctx: dict = {
+            "ws_dirty": getattr(ws_for_render, "dirty", True),
+            "has_runtime": bool(
+                getattr(ws_for_render, "last_runtime_snapshot_id", None)
+            ) if ws_for_render else False,
+            "field_error": msg,
+            "flash_error": "",
+        }
+        banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(ctx)
+        oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+        return HTMLResponse(content=oob)
+
+    def _non_htmx_error(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"/v2/workbook?project={project}&v2_err={urllib.parse.quote_plus(msg)}",
+            status_code=303,
+        )
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        msg = f"Project {project!r} not found."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        msg = "Workspace not found."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 2b: unsupported project-type guard ───────────────────────────── #
+    # Must come BEFORE the hash check so Storage projects always receive 409
+    # (both HTMX and non-HTMX) rather than a stale-hash 303 redirect.
+    # Covers all user-owned Storage projects (not just working_copy role) via
+    # the is_protected_reference check — the capability boundary is
+    # "protected reference" vs "user-owned editable project".
+    _run_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
+    if _run_type_lower not in ("solar", "wind") and not is_protected_reference(project_record):
+        _raw_type = project_record.project_type or "Unknown"
+        msg = (
+            f"{_raw_type} working-copy runtime is not yet supported. "
+            "This project has not been modified. Return to the Model Workspace."
+        )
+        if is_htmx:
+            # Return 409 with banner fragment; HTMX callers must also receive
+            # a real non-success status — do not return 200 for HTMX here.
+            banner_html = _templates.get_template("partials/_v2_status_banner.html").render({
+                "ws_dirty": getattr(ws, "dirty", True),
+                "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
+                "field_error": msg,
+                "flash_error": "",
+            })
+            oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+            return HTMLResponse(content=oob, status_code=409)
+        return JSONResponse({"error": msg}, status_code=409)
+
+    # ── Step 3: V2 runtime origin ──────────────────────────────────────────── #
+    # V2 runs always materialise from draft_snapshot and promote it to
+    # saved_snapshot atomically.  The legacy runtime_guard_for_snapshot blocks
+    # dirty workspaces (designed for the legacy saved-state-only run path).
+    # V2 uses CAS-based locking (content_hash + final CAS) instead, so we
+    # skip the legacy guard and assign the origin directly.
+    runtime_origin = "v2_run"
+
+    # ── Step 4: version check ──────────────────────────────────────────────── #
+    pis_draft = WorkbookService.build_draft_input_set_from_workspace(ws)
+    if pis_draft.workbook_version != workbook_version:
+        msg = "Workbook version mismatch — please reload the page."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 5: pre-engine identity CAS ───────────────────────────────────── #
+    try:
+        current_identity = assemble_consistent_for_get(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            workbook_version=pis_draft.workbook_version,
+        )
+    except WorkbookIdentityError:
+        msg = "Could not verify workbook identity — please reload."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    if current_identity.composite_hash != content_hash:
+        msg = (
+            "Draft changed since page loaded — values refreshed. "
+            "Please run again."
+        )
+        if not is_htmx:
+            return _non_htmx_error(msg)
+        # Return both the banner and refreshed run controls (with the current hash).
+        stale_ctx: dict = {
+            "ws_dirty": getattr(ws, "dirty", True),
+            "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
+            "field_error": msg,
+            "flash_error": "",
+            "project_code": project,
+            "workbook_version": workbook_version,
+            "content_hash": current_identity.composite_hash,
+        }
+        stale_banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(stale_ctx)
+        stale_banner_oob = (
+            '<div id="v2-status-banner" hx-swap-oob="true">' + stale_banner_html + "</div>"
+        )
+        stale_controls_html = _templates.get_template(
+            "partials/_v2_run_controls.html"
+        ).render(stale_ctx)
+        stale_controls_oob = (
+            '<div id="v2-run-controls" hx-swap-oob="true">' + stale_controls_html + "</div>"
+        )
+        return HTMLResponse(content=stale_banner_oob + "\n" + stale_controls_oob)
+
+    # ── Step 5b: protected reference guard ─────────────────────────────────── #
+    # Protected reference models are immutable.  Run is a persistence operation
+    # (v2_atomic_run_commit), so it must be blocked here — before engine execution
+    # and before any persistence — consistent with the edit guard on /workbook/update.
+    if is_protected_reference(project_record):
+        msg = (
+            "This is a protected reference model and cannot be run. "
+            "Create a working copy to run the model."
+        )
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 6: project type validation ───────────────────────────────────── #
+    project_type_raw = (project_record.project_type or "").strip().lower()
+    if project_type_raw == "solar":
+        runtime_project_key = "Solar"
+    elif project_type_raw == "wind":
+        runtime_project_key = "Wind"
+    else:
+        # Unsupported runtime — Storage and any future unimplemented types.
+        # HTMX: 200 + banner fragment (HTMX pattern); non-HTMX: 409 Conflict so
+        # callers and tests receive a distinct 4xx rather than a redirect.
+        _raw_type = project_record.project_type or "Unknown"
+        msg = (
+            f"{_raw_type} working-copy runtime is not yet supported. "
+            "This project has not been modified. Return to the Model Workspace."
+        )
+        if is_htmx:
+            return _htmx_error(msg, ws)
+        return JSONResponse({"error": msg}, status_code=409)
+
+    # ── Step 7: materialise from draft snapshot ────────────────────────────── #
+    # draft_snapshot is the V2 canonical run boundary: it contains the exact
+    # scalar values the user saw and approved when they clicked Run.
+    try:
+        override = WorkbookService.to_projectinputs(pis_draft)
+    except Exception as _build_exc:
+        import logging
+        from app.revenue_input_validation import RevenueInputError
+        if isinstance(_build_exc, RevenueInputError):
+            # Cross-field contract violation — surface to user, do not log as error.
+            _rev_err_msg = str(_build_exc)
+            return _htmx_error(_rev_err_msg, ws) if is_htmx else _non_htmx_error(_rev_err_msg)
+        logging.getLogger(__name__).exception(
+            "v2_workbook_run: build_project_inputs failed project=%s user=%s",
+            project, user.user_id,
+        )
+        msg = "Could not build project inputs — please reload and try again."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 8: scenario resolution ────────────────────────────────────────── #
+    active_scenario_id = ws.active_scenario_id
+    active_scenario_name = ws.active_scenario_name
+    scenario_name = active_scenario_name or "Base"
+    _scenario_overrides_for_fold = None
+
+    if active_scenario_id:
+        import logging as _log
+        from app.persistence.scenarios_repository import get_scenario
+        sc_rec = get_scenario(scenario_id=active_scenario_id, user_id=workspace_owner)
+        if sc_rec is None:
+            msg = "Active scenario could not be found. Please re-select a scenario and try again."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if sc_rec.archived:
+            msg = "Active scenario has been archived. Please re-select a scenario and try again."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if sc_rec.project_id != project_record.project_id:
+            _log.getLogger(__name__).warning(
+                "v2_workbook_run: scenario project_id mismatch "
+                "scenario=%s scenario.project_id=%s expected=%s user=%s",
+                active_scenario_id, sc_rec.project_id, project_record.project_id, user.user_id,
+            )
+            msg = "Active scenario does not belong to this project. Please re-select and try again."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        _scenario_overrides_for_fold = sc_rec.overrides
+        # Keep display name for provenance only; engine always receives "Base"
+        # so the legacy ScenarioManager is never activated by a user-created name.
+        scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
+
+    # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
+    from dataclasses import replace as _dc_replace
+    folded_capex = apply_user_sub_lines_replacing_base(
+        override.capex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_capex is not override.capex:
+        override = _dc_replace(override, capex=folded_capex)
+
+    folded_opex = apply_user_sub_lines_to_opex(
+        override.opex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_opex is not override.opex:
+        override = _dc_replace(override, opex=folded_opex)
+
+    # ── Step 11: run the engine ────────────────────────────────────────────── #
+    try:
+        result = run_project(
+            runtime_project_key,
+            "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
+            project_inputs_override=override,
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
+        msg = "Engine run failed — please try again or contact support."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
+    # result["kpis"] is the raw engine KPI dict.  Derivation evidence is a
+    # separate top-level key produced by _build_runtime_derivation_evidence.
+    # We format and embed revenue_derivation here so it is persisted with the
+    # runtime_summary and can be read back by _build_revenue_ctx without a
+    # second engine call or an additional DB query.
+    from app.ui.runtime_summary import _format_revenue_derivation as _fmt_rev_deriv
+    _derivation_evidence = result.get("derivation_evidence", {})
+    _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
+    _kpis_enriched = dict(result["kpis"])
+    _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+
+    # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
+    runtime_snapshot_id = _utc_compact()
+    ran_at = datetime.now(timezone.utc)
+    try:
+        ws_committed = v2_atomic_run_commit(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            project_code=project_record.project_code,
+            expected_composite_hash=content_hash,
+            runtime_snapshot_id=runtime_snapshot_id,
+            runtime_origin=runtime_origin or "v2_run",
+            runtime_summary=_kpis_enriched,
+            financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
+            active_scenario_id=active_scenario_id,
+            active_scenario_name=active_scenario_name,
+            last_runtime_scenario_id=active_scenario_id,
+            ran_at=ran_at,
+        )
+    except V2RunCommitConflictError:
+        msg = (
+            "Workbook changed while the engine was running — values refreshed. "
+            "Please run again."
+        )
+        if not is_htmx:
+            return _non_htmx_error(msg)
+        # Re-fetch workspace to get the current hash for the run controls.
+        ws_conflict = get_workspace_state(
+            user_id=workspace_owner, project_id=project_record.project_id
+        ) or ws
+        pis_conflict = WorkbookService.build_draft_input_set_from_workspace(ws_conflict)
+        try:
+            conflict_identity = assemble_consistent_for_get(
+                user_id=workspace_owner,
+                project_id=project_record.project_id,
+                workbook_version=pis_conflict.workbook_version,
+            )
+            conflict_hash = conflict_identity.composite_hash
+        except WorkbookIdentityError:
+            conflict_hash = ""
+        conflict_ctx: dict = {
+            "ws_dirty": getattr(ws_conflict, "dirty", True),
+            "has_runtime": bool(getattr(ws_conflict, "last_runtime_snapshot_id", None)),
+            "field_error": msg,
+            "flash_error": "",
+            "project_code": project,
+            "workbook_version": workbook_version,
+            "content_hash": conflict_hash,
+        }
+        conflict_banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(conflict_ctx)
+        conflict_banner_oob = (
+            '<div id="v2-status-banner" hx-swap-oob="true">' + conflict_banner_html + "</div>"
+        )
+        conflict_controls_html = _templates.get_template(
+            "partials/_v2_run_controls.html"
+        ).render(conflict_ctx)
+        conflict_controls_oob = (
+            '<div id="v2-run-controls" hx-swap-oob="true">' + conflict_controls_html + "</div>"
+        )
+        return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("v2_workbook_run: persistence failure")
+        msg = "Run completed but could not be saved — please try again."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 12b: persist KPIs to ScenarioRecord.last_run_summary ────────── #
+    # This is the UI-3B per-scenario runtime isolation contract.
+    # The workspace-level runtime evidence (last_runtime_summary_json) is
+    # cleared on scenario switch, so Compare reads from each ScenarioRecord's
+    # own last_run_summary_json instead.  We persist the run KPIs + provenance
+    # here so that switching scenarios never corrupts another scenario's evidence.
+    if active_scenario_id:
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            from app.v2.scenario_presentation import _scenario_snapshot_hash
+            from app.persistence.scenarios_repository import get_scenario as _get_sc
+            _active_sc_rec = _get_sc(active_scenario_id, workspace_owner)
+            _sc_snap_hash = _scenario_snapshot_hash(_active_sc_rec) if _active_sc_rec else None
+            _sc_overrides_at_run = dict(getattr(_active_sc_rec, "overrides", None) or {})
+            _sc_run_summary = {
+                "kpis": dict(result["kpis"]),
+                "snapshot_id": runtime_snapshot_id,
+                "ran_at": ran_at.isoformat(),
+                "scenario_id": active_scenario_id,
+                "scenario_name": active_scenario_name or "",
+                "scenario_snapshot_hash": _sc_snap_hash,
+                "scenario_overrides_at_run": _sc_overrides_at_run,
+            }
+            update_scenario_last_run_summary(
+                user_id=workspace_owner,
+                scenario_id=active_scenario_id,
+                last_run_summary=_sc_run_summary,
+                replay_metadata={"v2_run": True, "project": project},
+            )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist scenario last_run_summary "
+                "scenario=%s project=%s", active_scenario_id, project
+            )
+            # Non-fatal: workspace run committed; Compare will show NOT_RUN until
+            # user re-runs this scenario.
+    else:
+        # No explicit scenario selected — save to base case so Compare can show
+        # this run's results when compared against an explicit scenario run.
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            from app.persistence.scenarios_repository import get_base_case_scenario as _get_base
+            _base_sc = _get_base(user_id=workspace_owner, project_id=project_record.project_id)
+            if _base_sc:
+                _base_run_summary = {
+                    "kpis": dict(result["kpis"]),
+                    "snapshot_id": runtime_snapshot_id,
+                    "ran_at": ran_at.isoformat(),
+                    "scenario_id": _base_sc.scenario_id,
+                    "scenario_name": _base_sc.scenario_name or "Base Case",
+                    "scenario_snapshot_hash": None,
+                    "scenario_overrides_at_run": {},
+                }
+                update_scenario_last_run_summary(
+                    user_id=workspace_owner,
+                    scenario_id=_base_sc.scenario_id,
+                    last_run_summary=_base_run_summary,
+                    replay_metadata={"v2_run": True, "project": project},
+                )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist base case last_run_summary "
+                "project=%s", project
+            )
+
+    # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
+    ws_fresh = ws_committed or get_workspace_state(
+        user_id=workspace_owner, project_id=project_record.project_id
+    )
+    if ws_fresh is None:
+        msg = "Run committed but workspace could not be reloaded."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+    rr = WorkbookService.get_runtime_result(ws_fresh)
+    if rr is None:
+        msg = "Run committed but the persisted RuntimeResult could not be reconstructed."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 15: HTMX response ────────────────────────────────────────────── #
+    if not is_htmx:
+        return RedirectResponse(
+            url=f"/v2/workbook?project={project}",
+            status_code=303,
+        )
+
+    # R6/F07: ONE post-run UI projection authority — every runtime-dependent
+    # visible surface is rendered from this single ws_fresh read and one
+    # RuntimeProjectionBundle (run controls, status banner, toolbar,
+    # Overview KPIs, debt, tax, FS, scenario last-run statuses).  The
+    # previous hand-rolled assembly here omitted the Overview sheet, which
+    # left stale pre-Run KPIs presented as current after a new Run.
+    from app.v2.post_run_ui import build_post_run_ui_state
+
+    combined = build_post_run_ui_state(
+        request=request,
+        ws_fresh=ws_fresh,
+        project_record=project_record,
+        project=project,
+        workspace_owner=workspace_owner,
+        rr=rr,
+    )
+    return HTMLResponse(content=combined)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# U2.1: Institutional workbook export route
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.post("/workbook/export")
+async def v2_workbook_export(
+    request: Request,
+    project: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Institutional workbook export — canonical last-run authority.
+
+    Uses CANONICAL_LAST_RUN authority exclusively: the export reflects the
+    inputs that produced the last committed engine run, NOT the current
+    working-copy edits.  Zero engine execution; no financial computation.
+
+    Fail-closed: returns 400 HTML error when no run has been committed.
+
+    Not an HTMX endpoint: returns a binary file download via StreamingResponse
+    (or HTMLResponse on error).  Standard form POST only.
+
+    Access isolation: resolve_accessible_project() scopes the workspace to the
+    authenticated user; unauthenticated requests redirect to /login.
+    """
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.services.export_service import _make_streaming_response
+    from app.services.v2_export_service import (
+        build_canonical_last_run_institutional_workbook_export,
+    )
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(
+            content=(
+                "<html><body><h2>Export failed</h2>"
+                "<p>Project not found or not accessible.</p>"
                 "<a href='/library'>Back to Library</a></body></html>"
             ),
             status_code=404,
