@@ -157,7 +157,7 @@ class DerivativesDashboardService:
         for asset in assets:
             symbol = asset["symbol"]
             venues = {}
-            available_rates = []
+            comparable_hourly_rates = []
             for code, name in _VENUE_CODES:
                 point = lookup.get((symbol, code))
                 if point is None:
@@ -165,31 +165,46 @@ class DerivativesDashboardService:
                         "name": name,
                         "rate_bps": None,
                         "rate_bps_display": "—",
+                        "funding_interval_hours": None,
+                        "funding_interval_display": "—",
+                        "hourly_rate_bps": None,
+                        "hourly_rate_bps_display": "—",
                         "next_funding_at": None,
                         "next_funding_at_display": "—",
                     }
                     continue
+
                 rate_bps = point.funding_rate * 10_000.0
-                available_rates.append(rate_bps)
+                interval = point.funding_interval_hours
+                hourly_rate_bps = rate_bps / interval if interval is not None else None
+                if hourly_rate_bps is not None:
+                    comparable_hourly_rates.append(hourly_rate_bps)
                 venues[code] = {
                     "name": name,
                     "rate_bps": rate_bps,
                     "rate_bps_display": _bps(rate_bps),
+                    "funding_interval_hours": interval,
+                    "funding_interval_display": (
+                        "—" if interval is None else f"{interval}h"
+                    ),
+                    "hourly_rate_bps": hourly_rate_bps,
+                    "hourly_rate_bps_display": _bps(hourly_rate_bps),
                     "next_funding_at": point.next_funding_at.isoformat(),
                     "next_funding_at_display": _next_time(point.next_funding_at),
                 }
-            spread_bps = (
-                max(available_rates) - min(available_rates)
-                if len(available_rates) >= 2
+
+            hourly_spread_bps = (
+                max(comparable_hourly_rates) - min(comparable_hourly_rates)
+                if len(comparable_hourly_rates) >= 2
                 else None
             )
             rows.append(
                 {
                     "symbol": symbol,
                     "venues": venues,
-                    "spread_bps": spread_bps,
-                    "spread_bps_display": (
-                        "—" if spread_bps is None else f"{spread_bps:.2f} bp"
+                    "hourly_spread_bps": hourly_spread_bps,
+                    "hourly_spread_bps_display": (
+                        "—" if hourly_spread_bps is None else f"{hourly_spread_bps:.2f} bp/h"
                     ),
                 }
             )
@@ -274,8 +289,10 @@ class DerivativesDashboardService:
                     "predictedFundings carries next-funding timestamps."
                 ),
                 "cross_venue_note": (
-                    "Binance and Bybit predicted rates are read from Hyperliquid's "
-                    "predictedFundings aggregation; FINCO does not claim direct venue authority."
+                    "Cross-venue predictions are Hyperliquid-aggregated evidence, not direct "
+                    "Binance/Bybit authority. Native predicted rates are shown with their "
+                    "funding interval; Max–Min compares only rates normalized to an explicit "
+                    "hourly basis. Null/unlisted venue rows are omitted."
                 ),
             }
         except Exception as exc:  # noqa: BLE001 — domain boundary fails closed
