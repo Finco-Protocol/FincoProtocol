@@ -70,9 +70,9 @@ def test_economy_page_renders_offline_dashboard_and_source_identity():
     assert "Economy Overview" in response.text
     assert "U.S. Treasury 10Y" in response.text
     assert "4.12%" in response.text
-    assert "DGS10" in response.text
-    assert "Board of Governors of the Federal Reserve System (US)" in response.text
-    assert "via FRED" in response.text
+    assert "DGS10" not in response.text
+    assert "Board of Governors of the Federal Reserve System (US)" not in response.text
+    assert "via FRED" not in response.text
 
 
 def test_unavailable_macro_row_shows_reason_and_never_fabricates_value():

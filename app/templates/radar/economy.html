@@ -20,7 +20,7 @@
     <div>
       <p class="economy-eyebrow">FINCO RADAR / MACRO</p>
       <h1>Economy</h1>
-      <p class="muted">Official-source macro observations with explicit series identity, freshness, and provenance.</p>
+      <p class="muted">Official-source macro observations with explicit series identity and freshness.</p>
     </div>
     <div class="economy-health" data-state="{{ dashboard.state }}">
       <span class="economy-health__state">{{ dashboard.state }}</span>
@@ -51,14 +51,14 @@
     <div class="economy-table-wrap">
       <table class="economy-table">
         <thead>
-          <tr><th>Metric</th><th>Latest</th><th>Previous</th><th>Period</th><th>Status</th><th>Source</th></tr>
+          <tr><th>Metric</th><th>Latest</th><th>Previous</th><th>Period</th><th>Status</th></tr>
         </thead>
         <tbody>
         {% for row in section.rows %}
           <tr data-economy-key="{{ row.key }}" data-state="{{ row.state }}">
             <td>
               <strong>{{ row.title }}</strong>
-              <small class="economy-series-id mono">{{ row.source_series_id }} · {{ row.frequency }}</small>
+              <small class="economy-series-id muted">{{ row.frequency }}</small>
             </td>
             <td class="economy-value">
               <strong>{{ row.value_display }}</strong>
@@ -69,10 +69,6 @@
             <td>
               <span class="economy-state economy-state--{{ row.state|lower }}">{{ row.state }}</span>
               {% if row.reason %}<small class="economy-reason mono">{{ row.reason }}</small>{% endif %}
-            </td>
-            <td>
-              <a class="economy-source" href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.publisher }}</a>
-              <small class="economy-series-id">via {{ row.transport }}</small>
             </td>
           </tr>
         {% endfor %}

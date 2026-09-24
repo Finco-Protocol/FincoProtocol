@@ -214,8 +214,8 @@ def test_stablecoin_route_renders_supply_rotation_and_source_identity():
     assert "$306.00B" in response.text
     assert "+0.50%" in response.text
     assert "USDT" in response.text
-    assert "DefiLlama" in response.text
-    assert "/stablecoins?includePrices=true" in response.text
+    assert "DefiLlama" not in response.text
+    assert "/stablecoins?includePrices=true" not in response.text
 
 
 def test_stablecoin_route_failure_does_not_leak_exception_text():

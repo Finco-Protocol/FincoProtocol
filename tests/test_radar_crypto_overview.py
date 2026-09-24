@@ -208,7 +208,7 @@ def _client(service):
     return TestClient(app)
 
 
-def test_crypto_route_is_registered_and_page_renders_source_provenance():
+def test_crypto_route_is_registered_and_page_renders_market_data():
     service = FakeCryptoService(_ui_dashboard())
     response = _client(service).get("/radar/crypto")
     assert response.status_code == 200
@@ -217,8 +217,8 @@ def test_crypto_route_is_registered_and_page_renders_source_provenance():
     assert "Total Crypto Market Cap" in response.text
     assert "$2.62T" in response.text
     assert "+1.25%" in response.text
-    assert "data.total_market_cap.usd" in response.text
-    assert "CoinGecko" in response.text
+    assert "data.total_market_cap.usd" not in response.text
+    assert "CoinGecko" not in response.text
 
 
 def test_crypto_route_failure_does_not_leak_exception_message():

@@ -19,7 +19,7 @@
     <div>
       <p class="derivatives-eyebrow">FINCO RADAR / CRYPTO / DERIVATIVES</p>
       <h1>Perpetuals</h1>
-      <p class="muted">Hyperliquid-bound BTC and ETH leverage, liquidity and funding context. Venue-specific evidence is never presented as a whole-market aggregate.</p>
+      <p class="muted">BTC and ETH perpetual leverage, liquidity and funding context. Venue-specific evidence is never presented as a whole-market aggregate.</p>
     </div>
     <div class="derivatives-health" data-state="{{ dashboard.state }}">
       <span class="derivatives-health__state">{{ dashboard.state }}</span>
@@ -38,7 +38,7 @@
     <article class="panel derivatives-summary-card"><span>BTC + ETH Open Interest</span><strong>{{ dashboard.summary.combined_open_interest_usd_display }}</strong></article>
     <article class="panel derivatives-summary-card"><span>BTC + ETH 24h Notional Volume</span><strong>{{ dashboard.summary.combined_day_notional_volume_usd_display }}</strong></article>
     <article class="panel derivatives-summary-card"><span>24h Volume / OI</span><strong>{{ dashboard.summary.combined_oi_turnover_display }}</strong><small>notional turnover vs current OI</small></article>
-    <article class="panel derivatives-summary-card"><span>Current Funding Sign</span><strong>{{ dashboard.summary.funding_sign }}</strong><small>BTC + ETH current Hyperliquid rates</small></article>
+    <article class="panel derivatives-summary-card"><span>Current Funding Sign</span><strong>{{ dashboard.summary.funding_sign }}</strong><small>BTC + ETH current funding rates</small></article>
   </section>
 
   <section class="panel derivatives-table-panel">
@@ -55,7 +55,7 @@
         <tbody>
         {% for row in dashboard.assets %}
           <tr data-derivatives-symbol="{{ row.symbol }}">
-            <td><strong>{{ row.symbol }}</strong><small class="mono">{{ row.source_id }}</small></td>
+            <td><strong>{{ row.symbol }}</strong></td>
             <td>{{ row.mark_price_display }}</td>
             <td class="{% if row.change_24h_pct > 0 %}derivatives-up{% elif row.change_24h_pct < 0 %}derivatives-down{% endif %}">{{ row.change_24h_display }}</td>
             <td>{{ row.oracle_price_display }}</td>
@@ -99,7 +99,7 @@
     </div>
     <p class="derivatives-note">24h rate sum is the simple sum of returned funding-rate observations; it is not realized funding P&amp;L.</p>
     {% else %}
-    <div class="derivatives-aux-unavailable"><span>Funding history unavailable.</span><code>{{ dashboard.funding_history_reason }}</code></div>
+    <div class="derivatives-aux-unavailable"><span>Funding history unavailable.</span><span class="muted small">Source data unavailable.</span></div>
     {% endif %}
   </section>
 
@@ -127,16 +127,13 @@
     </div>
     <p class="derivatives-note">{{ dashboard.cross_venue_note }}</p>
     {% else %}
-    <div class="derivatives-aux-unavailable"><span>Cross-venue predicted funding unavailable.</span><code>{{ dashboard.predicted_funding_reason }}</code></div>
+    <div class="derivatives-aux-unavailable"><span>Cross-venue predicted funding unavailable.</span><span class="muted small">Source data unavailable.</span></div>
     {% endif %}
   </section>
   {% endif %}
 
   <section class="panel derivatives-provenance">
-    <div><strong>Source authority</strong><span>{{ dashboard.publisher }} · {{ dashboard.transport }}</span></div>
-    <div><strong>Endpoint family</strong><span class="mono">{{ dashboard.source_endpoint }}</span></div>
     <div><strong>Freshness</strong><span>{{ dashboard.freshness_note }}</span></div>
-    <a href="{{ dashboard.source_url }}" target="_blank" rel="noopener noreferrer">Hyperliquid API documentation →</a>
   </section>
 </main>
 </body>
