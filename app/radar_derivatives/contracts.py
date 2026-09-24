@@ -25,22 +25,27 @@ def _finite(value: float, name: str) -> float:
     return parsed
 
 
+def _aware(value: datetime, name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be timezone-aware")
+
+
 @dataclass(frozen=True)
 class PerpAssetSnapshot:
-    """One exchange-bound perpetual context.
-
-    Hyperliquid's ``metaAndAssetCtxs`` response does not carry a source
-    observation timestamp. ``retrieved_at`` therefore records FINCO retrieval
-    time only and must not be presented as exchange observation freshness.
-    """
+    """One Hyperliquid perpetual context bound through the returned universe index."""
 
     symbol: str
     mark_price: float
     oracle_price: float
+    prev_day_price: float
+    mid_price: float | None
+    impact_bid_price: float | None
+    impact_ask_price: float | None
     funding_rate: float
     open_interest_base: float
     day_notional_volume_usd: float
     premium_rate: float | None
+    max_leverage: int
     retrieved_at: datetime
     publisher: str
     transport: str
@@ -50,19 +55,76 @@ class PerpAssetSnapshot:
     def __post_init__(self) -> None:
         for name in ("symbol", "publisher", "transport", "source_endpoint", "source_id"):
             _required_text(getattr(self, name), name)
-        if self.retrieved_at.tzinfo is None or self.retrieved_at.utcoffset() is None:
-            raise ValueError("retrieved_at must be timezone-aware")
+        _aware(self.retrieved_at, "retrieved_at")
         for name in (
-            "mark_price", "oracle_price", "funding_rate",
-            "open_interest_base", "day_notional_volume_usd",
+            "mark_price",
+            "oracle_price",
+            "prev_day_price",
+            "funding_rate",
+            "open_interest_base",
+            "day_notional_volume_usd",
         ):
             _finite(getattr(self, name), name)
-        if self.premium_rate is not None:
-            _finite(self.premium_rate, "premium_rate")
-        if self.mark_price <= 0 or self.oracle_price <= 0:
-            raise ValueError("mark_price and oracle_price must be positive")
+        for name in ("mid_price", "impact_bid_price", "impact_ask_price", "premium_rate"):
+            value = getattr(self, name)
+            if value is not None:
+                _finite(value, name)
+        if self.mark_price <= 0 or self.oracle_price <= 0 or self.prev_day_price <= 0:
+            raise ValueError("mark_price, oracle_price and prev_day_price must be positive")
+        if self.mid_price is not None and self.mid_price <= 0:
+            raise ValueError("mid_price must be positive when present")
+        if self.impact_bid_price is not None and self.impact_bid_price <= 0:
+            raise ValueError("impact_bid_price must be positive when present")
+        if self.impact_ask_price is not None and self.impact_ask_price <= 0:
+            raise ValueError("impact_ask_price must be positive when present")
+        if (
+            self.impact_bid_price is not None
+            and self.impact_ask_price is not None
+            and self.impact_ask_price < self.impact_bid_price
+        ):
+            raise ValueError("impact ask cannot be below impact bid")
         if self.open_interest_base < 0 or self.day_notional_volume_usd < 0:
             raise ValueError("open interest and volume cannot be negative")
+        if isinstance(self.max_leverage, bool) or self.max_leverage <= 0:
+            raise ValueError("max_leverage must be a positive integer")
+
+
+@dataclass(frozen=True)
+class FundingRatePoint:
+    symbol: str
+    funding_rate: float
+    premium_rate: float | None
+    observed_at: datetime
+
+    def __post_init__(self) -> None:
+        _required_text(self.symbol, "symbol")
+        _finite(self.funding_rate, "funding_rate")
+        if self.premium_rate is not None:
+            _finite(self.premium_rate, "premium_rate")
+        _aware(self.observed_at, "observed_at")
+
+
+@dataclass(frozen=True)
+class PredictedFundingRate:
+    symbol: str
+    venue_code: str
+    venue_name: str
+    funding_rate: float
+    next_funding_at: datetime
+    funding_interval_hours: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("symbol", "venue_code", "venue_name"):
+            _required_text(getattr(self, name), name)
+        _finite(self.funding_rate, "funding_rate")
+        _aware(self.next_funding_at, "next_funding_at")
+        if self.funding_interval_hours is not None:
+            if (
+                isinstance(self.funding_interval_hours, bool)
+                or not isinstance(self.funding_interval_hours, int)
+                or self.funding_interval_hours <= 0
+            ):
+                raise ValueError("funding_interval_hours must be a positive integer when present")
 
 
 @dataclass(frozen=True)
@@ -73,13 +135,16 @@ class DerivativesSnapshot:
     publisher: str
     transport: str
     source_endpoint: str
+    funding_history: tuple[FundingRatePoint, ...] = ()
+    predicted_funding: tuple[PredictedFundingRate, ...] = ()
+    funding_history_reason: str | None = None
+    predicted_funding_reason: str | None = None
     reason: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("publisher", "transport", "source_endpoint"):
             _required_text(getattr(self, name), name)
-        if self.retrieved_at.tzinfo is None or self.retrieved_at.utcoffset() is None:
-            raise ValueError("retrieved_at must be timezone-aware")
+        _aware(self.retrieved_at, "retrieved_at")
         if self.state is DerivativesState.AVAILABLE and not self.assets:
             raise ValueError("AVAILABLE snapshot requires assets")
         if self.state is DerivativesState.UNAVAILABLE and self.assets:
