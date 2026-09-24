@@ -174,19 +174,23 @@ def test_scaling_section_at_canonical_capacity(solar_run):
     assert scaling["project_created"] is False
     assert scaling["engine_executed"] is True
     assert scaling["db_writes"] is False
+    assert scaling["stateless"] is True
 
 
 def test_authority_section(solar_run):
-    """A5-35: authority section must confirm clean G2C execution."""
+    """A5-35: authority section must confirm clean G2C execution and full M8 disclosure."""
     authority = solar_run["data"]["authority"]
     assert authority["runtime_authority"] == "clean_g2c"
     assert authority["calculation_count"] == 1
     assert authority["scenario"] == "Base"
     assert authority["engine_executed"] is True
     assert authority["project_created"] is False
-    assert authority["db_writes"] is False
+    assert authority["stateless"] is True
     assert authority["synthetic_reference"] is True
     assert authority["market_benchmark"] is False
+    assert authority["scenario_created"] is False
+    assert authority["workspace_mutated"] is False
+    assert authority["persisted"] is False
 
 
 def test_results_kpi_fields_present(solar_run):
@@ -367,14 +371,16 @@ def test_run_does_not_create_project(client):
 
 
 def test_run_has_no_db_writes(client):
-    """A5-67: Run must never perform DB writes (db_writes=False)."""
+    """A5-67: Run must declare no DB writes and not be persisted."""
     r = client.post(
         "/api/v1/model/references/generic_solar_reference/run",
         json={"capacity_mw": 64.0},
     )
     assert r.status_code == 200
-    assert r.json()["data"]["scaling"]["db_writes"] is False
-    assert r.json()["data"]["authority"]["db_writes"] is False
+    data = r.json()["data"]
+    assert data["scaling"]["db_writes"] is False
+    assert data["authority"]["persisted"] is False
+    assert data["authority"]["workspace_mutated"] is False
 
 
 def test_run_does_not_call_execute_run_route(client):
@@ -448,7 +454,7 @@ def test_semaphore_released_after_successful_run():
 
 
 def test_semaphore_released_on_engine_exception(client):
-    """A5-83: Semaphore must be released even when the engine raises an exception."""
+    """A5-83: Semaphore must be released even when unexpected exception propagates as 500."""
     import app.api.v1.run_limiter as limiter_mod
     import app.api.v1.model_run as model_run_mod
 
@@ -461,15 +467,16 @@ def test_semaphore_released_on_engine_exception(client):
         with mock.patch.object(
             model_run_mod,
             "build_run_response_data",
-            side_effect=RuntimeError("simulated engine failure"),
+            side_effect=RuntimeError("PROGRAMMING_SENTINEL"),
         ):
             r = client.post(
                 "/api/v1/model/references/generic_solar_reference/run",
                 json={"capacity_mw": 64.0},
             )
-            assert r.status_code == 503
+            # Unexpected RuntimeError propagates as 500 (not caught by typed handlers)
+            assert r.status_code == 500, f"Expected 500, got {r.status_code}"
 
-        # After the failed call, semaphore must be re-acquirable (was released)
+        # After the failed call, semaphore must be re-acquirable (was released in finally)
         acquired = sem.acquire(blocking=False)
         assert acquired, "Semaphore was not released after engine exception"
         sem.release()
@@ -566,3 +573,438 @@ def test_run_small_positive_capacity(client):
     )
     assert r.status_code == 200
     assert r.json()["data"]["scaling"]["requested_capacity_mw"] == 5.0
+
+
+# ── Correction A: M3 — Canonical-capacity economic equivalence ────────────────
+
+def test_canonical_capacity_solar_capex_equivalence():
+    """M3: At 64 MW, scaled Solar CAPEX items must equal canonical factory values."""
+    import dataclasses
+    from app.project_factories import create_generic_solar_reference
+    from app.api.v1.model_run import _build_scaled_project_inputs
+    pi = create_generic_solar_reference()
+    scaled = _build_scaled_project_inputs(pi, 1.0, 64.0)
+    assert abs(scaled.capex.total_capex - pi.capex.total_capex) < 0.001
+    assert scaled.technical.capacity_mw == 64.0
+    # All individual PER_MW capex items unchanged at ratio=1
+    for field in ("epc_contract", "production_units", "epc_other", "grid_connection", "audit_legal"):
+        orig = getattr(pi.capex, field).amount_keur
+        scaled_val = getattr(scaled.capex, field).amount_keur
+        assert abs(scaled_val - orig) < 0.001, f"{field}: expected {orig}, got {scaled_val}"
+    # All OPEX items unchanged at ratio=1
+    for orig_item, scaled_item in zip(pi.opex, scaled.opex):
+        assert abs(scaled_item.y1_amount_keur - orig_item.y1_amount_keur) < 0.001
+
+
+def test_canonical_capacity_wind_capex_equivalence():
+    """M3: At 48 MW, scaled Wind CAPEX items must equal canonical factory values."""
+    from app.project_factories import create_generic_wind_reference
+    from app.api.v1.model_run import _build_scaled_project_inputs
+    pi = create_generic_wind_reference()
+    scaled = _build_scaled_project_inputs(pi, 1.0, 48.0)
+    assert abs(scaled.capex.total_capex - pi.capex.total_capex) < 0.001
+    assert scaled.technical.capacity_mw == 48.0
+    for field in ("epc_contract", "grid_connection", "epc_other", "audit_legal"):
+        orig = getattr(pi.capex, field).amount_keur
+        scaled_val = getattr(scaled.capex, field).amount_keur
+        assert abs(scaled_val - orig) < 0.001, f"{field}: expected {orig}, got {scaled_val}"
+
+
+def test_zero_capex_items_not_scaled():
+    """M3: Zero CAPEX items must remain zero after scaling (no phantom amounts)."""
+    from app.project_factories import create_generic_solar_reference
+    from app.api.v1.model_run import _build_scaled_project_inputs
+    pi = create_generic_solar_reference()
+    scaled = _build_scaled_project_inputs(pi, 2.0, 128.0)
+    for field in ("ops_prep", "insurances", "lease_tax", "construction_mgmt_a",
+                  "commissioning", "construction_mgmt_b", "contingencies",
+                  "taxes", "project_acquisition", "project_rights"):
+        assert getattr(scaled.capex, field).amount_keur == 0.0, f"{field} should remain 0"
+
+
+def test_canonical_capacity_revenue_assumptions_preserved():
+    """M3: Revenue, financing, and tax assumptions must be identical at canonical capacity."""
+    from app.project_factories import create_generic_solar_reference
+    from app.api.v1.model_run import _build_scaled_project_inputs
+    pi = create_generic_solar_reference()
+    scaled = _build_scaled_project_inputs(pi, 1.0, 64.0)
+    # Revenue, financing, tax are not touched by scaling
+    assert scaled.revenue == pi.revenue
+    assert scaled.financing == pi.financing
+    assert scaled.tax == pi.tax
+
+
+# ── Correction A: M4 — KPI parity with run_project ────────────────────────────
+
+def test_kpi_parity_solar_canonical(client):
+    """M4: A5 solar results must exactly match run_project()['kpis'] at canonical capacity."""
+    from app.api.project_runner import run_project
+    from app.project_factories import create_generic_solar_reference
+    pi = create_generic_solar_reference()
+    direct = run_project("Generic Solar Reference", "Base", project_inputs_override=pi, use_dualrun_validation=False)
+    direct_kpis = direct["kpis"]
+
+    r = client.post("/api/v1/model/references/generic_solar_reference/run", json={"capacity_mw": 64.0})
+    assert r.status_code == 200
+    a5_results = r.json()["data"]["results"]
+
+    float_fields = [
+        "project_irr", "equity_irr", "sponsor_irr", "project_npv_keur", "equity_npv_keur",
+        "min_dscr", "avg_dscr", "total_revenue_keur", "total_ebitda_keur",
+        "total_opex_keur", "total_tax_keur", "total_capex_keur", "total_senior_ds_keur",
+    ]
+    for field in float_fields:
+        direct_val = direct_kpis.get(field)
+        a5_val = a5_results.get(field)
+        if direct_val is None:
+            assert a5_val is None, f"{field}: expected None, got {a5_val}"
+        else:
+            assert a5_val is not None, f"{field}: expected {direct_val}, got None"
+            assert abs(float(a5_val) - float(direct_val)) < 1e-6, f"{field}: {a5_val} != {direct_val}"
+
+
+def test_kpi_parity_wind_canonical(client):
+    """M4: A5 wind results must exactly match run_project()['kpis'] at canonical capacity."""
+    from app.api.project_runner import run_project
+    from app.project_factories import create_generic_wind_reference
+    pi = create_generic_wind_reference()
+    direct = run_project("Generic Wind Reference", "Base", project_inputs_override=pi, use_dualrun_validation=False)
+    direct_kpis = direct["kpis"]
+
+    r = client.post("/api/v1/model/references/generic_wind_reference/run", json={"capacity_mw": 48.0})
+    assert r.status_code == 200
+    a5_results = r.json()["data"]["results"]
+
+    for field in ["project_irr", "equity_irr", "total_revenue_keur", "total_capex_keur", "min_dscr"]:
+        direct_val = direct_kpis.get(field)
+        a5_val = a5_results.get(field)
+        if direct_val is None:
+            assert a5_val is None
+        else:
+            assert abs(float(a5_val) - float(direct_val)) < 1e-6, f"{field}: {a5_val} != {direct_val}"
+
+
+# ── Correction A: M5 — Programming sentinel propagates as 500 ─────────────────
+
+def test_programming_sentinel_propagates_as_500(client):
+    """M5: Unexpected RuntimeError must propagate as 500, not be swallowed as 503."""
+    import app.api.v1.model_run as model_run_mod
+
+    with mock.patch.object(
+        model_run_mod,
+        "build_run_response_data",
+        side_effect=RuntimeError("PROGRAMMING_SENTINEL"),
+    ):
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+    assert r.status_code == 500, f"Expected 500 (programming error), got {r.status_code}"
+    # 500 body may be empty or minimal — do not attempt JSON decode; just verify status
+    assert r.status_code not in (200, 400, 503)
+
+
+def test_programming_sentinel_semaphore_released(client):
+    """M5: Semaphore must still be released even when a programming error propagates."""
+    import app.api.v1.run_limiter as limiter_mod
+    import app.api.v1.model_run as model_run_mod
+
+    original = limiter_mod._semaphore
+    try:
+        sem = threading.BoundedSemaphore(1)
+        limiter_mod._semaphore = sem
+
+        with mock.patch.object(
+            model_run_mod,
+            "build_run_response_data",
+            side_effect=RuntimeError("PROGRAMMING_SENTINEL"),
+        ):
+            client.post(
+                "/api/v1/model/references/generic_solar_reference/run",
+                json={"capacity_mw": 64.0},
+            )
+
+        acquired = sem.acquire(blocking=False)
+        assert acquired, "Semaphore not released after programming error"
+        sem.release()
+    finally:
+        limiter_mod._semaphore = original
+
+
+# ── Correction A: M6 — Authority metadata fail-closed ─────────────────────────
+
+def test_authority_metadata_fail_closed_wrong_runtime_authority(client):
+    """M6: If runtime_authority != 'clean_g2c', must propagate as server error (not 200)."""
+    import app.api.v1.model_run as model_run_mod
+
+    bad_payload = {
+        "runtime_authority": {"runtime_authority": "legacy", "calculation_count": 1, "scenario": "Base"},
+        "kpis": {},
+    }
+    original_fn = model_run_mod.build_run_response_data
+
+    def patched_build(key, capacity_mw):
+        from app.api.project_runner import run_project as _rp
+        from app.api.v1.model_reference import get_pi
+        from app.services.reference_seed_service import build_reference_scaling_preview
+        pi = get_pi(key)
+        preview = build_reference_scaling_preview(key, capacity_mw)
+        scaled_pi = model_run_mod._build_scaled_project_inputs(pi, preview["ratio"], capacity_mw)
+        payload = dict(bad_payload)
+        return model_run_mod._validate_authority_metadata(payload["runtime_authority"]) and {}
+
+    with mock.patch("app.api.project_runner.run_project", return_value=bad_payload):
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+    assert r.status_code != 200, f"Expected non-200 on bad runtime_authority, got {r.status_code}"
+
+
+def test_authority_metadata_fail_closed_wrong_calculation_count(client):
+    """M6: If calculation_count != 1, must propagate as server error (not 200)."""
+    bad_payload = {
+        "runtime_authority": {"runtime_authority": "clean_g2c", "calculation_count": 2, "scenario": "Base"},
+        "kpis": {},
+    }
+    with mock.patch("app.api.project_runner.run_project", return_value=bad_payload):
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+    assert r.status_code != 200, f"Expected non-200 on calculation_count=2, got {r.status_code}"
+
+
+# ── Correction A: M7 — Finite JSON safety ─────────────────────────────────────
+
+def test_finite_float_nan_returns_none():
+    """M7: _finite_float(NaN) must return None."""
+    from app.api.v1.model_run import _finite_float
+    assert _finite_float(float("nan")) is None
+
+
+def test_finite_float_pos_inf_returns_none():
+    """M7: _finite_float(+Inf) must return None."""
+    from app.api.v1.model_run import _finite_float
+    assert _finite_float(float("inf")) is None
+
+
+def test_finite_float_neg_inf_returns_none():
+    """M7: _finite_float(-Inf) must return None."""
+    from app.api.v1.model_run import _finite_float
+    assert _finite_float(float("-inf")) is None
+
+
+def test_finite_float_zero_preserved():
+    """M7: _finite_float(0.0) must return 0.0 (not None)."""
+    from app.api.v1.model_run import _finite_float
+    result = _finite_float(0.0)
+    assert result == 0.0
+    assert result is not None
+
+
+def test_response_has_no_non_finite_values(client):
+    """M7: No A5 successful response may contain NaN or Inf in results."""
+    r = client.post(
+        "/api/v1/model/references/generic_solar_reference/run",
+        json={"capacity_mw": 64.0},
+    )
+    assert r.status_code == 200
+    results = r.json()["data"]["results"]
+    for field, val in results.items():
+        if val is not None and isinstance(val, float):
+            assert math.isfinite(val), f"Non-finite value in results.{field}: {val}"
+
+
+def test_extract_kpis_filters_non_finite():
+    """M7: _extract_kpis must map NaN/Inf KPI values to None."""
+    from app.api.v1.model_run import _extract_kpis
+    kpis = {
+        "project_irr": float("nan"),
+        "equity_irr": float("inf"),
+        "sponsor_irr": float("-inf"),
+        "total_revenue_keur": 1234.5,
+        "total_capex_keur": 0.0,
+        "total_ebitda_keur": None,
+        "min_dscr": 1.3,
+        "avg_dscr": 1.5,
+        "target_dscr": 1.2,
+        "min_llcr": 1.1,
+        "total_opex_keur": 50.0,
+        "total_tax_keur": 30.0,
+        "total_distributions_keur": 100.0,
+        "total_senior_ds_keur": 200.0,
+        "total_shl_service_keur": 10.0,
+        "project_npv_keur": 5000.0,
+        "equity_npv_keur": 3000.0,
+        "periods_in_lockup": 4,
+    }
+    result = _extract_kpis(kpis)
+    assert result["project_irr"] is None, "NaN should become None"
+    assert result["equity_irr"] is None, "+Inf should become None"
+    assert result["sponsor_irr"] is None, "-Inf should become None"
+    assert result["total_revenue_keur"] == 1234.5
+    assert result["total_capex_keur"] == 0.0
+    assert result["total_ebitda_keur"] is None
+
+
+# ── Correction A: M8 — Complete semantic disclosure ───────────────────────────
+
+def test_m8_authority_semantic_disclosure(solar_run):
+    """M8: Authority section must include all semantic disclosure fields."""
+    authority = solar_run["data"]["authority"]
+    required = {
+        "stateless": True,
+        "synthetic_reference": True,
+        "market_benchmark": False,
+        "engine_executed": True,
+        "project_created": False,
+        "scenario_created": False,
+        "workspace_mutated": False,
+        "persisted": False,
+    }
+    for field, expected in required.items():
+        assert field in authority, f"Missing field: {field}"
+        assert authority[field] == expected, f"{field}: expected {expected}, got {authority[field]}"
+
+
+def test_m8_scaling_stateless_flag(solar_run):
+    """M8: scaling section must include stateless=True."""
+    assert solar_run["data"]["scaling"]["stateless"] is True
+
+
+# ── Correction A: M10 — Scaling ratio tests (all required) ───────────────────
+
+@pytest.mark.parametrize("capacity_mw,expected_ratio", [
+    (64.0, 1.0),
+    (128.0, 2.0),
+    (32.0, 0.5),
+])
+def test_solar_scaling_ratios(client, capacity_mw, expected_ratio):
+    """M10: Solar scaling ratios 1×, 2×, 0.5× must be exact."""
+    r = client.post(
+        "/api/v1/model/references/generic_solar_reference/run",
+        json={"capacity_mw": capacity_mw},
+    )
+    assert r.status_code == 200, f"Expected 200 at {capacity_mw} MW, got {r.status_code}"
+    ratio = r.json()["data"]["scaling"]["scale_ratio"]
+    assert abs(ratio - expected_ratio) < 1e-9, f"Expected ratio {expected_ratio}, got {ratio}"
+
+
+@pytest.mark.parametrize("capacity_mw,expected_ratio", [
+    (48.0, 1.0),
+    (96.0, 2.0),
+    (24.0, 0.5),
+])
+def test_wind_scaling_ratios(client, capacity_mw, expected_ratio):
+    """M10: Wind scaling ratios 1×, 2×, 0.5× must be exact."""
+    r = client.post(
+        "/api/v1/model/references/generic_wind_reference/run",
+        json={"capacity_mw": capacity_mw},
+    )
+    assert r.status_code == 200, f"Expected 200 at {capacity_mw} MW, got {r.status_code}"
+    ratio = r.json()["data"]["scaling"]["scale_ratio"]
+    assert abs(ratio - expected_ratio) < 1e-9, f"Expected ratio {expected_ratio}, got {ratio}"
+
+
+# ── Correction A: M10 — Additional persistence seam guards ────────────────────
+
+def test_run_does_not_call_create_working_copy(client):
+    """M10: create_working_copy (project creation) must never be called."""
+    with mock.patch("app.services.project_library_service.create_working_copy") as patched:
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+        assert r.status_code == 200
+        patched.assert_not_called()
+
+
+def test_run_does_not_call_save_workspace_state(client):
+    """M10: save_workspace_state (workspace persistence) must never be called."""
+    with mock.patch("app.persistence.workspace_repository.save_workspace_state") as patched:
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+        assert r.status_code == 200
+        patched.assert_not_called()
+
+
+def test_run_does_not_call_execute_projects_create_route(client):
+    """M10: execute_projects_create_route (project persistence) must never be called."""
+    with mock.patch(
+        "app.services.projects_create_service.execute_projects_create_route"
+    ) as patched:
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+        assert r.status_code == 200
+        patched.assert_not_called()
+
+
+# ── Correction A: M10 — Calculation count evidence ────────────────────────────
+
+def test_calculation_count_on_success(solar_run):
+    """M10: Successful run must declare calculation_count=1."""
+    assert solar_run["data"]["authority"]["calculation_count"] == 1
+
+
+def test_calculation_count_zero_on_404(client):
+    """M10: Unsupported key (404) must not execute any calculation."""
+    with mock.patch("app.api.project_runner.run_project") as patched:
+        r = client.post(
+            "/api/v1/model/references/generic_storage_reference/run",
+            json={"capacity_mw": 64.0},
+        )
+        assert r.status_code == 404
+        patched.assert_not_called()
+
+
+def test_calculation_count_zero_on_400(client):
+    """M10: Invalid request (400) must not execute any calculation."""
+    with mock.patch("app.api.project_runner.run_project") as patched:
+        r = client.post(
+            "/api/v1/model/references/generic_solar_reference/run",
+            json={"capacity_mw": -1},
+        )
+        assert r.status_code == 400
+        patched.assert_not_called()
+
+
+def test_calculation_count_zero_on_capacity_exhausted(client):
+    """M10: When semaphore exhausted (503), no calculation must execute."""
+    import app.api.v1.run_limiter as limiter_mod
+    original = limiter_mod._semaphore
+    try:
+        sem = threading.BoundedSemaphore(1)
+        sem.acquire()
+        limiter_mod._semaphore = sem
+        with mock.patch("app.api.project_runner.run_project") as patched:
+            r = client.post(
+                "/api/v1/model/references/generic_solar_reference/run",
+                json={"capacity_mw": 64.0},
+            )
+            assert r.status_code == 503
+            patched.assert_not_called()
+    finally:
+        limiter_mod._semaphore = original
+
+
+# ── Correction A: M10 — Validation boundary (NaN/Inf strings) ─────────────────
+
+@pytest.mark.parametrize("raw_body,description", [
+    (b'{"capacity_mw": "NaN"}', "NaN string"),
+    (b'{"capacity_mw": "Infinity"}', "+Infinity string"),
+    (b'{"capacity_mw": "-Infinity"}', "-Infinity string"),
+])
+def test_non_finite_capacity_string_rejected(client, raw_body, description):
+    """M10: String NaN/Inf representations must be rejected with 400 (string type check)."""
+    r = client.post(
+        "/api/v1/model/references/generic_solar_reference/run",
+        content=raw_body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 400, f"Expected 400 for {description}, got {r.status_code}: {r.text}"
+    assert r.json()["error"] == "MODEL_RUN_REQUEST_INVALID"

@@ -51,8 +51,9 @@
             <div class="papi__section-eyebrow">Model API</div>
             <h2 class="papi__section-title" id="model-api-heading">Reference Models</h2>
             <p class="papi__section-desc">
-              Canonical synthetic Solar and Wind reference models. Read-only.
-              No project is created, no engine executes.
+              Canonical synthetic Solar and Wind reference models.
+              Read-only endpoints return reference assumptions. The run endpoint executes
+              one canonical financial calculation and returns summary KPIs. No project is created.
             </p>
           </div>
 
@@ -96,6 +97,20 @@
                   <span class="papi__tag papi__tag--stateless">Stateless</span>
                   <span class="papi__tag">No project created</span>
                   <span class="papi__tag">No model run</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--post">POST</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references/<span class="papi__path-param">{reference_key}</span>/run</code></div>
+              <div role="cell" class="papi__endpoint-desc">
+                Stateless canonical model run. Executes one financial calculation and returns summary KPIs.
+                <div class="papi__endpoint-tags">
+                  <span class="papi__tag papi__tag--stateless">Stateless</span>
+                  <span class="papi__tag">Canonical model run</span>
+                  <span class="papi__tag">No project created</span>
+                  <span class="papi__tag">Capacity-only input</span>
                 </div>
               </div>
             </div>
@@ -207,10 +222,6 @@
           </div>
 
           <div class="papi__coming-list">
-            <div class="papi__coming-item">
-              <span class="papi__coming-name">Model Run API</span>
-              <span class="papi__coming-soon">Coming soon</span>
-            </div>
             <div class="papi__coming-item">
               <span class="papi__coming-name">Scenario API</span>
               <span class="papi__coming-soon">Coming soon</span>

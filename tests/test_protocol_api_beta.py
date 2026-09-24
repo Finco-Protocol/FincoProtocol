@@ -217,13 +217,27 @@ def test_api21_execution_simulation_readonly(client):
     assert "no order submitted" in html_lower
 
 
-# ── API22: Model Run marked Coming soon ──────────────────────────────────────
+# ── API22: Model Run /run endpoint now live ──────────────────────────────────
 
-def test_api22_model_run_coming_soon(client):
+def test_api22_model_run_endpoint_live(client):
     r = client.get("/api")
-    html_lower = r.text.lower()
-    assert "model run" in html_lower
-    assert "coming soon" in html_lower
+    # A5 run endpoint must be shown as a live endpoint (not coming soon)
+    assert "/run" in r.text
+    assert "canonical model run" in r.text.lower() or "model run" in r.text.lower()
+
+
+# ── API22b: Model Run no longer in Coming Soon list ──────────────────────────
+
+def test_api22b_model_run_not_coming_soon(client):
+    r = client.get("/api")
+    html = r.text
+    # "Model Run API" must no longer appear as a coming-soon item
+    # Find the coming-next section and check it does not contain Model Run API
+    coming_next_idx = html.lower().find("coming next")
+    if coming_next_idx == -1:
+        coming_next_idx = html.lower().find("roadmap")
+    coming_section = html[coming_next_idx:] if coming_next_idx != -1 else ""
+    assert "Model Run API" not in coming_section
 
 
 # ── API23: Scenario API marked Coming soon ────────────────────────────────────
@@ -235,13 +249,21 @@ def test_api23_scenario_api_coming_soon(client):
     assert "coming soon" in html_lower
 
 
-# ── API24: no fake Model Run live endpoint presented ─────────────────────────
+# ── API24: no stale Model Run path in Coming Soon ────────────────────────────
 
 def test_api24_no_fake_model_run_endpoint(client):
     r = client.get("/api")
-    # Model Run must NOT appear as a real /api/v1/... path endpoint
+    # The invalid bare /api/v1/model/run path must never appear
     assert "/api/v1/model/run" not in r.text
     assert "/api/v1/run" not in r.text
+
+
+# ── API24b: A5 run endpoint path present ─────────────────────────────────────
+
+def test_api24b_a5_run_endpoint_path_present(client):
+    r = client.get("/api")
+    assert "/api/v1/model/references/" in r.text
+    assert "/run" in r.text
 
 
 # ── API25: /docs link present ────────────────────────────────────────────────

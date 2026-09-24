@@ -218,11 +218,6 @@ def post_model_reference_run(
         return _run_unavailable(exc.detail, error="MODEL_RUN_NOT_READY")
     except (CleanProductionRunUnavailable, ProductionAuthorityResolutionError) as exc:
         return _run_unavailable(exc.detail)
-    except Exception as exc:
-        return _run_unavailable(
-            f"Internal error during model run: {type(exc).__name__}",
-            error="MODEL_RUN_INTERNAL_ERROR",
-        )
     finally:
         release_run_slot()
 
