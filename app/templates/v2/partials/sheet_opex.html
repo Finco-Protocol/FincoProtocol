@@ -50,6 +50,7 @@
     field_error          str
 #}
 {% from "partials/field_editor.html" import render_field %}
+{% from "partials/_money_format.html" import grouped_keur %}
 
 {# Macro: read-only calculated row #}
 {% macro opex_ro_row(label, value, badge="ENGINE", unit="kEUR") %}
@@ -252,6 +253,18 @@
     </div>
   </div>
 
+  <section class="v2-parent-summary" aria-labelledby="opex-parent-summary-title" data-testid="opex-parent-summary">
+    <div class="v2-sheet-section-heading"><span id="opex-parent-summary-title">OPEX parent summary</span><small>Year 1 parent totals and per-line escalation authority</small></div>
+    <div class="v2-parent-summary-scroll"><table class="v2-parent-summary-table">
+      <thead><tr><th>Code</th><th>Parent category</th><th class="v2-num">Y1 kEUR</th><th class="v2-num">Escalation</th></tr></thead>
+      <tbody>{% for sg in opex_sheet_groups %}<tr data-testid="opex-parent-summary-{{ sg.code }}">
+        <td>{{ sg.code }}</td><td>{{ sg.display_name }}</td>
+        <td class="v2-num">{% if sg.has_vm_data %}{{ grouped_keur(sg.subtotal_y1) }}{% else %}—{% endif %}</td>
+        <td class="v2-num">{% if sg.has_vm_data %}{{ "%.1f"|format(sg.inflation_pct) }}%{% else %}—{% endif %}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
   {# ── Runtime status bar ────────────────────────────────────────── #}
   <div class="v2-opex-runtime-bar" data-testid="opex-runtime-bar">
     <div class="v2-field-row v2-field-readonly" data-testid="opex-runtime-status-row">
@@ -301,7 +314,7 @@
         <span class="v2-opex-col-y1 v2-opex-subtotal v2-opex-amount-cell"
               data-testid="opex-subtotal-{{ sg.code }}">
           {%- if sg.has_vm_data -%}
-            {{ "%.0f"|format(sg.subtotal_y1) }}
+            {{ grouped_keur(sg.subtotal_y1) }}
           {%- else -%}—{%- endif -%}
         </span>
         <span class="v2-opex-col-escl">
@@ -399,7 +412,7 @@
     <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX (incl. contingency)</span>
     <span class="v2-opex-col-y1 v2-opex-grand-total-amount v2-opex-amount-cell"
           data-testid="opex-grand-total-y1">
-      {{ "%.0f"|format(opex_vm.y1_total_opex) }}
+      {{ grouped_keur(opex_vm.y1_total_opex) }}
     </span>
     <span class="v2-opex-col-escl"></span>
     <span class="v2-opex-col-status"></span>

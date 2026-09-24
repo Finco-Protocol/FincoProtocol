@@ -6,3 +6,17 @@
     —
   {%- endif -%}
 {%- endmacro %}
+
+{# Presentation-only financial number formatter.  Whole kEUR keeps the
+   workbook convention; non-integral authoritative values retain precision. #}
+{% macro grouped_financial(value) -%}
+  {%- if value is number and value is not sameas true and value is not sameas false -%}
+    {%- if value == value|round(0, 'common') -%}
+      {{- "{:,d}".format(value|int) -}}
+    {%- else -%}
+      {{- "{:,.2f}".format(value).rstrip("0").rstrip(".") -}}
+    {%- endif -%}
+  {%- else -%}
+    —
+  {%- endif -%}
+{%- endmacro %}

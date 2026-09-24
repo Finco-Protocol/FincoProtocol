@@ -25,6 +25,7 @@
     field_error               str
 #}
 {% from "partials/field_editor.html" import render_field %}
+{% from "partials/_money_format.html" import grouped_financial %}
 
 <div id="v2-sheet-tax" data-sheet="tax"
      data-fc-grid="tax" data-fc-scroll-container>
@@ -75,7 +76,7 @@
             <span class="v2-kpi-label">Total Tax</span>
             <span class="v2-kpi-value">
               {% if runtime_summary.total_tax_keur is not none and runtime_summary.total_tax_keur != "—" %}
-                {{ runtime_summary.total_tax_keur }}
+                {{ grouped_financial(runtime_summary.total_tax_keur) }}
               {% else %}—{% endif %}
             </span>
           </div>
@@ -134,22 +135,22 @@
                 <td>{{ p.period }}</td>
                 <td>{{ p.date }}</td>
                 <td class="v2-num">
-                  {% if p.taxable_profit_keur is not none %}{{ "%.0f"|format(p.taxable_profit_keur) }}{% else %}—{% endif %}
+                  {% if p.taxable_profit_keur is not none %}{{ grouped_financial(p.taxable_profit_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.tax_keur is not none %}{{ "%.0f"|format(p.tax_keur) }}{% else %}—{% endif %}
+                  {% if p.tax_keur is not none %}{{ grouped_financial(p.tax_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.cf_after_tax_keur is not none %}{{ "%.0f"|format(p.cf_after_tax_keur) }}{% else %}—{% endif %}
+                  {% if p.cf_after_tax_keur is not none %}{{ grouped_financial(p.cf_after_tax_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.tax_loss_opening_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_opening_audit_keur) }}{% else %}—{% endif %}
+                  {% if p.tax_loss_opening_audit_keur is not none %}{{ grouped_financial(p.tax_loss_opening_audit_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.tax_loss_used_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_used_audit_keur) }}{% else %}—{% endif %}
+                  {% if p.tax_loss_used_audit_keur is not none %}{{ grouped_financial(p.tax_loss_used_audit_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.tax_loss_closing_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_closing_audit_keur) }}{% else %}—{% endif %}
+                  {% if p.tax_loss_closing_audit_keur is not none %}{{ grouped_financial(p.tax_loss_closing_audit_keur) }}{% else %}—{% endif %}
                 </td>
               </tr>
               {% endfor %}

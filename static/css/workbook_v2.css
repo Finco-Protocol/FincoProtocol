@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20965)
+Total output lines: 2470
+
 /* ── Reset / base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
@@ -567,7 +570,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
   font-weight: 600; font-size: 0.78rem;
   padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;
-  position: sticky; top: 4.8rem; z-index: 10; user-select: none;
+  position: relative; z-index: 1; user-select: none;
 }
 .v2-capex-group-header::-webkit-details-marker { display: none; }
 .v2-capex-group-header::before {
@@ -577,7 +580,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 details.v2-capex-group[open] > .v2-capex-group-header::before {
   transform: rotate(90deg);
 }
-.v2-capex-group-body { padding: 0.1rem 0 0.35rem 0; }
+.v2-capex-group-body { padding: .2rem 0 .3rem; clear: both; overflow: clip; }
 
 .v2-capex-engine-row {
   background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem;
@@ -592,13 +595,13 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-capex-shared-row     { border-left: 3px solid #c4b5fd; background: #faf5ff; }
 
 .v2-capex-sublines-container {
-  margin-left: 1rem; border-left: 1px solid #f3f4f6;
+  margin: .15rem 0 0 1rem; border-left: 1px solid #e5e7eb; background: #fff;
 }
 .v2-capex-subline {
   display: grid;
   grid-template-columns: 4rem 1fr 7rem 6rem 1fr;
   align-items: center;
-  padding: 0.1rem 0.4rem;
+  min-height: 1.8rem; padding: .22rem .4rem;
   font-size: 0.76rem; color: #6b7280;
   border-bottom: 1px solid #f9fafb;
 }
@@ -699,7 +702,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
   align-items: center; cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem; padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;
-  position: sticky; top: 4.8rem; z-index: 10; user-select: none;
+  position: relative; z-index: 1; user-select: none;
 }
 .v2-opex-group-header::-webkit-details-marker { display: none; }
 .v2-opex-group-header::before {
@@ -707,7 +710,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
   color: #9ca3af; margin-right: 0.25rem;
 }
 details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(90deg); }
-.v2-opex-group-body { padding: 0.1rem 0 0.35rem 0; }
+.v2-opex-group-body { padding: .2rem 0 .3rem; clear: both; overflow: clip; }
 .v2-opex-ro-row { background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem; }
 .v2-opex-amount-cell { font-variant-numeric: tabular-nums; }
 .v2-opex-badge-engine   { background: #6b7280; color: #fff; }
@@ -715,10 +718,10 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-badge-partial  { background: #d97706; color: #fff; }
 .v2-opex-badge-bound    { background: #15803d; color: #fff; }
 
-.v2-opex-lines-container { margin-left: 1rem; border-left: 1px solid #f3f4f6; }
+.v2-opex-lines-container { margin: .15rem 0 0 1rem; border-left: 1px solid #e5e7eb; background: #fff; }
 .v2-opex-line-row {
   display: grid; grid-template-columns: 4.5rem 1fr 6rem 4rem 1fr auto;
-  align-items: center; padding: 0.1rem 0.4rem;
+  align-items: center; min-height: 1.8rem; padding: .22rem .4rem;
   font-size: 0.76rem; color: #6b7280; border-bottom: 1px solid #f9fafb;
 }
 .v2-opex-line-row:last-child { border-bottom: none; }
@@ -737,6 +740,24 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-grand-total-amount {
   text-align: right; font-variant-numeric: tabular-nums; color: #14532d;
 }
+
+/* Parent summaries are compact read-only reconciliations of the same VMs
+   rendered below; they deliberately introduce no new aggregation authority. */
+.v2-parent-summary { margin: .55rem 0 .8rem; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden; }
+.v2-parent-summary .v2-sheet-section-heading { margin: 0; padding: .35rem .55rem; background: #f8fafc; }
+.v2-parent-summary-scroll { overflow-x: auto; }
+.v2-parent-summary-table { width: 100%; border-collapse: collapse; font-size: .76rem; }
+.v2-parent-summary-table th, .v2-parent-summary-table td { padding: .28rem .45rem; border-bottom: 1px solid #edf1f5; }
+.v2-parent-summary-table th { text-align: left; color: #64748b; font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; }
+.v2-parent-summary-table tr:last-child td { border-bottom: 0; }
+.v2-returns-shl-funding { margin: .4rem 0; padding: .45rem .6rem; border-left: 3px solid #475569; background: #f8fafc; font-size: .78rem; }
+.v2-returns-shl-funding span { margin-left: .4rem; color: #64748b; }
+.v2-debt-context-panel { margin-top: .75rem; padding: .6rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
+.v2-debt-context-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #1e3a5f; }
+.v2-debt-context-panel p { margin: .25rem 0 .45rem; color: #64748b; font-size: .7rem; }
+.v2-debt-context-panel dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border-top: 1px solid #edf1f5; }
+.v2-debt-context-panel dl > div { display:flex; justify-content:space-between; gap:.5rem; padding:.38rem .25rem; border-bottom:1px solid #edf1f5; font-size:.75rem; }
+.v2-debt-context-panel dt { color:#4b5563; }.v2-debt-context-panel dd { margin:0; text-align:right; color:#172554; font-variant-numeric:tabular-nums; }
 
 /* OPEX year projection table */
 .v2-opex-projection-panel { margin-top: 1.5rem; border: 1px solid #e5e7eb; border-radius: 3px; }
@@ -856,6 +877,8 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-capex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem auto; }
   .v2-capex-compact-edit-row .v2-capex-subline-permw,
   .v2-capex-compact-edit-row .v2-binding-badge { display: none; }
+  .v2-parent-summary-table { min-width: 30rem; }
+  .v2-debt-context-panel dl, .v2-sponsor-funding-panel dl { grid-template-columns: 1fr; }
 }
 
 /* ── Table base ──────────────────────────────────────────────── */
@@ -950,147 +973,7 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-inputs-slice1-form {
   display: grid;
   grid-template-columns: minmax(7rem, 1fr) auto;
-  gap: 0.35rem;
-  align-items: center;
-}
-.v2-inputs-slice1-input {
-  width: 100%;
-  min-width: 0;
-  font-size: 0.84rem;
-  border: 1px solid #d1d5db;
-  border-radius: 2px;
-  padding: 0.16rem 0.3rem;
-  color: #111827;
-  background: #fff;
-}
-.v2-inputs-slice1-input:focus {
-  border-color: #2563eb;
-  outline: none;
-}
-.v2-inputs-slice1-save {
-  border: 1px solid #2563eb;
-  border-radius: 2px;
-  background: #2563eb;
-  color: #fff;
-  font-size: 0.73rem;
-  font-weight: 600;
-  padding: 0.14rem 0.45rem;
-  cursor: pointer;
-}
-.v2-inputs-slice1-error {
-  grid-column: 1 / -1;
-  font-size: 0.74rem;
-  color: #991b1b;
-}
-.v2-inputs-slice1-badge {
-  display: inline-flex;
-  max-width: 100%;
-  font-size: 0.68rem;
-  font-weight: 600;
-  border-radius: 2px;
-  padding: 0.08rem 0.35rem;
-  color: #374151;
-  background: #f3f4f6;
-  white-space: nowrap;
-}
-.v2-inputs-slice1-status-editable-bound .v2-inputs-slice1-badge {
-  color: #166534;
-  background: #dcfce7;
-}
-.v2-inputs-slice1-status-read-only-derived .v2-inputs-slice1-badge,
-.v2-inputs-slice1-status-read-only-template-locked .v2-inputs-slice1-badge {
-  color: #374151;
-  background: #e5e7eb;
-}
-.v2-inputs-slice1-status-read-only-reference-project .v2-inputs-slice1-badge {
-  color: #1d4ed8;
-  background: #dbeafe;
-}
-.v2-inputs-slice1-status-unavailable-unresolved .v2-inputs-slice1-badge {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-/* ── PR-A chrome additions ──────────────────────────────────────────────── */
-.v2-toolbar-back {
-  font-size: 0.75rem;
-  color: #8899bb;
-  text-decoration: none;
-  white-space: nowrap;
-  padding: 0.1rem 0.25rem;
-  border-radius: 3px;
-}
-.v2-toolbar-back:hover { color: #b0bcdd; }
-.v2-toolbar-badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.4rem;
-  border-radius: 3px;
-  white-space: nowrap;
-  text-transform: uppercase;
-}
-.v2-toolbar-type.v2-toolbar-badge { color: #8899bb; background: transparent; }
-.v2-toolbar-ref-badge { color: #b0bcdd; background: #2c3555; }
-.v2-toolbar-wc-badge { color: #b0ddbb; background: #1e3a2c; }
-.v2-toolbar-scenario-link {
-  font-size: 0.75rem;
-  color: #8899bb;
-  text-decoration: none;
-  white-space: nowrap;
-  padding-left: 0.75rem;
-  border-left: 1px solid #2c3555;
-  margin-left: 0.5rem;
-}
-.v2-toolbar-scenario-link:hover { color: #b0bcdd; }
-.v2-toolbar-scenario-link strong { color: #b0bcdd; font-weight: 500; }
-.v2-slice1-rollback-banner {
-  background: #1e2a1e;
-  border: 1px solid #2d4a2d;
-  color: #86b086;
-  font-size: 0.8rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  margin-bottom: 0.75rem;
-}
-.v2-slice1-config-state {
-  padding: 1.5rem;
-  color: #8899aa;
-}
-.v2-slice1-disabled-notice {
-  font-size: 0.85rem;
-  color: #8899aa;
-  margin: 0;
-}
-
-/* ── F08: Grid alignment tokens ─────────────────────────────────────────── */
-:root {
-  /* Two-column field-row grid: label | value+unit cell.
-     Unit text lives inside .v2-field-label as .v2-unit — no separate column.
-     --v2-col-value-width, --v2-col-unit-width, --v2-col-status-width removed:
-     they were defined but not consumed by any grid. */
-  --v2-col-label-width:  16rem;
-  /* Row geometry */
-  --v2-row-height:       2rem;
-}
-
-/* Label: prevent overflow, truncate with ellipsis */
-.v2-field-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-/* Base value cell: no forced alignment (text/date/select stay left-aligned) */
-.v2-field-value {
-  padding-right: 0.25rem;
-  min-width: 0;
-}
-
-/* Typed numeric alignment — right-align + tabular-nums for numeric types only.
-   data-field-type is set on .v2-field-row in field_editor.html macro. */
-.v2-field-row[data-field-type="float"]   .v2-field-value,
+  gap:…965 tokens truncated…-value,
 .v2-field-row[data-field-type="mw"]      .v2-field-value,
 .v2-field-row[data-field-type="keur"]    .v2-field-value,
 .v2-field-row[data-field-type="pct"]     .v2-field-value,

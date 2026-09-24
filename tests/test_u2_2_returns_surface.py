@@ -116,6 +116,13 @@ def test_sponsor_and_distribution_rows_are_passed_through_from_persistence():
     assert projection.sponsor_rows[0]["legal_equity_distribution_keur"] == 250.0
     assert projection.distribution_rows[0]["cf_after_reserves_keur"] == 250.0
     assert projection.distribution_rows[0]["lockup_active"] is False
+    assert projection.total_shl_funded == 500.0
+
+
+def test_shl_funding_is_explicit_but_not_fabricated_per_period():
+    html = _render(build_returns_projection(_rr(), _ws()))
+    assert "SHL funding (Last Run):" in html
+    assert "Persisted total; period-by-period SHL funding is not available" in html
 
 
 def test_genuine_zero_is_visible_while_missing_is_unavailable():

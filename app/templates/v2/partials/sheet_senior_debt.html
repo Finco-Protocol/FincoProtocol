@@ -33,6 +33,7 @@
       fail-closed / locked regardless of protection state.
 #}
 {% from "partials/field_editor.html" import render_field %}
+{% from "partials/_money_format.html" import grouped_keur %}
 
 {% macro placeholder_row(label) %}
 <div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
@@ -177,37 +178,14 @@
                         hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
       {% endfor %}
 
-      <section class="v2-sponsor-funding-panel" aria-labelledby="sponsor-funding-title"
-               data-testid="sponsor-funding-panel">
-        <h3 id="sponsor-funding-title">Sponsor Funding / Shareholder Loan</h3>
-        <p class="v2-sponsor-funding-freshness v2-sponsor-funding-freshness--{{ sponsor_funding_freshness.state | lower }}"
-           data-testid="sponsor-funding-freshness">{{ sponsor_funding_freshness.label }}</p>
-        <section class="v2-sponsor-funding-section" aria-labelledby="sponsor-working-inputs-title">
-          <h4 id="sponsor-working-inputs-title">Working financing inputs</h4>
-          <p>Current typed ProjectInputs; editing them does not recalculate Last Run evidence.</p>
-          <dl data-testid="sponsor-working-inputs">
-          {% for label, value, status in sponsor_working_rows %}
-          <div>
-            <dt>{{ label }}</dt>
-            <dd>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}
-              <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd>
-          </div>
-          {% endfor %}
-          </dl>
-        </section>
-        <section class="v2-sponsor-funding-section" aria-labelledby="sponsor-last-run-title">
-          <h4 id="sponsor-last-run-title">Last Run evidence</h4>
-          <p>Persisted runtime evidence only; it is never reconstructed from working inputs.</p>
-          <dl data-testid="sponsor-last-run-evidence">
-          {% for label, value, status in sponsor_last_run_rows %}
-          <div>
-            <dt>{{ label }}</dt>
-            <dd>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}
-              <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd>
-          </div>
-          {% endfor %}
-          </dl>
-        </section>
+      <section class="v2-debt-context-panel" data-testid="senior-debt-detail-panel">
+        <h3>Debt financing context</h3>
+        <p>Typed debt assumptions only. Values not present in ProjectInputs are not inferred.</p>
+        <dl>
+        {% for label, value in senior_detail_rows %}
+          <div><dt>{{ label }}</dt><dd>{{ value if value is not none and value != '' else '—' }}</dd></div>
+        {% endfor %}
+        </dl>
       </section>
 
     </div>
@@ -240,7 +218,7 @@
             <span class="v2-kpi-label">Total Debt Service</span>
             <span class="v2-kpi-value">
               {% if runtime_summary.total_senior_ds_keur is not none %}
-                {{ "%.0f"|format(runtime_summary.total_senior_ds_keur) }} kEUR
+                {{ grouped_keur(runtime_summary.total_senior_ds_keur) }} kEUR
               {% else %}—{% endif %}
             </span>
           </div>
@@ -326,22 +304,22 @@
                 <td>{{ p.period }}</td>
                 <td>{{ p.date }}</td>
                 <td class="v2-num">
-                  {% if p.senior_balance_keur is not none %}{{ "%.0f"|format(p.senior_balance_keur) }}{% else %}—{% endif %}
+                  {% if p.senior_balance_keur is not none %}{{ grouped_keur(p.senior_balance_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.senior_principal_keur is not none %}{{ "%.0f"|format(p.senior_principal_keur) }}{% else %}—{% endif %}
+                  {% if p.senior_principal_keur is not none %}{{ grouped_keur(p.senior_principal_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.senior_interest_keur is not none %}{{ "%.0f"|format(p.senior_interest_keur) }}{% else %}—{% endif %}
+                  {% if p.senior_interest_keur is not none %}{{ grouped_keur(p.senior_interest_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.senior_ds_keur is not none %}{{ "%.0f"|format(p.senior_ds_keur) }}{% else %}—{% endif %}
+                  {% if p.senior_ds_keur is not none %}{{ grouped_keur(p.senior_ds_keur) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
                   {% if p.dscr is not none %}{{ "%.2f"|format(p.dscr) }}{% else %}—{% endif %}
                 </td>
                 <td class="v2-num">
-                  {% if p.dsra_balance_keur is not none %}{{ "%.0f"|format(p.dsra_balance_keur) }}{% else %}—{% endif %}
+                  {% if p.dsra_balance_keur is not none %}{{ grouped_keur(p.dsra_balance_keur) }}{% else %}—{% endif %}
                 </td>
               </tr>
               {% endfor %}
