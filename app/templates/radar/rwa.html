@@ -29,13 +29,13 @@
 
   <section class="panel rwa-boundary">
     <strong>Authority boundary</strong>
-    <span>CoinGecko RWA market data describes the aggregated tokenized market. It is not the underlying stock, commodity, or ETF spot-price authority. No premium/discount or parity signal is inferred in this slice.</span>
+    <span>RWA market data describes the aggregated tokenized market. It is not the underlying stock, commodity, or ETF spot-price authority. No premium/discount or parity signal is inferred in this slice.</span>
   </section>
 
   {% if dashboard.reason %}
   <section class="panel panel-error">
     <h2>RWA data unavailable</h2>
-    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No replacement identities or substitute market values are displayed.</p>
   </section>
   {% endif %}
@@ -57,7 +57,7 @@
         <tbody>
         {% for row in section.rows %}
           <tr data-rwa-id="{{ row.id }}" data-state="{{ row.state }}">
-            <td><strong>{{ row.name }}</strong><span class="mono rwa-symbol">{{ row.symbol }} · {{ row.source_id }}</span></td>
+            <td><strong>{{ row.name }}</strong><span class="mono rwa-symbol">{{ row.symbol }}</span></td>
             <td>{{ row.asset_type }}</td>
             <td>{{ row.current_price_display }}</td>
             <td>{{ row.market_cap_display }}</td>
@@ -75,8 +75,7 @@
   {% endfor %}
 
   <footer class="rwa-footnote">
-    <span>Source: <a href="{{ dashboard.markets_source_url }}" target="_blank" rel="noopener noreferrer">{{ dashboard.publisher }} {{ dashboard.transport }}</a></span>
-    <span>Universe identity: <a href="{{ dashboard.list_source_url }}" target="_blank" rel="noopener noreferrer">RWA List</a></span>
+    <span>Read-only tokenized market intelligence. Unavailable evidence fails closed.</span>
   </footer>
 </main>
 </body>

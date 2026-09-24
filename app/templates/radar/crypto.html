@@ -21,7 +21,7 @@
     <div>
       <p class="crypto-eyebrow">FINCO RADAR / DIGITAL ASSETS</p>
       <h1>Crypto Overview</h1>
-      <p class="muted">Global market state and major-asset context with explicit source timestamps and provenance.</p>
+      <p class="muted">Global market state and major-asset context with explicit timestamps and freshness.</p>
     </div>
     <div class="crypto-health" data-state="{{ dashboard.state }}">
       <span class="crypto-health__state">{{ dashboard.state }}</span>
@@ -32,7 +32,7 @@
   {% if dashboard.reason %}
   <section class="panel panel-error crypto-top-error">
     <h2>Crypto data unavailable</h2>
-    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No substitute market values are displayed.</p>
   </section>
   {% endif %}
@@ -57,11 +57,7 @@
           {% else %}<span class="muted">24h change —</span>{% endif %}
           <span class="mono">{{ row.observed_at or '—' }}</span>
         </div>
-        <div class="crypto-metric__source">
-          <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.publisher }}</a>
-          <span class="mono">{{ row.source_endpoint }} · {{ row.source_id }}</span>
-        </div>
-        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+        {% if row.reason %}<div class="crypto-reason muted small">Source data unavailable.</div>{% endif %}
       </article>
       {% endfor %}
     </div>
@@ -70,7 +66,7 @@
 
   <footer class="crypto-footnote">
     <span>Read-only market intelligence.</span>
-    <span>CoinGecko Demo API is transport + publisher for this slice; unavailable evidence fails closed.</span>
+    <span>Market data is read-only. Unavailable evidence fails closed.</span>
   </footer>
 </main>
 </body>

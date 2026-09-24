@@ -70,17 +70,18 @@ def test_economy_page_renders_offline_dashboard_and_source_identity():
     assert "Economy Overview" in response.text
     assert "U.S. Treasury 10Y" in response.text
     assert "4.12%" in response.text
-    assert "DGS10" in response.text
-    assert "Board of Governors of the Federal Reserve System (US)" in response.text
-    assert "via FRED" in response.text
+    assert "DGS10" not in response.text
+    assert "Board of Governors of the Federal Reserve System (US)" not in response.text
+    assert "via FRED" not in response.text
 
 
-def test_unavailable_macro_row_shows_reason_and_never_fabricates_value():
+def test_unavailable_macro_row_shows_neutral_text_and_never_fabricates_value():
     service = FakeEconomyService(_dashboard(
         state="UNAVAILABLE", row_state="UNAVAILABLE", reason="FRED_API_KEY_NOT_CONFIGURED"))
     response = _client(service).get("/radar/economy")
     assert response.status_code == 200
-    assert "FRED_API_KEY_NOT_CONFIGURED" in response.text
+    assert "FRED_API_KEY_NOT_CONFIGURED" not in response.text
+    assert "Source data unavailable" in response.text
     assert "UNAVAILABLE" in response.text
     assert "4.12%" not in response.text
     assert "—" in response.text
@@ -106,6 +107,7 @@ def test_economy_route_failure_is_fail_closed():
 
     response = _client(BrokenService()).get("/radar/economy")
     assert response.status_code == 200
-    assert "ECONOMY_DASHBOARD_UNAVAILABLE:RuntimeError" in response.text
+    assert "ECONOMY_DASHBOARD_UNAVAILABLE:RuntimeError" not in response.text
     assert "provider details must not leak" not in response.text
+    assert "Source data unavailable" in response.text
     assert "No substitute values are displayed" in response.text

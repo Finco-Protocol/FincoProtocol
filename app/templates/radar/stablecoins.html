@@ -31,7 +31,7 @@
   {% if stablecoins.reason %}
   <section class="panel panel-error">
     <h2>Stablecoin data unavailable</h2>
-    <p class="state-unavailable mono">{{ stablecoins.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No substitute supply or dominance values are displayed.</p>
   </section>
   {% endif %}
@@ -49,8 +49,7 @@
           <span>30d <strong>{{ row.change_30d_display }}</strong></span>
         </div>
         {% if row.price is not none %}<div class="muted small">Peg price {{ row.price_display }}</div>{% endif %}
-        <div class="crypto-metric__source"><a href="{{ stablecoins.source_url }}" target="_blank" rel="noopener noreferrer">{{ stablecoins.publisher }}</a><span class="mono">{{ row.source_id }}</span></div>
-        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+        {% if row.reason %}<div class="crypto-reason muted small">Source data unavailable.</div>{% endif %}
       </article>
       {% endfor %}
     </div>
@@ -60,12 +59,12 @@
     <div class="crypto-section__heading"><h2>Largest USD Stablecoins</h2><span class="muted small">by circulating supply</span></div>
     <div class="stablecoin-table-wrap">
       <table class="stablecoin-table">
-        <thead><tr><th>Asset</th><th>Supply</th><th>Price</th><th>1d</th><th>7d</th><th>30d</th><th>ID</th></tr></thead>
+        <thead><tr><th>Asset</th><th>Supply</th><th>Price</th><th>1d</th><th>7d</th><th>30d</th></tr></thead>
         <tbody>
         {% for row in stablecoins.top_assets %}
-          <tr><td><strong>{{ row.symbol }}</strong><small>{{ row.name }}</small></td><td>{{ row.supply_display }}</td><td>{{ row.price_display }}</td><td>{{ row.change_1d_display }}</td><td>{{ row.change_7d_display }}</td><td>{{ row.change_30d_display }}</td><td class="mono">{{ row.asset_id }}</td></tr>
+          <tr><td><strong>{{ row.symbol }}</strong><small>{{ row.name }}</small></td><td>{{ row.supply_display }}</td><td>{{ row.price_display }}</td><td>{{ row.change_1d_display }}</td><td>{{ row.change_7d_display }}</td><td>{{ row.change_30d_display }}</td></tr>
         {% else %}
-          <tr><td colspan="7" class="muted">No source-bound stablecoin rows available.</td></tr>
+          <tr><td colspan="6" class="muted">No source-bound stablecoin rows available.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -73,8 +72,7 @@
   </section>
 
   <footer class="crypto-footnote">
-    <span>Source: {{ stablecoins.publisher }} · {{ stablecoins.transport }}</span>
-    <span class="mono">{{ stablecoins.source_endpoint }} · retrieval time shown; upstream endpoint exposes no observation timestamp.</span>
+    <span>Read-only supply intelligence. Retrieval time shown; upstream endpoint exposes no observation timestamp.</span>
   </footer>
 </main>
 </body>
