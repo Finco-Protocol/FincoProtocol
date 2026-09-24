@@ -1,0 +1,14 @@
+<style>
+  .radar-domain-nav{display:flex;align-items:center;gap:6px;padding:10px 24px;border-bottom:1px solid var(--radar-border,#252b33);background:var(--radar-surface,#11161c);overflow-x:auto}
+  .radar-domain-nav a,.radar-domain-nav span{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:7px;font-size:13px;font-weight:650;line-height:1;text-decoration:none;white-space:nowrap;color:var(--radar-muted,#8d98a5);border:1px solid transparent}
+  .radar-domain-nav a:hover{color:var(--radar-text,#d7dee5);border-color:var(--radar-border,#303844)}
+  .radar-domain-nav .is-active{color:var(--radar-text,#f3f6f8);background:rgba(255,255,255,.055);border-color:var(--radar-border,#303844)}
+  .radar-domain-nav .is-disabled{opacity:.55;cursor:not-allowed}
+  .radar-domain-nav__soon{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--radar-gold,#d7b46a)}
+</style>
+{% set domain = radar_domain|default('stocks') %}
+<nav class="radar-domain-nav" aria-label="Radar domains" data-testid="radar-domain-nav">
+  <a href="/radar" class="{% if domain == 'stocks' %}is-active{% endif %}" {% if domain == 'stocks' %}aria-current="page"{% endif %}>Stocks</a>
+  <span class="is-disabled" aria-disabled="true">Crypto <small class="radar-domain-nav__soon">next</small></span>
+  <a href="/radar/economy" class="{% if domain == 'economy' %}is-active{% endif %}" {% if domain == 'economy' %}aria-current="page"{% endif %}>Economy</a>
+</nav>

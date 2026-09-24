@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — Economy</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/economy.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar economy-page">
+{% with proto_active_page="radar" %}
+{% include "partials/_protocol_nav.html" %}
+{% endwith %}
+{% include "radar/domain_nav.html" %}
+
+<main class="radar-main economy-main">
+  <header class="economy-hero">
+    <div>
+      <p class="economy-eyebrow">FINCO RADAR / MACRO</p>
+      <h1>Economy</h1>
+      <p class="muted">Official-source macro observations with explicit series identity, freshness, and provenance.</p>
+    </div>
+    <div class="economy-health" data-state="{{ dashboard.state }}">
+      <span class="economy-health__state">{{ dashboard.state }}</span>
+      <span>{{ dashboard.fresh_count }} fresh · {{ dashboard.stale_count }} stale · {{ dashboard.unavailable_count }} unavailable</span>
+    </div>
+  </header>
+
+  <nav class="economy-section-nav" aria-label="Economy sections">
+    {% for section in dashboard.sections %}
+    <a href="#economy-{{ section.key }}">{{ section.title }}</a>
+    {% endfor %}
+  </nav>
+
+  {% if dashboard.reason %}
+  <section class="panel panel-error economy-top-error">
+    <h2>Economy data unavailable</h2>
+    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="muted small">No substitute values are displayed.</p>
+  </section>
+  {% endif %}
+
+  {% for section in dashboard.sections %}
+  <section class="panel economy-section" id="economy-{{ section.key }}" data-economy-section="{{ section.key }}">
+    <div class="economy-section__heading">
+      <h2>{{ section.title }}</h2>
+      <span class="muted small">{{ section.rows|length }} metric{{ 's' if section.rows|length != 1 else '' }}</span>
+    </div>
+    <div class="economy-table-wrap">
+      <table class="economy-table">
+        <thead>
+          <tr><th>Metric</th><th>Latest</th><th>Previous</th><th>Period</th><th>Status</th><th>Source</th></tr>
+        </thead>
+        <tbody>
+        {% for row in section.rows %}
+          <tr data-economy-key="{{ row.key }}" data-state="{{ row.state }}">
+            <td>
+              <strong>{{ row.title }}</strong>
+              <small class="economy-series-id mono">{{ row.source_series_id }} · {{ row.frequency }}</small>
+            </td>
+            <td class="economy-value">
+              <strong>{{ row.value_display }}</strong>
+              {% if row.state != 'UNAVAILABLE' %}<small class="economy-trend economy-trend--{{ row.trend|lower }}">{{ row.trend }}</small>{% endif %}
+            </td>
+            <td>{{ row.previous_display }}</td>
+            <td class="mono small">{{ row.period or '—' }}</td>
+            <td>
+              <span class="economy-state economy-state--{{ row.state|lower }}">{{ row.state }}</span>
+              {% if row.reason %}<small class="economy-reason mono">{{ row.reason }}</small>{% endif %}
+            </td>
+            <td>
+              <a class="economy-source" href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.publisher }}</a>
+              <small class="economy-series-id">via {{ row.transport }}</small>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endfor %}
+
+  <footer class="economy-footnote">
+    <span>Read-only macro surface.</span>
+    <span>Unavailable or stale source evidence is shown explicitly; FINCO does not synthesize replacement observations.</span>
+  </footer>
+</main>
+</body>
+</html>

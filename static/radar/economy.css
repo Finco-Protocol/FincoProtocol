@@ -1,0 +1,31 @@
+.economy-main{display:flex;flex-direction:column;gap:14px}
+.economy-hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;padding:8px 2px 4px}
+.economy-hero h1{margin:2px 0 6px;font-size:30px;line-height:1.1;color:var(--radar-text,#e8edf2)}
+.economy-eyebrow{margin:0;color:var(--radar-gold,#d7b46a);font-size:10px;font-weight:700;letter-spacing:.14em}
+.economy-health{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:11px;color:var(--radar-muted,#8d98a5)}
+.economy-health__state{font-weight:750;letter-spacing:.08em;color:var(--radar-text,#d7dee5)}
+.economy-health[data-state="FRESH"] .economy-health__state{color:#8dc7a0}
+.economy-health[data-state="STALE"] .economy-health__state,.economy-health[data-state="PARTIAL"] .economy-health__state{color:var(--radar-gold,#d7b46a)}
+.economy-health[data-state="UNAVAILABLE"] .economy-health__state{color:#d48b8b}
+.economy-section-nav{display:flex;gap:7px;overflow-x:auto;padding:2px 0 3px}
+.economy-section-nav a{padding:7px 10px;border:1px solid var(--radar-border,#303844);border-radius:6px;color:var(--radar-muted,#98a3af);font-size:11px;text-decoration:none;white-space:nowrap;background:rgba(255,255,255,.018)}
+.economy-section-nav a:hover{color:var(--radar-text,#e3e8ed);background:rgba(255,255,255,.04)}
+.economy-section{padding:0;overflow:hidden;scroll-margin-top:12px}
+.economy-section__heading{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--radar-border,#29313a)}
+.economy-section__heading h2{margin:0;font-size:14px}
+.economy-table-wrap{overflow-x:auto}
+.economy-table{width:100%;border-collapse:collapse;min-width:880px;font-size:12px}
+.economy-table th{padding:9px 12px;text-align:left;color:var(--radar-muted,#8d98a5);font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.018);border-bottom:1px solid var(--radar-border,#29313a)}
+.economy-table td{padding:11px 12px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.045);color:var(--radar-text,#d7dee5)}
+.economy-table tbody tr:last-child td{border-bottom:0}
+.economy-series-id,.economy-reason{display:block;margin-top:4px;color:var(--radar-muted,#7f8995);font-size:9px;font-weight:400}
+.economy-value strong{font-size:14px;font-variant-numeric:tabular-nums}
+.economy-trend{display:inline-block;margin-left:7px;font-size:9px;font-weight:700}
+.economy-trend--up{color:#8dc7a0}.economy-trend--down{color:#d48b8b}.economy-trend--flat{color:var(--radar-muted,#8d98a5)}
+.economy-state{display:inline-flex;padding:3px 6px;border-radius:999px;border:1px solid var(--radar-border,#303844);font-size:9px;font-weight:750;letter-spacing:.06em}
+.economy-state--fresh{color:#8dc7a0;border-color:rgba(141,199,160,.35)}
+.economy-state--stale{color:var(--radar-gold,#d7b46a);border-color:rgba(215,180,106,.35)}
+.economy-state--unavailable{color:#d48b8b;border-color:rgba(212,139,139,.35)}
+.economy-source{color:var(--radar-text,#cbd3db);text-decoration:none}.economy-source:hover{text-decoration:underline}
+.economy-top-error{margin:0}.economy-footnote{display:flex;justify-content:space-between;gap:12px;padding:2px 1px 18px;color:var(--radar-muted,#7f8995);font-size:10px}
+@media(max-width:760px){.economy-hero{align-items:flex-start;flex-direction:column}.economy-health{align-items:flex-start}.economy-footnote{flex-direction:column}.economy-section__heading{padding:12px}.economy-table th,.economy-table td{padding:9px 10px}}
