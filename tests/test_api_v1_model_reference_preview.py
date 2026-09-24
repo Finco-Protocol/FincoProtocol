@@ -875,9 +875,17 @@ def test_c08_extra_field_error_code(client):
     assert r.json()["error"] == "MODEL_PREVIEW_REQUEST_INVALID"
 
 
-def test_c09_extra_field_error_mentions_key(client):
+def test_c09_extra_field_stable_detail_no_echo(client):
     r = _post(client, "generic_solar_reference", {"capacity_mw": 100.0, "bogus_key": 1})
-    assert "bogus_key" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert detail == "Only capacity_mw is accepted."
+    assert "bogus_key" not in detail
+
+
+def test_c09b_extra_field_sentinel_absent_from_response(client):
+    sentinel = "SENTINEL_MUST_NOT_APPEAR_IN_RESPONSE_XYZ"
+    r = _post(client, "generic_solar_reference", {"capacity_mw": 100.0, sentinel: "v"})
+    assert sentinel not in r.text
 
 
 def test_c10_openapi_additional_properties_false(client):
