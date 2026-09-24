@@ -225,6 +225,7 @@ def test_stablecoin_route_failure_does_not_leak_exception_text():
 
     response = _client(BrokenService()).get("/radar/crypto/stablecoins")
     assert response.status_code == 200
-    assert "STABLECOIN_DASHBOARD_UNAVAILABLE:RuntimeError" in response.text
+    assert "STABLECOIN_DASHBOARD_UNAVAILABLE:RuntimeError" not in response.text
     assert "private upstream details" not in response.text
+    assert "Source data unavailable" in response.text
     assert "No substitute supply or dominance values are displayed" in response.text

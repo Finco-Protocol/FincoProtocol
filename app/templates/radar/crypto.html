@@ -32,7 +32,7 @@
   {% if dashboard.reason %}
   <section class="panel panel-error crypto-top-error">
     <h2>Crypto data unavailable</h2>
-    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No substitute market values are displayed.</p>
   </section>
   {% endif %}
@@ -57,7 +57,7 @@
           {% else %}<span class="muted">24h change —</span>{% endif %}
           <span class="mono">{{ row.observed_at or '—' }}</span>
         </div>
-        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+        {% if row.reason %}<div class="crypto-reason muted small">Source data unavailable.</div>{% endif %}
       </article>
       {% endfor %}
     </div>

@@ -228,8 +228,9 @@ def test_crypto_route_failure_does_not_leak_exception_message():
 
     response = _client(BrokenService()).get("/radar/crypto")
     assert response.status_code == 200
-    assert "CRYPTO_DASHBOARD_UNAVAILABLE:RuntimeError" in response.text
+    assert "CRYPTO_DASHBOARD_UNAVAILABLE:RuntimeError" not in response.text
     assert "secret upstream diagnostic" not in response.text
+    assert "Source data unavailable" in response.text
     assert "No substitute market values are displayed" in response.text
 
 

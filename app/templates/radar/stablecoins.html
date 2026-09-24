@@ -31,7 +31,7 @@
   {% if stablecoins.reason %}
   <section class="panel panel-error">
     <h2>Stablecoin data unavailable</h2>
-    <p class="state-unavailable mono">{{ stablecoins.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No substitute supply or dominance values are displayed.</p>
   </section>
   {% endif %}
@@ -49,7 +49,7 @@
           <span>30d <strong>{{ row.change_30d_display }}</strong></span>
         </div>
         {% if row.price is not none %}<div class="muted small">Peg price {{ row.price_display }}</div>{% endif %}
-        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+        {% if row.reason %}<div class="crypto-reason muted small">Source data unavailable.</div>{% endif %}
       </article>
       {% endfor %}
     </div>

@@ -37,7 +37,7 @@
   {% if dashboard.reason %}
   <section class="panel panel-error economy-top-error">
     <h2>Economy data unavailable</h2>
-    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No substitute values are displayed.</p>
   </section>
   {% endif %}
@@ -68,7 +68,7 @@
             <td class="mono small">{{ row.period or '—' }}</td>
             <td>
               <span class="economy-state economy-state--{{ row.state|lower }}">{{ row.state }}</span>
-              {% if row.reason %}<small class="economy-reason mono">{{ row.reason }}</small>{% endif %}
+              {% if row.reason %}<small class="economy-reason muted">Source data unavailable.</small>{% endif %}
             </td>
           </tr>
         {% endfor %}

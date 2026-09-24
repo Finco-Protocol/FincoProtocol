@@ -16,6 +16,7 @@ from app.radar_crypto.contracts import CryptoState
 from app.radar_ui import crypto_router as crypto_router_module
 from app.radar_ui import economy_router as economy_router_module
 from app.radar_ui import router as radar_router_module
+from app.radar_ui import rwa_router as rwa_router_module
 from app.radar_ui import stablecoin_router as stablecoin_router_module
 
 NOW = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
@@ -279,3 +280,147 @@ def test_stablecoin_service_object_retains_publisher_field():
     assert dashboard["transport"] == "DefiLlama Stablecoins API"
     assert dashboard["source_endpoint"] == "/stablecoins?includePrices=true"
     assert dashboard["source_url"] is not None
+
+
+# ── Correction A: raw provider reason codes suppressed from product surfaces ──
+
+_PROVIDER_REASON_CODES = [
+    "COINGECKO_DEMO_API_KEY_NOT_CONFIGURED",
+    "COINGECKO_GLOBAL_READ_FAILED",
+    "COINGECKO_PRICE_READ_FAILED",
+    "COINGECKO_RWA_READ_FAILED",
+    "FRED_API_KEY_NOT_CONFIGURED",
+    "FRED_READ_FAILED",
+    "DEFILLAMA_STABLECOINS_READ_FAILED",
+    "HYPERLIQUID_READ_FAILED",
+    "CRYPTO_DASHBOARD_UNAVAILABLE",
+    "ECONOMY_DASHBOARD_UNAVAILABLE",
+    "STABLECOIN_DASHBOARD_UNAVAILABLE",
+    "RWA_DASHBOARD_UNAVAILABLE",
+]
+
+
+def _rwa_dashboard(*, reason=None):
+    return {
+        "state": "UNAVAILABLE" if reason else "AVAILABLE",
+        "counts": [],
+        "sections": [],
+        "reason": reason,
+        "retrieved_at": NOW.isoformat(),
+        "publisher": "CoinGecko",
+        "transport": "CoinGecko Demo API",
+        "list_source_url": "https://example.com",
+        "markets_source_url": "https://example.com",
+    }
+
+
+def _rwa_client(dashboard):
+    rwa_router_module.set_rwa_service(_FakeService(dashboard))
+    app = FastAPI()
+    app.include_router(radar_router_module.router)
+    return TestClient(app)
+
+
+# Dashboard-level raw reason not visible
+
+@pytest.mark.parametrize("code", _PROVIDER_REASON_CODES)
+def test_raw_reason_absent_from_crypto_overview_dashboard(code):
+    dashboard = _crypto_dashboard()
+    dashboard["state"] = "UNAVAILABLE"
+    dashboard["reason"] = f"{code}:SomeError"
+    response = _crypto_client(dashboard).get("/radar/crypto")
+    assert response.status_code == 200
+    assert code not in response.text
+    assert "Source data unavailable" in response.text
+
+
+@pytest.mark.parametrize("code", _PROVIDER_REASON_CODES)
+def test_raw_reason_absent_from_economy_dashboard(code):
+    dashboard = _economy_dashboard()
+    dashboard["state"] = "UNAVAILABLE"
+    dashboard["reason"] = f"{code}:SomeError"
+    dashboard["sections"] = []
+    response = _economy_client(dashboard).get("/radar/economy")
+    assert response.status_code == 200
+    assert code not in response.text
+    assert "Source data unavailable" in response.text
+
+
+@pytest.mark.parametrize("code", _PROVIDER_REASON_CODES)
+def test_raw_reason_absent_from_stablecoins_dashboard(code):
+    dashboard = _stablecoin_dashboard()
+    dashboard["state"] = "UNAVAILABLE"
+    dashboard["reason"] = f"{code}:SomeError"
+    response = _stablecoin_client(dashboard).get("/radar/crypto/stablecoins")
+    assert response.status_code == 200
+    assert code not in response.text
+    assert "Source data unavailable" in response.text
+
+
+@pytest.mark.parametrize("code", _PROVIDER_REASON_CODES)
+def test_raw_reason_absent_from_rwa_dashboard(code):
+    dashboard = _rwa_dashboard(reason=f"{code}:SomeError")
+    response = _rwa_client(dashboard).get("/radar/crypto/rwa")
+    assert response.status_code == 200
+    assert code not in response.text
+    assert "Source data unavailable" in response.text
+
+
+# Row-level raw reason not visible
+
+def test_raw_coingecko_reason_absent_from_crypto_overview_row():
+    dashboard = _crypto_dashboard()
+    row = dashboard["sections"][0]["rows"][0]
+    row["state"] = "UNAVAILABLE"
+    row["value_display"] = "—"
+    row["reason"] = "COINGECKO_GLOBAL_READ_FAILED:HTTPStatusError"
+    response = _crypto_client(dashboard).get("/radar/crypto")
+    assert response.status_code == 200
+    assert "COINGECKO_GLOBAL_READ_FAILED" not in response.text
+    assert "Source data unavailable" in response.text
+
+
+def test_raw_fred_reason_absent_from_economy_row():
+    dashboard = _economy_dashboard()
+    row = dashboard["sections"][0]["rows"][0]
+    row["state"] = "UNAVAILABLE"
+    row["value_display"] = "—"
+    row["reason"] = "FRED_API_KEY_NOT_CONFIGURED"
+    response = _economy_client(dashboard).get("/radar/economy")
+    assert response.status_code == 200
+    assert "FRED_API_KEY_NOT_CONFIGURED" not in response.text
+    assert "Source data unavailable" in response.text
+
+
+def test_raw_defillama_reason_absent_from_stablecoins_row():
+    dashboard = _stablecoin_dashboard()
+    row = dashboard["summary_rows"][0]
+    row["state"] = "UNAVAILABLE"
+    row["value_display"] = "—"
+    row["reason"] = "DEFILLAMA_STABLECOINS_READ_FAILED:RuntimeError"
+    response = _stablecoin_client(dashboard).get("/radar/crypto/stablecoins")
+    assert response.status_code == 200
+    assert "DEFILLAMA_STABLECOINS_READ_FAILED" not in response.text
+    assert "Source data unavailable" in response.text
+
+
+# Backend reason fields are preserved in service objects (not removed)
+
+def test_backend_reason_field_preserved_in_crypto_service_object():
+    dashboard = _crypto_dashboard()
+    row = dashboard["sections"][0]["rows"][0]
+    row["reason"] = "COINGECKO_GLOBAL_READ_FAILED:HTTPStatusError"
+    assert row["reason"] == "COINGECKO_GLOBAL_READ_FAILED:HTTPStatusError"
+
+
+def test_backend_reason_field_preserved_in_economy_service_object():
+    dashboard = _economy_dashboard()
+    row = dashboard["sections"][0]["rows"][0]
+    row["reason"] = "FRED_API_KEY_NOT_CONFIGURED"
+    assert row["reason"] == "FRED_API_KEY_NOT_CONFIGURED"
+
+
+def test_backend_dashboard_reason_preserved_in_stablecoin_service_object():
+    dashboard = _stablecoin_dashboard()
+    dashboard["reason"] = "DEFILLAMA_STABLECOINS_READ_FAILED:RuntimeError"
+    assert dashboard["reason"] == "DEFILLAMA_STABLECOINS_READ_FAILED:RuntimeError"

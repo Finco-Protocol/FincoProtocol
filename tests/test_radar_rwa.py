@@ -184,7 +184,7 @@ def test_rwa_route_is_registered_and_renders_authority_boundary():
     assert "NVIDIA" in response.text
     assert "$500.00M" in response.text
     assert "No premium/discount or parity signal is inferred" in response.text
-    assert "rwa:nvidia" in response.text
+    assert "rwa:nvidia" not in response.text
 
 
 def test_rwa_route_failure_does_not_leak_exception_details():
@@ -193,7 +193,8 @@ def test_rwa_route_failure_does_not_leak_exception_details():
             raise RuntimeError("secret upstream diagnostic")
     response = _client(BrokenService()).get("/radar/crypto/rwa")
     assert response.status_code == 200
-    assert "RWA_DASHBOARD_UNAVAILABLE:RuntimeError" in response.text
+    assert "RWA_DASHBOARD_UNAVAILABLE:RuntimeError" not in response.text
+    assert "Source data unavailable" in response.text
     assert "secret upstream diagnostic" not in response.text
     assert "No replacement identities or substitute market values are displayed" in response.text
 

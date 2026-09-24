@@ -30,7 +30,7 @@
   {% if dashboard.state == 'UNAVAILABLE' %}
   <section class="panel panel-error">
     <h2>Derivatives data unavailable</h2>
-    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="state-unavailable">Source data unavailable.</p>
     <p class="muted small">No fallback exchange or estimated values are displayed.</p>
   </section>
   {% else %}
