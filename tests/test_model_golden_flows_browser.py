@@ -111,10 +111,11 @@ def _create_project_from_visible_flow(page, base_url: str, name: str) -> str:
     page.goto(base_url + "/")
     page.get_by_role("link", name="Model", exact=True).click()
     page.wait_for_url("**/library")
-    page.get_by_role("link", name="New Project").click()
+    page.locator("a.fo-library-cta-new").click()
+    page.wait_for_url("**/projects/new")
+    # Select Solar reference via radio button
+    page.locator('input[name="template_source"][value="generic_solar_reference"]').check()
     page.locator("#npm-project_name").fill(name)
-    page.locator("#npm-project_type").select_option(label="Solar")
-    page.locator("#npm-country_market").fill("Synthetic Market")
     page.locator("#npm-capacity_mw").fill("42")
     page.get_by_role("button", name="Create project").click()
     page.wait_for_url("**/v2/workbook?project=**")
@@ -242,7 +243,7 @@ def test_golden_flow_a_new_project_scenario_compare_and_export(golden_app, brows
         page.locator(".v2-toolbar-back").click()
         page.wait_for_url("**/library**")
         library_row = page.locator("tr", has_text=name)
-        assert library_row.get_by_text("My project").count() == 1
+        assert library_row.get_by_text("Working copy").count() == 1
         library_row.get_by_role("link", name="Open").click()
         page.wait_for_url(f"**project={project}**")
         _click_tab(page, "tab-overview", "panel-overview")
@@ -271,9 +272,9 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         page.wait_for_url("**/library**")
 
         ref_code = "generic_solar_reference-reference"
-        ref_badge = page.locator(f'[data-testid="badge-reference-{ref_code}"]')
-        ref_badge.wait_for(state="visible", timeout=10_000)
-        assert ref_badge.count() >= 1, "Solar reference row must have reference badge in library"
+        ref_card = page.locator(f'[data-testid="library-row-{ref_code}"]')
+        ref_card.wait_for(state="visible", timeout=10_000)
+        assert ref_card.count() >= 1, "Solar reference card must be visible in library"
 
         # ── 2. Open the reference in the workbook ────────────────────────────
         page.locator(f'[data-testid="open-{ref_code}"]').click()
@@ -304,7 +305,7 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         # ── 4. Create working copy from library ──────────────────────────────
         page.goto(base_url + "/library")
         page.wait_for_url("**/library**")
-        ref_badge.wait_for(state="visible", timeout=10_000)
+        ref_card.wait_for(state="visible", timeout=10_000)
         calls_before_copy = len(calls)
         clone_btn = page.locator(f'[data-testid="clone-{ref_code}"]')
         clone_btn.wait_for(state="visible", timeout=10_000)
@@ -437,8 +438,8 @@ def test_golden_flow_b_reference_to_working_copy_causal_run_reopen(
         # Reference project persistence: reference project code and project_id unchanged
         page.goto(base_url + "/library")
         page.wait_for_url("**/library**")
-        ref_badge_after = page.locator(f'[data-testid="badge-reference-{ref_code}"]')
-        assert ref_badge_after.count() >= 1, (
+        ref_card_after = page.locator(f'[data-testid="library-row-{ref_code}"]')
+        assert ref_card_after.count() >= 1, (
             "Reference project must still exist in library after working copy creation"
         )
     finally:
