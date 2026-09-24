@@ -798,6 +798,59 @@ def _thaw(obj):
     return thaw_runtime_payload(obj)
 
 
+def _enum_value(value):
+    """Present a typed enum without inferring a financing policy."""
+    return getattr(value, "value", value) if value is not None else None
+
+
+def _build_sponsor_funding_presentation(fin, rr, freshness) -> dict:
+    """Separate current typed financing inputs from immutable Last Run evidence.
+
+    This is intentionally a projection helper: it reads neither an engine nor
+    any legacy financing amount, and it never derives a terminal SHL value.
+    """
+    state = getattr(getattr(freshness, "state", None), "value", "NOT_RUN")
+    if state not in {"NOT_RUN", "CURRENT", "STALE"}:
+        state = "NOT_RUN"
+    evidence_status = {
+        "NOT_RUN": "UNAVAILABLE",
+        "CURRENT": "CURRENT",
+        "STALE": "LAST RUN / STALE",
+    }[state]
+    freshness_label = {
+        "NOT_RUN": "NOT RUN — Last Run evidence unavailable",
+        "CURRENT": "CURRENT — Last Run evidence",
+        "STALE": "LAST RUN / STALE — Working inputs may differ from persisted evidence",
+    }[state]
+    sponsor_schedule = _thaw(getattr(rr, "sponsor_schedule", None) or {})
+    sponsor_summary = (
+        sponsor_schedule.get("summary", {})
+        if isinstance(sponsor_schedule, dict) else {}
+    )
+    return {
+        "sponsor_working_rows": (
+            ("Sponsor funding mode", _enum_value(getattr(fin, "sponsor_funding_mode", None)) if fin else None, "BOUND READ-ONLY"),
+            ("Share capital contribution", getattr(fin, "share_capital_keur", None), "BOUND READ-ONLY"),
+            ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "BOUND READ-ONLY"),
+            ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "BOUND READ-ONLY"),
+            ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "BOUND READ-ONLY"),
+            ("SHL maturity", getattr(fin, "shl_maturity_period_index", None) if fin else None, "BOUND READ-ONLY"),
+            ("SHL day-count convention", _enum_value(getattr(fin, "shl_day_count_convention", None)) if fin else None, "BOUND READ-ONLY"),
+        ),
+        "sponsor_last_run_rows": (
+            ("Runtime-derived SHL principal", sponsor_summary.get("total_shl_cash_contributed_keur"), evidence_status),
+            # The persisted sponsor presentation contract has no terminal SHL
+            # balance/status.  Absence is shown truthfully rather than rebuilt.
+            ("Terminal SHL balance / status", None, "UNAVAILABLE"),
+        ),
+        "sponsor_funding_freshness": {
+            "state": state,
+            "label": freshness_label,
+            "evidence_status": evidence_status,
+        },
+    }
+
+
 def _build_debt_ctx(pis, ws, projection=None) -> dict:
     """Build Senior Debt sheet context: registry fields + RuntimeResult output.
 
@@ -822,22 +875,8 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     except Exception:
         fin = None
     rr_for_sponsor = WorkbookService.get_runtime_result(ws)
-    sponsor_schedule = _thaw(getattr(rr_for_sponsor, "sponsor_schedule", None) or {})
-    sponsor_summary = sponsor_schedule.get("summary", {}) if isinstance(sponsor_schedule, dict) else {}
-    def _enum_value(value):
-        return getattr(value, "value", value) if value is not None else None
-    sponsor_funding_rows = (
-        ("Sponsor funding mode", "SHARE_CAPITAL_THEN_SHL", "BOUND READ-ONLY"),
-        ("Share capital contribution", getattr(fin, "share_capital_keur", None), "BOUND READ-ONLY"),
-        ("Runtime-derived SHL principal", sponsor_summary.get("total_shl_cash_contributed_keur"), "DERIVED"),
-        ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "BOUND READ-ONLY"),
-        ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "BOUND READ-ONLY"),
-        ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "DERIVED"),
-        ("SHL maturity", getattr(fin, "shl_maturity_period_index", None) if fin else None, "DERIVED"),
-        ("SHL day-count convention", _enum_value(getattr(fin, "shl_day_count_convention", None)) if fin else None, "BOUND READ-ONLY"),
-        # The persisted sponsor summary does not expose a terminal SHL
-        # balance.  Do not reinterpret a legacy diagnostic flag as one.
-        ("Terminal SHL balance / status", None, "UNAVAILABLE"),
+    sponsor_funding = _build_sponsor_funding_presentation(
+        fin, rr_for_sponsor, _runtime_freshness(ws, pis)
     )
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
@@ -853,7 +892,7 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
-        "sponsor_funding_rows": sponsor_funding_rows,
+        **sponsor_funding,
         "senior_lock_reason": (
             _SENIOR_LOCK_NOTE if (
                 senior_pricing_mode == "CALIBRATED"

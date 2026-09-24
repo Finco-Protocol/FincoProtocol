@@ -372,6 +372,12 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
 .v2-sponsor-funding-panel { margin-top: .8rem; padding: .65rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
 .v2-sponsor-funding-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #1e3a5f; }
 .v2-sponsor-funding-panel > p { margin: .25rem 0 .55rem; font-size: .72rem; color: #6b7280; }
+.v2-sponsor-funding-freshness { padding: .4rem .5rem; border-left: 3px solid #64748b; background: #f8fafc; }
+.v2-sponsor-funding-freshness--current { border-left-color: #15803d; background: #f0fdf4; }
+.v2-sponsor-funding-freshness--stale { border-left-color: #b45309; background: #fffbeb; }
+.v2-sponsor-funding-section { margin-top: .65rem; }
+.v2-sponsor-funding-section h4 { margin: 0 0 .15rem; font-size: .74rem; color: #334155; }
+.v2-sponsor-funding-section > p { margin: 0 0 .35rem; font-size: .7rem; color: #64748b; }
 .v2-sponsor-funding-panel dl { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #edf1f5; }
 .v2-sponsor-funding-panel dl > div { display: flex; justify-content: space-between; gap: .5rem; padding: .42rem .25rem; border-bottom: 1px solid #edf1f5; font-size: .76rem; }
 .v2-sponsor-funding-panel dt { color: #4b5563; }.v2-sponsor-funding-panel dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #172554; }
@@ -629,7 +635,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 }
 .v2-capex-custom-row > summary { list-style: none; cursor: pointer; }
 .v2-capex-custom-row > summary::-webkit-details-marker { display: none; }
-.v2-capex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 6rem 7rem; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
+.v2-capex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 6rem 7rem auto; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
 .v2-capex-compact-edit-row::after { content: 'Edit'; color: #2563eb; font-size: .68rem; justify-self: end; }
 .v2-capex-custom-row[open] > .v2-capex-compact-edit-row::after { content: 'Close'; }
 .v2-capex-custom-row:last-child { border-bottom: none; }
@@ -776,7 +782,7 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 }
 .v2-opex-custom-row > summary { list-style: none; cursor: pointer; }
 .v2-opex-custom-row > summary::-webkit-details-marker { display: none; }
-.v2-opex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
+.v2-opex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem auto; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
 .v2-opex-compact-edit-row::after { content: 'Edit'; color: #2563eb; font-size: .68rem; justify-self: end; }
 .v2-opex-custom-row[open] > .v2-opex-compact-edit-row::after { content: 'Close'; }
 .v2-opex-custom-row-form {
@@ -847,8 +853,8 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-opex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem; }
   .v2-opex-compact-edit-row .v2-opex-line-escl,
   .v2-opex-compact-edit-row .v2-binding-badge { display: none; }
-  .v2-capex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem; }
-  .v2-capex-compact-edit-row .v2-capex-child-per-mw,
+  .v2-capex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem auto; }
+  .v2-capex-compact-edit-row .v2-capex-subline-permw,
   .v2-capex-compact-edit-row .v2-binding-badge { display: none; }
 }
 

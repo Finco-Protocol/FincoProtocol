@@ -180,16 +180,34 @@
       <section class="v2-sponsor-funding-panel" aria-labelledby="sponsor-funding-title"
                data-testid="sponsor-funding-panel">
         <h3 id="sponsor-funding-title">Sponsor Funding / Shareholder Loan</h3>
-        <p>Read-only presentation of the existing financing authority and persisted Last Run evidence.</p>
-        <dl>
-          {% for label, value, status in sponsor_funding_rows %}
+        <p class="v2-sponsor-funding-freshness v2-sponsor-funding-freshness--{{ sponsor_funding_freshness.state | lower }}"
+           data-testid="sponsor-funding-freshness">{{ sponsor_funding_freshness.label }}</p>
+        <section class="v2-sponsor-funding-section" aria-labelledby="sponsor-working-inputs-title">
+          <h4 id="sponsor-working-inputs-title">Working financing inputs</h4>
+          <p>Current typed ProjectInputs; editing them does not recalculate Last Run evidence.</p>
+          <dl data-testid="sponsor-working-inputs">
+          {% for label, value, status in sponsor_working_rows %}
           <div>
             <dt>{{ label }}</dt>
             <dd>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}
               <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd>
           </div>
           {% endfor %}
-        </dl>
+          </dl>
+        </section>
+        <section class="v2-sponsor-funding-section" aria-labelledby="sponsor-last-run-title">
+          <h4 id="sponsor-last-run-title">Last Run evidence</h4>
+          <p>Persisted runtime evidence only; it is never reconstructed from working inputs.</p>
+          <dl data-testid="sponsor-last-run-evidence">
+          {% for label, value, status in sponsor_last_run_rows %}
+          <div>
+            <dt>{{ label }}</dt>
+            <dd>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}
+              <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd>
+          </div>
+          {% endfor %}
+          </dl>
+        </section>
       </section>
 
     </div>

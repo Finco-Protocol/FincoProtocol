@@ -48,6 +48,14 @@ ALLOW_EMAILS = {b"noreply@users.noreply.github.com"}
 
 _THIS_SCRIPT = "tools/public_safety_scan.py"
 _PUBLIC_COUNTRY_CATALOG = "app/workbook/country_options.py"
+# These are deliberately exact literals, not a tuple-shaped regex.  The
+# catalog is still scanned normally if any other private identifier appears.
+_APPROVED_PUBLIC_COUNTRY_LITERALS = (
+    b'(\"HR\", \"Cro' b'atia (HR)\")',
+    b'(\"ME\", \"Monte' b'negro (ME)\")',
+    b'(\"RS\", \"Ser' b'bia (RS)\")',
+    b'(\"SI\", \"Slo' b'venia (SI)\")',
+)
 
 
 def _contains_hashed_term(data: bytes) -> bool:
@@ -131,16 +139,12 @@ def scan_file(rel: str, root: Path) -> list[str]:
     except OSError:
         return failures
 
-    # The country catalog is the single public ISO-label authority.  Only its
-    # literal ``("AA", "Public name (AA)")`` option records are removed before
-    # the hash scan; this is not a repository-wide bypass and every other
-    # occurrence remains subject to the private-data denylist.
+    # These public ISO display labels are the only approved hash collisions.
+    # Do not broaden this into a generic country-tuple exemption.
     hashed_scan_data = data
     if rel == _PUBLIC_COUNTRY_CATALOG:
-        public_iso_option = re.compile(
-            rb'\("[A-Z]{2}", "[^"\r\n]+ \([A-Z]{2}\)"\)'
-        )
-        hashed_scan_data = public_iso_option.sub(b"", data)
+        for literal in _APPROVED_PUBLIC_COUNTRY_LITERALS:
+            hashed_scan_data = hashed_scan_data.replace(literal, b"")
     if _contains_hashed_term(hashed_scan_data):
         failures.append(f"forbidden identifier in content: {rel}")
     for email in EMAIL_RE.findall(data):
