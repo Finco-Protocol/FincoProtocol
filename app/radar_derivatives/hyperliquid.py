@@ -81,6 +81,20 @@ class HyperliquidDerivativesProvider:
         return leverage
 
     @staticmethod
+    def _funding_interval_hours(value, *, venue_code: str) -> int | None:
+        # Hyperliquid settles hourly; keep that venue-local invariant explicit
+        # when the aggregation omits the optional interval field. External
+        # venues are never assigned a guessed interval.
+        if value is None:
+            return 1 if venue_code == "HlPerp" else None
+        if isinstance(value, bool):
+            raise ValueError(f"INVALID_FUNDING_INTERVAL:{venue_code}")
+        interval = int(value)
+        if interval <= 0:
+            raise ValueError(f"INVALID_FUNDING_INTERVAL:{venue_code}")
+        return interval
+
+    @staticmethod
     def _post(client: httpx.Client, body: dict):
         response = client.post(
             _INFO_URL,
@@ -223,8 +237,14 @@ class HyperliquidDerivativesProvider:
                 if not isinstance(venue_item, list) or len(venue_item) != 2:
                     raise ValueError(f"PREDICTED_FUNDING_VENUE_ROW_INVALID:{symbol}")
                 venue_code = str(venue_item[0]).strip()
+                if not venue_code:
+                    raise ValueError(f"PREDICTED_FUNDING_VENUE_CODE_INVALID:{symbol}")
                 detail = venue_item[1]
-                if not venue_code or not isinstance(detail, dict):
+                # Hyperliquid may return a null detail when a venue does not list
+                # the asset. That is absence of venue evidence, not corruption.
+                if detail is None:
+                    continue
+                if not isinstance(detail, dict):
                     raise ValueError(f"PREDICTED_FUNDING_VENUE_DETAIL_INVALID:{symbol}")
                 key = (symbol, venue_code)
                 if key in seen:
@@ -241,6 +261,9 @@ class HyperliquidDerivativesProvider:
                         next_funding_at=self._timestamp_ms(
                             detail.get("nextFundingTime"),
                             f"{symbol}_{venue_code}_NEXT_FUNDING_TIME",
+                        ),
+                        funding_interval_hours=self._funding_interval_hours(
+                            detail.get("fundingIntervalHours"), venue_code=venue_code
                         ),
                     )
                 )
