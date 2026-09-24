@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — Stablecoins</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/crypto.css">
+  <link rel="stylesheet" href="/static/radar/stablecoins.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar crypto-page">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+{% include "radar/crypto_subnav.html" %}
+
+<main class="radar-main crypto-main stablecoin-main">
+  <header class="crypto-hero">
+    <div>
+      <p class="crypto-eyebrow">FINCO RADAR / CRYPTO LIQUIDITY</p>
+      <h1>Stablecoins</h1>
+      <p class="muted">USD stablecoin circulating supply, supply rotation and canonical USDT/USDC shares.</p>
+    </div>
+    <div class="crypto-health" data-state="{{ stablecoins.state }}">
+      <span class="crypto-health__state">{{ stablecoins.state }}</span>
+      <span>retrieved {{ stablecoins.retrieved_at }}</span>
+    </div>
+  </header>
+
+  {% if stablecoins.reason %}
+  <section class="panel panel-error">
+    <h2>Stablecoin data unavailable</h2>
+    <p class="state-unavailable mono">{{ stablecoins.reason }}</p>
+    <p class="muted small">No substitute supply or dominance values are displayed.</p>
+  </section>
+  {% endif %}
+
+  <section class="crypto-section">
+    <div class="crypto-section__heading"><h2>Liquidity Overview</h2><span class="muted small">USD-pegged circulating supply</span></div>
+    <div class="crypto-metric-grid stablecoin-summary-grid">
+      {% for row in stablecoins.summary_rows %}
+      <article class="panel crypto-metric" data-stablecoin-key="{{ row.key }}" data-state="{{ row.state }}">
+        <div class="crypto-metric__top"><span class="crypto-metric__title">{{ row.title }}</span><span class="stablecoin-state stablecoin-state--{{ row.state|lower }}">{{ row.state }}</span></div>
+        <div class="crypto-metric__value">{{ row.value_display }}</div>
+        <div class="stablecoin-change-row">
+          <span>1d <strong>{{ row.change_1d_display }}</strong></span>
+          <span>7d <strong>{{ row.change_7d_display }}</strong></span>
+          <span>30d <strong>{{ row.change_30d_display }}</strong></span>
+        </div>
+        {% if row.price is not none %}<div class="muted small">Peg price {{ row.price_display }}</div>{% endif %}
+        <div class="crypto-metric__source"><a href="{{ stablecoins.source_url }}" target="_blank" rel="noopener noreferrer">{{ stablecoins.publisher }}</a><span class="mono">{{ row.source_id }}</span></div>
+        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel stablecoin-table-panel">
+    <div class="crypto-section__heading"><h2>Largest USD Stablecoins</h2><span class="muted small">by circulating supply</span></div>
+    <div class="stablecoin-table-wrap">
+      <table class="stablecoin-table">
+        <thead><tr><th>Asset</th><th>Supply</th><th>Price</th><th>1d</th><th>7d</th><th>30d</th><th>ID</th></tr></thead>
+        <tbody>
+        {% for row in stablecoins.top_assets %}
+          <tr><td><strong>{{ row.symbol }}</strong><small>{{ row.name }}</small></td><td>{{ row.supply_display }}</td><td>{{ row.price_display }}</td><td>{{ row.change_1d_display }}</td><td>{{ row.change_7d_display }}</td><td>{{ row.change_30d_display }}</td><td class="mono">{{ row.asset_id }}</td></tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">No source-bound stablecoin rows available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="crypto-footnote">
+    <span>Source: {{ stablecoins.publisher }} · {{ stablecoins.transport }}</span>
+    <span class="mono">{{ stablecoins.source_endpoint }} · retrieval time shown; upstream endpoint exposes no observation timestamp.</span>
+  </footer>
+</main>
+</body>
+</html>
