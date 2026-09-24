@@ -47,6 +47,7 @@ ALLOWED_PARENT_GROUPS: frozenset[str] = _OPEX_GROUPS - REJECTED_PARENT_GROUPS
 # ---------------------------------------------------------------------------
 
 _BUSINESS_CODE_RE = re.compile(r"^B\.(\d{2})\.U(\d{3})$")
+_REFERENCE_DETAIL_CODE_RE = re.compile(r"^B\.\d{2}\.\d{2}$")
 _PARENT_GROUP_RE = re.compile(r"^B\.(\d{2})$")
 
 
@@ -298,6 +299,9 @@ def create_sub_line(
     if business_code is None:
         existing = list_business_codes_for_project(cur, project_id)
         business_code = generate_next_business_code(existing, parent_group_code)
+    elif source == "reference_seed" and _REFERENCE_DETAIL_CODE_RE.match(business_code):
+        # PUBLIC_GENERIC_DETAIL_V1 rows reserve the stable B.xx.xx namespace.
+        pass
     else:
         validate_business_code(business_code)
 

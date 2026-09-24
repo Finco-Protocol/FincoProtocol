@@ -364,7 +364,16 @@ def build_opex_view_model(
         seen_group_codes.add(group_code)
 
         lines: list[OpexLineVM] = []
-        for order, child in enumerate(cat.get("children", []), start=1):
+        group_custom = active_custom.get(group_code, [])
+        # Reference-seeded rows are a persisted decomposition of the base
+        # group, not additional OPEX.  Showing the context children as well
+        # would visually double-count the same canonical parent.
+        has_reference_seed = any(
+            getattr(sl, "replay_metadata", {}).get("reference_seed") is True
+            for sl in group_custom
+        )
+        context_children = [] if has_reference_seed else cat.get("children", [])
+        for order, child in enumerate(context_children, start=1):
             child_code: str = child["code"]
             y1_keur: float = float(child.get("budget_y1_keur") or 0.0)
             inflation_pct: float = float(child.get("inflation_pct") or group_inflation)
@@ -403,7 +412,7 @@ def build_opex_view_model(
 
         # Inject custom sub-lines for this group (non-contingency only).
         if not is_contingency_group and group_code in active_custom:
-            for sl in active_custom[group_code]:
+            for sl in group_custom:
                 lines.append(_build_custom_line_vm(sl, project_code, display_years, is_user_project))
             # Re-sort: factory lines first (display_order from enumeration),
             # then custom lines (their own display_order), all by display_order ASC.

@@ -18,6 +18,14 @@ from app.project_factories import (
     create_default_wind_project,
 )
 from domain.opex.templates import build_generic_solar_reference_opex_template, build_generic_wind_reference_opex_template
+from app.reference_detail_catalog import (
+    PUBLIC_GENERIC_DETAIL_V1,
+    OPEX_PARENT_BY_CANONICAL_KEY,
+    OPEX_PARENT_NAMES,
+    allocate_parent_amount,
+    capex_children,
+    opex_children,
+)
 
 
 MISSING = "MISSING"
@@ -446,7 +454,45 @@ def _build_opex_detail_items(
           ],
         }
     """
-    # Try to use detailed templates for known projects
+    # Generic Solar/Wind references use the single public-generic catalogue.
+    # Its weights only decompose the canonical parent items supplied here; it
+    # never supplies an economic amount or an escalation assumption.
+    is_reference = code.upper() in {"GENERIC_SOLAR_REFERENCE", "GENERIC WIND REFERENCE", "REF-WIND-B"}
+    if is_reference:
+        canonical = {str(item.name): item for item in project_inputs.opex}
+        categories = []
+        for group_code, group_name in OPEX_PARENT_NAMES.items():
+            parent_item = next(
+                (canonical[key] for key, parent in OPEX_PARENT_BY_CANONICAL_KEY.items()
+                 if parent == group_code and key in canonical),
+                None,
+            )
+            parent_amount = float(getattr(parent_item, "y1_amount_keur", 0.0) or 0.0)
+            inflation = float(getattr(parent_item, "annual_inflation", 0.0) or 0.0)
+            is_contingency = group_code == "B.13"
+            children = []
+            for child, amount in allocate_parent_amount(parent_amount, opex_children(group_code)):
+                yearly_values = [round(amount * ((1 + inflation) ** (year - 1)), 4) for year in range(1, horizon_years + 1)]
+                children.append({
+                    "code": child.code, "name": child.label, "budget_y1_keur": amount,
+                    "inflation_pct": inflation * 100, "wth_rate": 0.0,
+                    "source": "public_generic_detail", "notes": PUBLIC_GENERIC_DETAIL_V1,
+                    "yearly_values": yearly_values, "active_flags": [1] * horizon_years,
+                    "canonical_parent_reference": getattr(parent_item, "name", None),
+                    "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
+                    "allocation_weight": float(child.weight),
+                })
+            categories.append({
+                "code": group_code, "name": group_name, "inflation_pct": inflation * 100,
+                "wth_rate": 0.0, "source": "public_generic_detail",
+                "is_contingency": is_contingency,
+                "contingency_pct": 0.0 if is_contingency else 0.0,
+                "children": children,
+                "yearly_totals": [round(sum(c["yearly_values"][i] for c in children), 4) for i in range(horizon_years)],
+            })
+        return {"categories": tuple(categories)}
+
+    # Try to use detailed templates for known legacy display-only contexts.
     if code.upper() in ("GENERIC_SOLAR_REFERENCE",):
         template_groups = build_generic_solar_reference_opex_template()
     elif code.upper() in ("Generic Wind Reference", "REF-WIND-B"):
@@ -791,6 +837,7 @@ def _capex_y1_total(capex) -> float:
 def _build_capex_detail_items(
     capex,
     construction_months: int = 12,
+    technology: str = "solar",
 ) -> dict[str, Any]:
     """Build a jurisdiction-neutral CAPEX detail projection.
 
@@ -884,21 +931,32 @@ def _build_capex_detail_items(
         is_alias = field_name in seen_fields
         seen_fields.add(field_name)
         amount = 0.0 if is_alias else float(getattr(item, "amount_keur", 0.0) or 0.0)
-        child = _child(
-            code=f"{code}.01",
-            name=getattr(item, "name", category_names[code]),
-            amount=amount,
-            source_type="synthetic_reference",
-            runtime_source_field=field_name,
+        children = tuple(
+            _child(
+                code=detail.code,
+                name=detail.label,
+                amount=detail_amount,
+                source_type="public_generic_detail",
+                runtime_source_field=field_name,
+                comments=PUBLIC_GENERIC_DETAIL_V1,
+            ) | {
+                "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
+                "allocation_weight": float(detail.weight),
+                "canonical_parent_reference": field_name,
+            }
+            for detail, detail_amount in allocate_parent_amount(
+                amount,
+                capex_children("wind" if technology.lower().startswith("wind") else "solar", code),
+            )
         )
         summary = dict(top_counts)
-        summary["app_mapped"] = 1
+        summary["app_mapped"] = len(children)
         categories.append({
             "code": code,
             "name": category_names[code],
             "is_backend_calculated": False,
-            "comments": "Synthetic/canonical model input",
-            "children": (child,),
+            "comments": PUBLIC_GENERIC_DETAIL_V1,
+            "children": children,
             "authority_summary": summary,
             "app_group_amount_keur": amount,
             "is_alias_group": is_alias,
@@ -1041,7 +1099,7 @@ def _build_context_from_project_inputs(
         opex_contingency_pct=opex_contingency_pct,
         capex_items=_build_capex_items(capex),
         capex_detail_items=_build_capex_detail_items(
-            capex, construction_months=project_inputs.info.construction_months
+        capex, construction_months=project_inputs.info.construction_months, technology=technology
         )["categories"],
         capex_construction_months=project_inputs.info.construction_months,
         capex_y1_total_keur=_capex_y1_total(capex),
@@ -1322,7 +1380,7 @@ def build_project_context_for_record(
     # align with CAPEX_CATEGORY_TO_FIELD — not the factory template amounts.
     if effective_project_inputs is not None and getattr(effective_project_inputs, "capex", None):
         canonical_capex_detail_items = _build_capex_detail_items(
-            effective_project_inputs.capex, construction_months=construction_months
+            effective_project_inputs.capex, construction_months=construction_months, technology=technology
         )["categories"]
     else:
         canonical_capex_detail_items = base.capex_detail_items

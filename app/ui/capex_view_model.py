@@ -305,7 +305,17 @@ def build_capex_view_model(
         is_alias_group: bool = _is_alias(group_code)
 
         lines: list[CapexLineVM] = []
-        for order, child in enumerate(cat.get("children", ()), start=1):
+        # A reference-seeded working copy persists the public generic children
+        # themselves.  Do not render the base projection beside them: it would
+        # make a decomposition look additive even though run semantics replace
+        # the canonical parent with its children.
+        group_sub_lines = sub_lines_by_group.get(group_code, [])
+        has_reference_seed = any(
+            getattr(sl, "replay_metadata", {}).get("reference_seed") is True
+            for sl in group_sub_lines
+        )
+        context_children = () if has_reference_seed else cat.get("children", ())
+        for order, child in enumerate(context_children, start=1):
             child_code: str = child["code"]
             # R2: prefer canonical app_amount_keur; fall back to Excel ref (reference display)
             _canon_child = child.get("app_amount_keur")
@@ -358,7 +368,7 @@ def build_capex_view_model(
         # C.11 is a valid persisted parent; alias status only affects base-amount
         # computation, NOT eligibility for custom sub-lines.
         if not group_is_readonly and not group_is_contingency:
-            for sl in sub_lines_by_group.get(group_code, []):
+            for sl in group_sub_lines:
                 sl_amount = float(sl.amount_keur or 0.0)
                 lines.append(CapexLineVM(
                     row_id=_make_row_id(project_code, group_code, sl.business_code),

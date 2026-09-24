@@ -141,6 +141,7 @@ SCALAR_CAPEX_METADATA_EXPORT_COLUMNS: tuple[tuple[str, str], ...] = (
 # ---------------------------------------------------------------------------
 
 _BUSINESS_CODE_RE = re.compile(r"^C\.(\d{2})\.U(\d{3})$")
+_REFERENCE_DETAIL_CODE_RE = re.compile(r"^C\.\d{2}\.\d{2}$")
 _PARENT_CODE_RE = re.compile(r"^C\.(\d{2})$")
 
 
@@ -742,6 +743,10 @@ def create_sub_line(
     if business_code is None:
         existing = list_business_codes_for_project(cur, project_id)
         business_code = generate_next_business_code(existing, parent_category_code)
+    elif source == "reference_seed" and _REFERENCE_DETAIL_CODE_RE.match(business_code):
+        # Public generic seeded detail rows have the stable C.xx.xx taxonomy.
+        # User-created rows remain restricted to the C.xx.Uxxx namespace.
+        pass
     else:
         validate_business_code(business_code)
 
