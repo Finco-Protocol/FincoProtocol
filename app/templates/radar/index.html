@@ -29,7 +29,6 @@
     {% endif %}
   </div>
   <div class="radar-asset-header__state">
-    <span class="radar-state-chip radar-state-chip--readonly">READ-ONLY</span>
     <span class="radar-note" style="font-size:11px;">quote direction only — no wallet, no signing, no transaction submission</span>
   </div>
 </div>
@@ -83,6 +82,14 @@
           <dt>Contract</dt><dd class="mono">{{ selected.contract_address }}</dd>
           <dt>Decimals</dt><dd>{{ selected.token_decimals }}</dd>
         </dl>
+        {# CTA: bound to canonical economic_asset_uid — no ticker-only routing #}
+        <div style="margin-top:10px;">
+          <a href="/radar/equity/{{ selected.economic_asset_uid }}"
+             class="board-details-cta"
+             data-economic-asset-uid="{{ selected.economic_asset_uid }}"
+             data-chain-id="{{ selected.chain_id }}"
+             data-contract-address="{{ selected.contract_address }}">Open Company Terminal →</a>
+        </div>
         {% elif snapshot_identity_note %}
         <p class="state-unavailable">{{ snapshot_identity_note }}</p>
         <p class="muted small">The snapshot's asset is not present in the current universe.</p>

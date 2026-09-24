@@ -105,7 +105,7 @@
                 {% if f.required %}required{% endif %}>
           {% if f.value not in f.options %}<option value="">—</option>{% endif %}
           {% for opt in f.options %}
-            <option value="{{ opt }}"{% if f.value == opt %} selected{% endif %}>{{ opt }}</option>
+            <option value="{{ opt }}"{% if f.value == opt %} selected{% endif %}>{{ f.option_labels[opt] if f.option_labels and opt in f.option_labels else opt }}</option>
           {% endfor %}
         </select>
       {% elif f.field_type == 'bool' %}
@@ -136,6 +136,8 @@
         <span class="v2-field-empty">—</span>
       {%- elif f.field_type == 'bool' -%}
         {{ 'Yes' if f.value else 'No' }}
+      {%- elif f.option_labels and f.value in f.option_labels -%}
+        {{ f.option_labels[f.value] }}
       {%- else -%}
         {{ f.value }}
       {%- endif -%}

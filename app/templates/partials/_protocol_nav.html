@@ -1,6 +1,6 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across all three FINCO Protocol surfaces:
-   Home · Model (library/workbook) · Radar (read-only) · Verify
+   Home · Model (library/workbook) · Radar · Verify
 
    Context variables used (all optional — nav degrades gracefully):
      proto_active_page : str  — "home" | "model" | "radar" | "verify"
@@ -34,7 +34,6 @@
          class="proto-nav__link{% if proto_active_page == 'radar' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'radar' %}aria-current="page"{% endif %}>
         Radar
-        <span class="proto-nav__badge">READ-ONLY</span>
       </a>
       <a href="/verify"
          class="proto-nav__link{% if proto_active_page == 'verify' %} proto-nav__link--active{% endif %}"

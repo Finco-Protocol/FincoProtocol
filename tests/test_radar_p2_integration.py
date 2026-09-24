@@ -98,7 +98,9 @@ def test_integration_01_radar_route_on_real_app(real_client):
     response = client.get("/radar")
     assert response.status_code == 200
     assert "RADAR" in response.text.upper()
-    assert "READ-ONLY" in response.text
+    # READ-ONLY branding removed from product chrome (chrome cleanup pass).
+    # Execution simulation renders as Coming soon and remains disabled.
+    assert "Coming soon" in response.text or "coming soon" in response.text.lower()
 
 
 def test_integration_02_real_csp_self_only_scripts(real_client):

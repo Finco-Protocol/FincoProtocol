@@ -17,6 +17,13 @@ from app.persistence.opex_sub_lines import create_sub_line as create_opex_line
 from app.persistence.projects_repository import get_reference_by_template_source, update_project_record
 from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
 from app.services.project_library_service import create_working_copy, ensure_reference_models
+from app.reference_detail_catalog import (
+    PUBLIC_GENERIC_DETAIL_V1,
+    OPEX_PARENT_BY_CANONICAL_KEY,
+    allocate_parent_amount,
+    capex_children,
+    opex_children,
+)
 
 
 class ScalingMode(str, Enum):
@@ -39,12 +46,7 @@ class SeedLine:
     scaling_mode: ScalingMode = ScalingMode.PER_MW
 
 
-_OPEX_GROUP_BY_REFERENCE_NAME = {
-    "Technical Management": "B.01",
-    "Maintenance": "B.02",
-    "Insurance": "B.06",
-    "Lease & Tax": "B.07",
-}
+_OPEX_GROUP_BY_REFERENCE_NAME = OPEX_PARENT_BY_CANONICAL_KEY
 
 
 def _primary_capex_category_by_field() -> dict[str, str]:
@@ -60,14 +62,20 @@ def _primary_capex_category_by_field() -> dict[str, str]:
     return owners
 
 
-def _canonical_capex_items(pi: Any) -> dict[str, dict[str, Any]]:
+def _canonical_capex_items(pi: Any, *, include_zero: bool = False) -> dict[str, dict[str, Any]]:
+    """Return canonical CAPEX economic items, optionally including zero taxonomy.
+
+    The default is deliberately positive-only: it is the public A3 economic
+    reference contract.  Workspace seeding opts into zero rows explicitly so
+    a complete public-generic editing taxonomy never changes that API.
+    """
     reference_capacity = float(pi.technical.capacity_mw)
     owners = _primary_capex_category_by_field()
     items: dict[str, dict[str, Any]] = {}
     for field_name, category_code in owners.items():
         item = getattr(pi.capex, field_name)
         amount = float(item.amount_keur)
-        if amount == 0:
+        if amount == 0 and not include_zero:
             continue
         items[field_name] = {
             "canonical_field": field_name,
@@ -115,10 +123,11 @@ def _scaled(value: Any, ratio: float) -> str:
 
 def _seed_profile(template_source: str, reference: Any, capacity_mw: float, pi: Any) -> dict[str, Any]:
     reference_capacity = float(pi.technical.capacity_mw)
-    capex_items = _canonical_capex_items(pi)
+    capex_items = _canonical_capex_items(pi, include_zero=True)
     opex_items = _canonical_opex_items(pi)
     return {
-        "version": 2,
+        "version": 3,
+        "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
         "reference_project_id": reference.project_id,
         "reference_template_source": template_source,
         "reference_capacity_mw": reference_capacity,
@@ -207,57 +216,81 @@ def create_reference_seeded_project(
         saved_snapshot=snapshot,
         dirty=False,
         governance_state=record.governance_state,
-        replay_metadata={"reference_seed_version": 2, "reference_project_id": reference.project_id},
+        replay_metadata={"reference_seed_version": 3, "reference_project_id": reference.project_id,
+                         "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1},
     )
 
     profile = snapshot["_reference_seed_profile"]
     with get_cursor() as cur:
+        technology = "solar" if template_source == "generic_solar_reference" else "wind"
         for field_name, seed in profile["capex_items"].items():
             amount = float(seed["reference_amount_keur"])
-            create_capex_line(
-                cur,
-                project_id=record.project_id,
-                parent_category_code=seed["owner_category_code"],
-                label=seed["canonical_label"],
-                amount_keur=amount * ratio,
-                source="reference_seed",
-                comments="Seeded from canonical reference; edit to override.",
-                replay_metadata={
-                    "reference_seed": True,
-                    "canonical_field": field_name,
-                    "owner_category_code": seed["owner_category_code"],
-                    "canonical_label": seed["canonical_label"],
-                    "reference_amount_keur": amount,
-                    "reference_capacity_mw": reference_capacity,
-                    "unit_rate_keur_per_mw": seed["unit_rate_keur_per_mw"],
-                    "scaling_mode": ScalingMode.PER_MW.value,
-                },
-            )
+            children = capex_children(technology, seed["owner_category_code"])
+            for child_index, (child, child_amount) in enumerate(allocate_parent_amount(amount, children)):
+                create_capex_line(
+                    cur,
+                    project_id=record.project_id,
+                    parent_category_code=seed["owner_category_code"],
+                    business_code=child.code,
+                    label=child.label,
+                    amount_keur=child_amount * ratio,
+                    source="reference_seed",
+                    comments="Public generic detail; edit to override.",
+                    replay_metadata={
+                        "reference_seed": True,
+                        # Retain the historical canonical_field contract for the
+                        # owning first child; subsequent children have their own
+                        # stable identity and carry canonical_parent_field.
+                        "canonical_field": field_name if child_index == 0 else f"{field_name}:{child.code}",
+                        "canonical_parent_field": field_name,
+                        "canonical_key": f"{field_name}:{child.code}",
+                        "owner_category_code": seed["owner_category_code"],
+                        "canonical_label": seed["canonical_label"],
+                        "reference_amount_keur": child_amount,
+                        "reference_capacity_mw": reference_capacity,
+                        "unit_rate_keur_per_mw": child_amount / reference_capacity,
+                        "scaling_mode": ScalingMode.PER_MW.value,
+                        "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
+                        "detail_code": child.code,
+                        "allocation_weight": float(child.weight),
+                    },
+                )
         for canonical_key, seed in profile["opex_items"].items():
             group = _OPEX_GROUP_BY_REFERENCE_NAME.get(canonical_key)
             if group is None:
                 continue
             amount = float(seed["reference_amount_keur"])
-            create_opex_line(
-                cur,
-                project_id=record.project_id,
-                parent_group_code=group,
-                label=seed["canonical_label"],
-                amount_keur=amount * ratio,
-                inflation_pct=float(seed["annual_inflation"]) * 100,
-                source="reference_seed",
-                comments="Seeded from canonical reference; edit to override.",
-                replay_metadata={
-                    "reference_seed": True,
-                    "canonical_key": canonical_key,
-                    "canonical_label": seed["canonical_label"],
-                    "reference_amount_keur": amount,
-                    "reference_capacity_mw": reference_capacity,
-                    "unit_rate_keur_per_mw": seed["unit_rate_keur_per_mw"],
-                    "annual_inflation": seed["annual_inflation"],
-                    "scaling_mode": ScalingMode.PER_MW.value,
-                },
-            )
+            for child, child_amount in allocate_parent_amount(amount, opex_children(group, technology)):
+                create_opex_line(
+                    cur,
+                    project_id=record.project_id,
+                    parent_group_code=group,
+                    business_code=child.code,
+                    label=child.label,
+                    amount_keur=child_amount * ratio,
+                    inflation_pct=float(seed["annual_inflation"]) * 100,
+                    source="reference_seed",
+                    comments="Public generic detail; edit to override.",
+                    replay_metadata={
+                        "reference_seed": True,
+                        # Parent identity remains stable across every child so
+                        # the materializer removes the canonical OPEX parent
+                        # exactly once.  The child identity is separate and
+                        # immutable; an editable label is never either key.
+                        "canonical_key": canonical_key,
+                        "canonical_parent_key": canonical_key,
+                        "detail_canonical_key": f"{canonical_key}:{child.code}",
+                        "canonical_label": seed["canonical_label"],
+                        "reference_amount_keur": child_amount,
+                        "reference_capacity_mw": reference_capacity,
+                        "unit_rate_keur_per_mw": child_amount / reference_capacity,
+                        "annual_inflation": seed["annual_inflation"],
+                        "scaling_mode": ScalingMode.PER_MW.value,
+                        "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
+                        "detail_code": child.code,
+                        "allocation_weight": float(child.weight),
+                    },
+                )
     return record
 
 
@@ -268,8 +301,8 @@ def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, 
     Reference-driven working copies instead carry those values from the
     canonical reference.  Explicit later snapshot edits still win.
     """
-    profile = snapshot.get("_reference_seed_profile")
-    if not isinstance(profile, dict):
+    profile = _resolve_seed_profile(snapshot)
+    if profile is None:
         return inputs
     technical_seed = profile.get("technical_inputs")
     if not isinstance(technical_seed, dict):
@@ -292,6 +325,28 @@ def restore_reference_seed_technical_authority(inputs: Any, snapshot: dict[str, 
     )
 
 
+def _resolve_seed_profile(snapshot: dict) -> "dict | None":
+    """Return the ``_reference_seed_profile`` from a workspace snapshot as a dict.
+
+    Handles two storage forms:
+    - dict: stored before any CAS update (initial seed)
+    - JSON string: stored after a CAS round-trip through ProjectInputSet
+      (from_snapshot serialises dict values with json.dumps so they
+      survive the snapshot_origin str-normalisation pass intact)
+    """
+    profile = snapshot.get("_reference_seed_profile")
+    if isinstance(profile, dict):
+        return profile
+    if isinstance(profile, str) and profile:
+        try:
+            parsed = json.loads(profile)
+            if isinstance(parsed, dict):
+                return parsed
+        except (ValueError, KeyError):
+            pass
+    return None
+
+
 def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacity_mw: float) -> None:
     """Rescale only untouched PER_MW seed lines after a capacity edit.
 
@@ -307,11 +362,12 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
         return
-    profile = ws.draft_snapshot.get("_reference_seed_profile")
-    if not isinstance(profile, dict):
+    profile = _resolve_seed_profile(ws.draft_snapshot)
+    if profile is None:
         return
     opex_items = profile.get("opex_items", {})
     reconciled_capex_total = None
+    reconciled_opex_total = None
     with get_cursor() as cur:
         cur.execute(
             "SELECT sub_line_id, replay_metadata_json FROM capex_sub_lines "
@@ -349,13 +405,16 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
             (record.project_id,),
         )
         reconciled_capex_total = float(cur.fetchone()["total"])
+        cur.execute(
+            "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM opex_sub_lines "
+            "WHERE project_id=? AND is_active=1",
+            (record.project_id,),
+        )
+        reconciled_opex_total = float(cur.fetchone()["total"])
     snapshot = dict(ws.draft_snapshot)
     snapshot["capacity_mw"] = f"{capacity_mw:.12g}"
-    reference_capacity = float(profile["reference_capacity_mw"])
     snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
-    snapshot["opex_y1_keur"] = _scaled(
-        profile["reference_opex_y1_keur"], capacity_mw / reference_capacity
-    )
+    snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
     profile = dict(profile)
     profile["seed_capacity_mw"] = capacity_mw
     snapshot["_reference_seed_profile"] = profile
@@ -372,8 +431,7 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
 
 
 # ── Public read-only helpers (A3 Model Reference API) ─────────────────────────
-# These expose the pure canonical helpers for external read-only callers.
-# Zero behavioural change: they are thin wrappers around the private functions.
+# These expose pure canonical helpers for external read-only callers.
 
 def get_reference_inputs(template_source: str):
     """Return canonical ProjectInputs for a reference template (read-only, no DB)."""
@@ -386,11 +444,7 @@ def canonical_capex_reference_items(pi) -> dict:
 
 
 def canonical_opex_reference_items(pi) -> dict:
-    """Return enriched OPEX items with group_code for a reference ProjectInputs (read-only).
-
-    Adds group_code from the same _OPEX_GROUP_BY_REFERENCE_NAME authority used by
-    create_reference_seeded_project().  Returns a copy; private helper is unchanged.
-    """
+    """Return enriched OPEX items with group_code for a reference ProjectInputs (read-only)."""
     raw = _canonical_opex_items(pi)
     enriched = {}
     for key, item in raw.items():
@@ -477,12 +531,13 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
     if record is None:
         raise ValueError("Project not found.")
     ws = get_workspace_state(user_id, record.project_id)
-    profile = ws.draft_snapshot.get("_reference_seed_profile") if ws else None
+    profile = _resolve_seed_profile(ws.draft_snapshot) if ws else None
     if not isinstance(profile, dict):
         raise ValueError("Project has no reference seed profile.")
     capacity = float(ws.draft_snapshot["capacity_mw"])
     opex_items = profile.get("opex_items", {})
     reconciled_capex_total = None
+    reconciled_opex_total = None
     with get_cursor() as cur:
         cur.execute(
             "SELECT sub_line_id, replay_metadata_json FROM capex_sub_lines "
@@ -525,8 +580,15 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
             (record.project_id,),
         )
         reconciled_capex_total = float(cur.fetchone()["total"])
+        cur.execute(
+            "SELECT COALESCE(SUM(amount_keur), 0) AS total FROM opex_sub_lines "
+            "WHERE project_id=? AND is_active=1",
+            (record.project_id,),
+        )
+        reconciled_opex_total = float(cur.fetchone()["total"])
     refreshed_snapshot = dict(ws.draft_snapshot)
     refreshed_snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
+    refreshed_snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
     save_workspace_state(
         user_id=user_id,
         project_id=record.project_id,

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app.workbook.country_options import COUNTRY_CODES as _COUNTRY_CODES
 from app.workbook.specs import (
     BindingStatus,
     FieldKind,
@@ -138,12 +139,13 @@ _ps_identity = _section("identity", "Project Identity", _PS, order=0, fields=[
        options=("wind_onshore", "solar_pv", "bess", "hydro", "gas"), required=True,
        excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=1),
 
-    _f(f"{_PS}.identity.country_market", "Country / Market", "country_market", FieldType.TEXT, _PS, "identity",
+    _f(f"{_PS}.identity.country_market", "Country / Market", "country_market", FieldType.SELECT, _PS, "identity",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
        engine_path="info.country_iso",
-       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.PARTIAL,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
        editable=True,
-       description="Free-text country label; mapped to country_iso enum internally (mapping not explicitly registered).",
+       description="Canonical country/market code (XA/XB/XC for generic references; ISO 3166-1 alpha-2 for real markets). Persisted as country_market; adapter normalises to country_iso.",
+       options=_COUNTRY_CODES,
        excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=2),
 
     _f(f"{_PS}.identity.currency", "Currency", "currency", FieldType.SELECT, _PS, "identity",
