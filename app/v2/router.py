@@ -114,6 +114,13 @@ _REMOVABLE_OVERRIDE_FIELDS = frozenset(
 )
 
 
+def _pct(fraction, digits: int = 2) -> str | None:
+    """Format a fraction as a human-readable percentage without mutating stored value."""
+    if fraction is None:
+        return None
+    return f"{float(fraction) * 100:.{digits}f}%"
+
+
 def _fmt_runtime_at(ts: str) -> str:
     """Format an ISO timestamp into a human-readable string for the toolbar."""
     if not ts:
@@ -301,6 +308,17 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 option_labels: dict = COUNTRY_CODE_TO_LABEL
             else:
                 option_labels = {}
+            # For PCT-type read-only fields stored as fractions (e.g. 0.055), provide
+            # display_value so the template can show "5.50%" without mutating the stored value.
+            if field_type == "pct" and value is not None and not fspec.options:
+                try:
+                    v = float(value)
+                    display_v = v * 100 if 0.0 < abs(v) < 1.0 else v
+                    display_value: object = f"{display_v:.2f}%"
+                except (TypeError, ValueError):
+                    display_value = value
+            else:
+                display_value = value
             rows.append({
                 "field_id": fspec.field_id,
                 "label": fspec.label,
@@ -312,6 +330,7 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "section_id": section.section_id,
                 "section_label": section.label,
                 "value": value,
+                "display_value": display_value,
                 "required": fspec.required,
                 "min_value": fspec.min_value,
                 "max_value": fspec.max_value,
@@ -767,8 +786,14 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             ("Merchant balancing", _value("revenue.balancing.merchant_pct"), "% of spot sales"),
             ("Balancing cost", _value("revenue.balancing.cost_eur_per_mwh"), "EUR/MWh"),
             ("CO2 revenue", _value("revenue.balancing.co2_enabled"), ""),
+            ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),
         "merchant_curve_rows": curve_rows,
+        "revenue_output_context": {
+            "generation": (_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh"),
+            "period": _rev_ctx.get("sample_period_label"),
+            "persisted_revenue": _rev_ctx.get("display_value_keur"),
+        },
     }
 
 
@@ -896,6 +921,8 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
         "senior_detail_rows": (
+            ("Gearing", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
+            ("All-in interest rate", _pct(getattr(fin, "base_rate", 0.0) + getattr(fin, "margin_bps", 0) / 10_000) if fin else None),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
             ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
             ("Commitment fee", f"{getattr(fin, 'commitment_fee', 0.0) * 100:.2f}%" if fin else None),

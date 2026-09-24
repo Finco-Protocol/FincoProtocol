@@ -139,7 +139,7 @@
       {%- elif f.option_labels and f.value in f.option_labels -%}
         {{ f.option_labels[f.value] }}
       {%- else -%}
-        {{ f.value }}
+        {{ f.display_value if f.display_value is defined else f.value }}
       {%- endif -%}
     </span>
     {%- if f.binding_label not in ('bound',) -%}

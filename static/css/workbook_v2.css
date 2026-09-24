@@ -360,15 +360,18 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
 /* Revenue uses the same compact worksheet grammar as CAPEX and OPEX. */
 .v2-revenue-pricing-basis { margin: .25rem 0 .85rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
 .v2-revenue-pricing-basis .v2-sheet-section-heading { margin: 0; border-bottom: 1px solid #e5e7eb; }
-.v2-revenue-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
-.v2-revenue-pricing-item { display: flex; justify-content: space-between; gap: .55rem; padding: .48rem .65rem; border-right: 1px solid #edf1f5; border-bottom: 1px solid #edf1f5; font-size: .78rem; }
+.v2-revenue-pricing-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; padding: .6rem; }
+.v2-revenue-pricing-item { display: flex; justify-content: space-between; gap: .55rem; min-width:0; padding: .5rem .65rem; border: 1px solid #edf1f5; border-radius: 5px; font-size: .78rem; }
 .v2-revenue-pricing-item span { color: #4b5563; }
-.v2-revenue-pricing-item strong { font-variant-numeric: tabular-nums; text-align: right; color: #172554; }
+.v2-revenue-pricing-item strong { min-width:0; font-variant-numeric: tabular-nums; text-align: right; color: #172554; overflow-wrap:anywhere; }
 .v2-revenue-pricing-item small { color: #6b7280; font-weight: 500; white-space: nowrap; }
 .v2-revenue-curve-preview { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem .65rem; font-size: .76rem; color: #4b5563; }
 .v2-revenue-curve-preview strong { color: #172554; font-variant-numeric: tabular-nums; font-weight: 600; }
 .v2-revenue-curve-preview i { color: #9ca3af; font-style: normal; }
 .v2-revenue-location-note { margin: 0; padding: .45rem .65rem .6rem; color: #6b7280; font-size: .72rem; line-height: 1.35; }
+.v2-revenue-output-context { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.35rem .75rem; padding:.55rem .65rem; border-top:1px solid #edf1f5; background:#f8fbff; font-size:.76rem; }
+.v2-revenue-output-context span { color:#4b5563; }.v2-revenue-output-context strong { text-align:right; font-variant-numeric:tabular-nums; color:#172554; }
+@media (max-width:700px) { .v2-revenue-pricing-grid { grid-template-columns:minmax(0,1fr); } .v2-revenue-output-context { grid-template-columns:minmax(0,1fr); gap:.15rem; } .v2-revenue-output-context strong { text-align:left; margin-bottom:.35rem; } }
 .v2-sponsor-funding-panel { margin-top: .8rem; padding: .65rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
 .v2-sponsor-funding-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #1e3a5f; }
 .v2-sponsor-funding-panel > p { margin: .25rem 0 .55rem; font-size: .72rem; color: #6b7280; }

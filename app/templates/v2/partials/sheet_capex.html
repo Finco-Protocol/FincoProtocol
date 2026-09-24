@@ -36,7 +36,7 @@
   <span class="v2-field-label">{{ label }}</span>
   <span class="v2-field-value">
     {%- if value is not none and value != "" -%}
-      <span class="v2-capex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+      <span class="v2-capex-amount-cell">{{ grouped_keur(value) }}</span>
     {%- else -%}
       <span class="v2-field-empty">—</span>
     {%- endif -%}
@@ -54,7 +54,7 @@
   <span class="v2-field-label">{{ label }}</span>
   <span class="v2-field-value">
     {%- if value is not none and value != "" -%}
-      <span class="v2-capex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+      <span class="v2-capex-amount-cell">{{ grouped_keur(value) }}</span>
     {%- else -%}
       <span class="v2-field-empty">—</span>
     {%- endif -%}
@@ -69,7 +69,7 @@
 <div class="v2-capex-subline{% if not line.is_active %} v2-capex-inactive{% endif %}">
   <span class="v2-capex-subline-code">{{ line.code }}</span>
   <span class="v2-capex-subline-name">{{ line.name }}</span>
-  <span class="v2-capex-subline-amount">{{ "%.0f"|format(line.amount_keur) }}</span>
+  <span class="v2-capex-subline-amount">{{ grouped_keur(line.amount_keur) }}</span>
   <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
   {# Calibration/development notes suppressed in standard product view. #}
 </div>
@@ -83,7 +83,7 @@
   <summary class="v2-capex-compact-edit-row">
     <span class="v2-capex-custom-code">{{ line.code }}</span>
     <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
-    <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ "%.0f"|format(line.amount_keur) }}</span>
+    <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
     <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
     <span class="v2-binding-badge {% if line.source == 'reference_seed' %}v2-capex-badge-reference{% elif line.source == 'user_override' %}v2-capex-badge-override{% else %}v2-capex-badge-custom{% endif %}">{% if line.source == 'reference_seed' %}REFERENCE{% elif line.source == 'user_override' %}OVERRIDE{% else %}CUSTOM{% endif %}</span>
   </summary>
@@ -186,28 +186,28 @@
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Hard CAPEX</span>
       <span class="v2-capex-total-value" data-testid="hard-capex-keur">
-        {{ "%.0f"|format(capex_vm.hard_capex_keur) }}
+        {{ grouped_keur(capex_vm.hard_capex_keur) }}
       </span>
       <span class="v2-unit">kEUR</span>
     </div>
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Financing</span>
       <span class="v2-capex-total-value" data-testid="financing-keur">
-        {{ "%.0f"|format(capex_vm.financing_keur) }}
+        {{ grouped_keur(capex_vm.financing_keur) }}
       </span>
       <span class="v2-unit">kEUR</span>
     </div>
     <div class="v2-capex-total-item">
       <span class="v2-capex-total-label">Reserve</span>
       <span class="v2-capex-total-value" data-testid="reserve-keur">
-        {{ "%.0f"|format(capex_vm.reserve_keur) }}
+        {{ grouped_keur(capex_vm.reserve_keur) }}
       </span>
       <span class="v2-unit">kEUR</span>
     </div>
     <div class="v2-capex-total-item v2-capex-grand-total">
       <span class="v2-capex-total-label">Total CAPEX</span>
       <span class="v2-capex-total-value" data-testid="total-capex-keur">
-        {{ "%.0f"|format(capex_vm.total_capex_keur) }}
+        {{ grouped_keur(capex_vm.total_capex_keur) }}
       </span>
       <span class="v2-unit">kEUR</span>
       <span class="v2-capex-total-permw" data-testid="total-capex-permw">
