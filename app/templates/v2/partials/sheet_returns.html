@@ -63,6 +63,11 @@
         <span>Sponsor cash-flow schedule</span><span>kEUR</span>
       </div>
       {% if returns.sponsor_available %}
+      <div class="v2-returns-shl-funding" data-testid="returns-shl-funding">
+        <strong>SHL funding (Last Run):</strong>
+        {{ money(returns.total_shl_funded) }}
+        <span>Persisted total; period-by-period SHL funding is not available in this schedule.</span>
+      </div>
       <div class="v2-schedule-scroll">
         <table class="v2-schedule-table v2-returns-table" data-testid="returns-sponsor-table">
           <thead><tr>

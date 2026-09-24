@@ -97,6 +97,28 @@ class OpexSheetGroup:
         return self.vm_group.inflation_pct if self.vm_group else 0.0
 
     @property
+    def escalation_display(self) -> str:
+        """Return the truthful parent-level escalation presentation.
+
+        Escalation is an authority of each effective child line.  A parent
+        summary may state one percentage only when all of its active children
+        have that same rate; otherwise ``Mixed`` prevents a group default from
+        being misrepresented as the governing rate.
+        """
+        if not self.vm_group:
+            return "—"
+        rates = {
+            round(float(line.inflation_pct), 8)
+            for line in self.vm_group.lines
+            if line.is_active
+        }
+        if not rates:
+            return "—"
+        if len(rates) == 1:
+            return f"{next(iter(rates)):.1f}%"
+        return "Mixed"
+
+    @property
     def display_name(self) -> str:
         """Use VM name when available (may be more specific than canonical)."""
         if self.vm_group:

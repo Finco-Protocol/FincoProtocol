@@ -305,6 +305,29 @@ def test_ca_escalation_03_uniform_lines_show_shared_rate():
     assert group_escalation_display(group) == "2.0%"
 
 
+def test_parent_summary_escalation_is_mixed_for_heterogeneous_children():
+    """The parent table must not show a group default when children differ."""
+    from app.ui.opex_sheet_projection import OpexSheetGroup
+    from app.ui.opex_view_model import OpexGroupVM
+
+    lines = (
+        _opex_line_vm("B.01.01", "one", 1.5, 10.0),
+        _opex_line_vm("B.01.02", "two", 3.5, 10.0),
+    )
+    group = OpexGroupVM(
+        code="B.01", name="Test Group", inflation_pct=2.0,
+        is_contingency=False, contingency_pct=0.0, lines=lines,
+        subtotal_per_year=(20.0,) * 20,
+    )
+    projected = OpexSheetGroup(
+        code="B.01", canonical_name="Technical Management",
+        field_suffix="technical_management", is_always_derived=False,
+        field=None, vm_group=group,
+    )
+
+    assert projected.escalation_display == "Mixed"
+
+
 def _opex_group_codes():
     from app.ui.project_context import _OPEX_GROUP_META
     return sorted(meta[0] for meta in _OPEX_GROUP_META.values())

@@ -7,8 +7,12 @@
     <span class="radar-board-meta">{{ featured_board | length }} assets · market references refresh while visible</span>
   </div>
 
-  <div style="overflow-x:auto;">
-    <table class="board-table">
+  <div class="featured-board-scroll">
+    <table class="board-table board-table--featured">
+      <colgroup>
+        <col class="board-col-symbol"><col class="board-col-company"><col class="board-col-market">
+        <col class="board-col-revenue"><col class="board-col-growth"><col class="board-col-margin"><col class="board-col-margin"><col class="board-col-terminal">
+      </colgroup>
       <thead>
         <tr>
           <th>Symbol</th>
@@ -25,11 +29,11 @@
         {% for row in featured_board %}
         <tr data-market-uid="{{ row.asset_uid }}" data-market-symbol="{{ row.symbol }}">
           <td style="font-weight:600;white-space:nowrap;">{{ row.symbol }}</td>
-          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.company_name }}"><strong>{{ row.company_name }}</strong><small class="radar-market-meta">{{ row.symbol }}</small></td>
-          <td class="num">
+          <td class="board-company" title="{{ row.company_name }}"><strong>{{ row.company_name }}</strong><small class="radar-market-meta">{{ row.symbol }}</small></td>
+          <td class="num board-market-reference">
             <strong data-market-price title="Waiting for the official Robinhood reference">—</strong>
             <small class="radar-market-meta" data-market-state>UNAVAILABLE</small>
-            <small class="radar-market-meta" data-market-observed></small>
+            <small class="radar-market-meta radar-market-observed-detail" data-market-observed></small>
           </td>
 
           {% if row.state in ("AVAILABLE", "PARTIAL") %}
@@ -42,7 +46,7 @@
             Fundamentals not available
           </td>
           {% endif %}
-          <td style="text-align:right;white-space:nowrap;">
+          <td class="board-terminal">
             <a href="{{ row.details_url }}"
                class="board-details-cta"
                data-symbol="{{ row.symbol }}"><span class="radar-legacy-hook">Details → </span>Open Company Terminal →</a>

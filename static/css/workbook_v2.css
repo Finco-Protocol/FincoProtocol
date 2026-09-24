@@ -567,7 +567,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
   font-weight: 600; font-size: 0.78rem;
   padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;
-  position: sticky; top: 4.8rem; z-index: 10; user-select: none;
+  position: relative; z-index: 1; user-select: none;
 }
 .v2-capex-group-header::-webkit-details-marker { display: none; }
 .v2-capex-group-header::before {
@@ -577,7 +577,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 details.v2-capex-group[open] > .v2-capex-group-header::before {
   transform: rotate(90deg);
 }
-.v2-capex-group-body { padding: 0.1rem 0 0.35rem 0; }
+.v2-capex-group-body { padding: .2rem 0 .3rem; clear: both; overflow: clip; }
 
 .v2-capex-engine-row {
   background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem;
@@ -592,13 +592,13 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-capex-shared-row     { border-left: 3px solid #c4b5fd; background: #faf5ff; }
 
 .v2-capex-sublines-container {
-  margin-left: 1rem; border-left: 1px solid #f3f4f6;
+  margin: .15rem 0 0 1rem; border-left: 1px solid #e5e7eb; background: #fff;
 }
 .v2-capex-subline {
   display: grid;
   grid-template-columns: 4rem 1fr 7rem 6rem 1fr;
   align-items: center;
-  padding: 0.1rem 0.4rem;
+  min-height: 1.8rem; padding: .22rem .4rem;
   font-size: 0.76rem; color: #6b7280;
   border-bottom: 1px solid #f9fafb;
 }
@@ -699,7 +699,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
   align-items: center; cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem; padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;
-  position: sticky; top: 4.8rem; z-index: 10; user-select: none;
+  position: relative; z-index: 1; user-select: none;
 }
 .v2-opex-group-header::-webkit-details-marker { display: none; }
 .v2-opex-group-header::before {
@@ -707,7 +707,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
   color: #9ca3af; margin-right: 0.25rem;
 }
 details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(90deg); }
-.v2-opex-group-body { padding: 0.1rem 0 0.35rem 0; }
+.v2-opex-group-body { padding: .2rem 0 .3rem; clear: both; overflow: clip; }
 .v2-opex-ro-row { background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem; }
 .v2-opex-amount-cell { font-variant-numeric: tabular-nums; }
 .v2-opex-badge-engine   { background: #6b7280; color: #fff; }
@@ -715,10 +715,10 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-badge-partial  { background: #d97706; color: #fff; }
 .v2-opex-badge-bound    { background: #15803d; color: #fff; }
 
-.v2-opex-lines-container { margin-left: 1rem; border-left: 1px solid #f3f4f6; }
+.v2-opex-lines-container { margin: .15rem 0 0 1rem; border-left: 1px solid #e5e7eb; background: #fff; }
 .v2-opex-line-row {
   display: grid; grid-template-columns: 4.5rem 1fr 6rem 4rem 1fr auto;
-  align-items: center; padding: 0.1rem 0.4rem;
+  align-items: center; min-height: 1.8rem; padding: .22rem .4rem;
   font-size: 0.76rem; color: #6b7280; border-bottom: 1px solid #f9fafb;
 }
 .v2-opex-line-row:last-child { border-bottom: none; }
@@ -737,6 +737,24 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-grand-total-amount {
   text-align: right; font-variant-numeric: tabular-nums; color: #14532d;
 }
+
+/* Parent summaries are compact read-only reconciliations of the same VMs
+   rendered below; they deliberately introduce no new aggregation authority. */
+.v2-parent-summary { margin: .55rem 0 .8rem; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden; }
+.v2-parent-summary .v2-sheet-section-heading { margin: 0; padding: .35rem .55rem; background: #f8fafc; }
+.v2-parent-summary-scroll { overflow-x: auto; }
+.v2-parent-summary-table { width: 100%; border-collapse: collapse; font-size: .76rem; }
+.v2-parent-summary-table th, .v2-parent-summary-table td { padding: .28rem .45rem; border-bottom: 1px solid #edf1f5; }
+.v2-parent-summary-table th { text-align: left; color: #64748b; font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; }
+.v2-parent-summary-table tr:last-child td { border-bottom: 0; }
+.v2-returns-shl-funding { margin: .4rem 0; padding: .45rem .6rem; border-left: 3px solid #475569; background: #f8fafc; font-size: .78rem; }
+.v2-returns-shl-funding span { margin-left: .4rem; color: #64748b; }
+.v2-debt-context-panel { margin-top: .75rem; padding: .6rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
+.v2-debt-context-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #1e3a5f; }
+.v2-debt-context-panel p { margin: .25rem 0 .45rem; color: #64748b; font-size: .7rem; }
+.v2-debt-context-panel dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; border-top: 1px solid #edf1f5; }
+.v2-debt-context-panel dl > div { display:flex; justify-content:space-between; gap:.5rem; padding:.38rem .25rem; border-bottom:1px solid #edf1f5; font-size:.75rem; }
+.v2-debt-context-panel dt { color:#4b5563; }.v2-debt-context-panel dd { margin:0; text-align:right; color:#172554; font-variant-numeric:tabular-nums; }
 
 /* OPEX year projection table */
 .v2-opex-projection-panel { margin-top: 1.5rem; border: 1px solid #e5e7eb; border-radius: 3px; }
@@ -856,6 +874,8 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-capex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem auto; }
   .v2-capex-compact-edit-row .v2-capex-subline-permw,
   .v2-capex-compact-edit-row .v2-binding-badge { display: none; }
+  .v2-parent-summary-table { min-width: 30rem; }
+  .v2-debt-context-panel dl, .v2-sponsor-funding-panel dl { grid-template-columns: 1fr; }
 }
 
 /* ── Table base ──────────────────────────────────────────────── */

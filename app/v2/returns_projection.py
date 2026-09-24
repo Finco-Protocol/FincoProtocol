@@ -38,6 +38,7 @@ class ReturnsProjection:
     distribution_available: bool
     sponsor_source: str
     distribution_source: str
+    total_shl_funded: Optional[float]
 
 
 def _number(value: Any) -> Optional[float]:
@@ -96,6 +97,7 @@ def build_returns_projection(
             distribution_available=False,
             sponsor_source="",
             distribution_source="",
+            total_shl_funded=None,
         )
 
     runtime = thaw_runtime_payload(rr.runtime_summary or {})
@@ -159,4 +161,5 @@ def build_returns_projection(
             and isinstance(distribution.get("summary"), dict)
             else ""
         ),
+        total_shl_funded=_number(sponsor_summary.get("total_shl_cash_contributed_keur")),
     )
