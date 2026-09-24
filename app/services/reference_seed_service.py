@@ -402,6 +402,73 @@ def canonical_opex_reference_items(pi) -> dict:
     return enriched
 
 
+def build_reference_scaling_preview(template_source: str, capacity_mw: float) -> dict:
+    """Return pure deterministic scaling preview for a canonical reference at requested capacity.
+
+    Uses the same PER_MW unit-rate authority as create_reference_seeded_project().
+    Pure function: no DB calls, no engine execution, no state mutation.
+    """
+    pi = _reference_inputs(template_source)
+    reference_capacity = float(pi.technical.capacity_mw)
+    ratio = capacity_mw / reference_capacity
+
+    capex_raw = _canonical_capex_items(pi)
+    opex_raw = canonical_opex_reference_items(pi)
+
+    capex_items = []
+    for item in capex_raw.values():
+        rate = float(item["unit_rate_keur_per_mw"])
+        capex_items.append({
+            "canonical_field": item["canonical_field"],
+            "owner_category_code": item["owner_category_code"],
+            "canonical_label": item["canonical_label"],
+            "scaling_mode": item["scaling_mode"],
+            "reference_amount_keur": float(item["reference_amount_keur"]),
+            "unit_rate_keur_per_mw": rate,
+            "scaled_amount_keur": rate * capacity_mw,
+        })
+
+    opex_items = []
+    for item in opex_raw.values():
+        rate = float(item["unit_rate_keur_per_mw"])
+        opex_items.append({
+            "canonical_key": item["canonical_key"],
+            "group_code": item.get("group_code"),
+            "label": item["label"],
+            "scaling_mode": item["scaling_mode"],
+            "annual_inflation_rate": item.get("annual_inflation_rate"),
+            "reference_amount_keur": float(item["reference_amount_keur"]),
+            "unit_rate_keur_per_mw": rate,
+            "scaled_amount_keur": rate * capacity_mw,
+        })
+
+    reference_total_capex = float(pi.capex.total_capex)
+    scaled_total_capex = reference_total_capex * ratio
+    reference_seedable_capex = sum(it["reference_amount_keur"] for it in capex_items)
+    scaled_seedable_capex = sum(it["scaled_amount_keur"] for it in capex_items)
+
+    reference_opex_y1 = sum(float(x.y1_amount_keur) for x in pi.opex)
+    scaled_opex_y1 = reference_opex_y1 * ratio
+    reference_seedable_opex = sum(it["reference_amount_keur"] for it in opex_items)
+    scaled_seedable_opex = sum(it["scaled_amount_keur"] for it in opex_items)
+
+    return {
+        "reference_capacity_mw": reference_capacity,
+        "requested_capacity_mw": capacity_mw,
+        "ratio": ratio,
+        "reference_total_capex_keur": reference_total_capex,
+        "scaled_total_capex_keur": scaled_total_capex,
+        "reference_seedable_capex_keur": reference_seedable_capex,
+        "scaled_seedable_capex_keur": scaled_seedable_capex,
+        "capex_items": capex_items,
+        "reference_opex_y1_keur": reference_opex_y1,
+        "scaled_opex_y1_keur": scaled_opex_y1,
+        "reference_seedable_opex_y1_keur": reference_seedable_opex,
+        "scaled_seedable_opex_y1_keur": scaled_seedable_opex,
+        "opex_items": opex_items,
+    }
+
+
 def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
     """Restore all overridden seed rows to their canonical per-MW values."""
     from app.persistence.projects_repository import get_project_by_code
