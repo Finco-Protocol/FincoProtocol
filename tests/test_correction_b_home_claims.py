@@ -94,13 +94,13 @@ def test_p01_trust_strip_has_execution_aware_copy(home_html):
 
 def test_p01_radar_arch_no_liquidity_claim(home_html):
     """Radar product description in architecture section must not claim Liquidity."""
-    # Extract the FINCO Radar product cell
+    # proto-arch__product--radar replaces the old proto-arch__product--readonly
     radar_block = _between(
         home_html,
-        'proto-arch__product--readonly',
+        'proto-arch__product--radar',
         '</a>',
     )
-    assert radar_block, "FINCO Radar architecture cell not found"
+    assert radar_block, "FINCO Radar architecture cell not found (proto-arch__product--radar)"
     assert "liquidity" not in radar_block.lower(), (
         "Radar architecture description must not claim 'liquidity' as a current surface"
     )
@@ -110,10 +110,10 @@ def test_p01_radar_arch_no_cross_market_claim(home_html):
     """Radar architecture description must not claim cross-market as a current surface."""
     radar_block = _between(
         home_html,
-        'proto-arch__product--readonly',
+        'proto-arch__product--radar',
         '</a>',
     )
-    assert radar_block, "FINCO Radar architecture cell not found"
+    assert radar_block, "FINCO Radar architecture cell not found (proto-arch__product--radar)"
     assert "cross-market" not in radar_block.lower(), (
         "Radar architecture description must not claim 'cross-market' as a current surface"
     )
@@ -123,10 +123,10 @@ def test_p01_radar_arch_describes_current_surfaces(home_html):
     """Radar architecture description must reference actually-exposed surfaces."""
     radar_block = _between(
         home_html,
-        'proto-arch__product--readonly',
+        'proto-arch__product--radar',
         '</a>',
     )
-    assert radar_block, "FINCO Radar architecture cell not found"
+    assert radar_block, "FINCO Radar architecture cell not found (proto-arch__product--radar)"
     text = radar_block.lower()
     for term in ("execution", "gap", "evidence"):
         assert term in text, (

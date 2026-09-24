@@ -1278,10 +1278,8 @@ def _subtract_months(value: date, months: int) -> date:
 
 
 def _country_iso(value: str) -> str:
-    normalized = value.strip()
-    if normalized.lower() in {"generic_market_a", "hr", "hrv", "generic_market_a"}:
-        return "XA"
-    return normalized.upper()[:2] or "XA"
+    from app.workbook.country_options import normalize_country_code
+    return normalize_country_code(value)
 
 
 def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
