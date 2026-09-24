@@ -236,22 +236,29 @@ def _load_equity_and_featured_board(
     # featured_pairs carries both identity and result for UID-first reuse below.
     featured_pairs = list(zip(resolved_assets, featured_results))
 
-    # Build board rows — pass token_symbol separately so UID never leaks into
-    # the symbol column.  Featured is a curated product surface: an asset
-    # without persisted fundamentals is not a candidate row.  Do not retain a
-    # ticker-shaped placeholder, because that would imply an identity and a
-    # usable Company Terminal that cannot be proven.
-    by_symbol = {
-        asset.token_symbol.upper(): equity_view_model.build_equity_board_row(
-            result, asset_uid=asset.economic_asset_uid,
-            fallback_name=asset.token_name, token_symbol=asset.token_symbol,
-        ) for asset, result in featured_pairs
-        if result.state in (
-            equity_enrichment.EnrichmentState.AVAILABLE,
-            equity_enrichment.EnrichmentState.PARTIAL,
-        )
-    }
-    rows = [by_symbol[sym.upper()] for sym in featured_symbols if sym.upper() in by_symbol]
+    # Build board rows — one per configured featured symbol, preserving order.
+    # Symbols absent from the universe or matching >1 asset (ambiguous) get an
+    # UNAVAILABLE placeholder row; all other enrichment states are shown as-is.
+    # This keeps the board stable and avoids "Reference unavailable" text.
+    _pair_iter = iter(featured_pairs)
+    rows = []
+    for _sym, _feat_asset in zip(featured_symbols, featured_assets):
+        if _feat_asset is None:
+            rows.append({
+                "state": "UNAVAILABLE",
+                "symbol": _sym,
+                "company_name": _sym,
+                "asset_uid": "",
+                "details_url": "#",
+            })
+        else:
+            _, _result = next(_pair_iter)
+            rows.append(equity_view_model.build_equity_board_row(
+                _result,
+                asset_uid=_feat_asset.economic_asset_uid,
+                fallback_name=_feat_asset.token_name,
+                token_symbol=_feat_asset.token_symbol,
+            ))
 
     # Equity view for the selected asset.
     equity_view: dict = {}
