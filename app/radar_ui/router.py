@@ -239,7 +239,6 @@ def _load_equity_and_featured_board(
     # Build board rows — one per configured featured symbol, preserving order.
     # Symbols absent from the universe or matching >1 asset (ambiguous) get an
     # UNAVAILABLE placeholder row; all other enrichment states are shown as-is.
-    # This keeps the board stable and avoids "Reference unavailable" text.
     _pair_iter = iter(featured_pairs)
     rows = []
     for _sym, _feat_asset in zip(featured_symbols, featured_assets):
@@ -252,13 +251,23 @@ def _load_equity_and_featured_board(
                 "details_url": "#",
             })
         else:
-            _, _result = next(_pair_iter)
-            rows.append(equity_view_model.build_equity_board_row(
-                _result,
-                asset_uid=_feat_asset.economic_asset_uid,
-                fallback_name=_feat_asset.token_name,
-                token_symbol=_feat_asset.token_symbol,
-            ))
+            _pair = next(_pair_iter, None)
+            if _pair is not None:
+                _, _result = _pair
+                rows.append(equity_view_model.build_equity_board_row(
+                    _result,
+                    asset_uid=_feat_asset.economic_asset_uid,
+                    fallback_name=_feat_asset.token_name,
+                    token_symbol=_feat_asset.token_symbol,
+                ))
+            else:
+                rows.append({
+                    "state": "UNAVAILABLE",
+                    "symbol": _feat_asset.token_symbol,
+                    "company_name": _feat_asset.token_name,
+                    "asset_uid": _feat_asset.economic_asset_uid,
+                    "details_url": f"/radar/equity/{_feat_asset.economic_asset_uid}",
+                })
 
     # Equity view for the selected asset.
     equity_view: dict = {}
