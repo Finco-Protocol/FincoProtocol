@@ -1,10 +1,19 @@
-"""FINCO Radar v1 UI — narrow read-only product surface over the frozen
-R0–R12 authority and the canonical P1 acquisition runtime.
+"""FINCO Radar v1 UI — read-only product surfaces over canonical authorities.
 
-Core product rule: one refresh → one P1 immutable snapshot_id → all
-visible Radar panels + Evidence Inspector reference that exact snapshot.
+The existing Stocks surface remains presentation + composition over frozen
+R0-R12 authority.  Domain extensions are assembled here so the existing
+``main_web`` import of :mod:`app.radar_ui.router` receives the same root
+APIRouter plus isolated read-only domain routers.
 
-This package is PRESENTATION + COMPOSITION only.  It never recomputes
-market/reference/GAP values, never redefines freshness or verification,
-and never modifies frozen authority.
+No route registered here may redefine market/reference/GAP authority.
 """
+
+# ``main_web`` already mounts ``app.radar_ui.router.router``.  Assemble domain
+# extensions once at package import time instead of widening main_web or the
+# frozen Radar authority namespaces.
+from app.radar_ui.router import router as _root_router
+from app.radar_ui.economy_router import router as _economy_router
+
+_root_router.include_router(_economy_router)
+
+__all__ = []
