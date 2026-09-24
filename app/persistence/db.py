@@ -308,12 +308,20 @@ def _init_schema(conn):
 
 
 def _ensure_column(conn, table_name: str, column_name: str, column_sql: str) -> None:
+    import sqlite3 as _sqlite3
     columns = {
         row[1]
         for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     }
     if column_name not in columns:
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+        try:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+        except _sqlite3.OperationalError as exc:
+            # Concurrent initialisation: another connection may have added the
+            # column between our PRAGMA check and our ALTER TABLE.  Treat
+            # "duplicate column name" as success; re-raise everything else.
+            if "duplicate column name" not in str(exc):
+                raise
 
 
 @contextmanager

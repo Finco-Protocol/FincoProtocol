@@ -62,6 +62,16 @@ def _build_runtime_derivation_evidence(result, project_inputs=None):
             "sample_generation_mwh": getattr(representative_operation_period, "generation_mwh", None),
             "sample_revenue_keur": getattr(representative_operation_period, "revenue_keur", None),
             "audit_source": "WaterfallResult.total_revenue_keur and WaterfallResult.periods[].revenue_keur, generation_mwh",
+            # Full operating-period series — authoritative WaterfallResult.periods[].
+            # Formatted/summed by the presentation layer; economics are unchanged.
+            "revenue_periods": [
+                {
+                    "period_label": _period_label(p),
+                    "generation_mwh": getattr(p, "generation_mwh", None),
+                    "revenue_keur": getattr(p, "revenue_keur", None),
+                }
+                for p in operation_periods
+            ],
         },
         "ebitda": {
             "display_value_keur": getattr(result, "total_ebitda_keur", None),

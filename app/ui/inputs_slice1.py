@@ -41,6 +41,7 @@ SLICE1_FIELD_IDS: tuple[str, ...] = (
 )
 
 SLICE1_EDITABLE_FIELD_IDS: frozenset[str] = frozenset({
+    "project_setup.identity.country_market",
     "project_setup.technical.cod_date",
     "project_setup.technical.construction_months",
     "project_setup.technical.horizon_years",
@@ -96,8 +97,8 @@ _STATUS_NOTES = {
 
 _FIELD_NOTES = {
     "project_setup.identity.country_market": (
-        "Country is displayed but not editable in Slice 1 because the free-text "
-        "country label to country_iso mapping is not fully registered."
+        "Select a canonical country/market code. XA/XB/XC are generic references; "
+        "two-letter codes follow ISO 3166-1 alpha-2."
     ),
     "project_setup.technical.p50_hours": (
         "Current product meaning: P50 operating hours (h/yr). Excel P50/yield "

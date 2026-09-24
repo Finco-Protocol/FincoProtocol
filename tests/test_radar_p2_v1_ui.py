@@ -119,7 +119,9 @@ def test_ui_01_radar_page_renders(make_client):
     response = c.get("/radar")
     assert response.status_code == 200
     assert "FINCO" in response.text and "RADAR" in response.text.upper()
-    assert "READ-ONLY" in response.text
+    # READ-ONLY branding was removed from product chrome (chrome cleanup pass).
+    # The execution simulation panel renders as "Coming soon" and remains disabled.
+    assert "Coming soon" in response.text or "coming soon" in response.text.lower()
 
 
 def test_ui_02_canonical_asset_identity_visible(make_client):
@@ -864,12 +866,18 @@ def test_correction_c_no_unsupported_liquidity_claim_in_idle_state(make_client):
 
 
 def test_correction_f_read_only_boundary_intact(make_client):
-    """READ-ONLY state chip present; no wallet connect / sign / submit controls."""
+    """Execution simulation Coming soon; no wallet connect / sign / submit controls."""
     page = make_client(_build_service([])).get("/radar").text
-    assert "READ-ONLY" in page
-    # The READ-ONLY disclaimer explicitly says "no wallet, no signing…" — that
-    # text is correct authority copy. What must be absent is any interactive
-    # control that would enable those actions.
+    # READ-ONLY branding removed from product chrome (chrome cleanup pass).
+    # The execution panel must be present as Coming soon and remain disabled.
+    assert "Coming soon" in page or "coming soon" in page.lower(), (
+        "Radar execution panel must render 'Coming soon' state"
+    )
+    # Execution simulation controls must be disabled — no wallet action exposed.
+    assert "disabled" in page, (
+        "Radar execution controls must remain disabled"
+    )
+    # No wallet / signing / transaction submission controls must be present.
     for forbidden_control in (
         "connect wallet", "sign transaction", "submit transaction",
         "send transaction", "approve transaction",

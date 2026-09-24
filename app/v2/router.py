@@ -293,6 +293,14 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 step = "any"
 
             value = pis.get(fspec.field_id)
+            # Build option_labels: maps each option value to its display label.
+            # Non-empty only when the canonical options have friendly labels
+            # (currently: country_market). Template uses it for <option> display.
+            if fspec.field_id == "project_setup.identity.country_market" and fspec.options:
+                from app.workbook.country_options import COUNTRY_CODE_TO_LABEL
+                option_labels: dict = COUNTRY_CODE_TO_LABEL
+            else:
+                option_labels = {}
             rows.append({
                 "field_id": fspec.field_id,
                 "label": fspec.label,
@@ -300,6 +308,7 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "field_type": field_type,
                 "binding_label": binding_label,
                 "options": list(fspec.options),
+                "option_labels": option_labels,
                 "section_id": section.section_id,
                 "section_label": section.label,
                 "value": value,

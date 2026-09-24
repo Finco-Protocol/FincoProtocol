@@ -615,10 +615,13 @@ def test_S_read_only_boundary_no_wallet_controls(make_client):
     finally:
         composition.set_registry_factory(None)
 
-    assert "READ-ONLY" in page
+    # READ-ONLY branding removed from product chrome (chrome cleanup pass).
+    # Execution simulation panel renders as Coming soon and remains disabled.
+    assert "Coming soon" in page or "coming soon" in page.lower(), (
+        "Radar execution panel must render 'Coming soon' state"
+    )
     lower = page.lower()
-    # Check for actual wallet-interaction controls, not just the word in
-    # the READ-ONLY disclaimer ("no wallet, no signing…").
+    # Check for actual wallet-interaction controls.
     for forbidden in ("connect wallet", "sendethereum", "sendtransaction",
                       "eth_sendtransaction", "web3.eth.sendtransaction",
                       "signmessage", "personal_sign", "eth_sign",

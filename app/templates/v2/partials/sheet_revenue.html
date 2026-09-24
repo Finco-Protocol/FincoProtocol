@@ -293,6 +293,55 @@
             </div>
           {% endif %}
 
+          {# Period-by-period revenue breakdown
+             Source: WaterfallResult.periods[].revenue_keur / generation_mwh
+             No arithmetic in template — values come pre-formatted from runtime_summary.py.
+             Reconciliation: tfoot total == display_value_keur (authoritative). #}
+          {% set periods = rd.get("revenue_periods", []) %}
+          {% if periods %}
+          <details class="v2-inputs-section v2-revenue-period-detail"
+                   style="margin-top:12px;"
+                   data-testid="revenue-period-detail">
+            <summary class="v2-inputs-section-summary" data-testid="revenue-period-summary">
+              Period revenue breakdown
+              <span class="v2-period-count">({{ periods | length }} operating period{{ 's' if periods | length != 1 else '' }})</span>
+            </summary>
+            <div class="v2-section-fields" style="overflow-x:auto;">
+              <table class="v2-period-table" style="width:100%;border-collapse:collapse;font-size:.78rem;"
+                     data-testid="revenue-period-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Period</th>
+                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Generation (MWh)</th>
+                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Revenue (kEUR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in periods %}
+                  <tr style="border-bottom:1px solid var(--v2-row-border,#f3f4f6);"
+                      data-testid="revenue-period-row">
+                    <td style="padding:2px 8px;font-family:monospace;" data-testid="revenue-period-label">{{ row.period_label }}</td>
+                    <td style="text-align:right;padding:2px 8px;" data-testid="revenue-period-gen">{{ row.generation_mwh }}</td>
+                    <td style="text-align:right;padding:2px 8px;" data-testid="revenue-period-rev">{{ row.revenue_keur }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+                <tfoot>
+                  <tr style="font-weight:600;border-top:1px solid var(--v2-border,#e5e7eb);"
+                      data-testid="revenue-period-total-row">
+                    <td style="padding:3px 8px;">Total</td>
+                    <td style="text-align:right;padding:3px 8px;"></td>
+                    <td style="text-align:right;padding:3px 8px;" data-testid="revenue-period-total">{{ total or "—" }}</td>
+                  </tr>
+                </tfoot>
+              </table>
+              <p style="font-size:.7rem;color:#9ca3af;margin-top:4px;">
+                Source: WaterfallResult.periods[].revenue_keur — authoritative engine output.
+              </p>
+            </div>
+          </details>
+          {% endif %}
+
         {% else %}
           <div class="v2-field-row v2-field-readonly" data-testid="revenue-derivation-absent">
             <span class="v2-field-value">

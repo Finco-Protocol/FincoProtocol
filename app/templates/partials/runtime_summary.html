@@ -301,6 +301,40 @@
                 <dd>{{ runtime_summary.revenue_derivation.audit_source }}</dd>
               </div>
             </dl>
+            {# Detailed period-by-period revenue table — sourced from WaterfallResult.periods[] #}
+            {% if runtime_summary.revenue_derivation.revenue_periods %}
+            <details class="rs-derivation rs-revenue-detail" style="margin-top:10px;" id="kpi-revenue-period-detail">
+              <summary class="rs-derivation-summary">Period revenue breakdown ({{ runtime_summary.revenue_derivation.revenue_periods | length }} periods)</summary>
+              <div class="rs-derivation-body" style="overflow-x:auto;">
+                <table class="rs-period-table" style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--radar-border,#333);">Period</th>
+                      <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--radar-border,#333);">Generation (MWh)</th>
+                      <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--radar-border,#333);">Revenue (kEUR)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in runtime_summary.revenue_derivation.revenue_periods %}
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                      <td style="padding:2px 8px;font-family:monospace;">{{ row.period_label }}</td>
+                      <td style="text-align:right;padding:2px 8px;">{{ row.generation_mwh }}</td>
+                      <td style="text-align:right;padding:2px 8px;">{{ row.revenue_keur }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                  <tfoot>
+                    <tr style="font-weight:600;border-top:1px solid var(--radar-border,#333);">
+                      <td style="padding:3px 8px;">Total</td>
+                      <td style="text-align:right;padding:3px 8px;"></td>
+                      <td style="text-align:right;padding:3px 8px;">{{ runtime_summary.revenue_derivation.display_value_keur }}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <p style="font-size:11px;color:var(--rs-muted,#888);margin-top:4px;">Source: WaterfallResult.periods[].revenue_keur — authoritative engine output, not recomputed here.</p>
+              </div>
+            </details>
+            {% endif %}
           </div>
         </details>
         {% endif %}
