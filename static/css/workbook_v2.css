@@ -356,6 +356,34 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
   margin-bottom: 0;
   border-bottom: 1px solid #e5e7eb;
 }
+
+/* Revenue uses the same compact worksheet grammar as CAPEX and OPEX. */
+.v2-revenue-pricing-basis { margin: .25rem 0 .85rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
+.v2-revenue-pricing-basis .v2-sheet-section-heading { margin: 0; border-bottom: 1px solid #e5e7eb; }
+.v2-revenue-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+.v2-revenue-pricing-item { display: flex; justify-content: space-between; gap: .55rem; padding: .48rem .65rem; border-right: 1px solid #edf1f5; border-bottom: 1px solid #edf1f5; font-size: .78rem; }
+.v2-revenue-pricing-item span { color: #4b5563; }
+.v2-revenue-pricing-item strong { font-variant-numeric: tabular-nums; text-align: right; color: #172554; }
+.v2-revenue-pricing-item small { color: #6b7280; font-weight: 500; white-space: nowrap; }
+.v2-revenue-curve-preview { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem .65rem; font-size: .76rem; color: #4b5563; }
+.v2-revenue-curve-preview strong { color: #172554; font-variant-numeric: tabular-nums; font-weight: 600; }
+.v2-revenue-curve-preview i { color: #9ca3af; font-style: normal; }
+.v2-revenue-location-note { margin: 0; padding: .45rem .65rem .6rem; color: #6b7280; font-size: .72rem; line-height: 1.35; }
+.v2-sponsor-funding-panel { margin-top: .8rem; padding: .65rem; border: 1px solid #dbe4ee; border-radius: 4px; background: #fbfdff; }
+.v2-sponsor-funding-panel h3 { margin: 0; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #1e3a5f; }
+.v2-sponsor-funding-panel > p { margin: .25rem 0 .55rem; font-size: .72rem; color: #6b7280; }
+.v2-sponsor-funding-freshness { padding: .4rem .5rem; border-left: 3px solid #64748b; background: #f8fafc; }
+.v2-sponsor-funding-freshness--current { border-left-color: #15803d; background: #f0fdf4; }
+.v2-sponsor-funding-freshness--stale { border-left-color: #b45309; background: #fffbeb; }
+.v2-sponsor-funding-section { margin-top: .65rem; }
+.v2-sponsor-funding-section h4 { margin: 0 0 .15rem; font-size: .74rem; color: #334155; }
+.v2-sponsor-funding-section > p { margin: 0 0 .35rem; font-size: .7rem; color: #64748b; }
+.v2-sponsor-funding-panel dl { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid #edf1f5; }
+.v2-sponsor-funding-panel dl > div { display: flex; justify-content: space-between; gap: .5rem; padding: .42rem .25rem; border-bottom: 1px solid #edf1f5; font-size: .76rem; }
+.v2-sponsor-funding-panel dt { color: #4b5563; }.v2-sponsor-funding-panel dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: #172554; }
+.v2-sponsor-status { margin-left: .3rem; background: #64748b; color: #fff; font-size: .58rem; }
+.v2-returns-return-definitions { margin: .65rem 0; padding: .5rem .65rem; border-left: 3px solid #93c5fd; background: #f8fbff; color: #475569; font-size: .75rem; line-height: 1.4; }
+.v2-returns-return-definitions p { margin: .22rem 0; }
 .v2-inputs-section-summary {
   display: flex;
   align-items: center;
@@ -602,9 +630,14 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
   margin-left: 1rem; border-left: 2px solid #bfdbfe; background: #eff6ff;
 }
 .v2-capex-custom-row {
-  display: flex; align-items: center; gap: 0.3rem;
+  display: block;
   padding: 0.15rem 0.4rem; border-bottom: 1px solid #dbeafe; font-size: 0.8rem;
 }
+.v2-capex-custom-row > summary { list-style: none; cursor: pointer; }
+.v2-capex-custom-row > summary::-webkit-details-marker { display: none; }
+.v2-capex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 6rem 7rem auto; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
+.v2-capex-compact-edit-row::after { content: 'Edit'; color: #2563eb; font-size: .68rem; justify-self: end; }
+.v2-capex-custom-row[open] > .v2-capex-compact-edit-row::after { content: 'Close'; }
 .v2-capex-custom-row:last-child { border-bottom: none; }
 .v2-capex-custom-form { display: contents; }
 .v2-capex-custom-code { min-width: 5rem; color: #1d4ed8; font-size: 0.7rem; flex-shrink: 0; }
@@ -743,10 +776,15 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
    on mobile). Flex-based so desktop aligns with the sheet grid and narrow
    viewports wrap instead of overflowing the document. ────────────────── */
 .v2-opex-custom-row {
-  display: flex; align-items: center; gap: 0.3rem;
+  display: block;
   padding: 0.15rem 0.4rem 0.15rem 1rem;
   border-bottom: 1px solid #f9fafb; font-size: 0.76rem;
 }
+.v2-opex-custom-row > summary { list-style: none; cursor: pointer; }
+.v2-opex-custom-row > summary::-webkit-details-marker { display: none; }
+.v2-opex-compact-edit-row { display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem auto; align-items: center; gap: .3rem; padding: .28rem .45rem; border-bottom: 1px solid #f3f4f6; font-size: .78rem; }
+.v2-opex-compact-edit-row::after { content: 'Edit'; color: #2563eb; font-size: .68rem; justify-self: end; }
+.v2-opex-custom-row[open] > .v2-opex-compact-edit-row::after { content: 'Close'; }
 .v2-opex-custom-row-form {
   display: flex; flex-wrap: wrap; align-items: center;
   gap: 0.3rem; flex: 1; min-width: 0;
@@ -786,6 +824,8 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-opex-add-btn:hover { background: #dbeafe; }
 .v2-opex-badge-calc   { background: #6b7280; color: #fff; }
 .v2-opex-badge-custom { background: #1d4ed8; color: #fff; }
+.v2-opex-badge-reference, .v2-capex-badge-reference { background: #15803d; color: #fff; }
+.v2-opex-badge-override, .v2-capex-badge-override { background: #b45309; color: #fff; }
 .v2-opex-runtime-bar {
   background: #f9fafb; border: 1px solid #e5e7eb;
   border-radius: 3px; padding: 0.4rem 0.75rem; margin-bottom: 0.75rem;
@@ -810,6 +850,12 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-opex-col-escl, .v2-opex-col-status { display: none; }
   .v2-opex-line-row { grid-template-columns: 3rem 1fr 5rem; }
   .v2-opex-line-escl, .v2-opex-line-notes { display: none; }
+  .v2-opex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem; }
+  .v2-opex-compact-edit-row .v2-opex-line-escl,
+  .v2-opex-compact-edit-row .v2-binding-badge { display: none; }
+  .v2-capex-compact-edit-row { grid-template-columns: 3rem 1fr 5rem auto; }
+  .v2-capex-compact-edit-row .v2-capex-subline-permw,
+  .v2-capex-compact-edit-row .v2-binding-badge { display: none; }
 }
 
 /* ── Table base ──────────────────────────────────────────────── */

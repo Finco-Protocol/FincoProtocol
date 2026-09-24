@@ -1,0 +1,8 @@
+{# Shared presentation-only formatter for whole-kEUR statement values. #}
+{% macro grouped_keur(value) -%}
+  {%- if value is number and value is not sameas true and value is not sameas false -%}
+    {{- "{:,.0f}".format(value) -}}
+  {%- else -%}
+    —
+  {%- endif -%}
+{%- endmacro %}

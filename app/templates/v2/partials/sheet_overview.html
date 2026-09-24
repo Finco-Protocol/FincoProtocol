@@ -108,8 +108,17 @@
       {% if "equity_irr" in ov.output_metrics and ov.output_metrics["equity_irr"].raw_value is not none %}
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-equity-irr">
-        <span class="v2-kpi-label">Equity IRR</span>
+      <span class="v2-kpi-label">Pure Equity IRR</span>
         <span class="v2-kpi-value">{{ kpi_metric("equity_irr") }}</span>
+      </div>
+      {% endif %}
+
+      {% if "sponsor_irr" in ov.output_metrics and ov.output_metrics["sponsor_irr"].raw_value is not none %}
+      <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
+           data-testid="kpi-total-sponsor-irr"
+           title="Sponsor return including equity and shareholder-loan cash flows.">
+        <span class="v2-kpi-label">Total Sponsor IRR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("sponsor_irr") }}</span>
       </div>
       {% endif %}
 

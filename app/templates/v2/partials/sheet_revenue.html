@@ -56,6 +56,31 @@
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
 
+  <section class="v2-revenue-pricing-basis" aria-labelledby="revenue-pricing-basis-title"
+           data-testid="revenue-pricing-basis">
+    <div class="v2-sheet-section-heading">
+      <span id="revenue-pricing-basis-title">Revenue Pricing Basis</span>
+      <small>Canonical working-copy inputs used by the model</small>
+    </div>
+    <div class="v2-revenue-pricing-grid">
+      {% for label, value, unit in revenue_pricing_basis %}
+      <div class="v2-revenue-pricing-item">
+        <span>{{ label }}</span>
+        <strong>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}{% if unit %} <small>{{ unit }}</small>{% endif %}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    {% if merchant_curve_rows %}
+    <div class="v2-revenue-curve-preview" data-testid="merchant-curve-preview">
+      <span>Merchant curve</span>
+      {% for row in merchant_curve_rows %}
+        <strong>{{ row.year }}: {{ row.price }} EUR/MWh</strong>{% if not loop.last %}<i>|</i>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p class="v2-revenue-location-note">Project location metadata. Selecting a country does not automatically change tax, tariff or market assumptions.</p>
+  </section>
+
   {# ── Local navigation ──────────────────────────────────────────────── #}
   <nav class="v2-inputs-nav" aria-label="Revenue sections">
     <a href="#nav-rev-commercial">Commercial</a>
