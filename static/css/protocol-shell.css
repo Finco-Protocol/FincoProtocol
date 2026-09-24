@@ -90,6 +90,32 @@
   vertical-align: middle;
 }
 
+/* Placeholder nav items — non-interactive future product areas */
+.proto-nav__link--placeholder {
+  cursor: default;
+  color: rgba(255,255,255,0.28);
+  user-select: none;
+}
+
+.proto-nav__link--placeholder:hover,
+.proto-nav__link--placeholder:focus {
+  color: rgba(255,255,255,0.28);
+  background: transparent;
+}
+
+.proto-nav__soon {
+  font-size: 8px;
+  font-weight: var(--fo-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(201,165,92,0.7);
+  border: 1px solid rgba(201,165,92,0.3);
+  border-radius: 2px;
+  padding: 1px 4px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
 .proto-nav__right {
   margin-left: auto;
   display: flex;
@@ -843,6 +869,68 @@
   border-radius: 4px;
   padding: 16px;
   font-family: var(--fo-font-mono);
+}
+
+/* ── API Discovery Strip (home page) ── */
+
+.proto-api-strip {
+  background: #f0f2f5;
+  border-top: 1px solid #d9dde3;
+  border-bottom: 1px solid #d9dde3;
+  padding: 14px 32px;
+}
+
+.proto-api-strip__inner {
+  max-width: 1260px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.proto-api-strip__content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.proto-api-strip__label {
+  font-size: 12px;
+  font-weight: var(--fo-weight-semibold);
+  color: #374151;
+  letter-spacing: 0.02em;
+}
+
+.proto-api-strip__badge {
+  font-size: 9px;
+  font-weight: var(--fo-weight-bold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a56db;
+  border: 1px solid rgba(26,86,219,0.4);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+.proto-api-strip__desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.proto-api-strip__cta {
+  font-size: 12px;
+  font-weight: var(--fo-weight-semibold);
+  color: #1a56db;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 100ms ease;
+}
+
+.proto-api-strip__cta:hover {
+  color: #1347b8;
+  text-decoration: underline;
 }
 
 /* ─── Radar Surface — terminal enhancements ──────────────────────────────────── */

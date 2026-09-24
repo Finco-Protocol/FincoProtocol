@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FINCO API — Beta</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/protocol-api.css">
+</head>
+<body style="margin:0;background:#f9fafb;">
+
+  {% with proto_active_page="api" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <div class="papi">
+
+    <!-- ── Page Header ── -->
+    <div class="papi__header">
+      <div class="papi__header-inner">
+        <div class="papi__eyebrow">Developer Access</div>
+        <div class="papi__title-row">
+          <h1 class="papi__title">FINCO API</h1>
+          <span class="papi__beta-badge">Beta</span>
+        </div>
+        <p class="papi__subtitle">Programmatic access to FINCO Model and Radar.</p>
+        <p class="papi__desc">
+          Build against FINCO's deterministic financial modelling references,
+          capacity previews, tokenized-equity fundamentals and read-only execution
+          simulation.
+        </p>
+        <div class="papi__base-url-row">
+          <span class="papi__base-url-label">Base path</span>
+          <code class="papi__base-url-value">/api/v1</code>
+        </div>
+        <div class="papi__doc-links">
+          <a href="/docs" class="papi__doc-link">Open API Documentation →</a>
+          <a href="/openapi.json" class="papi__doc-link">OpenAPI JSON →</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="papi__body">
+      <div class="papi__body-inner">
+
+        <!-- ── Model API Section ── -->
+        <section class="papi__section" aria-labelledby="model-api-heading">
+          <div class="papi__section-header">
+            <div class="papi__section-eyebrow">Model API</div>
+            <h2 class="papi__section-title" id="model-api-heading">Reference Models</h2>
+            <p class="papi__section-desc">
+              Canonical synthetic Solar and Wind reference models. Read-only.
+              No project is created, no engine executes.
+            </p>
+          </div>
+
+          <div class="papi__endpoint-table" role="table" aria-label="Model API endpoints">
+            <div class="papi__endpoint-table-head" role="row">
+              <div role="columnheader">Method</div>
+              <div role="columnheader">Path</div>
+              <div role="columnheader">Description</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references</code></div>
+              <div role="cell" class="papi__endpoint-desc">List canonical synthetic Solar/Wind reference models.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references/<span class="papi__path-param">{reference_key}</span></code></div>
+              <div role="cell" class="papi__endpoint-desc">Read one canonical reference assumption set in full.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references/<span class="papi__path-param">{reference_key}</span>/capex</code></div>
+              <div role="cell" class="papi__endpoint-desc">Read canonical CAPEX authority for one reference.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references/<span class="papi__path-param">{reference_key}</span>/opex</code></div>
+              <div role="cell" class="papi__endpoint-desc">Read canonical OPEX authority for one reference.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--post">POST</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/model/references/<span class="papi__path-param">{reference_key}</span>/preview</code></div>
+              <div role="cell" class="papi__endpoint-desc">
+                Preview capacity-scaled CAPEX/OPEX without creating a project or running the engine.
+                <div class="papi__endpoint-tags">
+                  <span class="papi__tag papi__tag--stateless">Stateless</span>
+                  <span class="papi__tag">No project created</span>
+                  <span class="papi__tag">No model run</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── Radar API Section ── -->
+        <section class="papi__section" aria-labelledby="radar-api-heading">
+          <div class="papi__section-header">
+            <div class="papi__section-eyebrow">Radar API</div>
+            <h2 class="papi__section-title" id="radar-api-heading">Market Intelligence</h2>
+            <p class="papi__section-desc">
+              Tokenized-equity asset universe, fundamentals, financials and execution simulation.
+              All endpoints are read-only.
+            </p>
+          </div>
+
+          <div class="papi__endpoint-table" role="table" aria-label="Radar API endpoints">
+            <div class="papi__endpoint-table-head" role="row">
+              <div role="columnheader">Method</div>
+              <div role="columnheader">Path</div>
+              <div role="columnheader">Description</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets</code></div>
+              <div role="cell" class="papi__endpoint-desc">List all canonical Radar assets from the current registry snapshot.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span></code></div>
+              <div role="cell" class="papi__endpoint-desc">Return canonical identity for one asset.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span>/fundamentals</code></div>
+              <div role="cell" class="papi__endpoint-desc">Return latest TTM/quarterly/annual fundamentals and company profile.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span>/financials</code></div>
+              <div role="cell" class="papi__endpoint-desc">Return multi-period financial history (annual, quarterly, TTM).</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span>/corporate-actions</code></div>
+              <div role="cell" class="papi__endpoint-desc">Return recent dividend and stock split history.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span>/evidence</code></div>
+              <div role="cell" class="papi__endpoint-desc">Return source lineage and evidence for one asset.</div>
+            </div>
+
+            <div class="papi__endpoint-row" role="row">
+              <div role="cell"><span class="papi__method papi__method--post">POST</span></div>
+              <div role="cell"><code class="papi__path">/api/v1/radar/assets/<span class="papi__path-param">{economic_asset_uid}</span>/execution-simulation</code></div>
+              <div role="cell" class="papi__endpoint-desc">
+                Read-only execution simulation analytics. Returns reference price, executable price and directional GAP.
+                <div class="papi__endpoint-tags">
+                  <span class="papi__tag papi__tag--readonly">Read-only simulation</span>
+                  <span class="papi__tag">No order submitted</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── curl Examples ── -->
+        <section class="papi__section" aria-labelledby="examples-heading">
+          <div class="papi__section-header">
+            <div class="papi__section-eyebrow">Quick Start</div>
+            <h2 class="papi__section-title" id="examples-heading">Examples</h2>
+          </div>
+
+          <div class="papi__examples">
+
+            <div class="papi__example">
+              <div class="papi__example-label">List model references</div>
+              <div class="papi__code-block" role="region" aria-label="curl example: list model references">
+                <pre><code>curl {{ api_base_url }}/model/references</code></pre>
+              </div>
+            </div>
+
+            <div class="papi__example">
+              <div class="papi__example-label">Preview Solar at 100 MW (stateless — no project created)</div>
+              <div class="papi__code-block" role="region" aria-label="curl example: preview solar reference at 100 MW">
+                <pre><code>curl -X POST \
+  {{ api_base_url }}/model/references/generic_solar_reference/preview \
+  -H "Content-Type: application/json" \
+  -d '{"capacity_mw":100}'</code></pre>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ── Coming Next ── -->
+        <section class="papi__section" aria-labelledby="coming-next-heading">
+          <div class="papi__section-header">
+            <div class="papi__section-eyebrow">Roadmap</div>
+            <h2 class="papi__section-title" id="coming-next-heading">Coming next</h2>
+          </div>
+
+          <div class="papi__coming-list">
+            <div class="papi__coming-item">
+              <span class="papi__coming-name">Model Run API</span>
+              <span class="papi__coming-soon">Coming soon</span>
+            </div>
+            <div class="papi__coming-item">
+              <span class="papi__coming-name">Scenario API</span>
+              <span class="papi__coming-soon">Coming soon</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div><!-- /papi__body -->
+
+  </div><!-- /papi -->
+
+</body>
+</html>

@@ -144,6 +144,27 @@
   outline-offset: 2px;
 }
 
+/* Placeholder nav items in the brand bar — non-interactive future areas */
+.fo-brand-bar__action--placeholder {
+  color: var(--fo-ink-faint);
+  cursor: default;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.fo-brand-bar__action--placeholder:hover {
+  background: transparent;
+  color: var(--fo-ink-faint);
+  border-color: var(--fo-line);
+}
+
+/* Hide placeholders at narrower widths to preserve 28 px chrome height */
+@media (max-width: 900px) {
+  .fo-brand-bar__nav--soon {
+    display: none;
+  }
+}
+
 .fo-brand-bar__kbd {
   font-family: var(--fo-font-mono);
   font-size: 10px;
@@ -526,6 +547,13 @@
   }
   /* Hide all brand-bar action buttons except the sign-out button */
   .fo-brand-bar__action:not(.fo-brand-bar__action--signout) {
+    display: none;
+  }
+  /* model-saas.css (specificity 0-2-0) overrides the ≤900px --soon hide rule and makes
+     fo-brand-bar__nav items visible at ≤480px. With 4 real nav items that's fine, but
+     --soon placeholders must stay hidden — a 0-3-0 rule beats model-saas.css regardless
+     of load order. */
+  .fo-brand-bar .fo-brand-bar__action.fo-brand-bar__nav--soon {
     display: none;
   }
 
