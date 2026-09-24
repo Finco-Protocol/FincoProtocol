@@ -13,7 +13,9 @@ No route registered here may redefine market/reference/GAP authority.
 # frozen Radar authority namespaces.
 from app.radar_ui.router import router as _root_router
 from app.radar_ui.economy_router import router as _economy_router
+from app.radar_ui.crypto_router import router as _crypto_router
 
 _root_router.include_router(_economy_router)
+_root_router.include_router(_crypto_router)
 
 __all__ = []

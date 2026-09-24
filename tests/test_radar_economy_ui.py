@@ -86,12 +86,12 @@ def test_unavailable_macro_row_shows_reason_and_never_fabricates_value():
     assert "—" in response.text
 
 
-def test_domain_navigation_exposes_stocks_and_economy_but_crypto_is_disabled():
+def test_domain_navigation_exposes_stocks_crypto_and_economy():
     template = Path("app/templates/radar/domain_nav.html").read_text(encoding="utf-8")
     assert 'href="/radar"' in template
+    assert 'href="/radar/crypto"' in template
     assert 'href="/radar/economy"' in template
-    assert "Crypto" in template and 'aria-disabled="true"' in template
-    assert 'href="/radar/crypto"' not in template
+    assert 'aria-disabled="true"' not in template
 
 
 def test_stock_surface_includes_shared_domain_navigation():
