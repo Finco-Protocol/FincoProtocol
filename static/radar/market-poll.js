@@ -19,12 +19,31 @@
     return 'UNAVAILABLE';
   }
 
+  function _compactMarketText(s) {
+    if (!s || s.state !== 'FRESH') return _stateText(s);
+    if (s.market_state === 'HALTED') return 'HALTED';
+    const observed = s.observed_at ? new Date(s.observed_at) : null;
+    const time = observed && !Number.isNaN(observed.getTime()) ? observed.toLocaleTimeString('en-GB', {
+      timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false
+    }) + ' UTC' : 'time unavailable';
+    return '● REF · ' + time;
+  }
+
+  function _marketTitle(s) {
+    return [
+      'Observed at: ' + (s.observed_at || 'UNAVAILABLE'),
+      'Reference state: ' + (s.market_state || 'UNAVAILABLE'),
+      'Freshness: ' + (s.state || 'UNAVAILABLE'),
+      'Source: ' + (s.source || 'UNAVAILABLE')
+    ].join('\n');
+  }
+
   function apply(node, state) {
     const price = node.querySelector('[data-market-price]');
     if (price) {
       price.textContent = state.price_display || '—';
-      price.title = state.price == null ? 'Official reference unavailable' :
-        'Exact official reference: ' + state.price;
+      price.title = state.price == null ? 'Official reference unavailable\n' + _marketTitle(state) :
+        'Exact official reference: ' + state.price + '\n' + _marketTitle(state);
     }
     // Tab-panel price elements outside the terminal header section.
     document.querySelectorAll('[data-market-tab-price]').forEach(function (el) {
@@ -42,12 +61,12 @@
       source.textContent = state.source ? 'Source ' + state.source : 'Source unavailable';
     });
     const badge = node.querySelector('[data-market-state]');
-    if (badge) badge.textContent = _stateText(state);
+    if (badge) { badge.textContent = _compactMarketText(state); badge.title = _marketTitle(state); }
     document.querySelectorAll('[data-market-tab-state]').forEach(function (el) {
       el.textContent = _stateText(state);
     });
     const observed = node.querySelector('[data-market-observed]');
-    if (observed) observed.textContent = state.observed_at ? 'Observed ' + state.observed_at : '';
+    if (observed) { observed.textContent = ''; observed.title = _marketTitle(state); }
     document.querySelectorAll('[data-market-tab-observed]').forEach(function (el) {
       el.textContent = state.observed_at ? 'Observed ' + state.observed_at : '';
     });

@@ -535,6 +535,15 @@ html, body.radar {
   width: 100%;
   font-size: 12px;
 }
+.featured-board-scroll { overflow-x: auto; }
+.board-table--featured { table-layout: fixed; min-width: 1050px; }
+.board-col-symbol { width: 72px; }
+.board-col-company { width: clamp(260px, 24vw, 340px); }
+.board-col-market { width: 185px; }
+.board-col-revenue { width: 122px; }
+.board-col-growth { width: 100px; }
+.board-col-margin { width: 110px; }
+.board-col-terminal { width: 158px; }
 
 .board-table th {
   padding: 5px 8px;
@@ -563,6 +572,12 @@ html, body.radar {
   font-family: var(--radar-mono);
   font-variant-numeric: tabular-nums;
 }
+.board-table .board-company { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-table .board-market-reference { white-space: nowrap; }
+.board-table .board-market-reference [data-market-price] { display: block; font-size: 13px; color: var(--radar-text); }
+.board-table .board-market-reference [data-market-state] { display: block; color: var(--radar-teal); }
+.board-table .board-terminal { text-align: right; white-space: nowrap; }
+.radar-market-observed-detail { display: none; }
 
 .board-table td.state-cell { white-space: nowrap; }
 
@@ -579,6 +594,11 @@ html, body.radar {
   display: inline-block;
   border-bottom: 1px solid transparent;
   transition: border-color 80ms ease;
+}
+@media (max-width: 600px) {
+  .board-table--featured { min-width: 760px; }
+  .board-col-company { width: 240px; }
+  .board-col-market { width: 165px; }
 }
 .board-details-cta:hover { border-bottom-color: var(--radar-teal); }
 

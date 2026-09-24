@@ -1,0 +1,35 @@
+{# Investor / Sponsor capital is intentionally separate from bank debt. #}
+{% from "partials/_money_format.html" import grouped_keur %}
+
+<div id="v2-sheet-investor" data-sheet="investor" data-testid="investor-sheet">
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+  <section class="v2-sponsor-funding-panel" aria-labelledby="investor-title" data-testid="investor-funding-panel">
+    <h3 id="investor-title">Investor / Sponsor Capital</h3>
+    <p class="v2-sponsor-funding-freshness v2-sponsor-funding-freshness--{{ sponsor_funding_freshness.state | lower }}"
+       data-testid="investor-freshness">{{ sponsor_funding_freshness.label }}</p>
+    <section class="v2-sponsor-funding-section" aria-labelledby="investor-working-title">
+      <h4 id="investor-working-title">Working financing inputs</h4>
+      <p>Current typed ProjectInputs. These do not recalculate persisted Last Run evidence.</p>
+      <dl data-testid="investor-working-inputs">
+      {% for label, value, status in sponsor_working_rows %}
+        <div><dt>{{ label }}</dt><dd>{% if value is number %}{{ grouped_keur(value) }}{% elif value is not none and value != '' %}{{ value }}{% else %}—{% endif %}
+          <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd></div>
+      {% endfor %}
+      </dl>
+    </section>
+    <section class="v2-sponsor-funding-section" aria-labelledby="investor-evidence-title">
+      <h4 id="investor-evidence-title">Last Run evidence</h4>
+      <p>Persisted runtime evidence only; unavailable evidence is not reconstructed.</p>
+      <dl data-testid="investor-last-run-evidence">
+      {% for label, value, status in sponsor_last_run_rows %}
+        <div><dt>{{ label }}</dt><dd>{% if value is number %}{{ grouped_keur(value) }}{% elif value is not none and value != '' %}{{ value }}{% else %}—{% endif %}
+          <span class="v2-binding-badge v2-sponsor-status">{{ status }}</span></dd></div>
+      {% endfor %}
+      </dl>
+    </section>
+  </section>
+</div>
