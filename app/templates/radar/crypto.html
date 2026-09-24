@@ -14,6 +14,7 @@
 {% include "partials/_protocol_nav.html" %}
 {% endwith %}
 {% include "radar/domain_nav.html" %}
+{% with crypto_section="overview" %}{% include "radar/crypto_subnav.html" %}{% endwith %}
 
 <main class="radar-main crypto-main">
   <header class="crypto-hero">
@@ -53,9 +54,7 @@
         <div class="crypto-metric__meta">
           {% if row.change_24h is not none %}
           <span class="crypto-change {% if row.change_24h > 0 %}crypto-change--up{% elif row.change_24h < 0 %}crypto-change--down{% endif %}">{{ row.change_24h_display }} 24h</span>
-          {% else %}
-          <span class="muted">24h change —</span>
-          {% endif %}
+          {% else %}<span class="muted">24h change —</span>{% endif %}
           <span class="mono">{{ row.observed_at or '—' }}</span>
         </div>
         <div class="crypto-metric__source">
