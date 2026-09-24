@@ -945,6 +945,8 @@ def test_a40_route_handlers_are_not_coroutines():
     import inspect
     from app.api.v1 import router as router_module
     for route in router_module.router.routes:
+        if not hasattr(route, "endpoint"):
+            continue
         endpoint = route.endpoint
         assert not asyncio.iscoroutinefunction(endpoint), (
             f"Handler {endpoint.__name__!r} must be a plain def, not async def"

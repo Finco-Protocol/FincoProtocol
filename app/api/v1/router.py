@@ -24,6 +24,7 @@ from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
 from app.api.v1 import execution as _execution
+from app.api.v1 import model_router as _model_router
 from app.api.v1 import radar as _radar
 from app.radar_ui import composition as _composition
 from app.api.v1.errors import (
@@ -43,6 +44,7 @@ from app.api.v1.schemas import (
 from app.radar_runtime.contracts import RuntimeContractError
 
 router = APIRouter()
+router.include_router(_model_router.router)
 
 _REGISTRY_UNAVAILABLE_DETAIL = "Asset registry is temporarily unavailable."
 
@@ -414,5 +416,9 @@ def get_api_meta():
             "radar.assets.corporate_actions",
             "radar.assets.evidence",
             "radar.execution.simulation",
+            "model.references.list",
+            "model.references.template",
+            "model.references.capex",
+            "model.references.opex",
         ],
     }
