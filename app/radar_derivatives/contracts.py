@@ -111,12 +111,20 @@ class PredictedFundingRate:
     venue_name: str
     funding_rate: float
     next_funding_at: datetime
+    funding_interval_hours: int | None = None
 
     def __post_init__(self) -> None:
         for name in ("symbol", "venue_code", "venue_name"):
             _required_text(getattr(self, name), name)
         _finite(self.funding_rate, "funding_rate")
         _aware(self.next_funding_at, "next_funding_at")
+        if self.funding_interval_hours is not None:
+            if (
+                isinstance(self.funding_interval_hours, bool)
+                or not isinstance(self.funding_interval_hours, int)
+                or self.funding_interval_hours <= 0
+            ):
+                raise ValueError("funding_interval_hours must be a positive integer when present")
 
 
 @dataclass(frozen=True)
