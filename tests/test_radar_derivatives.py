@@ -113,16 +113,41 @@ def _funding_payload(symbol):
 def _predicted_payload():
     return [
         ["BTC", [
-            ["BinPerp", {"fundingRate": "0.0001", "nextFundingTime": _ms(NOW + timedelta(hours=2))}],
-            ["HlPerp", {"fundingRate": "0.0000125", "nextFundingTime": _ms(NOW + timedelta(hours=1))}],
-            ["BybitPerp", {"fundingRate": "0.00008", "nextFundingTime": _ms(NOW + timedelta(hours=2))}],
+            ["BinPerp", {
+                "fundingRate": "0.0001",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+                "fundingIntervalHours": 8,
+            }],
+            ["HlPerp", {
+                "fundingRate": "0.0000125",
+                "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+                "fundingIntervalHours": 1,
+            }],
+            ["BybitPerp", {
+                "fundingRate": "0.00008",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+                "fundingIntervalHours": 8,
+            }],
         ]],
         ["ETH", [
-            ["BinPerp", {"fundingRate": "0.00009", "nextFundingTime": _ms(NOW + timedelta(hours=2))}],
-            ["HlPerp", {"fundingRate": "0.0000125", "nextFundingTime": _ms(NOW + timedelta(hours=1))}],
-            ["BybitPerp", {"fundingRate": "0.00007", "nextFundingTime": _ms(NOW + timedelta(hours=2))}],
+            # External interval omitted deliberately: FINCO must not guess it.
+            ["BinPerp", {
+                "fundingRate": "0.00009",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+            }],
+            # Hyperliquid interval may be omitted; first-perp funding is hourly.
+            ["HlPerp", {
+                "fundingRate": "0.0000125",
+                "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+            }],
+            # Null means venue has no listing/evidence for this asset.
+            ["BybitPerp", None],
         ]],
-        ["SOL", [["HlPerp", {"fundingRate": "0", "nextFundingTime": _ms(NOW + timedelta(hours=1))}]]],
+        ["SOL", [["HlPerp", {
+            "fundingRate": "0",
+            "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+            "fundingIntervalHours": 1,
+        }]]],
     ]
 
 
@@ -149,9 +174,16 @@ def test_provider_binds_primary_context_and_reads_v2_auxiliary_endpoints():
     assert btc.impact_ask_price == pytest.approx(80000.0)
     assert btc.max_leverage == 50
     assert len(snapshot.funding_history) == 4
-    assert len(snapshot.predicted_funding) == 6
+    assert len(snapshot.predicted_funding) == 5
     assert snapshot.funding_history_reason is None
     assert snapshot.predicted_funding_reason is None
+
+    predicted = {(row.symbol, row.venue_code): row for row in snapshot.predicted_funding}
+    assert predicted[("BTC", "BinPerp")].funding_interval_hours == 8
+    assert predicted[("BTC", "HlPerp")].funding_interval_hours == 1
+    assert predicted[("ETH", "HlPerp")].funding_interval_hours == 1
+    assert predicted[("ETH", "BinPerp")].funding_interval_hours is None
+    assert ("ETH", "BybitPerp") not in predicted
 
 
 def test_provider_auxiliary_failure_does_not_replace_primary_hyperliquid_context():
@@ -162,7 +194,7 @@ def test_provider_auxiliary_failure_does_not_replace_primary_hyperliquid_context
     assert [asset.symbol for asset in snapshot.assets] == ["BTC", "ETH"]
     assert snapshot.funding_history == ()
     assert snapshot.funding_history_reason == "FUNDING_HISTORY_READ_FAILED:RuntimeError"
-    assert len(snapshot.predicted_funding) == 6
+    assert len(snapshot.predicted_funding) == 5
     assert snapshot.predicted_funding_reason is None
 
 
@@ -183,7 +215,7 @@ def test_provider_fails_closed_when_required_primary_asset_is_missing():
         provider.read()
 
 
-def test_service_computes_price_liquidity_funding_and_cross_venue_metrics():
+def test_service_computes_price_liquidity_funding_and_normalized_cross_venue_metrics():
     provider = HyperliquidDerivativesProvider(client_factory=FakeClient, now=lambda: NOW)
     dashboard = DerivativesDashboardService(provider=provider).read_dashboard()
 
@@ -210,10 +242,21 @@ def test_service_computes_price_liquidity_funding_and_cross_venue_metrics():
 
     predicted = {row["symbol"]: row for row in dashboard["predicted_funding"]}
     assert dashboard["predicted_funding_state"] == "AVAILABLE"
-    assert predicted["BTC"]["venues"]["HlPerp"]["rate_bps"] == pytest.approx(0.125)
-    assert predicted["BTC"]["venues"]["BinPerp"]["rate_bps"] == pytest.approx(1.0)
-    assert predicted["BTC"]["venues"]["BybitPerp"]["rate_bps"] == pytest.approx(0.8)
-    assert predicted["BTC"]["spread_bps"] == pytest.approx(0.875)
+
+    btc_predicted = predicted["BTC"]
+    assert btc_predicted["venues"]["HlPerp"]["rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BinPerp"]["rate_bps"] == pytest.approx(1.0)
+    assert btc_predicted["venues"]["BybitPerp"]["rate_bps"] == pytest.approx(0.8)
+    assert btc_predicted["venues"]["HlPerp"]["hourly_rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BinPerp"]["hourly_rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BybitPerp"]["hourly_rate_bps"] == pytest.approx(0.1)
+    assert btc_predicted["hourly_spread_bps"] == pytest.approx(0.025)
+
+    eth_predicted = predicted["ETH"]
+    assert eth_predicted["venues"]["BinPerp"]["rate_bps"] == pytest.approx(0.9)
+    assert eth_predicted["venues"]["BinPerp"]["hourly_rate_bps"] is None
+    assert eth_predicted["venues"]["BybitPerp"]["rate_bps"] is None
+    assert eth_predicted["hourly_spread_bps"] is None
 
 
 def test_service_failure_is_unavailable_without_fallback_exchange_or_detail_leak():
@@ -282,18 +325,42 @@ class FakeDerivativesService:
             "predicted_funding": [{
                 "symbol": "BTC",
                 "venues": {
-                    "HlPerp": {"name": "Hyperliquid", "rate_bps": 0.125, "rate_bps_display": "+0.12 bp", "next_funding_at": NOW.isoformat(), "next_funding_at_display": "2026-09-24 15:00 UTC"},
-                    "BinPerp": {"name": "Binance", "rate_bps": 1.0, "rate_bps_display": "+1.00 bp", "next_funding_at": NOW.isoformat(), "next_funding_at_display": "2026-09-24 16:00 UTC"},
-                    "BybitPerp": {"name": "Bybit", "rate_bps": 0.8, "rate_bps_display": "+0.80 bp", "next_funding_at": NOW.isoformat(), "next_funding_at_display": "2026-09-24 16:00 UTC"},
+                    "HlPerp": {
+                        "name": "Hyperliquid", "rate_bps": 0.125,
+                        "rate_bps_display": "+0.12 bp", "funding_interval_hours": 1,
+                        "funding_interval_display": "1h", "hourly_rate_bps": 0.125,
+                        "hourly_rate_bps_display": "+0.12 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 15:00 UTC",
+                    },
+                    "BinPerp": {
+                        "name": "Binance", "rate_bps": 1.0,
+                        "rate_bps_display": "+1.00 bp", "funding_interval_hours": 8,
+                        "funding_interval_display": "8h", "hourly_rate_bps": 0.125,
+                        "hourly_rate_bps_display": "+0.12 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 16:00 UTC",
+                    },
+                    "BybitPerp": {
+                        "name": "Bybit", "rate_bps": 0.8,
+                        "rate_bps_display": "+0.80 bp", "funding_interval_hours": 8,
+                        "funding_interval_display": "8h", "hourly_rate_bps": 0.1,
+                        "hourly_rate_bps_display": "+0.10 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 16:00 UTC",
+                    },
                 },
-                "spread_bps": 0.875, "spread_bps_display": "0.88 bp",
+                "hourly_spread_bps": 0.025,
+                "hourly_spread_bps_display": "0.03 bp/h",
             }],
             "retrieved_at": NOW.isoformat(),
             "publisher": "Hyperliquid", "transport": "Hyperliquid Info API",
             "source_endpoint": "POST /info",
             "source_url": "https://example.invalid/docs",
             "freshness_note": "Primary retrieval time only; history has timestamps.",
-            "cross_venue_note": "Binance and Bybit predictions are Hyperliquid aggregated evidence.",
+            "cross_venue_note": (
+                "Predictions are Hyperliquid aggregated evidence; comparison uses hourly normalization."
+            ),
         }
 
 
@@ -313,6 +380,8 @@ def test_derivatives_route_renders_v2_leverage_liquidity_and_funding_surfaces():
     assert "Max Lev." in response.text
     assert "24h Funding History" in response.text
     assert "Cross-Venue Predicted Funding" in response.text
+    assert "Hourly-Normalized Spread" in response.text
+    assert "8h native" in response.text
     assert "Binance" in response.text
     assert "Bybit" in response.text
     assert "whole-market aggregate" in response.text
