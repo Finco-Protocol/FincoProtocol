@@ -260,7 +260,7 @@
       <tbody>{% for sg in opex_sheet_groups %}<tr data-testid="opex-parent-summary-{{ sg.code }}">
         <td>{{ sg.code }}</td><td>{{ sg.display_name }}</td>
         <td class="v2-num">{% if sg.has_vm_data %}{{ grouped_keur(sg.subtotal_y1) }}{% else %}—{% endif %}</td>
-        <td class="v2-num">{% if sg.has_vm_data %}{{ "%.1f"|format(sg.inflation_pct) }}%{% else %}—{% endif %}</td>
+        <td class="v2-num">{{ sg.escalation_display }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
   </section>
@@ -318,9 +318,7 @@
           {%- else -%}—{%- endif -%}
         </span>
         <span class="v2-opex-col-escl">
-          {%- if sg.has_vm_data -%}
-            {{ "%.1f"|format(sg.inflation_pct) }}%
-          {%- else -%}—{%- endif -%}
+          {{ sg.escalation_display }}
         </span>
         <span class="v2-opex-col-status">
           {%- if sg.is_derived -%}
