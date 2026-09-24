@@ -393,6 +393,32 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     )
 
 
+# ── Public read-only helpers (A3 Model Reference API) ─────────────────────────
+# These expose pure canonical helpers for external read-only callers.
+
+def get_reference_inputs(template_source: str):
+    """Return canonical ProjectInputs for a reference template (read-only, no DB)."""
+    return _reference_inputs(template_source)
+
+
+def canonical_capex_reference_items(pi) -> dict:
+    """Return canonical CAPEX items dict for a reference ProjectInputs (read-only)."""
+    return _canonical_capex_items(pi)
+
+
+def canonical_opex_reference_items(pi) -> dict:
+    """Return enriched OPEX items with group_code for a reference ProjectInputs (read-only)."""
+    raw = _canonical_opex_items(pi)
+    enriched = {}
+    for key, item in raw.items():
+        e = dict(item)
+        e["group_code"] = _OPEX_GROUP_BY_REFERENCE_NAME.get(key)
+        e["label"] = e.get("canonical_label", key)
+        e["annual_inflation_rate"] = e.pop("annual_inflation", None)
+        enriched[key] = e
+    return enriched
+
+
 def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
     """Restore all overridden seed rows to their canonical per-MW values."""
     from app.persistence.projects_repository import get_project_by_code
