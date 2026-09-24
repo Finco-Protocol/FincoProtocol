@@ -96,6 +96,7 @@
     <dt>Bid / Ask</dt><dd class="mono" title="Exact: {{ view.reference.fields.bid }} / {{ view.reference.fields.ask }}">{{ view.reference.fields.bid | market_price }} / {{ view.reference.fields.ask | market_price }}</dd>
     <dt>Observed / source time</dt><dd>{{ view.reference.fields.observedAt }}</dd>
     <dt>Availability</dt><dd><span class="state-available">AVAILABLE</span> <span class="muted">{{ view.reference.phase }}</span></dd>
+    <dt>Evidence</dt><dd>{{ inspector_link(view.snapshot_id, "reference.source", "Details") }}</dd>
   </dl>
   {% else %}
   <p class="state-unavailable">UNAVAILABLE{% if view.reference.reason %} — {{ view.reference.reason }}{% endif %}</p>
