@@ -58,13 +58,16 @@ def test_revenue_and_sponsor_templates_keep_authority_copy_visible():
     root = Path(__file__).resolve().parents[1]
     revenue = (root / "app/templates/v2/partials/sheet_revenue.html").read_text()
     debt = (root / "app/templates/v2/partials/sheet_senior_debt.html").read_text()
+    investor = (root / "app/templates/v2/partials/sheet_investor.html").read_text()
     returns = (root / "app/templates/v2/partials/sheet_returns.html").read_text()
 
     assert "Revenue Pricing Basis" in revenue
     assert "Selecting a country does not automatically change" in revenue
-    assert "Sponsor Funding / Shareholder Loan" in debt
-    assert "Working financing inputs" in debt
-    assert "Last Run evidence" in debt
+    assert "Sponsor Funding / Shareholder Loan" not in debt
+    assert "Debt financing context" in debt
+    assert "Investor / Sponsor Capital" in investor
+    assert "Working financing inputs" in investor
+    assert "Last Run evidence" in investor
     assert "Pure Equity IRR" in returns
     assert "Total Sponsor IRR" in returns
 
@@ -79,6 +82,44 @@ def test_financial_statements_and_returns_share_grouped_keur_formatter():
     assert 'import grouped_keur' in statements
     assert 'import grouped_keur' in returns
     assert 'grouped_keur(v)' in statements
+
+
+def test_tax_uses_shared_grouped_formatter_and_preserves_non_integer_precision():
+    root = Path(__file__).resolve().parents[1]
+    formatter = (root / "app/templates/v2/partials/_money_format.html").read_text()
+    tax = (root / "app/templates/v2/partials/sheet_tax.html").read_text()
+
+    assert 'macro grouped_financial' in formatter
+    assert 'import grouped_financial' in tax
+    assert 'grouped_financial(p.taxable_profit_keur)' in tax
+
+
+def test_parent_summaries_are_vm_backed_and_investor_tab_is_present():
+    root = Path(__file__).resolve().parents[1]
+    capex = (root / "app/templates/v2/partials/sheet_capex.html").read_text()
+    opex = (root / "app/templates/v2/partials/sheet_opex.html").read_text()
+    workbook = (root / "app/templates/v2/workbook.html").read_text()
+
+    assert 'data-testid="capex-parent-summary"' in capex
+    assert 'group.subtotal_keur' in capex
+    assert 'data-testid="opex-parent-summary"' in opex
+    assert 'sg.subtotal_y1' in opex
+    assert 'id="tab-investor"' in workbook
+    assert 'id="panel-investor"' in workbook
+
+
+def test_radar_featured_market_reference_is_compact_and_auditable():
+    root = Path(__file__).resolve().parents[1]
+    board = (root / "app/templates/radar/featured_board.html").read_text()
+    poller = (root / "static/radar/market-poll.js").read_text()
+    css = (root / "static/radar/radar.css").read_text()
+
+    assert "board-table--featured" in board
+    assert "board-col-company" in board
+    assert "● REF · " in poller
+    assert "Observed at: " in poller
+    assert "toLocaleTimeString('en-GB'" in poller
+    assert "board-col-market { width: 185px; }" in css
 
 
 def _financing(mode, share_capital=500.0):

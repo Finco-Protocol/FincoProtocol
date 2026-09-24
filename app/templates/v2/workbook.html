@@ -85,6 +85,7 @@
     {# FINANCING group #}
     <span class="v2-tab-group-sep" aria-hidden="true"></span>
     <span class="v2-tab-group-label" aria-hidden="true">Financing</span>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-investor"        id="tab-investor">Investor</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-debt"            id="tab-debt">Senior Debt</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-tax"             id="tab-tax">Tax</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
@@ -166,6 +167,12 @@
     <div class="v2-sheet-panel" role="tabpanel" id="panel-debt" aria-labelledby="tab-debt" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_senior_debt.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-investor" aria-labelledby="tab-investor" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_investor.html" %}
       </div>
     </div>
 

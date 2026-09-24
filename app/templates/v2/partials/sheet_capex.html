@@ -27,6 +27,7 @@
     field_error          str
 #}
 {% from "partials/field_editor.html" import render_field %}
+{% from "partials/_money_format.html" import grouped_keur %}
 
 {# Macro: Calculated / read-only row (engine-computed or derived value) #}
 {% macro engine_row(label, value, badge="ENGINE", unit="kEUR") %}
@@ -215,6 +216,17 @@
     </div>
   </div>
 
+  <section class="v2-parent-summary" aria-labelledby="capex-parent-summary-title" data-testid="capex-parent-summary">
+    <div class="v2-sheet-section-heading"><span id="capex-parent-summary-title">CAPEX parent summary</span><small>Parent totals reconcile to the detailed decomposition below</small></div>
+    <div class="v2-parent-summary-scroll"><table class="v2-parent-summary-table">
+      <thead><tr><th>Code</th><th>Parent category</th><th class="v2-num">kEUR</th><th class="v2-num">kEUR/MW</th></tr></thead>
+      <tbody>{% for group in capex_vm.groups %}<tr data-testid="capex-parent-summary-{{ group.code }}">
+        <td>{{ group.code }}</td><td>{{ group.name }}{% if group.is_alias %} <span class="v2-binding-badge v2-capex-badge-shared">Shared / non-owning</span>{% endif %}</td>
+        <td class="v2-num">{{ grouped_keur(group.subtotal_keur) }}</td><td class="v2-num">{{ "%.1f"|format(group.subtotal_per_mw) }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
   {# ── Column header ───────────────────────────────────────────────── #}
   <div class="v2-sheet-section-heading"><span>Detailed CAPEX</span><small>Expand a category to review or override seeded line items</small></div>
   <div class="v2-capex-col-header" aria-hidden="true">
@@ -238,7 +250,7 @@
         <span class="v2-capex-col-desc">{{ group.name }}</span>
         <span class="v2-capex-col-amount v2-capex-subtotal"
               data-testid="subtotal-{{ group.code }}">
-          {{ "%.0f"|format(group.subtotal_keur) }}
+          {{ grouped_keur(group.subtotal_keur) }}
         </span>
         <span class="v2-capex-col-permw">
           {{ "%.1f"|format(group.subtotal_per_mw) }}
@@ -333,7 +345,7 @@
     <span class="v2-capex-col-desc v2-capex-total-label-cell">Total CAPEX</span>
     <span class="v2-capex-col-amount v2-capex-grand-total-amount"
           data-testid="grand-total-keur">
-      {{ "%.0f"|format(capex_vm.total_capex_keur) }}
+      {{ grouped_keur(capex_vm.total_capex_keur) }}
     </span>
     <span class="v2-capex-col-permw" data-testid="grand-total-permw">
       {{ "%.1f"|format(capex_vm.total_per_mw) }}

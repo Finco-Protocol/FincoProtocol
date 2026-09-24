@@ -831,6 +831,9 @@ def _build_sponsor_funding_presentation(fin, rr, freshness) -> dict:
         "sponsor_working_rows": (
             ("Sponsor funding mode", _enum_value(getattr(fin, "sponsor_funding_mode", None)) if fin else None, "BOUND READ-ONLY"),
             ("Share capital contribution", getattr(fin, "share_capital_keur", None), "BOUND READ-ONLY"),
+            ("Share premium contribution", getattr(fin, "share_premium_keur", None), "BOUND READ-ONLY"),
+            ("Other equity before SHL", getattr(fin, "other_equity_funding_before_shl_keur", None), "BOUND READ-ONLY"),
+            ("Configured SHL amount", getattr(fin, "shl_amount_keur", None), "BOUND READ-ONLY"),
             ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "BOUND READ-ONLY"),
             ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "BOUND READ-ONLY"),
             ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "BOUND READ-ONLY"),
@@ -892,6 +895,17 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
+        "senior_detail_rows": (
+            ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
+            ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
+            ("Commitment fee", f"{getattr(fin, 'commitment_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Arrangement fee", f"{getattr(fin, 'arrangement_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Structuring fee", f"{getattr(fin, 'structuring_fee', 0.0) * 100:.2f}%" if fin else None),
+            ("Lock-up DSCR", f"{getattr(fin, 'lockup_dscr', 0.0):.2f}x" if fin else None),
+            ("Minimum LLCR", f"{getattr(fin, 'min_llcr', 0.0):.2f}x" if fin else None),
+            ("Amortization", getattr(fin, "amortization_type", None) if fin else None),
+            ("DSRA coverage", f"{getattr(fin, 'dsra_months', 0)} months" if fin else None),
+        ),
         **sponsor_funding,
         "senior_lock_reason": (
             _SENIOR_LOCK_NOTE if (
