@@ -420,5 +420,6 @@ def get_api_meta():
             "model.references.template",
             "model.references.capex",
             "model.references.opex",
+            "model.references.preview",
         ],
     }
