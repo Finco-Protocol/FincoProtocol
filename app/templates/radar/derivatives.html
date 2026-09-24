@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — Crypto Derivatives</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/derivatives.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar derivatives-page">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+{% include "radar/crypto_subnav.html" %}
+
+<main class="radar-main derivatives-main">
+  <header class="derivatives-hero">
+    <div>
+      <p class="derivatives-eyebrow">FINCO RADAR / CRYPTO / DERIVATIVES</p>
+      <h1>Perpetuals</h1>
+      <p class="muted">Exchange-bound BTC and ETH perpetual context from Hyperliquid. This is not presented as a whole-market aggregate.</p>
+    </div>
+    <div class="derivatives-health" data-state="{{ dashboard.state }}">
+      <span class="derivatives-health__state">{{ dashboard.state }}</span>
+      <span class="mono">retrieved {{ dashboard.retrieved_at }}</span>
+    </div>
+  </header>
+
+  {% if dashboard.state == 'UNAVAILABLE' %}
+  <section class="panel panel-error">
+    <h2>Derivatives data unavailable</h2>
+    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="muted small">No fallback exchange or estimated values are displayed.</p>
+  </section>
+  {% else %}
+  <section class="derivatives-summary">
+    <article class="panel derivatives-summary-card"><span>BTC + ETH Open Interest</span><strong>{{ dashboard.summary.combined_open_interest_usd_display }}</strong></article>
+    <article class="panel derivatives-summary-card"><span>BTC + ETH 24h Notional Volume</span><strong>{{ dashboard.summary.combined_day_notional_volume_usd_display }}</strong></article>
+    <article class="panel derivatives-summary-card"><span>Venue</span><strong>Hyperliquid</strong><small>first perp dex</small></article>
+  </section>
+
+  <section class="panel derivatives-table-panel">
+    <div class="derivatives-table-heading"><h2>BTC / ETH Perpetual Context</h2><span class="muted small">mark · oracle · funding · OI · basis · volume</span></div>
+    <div class="derivatives-table-wrap">
+      <table class="derivatives-table">
+        <thead><tr><th>Asset</th><th>Mark</th><th>Oracle</th><th>Mark/Oracle Basis</th><th>Current Funding</th><th>Open Interest</th><th>24h Notional Vol.</th><th>Premium</th></tr></thead>
+        <tbody>
+        {% for row in dashboard.assets %}
+          <tr data-derivatives-symbol="{{ row.symbol }}">
+            <td><strong>{{ row.symbol }}</strong><small class="mono">{{ row.source_id }}</small></td>
+            <td>{{ row.mark_price_display }}</td>
+            <td>{{ row.oracle_price_display }}</td>
+            <td class="{% if row.basis_bps > 0 %}derivatives-up{% elif row.basis_bps < 0 %}derivatives-down{% endif %}">{{ row.basis_bps_display }}</td>
+            <td class="{% if row.funding_bps > 0 %}derivatives-up{% elif row.funding_bps < 0 %}derivatives-down{% endif %}">{{ row.funding_bps_display }}</td>
+            <td>{{ row.open_interest_usd_display }}</td>
+            <td>{{ row.day_notional_volume_usd_display }}</td>
+            <td>{{ row.premium_bps_display }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="panel derivatives-provenance">
+    <div><strong>Source authority</strong><span>{{ dashboard.publisher }} · {{ dashboard.transport }}</span></div>
+    <div><strong>Endpoint</strong><span class="mono">{{ dashboard.source_endpoint }}</span></div>
+    <div><strong>Freshness</strong><span>{{ dashboard.freshness_note }}</span></div>
+    <a href="{{ dashboard.source_url }}" target="_blank" rel="noopener noreferrer">Hyperliquid API documentation →</a>
+  </section>
+</main>
+</body>
+</html>

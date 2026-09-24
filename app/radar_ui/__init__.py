@@ -12,9 +12,11 @@ from app.radar_ui.router import router as _root_router
 from app.radar_ui.economy_router import router as _economy_router
 from app.radar_ui.crypto_router import router as _crypto_router
 from app.radar_ui.stablecoin_router import router as _stablecoin_router
+from app.radar_ui.derivatives_router import router as _derivatives_router
 
 _root_router.include_router(_economy_router)
 _root_router.include_router(_crypto_router)
 _root_router.include_router(_stablecoin_router)
+_root_router.include_router(_derivatives_router)
 
 __all__ = []
