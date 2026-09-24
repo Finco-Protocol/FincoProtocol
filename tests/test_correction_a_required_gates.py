@@ -473,6 +473,127 @@ class TestMwRescalingHttpPath:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PR76. Working-copy line editing through the actual HTTP endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestGenericWorkingCopyLineEditingHttp:
+    """Fresh generic working copies must save editable PUBLIC_GENERIC_DETAIL_V1 rows."""
+
+    @pytest.mark.parametrize("template_source,capacity_mw", [
+        ("generic_wind_reference", 48.0),
+        ("generic_solar_reference", 64.0),
+    ])
+    def test_seeded_capex_and_opex_lines_edit_and_reload_via_http(
+        self, seeded_db, template_source, capacity_mw
+    ):
+        from app.auth import COOKIE_NAME, create_session_token
+        from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as get_opex
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.service import WorkbookService
+        from fastapi.testclient import TestClient
+        import main_web
+        from app.services.reference_seed_service import create_reference_seeded_project
+
+        user_id = f"pr76-http-{template_source}"
+        record = create_reference_seeded_project(
+            user_id=user_id,
+            template_source=template_source,
+            requested_name=f"PR76 {template_source}",
+            capacity_mw=capacity_mw,
+        )
+        cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
+        client = TestClient(main_web.app, raise_server_exceptions=True)
+
+        # This is the rendered product page acceptance: no Verify module and
+        # no legacy /scenarios navigation from the V2 toolbar.
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200
+        assert 'href="/verify"' not in page.text
+        assert "/scenarios?project=" not in page.text
+        assert "tab-scenarios').click()" in page.text
+
+        capex_before = get_active_sub_lines_for_project(record.project_id)
+        assert capex_before
+        capex_line = next(line for line in capex_before if line.amount_keur > 0)
+        capex_total_before = sum(line.amount_keur for line in capex_before)
+        capex_pis = _build_pis_with_hash(user_id, record)
+        capex_new_amount = capex_line.amount_keur + 17.0
+        response = client.post(
+            "/v2/capex/line/update",
+            data={
+                "project": record.project_code,
+                "sub_line_id": capex_line.sub_line_id,
+                "label": capex_line.label,
+                "amount_keur": str(capex_new_amount),
+                "notes": capex_line.comments,
+                "row_version": capex_line.updated_at,
+                "workbook_version": capex_pis.workbook_version,
+                "content_hash": capex_pis.content_hash,
+            },
+            cookies=cookies,
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text[:500]
+        capex_after = get_active_sub_lines_for_project(record.project_id)
+        changed_capex = next(line for line in capex_after if line.sub_line_id == capex_line.sub_line_id)
+        assert changed_capex.amount_keur == pytest.approx(capex_new_amount)
+        assert changed_capex.source == "user_override"
+        assert sum(line.amount_keur for line in capex_after) == pytest.approx(capex_total_before + 17.0)
+
+        # The rendered V2 CAPEX model rebuilds subtotal, hard CAPEX, total
+        # CAPEX and kEUR/MW from the persisted line rows.
+        ws = get_workspace_state(user_id, record.project_id)
+        from app.v2.router import _build_capex_vm_ctx
+        capex_vm = _build_capex_vm_ctx(
+            record, _build_pis_with_hash(user_id, record), ws, workspace_owner=user_id
+        )["capex_vm"]
+        assert capex_vm.hard_capex_keur == pytest.approx(sum(line.amount_keur for line in capex_after))
+        assert capex_vm.total_capex_keur == pytest.approx(capex_total_before + 17.0)
+        assert capex_vm.total_per_mw == pytest.approx((capex_total_before + 17.0) / capacity_mw)
+
+        opex_before = get_opex(record.project_id)
+        assert opex_before
+        opex_line = next(line for line in opex_before if line.amount_keur > 0)
+        opex_total_before = sum(line.amount_keur for line in opex_before)
+        from app.v2.router import _build_opex_vm_ctx
+        opex_vm_before = _build_opex_vm_ctx(
+            record, _build_pis_with_hash(user_id, record)
+        )["opex_vm"]
+        opex_pis = _build_pis_with_hash(user_id, record)
+        opex_new_amount = opex_line.amount_keur + 9.0
+        response = client.post(
+            "/v2/opex/line/update",
+            data={
+                "project": record.project_code,
+                "sub_line_id": opex_line.sub_line_id,
+                "label": opex_line.label,
+                "amount_keur": str(opex_new_amount),
+                "inflation_pct": str(opex_line.inflation_pct),
+                "notes": opex_line.comments,
+                "row_version": opex_line.updated_at,
+                "workbook_version": opex_pis.workbook_version,
+                "content_hash": opex_pis.content_hash,
+            },
+            cookies=cookies,
+            follow_redirects=False,
+        )
+        assert response.status_code == 303, response.text[:500]
+        opex_after = get_opex(record.project_id)
+        changed_opex = next(line for line in opex_after if line.sub_line_id == opex_line.sub_line_id)
+        assert changed_opex.amount_keur == pytest.approx(opex_new_amount)
+        assert changed_opex.source == "user_override"
+        assert sum(line.amount_keur for line in opex_after) == pytest.approx(opex_total_before + 9.0)
+        opex_vm = _build_opex_vm_ctx(record, _build_pis_with_hash(user_id, record))["opex_vm"]
+        assert opex_vm.y1_total_opex > opex_vm_before.y1_total_opex
+
+        # HTTP reload is the persistence proof, not only the project_editable flag.
+        reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert reloaded.status_code == 200
+        assert f'value="{opex_new_amount:.0f}"' in reloaded.text
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # J. Reference reset route
 # ─────────────────────────────────────────────────────────────────────────────
 

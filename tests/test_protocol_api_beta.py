@@ -358,13 +358,12 @@ def test_api34_home_links_to_api(client):
     assert 'href="/api"' in r.text
 
 
-# ── API35: home still describes three core surfaces ──────────────────────────
+# ── API35: home describes the two product surfaces ───────────────────────────
 
-def test_api35_home_three_surfaces(client):
+def test_api35_home_two_product_surfaces(client):
     r = client.get("/")
     html_lower = r.text.lower()
-    # Architecture section must still say "three interconnected surfaces"
-    assert "three interconnected surfaces" in html_lower
+    assert "two interconnected surfaces" in html_lower
 
 
 # ── API36: Model existing nav still works ────────────────────────────────────
@@ -381,11 +380,11 @@ def test_api37_radar_nav(client):
     assert 'href="/radar"' in r.text
 
 
-# ── API38: Verify existing nav still works ───────────────────────────────────
+# ── API38: verification corpus is no longer a product navigation item ────────
 
-def test_api38_verify_nav(client):
+def test_api38_verify_is_not_product_nav(client):
     r = client.get("/api")
-    assert 'href="/verify"' in r.text
+    assert 'href="/verify"' not in r.text
 
 
 # ── API39: brand bar contains API link ───────────────────────────────────────

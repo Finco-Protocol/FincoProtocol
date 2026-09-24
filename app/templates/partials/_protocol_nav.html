@@ -1,10 +1,10 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across all FINCO Protocol surfaces:
-   Home · Model (library/workbook) · Radar · Verify · API
+   Home · Model (library/workbook) · Radar · API
    Placeholders: Docs · Roadmap · $FINCO
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "verify" | "api"
+     proto_active_page : str  — "home" | "model" | "radar" | "api"
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -35,11 +35,6 @@
          class="proto-nav__link{% if proto_active_page == 'radar' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'radar' %}aria-current="page"{% endif %}>
         Radar
-      </a>
-      <a href="/verify"
-         class="proto-nav__link{% if proto_active_page == 'verify' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'verify' %}aria-current="page"{% endif %}>
-        Verify
       </a>
       <a href="/api"
          class="proto-nav__link{% if proto_active_page == 'api' %} proto-nav__link--active{% endif %}"
