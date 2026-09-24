@@ -62,10 +62,9 @@ _CAPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
     },
 }
 
-_OPEX_ROWS: dict[str, tuple[tuple[str, int], ...]] = {
-    "B.01": (("Asset Management Contract", 30), ("Operation Management Contract", 22), ("Performance Monitoring", 16), ("Technical Inspections", 14), ("SCADA and Monitoring", 10), ("Other Technical Services", 8)),
-    "B.02": (("Preventive and Corrective Maintenance", 52), ("Minor Maintenance", 18), ("Site Infrastructure Maintenance", 18), ("Spare Parts Coordination", 12)),
-    "B.03": (("Vegetation Management", 45), ("Site Cleaning", 30), ("Drainage and Access Roads", 25)),
+_COMMON_OPEX_ROWS: dict[str, tuple[tuple[str, int], ...]] = {
+    "B.01": (("Asset Management Contract", 25), ("Operation Management Contract", 20), ("Performance Monitoring", 16), ("Technical Inspections", 14), ("Meteorological / Weather Forecast Service", 10), ("SCADA / Monitoring Platform", 15)),
+    "B.03": (("Vegetation Management", 35), ("Access Road Maintenance / Repair", 30), ("Pest Control", 15), ("Site Inspections", 20)),
     "B.04": (("Site Materials and Consumables", 55), ("Waste Management", 45)),
     "B.05": (("Security Monitoring", 60), ("HSE Prevention Plan", 40)),
     "B.06": (("Operational Insurance", 70), ("Insurance Administration", 30)),
@@ -76,6 +75,16 @@ _OPEX_ROWS: dict[str, tuple[tuple[str, int], ...]] = {
     "B.11": (("Bank Administration", 60), ("Payment Services", 40)),
     "B.12": (("Environmental Monitoring", 60), ("Community and Stakeholder Support", 40)),
     "B.13": (("OPEX Contingency", 100),),
+}
+
+_OPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
+    "common": _COMMON_OPEX_ROWS,
+    "solar": {
+        "B.02": (("Preventive and Corrective Maintenance", 28), ("Minor Maintenance", 12), ("HV Substation / O&M Building Maintenance", 12), ("Regulatory Inspections", 10), ("HSE Prevention Plan", 8), ("Meteorological Station Maintenance", 7), ("Special Equipment / Vehicle Maintenance", 8), ("PV Module / Array Inspection", 8), ("Other Maintenance", 7)),
+    },
+    "wind": {
+        "B.02": (("Preventive and Corrective Maintenance", 26), ("Minor Maintenance", 10), ("HV Substation / O&M Building Maintenance", 11), ("Regulatory Inspections", 9), ("HSE Prevention Plan", 8), ("Meteorological Station Maintenance", 7), ("Special Equipment / Vehicle Maintenance", 8), ("Blade Maintenance", 14), ("Other Maintenance", 7)),
+    },
 }
 
 OPEX_PARENT_BY_CANONICAL_KEY = {
@@ -102,9 +111,18 @@ def capex_children(technology: str, parent_code: str) -> tuple[DetailChild, ...]
     return _children(parent_code, _CAPEX_ROWS[tech][parent_code])
 
 
-def opex_children(parent_code: str) -> tuple[DetailChild, ...]:
+def opex_children(parent_code: str, technology: str | None = None) -> tuple[DetailChild, ...]:
     """Return the public generic OPEX taxonomy for one parent code."""
-    return _children(parent_code, _OPEX_ROWS[parent_code])
+    if parent_code in _COMMON_OPEX_ROWS:
+        rows = _COMMON_OPEX_ROWS[parent_code]
+    elif parent_code == "B.02":
+        tech = (technology or "solar").strip().lower()
+        if tech not in {"solar", "wind"}:
+            raise ValueError(f"Unsupported public generic technology: {technology!r}")
+        rows = _OPEX_ROWS[tech][parent_code]
+    else:
+        raise KeyError(f"Unknown public generic OPEX parent: {parent_code}")
+    return _children(parent_code, rows)
 
 
 def allocate_parent_amount(amount_keur: float, children: Iterable[DetailChild], *, places: int = 8) -> tuple[tuple[DetailChild, float], ...]:

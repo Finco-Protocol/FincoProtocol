@@ -98,3 +98,41 @@ def test_seeded_public_detail_rows_reconcile_and_keep_immutable_provenance(seede
         assert metadata["detail_code"] == line.business_code
         assert metadata["reference_seed"] is True
         assert metadata["scaling_mode"] == "PER_MW"
+
+
+@pytest.mark.parametrize("factory", [create_generic_solar_reference, create_generic_wind_reference])
+def test_a3_capex_economic_reference_omits_zero_taxonomy_but_workspace_keeps_it(factory):
+    from app.services.reference_seed_service import canonical_capex_reference_items
+
+    project = factory()
+    api_items = canonical_capex_reference_items(project)
+    assert api_items
+    assert all(item["reference_amount_keur"] > 0 for item in api_items.values())
+    assert sum(item["reference_amount_keur"] for item in api_items.values()) == pytest.approx(project.capex.total_capex)
+
+    detail = _build_capex_detail_items(
+        project.capex, project.info.construction_months,
+        "solar" if project.info.country_iso == "XA" else "wind",
+    )
+    alias = next(category for category in detail["categories"] if category["code"] == "C.11")
+    assert sum(child["amount_keur"] for child in alias["children"]) == 0
+    assert alias["children"]  # visible public taxonomy, no economic ownership
+
+
+def test_opex_legacy_generic_labels_and_technology_specific_depth():
+    b01 = [child.label for child in opex_children("B.01")]
+    assert b01 == [
+        "Asset Management Contract", "Operation Management Contract",
+        "Performance Monitoring", "Technical Inspections",
+        "Meteorological / Weather Forecast Service", "SCADA / Monitoring Platform",
+    ]
+    solar_b02 = [child.label for child in opex_children("B.02", "solar")]
+    wind_b02 = [child.label for child in opex_children("B.02", "wind")]
+    assert len(solar_b02) >= 8 and len(wind_b02) >= 8
+    assert "Blade Maintenance" not in solar_b02
+    assert "PV Module / Array Inspection" in solar_b02
+    assert "Blade Maintenance" in wind_b02
+    assert [child.label for child in opex_children("B.03")] == [
+        "Vegetation Management", "Access Road Maintenance / Repair",
+        "Pest Control", "Site Inspections",
+    ]

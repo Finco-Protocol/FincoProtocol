@@ -459,6 +459,7 @@ def _build_opex_detail_items(
     # never supplies an economic amount or an escalation assumption.
     is_reference = code.upper() in {"GENERIC_SOLAR_REFERENCE", "GENERIC WIND REFERENCE", "REF-WIND-B"}
     if is_reference:
+        reference_technology = "solar" if code.upper() == "GENERIC_SOLAR_REFERENCE" else "wind"
         canonical = {str(item.name): item for item in project_inputs.opex}
         categories = []
         for group_code, group_name in OPEX_PARENT_NAMES.items():
@@ -471,7 +472,7 @@ def _build_opex_detail_items(
             inflation = float(getattr(parent_item, "annual_inflation", 0.0) or 0.0)
             is_contingency = group_code == "B.13"
             children = []
-            for child, amount in allocate_parent_amount(parent_amount, opex_children(group_code)):
+            for child, amount in allocate_parent_amount(parent_amount, opex_children(group_code, reference_technology)):
                 yearly_values = [round(amount * ((1 + inflation) ** (year - 1)), 4) for year in range(1, horizon_years + 1)]
                 children.append({
                     "code": child.code, "name": child.label, "budget_y1_keur": amount,

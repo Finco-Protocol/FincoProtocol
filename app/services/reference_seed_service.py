@@ -62,15 +62,21 @@ def _primary_capex_category_by_field() -> dict[str, str]:
     return owners
 
 
-def _canonical_capex_items(pi: Any) -> dict[str, dict[str, Any]]:
+def _canonical_capex_items(pi: Any, *, include_zero: bool = False) -> dict[str, dict[str, Any]]:
+    """Return canonical CAPEX economic items, optionally including zero taxonomy.
+
+    The default is deliberately positive-only: it is the public A3 economic
+    reference contract.  Workspace seeding opts into zero rows explicitly so
+    a complete public-generic editing taxonomy never changes that API.
+    """
     reference_capacity = float(pi.technical.capacity_mw)
     owners = _primary_capex_category_by_field()
     items: dict[str, dict[str, Any]] = {}
     for field_name, category_code in owners.items():
         item = getattr(pi.capex, field_name)
         amount = float(item.amount_keur)
-        # Seed meaningful zero-value taxonomy as well.  It retains the public
-        # generic workspace structure without creating an economic amount.
+        if amount == 0 and not include_zero:
+            continue
         items[field_name] = {
             "canonical_field": field_name,
             "owner_category_code": category_code,
@@ -117,7 +123,7 @@ def _scaled(value: Any, ratio: float) -> str:
 
 def _seed_profile(template_source: str, reference: Any, capacity_mw: float, pi: Any) -> dict[str, Any]:
     reference_capacity = float(pi.technical.capacity_mw)
-    capex_items = _canonical_capex_items(pi)
+    capex_items = _canonical_capex_items(pi, include_zero=True)
     opex_items = _canonical_opex_items(pi)
     return {
         "version": 3,
@@ -254,7 +260,7 @@ def create_reference_seeded_project(
             if group is None:
                 continue
             amount = float(seed["reference_amount_keur"])
-            for child, child_amount in allocate_parent_amount(amount, opex_children(group)):
+            for child, child_amount in allocate_parent_amount(amount, opex_children(group, technology)):
                 create_opex_line(
                     cur,
                     project_id=record.project_id,
