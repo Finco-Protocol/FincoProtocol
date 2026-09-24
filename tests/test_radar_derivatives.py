@@ -1,7 +1,7 @@
-"""Radar Crypto Derivatives — deterministic provider/service/UI tests."""
+"""Radar Crypto Derivatives V2 — deterministic provider/service/UI tests."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -28,22 +28,35 @@ class FakeResponse:
 
 
 class FakeClient:
-    def __init__(self, payload):
-        self.payload = payload
+    def __init__(self, *, fail_types=None):
         self.calls = []
         self.closed = False
+        self.fail_types = set(fail_types or ())
 
     def post(self, url, json=None, headers=None):
-        self.calls.append((url, json, headers))
-        return FakeResponse(self.payload)
+        body = json or {}
+        self.calls.append((url, body, headers))
+        request_type = body.get("type")
+        if request_type in self.fail_types:
+            raise RuntimeError(f"forced {request_type} failure")
+        if request_type == "metaAndAssetCtxs":
+            return FakeResponse(_primary_payload())
+        if request_type == "fundingHistory":
+            return FakeResponse(_funding_payload(body["coin"]))
+        if request_type == "predictedFundings":
+            return FakeResponse(_predicted_payload())
+        raise AssertionError(f"unexpected request type {request_type}")
 
     def close(self):
         self.closed = True
 
 
-def _payload():
-    # ETH deliberately precedes BTC: provider must bind through universe index,
-    # never assume fixed positions.
+def _ms(value):
+    return int(value.timestamp() * 1000)
+
+
+def _primary_payload():
+    # ETH deliberately precedes BTC: provider must bind through universe index.
     return [
         {"universe": [
             {"name": "ETH", "szDecimals": 4, "maxLeverage": 50},
@@ -51,58 +64,211 @@ def _payload():
             {"name": "BTC", "szDecimals": 5, "maxLeverage": 50},
         ]},
         [
-            {"markPx": "3200", "oraclePx": "3196", "funding": "0.0000125", "openInterest": "1000", "dayNtlVlm": "50000000", "premium": "0.0003"},
-            {"markPx": "150", "oraclePx": "150", "funding": "0", "openInterest": "10", "dayNtlVlm": "100", "premium": "0"},
-            {"markPx": "80000", "oraclePx": "79900", "funding": "-0.00001", "openInterest": "250", "dayNtlVlm": "100000000", "premium": "-0.0002"},
+            {
+                "markPx": "3200", "oraclePx": "3196", "prevDayPx": "3100",
+                "midPx": "3198", "impactPxs": ["3194", "3202"],
+                "funding": "0.0000125", "openInterest": "1000",
+                "dayNtlVlm": "50000000", "premium": "0.0003",
+            },
+            {
+                "markPx": "150", "oraclePx": "150", "prevDayPx": "151",
+                "midPx": "150", "impactPxs": ["149.9", "150.1"],
+                "funding": "0", "openInterest": "10",
+                "dayNtlVlm": "100", "premium": "0",
+            },
+            {
+                "markPx": "80000", "oraclePx": "79900", "prevDayPx": "76000",
+                "midPx": "79950", "impactPxs": ["79900", "80000"],
+                "funding": "-0.00001", "openInterest": "250",
+                "dayNtlVlm": "100000000", "premium": "-0.0002",
+            },
         ],
     ]
 
 
-def test_provider_uses_one_public_meta_and_asset_context_request_and_uid_binding():
-    client = FakeClient(_payload())
+def _funding_payload(symbol):
+    if symbol == "BTC":
+        return [
+            {
+                "coin": "BTC", "fundingRate": "-0.00001", "premium": "-0.0002",
+                "time": _ms(NOW - timedelta(hours=23)),
+            },
+            {
+                "coin": "BTC", "fundingRate": "0.00002", "premium": "0.0001",
+                "time": _ms(NOW - timedelta(hours=1)),
+            },
+        ]
+    return [
+        {
+            "coin": "ETH", "fundingRate": "0.0000125", "premium": "0.0003",
+            "time": _ms(NOW - timedelta(hours=22)),
+        },
+        {
+            "coin": "ETH", "fundingRate": "0.0000125", "premium": "0.0002",
+            "time": _ms(NOW - timedelta(hours=2)),
+        },
+    ]
+
+
+def _predicted_payload():
+    return [
+        ["BTC", [
+            ["BinPerp", {
+                "fundingRate": "0.0001",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+                "fundingIntervalHours": 8,
+            }],
+            ["HlPerp", {
+                "fundingRate": "0.0000125",
+                "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+                "fundingIntervalHours": 1,
+            }],
+            ["BybitPerp", {
+                "fundingRate": "0.00008",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+                "fundingIntervalHours": 8,
+            }],
+        ]],
+        ["ETH", [
+            # External interval omitted deliberately: FINCO must not guess it.
+            ["BinPerp", {
+                "fundingRate": "0.00009",
+                "nextFundingTime": _ms(NOW + timedelta(hours=2)),
+            }],
+            # Hyperliquid interval may be omitted; first-perp funding is hourly.
+            ["HlPerp", {
+                "fundingRate": "0.0000125",
+                "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+            }],
+            # Null means venue has no listing/evidence for this asset.
+            ["BybitPerp", None],
+        ]],
+        ["SOL", [["HlPerp", {
+            "fundingRate": "0",
+            "nextFundingTime": _ms(NOW + timedelta(hours=1)),
+            "fundingIntervalHours": 1,
+        }]]],
+    ]
+
+
+def test_provider_binds_primary_context_and_reads_v2_auxiliary_endpoints():
+    client = FakeClient()
     provider = HyperliquidDerivativesProvider(client_factory=lambda: client, now=lambda: NOW)
     snapshot = provider.read()
 
-    assert len(client.calls) == 1
-    assert client.calls[0][1] == {"type": "metaAndAssetCtxs"}
     assert client.closed is True
+    assert [call[1]["type"] for call in client.calls] == [
+        "metaAndAssetCtxs", "fundingHistory", "fundingHistory", "predictedFundings"
+    ]
+    history_calls = [call[1] for call in client.calls if call[1]["type"] == "fundingHistory"]
+    assert [call["coin"] for call in history_calls] == ["BTC", "ETH"]
+    assert all(call["endTime"] == _ms(NOW) for call in history_calls)
+    assert all(call["startTime"] == _ms(NOW - timedelta(hours=24)) for call in history_calls)
+
     assert [asset.symbol for asset in snapshot.assets] == ["BTC", "ETH"]
-    assert snapshot.assets[0].mark_price == pytest.approx(80000.0)
-    assert snapshot.assets[0].source_id == "universe[2]=BTC"
-    assert snapshot.assets[1].source_id == "universe[0]=ETH"
+    btc = snapshot.assets[0]
+    assert btc.source_id == "universe[2]=BTC"
+    assert btc.prev_day_price == pytest.approx(76000.0)
+    assert btc.mid_price == pytest.approx(79950.0)
+    assert btc.impact_bid_price == pytest.approx(79900.0)
+    assert btc.impact_ask_price == pytest.approx(80000.0)
+    assert btc.max_leverage == 50
+    assert len(snapshot.funding_history) == 4
+    assert len(snapshot.predicted_funding) == 5
+    assert snapshot.funding_history_reason is None
+    assert snapshot.predicted_funding_reason is None
+
+    predicted = {(row.symbol, row.venue_code): row for row in snapshot.predicted_funding}
+    assert predicted[("BTC", "BinPerp")].funding_interval_hours == 8
+    assert predicted[("BTC", "HlPerp")].funding_interval_hours == 1
+    assert predicted[("ETH", "HlPerp")].funding_interval_hours == 1
+    assert predicted[("ETH", "BinPerp")].funding_interval_hours is None
+    assert ("ETH", "BybitPerp") not in predicted
 
 
-def test_provider_fails_closed_when_required_asset_is_missing():
-    payload = _payload()
-    payload[0]["universe"][2]["name"] = "XRP"
-    client = FakeClient(payload)
+def test_provider_auxiliary_failure_does_not_replace_primary_hyperliquid_context():
+    client = FakeClient(fail_types={"fundingHistory"})
     provider = HyperliquidDerivativesProvider(client_factory=lambda: client, now=lambda: NOW)
+    snapshot = provider.read()
+
+    assert [asset.symbol for asset in snapshot.assets] == ["BTC", "ETH"]
+    assert snapshot.funding_history == ()
+    assert snapshot.funding_history_reason == "FUNDING_HISTORY_READ_FAILED:RuntimeError"
+    assert len(snapshot.predicted_funding) == 5
+    assert snapshot.predicted_funding_reason is None
+
+
+def test_provider_fails_closed_when_required_primary_asset_is_missing():
+    class MissingBtcClient(FakeClient):
+        def post(self, url, json=None, headers=None):
+            body = json or {}
+            if body.get("type") == "metaAndAssetCtxs":
+                payload = _primary_payload()
+                payload[0]["universe"][2]["name"] = "XRP"
+                return FakeResponse(payload)
+            return super().post(url, json=json, headers=headers)
+
+    provider = HyperliquidDerivativesProvider(
+        client_factory=lambda: MissingBtcClient(), now=lambda: NOW
+    )
     with pytest.raises(ValueError, match="MISSING_REQUIRED_SYMBOLS"):
         provider.read()
 
 
-def test_service_computes_oi_and_basis_only_from_same_bound_context():
-    provider = HyperliquidDerivativesProvider(client_factory=lambda: FakeClient(_payload()), now=lambda: NOW)
+def test_service_computes_price_liquidity_funding_and_normalized_cross_venue_metrics():
+    provider = HyperliquidDerivativesProvider(client_factory=FakeClient, now=lambda: NOW)
     dashboard = DerivativesDashboardService(provider=provider).read_dashboard()
+
     assert dashboard["state"] == "AVAILABLE"
     by_symbol = {row["symbol"]: row for row in dashboard["assets"]}
-    assert by_symbol["BTC"]["open_interest_usd"] == pytest.approx(20_000_000.0)
-    assert by_symbol["ETH"]["open_interest_usd"] == pytest.approx(3_200_000.0)
-    assert by_symbol["BTC"]["basis_bps"] == pytest.approx((80000 / 79900 - 1) * 10000)
-    assert by_symbol["ETH"]["funding_bps"] == pytest.approx(0.125)
+    btc = by_symbol["BTC"]
+    assert btc["open_interest_usd"] == pytest.approx(20_000_000.0)
+    assert btc["change_24h_pct"] == pytest.approx((80000 / 76000 - 1) * 100)
+    assert btc["basis_bps"] == pytest.approx((80000 / 79900 - 1) * 10000)
+    assert btc["oi_turnover"] == pytest.approx(5.0)
+    assert btc["impact_spread_bps"] == pytest.approx((100 / 79950) * 10000)
+    assert btc["max_leverage"] == 50
+
+    assert dashboard["summary"]["combined_open_interest_usd"] == pytest.approx(23_200_000.0)
     assert dashboard["summary"]["combined_day_notional_volume_usd"] == pytest.approx(150_000_000.0)
+    assert dashboard["summary"]["combined_oi_turnover"] == pytest.approx(150_000_000 / 23_200_000)
+    assert dashboard["summary"]["funding_sign"] == "Mixed / flat"
+
+    history = {row["symbol"]: row for row in dashboard["funding_history"]}
+    assert dashboard["funding_history_state"] == "AVAILABLE"
+    assert history["BTC"]["average_24h_bps"] == pytest.approx(0.05)
+    assert history["BTC"]["sum_24h_bps"] == pytest.approx(0.10)
+    assert history["BTC"]["sample_count"] == 2
+
+    predicted = {row["symbol"]: row for row in dashboard["predicted_funding"]}
+    assert dashboard["predicted_funding_state"] == "AVAILABLE"
+
+    btc_predicted = predicted["BTC"]
+    assert btc_predicted["venues"]["HlPerp"]["rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BinPerp"]["rate_bps"] == pytest.approx(1.0)
+    assert btc_predicted["venues"]["BybitPerp"]["rate_bps"] == pytest.approx(0.8)
+    assert btc_predicted["venues"]["HlPerp"]["hourly_rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BinPerp"]["hourly_rate_bps"] == pytest.approx(0.125)
+    assert btc_predicted["venues"]["BybitPerp"]["hourly_rate_bps"] == pytest.approx(0.1)
+    assert btc_predicted["hourly_spread_bps"] == pytest.approx(0.025)
+
+    eth_predicted = predicted["ETH"]
+    assert eth_predicted["venues"]["BinPerp"]["rate_bps"] == pytest.approx(0.9)
+    assert eth_predicted["venues"]["BinPerp"]["hourly_rate_bps"] is None
+    assert eth_predicted["venues"]["BybitPerp"]["rate_bps"] is None
+    assert eth_predicted["hourly_spread_bps"] is None
 
 
-def test_service_failure_is_unavailable_without_fallback_exchange():
+def test_service_failure_is_unavailable_without_fallback_exchange_or_detail_leak():
     class BrokenProvider:
         def read(self):
-            raise RuntimeError("upstream detail")
+            raise RuntimeError("upstream secret detail")
 
     dashboard = DerivativesDashboardService(provider=BrokenProvider()).read_dashboard()
     assert dashboard["state"] == "UNAVAILABLE"
     assert dashboard["assets"] == []
     assert dashboard["reason"] == "DERIVATIVES_READ_FAILED:RuntimeError"
-    assert "upstream detail" not in dashboard["reason"]
+    assert "upstream secret detail" not in dashboard["reason"]
 
 
 class FakeDerivativesService:
@@ -113,26 +279,88 @@ class FakeDerivativesService:
             "assets": [{
                 "symbol": "BTC", "state": "AVAILABLE",
                 "mark_price": 80000.0, "mark_price_display": "$80,000.00",
+                "prev_day_price": 76000.0, "prev_day_price_display": "$76,000.00",
+                "change_24h_pct": 5.26, "change_24h_display": "+5.26%",
                 "oracle_price": 79900.0, "oracle_price_display": "$79,900.00",
+                "mid_price": 79950.0, "mid_price_display": "$79,950.00",
                 "basis_bps": 12.5, "basis_bps_display": "+12.50 bp",
-                "funding_rate": -0.00001, "funding_bps": -0.1, "funding_bps_display": "-0.10 bp",
-                "open_interest_base": 250.0, "open_interest_usd": 20_000_000.0, "open_interest_usd_display": "$20.00M",
-                "day_notional_volume_usd": 100_000_000.0, "day_notional_volume_usd_display": "$100.00M",
+                "funding_rate": -0.00001, "funding_bps": -0.1,
+                "funding_bps_display": "-0.10 bp",
+                "open_interest_base": 250.0, "open_interest_usd": 20_000_000.0,
+                "open_interest_usd_display": "$20.00M",
+                "day_notional_volume_usd": 100_000_000.0,
+                "day_notional_volume_usd_display": "$100.00M",
+                "oi_turnover": 5.0, "oi_turnover_display": "5.00x",
+                "impact_bid_price": 79900.0, "impact_ask_price": 80000.0,
+                "impact_spread_bps": 12.5, "impact_spread_bps_display": "+12.50 bp",
+                "max_leverage": 50, "max_leverage_display": "50x",
                 "premium_bps": -2.0, "premium_bps_display": "-2.00 bp",
                 "retrieved_at": NOW.isoformat(), "publisher": "Hyperliquid",
-                "transport": "Hyperliquid Info API", "source_endpoint": "POST /info · metaAndAssetCtxs",
-                "source_id": "universe[2]=BTC", "source_url": "https://example.invalid/docs",
+                "transport": "Hyperliquid Info API",
+                "source_endpoint": "POST /info · metaAndAssetCtxs",
+                "source_id": "universe[2]=BTC",
+                "source_url": "https://example.invalid/docs",
             }],
             "summary": {
                 "combined_open_interest_usd": 20_000_000.0,
                 "combined_open_interest_usd_display": "$20.00M",
                 "combined_day_notional_volume_usd": 100_000_000.0,
                 "combined_day_notional_volume_usd_display": "$100.00M",
+                "combined_oi_turnover": 5.0,
+                "combined_oi_turnover_display": "5.00x",
+                "funding_sign": "Mixed / flat",
             },
-            "retrieved_at": NOW.isoformat(), "publisher": "Hyperliquid",
-            "transport": "Hyperliquid Info API", "source_endpoint": "POST /info · metaAndAssetCtxs",
+            "funding_history_state": "AVAILABLE",
+            "funding_history_reason": None,
+            "funding_history": [{
+                "symbol": "BTC", "current_funding_bps": -0.1,
+                "current_funding_bps_display": "-0.10 bp",
+                "average_24h_bps": 0.05, "average_24h_bps_display": "+0.05 bp",
+                "sum_24h_bps": 0.1, "sum_24h_bps_display": "+0.10 bp",
+                "sample_count": 24, "latest_observed_at": NOW.isoformat(),
+                "latest_observed_at_display": "2026-09-24 14:00 UTC",
+            }],
+            "predicted_funding_state": "AVAILABLE",
+            "predicted_funding_reason": None,
+            "predicted_funding": [{
+                "symbol": "BTC",
+                "venues": {
+                    "HlPerp": {
+                        "name": "Hyperliquid", "rate_bps": 0.125,
+                        "rate_bps_display": "+0.12 bp", "funding_interval_hours": 1,
+                        "funding_interval_display": "1h", "hourly_rate_bps": 0.125,
+                        "hourly_rate_bps_display": "+0.12 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 15:00 UTC",
+                    },
+                    "BinPerp": {
+                        "name": "Binance", "rate_bps": 1.0,
+                        "rate_bps_display": "+1.00 bp", "funding_interval_hours": 8,
+                        "funding_interval_display": "8h", "hourly_rate_bps": 0.125,
+                        "hourly_rate_bps_display": "+0.12 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 16:00 UTC",
+                    },
+                    "BybitPerp": {
+                        "name": "Bybit", "rate_bps": 0.8,
+                        "rate_bps_display": "+0.80 bp", "funding_interval_hours": 8,
+                        "funding_interval_display": "8h", "hourly_rate_bps": 0.1,
+                        "hourly_rate_bps_display": "+0.10 bp",
+                        "next_funding_at": NOW.isoformat(),
+                        "next_funding_at_display": "2026-09-24 16:00 UTC",
+                    },
+                },
+                "hourly_spread_bps": 0.025,
+                "hourly_spread_bps_display": "0.03 bp/h",
+            }],
+            "retrieved_at": NOW.isoformat(),
+            "publisher": "Hyperliquid", "transport": "Hyperliquid Info API",
+            "source_endpoint": "POST /info",
             "source_url": "https://example.invalid/docs",
-            "freshness_note": "Source has no observation timestamp; retrieval time only.",
+            "freshness_note": "Primary retrieval time only; history has timestamps.",
+            "cross_venue_note": (
+                "Predictions are Hyperliquid aggregated evidence; comparison uses hourly normalization."
+            ),
         }
 
 
@@ -143,13 +371,19 @@ def _client(service):
     return TestClient(app)
 
 
-def test_derivatives_route_renders_exchange_bound_metrics():
+def test_derivatives_route_renders_v2_leverage_liquidity_and_funding_surfaces():
     response = _client(FakeDerivativesService()).get("/radar/crypto/derivatives")
     assert response.status_code == 200
     assert "Perpetuals" in response.text
-    assert "Hyperliquid" in response.text
-    assert "$20.00M" in response.text
-    assert "+12.50 bp" in response.text
+    assert "24h Volume / OI" in response.text
+    assert "Impact Spread" in response.text
+    assert "Max Lev." in response.text
+    assert "24h Funding History" in response.text
+    assert "Cross-Venue Predicted Funding" in response.text
+    assert "Hourly-Normalized Spread" in response.text
+    assert "8h native" in response.text
+    assert "Binance" in response.text
+    assert "Bybit" in response.text
     assert "whole-market aggregate" in response.text
 
 
