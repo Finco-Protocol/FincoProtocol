@@ -76,9 +76,16 @@
 
 {# Macro: user-added custom row with edit/deactivate controls #}
 {% macro custom_row(line, project_code, workbook_version, project_editable) %}
-<div class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
+<details class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
      data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
      data-fc-row>
+  <summary class="v2-capex-compact-edit-row">
+    <span class="v2-capex-custom-code">{{ line.code }}</span>
+    <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
+    <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ "%.0f"|format(line.amount_keur) }}</span>
+    <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
+    <span class="v2-binding-badge {% if line.source == 'reference_seed' %}v2-capex-badge-reference{% elif line.source == 'user_override' %}v2-capex-badge-override{% else %}v2-capex-badge-custom{% endif %}">{% if line.source == 'reference_seed' %}REFERENCE{% elif line.source == 'user_override' %}OVERRIDE{% else %}CUSTOM{% endif %}</span>
+  </summary>
   {% if project_editable %}
   <form class="v2-field-form v2-capex-custom-form"
         hx-post="/v2/capex/line/update"
@@ -125,14 +132,8 @@
             aria-label="Deactivate {{ line.code }}"
             data-testid="deactivate-{{ line.code }}">×</button>
   </form>
-  <span class="v2-binding-badge v2-capex-badge-custom">CUSTOM</span>
-  {% else %}
-  <span class="v2-capex-custom-code">{{ line.code }}</span>
-  <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
-  <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ "%.0f"|format(line.amount_keur) }}</span>
-  <span class="v2-binding-badge v2-capex-badge-custom">CUSTOM</span>
   {% endif %}
-</div>
+</details>
 {% endmacro %}
 
 {# Macro: Add Row form for eligible groups #}

@@ -375,7 +375,9 @@ def build_capex_view_model(
                     code=sl.business_code,
                     parent_code=group_code,
                     name=sl.label,
-                    source="user",
+                    # Preserve the stored provenance so reference-seeded
+                    # lines are not presented as user-created custom rows.
+                    source=sl.source or "user",
                     unit="kEUR",
                     notes=sl.comments or "",
                     display_order=sl.display_order,

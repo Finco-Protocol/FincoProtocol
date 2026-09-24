@@ -729,10 +729,46 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
     _rr_sentinel = object() if meta.has_runtime else None
     revenue_state = classify_runtime_state(_rr_sentinel, revenue_derivation, meta.is_dirty)
 
+    fields = _build_sheet_fields("revenue", pis)
+    by_id = {field["field_id"]: field for field in fields}
+
+    # Presentation-only binding evidence.  These values are the existing
+    # registry fields that the adapter passes to RevenueParams; no revenue is
+    # calculated here and no Jinja expression infers a price from outputs.
+    def _value(field_id):
+        field = by_id.get(field_id)
+        return field.get("value") if field else None
+
+    curve_rows = []
+    raw_curve = _value("revenue.merchant.price_curve_json")
+    if isinstance(raw_curve, str) and raw_curve.strip():
+        try:
+            import json
+            decoded = json.loads(raw_curve)
+            if isinstance(decoded, list):
+                curve_rows = tuple(
+                    {"year": row.get("year"), "price": row.get("price_eur_mwh")}
+                    for row in decoded
+                    if isinstance(row, dict)
+                )
+        except (TypeError, ValueError):
+            # The field editor owns validation; an invalid draft is never
+            # silently interpreted as a price authority in this projection.
+            curve_rows = ()
+
     return {
-        "revenue_fields": _build_sheet_fields("revenue", pis),
+        "revenue_fields": fields,
         "revenue_state": revenue_state.value,
         "revenue_runtime_summary": rs,
+        "revenue_pricing_basis": (
+            ("Contracted tariff", _value("revenue.ppa.base_tariff"), "EUR/MWh"),
+            ("PPA term", _value("revenue.ppa.term_years"), "years"),
+            ("PPA escalation", _value("revenue.ppa.index"), "%"),
+            ("Merchant balancing", _value("revenue.balancing.merchant_pct"), "% of spot sales"),
+            ("Balancing cost", _value("revenue.balancing.cost_eur_per_mwh"), "EUR/MWh"),
+            ("CO2 revenue", _value("revenue.balancing.co2_enabled"), ""),
+        ),
+        "merchant_curve_rows": curve_rows,
     }
 
 
@@ -762,6 +798,59 @@ def _thaw(obj):
     return thaw_runtime_payload(obj)
 
 
+def _enum_value(value):
+    """Present a typed enum without inferring a financing policy."""
+    return getattr(value, "value", value) if value is not None else None
+
+
+def _build_sponsor_funding_presentation(fin, rr, freshness) -> dict:
+    """Separate current typed financing inputs from immutable Last Run evidence.
+
+    This is intentionally a projection helper: it reads neither an engine nor
+    any legacy financing amount, and it never derives a terminal SHL value.
+    """
+    state = getattr(getattr(freshness, "state", None), "value", "NOT_RUN")
+    if state not in {"NOT_RUN", "CURRENT", "STALE"}:
+        state = "NOT_RUN"
+    evidence_status = {
+        "NOT_RUN": "UNAVAILABLE",
+        "CURRENT": "CURRENT",
+        "STALE": "LAST RUN / STALE",
+    }[state]
+    freshness_label = {
+        "NOT_RUN": "NOT RUN — Last Run evidence unavailable",
+        "CURRENT": "CURRENT — Last Run evidence",
+        "STALE": "LAST RUN / STALE — Working inputs may differ from persisted evidence",
+    }[state]
+    sponsor_schedule = _thaw(getattr(rr, "sponsor_schedule", None) or {})
+    sponsor_summary = (
+        sponsor_schedule.get("summary", {})
+        if isinstance(sponsor_schedule, dict) else {}
+    )
+    return {
+        "sponsor_working_rows": (
+            ("Sponsor funding mode", _enum_value(getattr(fin, "sponsor_funding_mode", None)) if fin else None, "BOUND READ-ONLY"),
+            ("Share capital contribution", getattr(fin, "share_capital_keur", None), "BOUND READ-ONLY"),
+            ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "BOUND READ-ONLY"),
+            ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "BOUND READ-ONLY"),
+            ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "BOUND READ-ONLY"),
+            ("SHL maturity", getattr(fin, "shl_maturity_period_index", None) if fin else None, "BOUND READ-ONLY"),
+            ("SHL day-count convention", _enum_value(getattr(fin, "shl_day_count_convention", None)) if fin else None, "BOUND READ-ONLY"),
+        ),
+        "sponsor_last_run_rows": (
+            ("Runtime-derived SHL principal", sponsor_summary.get("total_shl_cash_contributed_keur"), evidence_status),
+            # The persisted sponsor presentation contract has no terminal SHL
+            # balance/status.  Absence is shown truthfully rather than rebuilt.
+            ("Terminal SHL balance / status", None, "UNAVAILABLE"),
+        ),
+        "sponsor_funding_freshness": {
+            "state": state,
+            "label": freshness_label,
+            "evidence_status": evidence_status,
+        },
+    }
+
+
 def _build_debt_ctx(pis, ws, projection=None) -> dict:
     """Build Senior Debt sheet context: registry fields + RuntimeResult output.
 
@@ -777,6 +866,18 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         projection = build_runtime_projection_bundle(
             rr, _runtime_freshness(ws, pis).is_stale)
     d = projection.debt
+    # Sponsor/SHL is a presentation of the existing typed financing inputs and
+    # persisted Last Run sponsor schedule.  It deliberately does not expose
+    # the legacy configured amount as a runtime authority or create a second
+    # write path.
+    try:
+        fin = pis.to_projectinputs().financing
+    except Exception:
+        fin = None
+    rr_for_sponsor = WorkbookService.get_runtime_result(ws)
+    sponsor_funding = _build_sponsor_funding_presentation(
+        fin, rr_for_sponsor, _runtime_freshness(ws, pis)
+    )
     # R8/N02: policy-governed editability — calibrated schedules lock the
     # scalar Senior controls with the honest reason.
     senior_pricing_mode, senior_dscr_mode = _classify_senior_authority(pis)
@@ -791,6 +892,7 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
+        **sponsor_funding,
         "senior_lock_reason": (
             _SENIOR_LOCK_NOTE if (
                 senior_pricing_mode == "CALIBRATED"

@@ -81,10 +81,17 @@
 
 {# Macro: custom user-added row #}
 {% macro opex_custom_row(line, project_code, workbook_version, content_hash, project_editable) %}
-<div class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
+<details class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
      data-fc-row>
+  <summary class="v2-opex-compact-edit-row">
+    <span class="v2-opex-line-code">{{ line.code }}</span>
+    <span class="v2-opex-line-name">{{ line.name }}</span>
+    <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
+    <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
+    <span class="v2-binding-badge {% if line.source == 'reference_seed' %}v2-opex-badge-reference{% elif line.source == 'user_override' %}v2-opex-badge-override{% else %}v2-opex-badge-custom{% endif %}">{% if line.source == 'reference_seed' %}REFERENCE{% elif line.source == 'user_override' %}OVERRIDE{% else %}CUSTOM{% endif %}</span>
+  </summary>
   {%- if project_editable %}
-    {# Inline update form #}
+    {# The form is deliberately off the resting table row. #}
     <form class="v2-opex-custom-row-form"
           hx-post="/v2/opex/line/update"
           hx-target="#v2-sheet-opex"
@@ -135,7 +142,6 @@
              aria-label="Notes"
              data-testid="opex-custom-notes-{{ line.sub_line_id }}">
       <button type="submit" class="v2-opex-custom-save-btn" data-testid="opex-custom-save-{{ line.sub_line_id }}">Save</button>
-      <span class="v2-binding-badge v2-opex-badge-custom">CUSTOM</span>
     </form>
     {# Deactivate form #}
     <form class="v2-opex-deactivate-form"
@@ -151,14 +157,8 @@
       <button type="submit" class="v2-opex-deactivate-btn" aria-label="Deactivate"
               data-testid="opex-custom-deactivate-{{ line.sub_line_id }}">✕</button>
     </form>
-  {%- else %}
-    <span class="v2-opex-line-code">{{ line.code }}</span>
-    <span class="v2-opex-line-name">{{ line.name }}</span>
-    <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
-    <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
-    <span class="v2-binding-badge v2-opex-badge-custom">CUSTOM</span>
   {%- endif %}
-</div>
+</details>
 {% endmacro %}
 
 {# Macro: Add Row form #}

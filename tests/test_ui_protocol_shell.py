@@ -2217,6 +2217,7 @@ def test_reference_driven_correction_a_22_capture_journey(
     # Rename and override one immutable-provenance OPEX seed through the UI.
     seed_row = page.locator('[data-testid^="opex-custom-row-"]').first
     seed_row.wait_for()
+    seed_row.locator("summary").click()
     label_input = seed_row.locator(".v2-opex-custom-label-input")
     amount_input = seed_row.locator(".v2-opex-custom-amount-input")
     overridden_label = "Renamed operating line — immutable seed identity"
@@ -2225,7 +2226,10 @@ def test_reference_driven_correction_a_22_capture_journey(
     amount_input.fill(f"{overridden_amount:.6f}")
     with page.expect_response(lambda response: "/v2/opex/line/update" in response.url):
         seed_row.locator(".v2-opex-custom-save-btn").click()
-    page.locator(f'input.v2-opex-custom-label-input[value="{overridden_label}"]').wait_for()
+    renamed_row = page.locator('[data-testid^="opex-custom-row-"]').filter(
+        has_text=overridden_label
+    ).first
+    renamed_row.locator("summary").wait_for()
 
     # Change MW through the actual bound Project Setup control.
     page.locator("#tab-project-setup").click()
@@ -2244,12 +2248,15 @@ def test_reference_driven_correction_a_22_capture_journey(
     shot("08-capacity-change")
 
     page.locator("#tab-opex").click()
-    renamed = page.locator(f'input.v2-opex-custom-label-input[value="{overridden_label}"]')
-    renamed.wait_for()
-    survivor_row = renamed.locator("xpath=ancestor::div[contains(@class, 'v2-opex-custom-row')]")
+    survivor_row = page.locator('[data-testid^="opex-custom-row-"]').filter(
+        has_text=overridden_label
+    ).first
+    survivor_row.locator("summary").click()
+    survivor_row.locator(".v2-opex-custom-label-input").wait_for()
     assert float(survivor_row.locator(".v2-opex-custom-amount-input").input_value()) == pytest.approx(
         overridden_amount
     )
+    survivor_row.locator("summary").click()
     shot("09-override-survival", survivor_row)
 
     page.goto(f"{live_url}/v2/workbook?project={wind.project_code}")

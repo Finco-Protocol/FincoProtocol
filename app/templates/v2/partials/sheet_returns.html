@@ -1,6 +1,7 @@
 {# Workbook V2 Returns — persisted Last Run evidence only. #}
+{% from "partials/_money_format.html" import grouped_keur %}
 {% macro money(v) -%}
-  {%- if v is number and v is not sameas true and v is not sameas false -%}<span class="{% if v < 0 %}v2-returns-negative{% endif %}">{{ "{:,.0f}".format(v) }}</span>
+  {%- if v is number and v is not sameas true and v is not sameas false -%}<span class="{% if v < 0 %}v2-returns-negative{% endif %}">{{ grouped_keur(v) }}</span>
   {%- else -%}<span class="v2-field-empty">—</span>{%- endif -%}
 {%- endmacro %}
 
@@ -49,6 +50,10 @@
           <span class="v2-kpi-value{% if metric.value is none %} v2-kpi-value--na{% endif %}">{{ metric.display }}</span>
         </div>
         {% endfor %}
+      </div>
+      <div class="v2-returns-return-definitions" data-testid="returns-return-definitions">
+        <p><strong>Pure Equity IRR</strong> is the return on legal equity contributions and distributions only; it excludes shareholder-loan funding and shareholder-loan principal or interest receipts.</p>
+        <p><strong>Total Sponsor IRR</strong> is the sponsor return including equity and shareholder-loan cash flows.</p>
       </div>
       <p class="v2-returns-note">Values remain tied to this Last Run until another Run is committed. Missing persisted evidence is shown as NOT AVAILABLE, never as zero.</p>
     </section>

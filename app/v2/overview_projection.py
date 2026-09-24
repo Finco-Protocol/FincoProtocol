@@ -157,7 +157,7 @@ def build_overview_projection(
     _rs_thawed = thaw_runtime_payload(_rs_raw) if _rs_raw else {}
     rs: Dict[str, Any] = extract_numeric_runtime_kpis(_rs_thawed)
 
-    _PCT_KEYS  = {"project_irr", "equity_irr"}
+    _PCT_KEYS  = {"project_irr", "equity_irr", "sponsor_irr"}
     _RATIO_KEYS = {"avg_dscr", "min_dscr"}
     _KEUR_KEYS  = {"total_capex_keur", "senior_debt_keur",
                    "total_revenue_keur", "total_ebitda_keur", "total_cfads_keur"}
@@ -262,9 +262,15 @@ def build_overview_projection(
         else "stale" if state == RuntimeProjectionState.STALE
         else "current"
     )
+    _sponsor_raw = getattr(rr, "sponsor_schedule", None) if rr else None
+    _sponsor = thaw_runtime_payload(_sponsor_raw) if _sponsor_raw else {}
+    _sponsor_summary = (
+        _sponsor.get("summary", {}) if isinstance(_sponsor, dict) else {}
+    )
     _output_metrics = build_overview_metric_projections(
         rs,
         _debt_summary,
+        _sponsor_summary,
         freshness=_freshness,
         scenario_id=None,
         run_timestamp=_ran_at,
