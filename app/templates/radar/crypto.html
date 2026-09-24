@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — Crypto</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/crypto.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar crypto-page">
+{% with proto_active_page="radar" %}
+{% include "partials/_protocol_nav.html" %}
+{% endwith %}
+{% include "radar/domain_nav.html" %}
+
+<main class="radar-main crypto-main">
+  <header class="crypto-hero">
+    <div>
+      <p class="crypto-eyebrow">FINCO RADAR / DIGITAL ASSETS</p>
+      <h1>Crypto Overview</h1>
+      <p class="muted">Global market state and major-asset context with explicit source timestamps and provenance.</p>
+    </div>
+    <div class="crypto-health" data-state="{{ dashboard.state }}">
+      <span class="crypto-health__state">{{ dashboard.state }}</span>
+      <span>{{ dashboard.fresh_count }} fresh · {{ dashboard.stale_count }} stale · {{ dashboard.unavailable_count }} unavailable</span>
+    </div>
+  </header>
+
+  {% if dashboard.reason %}
+  <section class="panel panel-error crypto-top-error">
+    <h2>Crypto data unavailable</h2>
+    <p class="state-unavailable mono">{{ dashboard.reason }}</p>
+    <p class="muted small">No substitute market values are displayed.</p>
+  </section>
+  {% endif %}
+
+  {% for section in dashboard.sections %}
+  <section class="crypto-section" id="crypto-{{ section.key }}" data-crypto-section="{{ section.key }}">
+    <div class="crypto-section__heading">
+      <h2>{{ section.title }}</h2>
+      {% if section.key == 'market-overview' %}<span class="muted small">Global market context</span>{% else %}<span class="muted small">BTC · ETH</span>{% endif %}
+    </div>
+    <div class="crypto-metric-grid">
+      {% for row in section.rows %}
+      <article class="panel crypto-metric" data-crypto-key="{{ row.key }}" data-state="{{ row.state }}">
+        <div class="crypto-metric__top">
+          <span class="crypto-metric__title">{{ row.title }}</span>
+          <span class="crypto-state crypto-state--{{ row.state|lower }}">{{ row.state }}</span>
+        </div>
+        <div class="crypto-metric__value">{{ row.value_display }}</div>
+        <div class="crypto-metric__meta">
+          {% if row.change_24h is not none %}
+          <span class="crypto-change {% if row.change_24h > 0 %}crypto-change--up{% elif row.change_24h < 0 %}crypto-change--down{% endif %}">{{ row.change_24h_display }} 24h</span>
+          {% else %}
+          <span class="muted">24h change —</span>
+          {% endif %}
+          <span class="mono">{{ row.observed_at or '—' }}</span>
+        </div>
+        <div class="crypto-metric__source">
+          <a href="{{ row.source_url }}" target="_blank" rel="noopener noreferrer">{{ row.publisher }}</a>
+          <span class="mono">{{ row.source_endpoint }} · {{ row.source_id }}</span>
+        </div>
+        {% if row.reason %}<div class="crypto-reason mono">{{ row.reason }}</div>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <footer class="crypto-footnote">
+    <span>Read-only market intelligence.</span>
+    <span>CoinGecko Demo API is transport + publisher for this slice; unavailable evidence fails closed.</span>
+  </footer>
+</main>
+</body>
+</html>
