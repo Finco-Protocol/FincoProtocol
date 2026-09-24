@@ -18,6 +18,7 @@ from app.api.v1.model_reference import (
     get_pi,
     is_supported_key,
 )
+from app.reference_detail_catalog import PUBLIC_GENERIC_DETAIL_V1
 from app.services.reference_seed_service import build_reference_scaling_preview
 
 MAX_CAPACITY_MW: float = 10_000.0
@@ -100,5 +101,7 @@ def build_preview_response_data(key: str, capacity_mw: float) -> dict[str, Any]:
             "market_benchmark": False,
             "scaling_authority": "REFERENCE_SEED",
             "preview_only": True,
+            "preview_granularity": "CANONICAL_PARENT",
+            "detail_catalog_authority": PUBLIC_GENERIC_DETAIL_V1,
         },
     }

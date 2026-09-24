@@ -132,6 +132,12 @@ def post_model_reference_preview(
     """
     if not _ref.is_supported_key(reference_key):
         return _not_found(reference_key)
+    extra = body.model_extra
+    if extra:
+        extra_keys = ", ".join(sorted(extra.keys()))
+        return _preview_invalid(
+            f"Unexpected field(s): {extra_keys}. Only capacity_mw is accepted."
+        )
     capacity_mw, err = _preview.validate_capacity_mw(body.capacity_mw)
     if err:
         return _preview_invalid(err)

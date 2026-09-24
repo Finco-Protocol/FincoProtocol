@@ -809,3 +809,188 @@ def test_a4_extra_10_envelope_has_api_version(client):
     r = _solar(client, 64.0)
     assert r.json()["api_version"] == "v1"
     assert r.json()["state"] == "AVAILABLE"
+
+
+# ── Correction A: C01–C18 ─────────────────────────────────────────────────────
+
+# C01–C02: Public semantics — preview_granularity and detail_catalog_authority
+
+def test_c01_preview_granularity_canonical_parent_solar(client):
+    r = _solar(client, 64.0)
+    assert r.json()["data"]["reference_semantics"]["preview_granularity"] == "CANONICAL_PARENT"
+
+
+def test_c02_detail_catalog_authority_public_generic_v1_solar(client):
+    r = _solar(client, 64.0)
+    assert r.json()["data"]["reference_semantics"]["detail_catalog_authority"] == "PUBLIC_GENERIC_DETAIL_V1"
+
+
+def test_c02b_preview_granularity_canonical_parent_wind(client):
+    r = _wind(client, 48.0)
+    assert r.json()["data"]["reference_semantics"]["preview_granularity"] == "CANONICAL_PARENT"
+
+
+def test_c02c_detail_catalog_authority_wind(client):
+    r = _wind(client, 48.0)
+    assert r.json()["data"]["reference_semantics"]["detail_catalog_authority"] == "PUBLIC_GENERIC_DETAIL_V1"
+
+
+# C03–C06: min_llcr preserved financing assumption
+
+def test_c03_min_llcr_present_solar(client):
+    r = _solar(client, 64.0)
+    assert "min_llcr" in r.json()["data"]["preserved_assumptions"]["financing"]
+
+
+def test_c04_min_llcr_present_wind(client):
+    r = _wind(client, 48.0)
+    assert "min_llcr" in r.json()["data"]["preserved_assumptions"]["financing"]
+
+
+def test_c05_min_llcr_is_float(client):
+    r = _solar(client, 64.0)
+    v = r.json()["data"]["preserved_assumptions"]["financing"]["min_llcr"]
+    assert isinstance(v, (int, float))
+    assert v > 0
+
+
+def test_c06_min_llcr_value_solar(client):
+    from app.api.v1.model_reference import get_pi as _get_pi
+    pi = _get_pi("generic_solar_reference")
+    expected = float(pi.financing.min_llcr)
+    r = _solar(client, 64.0)
+    actual = r.json()["data"]["preserved_assumptions"]["financing"]["min_llcr"]
+    assert actual == pytest.approx(expected)
+
+
+# C07–C10: Strict extra-field rejection + OpenAPI
+
+def test_c07_extra_field_returns_400(client):
+    r = _post(client, "generic_solar_reference", {"capacity_mw": 100.0, "extra_field": "bad"})
+    assert r.status_code == 400
+
+
+def test_c08_extra_field_error_code(client):
+    r = _post(client, "generic_solar_reference", {"capacity_mw": 100.0, "extra_field": "bad"})
+    assert r.json()["error"] == "MODEL_PREVIEW_REQUEST_INVALID"
+
+
+def test_c09_extra_field_error_mentions_key(client):
+    r = _post(client, "generic_solar_reference", {"capacity_mw": 100.0, "bogus_key": 1})
+    assert "bogus_key" in r.json()["detail"]
+
+
+def test_c10_openapi_additional_properties_false(client):
+    schema = client.get("/openapi.json").json()
+    op = schema["paths"]["/api/v1/model/references/{reference_key}/preview"]["post"]
+    ref_name = op["requestBody"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1]
+    req_schema = schema["components"]["schemas"][ref_name]
+    assert req_schema.get("additionalProperties") is False
+
+
+# C11–C14: CAPEX/OPEX parent-child reconciliation at reference capacity
+
+def test_c11_solar_capex_parent_equals_detail_child_sum(client):
+    from app.reference_detail_catalog import capex_children, allocate_parent_amount
+    r = _solar(client, 64.0)
+    items = r.json()["data"]["capex"]["items"]
+    for item in items:
+        code = item["owner_category_code"]
+        parent_amt = item["reference_amount_keur"]
+        children = capex_children("solar", code)
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(parent_amt, children))
+        assert child_sum == pytest.approx(parent_amt), f"{code}: parent={parent_amt} child_sum={child_sum}"
+
+
+def test_c12_wind_capex_parent_equals_detail_child_sum(client):
+    from app.reference_detail_catalog import capex_children, allocate_parent_amount
+    r = _wind(client, 48.0)
+    items = r.json()["data"]["capex"]["items"]
+    for item in items:
+        code = item["owner_category_code"]
+        parent_amt = item["reference_amount_keur"]
+        children = capex_children("wind", code)
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(parent_amt, children))
+        assert child_sum == pytest.approx(parent_amt), f"{code}: parent={parent_amt} child_sum={child_sum}"
+
+
+def test_c13_solar_opex_parent_equals_detail_child_sum(client):
+    from app.reference_detail_catalog import opex_children, allocate_parent_amount
+    r = _solar(client, 64.0)
+    items = r.json()["data"]["opex"]["items"]
+    for item in items:
+        group = item.get("group_code")
+        if group is None:
+            continue
+        parent_amt = item["reference_amount_keur"]
+        children = opex_children(group, "solar")
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(parent_amt, children))
+        assert child_sum == pytest.approx(parent_amt), f"{group}: parent={parent_amt} child_sum={child_sum}"
+
+
+def test_c14_wind_opex_parent_equals_detail_child_sum(client):
+    from app.reference_detail_catalog import opex_children, allocate_parent_amount
+    r = _wind(client, 48.0)
+    items = r.json()["data"]["opex"]["items"]
+    for item in items:
+        group = item.get("group_code")
+        if group is None:
+            continue
+        parent_amt = item["reference_amount_keur"]
+        children = opex_children(group, "wind")
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(parent_amt, children))
+        assert child_sum == pytest.approx(parent_amt), f"{group}: parent={parent_amt} child_sum={child_sum}"
+
+
+# C15–C18: Scaled child sums reconcile to scaled A4 parent amounts
+
+def test_c15_solar_scaled_capex_child_sum_reconciles(client):
+    from app.reference_detail_catalog import capex_children, allocate_parent_amount
+    r = _solar(client, 128.0)
+    items = r.json()["data"]["capex"]["items"]
+    for item in items:
+        code = item["owner_category_code"]
+        scaled_amt = item["scaled_amount_keur"]
+        children = capex_children("solar", code)
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(scaled_amt, children))
+        assert child_sum == pytest.approx(scaled_amt), f"{code}: scaled={scaled_amt} child_sum={child_sum}"
+
+
+def test_c16_wind_scaled_capex_child_sum_reconciles(client):
+    from app.reference_detail_catalog import capex_children, allocate_parent_amount
+    r = _wind(client, 24.0)
+    items = r.json()["data"]["capex"]["items"]
+    for item in items:
+        code = item["owner_category_code"]
+        scaled_amt = item["scaled_amount_keur"]
+        children = capex_children("wind", code)
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(scaled_amt, children))
+        assert child_sum == pytest.approx(scaled_amt), f"{code}: scaled={scaled_amt} child_sum={child_sum}"
+
+
+def test_c17_solar_scaled_opex_child_sum_reconciles(client):
+    from app.reference_detail_catalog import opex_children, allocate_parent_amount
+    r = _solar(client, 128.0)
+    items = r.json()["data"]["opex"]["items"]
+    for item in items:
+        group = item.get("group_code")
+        if group is None:
+            continue
+        scaled_amt = item["scaled_amount_keur"]
+        children = opex_children(group, "solar")
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(scaled_amt, children))
+        assert child_sum == pytest.approx(scaled_amt), f"{group}: scaled={scaled_amt} child_sum={child_sum}"
+
+
+def test_c18_wind_scaled_opex_child_sum_reconciles(client):
+    from app.reference_detail_catalog import opex_children, allocate_parent_amount
+    r = _wind(client, 24.0)
+    items = r.json()["data"]["opex"]["items"]
+    for item in items:
+        group = item.get("group_code")
+        if group is None:
+            continue
+        scaled_amt = item["scaled_amount_keur"]
+        children = opex_children(group, "wind")
+        child_sum = sum(float(ca) for _, ca in allocate_parent_amount(scaled_amt, children))
+        assert child_sum == pytest.approx(scaled_amt), f"{group}: scaled={scaled_amt} child_sum={child_sum}"
