@@ -1,1 +1,39 @@
-.derivatives-main{display:flex;flex-direction:column;gap:14px}.derivatives-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:22px;padding:8px 2px 4px}.derivatives-eyebrow{margin:0;color:var(--radar-gold,#d7b46a);font-size:10px;font-weight:700;letter-spacing:.14em}.derivatives-hero h1{margin:2px 0 6px;font-size:30px;color:var(--radar-text,#e8edf2)}.derivatives-health{display:flex;flex-direction:column;align-items:flex-end;gap:3px;color:var(--radar-muted,#8d98a5);font-size:10px}.derivatives-health__state{font-weight:750;letter-spacing:.08em;color:#8dc7a0}.derivatives-health[data-state="UNAVAILABLE"] .derivatives-health__state{color:#d48b8b}.derivatives-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.derivatives-summary-card{padding:14px;display:flex;flex-direction:column;gap:5px}.derivatives-summary-card span{font-size:10px;color:var(--radar-muted,#8d98a5)}.derivatives-summary-card strong{font-size:22px;color:var(--radar-text,#e8edf2);font-variant-numeric:tabular-nums}.derivatives-summary-card small{color:var(--radar-muted,#7f8995);font-size:9px}.derivatives-table-panel{padding:0;overflow:hidden}.derivatives-table-heading{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--radar-border,#29313a)}.derivatives-table-heading h2{margin:0;font-size:14px}.derivatives-table-wrap{overflow-x:auto}.derivatives-table{width:100%;border-collapse:collapse;min-width:1050px;font-size:12px}.derivatives-table th{padding:9px 12px;text-align:left;color:var(--radar-muted,#8d98a5);font-size:9px;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.018);border-bottom:1px solid var(--radar-border,#29313a)}.derivatives-table td{padding:12px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.045);font-variant-numeric:tabular-nums;color:var(--radar-text,#d7dee5)}.derivatives-table tbody tr:last-child td{border-bottom:0}.derivatives-table td small{display:block;margin-top:3px;color:var(--radar-muted,#7f8995);font-size:8px}.derivatives-up{color:#8dc7a0!important}.derivatives-down{color:#d48b8b!important}.derivatives-provenance{padding:14px;display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:14px;align-items:start;font-size:10px}.derivatives-provenance div{display:flex;flex-direction:column;gap:4px}.derivatives-provenance strong{color:var(--radar-muted,#8d98a5)}.derivatives-provenance span{color:var(--radar-text,#cbd3db)}.derivatives-provenance a{color:var(--radar-text,#cbd3db);text-decoration:none;white-space:nowrap}.derivatives-provenance a:hover{text-decoration:underline}@media(max-width:900px){.derivatives-summary{grid-template-columns:1fr}.derivatives-provenance{grid-template-columns:1fr 1fr}.derivatives-hero{align-items:flex-start;flex-direction:column}.derivatives-health{align-items:flex-start}}@media(max-width:620px){.derivatives-provenance{grid-template-columns:1fr}}
+.derivatives-main{display:flex;flex-direction:column;gap:14px}
+.derivatives-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:22px;padding:8px 2px 4px}
+.derivatives-eyebrow{margin:0;color:var(--radar-gold,#d7b46a);font-size:10px;font-weight:700;letter-spacing:.14em}
+.derivatives-hero h1{margin:2px 0 6px;font-size:30px;color:var(--radar-text,#e8edf2)}
+.derivatives-health{display:flex;flex-direction:column;align-items:flex-end;gap:3px;color:var(--radar-muted,#8d98a5);font-size:10px}
+.derivatives-health__state{font-weight:750;letter-spacing:.08em;color:#8dc7a0}
+.derivatives-health[data-state="UNAVAILABLE"] .derivatives-health__state{color:#d48b8b}
+.derivatives-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.derivatives-summary-card{padding:14px;display:flex;flex-direction:column;gap:5px}
+.derivatives-summary-card span{font-size:10px;color:var(--radar-muted,#8d98a5)}
+.derivatives-summary-card strong{font-size:22px;color:var(--radar-text,#e8edf2);font-variant-numeric:tabular-nums}
+.derivatives-summary-card small{color:var(--radar-muted,#7f8995);font-size:9px}
+.derivatives-table-panel{padding:0;overflow:hidden}
+.derivatives-table-heading{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;border-bottom:1px solid var(--radar-border,#29313a);gap:12px}
+.derivatives-table-heading h2{margin:0;font-size:14px}
+.derivatives-table-wrap{overflow-x:auto}
+.derivatives-table{width:100%;border-collapse:collapse;min-width:1050px;font-size:12px}
+.derivatives-table--wide{min-width:1500px}
+.derivatives-table--funding{min-width:900px}
+.derivatives-table th{padding:9px 12px;text-align:left;color:var(--radar-muted,#8d98a5);font-size:9px;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.018);border-bottom:1px solid var(--radar-border,#29313a)}
+.derivatives-table td{padding:12px;vertical-align:top;border-bottom:1px solid rgba(255,255,255,.045);font-variant-numeric:tabular-nums;color:var(--radar-text,#d7dee5)}
+.derivatives-table tbody tr:last-child td{border-bottom:0}
+.derivatives-table td small{display:block;margin-top:3px;color:var(--radar-muted,#7f8995);font-size:8px}
+.derivatives-up{color:#8dc7a0!important}
+.derivatives-down{color:#d48b8b!important}
+.derivatives-mini-state{font-size:9px;font-weight:750;letter-spacing:.07em;color:#8dc7a0}
+.derivatives-mini-state[data-state="UNAVAILABLE"]{color:#d48b8b}
+.derivatives-note{margin:0;padding:9px 14px;border-top:1px solid rgba(255,255,255,.045);font-size:9px;color:var(--radar-muted,#7f8995)}
+.derivatives-aux-unavailable{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;color:var(--radar-muted,#8d98a5);font-size:10px}
+.derivatives-aux-unavailable code{color:#d48b8b;font-size:9px}
+.derivatives-provenance{padding:14px;display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:14px;align-items:start;font-size:10px}
+.derivatives-provenance div{display:flex;flex-direction:column;gap:4px}
+.derivatives-provenance strong{color:var(--radar-muted,#8d98a5)}
+.derivatives-provenance span{color:var(--radar-text,#cbd3db)}
+.derivatives-provenance a{color:var(--radar-text,#cbd3db);text-decoration:none;white-space:nowrap}
+.derivatives-provenance a:hover{text-decoration:underline}
+@media(max-width:1100px){.derivatives-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.derivatives-provenance{grid-template-columns:1fr 1fr}.derivatives-hero{align-items:flex-start;flex-direction:column}.derivatives-health{align-items:flex-start}}
+@media(max-width:620px){.derivatives-summary{grid-template-columns:1fr}.derivatives-provenance{grid-template-columns:1fr}.derivatives-aux-unavailable{align-items:flex-start;flex-direction:column}}
