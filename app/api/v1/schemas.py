@@ -1,4 +1,4 @@
-"""A1 Radar API Pydantic response schemas.
+"""A1/A2 Radar API Pydantic response schemas.
 
 All response bodies follow the standard envelope:
   {
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 API_VERSION = "v1"
 
@@ -196,3 +196,78 @@ def lineage_out(lin) -> Dict[str, Any]:
         "normalized_ref": lin.normalized_ref,
         "fetched_at": lin.fetched_at,
     }
+
+
+# ── A2: execution simulation schemas ─────────────────────────────────────────
+
+
+def _fix_execution_simulation_request_schema(schema: dict) -> None:
+    """Override OpenAPI schema to document the strict public string contract.
+
+    Runtime fields remain Any so malformed values reach the handler and return
+    400 rather than Pydantic 422.  This callable replaces the generated Any
+    field schemas with the accurate public enum contract and marks both fields
+    required."""
+    schema["required"] = ["direction", "notional_usd"]
+    props = schema.setdefault("properties", {})
+    props["direction"] = {
+        "type": "string",
+        "enum": ["BUY", "SELL"],
+        "description": "Trade direction: 'BUY' or 'SELL'.",
+        "examples": ["BUY", "SELL"],
+        "title": "Direction",
+    }
+    props["notional_usd"] = {
+        "type": "string",
+        "enum": ["100", "1000"],
+        "description": "Requested notional in USD (exact string: '100' or '1000').",
+        "examples": ["100", "1000"],
+        "title": "Notional Usd",
+    }
+
+
+class ExecutionSimulationRequest(BaseModel):
+    """A2 POST body: direction and notional_usd.
+
+    Both fields use Any internally so Pydantic never raises 422 for field
+    value errors; the route handler owns all public validation and returns
+    400 explicitly.
+
+    Public contract: STRICT STRING INPUT ONLY.
+    Valid:    "100", "1000" for notional_usd; "BUY", "SELL" for direction.
+    Invalid:  integers, floats, booleans, null, arrays, objects — all → 400.
+
+    OpenAPI schema is overridden via json_schema_extra to expose the correct
+    string enum contract while preserving the Any runtime type.
+    """
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra=_fix_execution_simulation_request_schema,
+    )
+
+    direction: Any = Field(
+        default=None,
+        description="Trade direction: 'BUY' or 'SELL'.",
+        examples=["BUY", "SELL"],
+    )
+    notional_usd: Any = Field(
+        default=None,
+        description="Requested notional in USD (exact string: '100' or '1000').",
+        examples=["100", "1000"],
+    )
+
+
+class ExecutionSimulationEnvelope(BaseModel):
+    """A2 POST /execution-simulation response envelope."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    state: str
+    economic_asset_uid: Optional[str] = None
+    snapshot_id: Optional[str] = None
+    simulation: Optional[Dict[str, Any]] = None
+    identity: Optional[Dict[str, Any]] = None
+    reference: Optional[Dict[str, Any]] = None
+    execution: Optional[Dict[str, Any]] = None
+    gap: Optional[Dict[str, Any]] = None
+    freshness: Optional[Dict[str, Any]] = None
