@@ -257,6 +257,23 @@ class ExecutionSimulationRequest(BaseModel):
     )
 
 
+class ModelReferenceListEnvelope(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    state: str
+    data: Optional[Dict[str, Any]] = None
+
+
+class ModelReferenceEnvelope(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = API_VERSION
+    state: str
+    reference_key: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+
 class ExecutionSimulationEnvelope(BaseModel):
     """A2 POST /execution-simulation response envelope."""
     model_config = ConfigDict(populate_by_name=True)
