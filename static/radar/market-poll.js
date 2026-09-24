@@ -40,11 +40,12 @@
 
   function apply(node, state) {
     // The Featured board is an operational shortlist, not an error report.
-    // A row remains visible only while its canonical market reference is
-    // available.  This preserves the row's UID/terminal identity while
-    // fail-closing a runtime gap instead of presenting a broken CTA.
+    // A row remains visible only when it has both a canonical asset UID and a
+    // fresh official market reference.  Missing/ambiguous identity therefore
+    // stays fail-closed even if a symbol-only market row happens to exist.
     if (node.matches && node.matches('[data-featured-row]')) {
-      const usableReference = !!state && state.state === 'FRESH' && state.price != null;
+      const hasCanonicalIdentity = !!(node.dataset.marketUid || '').trim();
+      const usableReference = hasCanonicalIdentity && !!state && state.state === 'FRESH' && state.price != null;
       node.hidden = !usableReference;
     }
     const price = node.querySelector('[data-market-price]');
