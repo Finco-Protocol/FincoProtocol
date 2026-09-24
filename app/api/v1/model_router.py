@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1 import model_preview as _preview
 from app.api.v1 import model_reference as _ref
+from app.api.v1 import model_run as _run
 from app.api.v1.schemas import (
     API_VERSION,
     ApiErrorEnvelope,
@@ -24,6 +25,8 @@ from app.api.v1.schemas import (
     ModelReferenceListEnvelope,
     ModelReferencePreviewEnvelope,
     ModelReferencePreviewRequest,
+    ModelReferenceRunEnvelope,
+    ModelReferenceRunRequest,
 )
 
 router = APIRouter()
@@ -46,6 +49,28 @@ def _preview_invalid(detail: str) -> JSONResponse:
         content={
             "api_version": API_VERSION,
             "error": "MODEL_PREVIEW_REQUEST_INVALID",
+            "detail": detail,
+        },
+    )
+
+
+def _run_invalid(detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={
+            "api_version": API_VERSION,
+            "error": "MODEL_RUN_REQUEST_INVALID",
+            "detail": detail,
+        },
+    )
+
+
+def _run_unavailable(detail: str, error: str = "MODEL_RUN_ENGINE_UNAVAILABLE") -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "api_version": API_VERSION,
+            "error": error,
             "detail": detail,
         },
     )
@@ -140,6 +165,68 @@ def post_model_reference_preview(
         return _preview_invalid(err)
     data = _preview.build_preview_response_data(reference_key, capacity_mw)
     return ModelReferencePreviewEnvelope(
+        state="AVAILABLE",
+        reference_key=reference_key,
+        data=data,
+    )
+
+
+# ── POST /api/v1/model/references/{reference_key}/run ────────────────────────
+
+@router.post(
+    "/model/references/{reference_key}/run",
+    response_model=ModelReferenceRunEnvelope,
+    responses={
+        400: {"model": ApiErrorEnvelope},
+        404: {"model": ApiErrorEnvelope},
+        503: {"model": ApiErrorEnvelope},
+    },
+)
+def post_model_reference_run(
+    reference_key: str,
+    body: ModelReferenceRunRequest,
+) -> JSONResponse | ModelReferenceRunEnvelope:
+    """Stateless production model run for one canonical reference at requested capacity.
+
+    Executes exactly one canonical production financial calculation (clean G2C engine).
+    Returns summary KPIs. Zero project creation. Zero DB writes. Zero persistence.
+    """
+    from app.services.production_financial_authority import (
+        CleanNotReadyError,
+        CleanProductionRunUnavailable,
+        ProductionAuthorityResolutionError,
+    )
+
+    if not _ref.is_supported_key(reference_key):
+        return _not_found(reference_key)
+    extra = body.model_extra
+    if extra:
+        return _run_invalid("Only capacity_mw is accepted.")
+    capacity_mw, err = _preview.validate_capacity_mw(body.capacity_mw)
+    if err:
+        return _run_invalid(err)
+
+    from app.api.v1.run_limiter import acquire_run_slot, release_run_slot
+    if not acquire_run_slot():
+        return _run_unavailable(
+            "Model run capacity currently exhausted. Retry shortly.",
+            error="MODEL_RUN_CAPACITY_EXHAUSTED",
+        )
+    try:
+        data = _run.build_run_response_data(reference_key, capacity_mw)
+    except CleanNotReadyError as exc:
+        return _run_unavailable(exc.detail, error="MODEL_RUN_NOT_READY")
+    except (CleanProductionRunUnavailable, ProductionAuthorityResolutionError) as exc:
+        return _run_unavailable(exc.detail)
+    except Exception as exc:
+        return _run_unavailable(
+            f"Internal error during model run: {type(exc).__name__}",
+            error="MODEL_RUN_INTERNAL_ERROR",
+        )
+    finally:
+        release_run_slot()
+
+    return ModelReferenceRunEnvelope(
         state="AVAILABLE",
         reference_key=reference_key,
         data=data,
