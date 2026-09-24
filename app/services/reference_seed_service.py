@@ -386,8 +386,20 @@ def canonical_capex_reference_items(pi) -> dict:
 
 
 def canonical_opex_reference_items(pi) -> dict:
-    """Return canonical OPEX items dict for a reference ProjectInputs (read-only)."""
-    return _canonical_opex_items(pi)
+    """Return enriched OPEX items with group_code for a reference ProjectInputs (read-only).
+
+    Adds group_code from the same _OPEX_GROUP_BY_REFERENCE_NAME authority used by
+    create_reference_seeded_project().  Returns a copy; private helper is unchanged.
+    """
+    raw = _canonical_opex_items(pi)
+    enriched = {}
+    for key, item in raw.items():
+        e = dict(item)
+        e["group_code"] = _OPEX_GROUP_BY_REFERENCE_NAME.get(key)
+        e["label"] = e.get("canonical_label", key)
+        e["annual_inflation_rate"] = e.pop("annual_inflation", None)
+        enriched[key] = e
+    return enriched
 
 
 def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
