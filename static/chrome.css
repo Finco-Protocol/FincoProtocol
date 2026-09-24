@@ -144,6 +144,27 @@
   outline-offset: 2px;
 }
 
+/* Placeholder nav items in the brand bar — non-interactive future areas */
+.fo-brand-bar__action--placeholder {
+  color: var(--fo-ink-faint);
+  cursor: default;
+  user-select: none;
+  opacity: 0.5;
+}
+
+.fo-brand-bar__action--placeholder:hover {
+  background: transparent;
+  color: var(--fo-ink-faint);
+  border-color: var(--fo-line);
+}
+
+/* Hide placeholders at narrower widths to preserve 28 px chrome height */
+@media (max-width: 900px) {
+  .fo-brand-bar__nav--soon {
+    display: none;
+  }
+}
+
 .fo-brand-bar__kbd {
   font-family: var(--fo-font-mono);
   font-size: 10px;

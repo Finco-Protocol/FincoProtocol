@@ -1,0 +1,431 @@
+/* ============================================================================
+   FINCO Protocol — API Beta Surface  ·  static/css/protocol-api.css
+   Institutional, developer-oriented. Inherits tokens from tokens.css.
+   ========================================================================== */
+
+.papi {
+  min-height: calc(100vh - 48px);
+  background: #f9fafb;
+  font-family: var(--fo-font-ui);
+}
+
+/* ── Page Header ── */
+
+.papi__header {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e6ec;
+  padding: 48px 32px 40px;
+}
+
+.papi__header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.papi__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #1a56db;
+  margin: 0 0 12px;
+  padding-left: 10px;
+  border-left: 2px solid #1a56db;
+}
+
+.papi__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.papi__title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #0c1117;
+  margin: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.papi__beta-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1a56db;
+  border: 1px solid rgba(26,86,219,0.5);
+  border-radius: 3px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.papi__subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: #374151;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.papi__desc {
+  font-size: 13.5px;
+  color: #6b7280;
+  margin: 0 0 20px;
+  line-height: 1.6;
+  max-width: 640px;
+}
+
+.papi__base-url-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.papi__base-url-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.papi__base-url-value {
+  font-family: var(--fo-font-mono);
+  font-size: 13px;
+  color: #1f2937;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  padding: 3px 10px;
+  letter-spacing: 0.02em;
+}
+
+.papi__doc-links {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.papi__doc-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1a56db;
+  text-decoration: none;
+  transition: color 100ms ease;
+}
+
+.papi__doc-link:hover {
+  color: #1347b8;
+  text-decoration: underline;
+}
+
+/* ── Page Body ── */
+
+.papi__body {
+  padding: 40px 32px 64px;
+}
+
+.papi__body-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+}
+
+/* ── Sections ── */
+
+.papi__section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.papi__section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.papi__section-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.papi__section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.papi__section-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 4px 0 0;
+  line-height: 1.6;
+  max-width: 600px;
+}
+
+/* ── Endpoint Table ── */
+
+.papi__endpoint-table {
+  border: 1px solid #e5e9ef;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.papi__endpoint-table-head {
+  display: grid;
+  grid-template-columns: 72px 1fr 1fr;
+  gap: 0;
+  padding: 8px 16px;
+  background: #f8f9fb;
+  border-bottom: 1px solid #e5e9ef;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.papi__endpoint-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 1fr;
+  gap: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f2f5;
+  align-items: start;
+}
+
+.papi__endpoint-row:last-child {
+  border-bottom: none;
+}
+
+.papi__endpoint-row:hover {
+  background: #fafbfc;
+}
+
+/* ── Method Badges ── */
+
+.papi__method {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  padding: 2px 7px;
+  font-family: var(--fo-font-mono);
+}
+
+.papi__method--get {
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.papi__method--post {
+  color: #1a56db;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+/* ── Paths ── */
+
+.papi__path {
+  font-family: var(--fo-font-mono);
+  font-size: 12px;
+  color: #1f2937;
+  background: transparent;
+  word-break: break-all;
+}
+
+.papi__path-param {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* ── Description ── */
+
+.papi__endpoint-desc {
+  font-size: 12.5px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.papi__endpoint-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.papi__tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 2px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.papi__tag--stateless {
+  color: #1a56db;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.papi__tag--readonly {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+/* ── Examples ── */
+
+.papi__examples {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.papi__example {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.papi__example-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  letter-spacing: 0.01em;
+}
+
+.papi__code-block {
+  background: #0f1318;
+  border: 1px solid #1e2530;
+  border-radius: 3px;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+
+.papi__code-block pre {
+  margin: 0;
+  padding: 0;
+}
+
+.papi__code-block code {
+  font-family: var(--fo-font-mono);
+  font-size: 12.5px;
+  color: #c8d3da;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+/* ── Coming Next ── */
+
+.papi__coming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid #e5e9ef;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.papi__coming-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.papi__coming-item:last-child {
+  border-bottom: none;
+}
+
+.papi__coming-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.papi__coming-soon {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c9a55c;
+  border: 1px solid rgba(201,165,92,0.4);
+  border-radius: 2px;
+  padding: 2px 7px;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+  .papi__header {
+    padding: 40px 24px 32px;
+  }
+
+  .papi__body {
+    padding: 32px 24px 48px;
+  }
+
+  .papi__endpoint-table-head,
+  .papi__endpoint-row {
+    grid-template-columns: 60px 1fr;
+  }
+
+  /* Collapse description into a second row on tablet */
+  .papi__endpoint-table-head > :last-child,
+  .papi__endpoint-row > :last-child {
+    grid-column: 1 / -1;
+    padding-top: 4px;
+    border-top: 1px solid #f0f2f5;
+    margin-top: 4px;
+  }
+}
+
+@media (max-width: 600px) {
+  .papi__header {
+    padding: 32px 16px 24px;
+  }
+
+  .papi__body {
+    padding: 24px 16px 40px;
+  }
+
+  .papi__title {
+    font-size: 24px;
+  }
+
+  .papi__endpoint-table-head,
+  .papi__endpoint-row {
+    grid-template-columns: 56px 1fr;
+  }
+
+  .papi__endpoint-table-head {
+    display: none;
+  }
+
+  .papi__path {
+    font-size: 11px;
+  }
+}
