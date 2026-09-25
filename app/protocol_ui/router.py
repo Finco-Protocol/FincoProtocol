@@ -6,8 +6,9 @@ conflict with the existing GET / handler would produce silent first-match wins.
 GET /api is the human-facing FINCO API Beta page (no auth required).
 GET /docs/start is the human-facing FINCO product documentation page (no auth required).
 The temporary /docs/start path avoids colliding with the web app's current FastAPI
-interactive docs route at /docs. A later route-foundation change can move Swagger
-under /api/docs and promote the product landing page to /docs.
+interactive docs route at /docs. Stable /api/docs and /api/openapi.json aliases are
+provided now so the backing API service can later own those paths without changing
+public links.
 
 Routes never touch financial economics, Radar authority, or frozen namespaces.
 Verify is network-free: it calls the deterministic public corpus builder only.
@@ -85,6 +86,18 @@ async def protocol_api_beta(request: Request):
             "api_base_url": api_base_url,
         },
     )
+
+
+@router.get("/api/docs", include_in_schema=False)
+async def protocol_api_docs_alias():
+    """Stable public alias for the current FastAPI Swagger surface."""
+    return RedirectResponse(url="/docs", status_code=307)
+
+
+@router.get("/api/openapi.json", include_in_schema=False)
+async def protocol_openapi_alias():
+    """Stable public alias for the current FastAPI OpenAPI schema."""
+    return RedirectResponse(url="/openapi.json", status_code=307)
 
 
 @router.get("/docs/start", response_class=HTMLResponse)
