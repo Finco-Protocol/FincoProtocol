@@ -5,20 +5,26 @@ completely free of renewable-vertical semantics leaking into any rendered
 surface.
 
 Coverage:
-  DC_CAPEX_NO_RENEWABLE_LEAKAGE   CAPEX taxonomy has no renewable sub-lines.
-  DC_OPEX_NO_RENEWABLE_LEAKAGE    OPEX taxonomy has no renewable sub-lines.
-  DC_POWER_RAMP_AND_ESCALATION    Power expenses ramp with occupancy + escalation.
-  DC_SENSITIVITY_DRIVERS          Sensitivity drivers are DC-native; renewable
-                                   drivers rejected with 422 for DC.
-  DC_SENSITIVITY_NOT_BLOCKED      Sensitivity endpoint returns 200 (not 409) for DC.
-  DC_REVENUE_SECTION_GUARD        is_data_center flag present in workbook context.
-  DC_OPEX_CATALOG_NO_METEO        B.01 for DC has no "Meteorological" item.
-  DC_OPEX_CATALOG_NO_VEGETATION   B.03 for DC has no "Vegetation Management".
-  DC_CATALOG_B01_DC_HAS_DCIM      B.01 for DC has DCIM/monitoring item.
-  DC_CATALOG_B03_DC_HAS_ROAD      B.03 for DC has road/perimeter maintenance.
-  DC_ROUTER_IS_DC_IN_BASE_CTX     _base_sheet_ctx includes is_data_center.
-  DC_SOLAR_NO_REGRESSION          Solar economics unchanged by this correction.
-  DC_WIND_NO_REGRESSION           Wind economics unchanged by this correction.
+  DC_CAPEX_NO_RENEWABLE_LEAKAGE       CAPEX taxonomy has no renewable sub-lines.
+  DC_OPEX_NO_RENEWABLE_LEAKAGE        OPEX taxonomy has no renewable sub-lines.
+  DC_POWER_RAMP_AND_ESCALATION        Power expenses ramp with occupancy + escalation.
+  DC_SENSITIVITY_DRIVERS              Sensitivity drivers are DC-native; renewable
+                                       drivers rejected with 422 for DC.
+  DC_SENSITIVITY_NOT_BLOCKED          Sensitivity endpoint returns 200 (not 409) for DC.
+  DC_REVENUE_SECTION_GUARD            is_data_center flag present in workbook context.
+  DC_OPEX_CATALOG_NO_METEO            B.01 for DC has no "Meteorological" item.
+  DC_OPEX_CATALOG_NO_VEGETATION       B.03 for DC has no "Vegetation Management".
+  DC_CATALOG_B01_DC_HAS_DCIM          B.01 for DC has DCIM/monitoring item.
+  DC_CATALOG_B03_DC_HAS_ROAD          B.03 for DC has road/perimeter maintenance.
+  DC_ROUTER_IS_DC_IN_BASE_CTX         _base_sheet_ctx includes is_data_center.
+  DC_SOLAR_NO_REGRESSION              Solar economics unchanged by this correction.
+  DC_WIND_NO_REGRESSION               Wind economics unchanged by this correction.
+  DC_OCCUPANCY_SENSITIVITY_SCALE      dc_occupancy steps use percent-point units (e.g. 10.0 not 0.10).
+  DC_SERVICE_PRICE_SNAPSHOT_KEY       service_price snapshot_key matches registry canonical key.
+  DC_TERMINOLOGY_NO_IT_LOAD_HOURS     revenue template uses "Equivalent IT Load Energy" not "IT Load Hours".
+  DC_SOURCES_AND_USES_RECONCILE       Actual senior debt < 65% gearing cap (DSCR-sized, not max-capped).
+  DC_ACTUAL_GEARING_PRESENTATION      Actual gearing is derived from DSCR capacity, distinct from 65% max cap.
+  DC_HORIZON_PRESENTATION             DC projections use 20-year horizon with no Y21+ output.
 """
 from __future__ import annotations
 
@@ -190,31 +196,32 @@ def test_DC_POWER_RAMP_AND_ESCALATION():
 
     capacity_mw = 20.0
     steps = power_step_changes(d, capacity_mw=capacity_mw, horizon_years=20)
-    # steps is a list of (year_index, value) or similar — extract Y1/Y2/Y3
-    # The authority guarantees Y1 < Y2 < Y3 due to occupancy ramp.
-    # We reconstruct manually:
-    occ_y1 = d.occupancy_y1 if d.occupancy_y1 <= 1.0 else d.occupancy_y1 / 100.0
-    occ_y2 = d.occupancy_y2 if d.occupancy_y2 <= 1.0 else d.occupancy_y2 / 100.0
-    occ_stab = d.stabilized_occupancy if d.stabilized_occupancy <= 1.0 else d.stabilized_occupancy / 100.0
+    # steps is a tuple of (year, keur) from the canonical authority.
+    steps_dict = {yr: val for yr, val in steps}
 
-    def _power(occ):
-        return capacity_mw * occ * d.pue * 8_760.0 * d.electricity_price_eur_mwh / 1_000.0
+    # Pin the actual authority output — electricity escalation of 2%/yr is applied
+    # from Y1 (year^0 = 1.0 multiplier), so Y1 is NOT escalated but Y2+ are.
+    # Y1: 20 × 0.55 × 1.30 × 8760 × 70 / 1000 × 1.02^0 = 8,768.76 kEUR
+    # Y2: 20 × 0.70 × 1.30 × 8760 × 70 / 1000 × 1.02^1 = 11,383.44 kEUR
+    # Y3: 20 × 0.85 × 1.30 × 8760 × 70 / 1000 × 1.02^2 = 14,099.21 kEUR
+    # Y4: 20 × 0.85 × 1.30 × 8760 × 70 / 1000 × 1.02^3 = 14,381.19 kEUR
+    assert abs(steps_dict[1] - 8_768.76) < 1.0, f"Y1 power OPEX: {steps_dict[1]:.2f}"
+    assert abs(steps_dict[2] - 11_383.44) < 1.0, f"Y2 power OPEX (with 2% el. escalation): {steps_dict[2]:.2f}"
+    assert abs(steps_dict[3] - 14_099.21) < 1.0, f"Y3 power OPEX (with 2% el. escalation): {steps_dict[3]:.2f}"
+    assert abs(steps_dict[4] - 14_381.19) < 1.0, f"Y4 power OPEX (with 2% el. escalation): {steps_dict[4]:.2f}"
 
-    expected_y1 = _power(occ_y1)
-    expected_y2 = _power(occ_y2)
-    expected_y3 = _power(occ_stab)
-
-    assert expected_y1 < expected_y2 < expected_y3, (
-        f"Power OPEX should ramp: Y1={expected_y1:.2f} < Y2={expected_y2:.2f} < Y3={expected_y3:.2f}"
+    # Occupancy ramp: Y1 < Y2 (occupancy ramp); Y3 < Y4 (only escalation from Y3+)
+    assert steps_dict[1] < steps_dict[2] < steps_dict[3] < steps_dict[4], (
+        f"Power OPEX must increase each year: "
+        f"Y1={steps_dict[1]:.2f}, Y2={steps_dict[2]:.2f}, "
+        f"Y3={steps_dict[3]:.2f}, Y4={steps_dict[4]:.2f}"
     )
 
-    # Canonical values for 20 MW: PUE=1.30, el=70 EUR/MWh, 8,760 h/yr
-    # Y1: 20 × 0.55 × 1.30 × 8760 × 70 / 1000 = 8,768.76 kEUR
-    # Y2: 20 × 0.70 × 1.30 × 8760 × 70 / 1000 = 11,160.24 kEUR
-    # Y3: 20 × 0.85 × 1.30 × 8760 × 70 / 1000 = 13,551.72 kEUR
-    assert abs(expected_y1 - 8_768.76) < 1.0, f"Y1 power OPEX mismatch: {expected_y1:.2f}"
-    assert abs(expected_y2 - 11_160.24) < 1.0, f"Y2 power OPEX mismatch: {expected_y2:.2f}"
-    assert abs(expected_y3 - 13_551.72) < 1.0, f"Y3 power OPEX mismatch: {expected_y3:.2f}"
+    # Electricity escalation isolation: Y3→Y4 ratio must equal (1 + escalation)
+    ratio_y3_y4 = steps_dict[4] / steps_dict[3]
+    assert abs(ratio_y3_y4 - (1.0 + d.electricity_price_escalation)) < 0.0001, (
+        f"Y3→Y4 ratio {ratio_y3_y4:.6f} ≠ escalation factor {1+d.electricity_price_escalation:.6f}"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -353,3 +360,142 @@ def test_DC_OPEX_B03_WEIGHTS_SUM_100():
     dc_b03 = _OPEX_ROWS["data_center"].get("B.03", ())
     total = sum(w for _, w in dc_b03)
     assert total == 100, f"DC B.03 weights sum {total}, expected 100"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_OCCUPANCY_SENSITIVITY_SCALE — Correction A item 1
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_OCCUPANCY_SENSITIVITY_SCALE():
+    """dc_occupancy sensitivity steps must be in percent-point units (10.0 not 0.10).
+
+    Registry stores occupancy_stabilized as PCT (e.g. 85 = 85%).  absolute_add
+    steps of ±0.10 would shift 85 → 84.9 / 85.1 instead of the intended 75 / 95.
+    The correct steps are [-10.0, -5.0, 0.0, +5.0, +10.0].
+    """
+    src = _router_source()
+    # Locate the dc_occupancy spec block and verify it does NOT use the wrong scale.
+    # The wrong value 0.10 must not appear as a step for dc_occupancy.
+    # Proof by absence: steps [-0.10, ... in the dc_occupancy section is the bug.
+    import re
+    # Extract the dc_occupancy block.
+    m = re.search(r'"dc_occupancy"\s*:\s*\{(.+?)\},', src, re.DOTALL)
+    assert m, "DRIVER_SPECS must contain dc_occupancy entry"
+    block = m.group(1)
+    # Correct large-scale steps must be present.
+    assert "-10.0" in block or "- 10.0" in block, (
+        f"dc_occupancy steps must use -10.0 (pp scale), not -0.10. Block: {block[:200]}"
+    )
+    # Wrong small-scale steps must not be present.
+    assert "-0.10" not in block and "- 0.10" not in block, (
+        f"dc_occupancy steps must NOT use -0.10 (decimal scale). Block: {block[:200]}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_SERVICE_PRICE_SNAPSHOT_KEY — Correction A item 2
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_SERVICE_PRICE_SNAPSHOT_KEY():
+    """service_price snapshot_key must match the canonical registry key."""
+    src = _router_source()
+    # The canonical registry snapshot key is dc_service_price_eur_kw_month.
+    assert '"dc_service_price_eur_kw_month"' in src, (
+        "service_price snapshot_key must be dc_service_price_eur_kw_month "
+        "to match registry canonical key; found wrong value dc_service_price"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_TERMINOLOGY_NO_IT_LOAD_HOURS — Correction A item 9
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_TERMINOLOGY_NO_IT_LOAD_HOURS():
+    """Revenue template must not use 'IT Load Hours (MWh eq.)' — wrong units.
+
+    Hours ≠ MWh.  The correct label is 'Equivalent IT Load Energy (MWh)'.
+    """
+    from pathlib import Path
+    tmpl = Path("app/templates/v2/partials/sheet_revenue.html").read_text()
+    assert "IT Load Hours (MWh eq.)" not in tmpl, (
+        "Wrong terminology 'IT Load Hours (MWh eq.)' still present in revenue template"
+    )
+    assert "Equivalent IT Load Energy" in tmpl, (
+        "Correct terminology 'Equivalent IT Load Energy' not found in revenue template"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_SOURCES_AND_USES_RECONCILE — Correction A item 7
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_SOURCES_AND_USES_RECONCILE():
+    """Actual senior debt is sized by DSCR, not by the 65% maximum gearing cap.
+
+    DC reference: CAPEX = 200,000 kEUR, 65% cap = 130,000 kEUR.
+    DSCR-sized senior debt is significantly below the cap, giving actual gearing < 65%.
+    """
+    pytest.importorskip("dateutil", reason="dateutil required for engine run")
+    from app.project_factories import create_generic_data_center_reference
+    from app.services.production_financial_authority import run_clean_production
+    pi = create_generic_data_center_reference()
+    run = run_clean_production(pi, "Base", project_type="Data Center")
+    fin = run.g2c_result.financing_result
+    total_capex_keur = 200_000.0
+    max_gearing_cap = 0.65 * total_capex_keur  # 130,000 kEUR
+    senior_debt = getattr(fin, "final_senior_commitment_keur", None)
+    assert senior_debt is not None and math.isfinite(senior_debt) and senior_debt > 0, (
+        "Senior debt must be a finite positive number"
+    )
+    assert senior_debt < max_gearing_cap, (
+        f"Actual senior debt {senior_debt:,.0f} kEUR must be below 65% cap "
+        f"{max_gearing_cap:,.0f} kEUR — DSCR sculpt must bind"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_ACTUAL_GEARING_PRESENTATION — Correction A item 7
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_ACTUAL_GEARING_PRESENTATION():
+    """Actual gearing (senior_debt / CAPEX) must be strictly below the 65% input cap.
+
+    This verifies that the model does not confuse the maximum gearing input
+    parameter with the realized financing gearing ratio.
+    """
+    pytest.importorskip("dateutil", reason="dateutil required for engine run")
+    from app.project_factories import create_generic_data_center_reference
+    from app.services.production_financial_authority import run_clean_production
+    pi = create_generic_data_center_reference()
+    run = run_clean_production(pi, "Base", project_type="Data Center")
+    fin = run.g2c_result.financing_result
+    senior_debt = getattr(fin, "final_senior_commitment_keur", None)
+    assert senior_debt is not None, "Senior debt must be present"
+    actual_gearing = senior_debt / 200_000.0
+    # Actual gearing must be strictly below the 65% cap.
+    assert actual_gearing < 0.65, (
+        f"Actual gearing {actual_gearing:.1%} must be below the 65% cap"
+    )
+    # Also must be a non-trivial amount (> 10%) to confirm the model is financing.
+    assert actual_gearing > 0.10, (
+        f"Actual gearing {actual_gearing:.1%} seems implausibly low (< 10%)"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DC_HORIZON_PRESENTATION — Correction A item 8
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_DC_HORIZON_PRESENTATION():
+    """DC reference horizon is 20 years — power schedule must have exactly 20 entries."""
+    from app.data_center_authority import (
+        GENERIC_DATA_CENTER_REFERENCE_DRIVERS as d,
+        power_step_changes,
+    )
+    steps = power_step_changes(d, capacity_mw=20.0, horizon_years=20)
+    years = [yr for yr, _ in steps]
+    assert len(years) == 20, f"Power schedule must have 20 years, got {len(years)}"
+    assert max(years) == 20, f"Last year must be 20, got {max(years)}"
+    assert min(years) == 1, f"First year must be 1, got {min(years)}"
+    # No Y21+ entries.
+    assert all(yr <= 20 for yr, _ in steps), "No Y21+ entries must appear in DC horizon"

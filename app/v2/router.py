@@ -826,7 +826,13 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
         # to Revenue.
         "revenue_dc_reconciliation": _build_dc_revenue_reconciliation(pis),
         "revenue_output_context": {
-            "generation": (_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh"),
+            "generation": (
+                lambda _g: (
+                    f"{float(_g):,.0f}"
+                    if _g is not None and str(_g) not in ("NOT_AVAILABLE", "")
+                    else None
+                )
+            )((_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh")),
             "period": _rev_ctx.get("sample_period_label"),
             "persisted_revenue": _rev_ctx.get("display_value_keur"),
         },
@@ -3112,7 +3118,7 @@ async def v2_scenario_sensitivity_run(
         "service_price": {
             "label": "Service Price (EUR/kW/month)",
             "field_id": "revenue.data_center.service_price",
-            "snapshot_key": "dc_service_price",
+            "snapshot_key": "dc_service_price_eur_kw_month",
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
@@ -3122,8 +3128,8 @@ async def v2_scenario_sensitivity_run(
             "label": "Stabilised Occupancy",
             "field_id": "revenue.data_center.occupancy_stabilized",
             "snapshot_key": "dc_occupancy_stabilized",
-            # ±10 pp absolute — stored as decimal (0.85 = 85%)
-            "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
+            # ±10 pp absolute — stored as percent (85 = 85%), so steps are in pp units
+            "steps": [-10.0, -5.0, 0.0, +5.0, +10.0],
             "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
             "mode": "absolute_add",
             "dc_only": True,

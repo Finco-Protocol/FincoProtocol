@@ -73,8 +73,8 @@
     </div>
     {% endif %}
     <div class="v2-revenue-output-context" data-testid="revenue-output-context">
-      <span>{% if is_data_center %}IT Load Hours used in current output{% else %}Generation used in current output{% endif %}</span>
-      <strong>{% if revenue_output_context.generation is not none %}{{ revenue_output_context.generation }}{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
+      <span>{% if is_data_center %}Equivalent IT Load Energy used in current output{% else %}Generation used in current output{% endif %}</span>
+      <strong>{% if revenue_output_context.generation is not none %}{{ revenue_output_context.generation }} MWh{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
       <span>Revenue persisted summary</span>
       <strong>{% if revenue_output_context.persisted_revenue is not none %}{{ revenue_output_context.persisted_revenue }} kEUR{% else %}—{% endif %}</strong>
     </div>
@@ -317,7 +317,7 @@
           <dl class="v2-revenue-derivation" data-testid="revenue-derivation">
 
             {# Generation evidence — labelled with the persisted sample period #}
-            <dt>{% if is_data_center %}IT Load Hours{% else %}Generation{% endif %}</dt>
+            <dt>{% if is_data_center %}Equivalent IT Load Energy{% else %}Generation{% endif %}</dt>
             <dd data-testid="revenue-derivation-generation">
               {% set gen = rd.get("sample_generation_mwh") %}
               {% set period_lbl = rd.get("sample_period_label", "") %}
@@ -387,7 +387,7 @@
                 <thead>
                   <tr>
                     <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Period</th>
-                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">{% if is_data_center %}IT Load Hours (MWh eq.){% else %}Generation (MWh){% endif %}</th>
+                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">{% if is_data_center %}Equivalent IT Load Energy (MWh){% else %}Generation (MWh){% endif %}</th>
                     <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Revenue (kEUR)</th>
                   </tr>
                 </thead>
