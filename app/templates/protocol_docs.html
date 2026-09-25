@@ -97,7 +97,7 @@
           <table class="pdocs-table">
             <thead><tr><th>Surface</th><th>Primary question</th><th>Current scope</th></tr></thead>
             <tbody>
-              <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Production workflows for Solar and Wind; Storage remains limited/reference scope.</td></tr>
+              <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Production workflows for Solar, Wind and Data Center; Storage remains limited/reference scope.</td></tr>
               <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces.</td></tr>
               <tr><td><strong>API</strong></td><td>How can software read or run FINCO capabilities?</td><td>Beta Model reference/read/preview/run and Radar read/simulation endpoints.</td></tr>
               <tr><td><strong>Evidence</strong></td><td>What produced this value and how should I interpret its state?</td><td>Source, snapshot, period, lineage, freshness and deterministic verification concepts.</td></tr>
@@ -115,7 +115,7 @@
           and still differ from the assumptions used in the last committed calculation.
         </p>
         <div class="pdocs-step-list">
-          <div><span>1</span><div><strong>Project Library</strong><p>Open a reference model or an existing working project. Solar and Wind are the main production modelling verticals.</p></div></div>
+          <div><span>1</span><div><strong>Project Library</strong><p>Open a reference model or an existing working project. Solar, Wind and Data Center are the main production modelling verticals.</p></div></div>
           <div><span>2</span><div><strong>Inputs</strong><p>Edit project assumptions in Revenue, CAPEX, OPEX, Financing, Tax and related sections.</p></div></div>
           <div><span>3</span><div><strong>Run</strong><p>Commit one deterministic calculation. The resulting snapshot becomes the Last Run authority for outputs tied to that run.</p></div></div>
           <div><span>4</span><div><strong>Results</strong><p>Review decision KPIs, cash flow, debt, coverage, statements, distributions and returns.</p></div></div>
@@ -138,7 +138,7 @@
           <article class="pdocs-panel pdocs-panel--note">
             <h3>Reference models</h3>
             <p>
-              Canonical Solar and Wind reference models are synthetic product references.
+              Canonical Solar, Wind and Data Center reference models are synthetic product references.
               They are useful for onboarding, scaling previews and stateless API runs;
               they are not market benchmarks or a representation of a specific real project.
             </p>
@@ -258,7 +258,7 @@
           <table class="pdocs-table">
             <thead><tr><th>Method</th><th>Capability</th><th>Purpose</th></tr></thead>
             <tbody>
-              <tr><td><code>GET</code></td><td><code>/model/references</code></td><td>List canonical Solar/Wind references.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/model/references</code></td><td>List canonical Solar, Wind and Data Center references.</td></tr>
               <tr><td><code>GET</code></td><td><code>/model/references/{reference_key}</code></td><td>Read grouped reference assumptions.</td></tr>
               <tr><td><code>POST</code></td><td><code>.../{reference_key}/preview</code></td><td>Capacity-scaled stateless preview; no project and no model run.</td></tr>
               <tr><td><code>POST</code></td><td><code>.../{reference_key}/run</code></td><td>One stateless canonical financial run; no project/workspace persistence.</td></tr>
@@ -294,7 +294,7 @@
           <article><span class="pdocs-status pdocs-status--unavailable">Unavailable</span><p>Required evidence or runtime authority is absent. FINCO prefers this to a synthetic fallback.</p></article>
         </div>
         <div class="pdocs-limitations">
-          <p><strong>Model:</strong> Solar and Wind are the main production modelling verticals. Broader infrastructure modules remain future work.</p>
+          <p><strong>Model:</strong> Solar, Wind and Data Center are the main production modelling verticals. Storage is limited/reference scope. EV Charging is in development and not yet released.</p>
           <p><strong>Radar:</strong> Current Stocks, Crypto and Economy intelligence is read-only. No custody, wallet signing or order submission is represented as current product capability.</p>
           <p><strong>Verification:</strong> Current verification is off-chain. A content digest proves deterministic identity of the hashed content, not truth of an external source.</p>
           <p><strong>API:</strong> Real Beta endpoints exist; SDK/webhooks and a broader supported contract remain future work.</p>
