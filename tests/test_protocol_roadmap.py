@@ -43,11 +43,29 @@ def test_roadmap_release_baseline_and_quarters():
         assert phrase in html
 
 
+def test_roadmap_model_sales_track_is_explicit():
+    html = _client().get("/roadmap").text
+    for phrase in (
+        "Institutional Modelling",
+        "Institutional Model Runs",
+        "Advanced Project Finance",
+        "Scenario Control",
+        "Institutional Reporting",
+        "Enterprise Modelling Platform",
+        "Team Workspaces &amp; Approvals",
+        "Portfolio Modelling",
+        "Advanced Financing Structures",
+        "Audit &amp; Model Governance",
+    ):
+        assert phrase in html
+
+
 def test_roadmap_future_items_are_targets_not_guarantees():
     html = _client().get("/roadmap").text
     assert "Target" in html
     assert "Targets are sequencing, not guarantees." in html
     assert "does not mean a token, financial product, investment return or launch date is guaranteed" in html
+    assert "do not imply bank, audit or third-party certification" in html
 
 
 def test_roadmap_keeps_finco_as_only_placeholder():
@@ -61,6 +79,7 @@ def test_roadmap_keeps_finco_as_only_placeholder():
 
 def test_roadmap_css_has_mobile_breakpoints_without_overflow_hack():
     css = (REPO / "static/css/protocol-roadmap.css").read_text()
+    assert ".proad-model-track__grid" in css
     assert "@media (max-width: 620px)" in css
     assert "@media (max-width: 420px)" in css
     assert "overflow-x: hidden" not in css
