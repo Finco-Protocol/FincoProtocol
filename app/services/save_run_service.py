@@ -374,6 +374,8 @@ async def execute_save_run_route(
                 runtime_project_key = "Generic Wind Reference"
             elif runtime_seed == "generic_solar_reference":
                 runtime_project_key = "Generic Solar Reference"
+            elif runtime_seed == "generic_data_center_reference":
+                runtime_project_key = "Generic Data Center Reference"
             else:
                 runtime_project_key = (
                     "Solar"

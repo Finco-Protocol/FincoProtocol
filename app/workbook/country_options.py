@@ -11,12 +11,14 @@ from __future__ import annotations
 # XA = Solar reference (create_generic_solar_reference, jurisdiction XA-generic-mvp-v1)
 # XB = Wind reference  (create_generic_wind_reference, jurisdiction XB-generic-mvp-v1)
 # XC = Storage/BESS reference (create_generic_storage_reference, jurisdiction XC-generic-mvp-v1)
+# XD = Data Center reference (create_generic_data_center_reference, generic synthetic market XD)
 # Real country labels follow "Country Name (ISO)" convention; persisted value is always
 # the canonical 2-char code.
 COUNTRY_OPTIONS: tuple[tuple[str, str], ...] = (
     ("XA", "Generic / World — Solar (XA)"),
     ("XB", "Generic / World — Wind (XB)"),
     ("XC", "Generic / World — Storage (XC)"),
+    ("XD", "Generic / World — Data Center (XD)"),
     ("AT", "Austria (AT)"),
     ("BE", "Belgium (BE)"),
     ("BG", "Bulgaria (BG)"),

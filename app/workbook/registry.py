@@ -136,7 +136,7 @@ _ps_identity = _section("identity", "Project Identity", _PS, order=0, fields=[
        scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.TEMPLATE_LOCKED,
        editable=False,
        description="Set at project creation from template; cannot be changed afterwards.",
-       options=("wind_onshore", "solar_pv", "bess", "hydro", "gas"), required=True,
+       options=("wind_onshore", "solar_pv", "bess", "hydro", "gas", "data_center"), required=True,
        excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=1),
 
     _f(f"{_PS}.identity.country_market", "Country / Market", "country_market", FieldType.SELECT, _PS, "identity",
@@ -731,7 +731,128 @@ _rv_merchant = _section("merchant", "Merchant Price Curve", _RV, order=2, fields
        excel_generic_solar_reference=None, order=0),
 ])
 
-_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant], icon="💰", order=3)
+# Data Center operating/revenue drivers (Generic Data Center Reference V1).
+# Rate drivers are persisted as UI percentages (repo PCT convention, e.g. 55
+# for 55% occupancy); app.data_center_authority converts them to fractions at
+# snapshot resolution.  These fields are shown ONLY for Data Center projects;
+# the PPA/Balancing/Merchant sections are hidden for Data Center.
+_rv_data_center = _section("data_center", "Data Center Service Revenue", _RV, order=3, fields=[
+    _f(f"{_RV}.data_center.service_price", "Service Revenue", "dc_service_price_eur_kw_month", FieldType.FLOAT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       required=True, editable=True,
+       unit="EUR/kW/month", decimals=2, min_value=0, max_value=100000,
+       description="Contracted IT capacity / colocation service price per kW of IT capacity per month. "
+                   "All-in commercial service revenue; electricity is an operating expense (B.08). "
+                   "SYNTHETIC PUBLIC GENERIC DATA — not a market average.",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=0),
+    _f(f"{_RV}.data_center.occupancy_y1", "Occupancy Y1", "dc_occupancy_y1", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%", decimals=2, min_value=0, max_value=100,
+       description="Operating year 1 occupancy/utilisation of IT capacity. Stored as percent (e.g. 55).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=1),
+    _f(f"{_RV}.data_center.occupancy_y2", "Occupancy Y2", "dc_occupancy_y2", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%", decimals=2, min_value=0, max_value=100,
+       description="Operating year 2 occupancy/utilisation. Stored as percent (e.g. 70).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=2),
+    _f(f"{_RV}.data_center.occupancy_stabilized", "Occupancy (Stabilized)", "dc_occupancy_stabilized", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%", decimals=2, min_value=0, max_value=100,
+       description="Stabilized occupancy from operating year 3 onward. Stored as percent (e.g. 85).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=3),
+    _f(f"{_RV}.data_center.revenue_escalation", "Revenue Escalation", "dc_revenue_escalation", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%/yr", decimals=2, min_value=0, max_value=100,
+       description="Annual indexation of the service price. Stored as percent (e.g. 2.0).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=4),
+    _f(f"{_RV}.data_center.pue", "PUE", "dc_pue", FieldType.FLOAT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="ratio", decimals=2, min_value=1.0, max_value=3.0,
+       description="Power Usage Effectiveness: facility power = IT load × occupancy × PUE. "
+                   "Drives the derived B.08 Power Expenses authority.",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=5),
+    _f(f"{_RV}.data_center.electricity_price", "Electricity Price", "dc_electricity_price_eur_mwh", FieldType.FLOAT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="EUR/MWh", decimals=2, min_value=0, max_value=100000,
+       description="Purchased electricity cost input for the derived B.08 power expense. "
+                   "This is a cost input, not a sale price.",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=6),
+    _f(f"{_RV}.data_center.electricity_escalation", "Electricity Escalation", "dc_electricity_price_escalation", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%/yr", decimals=2, min_value=0, max_value=100,
+       description="Annual escalation of the electricity price. Stored as percent (e.g. 2.0).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=7),
+    _f(f"{_RV}.data_center.availability", "Availability", "dc_availability", FieldType.PCT, _RV, "data_center",
+       kind=FieldKind.DERIVED_DISPLAY, persisted=True, source_of_truth=SourceOfTruth.DERIVED_UI,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.DISPLAY_ONLY,
+       editable=False,
+       unit="%", decimals=2, min_value=100, max_value=100,
+       description="V1 policy: Availability is NOT an independent economic revenue driver — the "
+                   "canonical revenue identity is IT MW × 1,000 × 12 × EUR/kW/month × Occupancy. "
+                   "Runtime availability stays neutral at 100%%; this row is operational metadata only.",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=8),
+    _f(f"{_RV}.data_center.contract_term", "Contract Term", "dc_contract_term_years", FieldType.YEARS, _RV, "data_center",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path=None,
+       scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="years", decimals=0, min_value=1, max_value=50,
+       description="Base contracted service period. After the base term V1 continues service revenue "
+                   "under the same indexed convention (deterministic policy A — no merchant curve).",
+       excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=9),
+])
+
+_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center], icon="💰", order=3)
+
+# ── Technology-conditional field visibility (V2 Workbook) ────────────────────
+# Data Center shows the Data Center section and hides renewable-only controls;
+# every other technology hides the Data Center section.
+DATA_CENTER_FIELD_IDS: frozenset[str] = frozenset(f.field_id for f in _rv_data_center.fields)
+
+# Renewable-only controls that must never render as primary Data Center inputs.
+DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
+    f.field_id
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for f in section.fields
+) | {
+    f"{_PS}.technical.p50_hours",
+    f"{_PS}.technical.capacity_factor",
+}
+
+# Capacity label contract: Data Center capacity_mw is IT Load Capacity.
+DC_CAPACITY_LABEL = "IT Capacity (MW)"
+
+# OPEX line whose amount is a DERIVED authority for Data Center (B.08).
+DC_DERIVED_OPEX_FIELD_ID = f"{_OX}.lines.power_expenses"
+
+
+def is_data_center_project_type(project_type: str | None) -> bool:
+    value = (project_type or "").strip().lower()
+    return value in {"data center", "data_center", "datacenter"}
 
 
 # ---------------------------------------------------------------------------

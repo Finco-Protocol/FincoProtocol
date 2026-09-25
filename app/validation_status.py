@@ -258,6 +258,8 @@ _PROJECT_VALIDATION_BUILDERS: dict[str, tuple[str, object]] = {
     "generic_wind_reference": ("Generic Wind Reference", _reference_project_status),
     "generic_solar_reference": ("Generic Solar Reference", _reference_project_status),
     "generic_storage_reference": ("Generic Storage Reference", _design_only_project_status),
+    "generic_data_center_reference": ("Generic Data Center Reference", _reference_project_status),
+    "generic_data_center": ("Generic Data Center", _generic_project_status),
     "generic_solar": ("Generic Solar", _generic_project_status),
     "generic_wind": ("Generic Wind", _generic_project_status),
     "generic_bess": ("Generic BESS", _design_only_project_status),

@@ -73,8 +73,8 @@ def test_a3_02_list_state_available(client):
 def test_a3_03_list_api_version(client):
     assert _list(client).json()["api_version"] == "v1"
 
-def test_a3_04_list_count_2(client):
-    assert _list(client).json()["data"]["count"] == 2
+def test_a3_04_list_count_3(client):
+    assert _list(client).json()["data"]["count"] == 3
 
 def test_a3_05_list_has_solar_key(client):
     keys = [r["reference_key"] for r in _list(client).json()["data"]["references"]]

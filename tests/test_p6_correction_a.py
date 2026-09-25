@@ -323,7 +323,7 @@ def test_reference_models_seeded_deterministically():
         "SELECT COUNT(*) FROM projects WHERE user_id='__reference__'"
     ).fetchone()[0]
     conn.close()
-    assert count == 3, f"Expected exactly 3 reference projects, got {count}"
+    assert count == 4, f"Expected exactly 4 reference projects, got {count}"
 
 
 def test_reference_projects_readable_by_library(client):

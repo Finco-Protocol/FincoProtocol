@@ -60,6 +60,48 @@ _CAPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
         "C.01": (("Wind Turbines", 70), ("Turbine Supply Agreement Optionals", 0), ("Flow Parts", 10), ("Procurement Fees", 8), ("Logistics and Transport", 12)),
         **_COMMON_CAPEX,
     },
+    "data_center": {
+        **_COMMON_CAPEX,
+        "C.01": (
+            ("UPS and Electrical Distribution", 30),
+            ("Cooling and Heat Rejection Systems", 25),
+            ("Backup Generation", 18),
+            ("White Space / Racks Infrastructure", 12),
+            ("Controls / BMS / DCIM Infrastructure", 8),
+            ("Technical Installation / Integration", 7),
+        ),
+        "C.02": (
+            ("Building Shell and Structural Works", 45),
+            ("MEP Installation Works", 35),
+            ("Internal Fit-Out", 20),
+        ),
+        "C.03": (
+            ("Grid Connection Works", 50),
+            ("HV Substation / Transformers", 35),
+            ("Interconnection Studies / Protection / Testing", 15),
+        ),
+        "C.04": (
+            ("Operations Readiness", 45),
+            ("Commissioning Preparation", 35),
+            ("Training / Procedures / Handover", 20),
+        ),
+        "C.05": (
+            ("External Civil Works", 35),
+            ("Roads / Drainage / Site Infrastructure", 25),
+            ("Security Perimeter / Physical Infrastructure", 20),
+            ("Utility Infrastructure", 20),
+        ),
+        "C.08": (
+            ("Legal and Contract Advisory", 40),
+            ("Audit / Reporting", 25),
+            ("Technical / Commercial Advisory", 35),
+        ),
+        "C.09": (
+            ("Owner's Engineering", 50),
+            ("Construction Supervision", 30),
+            ("Project Controls", 20),
+        ),
+    },
 }
 
 _COMMON_OPEX_ROWS: dict[str, tuple[tuple[str, int], ...]] = {
@@ -85,6 +127,26 @@ _OPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
     "wind": {
         "B.02": (("Preventive and Corrective Maintenance", 26), ("Minor Maintenance", 10), ("HV Substation / O&M Building Maintenance", 11), ("Regulatory Inspections", 9), ("HSE Prevention Plan", 8), ("Meteorological Station Maintenance", 7), ("Special Equipment / Vehicle Maintenance", 8), ("Blade Maintenance", 14), ("Other Maintenance", 7)),
     },
+    "data_center": {
+        "B.02": (
+            ("Preventive MEP Maintenance", 30),
+            ("UPS / Electrical Maintenance", 20),
+            ("Cooling Plant Maintenance", 20),
+            ("Generator Maintenance", 12),
+            ("BMS / DCIM Systems Maintenance", 8),
+            ("Critical Spares", 10),
+        ),
+        "B.05": (
+            ("Physical Security", 55),
+            ("HSE / Emergency Preparedness", 25),
+            ("Fire / Life Safety Services", 20),
+        ),
+        # B.08 Power Expenses is a DERIVED authority for Data Center
+        # (IT MW × occupancy × PUE × 8,760 × EUR/MWh); the single-child row
+        # below is a transparent display decomposition only and is never
+        # seeded as an editable persisted sub-line.
+        "B.08": (("Grid Electricity", 100),),
+    },
 }
 
 OPEX_PARENT_BY_CANONICAL_KEY = {
@@ -92,6 +154,11 @@ OPEX_PARENT_BY_CANONICAL_KEY = {
     "Maintenance": "B.02",
     "Insurance": "B.06",
     "Lease & Tax": "B.07",
+    # Data Center canonical OPEX parent names (no Solar/Wind factory uses
+    # these names, so the extended mapping is backward-compatible).
+    "Infrastructure Maintenance": "B.02",
+    "Security": "B.05",
+    "Audit, Accounting & Legal": "B.10",
 }
 
 OPEX_PARENT_NAMES = {
@@ -112,17 +179,23 @@ def capex_children(technology: str, parent_code: str) -> tuple[DetailChild, ...]
 
 
 def opex_children(parent_code: str, technology: str | None = None) -> tuple[DetailChild, ...]:
-    """Return the public generic OPEX taxonomy for one parent code."""
+    """Return the public generic OPEX taxonomy for one parent code.
+
+    Technology-specific rows take precedence over the common rows (only
+    technologies that explicitly override a parent deviate; Solar and Wind
+    override B.02 only, so their outputs are unchanged).
+    """
+    tech_key = (technology or "solar").strip().lower()
+    tech_rows = _OPEX_ROWS.get(tech_key) if tech_key else None
+    if tech_rows and parent_code in tech_rows:
+        return _children(parent_code, tech_rows[parent_code])
     if parent_code in _COMMON_OPEX_ROWS:
-        rows = _COMMON_OPEX_ROWS[parent_code]
-    elif parent_code == "B.02":
-        tech = (technology or "solar").strip().lower()
-        if tech not in {"solar", "wind"}:
+        return _children(parent_code, _COMMON_OPEX_ROWS[parent_code])
+    if parent_code == "B.02":
+        if tech_key not in {"solar", "wind"}:
             raise ValueError(f"Unsupported public generic technology: {technology!r}")
-        rows = _OPEX_ROWS[tech][parent_code]
-    else:
-        raise KeyError(f"Unknown public generic OPEX parent: {parent_code}")
-    return _children(parent_code, rows)
+        return _children(parent_code, _OPEX_ROWS[tech_key][parent_code])
+    raise KeyError(f"Unknown public generic OPEX parent: {parent_code}")
 
 
 def allocate_parent_amount(amount_keur: float, children: Iterable[DetailChild], *, places: int = 8) -> tuple[tuple[DetailChild, float], ...]:

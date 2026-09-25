@@ -564,13 +564,208 @@ def create_generic_storage_reference() -> ProjectInputs:
     )
 
 
+def create_default_data_center_project(
+    capacity_mw: float = 20.0,
+    horizon_years: int = 20,
+    construction_months: int = 24,
+) -> ProjectInputs:
+    """Test 3 — Data Center: fictional IT-load data center for demos and tests.
+
+    20 MW IT load capacity, 200,000 kEUR CAPEX (10,000 kEUR/MW IT), 20-year
+    horizon.  ``capacity_mw`` means IT Load Capacity (MW) — never generation
+    capacity.  Operating economics (occupancy ramp, EUR/kW/month service
+    price, PUE, electricity cost) live in ``app.data_center_authority`` and
+    are mapped onto the generic engine inputs by its runtime adapter;
+    financing, tax, statements and returns remain FINCO engine authority.
+    Entirely fictional — no real company, operator, or project.
+    """
+    from app.data_center_authority import (
+        GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+        apply_data_center_runtime_adapter,
+        annual_power_cost_keur,
+        occupancy_for_year,
+    )
+
+    _dc = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+    z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    # Data Center technical plant (UPS/electrical, cooling, backup
+    # generation, white space): classified under the generic CIVIL_GRID
+    # asset class with an explicit per-item 15-year useful-life override
+    # (the frozen finco_core/financial_engine production paths gain zero
+    # diff; the class-level DC asset class is deliberately not introduced
+    # for V1).  See the PR asset-class decision.
+    technical_plant = CapexItem(
+        name="Data Center Technical Plant", amount_keur=80_000.0, y0_share=0.0,
+        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.CIVIL_GRID,
+        useful_life_override=15,
+    )
+    building = CapexItem(
+        name="Building Shell and Fit-Out", amount_keur=55_000.0, y0_share=0.0,
+        spending_profile=(0.35, 0.35, 0.2, 0.1), asset_class=AssetClass.CIVIL_GRID,
+    )
+    grid = CapexItem(
+        name="Grid Connection", amount_keur=20_000.0, y0_share=0.0,
+        spending_profile=(0.5, 0.3, 0.2), asset_class=AssetClass.CIVIL_GRID,
+    )
+    ops_prep = CapexItem(
+        name="Operations Readiness", amount_keur=5_000.0, y0_share=1.0,
+        asset_class=AssetClass.SOFT_COSTS,
+    )
+    site = CapexItem(
+        name="Balance of Plant / Site Infrastructure", amount_keur=15_000.0, y0_share=0.0,
+        spending_profile=(0.5, 0.3, 0.2), asset_class=AssetClass.CIVIL_GRID,
+    )
+    soft = CapexItem(
+        name="Soft Costs", amount_keur=8_000.0, y0_share=1.0,
+        asset_class=AssetClass.SOFT_COSTS,
+    )
+    owner_eng = CapexItem(
+        name="Owner's Engineering / Construction Supervision", amount_keur=7_000.0, y0_share=1.0,
+        asset_class=AssetClass.SOFT_COSTS,
+    )
+    contingency = CapexItem(
+        name="Construction Contingency", amount_keur=10_000.0, y0_share=0.0,
+        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.CIVIL_GRID,
+        useful_life_override=15,
+    )
+
+    capex = CapexStructure(
+        production_units=technical_plant, epc_contract=building,
+        grid_connection=grid, ops_prep=ops_prep, epc_other=site,
+        insurances=z, lease_tax=z,
+        construction_mgmt_a=owner_eng, commissioning=z,
+        audit_legal=soft, construction_mgmt_b=z,
+        contingencies=contingency, taxes=z,
+        project_acquisition=z, project_rights=z,
+        idc_keur=0.0, bank_fees_keur=0.0,  # Generic-path: factory-direct must match resolver (which zeros via _zero_financial_capex_subfields)
+    )
+    # Non-power OPEX parents (B.01/B.02/B.05/B.06/B.07/B.10) are flat with 2%
+    # escalation.  B.08 power expenses are DERIVED by the runtime adapter from
+    # IT MW × occupancy × PUE × 8,760 × EUR/MWh; the Y1 amount below is the
+    # derived year-1 value and is recomputed on every runtime resolution.
+    _occ_y1 = occupancy_for_year(_dc, 1)
+    power_y1 = annual_power_cost_keur(
+        capacity_mw=capacity_mw,
+        occupancy=_occ_y1,
+        pue=_dc.pue,
+        electricity_price_eur_mwh=_dc.electricity_price_eur_mwh,
+    )
+    opex = [
+        OpexItem(name="Technical Management", y1_amount_keur=2_000.0, annual_inflation=0.02),
+        OpexItem(name="Infrastructure Maintenance", y1_amount_keur=3_500.0, annual_inflation=0.02),
+        OpexItem(name="Security", y1_amount_keur=1_200.0, annual_inflation=0.02),
+        OpexItem(name="Insurance", y1_amount_keur=1_000.0, annual_inflation=0.02),
+        OpexItem(name="Lease & Tax", y1_amount_keur=1_200.0, annual_inflation=0.02),
+        OpexItem(name="Audit, Accounting & Legal", y1_amount_keur=800.0, annual_inflation=0.02),
+        OpexItem(name="Power Expenses", y1_amount_keur=power_y1, annual_inflation=0.0),
+    ]
+    _dc_fc = date(2030, 1, 1)
+    info = ProjectInfo(name="Generic Data Center Model", company="Synthetic Sponsor D",
+        code="GEN-DC-1", country_iso="XD", financial_close=_dc_fc,
+        construction_months=construction_months,
+        cod_date=_dc_fc + relativedelta(months=construction_months),
+        horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    # Full-time IT-load basis: revenue utilization is carried by the occupancy
+    # authority (mapped onto the engine market-price curve), so availability
+    # and degradation are neutral here.
+    technical = TechnicalParams(capacity_mw=capacity_mw, yield_scenario="P_50",
+        operating_hours_p50=8760.0, operating_hours_p90_10y=8760.0,
+        pv_degradation=0.0, plant_availability=_dc.availability,
+        grid_availability=1.0, bess_enabled=False)
+    revenue = RevenueParams(ppa_base_tariff=0.0, ppa_term_years=_dc.contract_term_years,
+        ppa_index=_dc.revenue_escalation,
+        market_scenario="Central", market_prices_curve=(),
+        market_inflation=_dc.revenue_escalation, co2_enabled=False,
+        balancing_cost_pv=0.0, balancing_cost_wind_eur_mwh=0.0)
+    _dc_senior_tenor_years: int = 12
+    _dc_constr_semesters: int = math.ceil(construction_months / 6)
+    _dc_shl_elig_start: int = _dc_constr_semesters + _dc_senior_tenor_years * 2
+    _dc_shl_maturity: int = _dc_constr_semesters + horizon_years * 2 - 1
+    # Sponsor funding convention (same authority as Solar/Wind): senior debt
+    # sizes from gearing/DSCR; sponsor share = 1 − gearing, split as
+    # share capital then SHL (G2A derives the runtime SHL principal).
+    #
+    # DOCUMENTED SYNTHETIC-ASSUMPTION CORRECTION (FINCO Generic Data Center
+    # Reference V1, category B): at the synthetic operating economics
+    # (10,000 kEUR/MW CAPEX, 175 EUR/kW/month all-in service price, PUE 1.30,
+    # 70 EUR/MWh) the DSCR-1.30 debt capacity is ~40% of project uses, well
+    # below the suggested 65% senior gearing cap.  Gearing stays 0.65 as the
+    # cap; the sponsor funding mix is therefore set to 40% share capital with
+    # the SHL residual (~20%) so the stack is debt-serviceable under the
+    # generic SHL CASH_SWEEP convention (sweep after senior maturity).  This
+    # is a financing-mix choice, NOT a calibration to a target IRR: no
+    # CAPEX/price/occupancy/OPEX value was tuned.
+    # share_capital/shl amounts below are 20 MW placeholders; the runtime
+    # adapter scales sponsor equity proportionally (4,000 kEUR/MW IT).
+    financing = FinancingParams(share_capital_keur=80_000.0, shl_amount_keur=39_600.0, shl_rate=0.08,
+        gearing_ratio=0.65, senior_tenor_years=_dc_senior_tenor_years, base_rate=0.03, margin_bps=300,
+        floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
+        target_dscr=1.30, lockup_dscr=1.15, dsra_months=6,
+        equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+        senior_debt_interest_config=_generic_clean_senior_interest_config(
+            annual_all_in_rate=0.03 + 300 / 10000,
+            tenor_years=_dc_senior_tenor_years,
+        ),
+        clean_shl_principal_keur=39_600.0,  # compatibility assertion; G2A derives principal
+        clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
+        shl_principal_eligibility_start_period=_dc_shl_elig_start,
+        shl_maturity_period_index=_dc_shl_maturity,
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
+    tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
+        clean_cash_tax_timing_enabled=True)
+
+    raw = ProjectInputs(info=info, technical=technical, capex=capex,
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
+    # The factory returns canonical runtime-adapted inputs: the Data Center
+    # operating authority (occupancy ramp, service price, PUE-derived power
+    # OPEX) is mapped onto the generic engine inputs here so every consumer
+    # (API, preview, workbook, tests) sees identical economics.  The runtime
+    # re-applies the same adapter with user-edited drivers at snapshot
+    # resolution time (idempotent by construction).
+    return apply_data_center_runtime_adapter(raw, _dc)
+
+
+def create_generic_data_center_reference() -> ProjectInputs:
+    """Protected synthetic Data Center reference for public demos and tests.
+
+    20 MW IT load capacity; 200,000 kEUR total CAPEX; 24-month construction;
+    20-year operating horizon; semestrial periods; synthetic 2030 financial
+    close; generic synthetic market code XD (Synthetic Sponsor D).
+    """
+    base = create_default_data_center_project(
+        capacity_mw=20.0,
+        horizon_years=20,
+        construction_months=24,
+    )
+    return replace(
+        base,
+        info=replace(
+            base.info,
+            name="Generic Data Center Reference",
+            company="Synthetic Sponsor D",
+            code="REF-DATACENTER-D",
+            country_iso="XD",
+        ),
+    )
+
+
 __all__ = [
     "create_generic_solar_reference",
     "create_generic_wind_reference",
     "create_generic_storage_reference",
+    "create_generic_data_center_reference",
     "create_default_solar_project",
     "create_default_wind_project",
     "create_default_bess_project",
     "create_default_solar_bess_project",
     "create_default_wind_bess_project",
+    "create_default_data_center_project",
 ]

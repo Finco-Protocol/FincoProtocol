@@ -20,7 +20,7 @@ from typing import Any, Optional
 from app.api.project_runner import run_project
 from app.excel_export import build_excel_export
 from app.capex_engine import build_capex_line_items_from_defaults
-from app.project_factories import create_generic_solar_reference, create_generic_wind_reference, create_generic_storage_reference
+from app.project_factories import create_generic_solar_reference, create_generic_wind_reference, create_generic_storage_reference, create_generic_data_center_reference
 from app.project_factories import create_default_solar_project, create_default_wind_project
 
 # Phase P2-FIX-6: C2 first-edit UX. The state banner
@@ -441,7 +441,7 @@ KPI_LABELS = {
 }
 
 SCENARIOS = ["Base", "Downside", "Upside"]
-PROJECT_TYPES = ["Solar", "Wind"]
+PROJECT_TYPES = ["Solar", "Wind", "Data Center"]
 
 # Phase 20E: Scenario tab editable fields (section groups)
 SCENARIO_EDITABLE_FIELDS = [
@@ -497,6 +497,13 @@ FACTORY_TEMPLATE_OPTIONS = [
         "project_type": "Storage",
         "template_source": "generic_storage_reference",
     },
+    {
+        "project_code": "generic_data_center_reference",
+        "label": "Generic Data Center Reference",
+        "meta": "20 MW IT · Generic Market D",
+        "project_type": "Data Center",
+        "template_source": "generic_data_center_reference",
+    },
 ]
 NEW_PROJECT_TEMPLATE_OPTIONS = [
     {"value": "generic_wind", "label": "Generic Wind (exploratory)", "project_type": "Wind"},
@@ -504,6 +511,7 @@ NEW_PROJECT_TEMPLATE_OPTIONS = [
     {"value": "generic_wind_reference", "label": "Generic Wind Reference", "project_type": "Wind"},
     {"value": "generic_solar_reference", "label": "Generic Solar Reference", "project_type": "Solar"},
     {"value": "generic_storage_reference", "label": "Generic Storage Reference", "project_type": "Storage"},
+    {"value": "generic_data_center_reference", "label": "Generic Data Center Reference", "project_type": "Data Center"},
 ]
 
 
@@ -547,6 +555,8 @@ def _canonical_project_type(project_type: str | None) -> str:
     value = (project_type or "").strip().lower()
     if value in {"storage", "bess"}:
         return "Storage"
+    if value in {"data center", "data_center", "datacenter"}:
+        return "Data Center"
     if value == "solar":
         return "Solar"
     return "Wind"
@@ -554,8 +564,10 @@ def _canonical_project_type(project_type: str | None) -> str:
 
 def _normalize_template_source(template_source: str | None, project_type: str | None) -> str:
     source = (template_source or "").strip().lower()
-    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_wind", "generic_solar", "generic_storage"}:
+    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center"}:
         return source
+    if _canonical_project_type(project_type) == "Data Center":
+        return "generic_data_center"
     return "generic_solar" if _canonical_project_type(project_type) == "Solar" else ("generic_storage" if _canonical_project_type(project_type) == "Storage" else "generic_wind")
 
 
@@ -564,8 +576,10 @@ def _template_source_label(template_source: str | None) -> str:
         "generic_wind_reference": "Generic Wind Reference",
         "generic_solar_reference": "Generic Solar Reference",
         "generic_storage_reference": "Generic Storage Reference",
+        "generic_data_center_reference": "Generic Data Center Reference",
         "generic_wind": "Generic Wind",
         "generic_solar": "Generic Solar",
+        "generic_data_center": "Generic Data Center",
         "none": "none",
     }
     return mapping.get((template_source or "").strip().lower(), "none")
@@ -579,6 +593,10 @@ def _project_identity_from_template_source(template_source: str, fallback_projec
         return "generic_wind_reference", "Generic Wind Reference"
     if source == "generic_storage_reference":
         return "generic_storage_reference", "Generic Storage Reference"
+    if source == "generic_data_center_reference":
+        return "generic_data_center_reference", "Generic Data Center Reference"
+    if source == "generic_data_center":
+        return "generic_data_center", "Generic Data Center Project"
     if source == "generic_solar":
         return "generic_solar", "Generic Solar Project"
     return "generic_wind", "Generic Wind Project"
@@ -776,6 +794,34 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
         )
         return baseline
 
+    if normalized_source in {"generic_data_center_reference", "generic_data_center"}:
+        project_inputs = create_generic_data_center_reference()
+        baseline.update(
+            {
+                "active_project": identity_code,
+                "project_name": project_inputs.info.name,
+                "project_type": "Data Center",
+                "project_origin": "factory_template",
+                "template_source": normalized_source,
+                "country_market": project_inputs.info.country_iso,
+                "capacity_mw": str(project_inputs.technical.capacity_mw),
+                "tariff_eur_mwh": "0",
+                "p50_hours": str(project_inputs.technical.operating_hours_p50),
+                "total_capex_keur": str(project_inputs.capex.total_capex),
+                "opex_y1_keur": str(sum(item.y1_amount_keur for item in project_inputs.opex)),
+                "gearing_pct": str((getattr(project_inputs.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+                "target_dscr": str(project_inputs.financing.target_dscr),
+                "interest_rate_pct": str(project_inputs.financing.base_rate + project_inputs.financing.margin_bps / 10_000),
+                "tenor_years": str(project_inputs.financing.senior_tenor_years),
+                "cod_date": str(project_inputs.info.cod_date),
+                "construction_months": str(project_inputs.info.construction_months),
+                "horizon_years": str(project_inputs.info.horizon_years),
+                "capacity_factor": "",
+                "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
+            }
+        )
+        return baseline
+
     if normalized_source == "generic_solar":
         project_inputs = create_default_solar_project()
     elif normalized_source == "generic_storage":
@@ -819,12 +865,21 @@ def _project_inputs_for_code(project_code: str):
         return create_generic_solar_reference()
     if code == "generic_storage_reference":
         return create_generic_storage_reference()
+    if code in {"generic_data_center_reference", "generic_data_center"}:
+        return create_generic_data_center_reference()
     return create_generic_wind_reference()
 
 
 def _default_workspace_snapshot(project_code: str) -> dict:
     code = (project_code or "generic_wind_reference").strip().lower()
-    project_type = "Solar" if code in {"generic_solar_reference", "generic_solar"} else ("Storage" if code in {"generic_storage_reference", "generic_storage"} else "Wind")
+    if code in {"generic_solar_reference", "generic_solar"}:
+        project_type = "Solar"
+    elif code in {"generic_storage_reference", "generic_storage"}:
+        project_type = "Storage"
+    elif code in {"generic_data_center_reference", "generic_data_center"}:
+        project_type = "Data Center"
+    else:
+        project_type = "Wind"
     return _project_baseline_snapshot(project_type, code)
 
 
@@ -1888,7 +1943,7 @@ def _consolidated_project_records(user) -> list[dict[str, str]]:
         )
     items.sort(
         key=lambda it: (
-            0 if it["project_code"] in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference"} else 1,
+            0 if it["project_code"] in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference"} else 1,
             it["label"].lower(),
         )
     )
@@ -1959,10 +2014,15 @@ def _resolve_project_record(user, project_selection: str | None, form_snapshot: 
         if user_project is not None:
             return user_project
 
-    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_wind", "generic_solar", "generic_storage"}:
+    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center"}:
         project_code = selection
         project_name = _project_identity_from_template_source(selection)[1]
-        project_type = "Solar" if selection in {"generic_solar_reference", "generic_solar"} else "Wind"
+        if selection in {"generic_solar_reference", "generic_solar"}:
+            project_type = "Solar"
+        elif selection in {"generic_data_center_reference", "generic_data_center"}:
+            project_type = "Data Center"
+        else:
+            project_type = "Wind"
         template_source = selection
     else:
         project_code, project_name = _project_persistence_metadata(None, form_snapshot)
@@ -3800,6 +3860,8 @@ def _resolve_technology(record) -> str:
         return snap["project_type"]
     # Derive from template_source as last resort
     ts = (record.template_source or record.source_project_template or "").lower()
+    if "data_center" in ts or "datacenter" in ts.replace(" ", "_"):
+        return "Data Center"
     if "solar" in ts or ts == "generic_solar_reference":
         return "Solar PV"
     if "wind" in ts or ts == "generic_wind_reference":
@@ -4812,6 +4874,9 @@ def _resolve_sensitivity_project(user, project: str, scenario_id: str = "") -> A
     if p == "generic_solar_reference":
         from app.project_factories import create_generic_solar_reference
         return create_generic_solar_reference(), "Generic Solar Reference (factory)"
+    if p in {"generic_data_center_reference", "generic_data_center"}:
+        from app.project_factories import create_generic_data_center_reference
+        return create_generic_data_center_reference(), "Generic Data Center Reference (factory)"
     from app.project_factories import create_generic_wind_reference
     return create_generic_wind_reference(), "Generic Wind Reference"
 
@@ -6504,7 +6569,12 @@ async def m3_cell_view(
 
 def _m4_template_to_project_type(source_project_template: str) -> str:
     """Map source_project_template to project_type string for run_project."""
-    return "Solar" if source_project_template in ("generic_solar_reference", "generic_solar") else "Wind"
+    source = (source_project_template or "").strip().lower()
+    if source in ("generic_solar_reference", "generic_solar"):
+        return "Solar"
+    if source in ("generic_data_center_reference", "generic_data_center"):
+        return "Generic Data Center Reference"
+    return "Wind"
 
 
 @app.post("/matrix/scenario/{scenario_id}/run")

@@ -342,8 +342,8 @@ def bootstrap_staging_db(conn: "sqlite3.Connection") -> dict:
     ref_count = conn.execute(
         "SELECT COUNT(*) FROM projects WHERE user_id = '__reference__'"
     ).fetchone()[0]
-    if ref_count != 3:
-        failures.append(f"projects: ref_count={ref_count} (expected 3)")
+    if ref_count != 4:
+        failures.append(f"projects: ref_count={ref_count} (expected 4)")
 
     for table in _VERIFY_TABLES_USER_ID:
         non_ref = conn.execute(

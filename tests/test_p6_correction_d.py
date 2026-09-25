@@ -403,7 +403,7 @@ class TestStrictBootstrap:
                 ref_count = conn.execute(
                     "SELECT COUNT(*) FROM projects WHERE user_id='__reference__'"
                 ).fetchone()[0]
-                assert ref_count == 3, f"Expected 3 ref projects, got {ref_count}"
+                assert ref_count == 4, f"Expected 4 ref projects, got {ref_count}"
 
                 for table in ("projects", "scenarios", "workspace_states", "runs", "scenario_exports"):
                     non_ref = conn.execute(

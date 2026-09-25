@@ -18,6 +18,7 @@ from app.project_factories import (
     create_default_solar_project,
     create_generic_wind_reference,
     create_default_wind_project,
+    create_generic_data_center_reference,
 )
 
 
@@ -62,6 +63,7 @@ RUNTIME_SUMMARY_COLUMNS = [
 PROJECT_FACTORIES = {
     "generic_wind_reference": create_generic_wind_reference,
     "generic_solar_reference": create_generic_solar_reference,
+    "generic_data_center_reference": create_generic_data_center_reference,
     "generic_solar": create_default_solar_project,
     "generic_wind": create_default_wind_project,
 }

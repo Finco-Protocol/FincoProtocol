@@ -204,13 +204,15 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             if not [i for i in issues if i.severity == "error"]:
                 _pr8_inputs = project_inputs_override
         elif project_type in (
-            "Generic Wind Reference", "Generic Solar Reference", "Test 1", "Test 2", "Solar", "Wind",
+            "Generic Wind Reference", "Generic Solar Reference",
+            "Generic Data Center Reference", "Test 1", "Test 2", "Solar", "Wind",
         ):
             from app import project_factories as _pf
             try:
                 _pr8_inputs = {
                     "Generic Wind Reference": _pf.create_generic_wind_reference,
                     "Generic Solar Reference": _pf.create_generic_solar_reference,
+                    "Generic Data Center Reference": _pf.create_generic_data_center_reference,
                     "Test 1": _pf.create_default_solar_project,
                     "Test 2": _pf.create_default_wind_project,
                     "Solar": _pf.create_default_solar_project,

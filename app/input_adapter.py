@@ -1325,12 +1325,12 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
                 "gearing_pct must be between 0 and 100 for user-created project runtime"
             )
 
-    # Validate project_type is Solar or Wind (preserved
-    # behavior).
+    # Validate project_type (preserved behavior; Data Center joins the
+    # runnable set with Generic Data Center Reference V1).
     project_type = _snapshot_text(snapshot, "project_type").title()
-    if project_type not in {"Solar", "Wind"}:
+    if project_type not in {"Solar", "Wind", "Data Center"}:
         raise SnapshotInputError(
-            "project_type must be Solar or Wind for user-created project runtime"
+            "project_type must be Solar, Wind or Data Center for user-created project runtime"
         )
 
     # V4-1: use the project-specific factory base for Generic Wind Reference / Generic Solar Reference
@@ -1345,6 +1345,9 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     elif _template_source == "generic_solar_reference":
         from app.project_factories import create_generic_solar_reference as _of
         _base = _of()
+    elif _template_source == "generic_data_center_reference":
+        from app.project_factories import create_generic_data_center_reference as _dcf
+        _base = _dcf()
     else:
         _base = None
 
@@ -1376,6 +1379,18 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         if _effective_opex is not _base_opex:
             import dataclasses as _dc
             result = _dc.replace(result, opex=_effective_opex)
+
+    # Data Center runtime adapter: map the persisted Data Center driver
+    # authority (occupancy ramp, service price, PUE, electricity price) onto
+    # the canonical generic engine inputs.  Deterministic, applied last so it
+    # wins over generic scalar resolution; the financial engine itself is
+    # technology-agnostic and untouched.
+    if project_type == "Data Center":
+        from app.data_center_authority import (
+            apply_data_center_runtime_adapter,
+            drivers_from_snapshot,
+        )
+        result = apply_data_center_runtime_adapter(result, drivers_from_snapshot(snapshot))
 
     return result
 

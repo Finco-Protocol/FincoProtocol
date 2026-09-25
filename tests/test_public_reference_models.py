@@ -2,6 +2,7 @@ from app.project_factories import (
     create_generic_solar_reference,
     create_generic_wind_reference,
     create_generic_storage_reference,
+    create_generic_data_center_reference,
 )
 
 
@@ -10,15 +11,17 @@ def test_reference_models_are_synthetic_and_generic():
         create_generic_solar_reference(),
         create_generic_wind_reference(),
         create_generic_storage_reference(),
+        create_generic_data_center_reference(),
     ]
     assert [p.info.name for p in refs] == [
         "Generic Solar Reference",
         "Generic Wind Reference",
         "Generic Storage Reference",
+        "Generic Data Center Reference",
     ]
-    assert [p.info.country_iso for p in refs] == ["XA", "XB", "XC"]
+    assert [p.info.country_iso for p in refs] == ["XA", "XB", "XC", "XD"]
     assert all(p.info.company.startswith("Synthetic Sponsor") for p in refs)
-    assert len({p.info.code for p in refs}) == 3
+    assert len({p.info.code for p in refs}) == 4
 
 
 def test_library_bootstrap_exposes_three_canonical_references(tmp_path, monkeypatch):
@@ -38,11 +41,12 @@ def test_library_bootstrap_exposes_three_canonical_references(tmp_path, monkeypa
     project_library_service.ensure_reference_models()
     refs = projects_repository.get_reference_projects()
 
-    assert len(refs) == 3
+    assert len(refs) == 4
     assert {r.template_source for r in refs} == {
         "generic_solar_reference",
         "generic_wind_reference",
         "generic_storage_reference",
+        "generic_data_center_reference",
     }
     assert all(r.project_role == "reference" and r.is_protected for r in refs)
 
@@ -66,5 +70,6 @@ def test_all_three_reference_models_are_protected_in_ui_contract(tmp_path, monke
         "generic_solar_reference",
         "generic_wind_reference",
         "generic_storage_reference",
+        "generic_data_center_reference",
     }
     assert all(project_library_service.is_protected_reference(r) for r in refs)

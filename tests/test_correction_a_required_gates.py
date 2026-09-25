@@ -513,6 +513,7 @@ class TestGenericWorkingCopyLineEditingHttp:
     @pytest.mark.parametrize("template_source,capacity_mw", [
         ("generic_wind_reference", 48.0),
         ("generic_solar_reference", 64.0),
+        ("generic_data_center_reference", 20.0),
     ])
     def test_seeded_capex_and_opex_lines_edit_and_reload_via_http(
         self, seeded_db, template_source, capacity_mw

@@ -356,6 +356,8 @@ async def execute_post_download_route(
             runtime_project_key = "Generic Wind Reference"
         elif runtime_seed == "generic_solar_reference":
             runtime_project_key = "Generic Solar Reference"
+        elif runtime_seed == "generic_data_center_reference":
+            runtime_project_key = "Generic Data Center Reference"
         else:
             runtime_project_key = (
                 "Solar"
@@ -547,6 +549,8 @@ async def execute_get_download_route(
             "test 2": "generic_wind",
             "generic_wind_reference": "generic_wind_reference",
             "generic_solar_reference": "generic_solar_reference",
+            "generic data center reference": "generic_data_center_reference",
+            "data center": "generic_data_center_reference",
         }.get(project_type.lower())
         project_code = _lineage_key or project_type.lower()
         project_record = deps.get_project_by_code(user.user_id, project_code)

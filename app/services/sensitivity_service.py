@@ -73,6 +73,10 @@ def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "")
         from app.project_factories import create_generic_solar_reference
 
         return create_generic_solar_reference(), "Generic Solar Reference (factory)"
+    if key == "generic_data_center_reference":
+        from app.project_factories import create_generic_data_center_reference
+
+        return create_generic_data_center_reference(), "Generic Data Center Reference (factory)"
     if key in {"generic_solar", "solar", "test-solar-1"}:
         from app.project_factories import create_default_solar_project
 

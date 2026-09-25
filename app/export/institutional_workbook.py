@@ -225,7 +225,7 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
         project_name=bundle.project_name,
         export_type="institutional_workbook",
         inventory=INSTITUTIONAL_SHEET_INVENTORY,
-        is_generic=bundle.active_project not in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference"},
+        is_generic=bundle.active_project not in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference"},
     )
 
     cover = workbook.create_sheet("Cover")
@@ -718,17 +718,29 @@ def _write_capex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 def _write_revenue_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
     revenue = bundle.project_inputs.revenue
-    rows = [
-        ("P50 operating hours", bundle.context.operating_hours_p50, "template assumption", "Read-only project context.", K_EUR_FORMAT),
-        ("Plant availability", bundle.context.plant_availability, "template assumption", "Read-only project context.", RATIO_FORMAT),
-        ("Grid availability", bundle.context.grid_availability, "template assumption", "Read-only project context.", RATIO_FORMAT),
-        ("PPA tariff EUR/MWh", bundle.context.ppa_tariff_eur_mwh, "template assumption", "Read-only project context.", K_EUR_FORMAT),
-        ("PPA term years", bundle.context.ppa_term_years, "template assumption", "Read-only project context.", K_EUR_FORMAT),
-        ("PPA index", bundle.context.ppa_index_pct, "template assumption", "Read-only project context.", RATIO_FORMAT),
-        ("CO2 enabled", "yes" if bundle.context.co2_enabled else "no", "template assumption", "Read-only project context."),
-        ("Runtime total revenue", bundle.runtime_result.total_revenue_keur, "runtime", "Existing runtime output.", K_EUR_FORMAT),
-        ("Merchant start operating period", getattr(revenue, "first_merchant_operating_period_index", "NOT_AVAILABLE"), "template assumption", "Existing revenue input where available."),
-    ]
+    if bundle.context.technology == "Data Center":
+        # Data Center contract: no PPA/CO2/merchant revenue abstraction. The
+        # service price is all-in commercial revenue (EUR/kW/month); power is
+        # an OPEX (B.08). Capacity is IT load, never generation.
+        rows = [
+            ("Operating basis (full-time IT load hours)", bundle.context.operating_hours_p50, "template assumption", "Data Center runtime basis; occupancy carries utilisation.", K_EUR_FORMAT),
+            ("Service availability", bundle.context.plant_availability, "template assumption", "Data Center availability authority.", RATIO_FORMAT),
+            ("Contract term years", bundle.context.ppa_term_years, "template assumption", "Base contracted service period.", K_EUR_FORMAT),
+            ("Revenue indexation", bundle.context.ppa_index_pct, "template assumption", "Annual service-price escalation.", RATIO_FORMAT),
+            ("Runtime total revenue", bundle.runtime_result.total_revenue_keur, "runtime", "Existing runtime output.", K_EUR_FORMAT),
+        ]
+    else:
+        rows = [
+            ("P50 operating hours", bundle.context.operating_hours_p50, "template assumption", "Read-only project context.", K_EUR_FORMAT),
+            ("Plant availability", bundle.context.plant_availability, "template assumption", "Read-only project context.", RATIO_FORMAT),
+            ("Grid availability", bundle.context.grid_availability, "template assumption", "Read-only project context.", RATIO_FORMAT),
+            ("PPA tariff EUR/MWh", bundle.context.ppa_tariff_eur_mwh, "template assumption", "Read-only project context.", K_EUR_FORMAT),
+            ("PPA term years", bundle.context.ppa_term_years, "template assumption", "Read-only project context.", K_EUR_FORMAT),
+            ("PPA index", bundle.context.ppa_index_pct, "template assumption", "Read-only project context.", RATIO_FORMAT),
+            ("CO2 enabled", "yes" if bundle.context.co2_enabled else "no", "template assumption", "Read-only project context."),
+            ("Runtime total revenue", bundle.runtime_result.total_revenue_keur, "runtime", "Existing runtime output.", K_EUR_FORMAT),
+            ("Merchant start operating period", getattr(revenue, "first_merchant_operating_period_index", "NOT_AVAILABLE"), "template assumption", "Existing revenue input where available."),
+        ]
     next_row = _write_key_value_section(sheet, 6, "Revenue assumptions and totals", rows, include_format=True)
     _write_dataframe_section(sheet, next_row, "Revenue period table", bundle.revenue_table, "runtime", "Existing revenue table builder.")
 

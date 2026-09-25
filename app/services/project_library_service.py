@@ -99,8 +99,9 @@ def is_protected_reference(project_record) -> bool:
     origin = getattr(project_record, "project_origin", None)
     ts = getattr(project_record, "template_source", None)
     spt = getattr(project_record, "source_project_template", None)
+    _generic_reference_keys = ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference")
     if origin == "factory_template" and (
-        ts in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference") or spt in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference")
+        ts in _generic_reference_keys or spt in _generic_reference_keys
     ):
         return True
     return False
@@ -116,12 +117,17 @@ CANONICAL_REFERENCE_TEMPLATE_SOURCES = frozenset({
     "generic_wind_reference",
     "generic_solar_reference",
     "generic_storage_reference",
+    "generic_data_center_reference",
 })
 
 # Subset of CANONICAL_REFERENCE_TEMPLATE_SOURCES for which working-copy
 # creation is currently supported.  Storage remains canonical-but-not-cloneable
 # until Storage Runtime V1 is released.
-CLONEABLE_TEMPLATE_SOURCES = frozenset({"generic_wind_reference", "generic_solar_reference"})
+CLONEABLE_TEMPLATE_SOURCES = frozenset({
+    "generic_wind_reference",
+    "generic_solar_reference",
+    "generic_data_center_reference",
+})
 
 
 def _is_canonical_reference(source) -> bool:
@@ -180,6 +186,13 @@ _REFERENCE_DEFINITIONS = [
         "display_name": "Generic Storage Reference",
         "project_code": "generic_storage_reference-reference",
         "factory": "create_generic_storage_reference",
+    },
+    {
+        "template_source": "generic_data_center_reference",
+        "project_type": "Data Center",
+        "display_name": "Generic Data Center Reference",
+        "project_code": "generic_data_center_reference-reference",
+        "factory": "create_generic_data_center_reference",
     },
 ]
 
