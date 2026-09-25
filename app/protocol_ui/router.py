@@ -111,21 +111,21 @@ async def protocol_api_docs(request: Request):
 
 @router.get("/api/openapi.json", include_in_schema=False)
 async def protocol_api_openapi(request: Request):
-    """Public filtered OpenAPI schema — /api/v1/** endpoints only.
+    """Public OpenAPI schema — /api/v1/** endpoints only.
 
-    Generates the full schema from all registered routes, then filters the
-    ``paths`` dict to only /api/v1/** so the developer-facing schema does not
-    expose product UI routes (/library/**, /v2/**, /scenarios/**, etc.).
-
-    Note: route objects from include_router() are _IncludedRouter instances in
-    FastAPI 0.141+ and do not expose a plain ``.path`` attribute — path
-    filtering must happen on the generated schema, not on the route list.
+    Builds the schema from the canonical public v1 router mounted at /api/v1,
+    not from the full main_web app route table.  This guarantees:
+      - no internal UI routes (library, v2, radar-UI) in paths
+      - no internal request-body models in components.schemas
+      - schema is self-contained and identical regardless of what other
+        routes are mounted on the web app
     """
+    from fastapi import FastAPI
     from fastapi.openapi.utils import get_openapi
+    from app.api.v1.router import router as _public_v1_router
 
-    app = request.app
-    # Generate from all routes; FastAPI resolves _IncludedRouter internally.
-    full_schema = get_openapi(
+    # Build a minimal isolated app containing only the public API router.
+    _schema_app = FastAPI(
         title="FINCO Model API",
         version="1.0.0",
         description=(
@@ -133,15 +133,16 @@ async def protocol_api_openapi(request: Request):
             "capacity previews, and Radar equity data. "
             "All endpoints are read-only. No project is created by any call."
         ),
-        routes=app.routes,
     )
-    # Keep only developer API paths.
-    full_schema["paths"] = {
-        path: ops
-        for path, ops in full_schema.get("paths", {}).items()
-        if path.startswith("/api/v1/")
-    }
-    return JSONResponse(full_schema)
+    _schema_app.include_router(_public_v1_router, prefix="/api/v1")
+
+    schema = get_openapi(
+        title=_schema_app.title,
+        version=_schema_app.version,
+        description=_schema_app.description,
+        routes=_schema_app.routes,
+    )
+    return JSONResponse(schema)
 
 
 @router.get("/docs", response_class=HTMLResponse)

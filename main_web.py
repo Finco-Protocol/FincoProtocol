@@ -289,14 +289,15 @@ from app.protocol_ui.router import router as _protocol_router
 app.include_router(_protocol_router)
 
 # -- FINCO Public Model & Radar API v1 -----------------------------------------
-# Mounted here so that /api/openapi.json (served by protocol_ui) can generate
-# a filtered schema from app.routes that actually contains /api/v1/** paths.
-# main_api.py mounts the same routers for the standalone API process.
-from app.api.router import router as _api_v1_model_router
-from app.api.v1.router import router as _api_v1_radar_router
+# Mount ONLY the canonical public v1 router so that:
+#   - /api/v1/model/references/** and /api/v1/radar/** are reachable
+#   - legacy bare routes (/api/v1/run, /api/v1/validate, /api/v1/project-types,
+#     /api/v1/scenarios) are NOT exposed through the public web app
+# app.api.v1.router already includes the model router (model_router.router).
+# main_api.py mounts these same routers for the standalone API process.
+from app.api.v1.router import router as _api_v1_router
 import app.api.v1.run_limiter as _run_limiter  # noqa: F401 — initialises semaphore
-app.include_router(_api_v1_model_router, prefix="/api/v1")
-app.include_router(_api_v1_radar_router, prefix="/api/v1")
+app.include_router(_api_v1_router, prefix="/api/v1")
 
 
 def _friendly_error(exc: Exception, context: str = "") -> str:

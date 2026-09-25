@@ -2113,15 +2113,22 @@ class TestApiBetaBrowser:
         nav_text = page.inner_text(".proto-nav")
         for label in ("Docs", "Roadmap", "$FINCO"):
             assert label in nav_text, f"Nav item '{label}' not in nav"
-        # Live nav item: Docs must be an anchor to the docs surface.
-        docs_links = page.query_selector_all("a:text('Docs')")
-        assert len(docs_links) == 1, "Docs must be exactly one live nav anchor"
-        # Placeholders must be spans, not anchors
+        # Docs is LIVE — must be an anchor pointing to /docs
+        docs_link = page.query_selector('a[href="/docs"]')
+        assert docs_link is not None, (
+            "Docs nav item must be an anchor to /docs (Docs is live, not a placeholder)"
+        )
+        # Roadmap and $FINCO remain placeholders — spans, not anchors
         for label in ("Roadmap", "$FINCO"):
             matches = page.query_selector_all(f"a:text('{label}')")
             assert len(matches) == 0, (
-                f"Placeholder '{label}' is rendered as an anchor — must be non-interactive"
+                f"Placeholder '{label}' is rendered as an anchor — must remain non-interactive"
             )
+        # Roadmap and $FINCO must carry aria-disabled
+        placeholders = page.query_selector_all('[aria-disabled="true"]')
+        placeholder_texts = " ".join(p.inner_text() for p in placeholders)
+        assert "Roadmap" in placeholder_texts, "Roadmap must be aria-disabled"
+        assert "$FINCO" in placeholder_texts, "$FINCO must be aria-disabled"
         page.close()
 
     def test_api_b05_model_endpoint_table_visible(self, live_url, browser):
@@ -2160,14 +2167,14 @@ class TestApiBetaBrowser:
         page.close()
 
     def test_api_b08_docs_and_openapi_links(self, live_url, browser):
-        """API-B08: /docs and /openapi.json discovery anchor elements present on /api."""
+        """API-B08: /api/docs and /api/openapi.json discovery anchors present on /api."""
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(f"{live_url}/api")
         page.wait_for_load_state("domcontentloaded")
-        docs_link = page.query_selector('a[href="/docs"]')
-        openapi_link = page.query_selector('a[href="/openapi.json"]')
-        assert docs_link is not None, "Link to /docs not found on /api page"
-        assert openapi_link is not None, "Link to /openapi.json not found on /api page"
+        api_docs_link = page.query_selector('a[href="/api/docs"]')
+        openapi_link = page.query_selector('a[href="/api/openapi.json"]')
+        assert api_docs_link is not None, "Link to /api/docs not found on /api page"
+        assert openapi_link is not None, "Link to /api/openapi.json not found on /api page"
         page.close()
 
     def test_api_b09_mobile_endpoint_content_visible(self, live_url, browser):
@@ -2182,6 +2189,87 @@ class TestApiBetaBrowser:
         assert "/radar/assets" in body, (
             "Radar endpoint path not readable at 390px mobile"
         )
+        page.close()
+
+    def test_api_b10_swagger_ui_renders_without_csp_errors(self, live_url, browser):
+        """API-B10: /api/docs renders self-hosted Swagger UI — no CDN, no CSP errors.
+
+        Closes the original user-reported blank-page defect: FastAPI's built-in
+        /docs loaded swagger-ui from cdn.jsdelivr.net which FINCO's CSP blocked,
+        producing a blank page.  This test verifies the corrected self-hosted path:
+        - Swagger root page returns 200
+        - Self-hosted JS and CSS assets return 200
+        - /api/openapi.json is requested and returns 200
+        - No requests to jsdelivr.net or unpkg.com
+        - No CSP errors in the browser console
+        - At least one known API operation is visible in the rendered UI
+        """
+        failed_requests: list[str] = []
+        csp_errors: list[str] = []
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+
+        def on_request_failed(req):
+            failed_requests.append(f"{req.url} [{req.failure}]")
+
+        def on_console(msg):
+            if "content security policy" in msg.text.lower() or "csp" in msg.text.lower():
+                csp_errors.append(msg.text)
+
+        cdn_requests: list[str] = []
+
+        def on_request(req):
+            if "jsdelivr.net" in req.url or "unpkg.com" in req.url:
+                cdn_requests.append(req.url)
+
+        page.on("requestfailed", on_request_failed)
+        page.on("console", on_console)
+        page.on("request", on_request)
+
+        response = page.goto(f"{live_url}/api/docs")
+        assert response is not None and response.status == 200, (
+            f"/api/docs did not return 200 (got {response.status if response else 'None'})"
+        )
+
+        # Wait for swagger-ui to initialise (looks for the swagger title/operations)
+        page.wait_for_load_state("networkidle")
+
+        # No CDN requests — all assets must be self-hosted
+        assert cdn_requests == [], (
+            f"/api/docs loaded assets from external CDN — CSP violation: {cdn_requests}"
+        )
+
+        # No CSP console errors
+        assert csp_errors == [], (
+            f"/api/docs produced CSP console errors: {csp_errors}"
+        )
+
+        # Swagger UI body must contain the API title or a known operation
+        body_text = page.inner_text("body")
+        assert "swagger" in body_text.lower() or "FINCO" in body_text or "/api/v1" in body_text, (
+            "Swagger UI body does not contain expected content after load"
+        )
+
+        # Verify the self-hosted JS and CSS assets are reachable
+        import urllib.request
+        for asset_path in (
+            "/static/vendor/swagger-ui/swagger-ui-bundle.js",
+            "/static/vendor/swagger-ui/swagger-ui.css",
+        ):
+            asset_resp = page.evaluate(
+                f"fetch('{asset_path}').then(r => r.status)"
+            )
+            assert asset_resp == 200, (
+                f"Self-hosted Swagger asset {asset_path} returned HTTP {asset_resp}"
+            )
+
+        # /api/openapi.json must be reachable from the browser context
+        schema_status = page.evaluate(
+            "fetch('/api/openapi.json').then(r => r.status)"
+        )
+        assert schema_status == 200, (
+            f"/api/openapi.json returned HTTP {schema_status} from Swagger browser context"
+        )
+
         page.close()
 
 
