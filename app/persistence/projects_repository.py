@@ -845,7 +845,22 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
         })
         return baseline
 
-    if normalized_source == "generic_data_center_reference":            "p50_hours": str(pi.technical.operating_hours_p50),
+    if normalized_source == "generic_data_center_reference":
+        pi = create_generic_data_center_reference()
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+            dc_driver_snapshot_values,
+        )
+        baseline.update({
+            "active_project": "generic_data_center_reference-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Data Center",
+            "template_source": "generic_data_center_reference",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": "0",
+            # Full-time IT-load basis: occupancy is the utilization authority.
+            "p50_hours": str(pi.technical.operating_hours_p50),
             "total_capex_keur": str(pi.capex.total_capex),
             "opex_y1_keur": str(_sum_opex(pi.opex)),
             "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),

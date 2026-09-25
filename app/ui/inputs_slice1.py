@@ -276,6 +276,7 @@ def _row_for_field(
     value = pis.get(spec.field_id)
     input_value = submitted_value if submitted_value is not None else _format_value(value, spec)
     note = _FIELD_NOTES.get(spec.field_id, _STATUS_NOTES[status])
+<<<<<<< HEAD
     # Data Center contract: capacity_mw is IT Load Capacity, never generation.
     from app.workbook.registry import DC_CAPACITY_LABEL, is_data_center_project_type
     label = spec.label
@@ -288,6 +289,14 @@ def _row_for_field(
         )
     ):
         label = DC_CAPACITY_LABEL
+=======
+    # EV Charging (V1): presentation-only relabel from the shared adapter.
+    from app.v2.ev_labels import _EV_LABELS as _EV_ROW_LABELS
+    from app.v2.ev_labels import is_ev_pis as _is_ev_pis
+    label = spec.label
+    if _is_ev_pis(pis) and spec.field_id in _EV_ROW_LABELS:
+        label = _EV_ROW_LABELS[spec.field_id]
+>>>>>>> 13687ab (EV Charging V1 (5/5): rendered-form acceptance + C.13 subtotal fix)
     return {
         "field_id": spec.field_id,
         "label": label,
