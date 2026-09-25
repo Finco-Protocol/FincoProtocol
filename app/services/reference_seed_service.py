@@ -35,12 +35,14 @@ CLONEABLE_SEED_TEMPLATE_SOURCES = frozenset({
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 })
 
 _TECHNOLOGY_BY_TEMPLATE_SOURCE = {
     "generic_solar_reference": "solar",
     "generic_wind_reference": "wind",
     "generic_data_center_reference": "data_center",
+    "generic_ev_charging_reference": "ev_charging",
 }
 
 # The Data Center B.08 power expense is a DERIVED authority (recomputed from
@@ -68,7 +70,16 @@ class SeedLine:
     scaling_mode: ScalingMode = ScalingMode.PER_MW
 
 
-_OPEX_GROUP_BY_REFERENCE_NAME = OPEX_PARENT_BY_CANONICAL_KEY
+# EV Charging (V1) canonical OPEX parents extend the name map additively.
+# "Electricity Procurement" (B.08) is deliberately absent: it is a DERIVED
+# factory item (energy × price with the utilisation-ramp steps), never a
+# seeded sub-line — it scales exactly with capacity inside the adapter.
+_OPEX_GROUP_BY_REFERENCE_NAME = {
+    **OPEX_PARENT_BY_CANONICAL_KEY,
+    "Security / HSE": "B.05",
+    "Audit & Accounting & Legal": "B.10",
+    "Bank Fees": "B.11",
+}
 
 
 def _primary_capex_category_by_field() -> dict[str, str]:
@@ -139,6 +150,8 @@ def _reference_inputs(template_source: str):
         create_generic_solar_reference,
         create_generic_wind_reference,
         create_generic_data_center_reference,
+        create_generic_ev_charging_reference,
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     )
 
     if template_source == "generic_solar_reference":
@@ -147,7 +160,10 @@ def _reference_inputs(template_source: str):
         return create_generic_wind_reference()
     if template_source == "generic_data_center_reference":
         return create_generic_data_center_reference()
+    if template_source == "generic_ev_charging_reference":
+        return create_generic_ev_charging_reference()
     raise ValueError("Only canonical cloneable references may seed a project.")
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
 
 
 def _scaled(value: Any, ratio: float) -> str:
@@ -228,8 +244,9 @@ def create_reference_seeded_project(
     """Clone and scale a canonical cloneable reference into a working copy."""
     if template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
         raise ValueError(
-            "Reference-driven creation supports Solar, Wind and Data Center only."
+            "Reference-driven creation supports Solar, Wind, Data Center and EV Charging only."
         )
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     if not requested_name.strip():
         raise ValueError("Project name is required.")
     if capacity_mw <= 0:
@@ -287,6 +304,7 @@ def create_reference_seeded_project(
         technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
         if technology is None:
             raise ValueError(f"Unsupported seed technology for {template_source!r}.")
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
         for field_name, seed in profile["capex_items"].items():
             amount = float(seed["reference_amount_keur"])
             children = capex_children(technology, seed["owner_category_code"])
@@ -422,6 +440,7 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
 
     record = get_project_by_code(user_id, project_code)
     if record is None or record.template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
         return
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
@@ -475,6 +494,12 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
             (record.project_id,),
         )
         reconciled_opex_total = float(cur.fetchone()["total"])
+        # EV Charging: the derived B.08 electricity line is a factory item
+        # (never a seeded sub-line) that scales exactly with capacity; add its
+        # driver-derived Y1 amount so the reconciled snapshot total includes it.
+        if record.template_source == "generic_ev_charging_reference":
+            from app.ev_charging_economics import electricity_expense_keur
+            reconciled_opex_total += electricity_expense_keur(float(capacity_mw), 1)
     snapshot = dict(ws.draft_snapshot)
     snapshot["capacity_mw"] = f"{capacity_mw:.12g}"
     snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
@@ -704,6 +729,12 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
             (record.project_id,),
         )
         reconciled_opex_total = float(cur.fetchone()["total"])
+        # EV Charging: the derived B.08 electricity line is a factory item
+        # (never a seeded sub-line) that scales exactly with capacity; add its
+        # driver-derived Y1 amount so the reconciled snapshot total includes it.
+        if record.template_source == "generic_ev_charging_reference":
+            from app.ev_charging_economics import electricity_expense_keur
+            reconciled_opex_total += electricity_expense_keur(float(capacity_mw), 1)
     refreshed_snapshot = dict(ws.draft_snapshot)
     refreshed_snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
     if record.template_source == "generic_data_center_reference":

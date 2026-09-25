@@ -102,6 +102,19 @@ _CAPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
             ("Project Controls", 20),
         ),
     },
+    # EV Charging (V1): C.01 and the EV-specific parents below; every other
+    # parent keeps the shared common taxonomy. Weights reconcile to 100 each.
+    "ev_charging": {
+        "C.01": (("DC Fast Chargers", 55), ("Power Cabinets / Conversion Equipment", 18), ("Charging Dispensers / Cables", 10), ("Site Energy Management / Charging Controls", 7), ("Payment / Authentication Hardware", 4), ("Spare Equipment / Initial Parts", 6)),
+        "C.02": (("Electrical Installation", 45), ("Charger Installation", 25), ("LV / MV Distribution Installation", 20), ("Testing / Integration", 10)),
+        "C.03": (("Grid Connection Works", 40), ("Transformer / MV Equipment", 35), ("Utility Interface / Metering", 15), ("Protection / Studies / Testing", 10)),
+        "C.04": (("Commissioning Preparation", 40), ("Operational Procedures", 30), ("Training / Handover", 30)),
+        "C.05": (("Civil Works / Foundations", 35), ("Parking / Traffic Layout", 25), ("Canopies / Weather Protection", 15), ("Lighting / Signage", 10), ("Site Security / Ancillary Infrastructure", 15)),
+        "C.08": (("Legal / Contract Advisory", 45), ("Audit / Reporting", 20), ("Permitting / Commercial Advisory", 35)),
+        "C.09": (("Owner's Engineering", 50), ("Construction Supervision", 30), ("Project Controls", 20)),
+        "C.13": (("Construction Contingency", 100),),
+        **{k: v for k, v in _COMMON_CAPEX.items() if k not in {"C.01", "C.02", "C.03", "C.04", "C.05", "C.08", "C.09", "C.13"}},
+    },
 }
 
 _COMMON_OPEX_ROWS: dict[str, tuple[tuple[str, int], ...]] = {
@@ -161,6 +174,16 @@ _OPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
         # seeded as an editable persisted sub-line.
         "B.08": (("Grid Electricity", 100),),
     },
+    # EV Charging (V1): technology-specific children for B.02/B.05/B.08/B.11;
+    # every other group keeps the shared common taxonomy. B.08 Electricity
+    # Procurement is 100% of the group: the DERIVED energy×price line is the
+    # group's only economic content (spec L/K — never mixed into fixed OPEX).
+    "ev_charging": {
+        "B.02": (("Preventive Charger Maintenance", 35), ("Corrective Charger Maintenance", 25), ("Electrical Infrastructure Maintenance", 18), ("Site / Civil Maintenance", 10), ("Software / Firmware Technical Support", 7), ("Critical Spares", 5)),
+        "B.05": (("Site Security", 45), ("HSE / Safety Inspections", 35), ("Emergency Equipment / Procedures", 20)),
+        "B.08": (("Electricity Procurement", 100),),
+        "B.11": (("Payment Processing", 60), ("Bank / Merchant Administration", 40)),
+    },
 }
 
 OPEX_PARENT_BY_CANONICAL_KEY = {
@@ -206,8 +229,7 @@ def opex_children(parent_code: str, technology: str | None = None) -> tuple[Deta
     if parent_code in _COMMON_OPEX_ROWS:
         return _children(parent_code, _COMMON_OPEX_ROWS[parent_code])
     if parent_code == "B.02":
-        if tech_key not in {"solar", "wind"}:
-            raise ValueError(f"Unsupported public generic technology: {technology!r}")
+        if tech_key not in {"solar", "wind"}:            raise ValueError(f"Unsupported public generic technology: {technology!r}")
         return _children(parent_code, _OPEX_ROWS[tech_key][parent_code])
     raise KeyError(f"Unknown public generic OPEX parent: {parent_code}")
 

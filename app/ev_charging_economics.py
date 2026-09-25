@@ -163,6 +163,38 @@ def merchant_price_schedule(fc_year: int, horizon_years: int = 20) -> tuple[int,
     return start, tuple(prices)
 
 
+def scaled_ev_reference_inputs(capacity_mw: float, horizon_years: int = 20):
+    """EV reference ProjectInputs scaled to an arbitrary installed capacity.
+
+    CAPEX and fixed OPEX scale linearly (PER_MW); the derived electricity
+    schedule is recomputed from the drivers at the requested capacity;
+    revenue derives from capacity through the engine. The revenue adapter's
+    calendar rate schedule is capacity-independent (it encodes prices, not
+    amounts). This is the seed base for EV working copies: building effective
+    inputs from it keeps the V4-1 anchor check satisfied at every capacity.
+    """
+    import dataclasses
+
+    from app.project_factories import create_default_ev_charging_project
+
+    ratio = float(capacity_mw) / REFERENCE_CAPACITY_MW
+    pi = create_default_ev_charging_project(capacity_mw=capacity_mw, horizon_years=horizon_years)
+    scaled_capex_fields = {}
+    for f in pi.capex.__dataclass_fields__.values():
+        item = getattr(pi.capex, f.name)
+        if hasattr(item, "amount_keur") and f.name not in ("idc_keur", "bank_fees_keur"):
+            scaled_capex_fields[f.name] = dataclasses.replace(item, amount_keur=item.amount_keur * ratio)
+    scaled_capex_fields["idc_keur"] = pi.capex.idc_keur
+    scaled_capex_fields["bank_fees_keur"] = pi.capex.bank_fees_keur
+    capex = dataclasses.replace(pi.capex, **scaled_capex_fields)
+    opex = tuple(
+        dataclasses.replace(item, y1_amount_keur=item.y1_amount_keur * ratio)
+        if item.name != "Electricity Procurement" else item
+        for item in pi.opex
+    )
+    return dataclasses.replace(pi, capex=capex, opex=opex)
+
+
 def scale_capacity(capacity_mw: float, *, horizon_years: int = 20):
     """Return (y1_amount, step_changes) for an arbitrary capacity.
 
@@ -185,5 +217,6 @@ __all__ = [
     "energy_delivered_mwh", "grid_energy_purchased_mwh",
     "charging_revenue_keur", "electricity_expense_keur",
     "electricity_opex_item", "scale_capacity",
+    "scaled_ev_reference_inputs",
     "effective_charging_price_eur_mwh", "merchant_price_schedule",
 ]

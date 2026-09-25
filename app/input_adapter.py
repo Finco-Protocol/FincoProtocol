@@ -1325,12 +1325,15 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
                 "gearing_pct must be between 0 and 100 for user-created project runtime"
             )
 
-    # Validate project_type (preserved behavior; Data Center joins the
-    # runnable set with Generic Data Center Reference V1).
+    # Validate project_type (Data Center and EV Charging join the runnable
+    # set; "Ev Charging" is the .title() form of the EV Charging technology).
     project_type = _snapshot_text(snapshot, "project_type").title()
-    if project_type not in {"Solar", "Wind", "Data Center"}:
+    if project_type not in {"Solar", "Wind", "Data Center", "Ev Charging"}:
         raise SnapshotInputError(
-            "project_type must be Solar, Wind or Data Center for user-created project runtime"
+            "project_type must be Solar, Wind, Data Center or EV Charging "
+            "for user-created project runtime"
+        )
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
         )
 
     # V4-1: use the project-specific factory base for Generic Wind Reference / Generic Solar Reference
@@ -1348,6 +1351,11 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     elif _template_source == "generic_data_center_reference":
         from app.project_factories import create_generic_data_center_reference as _dcf
         _base = _dcf()
+    elif _template_source == "generic_ev_charging_reference":
+        from app.ev_charging_economics import scaled_ev_reference_inputs as _ev_scaled
+        _ev_capacity = _snapshot_float(snapshot, "capacity_mw", non_negative=True)
+        _base = _ev_scaled(_ev_capacity if (_ev_capacity or 0) > 0 else 5.0)
+>>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     else:
         _base = None
 
@@ -1372,6 +1380,9 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
             if project_type == "Solar":
                 from app.project_factories import create_default_solar_project as _gsf
                 _base_opex = _gsf().opex
+            elif project_type == "Ev Charging":
+                from app.project_factories import create_default_ev_charging_project as _gef
+                _base_opex = _gef().opex
             else:
                 from app.project_factories import create_default_wind_project as _gwf
                 _base_opex = _gwf().opex
