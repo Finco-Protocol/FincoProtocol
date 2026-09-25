@@ -2101,15 +2101,23 @@ class TestApiBetaBrowser:
         page.close()
 
     def test_api_b04_placeholders_not_links(self, live_url, browser):
-        """API-B04: Docs/Roadmap/$FINCO appear as non-interactive placeholders."""
+        """API-B04: Docs is a live nav link; Roadmap/$FINCO stay placeholders.
+
+        Contract aligned with PR #87 (product documentation surface): Docs
+        became a real navigation anchor; Roadmap and $FINCO remain
+        non-interactive placeholders.
+        """
         page = browser.new_page(viewport={"width": 1280, "height": 900})
         page.goto(f"{live_url}/api")
         page.wait_for_load_state("domcontentloaded")
         nav_text = page.inner_text(".proto-nav")
         for label in ("Docs", "Roadmap", "$FINCO"):
-            assert label in nav_text, f"Placeholder '{label}' not in nav"
+            assert label in nav_text, f"Nav item '{label}' not in nav"
+        # Live nav item: Docs must be an anchor to the docs surface.
+        docs_links = page.query_selector_all("a:text('Docs')")
+        assert len(docs_links) == 1, "Docs must be exactly one live nav anchor"
         # Placeholders must be spans, not anchors
-        for label in ("Docs", "Roadmap", "$FINCO"):
+        for label in ("Roadmap", "$FINCO"):
             matches = page.query_selector_all(f"a:text('{label}')")
             assert len(matches) == 0, (
                 f"Placeholder '{label}' is rendered as an anchor — must be non-interactive"
