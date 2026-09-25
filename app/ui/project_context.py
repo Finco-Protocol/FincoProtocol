@@ -171,6 +171,15 @@ def _slugify_code(name: str) -> str:
 def _infer_opex_group(name: str) -> str:
     """Infer OPEX group from item name patterns (best-effort for display)."""
     n = name.lower()
+    # EV Charging (V1) canonical names first: "Security / HSE" must land on
+    # B.05 (the generic "security" pattern predates EV and points at B.01),
+    # and the derived electricity / payment lines must not fall to "Other".
+    if "site security" in n or n.startswith("security") or "hse" in n:
+        return "Security"
+    if "electricity" in n:
+        return "Power Expenses"
+    if "payment" in n or n.startswith("bank fee"):
+        return "Bank Fees"
     if any(k in n for k in ["technical", "o&m", "maintain", "clean", "security", "operational"]):
         return "Technical Management"
     if any(k in n for k in ["insurance", "insur"]):
@@ -949,7 +958,11 @@ def _build_capex_detail_items(
             }
             for detail, detail_amount in allocate_parent_amount(
                 amount,
-                capex_children("wind" if technology.lower().startswith("wind") else "solar", code),
+                capex_children(
+                    "ev_charging" if technology == "EV Charging"
+                    else ("wind" if technology.lower().startswith("wind") else "solar"),
+                    code,
+                ),
             )
         )
         summary = dict(top_counts)
@@ -1308,9 +1321,10 @@ def build_project_context_for_record(
     resolved_project_type = (snapshot.get("project_type") or project_type or "").strip().lower()
     if resolved_project_type in {"data center", "data_center", "datacenter"}:
         technology = "Data Center"
+    elif resolved_project_type in ("ev charging", "ev_charging"):
+        technology = "EV Charging"
     else:
         technology = "Solar PV" if resolved_project_type == "solar" else "Wind"
-
     # R5/F04-A: when effective_project_inputs is provided it is the ONE causal
     # authority — the same persisted draft that drove the production run.  Read
     # every engine-bound scalar from it using explicit is-None checks (never

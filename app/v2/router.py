@@ -365,7 +365,9 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                 "step": step,
                 "help_text": fspec.description or "",
             })
-    return rows
+    # EV Charging (V1): presentation-only label/visibility adapter.
+    from app.v2.ev_labels import apply_ev_presentation
+    return apply_ev_presentation(rows, pis)
 
 
 def _build_ps_fields(pis) -> list[dict]:

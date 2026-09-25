@@ -368,7 +368,7 @@ async def _execute_user_created_path(
         # equity_irr_method, frozen DS schedule, tax params) is preserved.
         # Snapshot scalar values are applied on top via _resolve_user_inputs.
         _seed_base_uc = (
-            _get_seed_base_inputs(runtime_seed)
+            _get_seed_base_inputs(runtime_seed, capacity_mw=capacity_mw)
             if runtime_seed in _TEMPLATE_SEEDED_PROJECT_KEYS else None
         )
         if _seed_base_uc is not None and runtime_snapshot is not None:
@@ -572,7 +572,7 @@ async def _execute_template_seeded_path(
             # (SHL mechanics, equity_irr_method, merchant curve, frozen DS
             # schedule, tax params, etc.) is preserved.  Generic projects
             # continue to use the original generic-factory path.
-            _seed_base = _get_seed_base_inputs(runtime_seed)
+            _seed_base = _get_seed_base_inputs(runtime_seed, capacity_mw=capacity_mw)
             if _seed_base is not None:
                 from app.input_adapter import build_projectinputs_seeded as _build_seeded
                 override = _build_seeded(schema, _seed_base)
@@ -829,6 +829,7 @@ _TEMPLATE_SEEDED_PROJECT_KEYS: dict[str, str] = {
     "generic_wind_reference": "Generic Wind Reference",
     "generic_solar_reference": "Generic Solar Reference",
     "generic_data_center_reference": "Generic Data Center Reference",
+    "generic_ev_charging_reference": "Generic EV Charging Hub Reference",
 }
 
 
@@ -841,7 +842,7 @@ def _runtime_project_key(canonical_type: str | None) -> str:
     return "Wind"
 
 
-def _get_seed_base_inputs(runtime_seed: str):
+def _get_seed_base_inputs(runtime_seed: str, capacity_mw: float | None = None):
     """Stack R: return a calibrated ProjectInputs for a canonical reference seed.
 
     Returns None for any other seed so the generic factory path is used.
@@ -855,6 +856,14 @@ def _get_seed_base_inputs(runtime_seed: str):
     if runtime_seed == "generic_data_center_reference":
         from app.project_factories import create_generic_data_center_reference
         return create_generic_data_center_reference()
+    if runtime_seed == "generic_ev_charging_reference":
+        # EV Correction A: the seed base must match the requested capacity so
+        # the derived electricity schedule and the V4-1 anchor contract hold.
+        from app.ev_charging_economics import scaled_ev_reference_inputs
+        try:
+            return scaled_ev_reference_inputs(float(capacity_mw))
+        except (TypeError, ValueError):
+            return scaled_ev_reference_inputs(5.0)
     return None
 
 

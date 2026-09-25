@@ -19,12 +19,14 @@ VALID_REFERENCE_KEYS: frozenset[str] = frozenset({
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 })
 
 _TECHNOLOGY: dict[str, str] = {
     "generic_solar_reference": "solar",
     "generic_wind_reference": "wind",
     "generic_data_center_reference": "data_center",
+    "generic_ev_charging_reference": "ev_charging",
 }
 
 # Capacity unit contract per reference key.  Data Center capacity is IT load
@@ -32,7 +34,8 @@ _TECHNOLOGY: dict[str, str] = {
 _CAPACITY_UNIT: dict[str, str] = {
     "generic_solar_reference": "MW",
     "generic_wind_reference": "MW",
-    "generic_data_center_reference": "MW IT",
+    "generic_data_center_reference": "MW IT",,
+    "generic_ev_charging_reference": "MW charging capacity",
 }
 
 

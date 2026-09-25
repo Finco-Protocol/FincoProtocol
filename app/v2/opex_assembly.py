@@ -143,6 +143,10 @@ _OPEX_NAME_TO_CODE: dict[str, str] = {
     "Environmental & Social":                   "B.12",
     "Environmental & Social Management":        "B.12",
 
+    # --- EV Charging (V1) canonical names ---
+    "Security / HSE":                           "B.05",
+    "Electricity Procurement":                  "B.08",  # DERIVED factory item — no snapshot key edits
+
     # --- B.13 Contingencies (derived — never overridden) ---
     "Contingencies":                            "B.13",
 
