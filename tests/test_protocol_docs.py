@@ -56,7 +56,8 @@ def test_docs04_model_brand_bar_links_to_product_docs():
     assert 'href="/docs">Docs</a>' in brand
     # Must NOT be the old /docs/start workaround path
     assert 'href="/docs/start"' not in brand
-    assert 'aria-disabled="true" title="Coming soon">Roadmap</span>' in brand
+    # Roadmap is live after the public Roadmap launch; $FINCO remains the placeholder.
+    assert 'href="/roadmap">Roadmap</a>' in brand
     assert 'aria-disabled="true" title="Coming soon">$FINCO</span>' in brand
 
 
