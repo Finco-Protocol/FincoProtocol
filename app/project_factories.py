@@ -762,6 +762,8 @@ __all__ = [
     "create_generic_wind_reference",
     "create_generic_storage_reference",
     "create_generic_data_center_reference",
+    "create_generic_ev_charging_reference",
+    "create_default_ev_charging_project",
     "create_default_solar_project",
     "create_default_wind_project",
     "create_default_bess_project",
@@ -769,3 +771,171 @@ __all__ = [
     "create_default_wind_bess_project",
     "create_default_data_center_project",
 ]
+
+
+# ── Generic EV Charging Hub (V1) ─────────────────────────────────────────────
+#
+# A high-power EV charging site is a load-serving infrastructure asset, not a
+# generator. The existing FINCO engine is reused unchanged: the EV economics
+# authority (app.ev_charging_economics) derives charging revenue and the
+# electricity-procurement schedule from three physical drivers (capacity MW,
+# equivalent full-load hours, prices), and adapts them onto the canonical
+# project cash-flow inputs:
+#
+#   capacity_mw                       = installed charging capacity (MW)
+#   operating_hours_by_year           = equivalent full-load charging hours
+#                                       ramp (Y1 1200, Y2 1600, Y3+ 2000)
+#   ppa_base_tariff (internal only)   = charging price EUR/MWh (400 = 0.40/kWh)
+#   ppa_index (internal only)         = charging price escalation (2%/yr)
+#
+# The PPA-named revenue fields are a documented internal compatibility
+# adapter; they must never surface as PPA/P50/P90 terminology in EV UI/API.
+# The equivalent full-load hours are net of availability effects, so the
+# engine runs at neutral combined availability 1.0 and energy reconciles
+# exactly; the 0.98 physical availability is display metadata only.
+#
+# Electricity procurement (B.08) is DERIVED from the drivers as one OpexItem
+# with sustained steps (Y2 ramp, Y3 stabilized) and 2%/yr price escalation.
+# Payment processing (B.11) is a fixed Y1 amount that equals 2.0% of
+# stabilized gross charging revenue at reference scale; V1 does not
+# dynamically scale payment fees (documented limitation, one authority only).
+
+
+def create_default_ev_charging_project(
+    capacity_mw: float = 5.0,
+    horizon_years: int = 20,
+    construction_months: int = 12,
+) -> ProjectInputs:
+    """Generic EV charging hub project — synthetic round numbers, no calibration.
+
+    Reference scale: 5 MW installed charging capacity, 40 charging points
+    (display metadata only), 9,000 kEUR CAPEX (1,800 kEUR/MW), 20-year
+    operating horizon on a semestrial period axis.
+    """
+    from app.ev_charging_economics import electricity_opex_item
+    from app.ev_charging_economics import merchant_price_schedule as ev_merchant_price_schedule
+
+    z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    equipment = CapexItem(name="Charging Equipment", amount_keur=4_000.0, y0_share=0.0,
+                          spending_profile=(0.5, 0.5), asset_class=AssetClass.EV_CHARGING_EQUIPMENT)
+    epc = CapexItem(name="EPC / Electrical Installation", amount_keur=1_500.0, y0_share=0.3,
+                    spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
+    site = CapexItem(name="Site / Civil Infrastructure", amount_keur=800.0, y0_share=0.3,
+                     spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
+    grid = CapexItem(name="Grid Connection", amount_keur=1_500.0, y0_share=0.5,
+                     spending_profile=(0.5,), asset_class=AssetClass.CIVIL_GRID)
+    ops_readiness = CapexItem(name="Operations Readiness", amount_keur=200.0, y0_share=1.0,
+                              asset_class=AssetClass.SOFT_COSTS)
+    legal = CapexItem(name="Legal / Professional", amount_keur=250.0, y0_share=1.0,
+                      asset_class=AssetClass.SOFT_COSTS)
+    owners_eng = CapexItem(name="Owner's Engineering / Construction Management", amount_keur=250.0,
+                           y0_share=1.0, asset_class=AssetClass.SOFT_COSTS)
+    contingency = CapexItem(name="Contingency", amount_keur=500.0, y0_share=1.0,
+                            asset_class=AssetClass.SOFT_COSTS)
+
+    capex = CapexStructure(
+        production_units=equipment,      # C.01
+        epc_contract=epc,                # C.02
+        grid_connection=grid,            # C.03
+        ops_prep=ops_readiness,          # C.04
+        epc_other=site,                  # C.05
+        audit_legal=legal,               # C.08
+        construction_mgmt_a=owners_eng,  # C.09
+        contingencies=contingency,       # C.13
+        insurances=z, lease_tax=z,
+        construction_mgmt_b=z, commissioning=z,
+        taxes=z, project_acquisition=z, project_rights=z,
+        idc_keur=0.0, bank_fees_keur=0.0,  # Generic-path: factory-direct must match resolver
+    )
+    # Fixed non-power OPEX (960 kEUR stabilized) + the DERIVED B.08 electricity
+    # line. Names match the canonical OPEX groups so the public detail
+    # catalogue decomposes them without relabeling.
+    opex = [
+        OpexItem(name="Technical Management", y1_amount_keur=200.0, annual_inflation=0.02),
+        OpexItem(name="Maintenance", y1_amount_keur=300.0, annual_inflation=0.02),
+        OpexItem(name="Security / HSE", y1_amount_keur=60.0, annual_inflation=0.02),
+        OpexItem(name="Insurance", y1_amount_keur=80.0, annual_inflation=0.02),
+        OpexItem(name="Lease & Tax", y1_amount_keur=180.0, annual_inflation=0.02),
+        OpexItem(name="Audit & Accounting & Legal", y1_amount_keur=60.0, annual_inflation=0.02),
+        OpexItem(name="Bank Fees", y1_amount_keur=80.0, annual_inflation=0.02),
+        electricity_opex_item(capacity_mw=capacity_mw, horizon_years=horizon_years),
+    ]
+    _ev_fc = date(2030, 1, 1)
+    info = ProjectInfo(name="Generic EV Charging Model", company="Synthetic Sponsor",
+        code="GEN-EVCHARGE-1", country_iso="XE", financial_close=_ev_fc,
+        construction_months=construction_months,
+        cod_date=_ev_fc + relativedelta(months=construction_months),
+        horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    technical = TechnicalParams(capacity_mw=capacity_mw, yield_scenario="P_50",
+        operating_hours_p50=2000.0, operating_hours_p90_10y=2000.0,
+        pv_degradation=0.0, bess_enabled=False,
+        plant_availability=1.0, grid_availability=1.0,
+        operating_hours_by_year=(1200.0, 1600.0, 2000.0))
+    # Internal compatibility adapter (documented in ev_charging_economics):
+    # the engine runs at stabilized 2000 h; the utilisation ramp is encoded
+    # exactly into the per-calendar-year effective charging rate, which the
+    # frozen pipeline transports via the existing merchant schedule fields.
+    # The PPA-named fields below remain the DECLARED price authority
+    # (400 EUR/MWh = 0.40 EUR/kWh, 2% escalation) and the only values the
+    # UI/API may surface — as "Charging Price", never as PPA/market terms.
+    _ev_price_curve = tuple(400.0 * (1.02 ** i) for i in range(30))
+    _ev_cal_start, _ev_cal_prices = ev_merchant_price_schedule(int(_ev_fc.year), horizon_years)
+    revenue = RevenueParams(ppa_base_tariff=400.0, ppa_term_years=horizon_years, ppa_index=0.02,
+        market_scenario="Central", market_prices_curve=_ev_price_curve,
+        market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0,
+        first_merchant_operating_period_index=0,
+        market_price_calendar_start_year=_ev_cal_start,
+        market_prices_by_calendar_year_eur_mwh=_ev_cal_prices)
+    # Funding: 65% gearing on total uses -> senior ~5,850 kEUR, sponsor ~3,150.
+    # share_capital 500 + SHL 2,650 reconciles the sponsor share; G2A derives
+    # the SHL from Sources & Uses (compatibility assertion only).
+    _ev_senior_tenor_years: int = 10
+    _ev_constr_semesters: int = math.ceil(construction_months / 6)
+    _ev_shl_elig_start: int = _ev_constr_semesters + _ev_senior_tenor_years * 2
+    _ev_shl_maturity: int = _ev_constr_semesters + horizon_years * 2 - 1
+    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=2_650.0, shl_rate=0.08,
+        gearing_ratio=0.65, senior_tenor_years=_ev_senior_tenor_years, base_rate=0.03, margin_bps=300,
+        floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
+        target_dscr=1.30, lockup_dscr=1.15, dsra_months=6,
+        equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+        senior_debt_interest_config=_generic_clean_senior_interest_config(
+            annual_all_in_rate=0.03 + 300 / 10000,
+            tenor_years=_ev_senior_tenor_years,
+        ),
+        clean_shl_principal_keur=2_650.0,  # compatibility assertion; G2A derives principal
+        clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
+        shl_principal_eligibility_start_period=_ev_shl_elig_start,
+        shl_maturity_period_index=_ev_shl_maturity,
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
+    tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
+        clean_cash_tax_timing_enabled=True)
+
+    return ProjectInputs(info=info, technical=technical, capex=capex,
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
+
+
+def create_generic_ev_charging_reference() -> ProjectInputs:
+    """Protected synthetic EV Charging reference for public demos and regression tests."""
+    base = create_default_ev_charging_project(
+        capacity_mw=5.0,
+        horizon_years=20,
+        construction_months=12,
+    )
+    return replace(
+        base,
+        info=replace(
+            base.info,
+            name="Generic EV Charging Hub Reference",
+            company="Synthetic Sponsor E",
+            code="REF-EVCHARGE-E",
+            country_iso="XE",
+        ),
+    )

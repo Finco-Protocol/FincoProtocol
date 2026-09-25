@@ -158,10 +158,14 @@ def validate_operating_model_input(
                            f"financial_cost_useful_life_years must be positive, "
                            f"got {dep.financial_cost_useful_life_years}"))
 
-    _RECOGNIZED_ASSET_CLASSES = frozenset({
-        "solar_panels", "wind_turbines", "bess_cells", "bess_pe",
-        "civil_grid", "soft_costs", "financial_costs",
-    })
+    # Single typed authority: derive from finco_core's AssetClass useful-life
+    # registry instead of duplicating the code list here (a duplicated
+    # allow-list silently rejects new typed asset classes, e.g. the EV
+    # charging equipment class added with the Generic EV Charging reference).
+    from finco_core.inputs import ASSET_CLASS_USEFUL_LIFE
+    _RECOGNIZED_ASSET_CLASSES = frozenset(
+        asset_class.value for asset_class in ASSET_CLASS_USEFUL_LIFE
+    )
 
     for basis_label, basis_items in (
         ("book_capex_items_for_depreciation", dep.book_capex_items_for_depreciation),
