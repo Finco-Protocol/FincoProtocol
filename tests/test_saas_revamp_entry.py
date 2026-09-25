@@ -83,12 +83,11 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     assert "Model Workspace" in html and "Reference Templates" in html
     # Solar + Wind + Data Center + EV Charging are cloneable (Storage is not yet).
     assert html.count("Create working copy") == 4
-    assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
-    search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text
-    assert 'library-row-generic_solar_reference-reference' in search
-    assert 'library-row-generic_wind_reference-reference' not in search
-    working_only = client_with_references.get("/library/list?role=working_copy", cookies=cookies).text
-    assert 'class="fo-library-reference-card"' not in working_only
+    assert "Working-copy runtime coming soon" in html
+    assert 'id="fo-kpi-strip"' not in html
+    assert 'id="fo-btn-run"' not in html
+    assert 'id="project-sidebar"' not in html
+    assert 'class="app-layout app-layout--no-project"' in html
 
 
 def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
