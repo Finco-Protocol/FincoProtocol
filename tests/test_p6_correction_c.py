@@ -6,7 +6,7 @@ Items covered:
      canonical refs and admin never touched.
   2. Full staging bootstrap with real isolated temp SQLite DB:
      inserts demo+admin+user rows, runs bootstrap_staging_db,
-     asserts exactly 3 refs and 0 non-reference rows.
+     asserts exactly 4 refs and 0 non-reference rows.
   3. Real runtime observability wiring in actual application paths:
      capacity exhaustion → capacity_busy in logs;
      run raises → run_failed in logs;
@@ -344,7 +344,7 @@ class TestTTL5TableAuthority:
 # ---------------------------------------------------------------------------
 
 class TestStagingBootstrap:
-    """bootstrap_staging_db must wipe all non-reference state and seed exactly 3 refs."""
+    """bootstrap_staging_db must wipe all non-reference state and seed exactly 4 refs."""
 
     def _build_isolated_db(self) -> tuple[str, sqlite3.Connection]:
         """Create a temp SQLite DB, initialise schema, and return (path, conn)."""
@@ -357,7 +357,7 @@ class TestStagingBootstrap:
         return db_path, conn
 
     def test_bootstrap_wipes_demo_and_admin_rows_seeds_3_refs(self):
-        """After bootstrap: exactly 3 reference rows, 0 non-reference project rows."""
+        """After bootstrap: exactly 4 reference rows, 0 non-reference project rows."""
         fd, db_path = tempfile.mkstemp(suffix=".db", prefix="finco_test_bs_")
         os.close(fd)
         try:

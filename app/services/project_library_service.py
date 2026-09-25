@@ -117,7 +117,11 @@ def is_protected_reference(project_record) -> bool:
     spt = getattr(project_record, "source_project_template", None)
     _generic_reference_keys = ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference")
     if origin == "factory_template" and (
+<<<<<<< HEAD
         ts in _generic_reference_keys or spt in _generic_reference_keys
+=======
+        ts in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_ev_charging_reference") or spt in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_ev_charging_reference")
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
     ):
         return True
     return False
@@ -133,7 +137,11 @@ CANONICAL_REFERENCE_TEMPLATE_SOURCES = frozenset({
     "generic_wind_reference",
     "generic_solar_reference",
     "generic_storage_reference",
+<<<<<<< HEAD
     "generic_data_center_reference",
+=======
+    "generic_ev_charging_reference",
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
 })
 
 # Subset of CANONICAL_REFERENCE_TEMPLATE_SOURCES for which working-copy
@@ -142,7 +150,11 @@ CANONICAL_REFERENCE_TEMPLATE_SOURCES = frozenset({
 CLONEABLE_TEMPLATE_SOURCES = frozenset({
     "generic_wind_reference",
     "generic_solar_reference",
+<<<<<<< HEAD
     "generic_data_center_reference",
+=======
+    "generic_ev_charging_reference",
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
 })
 
 
@@ -204,11 +216,19 @@ _REFERENCE_DEFINITIONS = [
         "factory": "create_generic_storage_reference",
     },
     {
+<<<<<<< HEAD
         "template_source": "generic_data_center_reference",
         "project_type": "Data Center",
         "display_name": "Generic Data Center Reference",
         "project_code": "generic_data_center_reference-reference",
         "factory": "create_generic_data_center_reference",
+=======
+        "template_source": "generic_ev_charging_reference",
+        "project_type": "EV Charging",
+        "display_name": "Generic EV Charging Hub Reference",
+        "project_code": "generic_ev_charging_reference-reference",
+        "factory": "create_generic_ev_charging_reference",
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
     },
 ]
 

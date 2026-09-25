@@ -314,7 +314,7 @@ def _seed_refs():
 
 
 def test_reference_models_seeded_deterministically():
-    """ensure_reference_models() is idempotent and always yields exactly 3 refs."""
+    """ensure_reference_models() is idempotent and always yields exactly 4 refs."""
     from app.persistence.db import get_connection
     _seed_refs()
     _seed_refs()  # second call must not create duplicates

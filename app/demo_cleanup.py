@@ -271,8 +271,8 @@ def bootstrap_staging_db(conn: "sqlite3.Connection") -> dict:
     - Deletes ALL rows from per-user tables (runs, scenarios, workspace_states,
       scenario_exports) for any user_id that is not '__reference__'
     - Deletes ALL project rows that are not owned by '__reference__'
-    - Seeds Solar XA / Wind XB / Storage XC canonical references
-    - Verifies post-condition across ALL relevant tables: exactly 3 reference
+    - Seeds Solar XA / Wind XB / Storage XC / EV Charging XE canonical references
+    - Verifies post-condition across ALL relevant tables: exactly 4 reference
       project rows, zero non-reference rows in projects, scenarios,
       workspace_states, runs, scenario_exports, capex_sub_lines,
       opex_sub_lines

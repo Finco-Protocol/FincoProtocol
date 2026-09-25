@@ -54,7 +54,7 @@ def build_inputs_summary(project_record: Any, pis: Any, ws: Any) -> dict[str, An
 
     is_user = not (
         project_record.project_origin == "factory_template"
-        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference")
+        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_ev_charging_reference")
     )
 
     # Load active user sub-lines so Inputs summary matches CAPEX and OPEX detail sheets.

@@ -81,6 +81,10 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     assert response.status_code == 200
     html = response.text
     assert "Model Workspace" in html and "Reference Templates" in html
+<<<<<<< HEAD
+=======
+    # Solar + Wind + EV Charging are cloneable (Storage is not yet).
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
     assert html.count("Create working copy") == 3
     assert "Working-copy runtime coming soon" in html
     assert 'id="fo-kpi-strip"' not in html
@@ -105,7 +109,11 @@ def test_reference_templates_are_independent_of_working_project_pages(client_wit
         assert response.status_code == 200
         html = response.text
         assert html.count('class="fo-library-reference-card"') == 4
+<<<<<<< HEAD
         for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference", "generic_data_center_reference"):
+=======
+        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference"):
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
             assert f'library-row-{template}-reference' in html
         assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
     search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text

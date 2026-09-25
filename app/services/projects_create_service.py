@@ -330,11 +330,19 @@ async def execute_projects_create_route(
             "Solar templates require project type Solar."
         )
     if (
+<<<<<<< HEAD
         normalized_source in {"generic_data_center_reference", "generic_data_center"}
         and canonical_type != "Data Center"
     ):
         validation_errors.append(
             "Data Center templates require project type Data Center."
+=======
+        normalized_source == "generic_ev_charging_reference"
+        and canonical_type != "EV Charging"
+    ):
+        validation_errors.append(
+            "EV Charging templates require project type EV Charging."
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
         )
 
     # ── 400 validation error early return ────────────────────────────
@@ -365,7 +373,11 @@ async def execute_projects_create_route(
 
     # The normal product path is a clone of the selected canonical reference,
     # not a fresh snapshot that merely happens to share factory defaults.
+<<<<<<< HEAD
     if normalized_source in {"generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"}:
+=======
+    if normalized_source in {"generic_solar_reference", "generic_wind_reference", "generic_ev_charging_reference"}:
+>>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
         from app.services.reference_seed_service import create_reference_seeded_project
 
         project_record = create_reference_seeded_project(
