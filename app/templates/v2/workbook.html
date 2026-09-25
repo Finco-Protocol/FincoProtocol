@@ -34,12 +34,12 @@
         <span class="v2-toolbar-badge v2-toolbar-wc-badge">Working Copy</span>
       {% endif %}
       <span class="v2-toolbar-sep">·</span>
-      <a class="v2-toolbar-scenario-link" href="{{ scenario_url }}">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></a>
+      <button class="v2-toolbar-scenario-link" type="button"
+              onclick="document.getElementById('tab-scenarios').click()">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></button>
     </div>
     <nav class="v2-protocol-nav" aria-label="Protocol navigation">
       <a href="/library" aria-current="page">Model</a>
       <a href="/radar">Radar</a>
-      <a href="/verify">Verify</a>
     </nav>
     <div class="v2-toolbar-runtime" id="v2-toolbar-runtime-state">
       {% include "partials/_v2_toolbar_state.html" %}

@@ -1057,11 +1057,19 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 .v2-toolbar-ref-badge { color: #b0bcdd; background: #2c3555; }
 .v2-toolbar-wc-badge { color: #b0ddbb; background: #1e3a2c; }
 .v2-toolbar-scenario-link {
+  appearance: none;
+  background: transparent;
+  border: 0;
   font-size: 0.75rem;
   color: #8899bb;
+  font-family: inherit;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
   padding-left: 0.75rem;
+  padding-top: 0;
+  padding-right: 0;
+  padding-bottom: 0;
   border-left: 1px solid #2c3555;
   margin-left: 0.5rem;
 }

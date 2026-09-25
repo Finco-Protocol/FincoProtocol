@@ -28,7 +28,7 @@ _templates = Jinja2Templates(directory=os.path.join(_APP_DIR, "templates"))
 
 @router.get("/verify", response_class=HTMLResponse)
 async def protocol_verify(request: Request):
-    """Public validation corpus — deterministic, network-free, synthetic only."""
+    """Non-discoverable validation corpus — deterministic, network-free, synthetic only."""
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
     if not user:

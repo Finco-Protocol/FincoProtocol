@@ -1334,7 +1334,6 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "flash_error": flash_error,
         "field_error": "",
-        "scenario_url": f"/scenarios?project={urllib.parse.quote(project, safe='')}",
         "library_url": "/library",
     }
     context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))

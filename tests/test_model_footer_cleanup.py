@@ -114,12 +114,13 @@ class TestDocumentationRoutesPreserved:
 
 # ── Primary navigation unchanged ─────────────────────────────────────────────
 
-class TestPrimaryNavigationUnchanged:
-    """Model / Radar / Verify / API navigation must not be affected."""
+class TestPrimaryNavigation:
+    """Model / Radar / API remain product navigation; Verify is internal."""
 
     def test_protocol_nav_present_on_library_page(self, library_html):
         # The library page extends base.html which includes the protocol nav
         assert "/radar" in library_html
+        assert 'href="/verify"' not in library_html
 
     def test_brand_bar_guide_link_preserved(self):
         """Brand bar still carries the Guide shortcut — only footer is changed."""
