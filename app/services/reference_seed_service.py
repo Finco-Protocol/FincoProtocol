@@ -151,7 +151,6 @@ def _reference_inputs(template_source: str):
         create_generic_wind_reference,
         create_generic_data_center_reference,
         create_generic_ev_charging_reference,
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     )
 
     if template_source == "generic_solar_reference":
@@ -163,7 +162,6 @@ def _reference_inputs(template_source: str):
     if template_source == "generic_ev_charging_reference":
         return create_generic_ev_charging_reference()
     raise ValueError("Only canonical cloneable references may seed a project.")
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
 
 
 def _scaled(value: Any, ratio: float) -> str:
@@ -246,7 +244,6 @@ def create_reference_seeded_project(
         raise ValueError(
             "Reference-driven creation supports Solar, Wind, Data Center and EV Charging only."
         )
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     if not requested_name.strip():
         raise ValueError("Project name is required.")
     if capacity_mw <= 0:
@@ -304,7 +301,6 @@ def create_reference_seeded_project(
         technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
         if technology is None:
             raise ValueError(f"Unsupported seed technology for {template_source!r}.")
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
         for field_name, seed in profile["capex_items"].items():
             amount = float(seed["reference_amount_keur"])
             children = capex_children(technology, seed["owner_category_code"])
@@ -440,7 +436,6 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
 
     record = get_project_by_code(user_id, project_code)
     if record is None or record.template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
         return
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:

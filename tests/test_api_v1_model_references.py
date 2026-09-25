@@ -73,13 +73,9 @@ def test_a3_02_list_state_available(client):
 def test_a3_03_list_api_version(client):
     assert _list(client).json()["api_version"] == "v1"
 
-<<<<<<< HEAD
-def test_a3_04_list_count_3(client):
-=======
-def test_a3_04_list_count(client):
-    # Solar + Wind + EV Charging (V1) — the canonical reference set.
->>>>>>> a1613ed (EV Charging V1 (4/5): canonical reference registry integration)
-    assert _list(client).json()["data"]["count"] == 3
+def test_a3_04_list_count_4(client):
+    # Solar + Wind + Data Center + EV Charging — the canonical reference set.
+    assert _list(client).json()["data"]["count"] == 4
 
 def test_a3_05_list_has_solar_key(client):
     keys = [r["reference_key"] for r in _list(client).json()["data"]["references"]]

@@ -216,11 +216,8 @@ def test_library_storage_reference_view_link_present(client_contract):
 def test_library_solar_wind_clone_buttons_present(client_contract):
     _, cookies = _cookie()
     html = client_contract.get("/library", cookies=cookies).text
-<<<<<<< HEAD
-=======
-    # Solar + Wind + EV Charging cloneable (Storage is canonical-only).
->>>>>>> 13687ab (EV Charging V1 (5/5): rendered-form acceptance + C.13 subtotal fix)
-    assert html.count("Create working copy") == 3
+    # Solar + Wind + Data Center + EV Charging cloneable (Storage is canonical-only).
+    assert html.count("Create working copy") == 4
     assert 'data-testid="clone-generic_solar_reference-reference"' in html
     assert 'data-testid="clone-generic_wind_reference-reference"' in html
 

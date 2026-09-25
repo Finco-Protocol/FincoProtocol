@@ -272,7 +272,7 @@ def bootstrap_staging_db(conn: "sqlite3.Connection") -> dict:
       scenario_exports) for any user_id that is not '__reference__'
     - Deletes ALL project rows that are not owned by '__reference__'
     - Seeds Solar XA / Wind XB / Storage XC / EV Charging XE canonical references
-    - Verifies post-condition across ALL relevant tables: exactly 4 reference
+    - Verifies post-condition across ALL relevant tables: exactly 5 reference
       project rows, zero non-reference rows in projects, scenarios,
       workspace_states, runs, scenario_exports, capex_sub_lines,
       opex_sub_lines
@@ -342,8 +342,8 @@ def bootstrap_staging_db(conn: "sqlite3.Connection") -> dict:
     ref_count = conn.execute(
         "SELECT COUNT(*) FROM projects WHERE user_id = '__reference__'"
     ).fetchone()[0]
-    if ref_count != 4:
-        failures.append(f"projects: ref_count={ref_count} (expected 4)")
+    if ref_count != 5:
+        failures.append(f"projects: ref_count={ref_count} (expected 5)")
 
     for table in _VERIFY_TABLES_USER_ID:
         non_ref = conn.execute(

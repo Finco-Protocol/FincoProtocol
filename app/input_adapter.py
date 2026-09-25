@@ -1333,8 +1333,6 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
             "project_type must be Solar, Wind, Data Center or EV Charging "
             "for user-created project runtime"
         )
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
-        )
 
     # V4-1: use the project-specific factory base for Generic Wind Reference / Generic Solar Reference
     # snapshots so that saved-state runs preserve calibrated configuration
@@ -1355,7 +1353,6 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         from app.ev_charging_economics import scaled_ev_reference_inputs as _ev_scaled
         _ev_capacity = _snapshot_float(snapshot, "capacity_mw", non_negative=True)
         _base = _ev_scaled(_ev_capacity if (_ev_capacity or 0) > 0 else 5.0)
->>>>>>> 82d34eb (EV Charging V1 (2/5): public detail catalogue + seed adapter)
     else:
         _base = None
 

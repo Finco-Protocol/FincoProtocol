@@ -34,7 +34,7 @@ _TECHNOLOGY: dict[str, str] = {
 _CAPACITY_UNIT: dict[str, str] = {
     "generic_solar_reference": "MW",
     "generic_wind_reference": "MW",
-    "generic_data_center_reference": "MW IT",,
+    "generic_data_center_reference": "MW IT",
     "generic_ev_charging_reference": "MW charging capacity",
 }
 

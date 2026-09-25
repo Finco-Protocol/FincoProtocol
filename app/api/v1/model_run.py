@@ -27,10 +27,7 @@ from app.services.reference_seed_service import (
 _PROJECT_TYPE_BY_KEY: dict[str, str] = {
     "generic_solar_reference": "Generic Solar Reference",
     "generic_wind_reference": "Generic Wind Reference",
-<<<<<<< HEAD
     "generic_data_center_reference": "Generic Data Center Reference",
-=======
->>>>>>> 8b5fbb1 (EV Correction A: zero frozen diff + A5 stateless EV run support)
     "generic_ev_charging_reference": "Generic EV Charging Hub Reference",
 }
 
@@ -178,7 +175,6 @@ def build_run_response_data(key: str, capacity_mw: float) -> dict[str, Any]:
     project_type = _PROJECT_TYPE_BY_KEY[key]
     preview = build_reference_scaling_preview(key, capacity_mw)
     ratio = preview["ratio"]
-<<<<<<< HEAD
     if key == "generic_ev_charging_reference":
         # EV Correction A: the derived B.08 electricity OpexItem carries
         # capacity-dependent y1 + Y2/Y3 sustained steps, so a generic PER_MW
@@ -193,14 +189,6 @@ def build_run_response_data(key: str, capacity_mw: float) -> dict[str, Any]:
             pi, ratio, capacity_mw,
             key_is_data_center=(key == "generic_data_center_reference"),
         )
-=======
-    if key == _EV_REFERENCE_KEY:
-        from app.ev_charging_economics import scaled_ev_reference_inputs
-        scaled_pi = scaled_ev_reference_inputs(float(capacity_mw))
-    else:
-        scaled_pi = _build_scaled_project_inputs(pi, ratio, capacity_mw)
->>>>>>> 8b5fbb1 (EV Correction A: zero frozen diff + A5 stateless EV run support)
-
     payload = run_project(
         project_type=project_type,
         scenario="Base",

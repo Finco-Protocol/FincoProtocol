@@ -631,7 +631,8 @@ def _project_identity_from_template_source(template_source: str, fallback_projec
     if source == "generic_data_center":
         return "generic_data_center", "Generic Data Center Project"
     if source == "generic_ev_charging_reference":
-        return "generic_ev_charging_reference", "Generic EV Charging Hub Reference"    if source == "generic_solar":
+        return "generic_ev_charging_reference", "Generic EV Charging Hub Reference"
+    if source == "generic_solar":
         return "generic_solar", "Generic Solar Project"
     if source == "generic_ev_charging":
         return "generic_ev_charging", "Generic EV Charging Project"
@@ -2049,14 +2050,16 @@ def _resolve_project_record(user, project_selection: str | None, form_snapshot: 
         if user_project is not None:
             return user_project
 
-    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center", "generic_ev_charging"}:        project_code = selection
+    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center", "generic_ev_charging"}:
+        project_code = selection
         project_name = _project_identity_from_template_source(selection)[1]
         if selection in {"generic_solar_reference", "generic_solar"}:
             project_type = "Solar"
         elif selection in {"generic_data_center_reference", "generic_data_center"}:
             project_type = "Data Center"
         elif selection in {"generic_ev_charging_reference", "generic_ev_charging"}:
-            project_type = "EV Charging"        else:
+            project_type = "EV Charging"
+        else:
             project_type = "Wind"
         template_source = selection
     else:
