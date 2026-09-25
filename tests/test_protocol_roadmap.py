@@ -52,10 +52,10 @@ def test_roadmap_model_sales_track_is_explicit():
         "Scenario Control",
         "Institutional Reporting",
         "Enterprise Modelling Platform",
-        "Team Workspaces &amp; Approvals",
+        "Team Workspaces & Approvals",
         "Portfolio Modelling",
         "Advanced Financing Structures",
-        "Audit &amp; Model Governance",
+        "Audit & Model Governance",
     ):
         assert phrase in html
 
