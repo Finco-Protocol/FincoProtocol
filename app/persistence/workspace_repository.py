@@ -524,6 +524,7 @@ def v2_atomic_run_commit(
     active_scenario_name,
     ran_at,
     last_runtime_scenario_id=None,
+    replay_metadata: "dict | None" = None,
 ) -> "WorkspaceStateRecord":
     """Atomic V2 run commit: final CAS + promote draft → saved + clear dirty.
 
@@ -613,6 +614,13 @@ def v2_atomic_run_commit(
             "composite_hash": identity.composite_hash,
         }
 
+        # Preserve existing replay_metadata when caller passes None; merge when provided.
+        _existing_meta = _json.loads(row["replay_metadata_json"] or "{}")
+        if replay_metadata is not None:
+            _replay_meta_json = _json.dumps(replay_metadata, sort_keys=True)
+        else:
+            _replay_meta_json = _json.dumps(_existing_meta, sort_keys=True)
+
         cur.execute(
             """
             UPDATE workspace_states
@@ -634,7 +642,8 @@ def v2_atomic_run_commit(
                 updated_at=?,
                 last_runtime_at=?,
                 last_runtime_composite_hash=?,
-                last_runtime_identity_json=?
+                last_runtime_identity_json=?,
+                replay_metadata_json=?
             WHERE workspace_id=? AND user_id=?
             """,
             (
@@ -655,6 +664,7 @@ def v2_atomic_run_commit(
                 ran_at.isoformat() if hasattr(ran_at, "isoformat") else str(ran_at),
                 identity.composite_hash,
                 _json.dumps(_identity_payload, sort_keys=True),
+                _replay_meta_json,
                 row["workspace_id"],
                 user_id,
             ),

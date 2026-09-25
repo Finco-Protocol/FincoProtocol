@@ -7,6 +7,12 @@ ensure_reference_models()
     under the system sentinel user_id ``__reference__`` if they do not
     already exist.  Safe to call on every application startup.
 
+ensure_reference_canonical_last_runs()
+    Idempotent post-bootstrap step: run the canonical financial engine for each
+    cloneable reference (Solar, Wind, Data Center) if no last-run result has
+    been persisted yet.  Storage is deliberately excluded (runtime not released).
+    Safe to call on every application startup after ensure_reference_models().
+
 create_working_copy(user_id, source_reference_id, requested_name=None)
     Clone a reference project into a new user-owned working copy.
     Returns the new ProjectRecord.
@@ -72,6 +78,16 @@ class ReferenceBootstrapError(RuntimeError):
     fail-closed: if the conflict cannot be re-resolved to a
     canonical winning record, raise this error so the caller knows
     the bootstrap is in an unrecoverable state.
+    """
+
+
+class ReferenceIdentityAssemblyError(RuntimeError):
+    """Raised when canonical composite identity cannot be assembled for a reference.
+
+    This is a hard fail-closed signal: callers must NOT proceed with
+    running or persisting a canonical Last Run when identity assembly
+    fails.  Using a weaker legacy authority as a fallback would violate
+    the REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY contract.
     """
 
 
@@ -222,6 +238,166 @@ def ensure_reference_models() -> list:
     return created
 
 
+# Template sources that receive a canonical last run at startup.
+# Storage is deliberately excluded — its working-copy runtime is not released.
+_CANONICAL_LAST_RUN_SOURCES = frozenset({
+    "generic_solar_reference",
+    "generic_wind_reference",
+    "generic_data_center_reference",
+})
+
+# Maps template_source → project_type string consumed by run_project().
+# These map to the factory-lookup keys inside run_project._run_project_impl.
+_TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE = {
+    "generic_solar_reference": "Generic Solar Reference",
+    "generic_wind_reference": "Generic Wind Reference",
+    "generic_data_center_reference": "Generic Data Center Reference",
+}
+
+
+def _reference_current_composite_hash(record) -> str:
+    """Compute the composite workbook identity hash for a canonical reference.
+
+    Raises ReferenceIdentityAssemblyError on any failure — callers must NOT
+    proceed with seeding when identity cannot be assembled.
+    """
+    try:
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        identity = assemble_consistent_for_get(record.user_id, record.project_id, WORKBOOK.version)
+        return identity.composite_hash
+    except Exception as exc:
+        raise ReferenceIdentityAssemblyError(
+            f"Cannot assemble canonical composite identity for "
+            f"{getattr(record, 'project_code', record)}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _current_engine_version() -> str:
+    """Return the canonical financial engine version identifier."""
+    from financial_engine.version import ENGINE_VERSION
+    return ENGINE_VERSION
+
+
+def ensure_reference_canonical_last_runs() -> list[str]:
+    """Idempotent: seed a canonical engine last-run for each cloneable reference.
+
+    For each reference in _CANONICAL_LAST_RUN_SOURCES:
+      1. Compute the current composite workbook identity hash.
+      2. Skip if the workspace already has a matching last_runtime_composite_hash
+         (same canonical inputs, same workbook version — already current).
+      3. Invoke run_project() to get the full canonical runtime payload.
+      4. Persist via v2_atomic_run_commit() — same modern persistence path as
+         a normal user Run (composite hash bound, full schedule artifacts).
+
+    Idempotency / invalidation contract:
+      - NO-OP when last_runtime_composite_hash == current composite hash.
+      - Re-seeds when workbook version bumps, factory snapshot changes, or
+        any component of the composite identity changes.
+      - Re-seeds when provenance is missing or hash is absent.
+
+    Returns a list of template_source strings for which a new last-run was seeded.
+    Safe to call on every startup after ensure_reference_models().
+    """
+    seeded = []
+    current_engine_ver = _current_engine_version()
+    for defn in _REFERENCE_DEFINITIONS:
+        ts = defn["template_source"]
+        if ts not in _CANONICAL_LAST_RUN_SOURCES:
+            continue
+        try:
+            record = get_reference_by_template_source(ts)
+            if record is None:
+                continue
+            # Raises ReferenceIdentityAssemblyError on failure — fail closed.
+            current_hash = _reference_current_composite_hash(record)
+            ws = get_workspace_state(record.user_id, record.project_id)
+            stored_hash = getattr(ws, "last_runtime_composite_hash", None) if ws else None
+            stored_engine_ver = (
+                ws.replay_metadata.get("engine_version")
+                if (ws and ws.replay_metadata) else None
+            )
+            if (stored_hash and stored_hash == current_hash
+                    and stored_engine_ver and stored_engine_ver == current_engine_ver):
+                # Last run bound to current composite identity AND engine version — skip.
+                continue
+            _seed_reference_last_run(record, defn, current_composite_hash=current_hash)
+            seeded.append(ts)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "ensure_reference_canonical_last_runs: could not seed last-run "
+                "for %s: %s: %s", ts, type(exc).__name__, exc,
+            )
+    return seeded
+
+
+def _seed_reference_last_run(record, defn: dict, *, current_composite_hash: str) -> None:
+    """Execute the canonical engine for one reference and persist the full last-run.
+
+    ONE canonical financial calculation via run_project() — no second engine call.
+    Gearing fields (actual_gearing_pct, gearing_cap_pct, senior_debt_keur) are read
+    from the payload produced by that single calculation.
+
+    Persists via v2_atomic_run_commit() with replay_metadata in the same atomic
+    transaction — provenance can never exist without the Last Run or vice versa.
+
+    current_composite_hash must be a valid hash string (callers must call
+    _reference_current_composite_hash which raises on failure — never None here).
+    """
+    from datetime import datetime, timezone
+
+    from app.api.project_runner import run_project
+    from app.persistence.workspace_repository import v2_atomic_run_commit
+
+    ts = defn["template_source"]
+    run_project_type = _TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE[ts]
+
+    # ONE canonical calculation — gearing fields enriched by run_project() itself.
+    payload = run_project(run_project_type, "Base")
+    runtime_kpis = dict(payload["kpis"])
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat().replace(":", "").replace("-", "")
+    runtime_snapshot_id = f"canonical_last_run__{ts}__{now_iso}"
+
+    ws = get_workspace_state(record.user_id, record.project_id)
+    active_scenario_id = getattr(ws, "active_scenario_id", None) if ws else None
+    active_scenario_name = getattr(ws, "active_scenario_name", None) if ws else None
+
+    _provenance = {
+        "origin": "canonical_reference_last_run",
+        "composite_hash_source": "v2_atomic",
+        "engine_version": _current_engine_version(),
+        "template_source": ts,
+        "factory": defn["factory"],
+        "seeded_at": now.isoformat(),
+        "reference_project_id": record.project_id,
+        "reference_project_code": record.project_code,
+    }
+
+    # V2 atomic commit — provenance persisted atomically in the same transaction.
+    v2_atomic_run_commit(
+        user_id=record.user_id,
+        project_id=record.project_id,
+        project_code=record.project_code,
+        expected_composite_hash=current_composite_hash,
+        runtime_snapshot_id=runtime_snapshot_id,
+        runtime_origin="canonical_reference_last_run",
+        runtime_summary=runtime_kpis,
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        ran_at=now,
+        replay_metadata=_provenance,
+    )
+
+
 def _ensure_reference_project(defn: dict):
     """Get or create the canonical project record. Returns the record.
 
@@ -291,8 +467,16 @@ def _ensure_reference_project(defn: dict):
 
 
 def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
-    """Idempotently ensure workspace and base scenario exist for a reference."""
+    """Idempotently ensure workspace and base scenario exist for a reference.
+
+    Also reconciles the workspace snapshot when the canonical factory baseline
+    has changed — ensures the canonical reference displayed in the workbook is
+    always consistent with the canonical Last Run authority.
+    """
+    import json as _json
     from app.persistence.projects_repository import _compute_baseline_snapshot
+    from app.persistence.db import get_cursor
+    from app.persistence._helpers import _to_json
     snapshot = _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
 
     ws = get_workspace_state(record.user_id, record.project_id)
@@ -307,6 +491,25 @@ def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
             last_runtime_summary={},
             governance_state=record.governance_state,
         )
+    else:
+        # Reconcile: if the canonical factory baseline has changed, update the
+        # workspace draft/saved snapshot so the composite identity reflects it.
+        # Only draft_snapshot and saved_snapshot are touched — runtime fields
+        # (last_runtime_*) are managed exclusively by the seeding path.
+        canonical_json = _json.dumps(snapshot, sort_keys=True)
+        stored_json = _json.dumps(ws.draft_snapshot or {}, sort_keys=True)
+        if canonical_json != stored_json:
+            now = _now_utc()
+            with get_cursor() as _cur:
+                _cur.execute(
+                    "UPDATE workspace_states "
+                    "SET draft_snapshot_json=?, saved_snapshot_json=?, updated_at=? "
+                    "WHERE user_id=? AND project_id=?",
+                    (
+                        _to_json(snapshot), _to_json(snapshot),
+                        now.isoformat(), record.user_id, record.project_id,
+                    ),
+                )
 
     get_or_create_base_case_scenario(
         record.user_id,

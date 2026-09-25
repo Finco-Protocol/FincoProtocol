@@ -213,8 +213,12 @@ def _release_run_slot() -> None:
 async def _bootstrap_reference_models():
     """Idempotent: ensure system reference projects exist before first request."""
     try:
-        from app.services.project_library_service import ensure_reference_models
+        from app.services.project_library_service import (
+            ensure_reference_models,
+            ensure_reference_canonical_last_runs,
+        )
         ensure_reference_models()
+        ensure_reference_canonical_last_runs()
     except Exception:
         import logging
         logging.getLogger(__name__).exception("Failed to bootstrap reference models at startup")

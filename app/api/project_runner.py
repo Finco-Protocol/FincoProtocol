@@ -445,6 +445,20 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "returns": returns.to_dict(orient="records"),
         }
     }
+    # Gearing fields from the same clean_run — no second engine calculation.
+    try:
+        _fr = clean_run.g2c_result.financing_result
+        _capex_total = getattr(getattr(demo, "project_inputs", None), "capex", None)
+        _capex_total = _capex_total.total_capex if _capex_total is not None else None
+        if _capex_total and _capex_total > 0:
+            payload["kpis"]["actual_gearing_pct"] = (
+                _fr.final_senior_commitment_keur / _capex_total
+            )
+        payload["kpis"]["gearing_cap_pct"] = getattr(_fr, "gearing_ratio", None)
+        payload["kpis"]["senior_debt_keur"] = getattr(_fr, "final_senior_commitment_keur", None)
+    except Exception:
+        pass
+
     # Phase B4: machine-readable clean production-authority lineage.
     payload["runtime_authority"] = (
         getattr(demo.result, "_authority_metadata", None)

@@ -146,6 +146,8 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
   position: sticky;
   top: 2.4rem;
   z-index: 90;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .v2-tabs::-webkit-scrollbar { display: none; }
 .v2-tab {
@@ -1700,10 +1702,13 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1rem;
+  min-width: 0;
+  max-width: 100%;
 }
 @media (max-width: 640px) {
-  .v2-overview-body { grid-template-columns: 1fr; }
+  .v2-overview-body { grid-template-columns: minmax(0, 1fr); }
 }
+.v2-overview-section { min-width: 0; max-width: 100%; overflow-x: hidden; }
 
 /* ── Summary table (project context + decision status) ────────── */
 .v2-overview-summary-table {
