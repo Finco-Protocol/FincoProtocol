@@ -271,7 +271,18 @@ EV_DRIVER_SNAPSHOT_KEYS = {
 _EV_PERCENT_KEYS = frozenset({
     "ev_charging_price_escalation",
     "ev_electricity_price_escalation",
+    "ev_charging_efficiency",
 })
+
+
+class EVDriverValidationError(ValueError):
+    """Raised when an explicitly persisted EV driver value is malformed,
+    out of range, or economically inconsistent (ramp violation).
+
+    Fail-closed: an explicit user edit is NEVER silently replaced by the
+    reference default.  Missing/blank keys still fall back to the generic
+    reference drivers for backward compatibility.
+    """
 
 
 def drivers_from_snapshot(
@@ -279,9 +290,12 @@ def drivers_from_snapshot(
 ) -> EVChargingDrivers:
     """Resolve EV drivers from a workspace snapshot over defaults.
 
-    Unknown/blank/invalid keys fall back to the generic reference drivers;
-    explicit snapshot edits always win.  Percent-convention keys are
-    converted to fractions.
+    Missing or blank keys fall back to the generic reference drivers.
+    A key that is EXPLICITLY present but malformed, out of range, or
+    economically inconsistent raises :class:`EVDriverValidationError`
+    (fail-closed) — the run never proceeds on a silently substituted
+    reference assumption.  Percent-convention keys are converted to
+    fractions (94 → 0.94).
     """
     base = base or GENERIC_EV_CHARGING_REFERENCE_DRIVERS
     if not isinstance(snapshot, dict):
@@ -293,22 +307,30 @@ def drivers_from_snapshot(
             return default
         try:
             value = float(raw)
-        except (TypeError, ValueError):
-            return default
+        except (TypeError, ValueError) as exc:
+            raise EVDriverValidationError(
+                f"{key}: explicitly persisted value {raw!r} is not a valid number"
+            ) from exc
         if key in _EV_PERCENT_KEYS:
             value = value / 100.0
-        if low is not None and value < low:
-            return default
-        if high is not None and value > high:
-            return default
+        if (low is not None and value < low) or (high is not None and value > high):
+            raise EVDriverValidationError(
+                f"{key}: explicitly persisted value {raw!r} is outside the "
+                f"allowed range ({low!r}..{high!r} post-conversion)"
+            )
         return value
 
     y1 = _num("ev_full_load_hours_y1", base.full_load_hours_y1, low=0.0)
     y2 = _num("ev_full_load_hours_y2", base.full_load_hours_y2, low=0.0)
     stabilized = _num("ev_full_load_hours_stabilized", base.full_load_hours_stabilized, low=0.0)
-    # The ramp is monotonically non-decreasing by authority; clamp defensively.
-    y2 = max(y2, y1)
-    stabilized = max(stabilized, y2)
+    # The ramp is monotonically non-decreasing by authority.  An explicit
+    # user edit that violates it is a visible validation failure — never a
+    # silent clamp that changes the user's value.
+    if not (y1 <= y2 <= stabilized):
+        raise EVDriverValidationError(
+            "ev_full_load_hours ramp must be non-decreasing "
+            f"(Y1={y1:g} <= Y2={y2:g} <= stabilized={stabilized:g})"
+        )
     efficiency = _num("ev_charging_efficiency", base.charging_efficiency, low=0.01, high=1.0)
     return EVChargingDrivers(
         capacity_basis="INSTALLED_CHARGING_MW",
@@ -342,7 +364,7 @@ def ev_driver_snapshot_values(drivers: EVChargingDrivers) -> dict:
         "ev_full_load_hours_stabilized": f"{drivers.full_load_hours_stabilized:.12g}",
         "ev_charging_price_eur_kwh": f"{drivers.charging_price_eur_kwh:.12g}",
         "ev_charging_price_escalation": f"{drivers.charging_price_escalation * 100:.12g}",
-        "ev_charging_efficiency": f"{drivers.charging_efficiency:.12g}",
+        "ev_charging_efficiency": f"{drivers.charging_efficiency * 100:.12g}",
         "ev_electricity_price_eur_kwh": f"{drivers.electricity_price_eur_kwh:.12g}",
         "ev_electricity_price_escalation": f"{drivers.electricity_price_escalation * 100:.12g}",
     }

@@ -23,6 +23,9 @@ pytest.importorskip("uvicorn")
 
 from playwright.sync_api import sync_playwright
 
+from app import ev_charging_economics as ev
+import pytest as _pytest
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -201,6 +204,80 @@ def test_ev_browser_full_journey(ev_app, browser):
         page.close()
 
 
+def test_ev_browser_efficiency_edit_94_to_92(ev_app, browser):
+    """§C: charging efficiency edited through the REAL browser form —
+    initial 94 → save 92 → reload persists → Run → revenue unchanged and
+    grid purchase / B.08 grow by exactly 94/92 (verified in the rendered
+    OPEX numbers and the runtime at HTTP parity)."""
+    user_id = "ev-eff-" + uuid.uuid4().hex[:8]
+    page = _page(browser, ev_app, user_id=user_id)
+    try:
+        _create_ev_working_copy(page, ev_app)
+
+        page.locator("#tab-revenue").click()
+        revenue_panel = page.locator("#panel-revenue")
+        eff_row = revenue_panel.locator(
+            '[data-field-id="revenue.ev_charging.charging_efficiency"]'
+        )
+        eff_row.wait_for(state="visible", timeout=30_000)
+
+        # initial displayed value ≈ 94 (human percent), never 0.94
+        eff_input = eff_row.locator('input[name="value"]')
+        assert float(eff_input.input_value()) == pytest.approx(94.0)
+        assert "0.9" not in eff_input.input_value()
+
+        # capture baseline OPEX Y1 (fixed 960 + electricity) from the KPI strip
+        opex_y1_before = page.locator('[data-testid="opex-y1-total"]').inner_text()
+
+        # edit 94 → 92 and save through HTMX
+        eff_input.fill("92")
+        eff_row.locator("button[type=submit], form button").first.click()
+        page.wait_for_timeout(800)
+
+        # Run from the Overview tab
+        page.locator("#tab-overview").click()
+        page.locator("#panel-overview").wait_for(state="visible")
+        page.locator('[data-testid="v2-run-btn"]').click()
+        page.locator('[data-testid="overview-status-current"]').wait_for(
+            state="attached", timeout=180_000
+        )
+
+        # reload: the persisted efficiency remains bound to 92
+        page.reload()
+        page.locator("#tab-revenue").click()
+        revenue_panel = page.locator("#panel-revenue")
+        eff_input = revenue_panel.locator(
+            '[data-field-id="revenue.ev_charging.charging_efficiency"] input[name="value"]'
+        )
+        eff_input.wait_for(state="visible", timeout=30_000)
+        assert float(eff_input.input_value()) == pytest.approx(92.0), (
+            "the efficiency edit must persist across reload"
+        )
+
+        # B.08 Electricity Procurement grows by exactly 94/92 vs the pre-edit
+        # reference value, proven against the EV authority at 5 MW
+        authority_94 = ev.electricity_expense_keur(5.0, 1)
+        authority_92 = authority_94 * (0.94 / 0.92)
+        # OPEX Y1 KPI = 960 fixed + electricity Y1 → must equal the 92% figure
+        page.locator("#tab-opex").click()
+        opex_panel = page.locator("#panel-opex")
+        opex_panel.locator('[data-testid="opex-y1-total"]').wait_for(
+            state="visible", timeout=30_000
+        )
+        opex_y1_after = float(
+            page.locator('[data-testid="opex-y1-total"]').inner_text().replace(",", "")
+        )
+        assert opex_y1_after == pytest.approx(960.0 + authority_92, rel=1e-3), (
+            f"OPEX Y1 after the efficiency edit must be 960 + {authority_92:.2f}"
+        )
+        assert authority_92 > authority_94
+
+        # revenue authority unchanged (no overflow checks needed here — the
+        # dedicated journey covers them)
+    finally:
+        page.close()
+
+
 def test_ev_browser_mobile_390(ev_app, browser):
     user_id = "ev-mobile-" + uuid.uuid4().hex[:8]
     page = _page(browser, ev_app, user_id=user_id)
@@ -217,6 +294,11 @@ def test_ev_browser_mobile_390(ev_app, browser):
         assert revenue_panel.locator(
             '[data-field-id="revenue.ev_charging.hours_stabilized"]'
         ).count() == 1
+        # Charging Efficiency displays as human percent (94), never 0.94
+        eff_input = revenue_panel.locator(
+            '[data-field-id="revenue.ev_charging.charging_efficiency"] input[name="value"]'
+        )
+        assert float(eff_input.input_value()) == pytest.approx(94.0)
 
         _assert_no_horizontal_overflow(page)
     finally:

@@ -188,7 +188,7 @@ def test_y2_hours_edit_changes_y2():
 
 def test_efficiency_edit_changes_b08_not_revenue():
     pi_94, elec_94 = _resolve()
-    pi_92, elec_92 = _resolve({"ev_charging_efficiency": "0.92"})
+    pi_92, elec_92 = _resolve({"ev_charging_efficiency": "92"})
     # revenue authority unchanged
     assert pi_92.revenue.ppa_base_tariff == pi_94.revenue.ppa_base_tariff == pytest.approx(400.0)
     # grid purchase increases by 94/92
@@ -196,6 +196,11 @@ def test_efficiency_edit_changes_b08_not_revenue():
     y1_92 = opex_item_amount_at_year(elec_92, 1)
     assert y1_92 == pytest.approx(y1_94 * (0.94 / 0.92), rel=1e-9)
     assert y1_92 > y1_94
+    # snapshot/runtime parity: the persisted human-percent value resolves to
+    # exactly the runtime fraction the drivers carry.
+    from app.ev_charging_economics import drivers_from_snapshot
+    resolved = drivers_from_snapshot({"ev_charging_efficiency": "92"})
+    assert resolved.charging_efficiency == pytest.approx(0.92)
 
 
 # ── §10: electricity price + escalation are causal ───────────────────────────
