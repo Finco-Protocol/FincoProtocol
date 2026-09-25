@@ -139,7 +139,7 @@ def test_post_pr72_radar_revenue_capex_and_debt_presentation_contracts():
     assert 'data-testid="revenue-output-context"' in revenue
     assert "grouped_keur(capex_vm.total_capex_keur)" in capex
     assert "f.display_value if f.display_value is defined else f.value" in field_editor
-    assert '("Gearing", _pct(' in debt_router
+    assert '("Max. gearing cap", _pct(' in debt_router
     assert '("All-in interest rate", _pct(' in debt_router
 
 

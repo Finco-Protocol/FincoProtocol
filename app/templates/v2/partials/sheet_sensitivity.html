@@ -5,16 +5,24 @@
   executed via the canonical engine (run_project() for each point).
   Results are returned in sheet_sensitivity_results.html.
 
-  Supported drivers (4 canonical):
-    tariff        — Tariff / Energy Price (±20%)
-    generation    — Generation / P50 annual yield (±10%)
-    interest_rate — Senior Interest Rate (±200 bps)
-    gearing       — Gearing ratio (±10 pp)
+  Supported drivers:
+    Renewable projects (solar/wind):
+      tariff        — Tariff / Energy Price (±20%)
+      generation    — Generation / P50 annual yield (±10%)
+      interest_rate — Senior Interest Rate (±200 bps)
+      gearing       — Gearing ratio (±10 pp)
+
+    Data Center projects:
+      service_price — Service Price EUR/kW/month (±20%)
+      dc_occupancy  — Stabilised Occupancy (±10 pp)
+      interest_rate — Senior Interest Rate (±200 bps)
+      gearing       — Gearing ratio (±10 pp)
 
   Context variables:
     project_code   str
     scenarios      list[ScenarioRecord]
     active_scenario_id str | None
+    is_data_center bool
 #}
 <div id="v2-sheet-sensitivity" class="v2-sensitivity" data-sheet="sensitivity">
 
@@ -37,8 +45,13 @@
         </tr>
       </thead>
       <tbody>
+        {% if is_data_center %}
+        <tr><td>Service Price (EUR/kW/month)</td><td>−20% → Base → +20%</td><td>5 steps of 10%</td></tr>
+        <tr><td>Stabilised Occupancy</td>         <td>−10 pp → Base → +10 pp</td><td>5 steps of 5 pp</td></tr>
+        {% else %}
         <tr><td>Tariff / Energy Price</td><td>−20% → Base → +20%</td><td>5 steps of 10%</td></tr>
         <tr><td>Generation / P50</td>    <td>−10% → Base → +10%</td><td>5 steps of 5%</td></tr>
+        {% endif %}
         <tr><td>Senior Interest Rate</td><td>−200 bps → Base → +200 bps</td><td>5 steps of 100 bps</td></tr>
         <tr><td>Gearing</td>             <td>−10 pp → Base → +10 pp</td><td>5 steps of 5 pp</td></tr>
       </tbody>
@@ -57,8 +70,13 @@
       <label class="v2-sensitivity-label" for="v2-sens-driver">Driver</label>
       <select class="v2-sensitivity-select" id="v2-sens-driver" name="driver" required>
         <option value="">— select driver —</option>
+        {% if is_data_center %}
+        <option value="service_price">Service Price EUR/kW/month (±20%)</option>
+        <option value="dc_occupancy">Stabilised Occupancy (±10 pp)</option>
+        {% else %}
         <option value="tariff">Tariff / Energy Price (±20%)</option>
         <option value="generation">Generation / P50 (±10%)</option>
+        {% endif %}
         <option value="interest_rate">Senior Interest Rate (±200 bps)</option>
         <option value="gearing">Gearing (±10 pp)</option>
       </select>

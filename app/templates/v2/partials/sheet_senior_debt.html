@@ -214,6 +214,20 @@
         <div class="v2-kpi-grid" data-testid="debt-kpi-bar"
              style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;padding:.5rem 0;">
 
+          {% if debt_actual_senior_keur_display is defined and debt_actual_senior_keur_display %}
+          <div class="v2-kpi-tile" data-testid="debt-kpi-actual-senior">
+            <span class="v2-kpi-label">Actual Senior Debt</span>
+            <span class="v2-kpi-value" data-testid="debt-actual-senior-keur">{{ debt_actual_senior_keur_display }}</span>
+          </div>
+          {% endif %}
+
+          {% if debt_actual_gearing_pct_display is defined and debt_actual_gearing_pct_display %}
+          <div class="v2-kpi-tile" data-testid="debt-kpi-actual-gearing">
+            <span class="v2-kpi-label">Actual Gearing</span>
+            <span class="v2-kpi-value" data-testid="debt-actual-gearing-pct">{{ debt_actual_gearing_pct_display }}</span>
+          </div>
+          {% endif %}
+
           <div class="v2-kpi-tile" data-testid="debt-kpi-total-ds">
             <span class="v2-kpi-label">Total Debt Service</span>
             <span class="v2-kpi-value">

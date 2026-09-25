@@ -386,13 +386,17 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
 
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     """Shared context dict for both sheet partials."""
+    from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
     freshness = _runtime_freshness(ws, pis)
+    _dc_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
+    _dc_type = _is_dc_type_bsc(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
     return {
         "request": request,
         "project_code": project,
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
+        "is_data_center": _dc_tmpl or _dc_type,
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
         "runtime_is_stale": freshness.is_stale,
@@ -822,7 +826,13 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
         # to Revenue.
         "revenue_dc_reconciliation": _build_dc_revenue_reconciliation(pis),
         "revenue_output_context": {
-            "generation": (_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh"),
+            "generation": (
+                lambda _g: (
+                    f"{float(_g):,.0f}"
+                    if _g is not None and str(_g) not in ("NOT_AVAILABLE", "")
+                    else None
+                )
+            )((_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh")),
             "period": _rev_ctx.get("sample_period_label"),
             "persisted_revenue": _rev_ctx.get("display_value_keur"),
         },
@@ -986,6 +996,31 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     debt_fields = _lock_senior_fields_if_calibrated(
         _build_sheet_fields("debt", pis),
         senior_pricing_mode, senior_dscr_mode)
+    # Actual gearing presentation: derive from the runtime derivation evidence
+    # when a last-run result exists.  Total CAPEX from pis is always available as
+    # the denominator (it is the gearing basis for a senior-debt-only capital
+    # structure with no financing-cost uses).
+    _rs = d.runtime_summary or {}
+    _senior_debt_evidence = (_rs.get("senior_debt_derivation") or {})
+    _actual_senior_keur: float | None = None
+    try:
+        _sd_raw = _senior_debt_evidence.get("display_value_keur") or _rs.get("senior_debt_keur")
+        if _sd_raw is not None and str(_sd_raw) not in ("NOT_AVAILABLE", "", "—"):
+            _actual_senior_keur = float(str(_sd_raw).replace(",", "").replace(" kEUR", "").strip())
+    except (TypeError, ValueError):
+        _actual_senior_keur = None
+    _actual_gearing_pct: str | None = None
+    if _actual_senior_keur is not None:
+        try:
+            _total_capex = float(pis.values.get("capex.summary.total") or
+                                 pis.values.get("total_capex_keur") or 0)
+            if _total_capex > 0:
+                _actual_gearing_pct = f"{_actual_senior_keur / _total_capex * 100:.1f}%"
+        except (TypeError, ValueError):
+            pass
+    _actual_senior_display = (
+        f"{_actual_senior_keur:,.0f} kEUR" if _actual_senior_keur is not None else None
+    )
     return {
         "debt_fields": debt_fields,
         "debt_state": d.state.value,
@@ -994,8 +1029,10 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
+        "debt_actual_senior_keur_display": _actual_senior_display,
+        "debt_actual_gearing_pct_display": _actual_gearing_pct,
         "senior_detail_rows": (
-            ("Gearing", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
+            ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
             ("All-in interest rate", _pct(getattr(fin, "base_rate", 0.0) + getattr(fin, "margin_bps", 0) / 10_000) if fin else None),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
             ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
@@ -1376,10 +1413,15 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         except Exception:
             pass
 
+    from app.workbook.registry import is_data_center_project_type as _is_dc_type
+    _is_dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
+    _is_dc = _is_dc_template or _is_dc_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
+
     context = {
         "project_code": project,
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
+        "is_data_center": _is_dc,
         "active_scenario_name": ws.active_scenario_name or "",
         "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
@@ -3056,9 +3098,17 @@ async def v2_scenario_sensitivity_run(
         return HTMLResponse(content="<p>Protected reference — cannot run sensitivity.</p>", status_code=409)
 
     project_type_raw = (project_record.project_type or "").strip().lower()
-    if project_type_raw not in ("solar", "wind"):
+    _dc_template_src = str(getattr(project_record, "template_source", "") or "").strip().lower()
+    _is_dc_sens = (
+        project_type_raw in ("data center", "data_center", "datacenter")
+        or _dc_template_src == "generic_data_center_reference"
+    )
+    if not _is_dc_sens and project_type_raw not in ("solar", "wind"):
         return HTMLResponse(content=f"<p>Unsupported project type: {project_record.project_type!r}.</p>", status_code=409)
-    runtime_key = project_type_raw.capitalize()
+    if _is_dc_sens:
+        runtime_key = "Generic Data Center Reference"
+    else:
+        runtime_key = project_type_raw.capitalize()
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -3089,6 +3139,27 @@ async def v2_scenario_sensitivity_run(
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
+            "dc_excluded": True,  # renewable-only driver
+        },
+        # Data Center-native drivers
+        "service_price": {
+            "label": "Service Price (EUR/kW/month)",
+            "field_id": "revenue.data_center.service_price",
+            "snapshot_key": "dc_service_price_eur_kw_month",
+            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
+            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
+            "mode": "pct_multiplier",
+            "dc_only": True,
+        },
+        "dc_occupancy": {
+            "label": "Stabilised Occupancy",
+            "field_id": "revenue.data_center.occupancy_stabilized",
+            "snapshot_key": "dc_occupancy_stabilized",
+            # ±10 pp absolute — stored as percent (85 = 85%), so steps are in pp units
+            "steps": [-10.0, -5.0, 0.0, +5.0, +10.0],
+            "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
+            "mode": "absolute_add",
+            "dc_only": True,
         },
         # capex_total (capex.summary.total) and opex_total (opex.summary.total_y1) are
         # derived_display / source_of_truth=derived_ui — not writable via with_value().
@@ -3101,6 +3172,7 @@ async def v2_scenario_sensitivity_run(
             "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
             "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
             "mode": "pct_multiplier",
+            "dc_excluded": True,  # renewable-only driver
         },
         "interest_rate": {
             "label": "Senior Interest Rate",
@@ -3124,6 +3196,18 @@ async def v2_scenario_sensitivity_run(
 
     if driver not in DRIVER_SPECS:
         return HTMLResponse(content=f"<p>Unknown driver: {driver!r}.</p>", status_code=422)
+
+    _spec_candidate = DRIVER_SPECS[driver]
+    if _is_dc_sens and _spec_candidate.get("dc_excluded"):
+        return HTMLResponse(
+            content=f"<p>Driver {driver!r} is not available for Data Center projects.</p>",
+            status_code=422,
+        )
+    if not _is_dc_sens and _spec_candidate.get("dc_only"):
+        return HTMLResponse(
+            content=f"<p>Driver {driver!r} is only available for Data Center projects.</p>",
+            status_code=422,
+        )
 
     spec = DRIVER_SPECS[driver]
     field_id = spec["field_id"]
@@ -3287,6 +3371,7 @@ async def v2_scenario_sensitivity_run(
         "scenario_display": scenario_display,
         "results": results,
         "kpi_catalog": kpi_catalog_dicts,
+        "is_data_center": _is_dc_sens,
         "request": request,
     }
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))
