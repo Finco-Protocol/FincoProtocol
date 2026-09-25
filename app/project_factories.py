@@ -866,11 +866,13 @@ def create_default_ev_charging_project(
         construction_months=construction_months,
         cod_date=_ev_fc + relativedelta(months=construction_months),
         horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    # The engine runs at stabilized 2000 h; the Y1/Y2 utilisation ramp is
+    # encoded exactly into the per-calendar-year effective-rate schedule
+    # (see the revenue adapter below and app/ev_charging_economics.py).
     technical = TechnicalParams(capacity_mw=capacity_mw, yield_scenario="P_50",
         operating_hours_p50=2000.0, operating_hours_p90_10y=2000.0,
         pv_degradation=0.0, bess_enabled=False,
-        plant_availability=1.0, grid_availability=1.0,
-        operating_hours_by_year=(1200.0, 1600.0, 2000.0))
+        plant_availability=1.0, grid_availability=1.0)
     # Internal compatibility adapter (documented in ev_charging_economics):
     # the engine runs at stabilized 2000 h; the utilisation ramp is encoded
     # exactly into the per-calendar-year effective charging rate, which the

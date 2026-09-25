@@ -506,12 +506,6 @@ class TechnicalParams:
     grid_availability: float = 0.99
     bess_enabled: bool = False
     bess: "BessParams | None" = None
-    # Optional per-operating-year operating-hours ramp, 1-based
-    # (element 0 = operating year 1). When set, operating year n uses
-    # element min(n, len)-1 — the last value repeats for later years.
-    # None keeps the scalar operating-hours fields authoritative, so every
-    # existing generation technology behaves exactly as before.
-    operating_hours_by_year: "tuple[float, ...] | None" = None
 
     @property
     def combined_availability(self) -> float:

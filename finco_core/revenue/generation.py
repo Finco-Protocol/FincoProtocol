@@ -37,26 +37,6 @@ def _selected_operating_hours(tech: TechnicalParams, yield_scenario: str | None 
     return tech.operating_hours_p50
 
 
-def _hours_for_year(
-    tech: TechnicalParams,
-    year_index: int,
-    yield_scenario: str | None = None,
-) -> float:
-    """Operating hours for a 1-based operating year.
-
-    When ``tech.operating_hours_by_year`` is set (e.g. the EV charging
-    utilisation ramp), element min(n, len)-1 is authoritative for operating
-    year n and the last element repeats. When it is None the scalar
-    yield-scenario hours are used unchanged, so every existing generation
-    technology behaves exactly as before this helper existed.
-    """
-    ramp = getattr(tech, "operating_hours_by_year", None)
-    if ramp:
-        clamped = min(max(int(year_index), 1), len(ramp))
-        return float(ramp[clamped - 1])
-    return _selected_operating_hours(tech, yield_scenario)
-
-
 def period_generation(
     tech: TechnicalParams,
     periods: Sequence[PeriodMeta],
@@ -68,7 +48,7 @@ def period_generation(
     if not op_periods:
         return 0.0
 
-    hours = _hours_for_year(tech, year_index, yield_scenario)
+    hours = _selected_operating_hours(tech, yield_scenario)
     availability = tech.plant_availability * tech.grid_availability
     degradation_factor = (1 - tech.pv_degradation) ** (year_index - 1)
 
@@ -92,7 +72,7 @@ def annual_generation_mwh(
     yield_scenario: str | None = None,
 ) -> float:
     """Calculate annual generation in MWh."""
-    hours = _hours_for_year(tech, year_index, yield_scenario)
+    hours = _selected_operating_hours(tech, yield_scenario)
     availability = tech.plant_availability * tech.grid_availability
     degradation = (1 - tech.pv_degradation) ** (year_index - 1)
 
@@ -110,7 +90,7 @@ def period_revenue(
     if not period.is_operation:
         return 0.0
 
-    hours = _hours_for_year(tech, period.operating_year_index)
+    hours = _selected_operating_hours(tech)
     availability = tech.plant_availability * tech.grid_availability
     degradation = (1 - tech.pv_degradation) ** (period.year_index - 1)
 
@@ -133,13 +113,13 @@ def full_generation_schedule(
 ) -> dict[int, float]:
     """Generate full schedule of period generation in MWh."""
     schedule = {}
+    hours = _selected_operating_hours(inputs.technical, yield_scenario)
 
     for period in engine.periods():
         if not period.is_operation:
             schedule[period.index] = 0.0
             continue
 
-        hours = _hours_for_year(inputs.technical, period.operating_year_index, yield_scenario)
         availability = inputs.technical.combined_availability
         degradation = (1 - inputs.technical.pv_degradation) ** (period.year_index - 1)
 

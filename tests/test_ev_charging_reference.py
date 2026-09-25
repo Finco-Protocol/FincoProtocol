@@ -113,30 +113,6 @@ def test_y2_ramp_reconciles():
     assert ev.charging_revenue_keur(5.0, 2, apply_price_escalation=False) == pytest.approx(3_200.0)
 
 
-def test_engine_hours_ramp_matches_ev_authority():
-    """The typed TechnicalParams ramp must reproduce the EV authority exactly,
-    including the sustained last value."""
-    from finco_core.inputs import TechnicalParams
-    tech = TechnicalParams(capacity_mw=5.0, yield_scenario="P_50",
-                           operating_hours_p50=2000.0, pv_degradation=0.0,
-                           operating_hours_by_year=(1200.0, 1600.0, 2000.0))
-    from finco_core.revenue.generation import _hours_for_year
-    assert _hours_for_year(tech, 1) == 1200.0
-    assert _hours_for_year(tech, 2) == 1600.0
-    assert _hours_for_year(tech, 3) == 2000.0
-    assert _hours_for_year(tech, 15) == 2000.0  # sustained
-
-
-def test_hours_ramp_is_inert_for_scalar_technology():
-    """Solar/Wind behavior is provably unchanged: without the ramp field the
-    hours selector returns exactly the scalar P50 value."""
-    from finco_core.inputs import TechnicalParams
-    from finco_core.revenue.generation import _hours_for_year, _selected_operating_hours
-    tech = TechnicalParams(capacity_mw=48.0, yield_scenario="P_50", operating_hours_p50=3200.0)
-    for year in (1, 2, 7, 25):
-        assert _hours_for_year(tech, year) == _selected_operating_hours(tech) == 3200.0
-
-
 def test_electricity_item_steps_match_authority():
     """The derived B.08 OpexItem reproduces the exact schedule through the
     sustained-step projection mechanics."""
