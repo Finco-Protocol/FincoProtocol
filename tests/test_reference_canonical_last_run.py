@@ -22,6 +22,12 @@ Acceptance markers (all must PASS for PR merge):
   REFERENCE_DC_GEARING_SEMANTICS
   REFERENCE_LAST_RUN_FAILURE_FAILS_CLOSED
   DATA_CENTER_REFERENCE_ECONOMICS_SANITY_CHECK
+  REFERENCE_IDENTITY_FAILURE_FAILS_CLOSED
+  REFERENCE_LAST_RUN_SINGLE_CALCULATION
+  REFERENCE_LAST_RUN_PROVENANCE_ATOMIC
+  V2_USER_RUN_PERSISTENCE_REGRESSION
+  REFERENCE_REAL_CANONICAL_INPUT_CHANGE_INVALIDATES
+  REFERENCE_REAL_MODEL_IDENTITY_CHANGE_INVALIDATES
 """
 from __future__ import annotations
 
@@ -607,3 +613,390 @@ def test_canonical_last_run_failure_fails_closed(seeded_db):
 
     # Reference must still be protected
     assert solar_ref.is_protected, "is_protected must remain True after failure"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_IDENTITY_FAILURE_FAILS_CLOSED
+# ---------------------------------------------------------------------------
+
+def test_reference_identity_failure_fails_closed(seeded_db):
+    """REFERENCE_IDENTITY_FAILURE_FAILS_CLOSED = PASS
+
+    When composite identity assembly raises (e.g. workspace corrupt or
+    workbook_identity unavailable), no new runtime_snapshot_id, summary,
+    or schedules must be persisted, and the reference must remain protected.
+    The legacy authority must NOT be used as a fallback.
+    """
+    from unittest.mock import patch
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+        ReferenceIdentityAssemblyError,
+    )
+    import app.services.project_library_service as svc
+
+    ensure_reference_models()
+
+    solar_ref = get_reference_by_template_source("generic_solar_reference")
+    ws_before = get_workspace_state(solar_ref.user_id, solar_ref.project_id)
+    snap_id_before = (ws_before.last_runtime_snapshot_id if ws_before else None)
+
+    # Make identity assembly fail for all references.
+    def _failing_identity(record):
+        raise ReferenceIdentityAssemblyError("injected identity failure")
+
+    with patch.object(svc, "_reference_current_composite_hash", side_effect=_failing_identity):
+        seeded = ensure_reference_canonical_last_runs()
+
+    # Nothing should have been seeded.
+    assert seeded == [], f"Expected [] but got {seeded}"
+
+    # Solar workspace must be unchanged — no new snapshot_id.
+    ws_after = get_workspace_state(solar_ref.user_id, solar_ref.project_id)
+    snap_id_after = (ws_after.last_runtime_snapshot_id if ws_after else None)
+    assert snap_id_after == snap_id_before, (
+        "Identity assembly failure must not create or mutate last-run state; "
+        f"before={snap_id_before!r}, after={snap_id_after!r}"
+    )
+
+    # No legacy authority KPIs must have appeared.
+    if ws_after:
+        assert not ws_after.last_runtime_summary, (
+            "No runtime summary must appear via legacy fallback after identity failure"
+        )
+
+    # Reference must remain protected.
+    assert solar_ref.is_protected, "is_protected must remain True after identity failure"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_SINGLE_CALCULATION
+# ---------------------------------------------------------------------------
+
+def test_reference_last_run_single_calculation(seeded_db):
+    """REFERENCE_LAST_RUN_SINGLE_CALCULATION = PASS
+
+    Exactly ONE canonical engine call per reference seed.
+    Three fresh references → 3 calculations total.
+    Second idempotent bootstrap → 0 additional calculations.
+    """
+    from unittest.mock import patch, call
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+    )
+    import app.api.project_runner as _runner
+
+    ensure_reference_models()
+
+    original_run = _runner.run_project
+    call_log: list = []
+
+    def counting_run(project_type, scenario, **kwargs):
+        call_log.append(project_type)
+        return original_run(project_type, scenario, **kwargs)
+
+    with patch.object(_runner, "run_project", side_effect=counting_run):
+        seeded = ensure_reference_canonical_last_runs()
+
+    assert len(seeded) == 3, f"Expected 3 seeds; got {seeded}"
+    assert len(call_log) == 3, (
+        f"Expected exactly 3 engine calls for 3 references; got {len(call_log)}: {call_log}"
+    )
+
+    # Second idempotent pass must perform zero engine calls.
+    call_log.clear()
+    with patch.object(_runner, "run_project", side_effect=counting_run):
+        re_seeded = ensure_reference_canonical_last_runs()
+
+    assert re_seeded == [], "Second pass must be a no-op"
+    assert len(call_log) == 0, (
+        f"Second idempotent pass must not call the engine; got {len(call_log)}: {call_log}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_PROVENANCE_ATOMIC
+# V2_USER_RUN_PERSISTENCE_REGRESSION
+# ---------------------------------------------------------------------------
+
+def test_reference_last_run_provenance_atomic(seeded_db):
+    """REFERENCE_LAST_RUN_PROVENANCE_ATOMIC = PASS
+
+    Provenance is committed atomically with the Last Run — there is no
+    gap between commit and provenance write.  The provenance fields must
+    be present immediately after v2_atomic_run_commit returns, without any
+    separate UPDATE step.
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state, v2_atomic_run_commit
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+    from datetime import datetime, timezone
+
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+    )
+
+    ensure_reference_models()
+    seeded = ensure_reference_canonical_last_runs()
+    assert len(seeded) == 3
+
+    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+
+        # Provenance must be atomically bound — no two-phase write gap.
+        assert ws.replay_metadata is not None, f"{ts}: replay_metadata must not be None"
+        assert ws.replay_metadata.get("origin") == "canonical_reference_last_run", \
+            f"{ts}: origin must be canonical_reference_last_run"
+        assert ws.replay_metadata.get("engine_version"), \
+            f"{ts}: engine_version must be present in provenance"
+        assert ws.replay_metadata.get("template_source") == ts, \
+            f"{ts}: template_source must match in provenance"
+
+        # The last_runtime_composite_hash must also be present (same transaction).
+        assert ws.last_runtime_composite_hash, \
+            f"{ts}: last_runtime_composite_hash must be set atomically"
+
+
+def test_v2_user_run_persistence_regression(seeded_db):
+    """V2_USER_RUN_PERSISTENCE_REGRESSION = PASS
+
+    v2_atomic_run_commit callers that pass no replay_metadata must retain
+    existing replay_metadata unchanged (no accidental erasure).
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state, v2_atomic_run_commit
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+        create_working_copy,
+    )
+    from app.api.project_runner import run_project
+    from datetime import datetime, timezone
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+    # Create a working copy and simulate a user run via v2_atomic_run_commit.
+    solar_ref = get_reference_by_template_source("generic_solar_reference")
+    copy = create_working_copy(
+        user_id="v2-reg-user",
+        source_reference_id=solar_ref.project_id,
+    )
+
+    copy_ws = get_workspace_state("v2-reg-user", copy.project_id)
+    assert copy_ws is not None
+
+    # Persist some initial replay_metadata directly (simulating a prior run).
+    import json as _json
+    from app.persistence.db import get_cursor
+    prior_meta = {"prior_run": "test_value", "workspace_id": copy_ws.replay_metadata.get("workspace_id", "")}
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE workspace_states SET replay_metadata_json=? WHERE user_id=? AND project_id=?",
+            (_json.dumps(prior_meta), "v2-reg-user", copy.project_id),
+        )
+
+    # Now simulate a user run via v2_atomic_run_commit WITHOUT replay_metadata.
+    identity = assemble_consistent_for_get("v2-reg-user", copy.project_id, WORKBOOK.version)
+    payload = run_project("Generic Solar Reference", "Base")
+    now = datetime.now(timezone.utc)
+
+    v2_atomic_run_commit(
+        user_id="v2-reg-user",
+        project_id=copy.project_id,
+        project_code=copy.project_code,
+        expected_composite_hash=identity.composite_hash,
+        runtime_snapshot_id="user-v2-run-001",
+        runtime_origin="user_run",
+        runtime_summary=payload["kpis"],
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=copy_ws.active_scenario_id,
+        active_scenario_name=copy_ws.active_scenario_name,
+        ran_at=now,
+        # replay_metadata intentionally omitted — must preserve existing
+    )
+
+    # Existing replay_metadata must be preserved, not erased.
+    updated_ws = get_workspace_state("v2-reg-user", copy.project_id)
+    assert updated_ws.replay_metadata.get("prior_run") == "test_value", (
+        "v2_atomic_run_commit must preserve existing replay_metadata when "
+        "replay_metadata=None (not erase it)"
+    )
+    # The run must have been committed.
+    assert updated_ws.last_runtime_snapshot_id == "user-v2-run-001"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_REAL_CANONICAL_INPUT_CHANGE_INVALIDATES
+# REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE
+# ---------------------------------------------------------------------------
+
+def test_reference_real_canonical_input_change_invalidates(seeded_db, monkeypatch):
+    """REFERENCE_REAL_CANONICAL_INPUT_CHANGE_INVALIDATES = PASS
+    REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE = PASS
+
+    Changing the canonical factory input (Solar capacity_mw) causes:
+    1. ensure_reference_models() reconciles the workspace snapshot.
+    2. The composite identity changes (different scalar snapshot).
+    3. ensure_reference_canonical_last_runs() re-seeds with a new run.
+    4. A second bootstrap after reconciliation performs no additional run.
+    """
+    import copy as _copy
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.registry import WORKBOOK
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+    )
+
+    # --- Baseline bootstrap ---
+    ensure_reference_models()
+    seeded = ensure_reference_canonical_last_runs()
+    assert len(seeded) == 3
+
+    solar_rec = get_reference_by_template_source("generic_solar_reference")
+    ws_before = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    hash_before = assemble_consistent_for_get(
+        solar_rec.user_id, solar_rec.project_id, WORKBOOK.version
+    ).composite_hash
+    snap_id_before = ws_before.last_runtime_snapshot_id
+
+    # --- Monkeypatch the Solar factory to return a different capacity ---
+    import app.project_factories as _pf
+    _original_factory = _pf.create_generic_solar_reference
+
+    def _modified_factory():
+        pi = _original_factory()
+        import dataclasses
+        # Return a copy with capacity_mw changed (harmless +1 MW)
+        technical = dataclasses.replace(pi.technical, capacity_mw=pi.technical.capacity_mw + 1.0)
+        return dataclasses.replace(pi, technical=technical)
+
+    monkeypatch.setattr(_pf, "create_generic_solar_reference", _modified_factory)
+
+    # --- Reconcile reference models with new factory ---
+    ensure_reference_models()
+
+    # Composite hash must have changed (different capacity_mw in scalar snapshot).
+    hash_after_reconcile = assemble_consistent_for_get(
+        solar_rec.user_id, solar_rec.project_id, WORKBOOK.version
+    ).composite_hash
+    assert hash_after_reconcile != hash_before, (
+        "Reconciling a changed canonical factory input must change the composite hash"
+    )
+
+    # --- Re-seed: must detect changed hash and produce a new run ---
+    import app.api.project_runner as _runner
+    call_log: list = []
+    orig = _runner.run_project
+
+    def _counting(project_type, scenario, **kwargs):
+        call_log.append(project_type)
+        return orig(project_type, scenario, **kwargs)
+
+    from unittest.mock import patch
+    with patch.object(_runner, "run_project", side_effect=_counting):
+        re_seeded = ensure_reference_canonical_last_runs()
+
+    assert "generic_solar_reference" in re_seeded, (
+        "Solar must be re-seeded after canonical factory input change"
+    )
+
+    ws_after = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    assert ws_after.last_runtime_snapshot_id != snap_id_before, (
+        "New snapshot_id must be generated after canonical input change"
+    )
+    assert ws_after.last_runtime_composite_hash == hash_after_reconcile, (
+        "Persisted composite hash must reflect the new canonical identity"
+    )
+
+    # Exactly 1 engine call for Solar (the changed reference).
+    solar_calls = [t for t in call_log if "Solar" in t]
+    assert len(solar_calls) == 1, (
+        f"Expected exactly 1 Solar engine call after input change; got {len(solar_calls)}"
+    )
+
+    # --- Second bootstrap must be idempotent (no further runs) ---
+    call_log.clear()
+    with patch.object(_runner, "run_project", side_effect=_counting):
+        idempotent = ensure_reference_canonical_last_runs()
+
+    assert "generic_solar_reference" not in idempotent, (
+        "Second bootstrap after reconciliation must be idempotent for Solar"
+    )
+    assert len(call_log) == 0, (
+        f"Second pass must perform no engine calls; got {len(call_log)}: {call_log}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_REAL_MODEL_IDENTITY_CHANGE_INVALIDATES
+# REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE
+# ---------------------------------------------------------------------------
+
+def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch):
+    """REFERENCE_REAL_MODEL_IDENTITY_CHANGE_INVALIDATES = PASS
+    REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE = PASS
+
+    When the canonical engine version changes (financial_engine.version.ENGINE_VERSION),
+    even with identical user-visible inputs, the reference Last Run must be
+    invalidated and re-seeded with the new engine identity.
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+    )
+    import app.services.project_library_service as svc
+
+    # --- Baseline bootstrap ---
+    ensure_reference_models()
+    seeded = ensure_reference_canonical_last_runs()
+    assert len(seeded) == 3
+
+    snap_ids = {}
+    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        snap_ids[ts] = ws.last_runtime_snapshot_id
+        # Verify engine_version was stored in provenance.
+        assert ws.replay_metadata.get("engine_version"), \
+            f"{ts}: engine_version must be stored in provenance after first seed"
+
+    # --- Simulate engine version bump ---
+    monkeypatch.setattr(svc, "_current_engine_version", lambda: "clean_senior_debt_v1_test")
+
+    # --- Re-seed: must detect changed engine version and produce new runs ---
+    re_seeded = ensure_reference_canonical_last_runs()
+    assert len(re_seeded) == 3, (
+        f"All 3 references must re-seed after engine version change; got {re_seeded}"
+    )
+
+    for ts in snap_ids:
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        assert ws.last_runtime_snapshot_id != snap_ids[ts], \
+            f"{ts}: snapshot_id must change after engine version change"
+        assert ws.replay_metadata.get("engine_version") == "clean_senior_debt_v1_test", \
+            f"{ts}: new provenance must record the new engine_version"
+
+    # --- Second bootstrap with same new version must be idempotent ---
+    idempotent = ensure_reference_canonical_last_runs()
+    assert idempotent == [], (
+        f"Second pass with same engine version must be idempotent; got {idempotent}"
+    )
