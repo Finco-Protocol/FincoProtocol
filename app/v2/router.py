@@ -271,10 +271,27 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
     any field-specific knowledge.
     """
     from app.workbook.specs import BindingStatus
+    from app.workbook.registry import (
+        DATA_CENTER_FIELD_IDS,
+        DC_CAPACITY_LABEL,
+        DC_DERIVED_OPEX_FIELD_ID,
+        DC_RENEWABLE_EXCLUDED_FIELD_IDS,
+        is_data_center_project_type,
+    )
     sheet = WORKBOOK.sheet(sheet_id)
+    # Technology-conditional visibility: Data Center projects show the Data
+    # Center driver fields and never the renewable-only controls; every other
+    # technology hides the Data Center section.
+    _dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
+    _dc_type = is_data_center_project_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
+    is_data_center = _dc_template or _dc_type
     rows: list[dict] = []
     for section in sorted(sheet.sections, key=lambda s: s.order):
         for fspec in sorted(section.fields, key=lambda f: f.order):
+            if is_data_center and fspec.field_id in DC_RENEWABLE_EXCLUDED_FIELD_IDS:
+                continue
+            if not is_data_center and fspec.field_id in DATA_CENTER_FIELD_IDS:
+                continue
             bs = fspec.binding_status
             if bs == BindingStatus.DISPLAY_ONLY:
                 binding_label = "display-only"
@@ -319,9 +336,20 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
                     display_value = value
             else:
                 display_value = value
+            field_label = fspec.label
+            if is_data_center and fspec.field_id == "project_setup.technical.capacity_mw":
+                field_label = DC_CAPACITY_LABEL
+            if (
+                is_data_center
+                and fspec.field_id == DC_DERIVED_OPEX_FIELD_ID
+                and binding_label == "bound"
+            ):
+                # B.08 Power Expenses is a DERIVED authority for Data Center
+                # (IT MW × occupancy × PUE × 8,760 × EUR/MWh): display-only.
+                binding_label = "display-only"
             rows.append({
                 "field_id": fspec.field_id,
-                "label": fspec.label,
+                "label": field_label,
                 "unit": fspec.unit,
                 "field_type": field_type,
                 "binding_label": binding_label,
@@ -440,7 +468,7 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
     )
     is_user = not (
         project_record.project_origin == "factory_template"
-        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference")
+        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference")
     )
 
     # Load active user-added sub-lines and apply any active scenario's
@@ -626,7 +654,7 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     )
     is_user = not (
         project_record.project_origin == "factory_template"
-        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference")
+        and (project_record.template_source or "").strip().lower() in ("generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference")
     )
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _get_opex_sub_lines
     opex_sub_lines = _get_opex_sub_lines(project_record.project_id)
@@ -789,12 +817,58 @@ def _build_revenue_ctx(pis, ws, projection=None) -> dict:
             ("CO2 certificate price", _value("revenue.balancing.co2_price_eur_mwh"), "EUR/MWh"),
         ),
         "merchant_curve_rows": curve_rows,
+        # Data Center transparent revenue reconciliation (spec M): shown only
+        # for Data Center projects; power cost belongs to OPEX (B.08), never
+        # to Revenue.
+        "revenue_dc_reconciliation": _build_dc_revenue_reconciliation(pis),
         "revenue_output_context": {
             "generation": (_rev_ctx := ((rs or {}).get("revenue") or {})).get("sample_generation_mwh"),
             "period": _rev_ctx.get("sample_period_label"),
             "persisted_revenue": _rev_ctx.get("display_value_keur"),
         },
     }
+
+
+def _build_dc_revenue_reconciliation(pis) -> list[tuple[str, object, str]]:
+    """Return the Data Center revenue reconciliation rows for the Revenue sheet.
+
+    Deterministic display math from the persisted Data Center drivers only:
+        Core capacity revenue (stabilized, pre-indexation, kEUR)
+            = IT capacity MW × 1,000 kW/MW × 12 × price(EUR/kW/month) × occupancy
+    The indexation, occupancy ramp and capacity edits are derived at runtime
+    by app.data_center_authority; no separate revenue amount is stored.
+    """
+    if not hasattr(pis, "get"):
+        return []
+
+    def _f(field_id: str, default: float | None = None) -> float | None:
+        v = pis.get(field_id)
+        if v in (None, ""):
+            return default
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    capacity = _f("project_setup.technical.capacity_mw")
+    price = _f("revenue.data_center.service_price")
+    occ_stab = _f("revenue.data_center.occupancy_stabilized")
+    if capacity is None or price is None or occ_stab is None:
+        return []
+    occ_fraction = occ_stab / 100.0 if occ_stab > 1.0 else occ_stab
+    occupied_mw = capacity * occ_fraction
+    core_revenue_keur = capacity * 12.0 * price * occ_fraction
+    escalation = _f("revenue.data_center.revenue_escalation", 0.0)
+    return [
+        ("IT Capacity", f"{capacity:.12g}", "MW IT"),
+        ("Available IT Capacity", f"{capacity * 1000:.12g}", "kW"),
+        ("Occupancy (Stabilized)", f"{occ_fraction * 100:.12g}", "%"),
+        ("Occupied IT MW", f"{occupied_mw:.12g}", "MW"),
+        ("Service Price", f"{price:.12g}", "EUR/kW/month"),
+        ("Core Capacity Revenue (stabilized, pre-indexation)", f"{core_revenue_keur:.12g}", "kEUR/yr"),
+        ("Revenue Escalation", f"{(escalation / 100.0 if escalation > 1.0 else escalation) * 100:.12g}", "%/yr"),
+        ("Total Revenue", "Runtime-derived (occupancy ramp + indexation)", ""),
+    ]
 
 
 def _render_revenue_htmx_sheet(
@@ -1924,7 +1998,7 @@ async def v2_workbook_run(
     # the is_protected_reference check — the capability boundary is
     # "protected reference" vs "user-owned editable project".
     _run_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
-    if _run_type_lower not in ("solar", "wind") and not is_protected_reference(project_record):
+    if _run_type_lower not in ("solar", "wind", "data center") and not is_protected_reference(project_record):
         _raw_type = project_record.project_type or "Unknown"
         msg = (
             f"{_raw_type} working-copy runtime is not yet supported. "
@@ -2015,6 +2089,8 @@ async def v2_workbook_run(
         runtime_project_key = "Solar"
     elif project_type_raw == "wind":
         runtime_project_key = "Wind"
+    elif project_type_raw in ("data center", "data_center", "datacenter"):
+        runtime_project_key = "Generic Data Center Reference"
     else:
         # Unsupported runtime — Storage and any future unimplemented types.
         # HTMX: 200 + banner fragment (HTMX pattern); non-HTMX: 409 Conflict so
@@ -2346,7 +2422,8 @@ async def v2_workbook_export(
     _ts = (project_record.template_source or "").strip().lower()
     _known = {
         "generic_wind_reference", "generic_solar_reference", "generic_storage_reference",
-        "generic_wind", "generic_solar", "generic_storage",
+        "generic_data_center_reference",
+        "generic_wind", "generic_solar", "generic_storage", "generic_data_center",
     }
     if _ts in _known:
         runtime_project_code = _ts
@@ -2356,6 +2433,8 @@ async def v2_workbook_export(
             runtime_project_code = "generic_solar"
         elif _pt in ("storage", "bess"):
             runtime_project_code = "generic_storage"
+        elif _pt in ("data center", "data_center", "datacenter"):
+            runtime_project_code = "generic_data_center"
         else:
             runtime_project_code = "generic_wind"
 
@@ -2430,11 +2509,17 @@ def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) ->
     freshness = resolve_runtime_freshness(ws, current_composite_hash=current_hash)
     presentations = build_scenario_presentations(
         scenarios, active_id, global_is_stale=freshness.is_stale)
+    from app.persistence.projects_repository import get_project_by_id
+    from app.workbook.registry import is_data_center_project_type
+    _scen_record = get_project_by_id(project_id)
     ctx = {
         "scenarios": presentations,
         "active_scenario_id": active_id,
         "project_code": project_code,
         "ws": ws,
+        "is_data_center": is_data_center_project_type(
+            getattr(_scen_record, "project_type", "")
+        ),
     }
     return _templates.get_template("partials/sheet_scenarios.html").render(ctx)
 

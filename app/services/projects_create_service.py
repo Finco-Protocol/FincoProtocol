@@ -329,6 +329,13 @@ async def execute_projects_create_route(
         validation_errors.append(
             "Solar templates require project type Solar."
         )
+    if (
+        normalized_source in {"generic_data_center_reference", "generic_data_center"}
+        and canonical_type != "Data Center"
+    ):
+        validation_errors.append(
+            "Data Center templates require project type Data Center."
+        )
 
     # ── 400 validation error early return ────────────────────────────
     if validation_errors:
@@ -358,7 +365,7 @@ async def execute_projects_create_route(
 
     # The normal product path is a clone of the selected canonical reference,
     # not a fresh snapshot that merely happens to share factory defaults.
-    if normalized_source in {"generic_solar_reference", "generic_wind_reference"}:
+    if normalized_source in {"generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"}:
         from app.services.reference_seed_service import create_reference_seeded_project
 
         project_record = create_reference_seeded_project(

@@ -28,8 +28,12 @@
       <span><strong>Generic Solar Reference</strong><small>Solar assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
     </label>
     <label class="create-form-reference-card">
-      <input type="radio" name="template_source" value="generic_wind_reference" {% if submitted.project_type != 'Solar' %}checked{% endif %} required />
+      <input type="radio" name="template_source" value="generic_wind_reference" {% if submitted.project_type != 'Solar' and submitted.project_type != 'Data Center' %}checked{% endif %} required />
       <span><strong>Generic Wind Reference</strong><small>Wind assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
+    </label>
+    <label class="create-form-reference-card">
+      <input type="radio" name="template_source" value="generic_data_center_reference" {% if submitted.project_type == 'Data Center' %}checked{% endif %} required />
+      <span><strong>Generic Data Center Reference</strong><small>20 MW IT-load reference: occupancy, EUR/kW/month service revenue, PUE-derived power OPEX and editable CAPEX/OPEX seed.</small></span>
     </label>
   </fieldset>
   <label class="create-form-label">
@@ -37,7 +41,7 @@
     <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="Project name" />
   </label>
   <label class="create-form-label">
-    Capacity (MW)
+    IT Capacity (MW)
     <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0.001" value="{{ submitted.capacity_mw or '' }}" required placeholder="Capacity in MW" />
   </label>
   <input type="hidden" name="project_type" value="Wind" data-project-type-from-reference />
@@ -51,7 +55,11 @@
 <script>
   document.querySelectorAll('#new-project-minimal-form input[name="template_source"]').forEach(function (radio) {
     radio.addEventListener('change', function () {
-      document.querySelector('[data-project-type-from-reference]').value = radio.value.indexOf('solar') !== -1 ? 'Solar' : 'Wind';
+      var value = radio.value;
+      var projectType = 'Wind';
+      if (value.indexOf('solar') !== -1) { projectType = 'Solar'; }
+      else if (value.indexOf('data_center') !== -1) { projectType = 'Data Center'; }
+      document.querySelector('[data-project-type-from-reference]').value = projectType;
     });
   });
 </script>

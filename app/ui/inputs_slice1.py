@@ -164,8 +164,21 @@ def build_inputs_slice1_sections(
     """Build template context for the canonical Inputs Slice 1 grid."""
     submitted_values = submitted_values or {}
     field_errors = field_errors or {}
+    # Data Center contract: P50 operating hours is a renewable-only control
+    # and must never render as a primary Data Center input.
+    from app.workbook.registry import is_data_center_project_type
+    _pis_template = str(getattr(pis, "template_source", "") or "").strip().lower()
+    _is_data_center = (
+        _pis_template == "generic_data_center_reference"
+        or is_data_center_project_type(pis.get("project_setup.identity.project_type"))
+    )
     sections: list[dict[str, Any]] = []
     for section_id, label, field_ids in SLICE1_SECTIONS:
+        if _is_data_center:
+            field_ids = tuple(
+                fid for fid in field_ids
+                if fid not in ("project_setup.technical.p50_hours",)
+            )
         rows = [
             _row_for_field(
                 WORKBOOK.field(field_id),
@@ -263,9 +276,21 @@ def _row_for_field(
     value = pis.get(spec.field_id)
     input_value = submitted_value if submitted_value is not None else _format_value(value, spec)
     note = _FIELD_NOTES.get(spec.field_id, _STATUS_NOTES[status])
+    # Data Center contract: capacity_mw is IT Load Capacity, never generation.
+    from app.workbook.registry import DC_CAPACITY_LABEL, is_data_center_project_type
+    label = spec.label
+    if (
+        spec.field_id == "project_setup.technical.capacity_mw"
+        and (
+            str(getattr(pis, "template_source", "") or "").strip().lower()
+            == "generic_data_center_reference"
+            or is_data_center_project_type(pis.get("project_setup.identity.project_type"))
+        )
+    ):
+        label = DC_CAPACITY_LABEL
     return {
         "field_id": spec.field_id,
-        "label": spec.label,
+        "label": label,
         "value": value,
         "display_value": _format_value(value, spec),
         "input_value": input_value,

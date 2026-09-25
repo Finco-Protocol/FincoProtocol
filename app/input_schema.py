@@ -89,8 +89,8 @@ class ProjectInputsSchema(BaseModel):
     @field_validator('project_type')
     @classmethod
     def project_type_valid(cls, v: str) -> str:
-        if v not in ("Solar", "Wind", "Storage", "BESS"):
-            raise ValueError(f"project_type must be Solar, Wind, Storage, or BESS, got '{v}'")
+        if v not in ("Solar", "Wind", "Storage", "BESS", "Data Center"):
+            raise ValueError(f"project_type must be Solar, Wind, Storage, BESS, or Data Center, got '{v}'")
         return v
 
     @field_validator('scenario')

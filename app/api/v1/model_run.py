@@ -27,6 +27,7 @@ from app.services.reference_seed_service import (
 _PROJECT_TYPE_BY_KEY: dict[str, str] = {
     "generic_solar_reference": "Generic Solar Reference",
     "generic_wind_reference": "Generic Wind Reference",
+    "generic_data_center_reference": "Generic Data Center Reference",
 }
 
 

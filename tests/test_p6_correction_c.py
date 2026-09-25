@@ -417,8 +417,8 @@ class TestStagingBootstrap:
             assert result["post_condition"] == "PASS", (
                 f"bootstrap_staging_db must return post_condition=PASS, got {result['post_condition']!r}"
             )
-            assert ref_count == 3, (
-                f"After bootstrap: expected exactly 3 reference rows, got {ref_count}"
+            assert ref_count == 4, (
+                f"After bootstrap: expected exactly 4 reference rows, got {ref_count}"
             )
             assert non_ref_count == 0, (
                 f"After bootstrap: expected 0 non-reference rows, got {non_ref_count}"

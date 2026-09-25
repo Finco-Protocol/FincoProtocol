@@ -256,7 +256,7 @@ async def execute_run_route(
             deps=deps,
         )
 
-    if runtime_seed in {"generic_wind_reference", "generic_solar_reference"}:
+    if runtime_seed in _TEMPLATE_SEEDED_PROJECT_KEYS:
         return await _execute_template_seeded_path(
             request=request, user=user, snapshot=snapshot, scenario=scenario,
             project_record=project_record, workspace_state=workspace_state,
@@ -369,7 +369,7 @@ async def _execute_user_created_path(
         # Snapshot scalar values are applied on top via _resolve_user_inputs.
         _seed_base_uc = (
             _get_seed_base_inputs(runtime_seed)
-            if runtime_seed in {"generic_wind_reference", "generic_solar_reference"} else None
+            if runtime_seed in _TEMPLATE_SEEDED_PROJECT_KEYS else None
         )
         if _seed_base_uc is not None and runtime_snapshot is not None:
             from app.input_adapter import _resolve_user_inputs as _rui, _snapshot_to_dict as _s2d
@@ -435,10 +435,9 @@ async def _execute_user_created_path(
             or snapshot.get("scenario", "")
             or "Base"
         )
-        runtime_project_key = (
-            "Solar"
-            if (runtime_snapshot.get("project_type") or project_record.project_type or "").strip().lower() == "solar"  # type: ignore[union-attr]
-            else "Wind"
+        runtime_project_key = _runtime_project_key(
+            (runtime_snapshot.get("project_type") if runtime_snapshot else None)
+            or project_record.project_type  # type: ignore[union-attr]
         )
         result = deps.run_project(runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
@@ -555,9 +554,9 @@ async def _execute_template_seeded_path(
     runtime_seed: str,
     deps: RunRouteDeps,
 ) -> RunRouteOutcome:
-    """Generic Wind Reference/Generic Solar Reference template-seeded path (existing factory flow)."""
+    """Template-seeded path for the cloneable canonical references."""
     try:
-        project_key = "Generic Wind Reference" if runtime_seed == "generic_wind_reference" else "Generic Solar Reference"
+        project_key = _TEMPLATE_SEEDED_PROJECT_KEYS[runtime_seed]
         scenario_name = snapshot.get("scenario", "") or "Base"
         if runtime_snapshot and runtime_origin == "saved_state" and workspace_state.active_scenario_id:
             override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
@@ -714,8 +713,8 @@ async def _execute_generic_path(
                 )
             override = deps.build_projectinputs(schema)
             scenario_name = scenario
-        runtime_project_key = (
-            "Solar" if deps.canonical_project_type(effective_project_type) == "Solar" else "Wind"
+        runtime_project_key = _runtime_project_key(
+            deps.canonical_project_type(effective_project_type)
         )
         result = deps.run_project(runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
@@ -824,8 +823,26 @@ async def _execute_generic_path(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# Template-seeded run routing: canonical template source → project key for
+# the production run funnel.  Data Center is a full cloneable reference.
+_TEMPLATE_SEEDED_PROJECT_KEYS: dict[str, str] = {
+    "generic_wind_reference": "Generic Wind Reference",
+    "generic_solar_reference": "Generic Solar Reference",
+    "generic_data_center_reference": "Generic Data Center Reference",
+}
+
+
+def _runtime_project_key(canonical_type: str | None) -> str:
+    """Map a canonical project type to the production run project key."""
+    if str(canonical_type or "").strip().lower() == "solar":
+        return "Solar"
+    if str(canonical_type or "").strip().lower() in {"data center", "data_center", "datacenter"}:
+        return "Generic Data Center Reference"
+    return "Wind"
+
+
 def _get_seed_base_inputs(runtime_seed: str):
-    """Stack R: return a calibrated ProjectInputs for Generic Wind Reference/Generic Solar Reference seeds.
+    """Stack R: return a calibrated ProjectInputs for a canonical reference seed.
 
     Returns None for any other seed so the generic factory path is used.
     """
@@ -835,6 +852,9 @@ def _get_seed_base_inputs(runtime_seed: str):
     if runtime_seed == "generic_solar_reference":
         from app.project_factories import create_generic_solar_reference
         return create_generic_solar_reference()
+    if runtime_seed == "generic_data_center_reference":
+        from app.project_factories import create_generic_data_center_reference
+        return create_generic_data_center_reference()
     return None
 
 

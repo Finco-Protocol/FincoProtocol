@@ -198,7 +198,10 @@
       </p>
 
       <div class="v2-override-fields">
-        {# Revenue #}
+        {# Revenue — tariff/P50-hour overrides are renewable-only controls and
+           are hidden for Data Center projects (occupancy/service-price
+           scenario overrides are not exposed in V1). #}
+        {% if not is_data_center %}
         <div class="v2-override-section-label">Revenue</div>
         <div class="v2-override-field-row">
           <label class="v2-override-label" for="ov-tariff_eur_mwh">Tariff</label>
@@ -214,6 +217,7 @@
                  placeholder="Base Case" autocomplete="off">
           <span class="v2-override-unit">h/yr</span>
         </div>
+        {% endif %}
 
         {# Costs #}
         <div class="v2-override-section-label">Costs</div>

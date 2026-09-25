@@ -33,7 +33,7 @@ BACKEND_SOURCE_OF_TRUTH = (
     "not unsaved draft edits. Re-run model after any input change before exporting."
 )
 
-REFERENCE_PROJECT_KEYS = {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference"}
+REFERENCE_PROJECT_KEYS = {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference"}
 
 
 def _is_generic_project(project_key: str | None) -> bool:

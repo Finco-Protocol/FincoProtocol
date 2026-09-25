@@ -200,6 +200,11 @@ class AssetClass(Enum):
     CIVIL_GRID = "civil_grid"
     SOFT_COSTS = "soft_costs"
     FINANCIAL_COSTS = "financial_costs"
+    # Generic technical plant for non-generation assets (e.g. data center
+    # UPS/electrical distribution, cooling plant, backup generation, white
+    # space).  Synthetic 15-year useful life; see FINCO Generic Data Center
+    # Reference V1 asset-class decision.
+    DC_PLANT = "dc_plant"
 
 
 ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
@@ -210,6 +215,7 @@ ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
     AssetClass.CIVIL_GRID: 30,
     AssetClass.SOFT_COSTS: 5,
     AssetClass.FINANCIAL_COSTS: 14,
+    AssetClass.DC_PLANT: 15,
 }
 
 

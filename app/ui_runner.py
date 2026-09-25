@@ -38,6 +38,11 @@ PROJECT_CONFIGS = {
         "status": "full",
         "note": None,
     },
+    "Generic Data Center Reference": {
+        "factory": "create_generic_data_center_reference",
+        "status": "full",
+        "note": None,
+    },
     "Test 1": {
         "factory": "create_default_solar_project",
         "status": "full",
@@ -134,6 +139,7 @@ def run_demo_project(project_type: str, scenario: str = "Base",
         create_generic_wind_reference,
         create_generic_wind_reference_legacy_removed,
         create_generic_solar_reference,
+        create_generic_data_center_reference,
     )
     from app.portfolio_runner import run_portfolio_from_inputs
     from domain.portfolio.inputs import PortfolioInputs
@@ -145,6 +151,7 @@ def run_demo_project(project_type: str, scenario: str = "Base",
     FACTORY_MAP = {
         "Generic Wind Reference": create_generic_wind_reference,
         "Generic Solar Reference": create_generic_solar_reference,
+        "Generic Data Center Reference": create_generic_data_center_reference,
         "Test 1": create_default_solar_project,
         "Test 2": create_default_wind_project,
         # Backward-compat aliases for test code — not shown in UI (not in PROJECT_CONFIGS)

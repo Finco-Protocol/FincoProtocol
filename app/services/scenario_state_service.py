@@ -63,8 +63,10 @@ def _normalize_template_source(template_source: str | None, project_type: str | 
     Must stay in sync with main_web._normalize_template_source().
     """
     source = (template_source or "").strip().lower()
-    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_wind", "generic_solar", "generic_storage"}:
+    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center"}:
         return source
+    if (project_type or "").strip().lower() in {"data center", "data_center", "datacenter"}:
+        return "generic_data_center"
     return "generic_solar" if (project_type or "").strip().lower() == "solar" else ("generic_storage" if (project_type or "").strip().lower() == "storage" else "generic_wind")
 
 

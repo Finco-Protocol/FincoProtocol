@@ -14,6 +14,8 @@ from app.domain.capex.source_model import CapexScope, C16_CHILD_TREATMENTS
 from app.project_factories import (
     create_generic_solar_reference,
     create_default_solar_project,
+    create_generic_data_center_reference,
+    create_default_data_center_project,
     create_generic_wind_reference,
     create_default_wind_project,
 )
@@ -1163,6 +1165,30 @@ def _build_generic_solar_reference_context() -> ProjectContext:
     )
 
 
+def _build_generic_data_center_reference_context() -> ProjectContext:
+    return _build_context_from_project_inputs(
+        create_generic_data_center_reference(),
+        code="GENERIC_DATA_CENTER_REFERENCE",
+        technology="Data Center",
+        opex_contingency_method="fixed_amount",
+        opex_contingency_pct=0.0,
+        parity_status="CONVENTION",
+        data_source="Factory context - read-only template data",
+    )
+
+
+def _build_generic_data_center_context() -> ProjectContext:
+    return _build_context_from_project_inputs(
+        create_default_data_center_project(),
+        code="GENERIC_DATA_CENTER",
+        technology="Data Center",
+        opex_contingency_method="fixed_amount",
+        opex_contingency_pct=0.0,
+        parity_status="ACCEPTED_CONVENTION",
+        data_source="Generic data center template - user-project starter defaults",
+    )
+
+
 def _build_generic_wind_context() -> ProjectContext:
     return _build_context_from_project_inputs(
         create_default_wind_project(),
@@ -1190,8 +1216,10 @@ def _build_generic_solar_context() -> ProjectContext:
 _CONTEXTS: dict[str, ProjectContext] = {
     "generic_wind_reference": _build_generic_wind_reference_context(),
     "generic_solar_reference": _build_generic_solar_reference_context(),
+    "generic_data_center_reference": _build_generic_data_center_reference_context(),
     "generic_wind": _build_generic_wind_context(),
     "generic_solar": _build_generic_solar_context(),
+    "generic_data_center": _build_generic_data_center_context(),
 }
 
 
@@ -1253,6 +1281,10 @@ def build_project_context_for_record(
         base = _CONTEXTS["generic_wind_reference"]
     elif seed_key == "generic_solar_reference":
         base = _CONTEXTS["generic_solar_reference"]
+    elif seed_key in ("generic_data_center_reference", "generic_data_center"):
+        base = _CONTEXTS[seed_key]
+    elif (project_type or "").strip().lower() in {"data center", "data_center", "datacenter"}:
+        base = _CONTEXTS["generic_data_center"]
     elif (project_type or "").strip().lower() == "solar":
         base = _CONTEXTS["generic_solar"]
     else:
@@ -1266,7 +1298,7 @@ def build_project_context_for_record(
     # that base (B.01–B.13 with children) rather than falling back to flat generic.
     # For generic_wind/generic_solar without specific origin, keep existing behavior.
     opex_detail_items_for_user_project: tuple[dict[str, Any], ...] | None = None
-    if seed_key in ("generic_wind_reference", "generic_solar_reference"):
+    if seed_key in ("generic_wind_reference", "generic_solar_reference", "generic_data_center_reference"):
         opex_detail_items_for_user_project = base.opex_detail_items
 
     # current_snapshot (persisted draft) takes priority over baseline_snapshot for
@@ -1274,7 +1306,10 @@ def build_project_context_for_record(
     # callers and factory-template references.
     snapshot = dict(current_snapshot if current_snapshot is not None else (baseline_snapshot or {}))
     resolved_project_type = (snapshot.get("project_type") or project_type or "").strip().lower()
-    technology = "Solar PV" if resolved_project_type == "solar" else "Wind"
+    if resolved_project_type in {"data center", "data_center", "datacenter"}:
+        technology = "Data Center"
+    else:
+        technology = "Solar PV" if resolved_project_type == "solar" else "Wind"
 
     # R5/F04-A: when effective_project_inputs is provided it is the ONE causal
     # authority — the same persisted draft that drove the production run.  Read

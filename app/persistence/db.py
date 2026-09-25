@@ -260,6 +260,11 @@ def _init_schema(conn):
     # versioned name ux_projects_canonical_reference_source. This
     # migration is idempotent: on a fresh DB the DROP is a no-op.
     conn.execute("DROP INDEX IF EXISTS ux_projects_system_reference_source")
+    # Drop the previous version of the canonical-reference index so the
+    # recreated version picks up the current canonical template list
+    # (adding the Generic Data Center reference).  Idempotent: on a fresh
+    # DB the DROP is a no-op.
+    conn.execute("DROP INDEX IF EXISTS ux_projects_canonical_reference_source")
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_canonical_reference_source
@@ -268,7 +273,7 @@ def _init_schema(conn):
           AND project_role='reference'
           AND is_protected=1
           AND archived=0
-          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference')
+          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_data_center_reference')
         """
     )
     # Backfill: only rows already owned by the system reference user get
@@ -279,7 +284,7 @@ def _init_schema(conn):
         UPDATE projects
         SET project_role='reference', is_protected=1
         WHERE user_id='__reference__'
-          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference')
+          AND template_source IN ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_data_center_reference')
           AND project_role='user_project'
         """
     )

@@ -216,7 +216,7 @@ def test_library_storage_reference_view_link_present(client_contract):
 def test_library_solar_wind_clone_buttons_present(client_contract):
     _, cookies = _cookie()
     html = client_contract.get("/library", cookies=cookies).text
-    assert html.count("Create working copy") == 2
+    assert html.count("Create working copy") == 3
     assert 'data-testid="clone-generic_solar_reference-reference"' in html
     assert 'data-testid="clone-generic_wind_reference-reference"' in html
 

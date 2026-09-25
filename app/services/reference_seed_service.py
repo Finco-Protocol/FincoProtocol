@@ -24,6 +24,28 @@ from app.reference_detail_catalog import (
     capex_children,
     opex_children,
 )
+from app.data_center_authority import (
+    GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+    annual_power_cost_keur,
+)
+
+# Canonical cloneable template sources.  Data Center is fully cloneable like
+# Solar/Wind; Storage remains canonical-but-not-cloneable.
+CLONEABLE_SEED_TEMPLATE_SOURCES = frozenset({
+    "generic_solar_reference",
+    "generic_wind_reference",
+    "generic_data_center_reference",
+})
+
+_TECHNOLOGY_BY_TEMPLATE_SOURCE = {
+    "generic_solar_reference": "solar",
+    "generic_wind_reference": "wind",
+    "generic_data_center_reference": "data_center",
+}
+
+# The Data Center B.08 power expense is a DERIVED authority (recomputed from
+# the Data Center drivers at runtime); it is never seeded or scaled PER_MW.
+_DC_DERIVED_OPEX_ITEM_NAME = "Power Expenses"
 
 
 class ScalingMode(str, Enum):
@@ -94,6 +116,11 @@ def _canonical_opex_items(pi: Any) -> dict[str, dict[str, Any]]:
     for item in pi.opex:
         if float(getattr(item, "percentage_of_opex", 0) or 0):
             continue
+        if str(item.name) == _DC_DERIVED_OPEX_ITEM_NAME:
+            # Data Center B.08 power expenses are DERIVED from IT MW x
+            # occupancy x PUE x 8,760 x electricity price -- never a PER_MW
+            # seeded line.
+            continue
         canonical_key = str(item.name)
         amount = float(item.y1_amount_keur)
         items[canonical_key] = {
@@ -108,13 +135,19 @@ def _canonical_opex_items(pi: Any) -> dict[str, dict[str, Any]]:
 
 
 def _reference_inputs(template_source: str):
-    from app.project_factories import create_generic_solar_reference, create_generic_wind_reference
+    from app.project_factories import (
+        create_generic_solar_reference,
+        create_generic_wind_reference,
+        create_generic_data_center_reference,
+    )
 
     if template_source == "generic_solar_reference":
         return create_generic_solar_reference()
     if template_source == "generic_wind_reference":
         return create_generic_wind_reference()
-    raise ValueError("Only canonical Solar and Wind references may seed a project.")
+    if template_source == "generic_data_center_reference":
+        return create_generic_data_center_reference()
+    raise ValueError("Only canonical cloneable references may seed a project.")
 
 
 def _scaled(value: Any, ratio: float) -> str:
@@ -135,6 +168,7 @@ def _seed_profile(template_source: str, reference: Any, capacity_mw: float, pi: 
         "scaling_modes": [mode.value for mode in ScalingMode],
         "reference_total_capex_keur": float(pi.capex.total_capex),
         "reference_opex_y1_keur": sum(float(x.y1_amount_keur) for x in pi.opex),
+        "data_center": _data_center_driver_block(pi) if template_source == "generic_data_center_reference" else None,
         "technical_inputs": {
             "operating_hours_p50": float(pi.technical.operating_hours_p50),
             "operating_hours_p90_10y": (
@@ -169,12 +203,33 @@ def _seed_profile(template_source: str, reference: Any, capacity_mw: float, pi: 
     }
 
 
+def _data_center_driver_block(pi) -> dict:
+    """Return the typed Data Center driver authority for the seed profile."""
+    from app.data_center_authority import GENERIC_DATA_CENTER_REFERENCE_DRIVERS as dc
+    return {
+        "capacity_basis": dc.capacity_basis,
+        "service_price_eur_kw_month": dc.service_price_eur_kw_month,
+        "revenue_escalation": dc.revenue_escalation,
+        "occupancy_y1": dc.occupancy_y1,
+        "occupancy_y2": dc.occupancy_y2,
+        "stabilized_occupancy": dc.stabilized_occupancy,
+        "pue": dc.pue,
+        "electricity_price_eur_mwh": dc.electricity_price_eur_mwh,
+        "electricity_price_escalation": dc.electricity_price_escalation,
+        "availability": dc.availability,
+        "contract_term_years": dc.contract_term_years,
+        "reference_capacity_mw": float(pi.technical.capacity_mw),
+    }
+
+
 def create_reference_seeded_project(
     *, user_id: str, template_source: str, requested_name: str, capacity_mw: float
 ):
-    """Clone and scale a canonical Solar/Wind reference into a working copy."""
-    if template_source not in {"generic_solar_reference", "generic_wind_reference"}:
-        raise ValueError("Reference-driven creation supports Solar and Wind only.")
+    """Clone and scale a canonical cloneable reference into a working copy."""
+    if template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
+        raise ValueError(
+            "Reference-driven creation supports Solar, Wind and Data Center only."
+        )
     if not requested_name.strip():
         raise ValueError("Project name is required.")
     if capacity_mw <= 0:
@@ -203,6 +258,13 @@ def create_reference_seeded_project(
         "opex_y1_keur": _scaled(sum(float(x.y1_amount_keur) for x in pi.opex), ratio),
         "_reference_seed_profile": _seed_profile(template_source, reference, capacity_mw, pi),
     })
+    if template_source == "generic_data_center_reference":
+        # Data Center drivers are part of the seeded working-copy authority:
+        # the runtime adapter derives revenue, the occupancy ramp and the
+        # B.08 power expenses from these keys at every model resolution.
+        from app.data_center_authority import dc_driver_snapshot_values
+        snapshot.update(dc_driver_snapshot_values(GENERIC_DATA_CENTER_REFERENCE_DRIVERS))
+        snapshot["opex_power_expenses_y1_keur"] = f"{float(pi.opex[-1].y1_amount_keur) * ratio:.12g}"
     update_project_record(
         user_id=user_id,
         project_code=record.project_code,
@@ -222,7 +284,9 @@ def create_reference_seeded_project(
 
     profile = snapshot["_reference_seed_profile"]
     with get_cursor() as cur:
-        technology = "solar" if template_source == "generic_solar_reference" else "wind"
+        technology = _TECHNOLOGY_BY_TEMPLATE_SOURCE.get(template_source)
+        if technology is None:
+            raise ValueError(f"Unsupported seed technology for {template_source!r}.")
         for field_name, seed in profile["capex_items"].items():
             amount = float(seed["reference_amount_keur"])
             children = capex_children(technology, seed["owner_category_code"])
@@ -357,7 +421,7 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     from app.persistence.projects_repository import get_project_by_code
 
     record = get_project_by_code(user_id, project_code)
-    if record is None or record.template_source not in {"generic_solar_reference", "generic_wind_reference"}:
+    if record is None or record.template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
         return
     ws = get_workspace_state(user_id, record.project_id)
     if ws is None:
@@ -414,9 +478,25 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     snapshot = dict(ws.draft_snapshot)
     snapshot["capacity_mw"] = f"{capacity_mw:.12g}"
     snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
-    snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
+    if record.template_source == "generic_data_center_reference":
+        # B.08 power expenses are DERIVED, not PER_MW: recompute the Y1
+        # power amount and the OPEX total from the Data Center authority.
+        drivers = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+        power_y1 = annual_power_cost_keur(
+            capacity_mw=capacity_mw,
+            occupancy=drivers.occupancy_y1,
+            pue=drivers.pue,
+            electricity_price_eur_mwh=drivers.electricity_price_eur_mwh,
+        )
+        snapshot["opex_power_expenses_y1_keur"] = f"{power_y1:.12g}"
+        snapshot["opex_y1_keur"] = f"{reconciled_opex_total + power_y1:.12g}"
+    else:
+        snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
     profile = dict(profile)
     profile["seed_capacity_mw"] = capacity_mw
+    if profile.get("data_center") is not None:
+        profile["data_center"] = dict(profile["data_center"])
+        profile["data_center"]["seed_capacity_mw"] = capacity_mw
     snapshot["_reference_seed_profile"] = profile
     save_workspace_state(
         user_id=user_id,

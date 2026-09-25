@@ -113,7 +113,8 @@ def _authority_factory_map():
     return {
         "Generic Wind Reference": _pf.create_generic_wind_reference,
         "Generic Solar Reference": _pf.create_generic_solar_reference,
-                "Solar": _pf.create_default_solar_project,
+        "Generic Data Center Reference": _pf.create_generic_data_center_reference,
+        "Solar": _pf.create_default_solar_project,
         "Wind": _pf.create_default_wind_project,
     }
 

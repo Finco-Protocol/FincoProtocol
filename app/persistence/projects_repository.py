@@ -145,7 +145,13 @@ CANONICAL_REFERENCE_TEMPLATES: tuple[str, ...] = (
     "generic_wind_reference",
     "generic_solar_reference",
     "generic_storage_reference",
+    "generic_data_center_reference",
 )
+
+
+def _canonical_reference_template_params() -> list[str]:
+    """Return the canonical template values in predicate binding order."""
+    return list(CANONICAL_REFERENCE_TEMPLATES)
 
 
 def _canonical_reference_predicate() -> str:
@@ -153,12 +159,15 @@ def _canonical_reference_predicate() -> str:
 
     Returns just the predicate (without the leading WHERE). All five
     canonical-reference columns are bound by parameter. The first
-    parameter is the canonical owner (REFERENCE_USER_ID); the second
-    is the template-source placeholder (filled by one or two values).
+    parameter is the canonical owner (REFERENCE_USER_ID); the template
+    source slots follow ``CANONICAL_REFERENCE_TEMPLATES`` order — bind
+    them via ``_canonical_reference_template_params()`` so the clause and
+    the parameters can never drift apart.
     """
+    slots = ", ".join("?" for _ in CANONICAL_REFERENCE_TEMPLATES)
     return (
         "user_id=? AND project_role='reference' AND is_protected=1"
-        " AND archived=0 AND template_source IN (?, ?, ?)"
+        f" AND archived=0 AND template_source IN ({slots})"
     )
 
 
@@ -178,10 +187,7 @@ def get_reference_projects() -> "list[ProjectRecord]":
             + _canonical_reference_predicate()
             + " ORDER BY template_source, project_name",
             (
-                REFERENCE_USER_ID,
-                CANONICAL_REFERENCE_TEMPLATES[0],
-                CANONICAL_REFERENCE_TEMPLATES[1],
-                CANONICAL_REFERENCE_TEMPLATES[2],
+                [REFERENCE_USER_ID] + _canonical_reference_template_params()
             ),
         )
         from app.persistence.records import ProjectRecord
@@ -203,11 +209,7 @@ def get_reference_by_template_source(template_source: str) -> "Optional[ProjectR
             + _canonical_reference_predicate()
             + " AND template_source=?",
             (
-                REFERENCE_USER_ID,
-                CANONICAL_REFERENCE_TEMPLATES[0],
-                CANONICAL_REFERENCE_TEMPLATES[1],
-                CANONICAL_REFERENCE_TEMPLATES[2],
-                template_source,
+                [REFERENCE_USER_ID] + _canonical_reference_template_params() + [template_source]
             ),
         )
         row = cur.fetchone()
@@ -327,16 +329,13 @@ def list_projects_paged(
     # Parameter order matches the SQL predicate produced by _canonical_reference_predicate():
     #   1) requesting user_id (their-own branch — user_id=? in outer clause)
     #   2) canonical owner (REFERENCE_USER_ID) — user_id=? in inner predicate
-    #   3) canonical template #1 (Solar)      — IN (?, ?, ?) slot 1
-    #   4) canonical template #2 (Wind)       — IN (?, ?, ?) slot 2
-    #   5) canonical template #3 (Storage)    — IN (?, ?, ?) slot 3
-    # All three canonical templates must be bound; omitting Storage (XC) was a bug.
+    #   3+) canonical template sources in CANONICAL_REFERENCE_TEMPLATES order
+    #       (Wind, Solar, Storage, Data Center).  Every canonical template
+    #       must be bound; omitting Storage (XC) was a historical bug.
     params: list[Any] = [
         user_id,
         REFERENCE_USER_ID,
-        CANONICAL_REFERENCE_TEMPLATES[0],
-        CANONICAL_REFERENCE_TEMPLATES[1],
-        CANONICAL_REFERENCE_TEMPLATES[2],
+        *_canonical_reference_template_params(),
     ]
 
     if role_filter and role_filter in ("reference", "working_copy", "user_project"):
@@ -702,6 +701,7 @@ def seed_baseline_projects_if_needed(user_id: str) -> "list[ProjectRecord]":
     for code, name, project_type, template_source in [
         ("generic_wind_reference-baseline", "Generic Wind Reference — Baseline", "Wind", "generic_wind_reference"),
         ("generic_solar_reference-baseline", "Generic Solar Reference — Baseline", "Solar", "generic_solar_reference"),
+        ("generic_data_center_reference-baseline", "Generic Data Center Reference — Baseline", "Data Center", "generic_data_center_reference"),
     ]:
         existing = get_project_by_code(user_id, code)
         if existing is not None:
@@ -732,6 +732,7 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
         create_generic_wind_reference,
         create_generic_solar_reference,
         create_generic_storage_reference,
+        create_generic_data_center_reference,
         create_default_wind_project,
         create_default_solar_project,
     )
@@ -845,6 +846,37 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
             "capacity_factor": "",
             "ppa_term_years": "0",
         })
+        return baseline
+
+    if normalized_source == "generic_data_center_reference":
+        pi = create_generic_data_center_reference()
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+            dc_driver_snapshot_values,
+        )
+        baseline.update({
+            "active_project": "generic_data_center_reference-baseline",
+            "project_name": pi.info.name,
+            "project_type": "Data Center",
+            "template_source": "generic_data_center_reference",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": "0",
+            # Full-time IT-load basis: occupancy is the utilization authority.
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": "",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
+        baseline.update(dc_driver_snapshot_values(GENERIC_DATA_CENTER_REFERENCE_DRIVERS))
         return baseline
 
     # generic fallback

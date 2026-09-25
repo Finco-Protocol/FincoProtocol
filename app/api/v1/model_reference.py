@@ -18,12 +18,26 @@ from app.services.reference_seed_service import (
 VALID_REFERENCE_KEYS: frozenset[str] = frozenset({
     "generic_solar_reference",
     "generic_wind_reference",
+    "generic_data_center_reference",
 })
 
 _TECHNOLOGY: dict[str, str] = {
     "generic_solar_reference": "solar",
     "generic_wind_reference": "wind",
+    "generic_data_center_reference": "data_center",
 }
+
+# Capacity unit contract per reference key.  Data Center capacity is IT load
+# capacity, never generation capacity.
+_CAPACITY_UNIT: dict[str, str] = {
+    "generic_solar_reference": "MW",
+    "generic_wind_reference": "MW",
+    "generic_data_center_reference": "MW IT",
+}
+
+
+def _capacity_unit(key: str) -> str:
+    return _CAPACITY_UNIT.get(key, "MW")
 
 
 def _enum_val(v: Any) -> Any:
@@ -49,6 +63,7 @@ def build_list_entry(key: str, pi: Any) -> dict[str, Any]:
         "name": pi.info.name,
         "reference_code": pi.info.code,
         "reference_capacity_mw": float(pi.technical.capacity_mw),
+        "capacity_unit": _capacity_unit(key),
         "synthetic_reference": True,
         "market_benchmark": False,
     }
@@ -76,6 +91,7 @@ def _identity_section(key: str, pi: Any) -> dict[str, Any]:
         "name": pi.info.name,
         "reference_code": pi.info.code,
         "country_iso": pi.info.country_iso,
+        "capacity_unit": _capacity_unit(key),
         "synthetic_reference": True,
         "market_benchmark": False,
     }

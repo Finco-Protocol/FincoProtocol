@@ -84,6 +84,21 @@
       {% endfor %}
     </div>
     {% endif %}
+    {% if revenue_dc_reconciliation %}
+    <div class="v2-revenue-pricing-grid" data-testid="dc-revenue-reconciliation"
+         style="margin-top:8px;">
+      <div class="v2-sheet-section-heading" style="grid-column:1/-1;">
+        <span>Data Center Revenue Reconciliation</span>
+        <small>Core capacity revenue = IT MW × 1,000 kW/MW × 12 × EUR/kW/month × occupancy. Power cost is OPEX (B.08), not Revenue.</small>
+      </div>
+      {% for label, value, unit in revenue_dc_reconciliation %}
+      <div class="v2-revenue-pricing-item">
+        <span>{{ label }}</span>
+        <strong>{% if value is not none and value != "" %}{{ value }}{% else %}—{% endif %}{% if unit %} <small>{{ unit }}</small>{% endif %}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <p class="v2-revenue-location-note">Project location metadata. Selecting a country does not automatically change tax, tariff or market assumptions.</p>
   </section>
 
@@ -95,6 +110,24 @@
     <a href="#nav-rev-outputs">Outputs</a>
     <a href="#nav-rev-future">Future</a>
   </nav>
+
+  {# ── 0. Data Center Service Revenue ───────────────────────────────── #}
+  {# Shown only for Data Center projects: the PPA/Balancing/Merchant    #}
+  {# sections are server-filtered out for them (renewable-only          #}
+  {# controls).  Drivers are percent-convention snapshot keys resolved  #}
+  {# by app.data_center_authority at runtime.                           #}
+  {% set dc_revenue_fields = revenue_fields | selectattr("section_id", "equalto", "data_center") | list %}
+  {% if dc_revenue_fields %}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("data_center", "0. Data Center Service Revenue") }}
+    <div class="v2-section-fields">
+      {% for f in dc_revenue_fields %}
+        {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                        hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
 
   {# ── 1. Commercial Structure ──────────────────────────────────────── #}
   {# Revenue Model V1: single PPA plus residual merchant.               #}

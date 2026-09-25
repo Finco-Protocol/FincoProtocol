@@ -81,7 +81,7 @@ def _reference_templates(search: str | None, role: str | None):
     if role in ("working_copy", "user_project"):
         return []
     term = (search or "").casefold().strip()
-    order = {"generic_solar_reference": 0, "generic_wind_reference": 1, "generic_storage_reference": 2}
+    order = {"generic_solar_reference": 0, "generic_wind_reference": 1, "generic_storage_reference": 2, "generic_data_center_reference": 3}
     return sorted(
         (record for record in get_reference_projects()
          if not term or term in record.project_name.casefold()),

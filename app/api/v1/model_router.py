@@ -5,8 +5,9 @@ HTTP status mapping:
   400  Bad Request  — invalid preview request (A4 only)
   404  Not Found    — key not in canonical supported set (exact membership only)
 
-Supported keys: generic_solar_reference, generic_wind_reference.
-Everything else (including storage, aliases, invalid format) → 404.
+Supported keys: generic_solar_reference, generic_wind_reference,
+generic_data_center_reference.  Everything else (including storage, aliases,
+invalid format) → 404.
 
 All route handlers are synchronous (def) so FastAPI dispatches to a threadpool.
 """
