@@ -8,6 +8,7 @@ GET /api/docs    — self-hosted Swagger UI for the public developer API.
 GET /api/openapi.json — filtered public OpenAPI schema (/api/v1/** only).
 GET /docs        — FINCO product documentation (no auth required).
 GET /docs/start  — permanent redirect to /docs (backward-compatibility alias).
+GET /roadmap     — FINCO public product roadmap (no auth required).
 
 /api/docs serves swagger-ui from self-hosted static assets so that FINCO's
 Content-Security-Policy (script-src 'self'; style-src 'self') is not violated.
@@ -124,7 +125,6 @@ async def protocol_api_openapi(request: Request):
     from fastapi.openapi.utils import get_openapi
     from app.api.v1.router import router as _public_v1_router
 
-    # Build a minimal isolated app containing only the public API router.
     _schema_app = FastAPI(
         title="FINCO Model API",
         version="1.0.0",
@@ -164,3 +164,18 @@ async def protocol_docs(request: Request):
 async def protocol_docs_start_alias():
     """Permanent redirect — /docs/start was the temporary path before /docs was freed."""
     return RedirectResponse(url="/docs", status_code=301)
+
+
+@router.get("/roadmap", response_class=HTMLResponse)
+async def protocol_roadmap(request: Request):
+    """FINCO public product roadmap. Public — no auth required."""
+    from app.auth import resolve_request_session
+    user = resolve_request_session(request)
+    return _templates.TemplateResponse(
+        request=request,
+        name="protocol_roadmap.html",
+        context={
+            "user": user,
+            "proto_active_page": "roadmap",
+        },
+    )
