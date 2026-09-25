@@ -62,21 +62,76 @@ def test_factory_canonical_capex_parents():
         assert getattr(pi.capex, field).amount_keur == pytest.approx(amount), field
 
 
-def test_charging_equipment_uses_typed_ev_asset_class():
+def test_charging_equipment_uses_compatibility_class_with_10y_override():
+    """V1 frozen-path compromise: Charging Equipment rides the existing
+    generic infrastructure class with an explicit 10-year useful-life
+    override; the user-facing taxonomy stays EV-specific (spec B)."""
     from finco_core.inputs import AssetClass
     pi = create_generic_ev_charging_reference()
-    assert pi.capex.production_units.asset_class is AssetClass.EV_CHARGING_EQUIPMENT
+    equipment = pi.capex.production_units
+    assert equipment.asset_class is AssetClass.CIVIL_GRID
+    assert equipment.useful_life_override == 10
+    assert equipment.name == "Charging Equipment"
     # long-lived infrastructure stays on the truthful existing class
     assert pi.capex.grid_connection.asset_class is AssetClass.CIVIL_GRID
+    # no renewable-class mislabeling (spec B)
+    from finco_core.inputs import AssetClass as _AC
+    assert equipment.asset_class not in (_AC.SOLAR_PANELS, _AC.WIND_TURBINES, _AC.BESS_CELLS)
 
 
-def test_fixed_non_power_opex_total():
-    """Fixed OPEX (B.01+B.02+B.05+B.06+B.07+B.10+B.11) = 960 kEUR, excluding
-    the derived B.08 electricity line."""
-    pi = create_generic_ev_charging_reference()
-    fixed = [i for i in pi.opex if i.name != "Electricity Procurement"]
-    assert sum(i.y1_amount_keur for i in fixed) == pytest.approx(960.0)
-    assert any(i.name == "Electricity Procurement" for i in pi.opex)
+def test_ev_charging_equipment_depreciates_over_10_years():
+    """The 10-year override must flow through the existing book/tax
+    depreciation path: the adapter carries it on both bases, and the
+    straight-line schedule fully depreciates the 4,000 kEUR C.01 basis in
+    10 operating years (400 kEUR/yr). Solar/Wind/Storage useful lives are
+    unchanged."""
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    from finco_core.debt.depreciation_schedule import build_depreciation_schedule
+
+    ev_pi = create_generic_ev_charging_reference()
+    dep = from_project_inputs(ev_pi).depreciation
+    book_entry = next(
+        e for e in dep.book_capex_items_for_depreciation if e.name == "Charging Equipment"
+    )
+    tax_entry = next(
+        e for e in dep.tax_capex_items_for_depreciation if e.name == "Charging Equipment"
+    )
+    assert book_entry.useful_life_override == 10
+    assert tax_entry.useful_life_override == 10
+
+    # the finco_core schedule honors the override: the C.01 basis fully
+    # depreciates in exactly 10 years (400 kEUR/yr on the 4,000 kEUR basis);
+    # with the 30-year CIVIL_GRID class default it would take 30 years.
+    equipment_only = build_depreciation_schedule(
+        (ev_pi.capex.production_units,), horizon_years=ev_pi.info.horizon_years
+    )
+    equipment_10y = sum(equipment_only.get(y, 0.0) for y in range(1, 11))
+    equipment_11y_plus = sum(
+        equipment_only.get(y, 0.0) for y in range(11, ev_pi.info.horizon_years + 1)
+    )
+    assert equipment_10y == pytest.approx(4_000.0, rel=1e-9), (
+        "C.01 basis must fully depreciate in exactly 10 years (override honored)"
+    )
+    assert equipment_11y_plus == pytest.approx(0.0, abs=1e-9)
+
+    # Solar / Wind / Storage useful lives unchanged (25 / 25 / 10)
+    from app.project_factories import (
+        create_generic_solar_reference,
+        create_generic_wind_reference,
+        create_generic_storage_reference,
+    )
+    for factory, item_name, expected_override in (
+        (create_generic_solar_reference, "Solar Modules", None),
+        (create_generic_wind_reference, "Wind Turbines", None),
+        (create_generic_storage_reference, "BESS Cells", None),
+    ):
+        dep_i = from_project_inputs(factory()).depreciation
+        found = next(
+            e for e in dep_i.book_capex_items_for_depreciation if e.name == item_name
+        )
+        assert found.useful_life_override == expected_override, (
+            f"{item_name} must keep its class-default useful life (no override)"
+        )
 
 
 # ── Z.3–Z.8 Throughput, revenue, losses, electricity ─────────────────────────

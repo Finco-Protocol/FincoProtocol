@@ -816,8 +816,15 @@ def create_default_ev_charging_project(
     from app.ev_charging_economics import merchant_price_schedule as ev_merchant_price_schedule
 
     z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    # V1 frozen-path compromise: charging equipment rides the existing
+    # generic infrastructure class with an explicit 10-year useful-life
+    # override (DC fast-charger service life). The user-facing taxonomy
+    # stays "Charging Equipment" (EV-specific); CIVIL_GRID is an
+    # implementation compatibility class, not a claim that chargers are
+    # civil/grid works.
     equipment = CapexItem(name="Charging Equipment", amount_keur=4_000.0, y0_share=0.0,
-                          spending_profile=(0.5, 0.5), asset_class=AssetClass.EV_CHARGING_EQUIPMENT)
+                          spending_profile=(0.5, 0.5), asset_class=AssetClass.CIVIL_GRID,
+                          useful_life_override=10)
     epc = CapexItem(name="EPC / Electrical Installation", amount_keur=1_500.0, y0_share=0.3,
                     spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
     site = CapexItem(name="Site / Civil Infrastructure", amount_keur=800.0, y0_share=0.3,

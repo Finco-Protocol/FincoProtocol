@@ -200,12 +200,6 @@ class AssetClass(Enum):
     CIVIL_GRID = "civil_grid"
     SOFT_COSTS = "soft_costs"
     FINANCIAL_COSTS = "financial_costs"
-    # EV charging equipment (chargers, power cabinets, dispensers, controls).
-    # Typed addition for the Generic EV Charging Hub reference: no existing
-    # class truthfully represents charging equipment, and mapping it to
-    # SOLAR_PANELS / WIND_TURBINES / BESS_CELLS / CIVIL_GRID would misstate
-    # both the asset nature and its useful life.
-    EV_CHARGING_EQUIPMENT = "ev_charging_equipment"
 
 
 ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
@@ -216,7 +210,6 @@ ASSET_CLASS_USEFUL_LIFE: dict[AssetClass, int] = {
     AssetClass.CIVIL_GRID: 30,
     AssetClass.SOFT_COSTS: 5,
     AssetClass.FINANCIAL_COSTS: 14,
-    AssetClass.EV_CHARGING_EQUIPMENT: 10,
 }
 
 
