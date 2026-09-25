@@ -154,7 +154,16 @@ _logger = logging.getLogger(__name__)
 _logger.info("FINCO Model startup: asset_version=%s", ASSET_VERSION)
 
 # -- FastAPI app --------------------------------------------------------------
-app = FastAPI(title="FINCO Protocol")
+app = FastAPI(
+    title="FINCO Protocol",
+    # Disable FastAPI's built-in /docs and /openapi.json.
+    # /api/docs serves self-hosted swagger-ui (CSP-compliant).
+    # /api/openapi.json serves a filtered public schema (/api/v1/** only).
+    # /docs is reserved for FINCO product documentation.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # -- Model run concurrency limiter (P6.6) -------------------------------------
 # Bounds concurrent model runs to prevent resource exhaustion.
@@ -279,6 +288,17 @@ app.include_router(_radar_router)
 from app.protocol_ui.router import router as _protocol_router
 app.include_router(_protocol_router)
 
+# -- FINCO Public Model & Radar API v1 -----------------------------------------
+# Mount ONLY the canonical public v1 router so that:
+#   - /api/v1/model/references/** and /api/v1/radar/** are reachable
+#   - legacy bare routes (/api/v1/run, /api/v1/validate, /api/v1/project-types,
+#     /api/v1/scenarios) are NOT exposed through the public web app
+# app.api.v1.router already includes the model router (model_router.router).
+# main_api.py mounts these same routers for the standalone API process.
+from app.api.v1.router import router as _api_v1_router
+import app.api.v1.run_limiter as _run_limiter  # noqa: F401 — initialises semaphore
+app.include_router(_api_v1_router, prefix="/api/v1")
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""
@@ -372,6 +392,7 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/readyz",
     "/health",
     "/favicon",
+    "/api",  # public developer API — no demo session created on stateless API calls
 )
 
 

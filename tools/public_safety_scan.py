@@ -46,6 +46,45 @@ SECRET_PATTERNS = (
 
 ALLOW_EMAILS = {b"noreply@users.noreply.github.com"}
 
+# ── Trusted third-party vendor assets ─────────────────────────────────────────
+# These assets are self-hosted copies of upstream open-source libraries.
+# The exception is fail-closed: path AND SHA-256 must both match exactly.
+# A one-byte file change => SHA-256 mismatch => exception does not apply.
+# Secret-like, local-user-path, and forbidden-identifier checks remain active
+# for all files including these; only the email-like-identifier check is
+# exempted here (upstream libraries legitimately embed example placeholder
+# addresses in their bundled example JSON/schemas).
+#
+# Upstream provenance:
+#   swagger-ui-bundle@4.15.5  (swagger-ui-dist npm package)
+#   License: Apache-2.0 — see static/vendor/swagger-ui/LICENSE
+_VENDOR_EMAIL_EXEMPT = {
+    # path -> expected SHA-256 (hex)
+    "static/vendor/swagger-ui/swagger-ui-bundle.js": (
+        "fd76294e33356ab3fd111ddaeeb10d3f79de8ae1a4d34dbf777f5eef224648d9"
+    ),
+    "static/vendor/swagger-ui/swagger-ui.css": (
+        "e883f234c6ef0b7dbb6d473fb45a00b85e98d58282f9dd1cc70bcc57ef12ef6a"
+    ),
+    "static/vendor/swagger-ui/favicon-32x32.png": (
+        "3ed612f41e050ca5e7000cad6f1cbe7e7da39f65fca99c02e99e6591056e5837"
+    ),
+}
+
+
+def _vendor_email_exempt(rel: str, data: bytes) -> bool:
+    """Return True iff this file is an approved vendor asset with matching SHA-256.
+
+    Fail-closed: any mismatch (wrong path, wrong content) returns False.
+    Secret, local-path, and forbidden-identifier checks are NOT exempted.
+    """
+    expected_sha = _VENDOR_EMAIL_EXEMPT.get(rel)
+    if expected_sha is None:
+        return False
+    actual_sha = hashlib.sha256(data).hexdigest()
+    return actual_sha == expected_sha
+
+
 _THIS_SCRIPT = "tools/public_safety_scan.py"
 _PUBLIC_COUNTRY_CATALOG = "app/workbook/country_options.py"
 # These are deliberately exact literals, not a tuple-shaped regex.  The
@@ -147,10 +186,11 @@ def scan_file(rel: str, root: Path) -> list[str]:
             hashed_scan_data = hashed_scan_data.replace(literal, b"")
     if _contains_hashed_term(hashed_scan_data):
         failures.append(f"forbidden identifier in content: {rel}")
-    for email in EMAIL_RE.findall(data):
-        if email.lower() not in ALLOW_EMAILS:
-            failures.append(f"email-like identifier in {rel}")
-            break
+    if not _vendor_email_exempt(rel, data):
+        for email in EMAIL_RE.findall(data):
+            if email.lower() not in ALLOW_EMAILS:
+                failures.append(f"email-like identifier in {rel}")
+                break
     if rel != _THIS_SCRIPT and any(p.search(data) for p in LOCAL_PATH_PATTERNS):
         failures.append(f"local user path in {rel}")
     if any(p.search(data) for p in SECRET_PATTERNS):

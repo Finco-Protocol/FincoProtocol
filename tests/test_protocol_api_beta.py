@@ -273,11 +273,11 @@ def test_api25_docs_link(client):
     assert 'href="/docs"' in r.text
 
 
-# ── API26: /openapi.json link present ────────────────────────────────────────
+# ── API26: /api/openapi.json link present ────────────────────────────────────
 
 def test_api26_openapi_json_link(client):
     r = client.get("/api")
-    assert 'href="/openapi.json"' in r.text
+    assert 'href="/api/openapi.json"' in r.text
 
 
 # ── API27: curl GET example present ──────────────────────────────────────────

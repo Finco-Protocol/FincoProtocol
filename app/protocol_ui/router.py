@@ -3,12 +3,16 @@
 The unified home (/) is handled directly in main_web.py since a route
 conflict with the existing GET / handler would produce silent first-match wins.
 
-GET /api is the human-facing FINCO API Beta page (no auth required).
-GET /docs/start is the human-facing FINCO product documentation page (no auth required).
-The temporary /docs/start path avoids colliding with the web app's current FastAPI
-interactive docs route at /docs. Stable /api/docs and /api/openapi.json aliases are
-provided now so the backing API service can later own those paths without changing
-public links.
+GET /api         — human-facing FINCO API Beta page (no auth required).
+GET /api/docs    — self-hosted Swagger UI for the public developer API.
+GET /api/openapi.json — filtered public OpenAPI schema (/api/v1/** only).
+GET /docs        — FINCO product documentation (no auth required).
+GET /docs/start  — permanent redirect to /docs (backward-compatibility alias).
+
+/api/docs serves swagger-ui from self-hosted static assets so that FINCO's
+Content-Security-Policy (script-src 'self'; style-src 'self') is not violated.
+The default FastAPI /docs route is disabled (docs_url=None in FastAPI constructor)
+to free /docs for product documentation and to enforce CSP compliance.
 
 Routes never touch financial economics, Radar authority, or frozen namespaces.
 Verify is network-free: it calls the deterministic public corpus builder only.
@@ -20,7 +24,7 @@ import os
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 logger = logging.getLogger(__name__)
@@ -88,19 +92,60 @@ async def protocol_api_beta(request: Request):
     )
 
 
-@router.get("/api/docs", include_in_schema=False)
-async def protocol_api_docs_alias():
-    """Stable public alias for the current FastAPI Swagger surface."""
-    return RedirectResponse(url="/docs", status_code=307)
+@router.get("/api/docs", include_in_schema=False, response_class=HTMLResponse)
+async def protocol_api_docs(request: Request):
+    """Interactive API documentation — self-hosted Swagger UI.
+
+    Serves swagger-ui from /static/vendor/swagger-ui/ to satisfy FINCO's
+    Content-Security-Policy (script-src/style-src 'self' only — no CDN).
+    """
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json",
+        title="FINCO Model API — Documentation",
+        swagger_js_url="/static/vendor/swagger-ui/swagger-ui-bundle.js",
+        swagger_css_url="/static/vendor/swagger-ui/swagger-ui.css",
+        swagger_favicon_url="/static/vendor/swagger-ui/favicon-32x32.png",
+    )
 
 
 @router.get("/api/openapi.json", include_in_schema=False)
-async def protocol_openapi_alias():
-    """Stable public alias for the current FastAPI OpenAPI schema."""
-    return RedirectResponse(url="/openapi.json", status_code=307)
+async def protocol_api_openapi(request: Request):
+    """Public OpenAPI schema — /api/v1/** endpoints only.
+
+    Builds the schema from the canonical public v1 router mounted at /api/v1,
+    not from the full main_web app route table.  This guarantees:
+      - no internal UI routes (library, v2, radar-UI) in paths
+      - no internal request-body models in components.schemas
+      - schema is self-contained and identical regardless of what other
+        routes are mounted on the web app
+    """
+    from fastapi import FastAPI
+    from fastapi.openapi.utils import get_openapi
+    from app.api.v1.router import router as _public_v1_router
+
+    # Build a minimal isolated app containing only the public API router.
+    _schema_app = FastAPI(
+        title="FINCO Model API",
+        version="1.0.0",
+        description=(
+            "Programmatic access to FINCO canonical reference models, "
+            "capacity previews, and Radar equity data. "
+            "All endpoints are read-only. No project is created by any call."
+        ),
+    )
+    _schema_app.include_router(_public_v1_router, prefix="/api/v1")
+
+    schema = get_openapi(
+        title=_schema_app.title,
+        version=_schema_app.version,
+        description=_schema_app.description,
+        routes=_schema_app.routes,
+    )
+    return JSONResponse(schema)
 
 
-@router.get("/docs/start", response_class=HTMLResponse)
+@router.get("/docs", response_class=HTMLResponse)
 async def protocol_docs(request: Request):
     """FINCO product documentation. Public — no auth required."""
     from app.auth import resolve_request_session
@@ -113,3 +158,9 @@ async def protocol_docs(request: Request):
             "proto_active_page": "docs",
         },
     )
+
+
+@router.get("/docs/start", include_in_schema=False)
+async def protocol_docs_start_alias():
+    """Permanent redirect — /docs/start was the temporary path before /docs was freed."""
+    return RedirectResponse(url="/docs", status_code=301)
