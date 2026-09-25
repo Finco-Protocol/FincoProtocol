@@ -4,8 +4,10 @@ The unified home (/) is handled directly in main_web.py since a route
 conflict with the existing GET / handler would produce silent first-match wins.
 
 GET /api is the human-facing FINCO API Beta page (no auth required).
-GET /docs is the human-facing FINCO product documentation page (no auth required).
-They coexist cleanly with /api/v1/... because that prefix is distinct.
+GET /docs/start is the human-facing FINCO product documentation page (no auth required).
+The temporary /docs/start path avoids colliding with the web app's current FastAPI
+interactive docs route at /docs. A later route-foundation change can move Swagger
+under /api/docs and promote the product landing page to /docs.
 
 Routes never touch financial economics, Radar authority, or frozen namespaces.
 Verify is network-free: it calls the deterministic public corpus builder only.
@@ -85,7 +87,7 @@ async def protocol_api_beta(request: Request):
     )
 
 
-@router.get("/docs", response_class=HTMLResponse)
+@router.get("/docs/start", response_class=HTMLResponse)
 async def protocol_docs(request: Request):
     """FINCO product documentation. Public — no auth required."""
     from app.auth import resolve_request_session
