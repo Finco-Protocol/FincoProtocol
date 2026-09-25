@@ -402,3 +402,95 @@ class TestVendorSafetyScannerException:
         assert secret_failures != [], (
             "Secret-like token check must fire regardless of vendor exemption"
         )
+
+
+# ── Section 13: Data Center integration proof (PR #88 preservation) ───────────
+
+class TestDataCenterIntegration:
+    """Generic Data Center reference is present in the public API after PR #88 rebase.
+
+    These tests guard against accidental removal of the Data Center entry during
+    the rebase.  They are intentionally non-brittle: counts and ordering are not
+    asserted — only the presence and key metadata of the Data Center reference.
+    """
+
+    _DC_KEY = "generic_data_center_reference"
+
+    def _references(self):
+        resp = _main_client().get("/api/v1/model/references")
+        assert resp.status_code == 200
+        return resp.json()
+
+    def test_model_references_contains_data_center(self):
+        data = self._references()
+        # Envelope wraps a list; look for the key regardless of exact schema shape.
+        text = str(data)
+        assert self._DC_KEY in text, (
+            f"generic_data_center_reference missing from /api/v1/model/references"
+        )
+
+    def _dc_entry(self):
+        """Return the Data Center reference entry from the envelope."""
+        data = self._references()
+        # Envelope: {"api_version": ..., "state": ..., "data": {"count": ..., "references": [...]}}
+        items = (
+            data.get("data", {}).get("references", [])
+            if isinstance(data, dict)
+            else data
+        )
+        return next((r for r in items if r.get("reference_key") == self._DC_KEY), None)
+
+    def test_data_center_technology_field(self):
+        dc = self._dc_entry()
+        assert dc is not None, f"{self._DC_KEY} entry not found in references list"
+        assert dc.get("technology") == "data_center", (
+            f"Expected technology='data_center', got {dc.get('technology')!r}"
+        )
+
+    def test_data_center_capacity_unit(self):
+        dc = self._dc_entry()
+        assert dc is not None, f"{self._DC_KEY} entry not found"
+        assert dc.get("capacity_unit") == "MW IT", (
+            f"Expected capacity_unit='MW IT', got {dc.get('capacity_unit')!r}"
+        )
+
+    def test_data_center_detail_endpoint(self):
+        resp = _main_client().get(f"/api/v1/model/references/{self._DC_KEY}")
+        assert resp.status_code == 200
+
+    def test_data_center_preview_endpoint(self):
+        resp = _main_client().post(
+            f"/api/v1/model/references/{self._DC_KEY}/preview",
+            json={"capacity_mw": 100},
+        )
+        assert resp.status_code == 200
+
+    def test_data_center_run_stateless(self):
+        resp = _main_client().post(
+            f"/api/v1/model/references/{self._DC_KEY}/run",
+            json={"capacity_mw": 100},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        # Stateless contract: no project persisted.
+        # project_created lives under data.scaling.project_created in the v1 envelope.
+        project_created = data.get("data", {}).get("scaling", {}).get("project_created")
+        assert project_created is False, (
+            f"Run endpoint must not create a project; project_created={project_created!r}"
+        )
+
+    def test_data_center_reachable_via_public_schema_path(self):
+        """The model references path in the public schema is the one that serves Data Center.
+
+        The schema exposes the parametric path; runtime data (reference keys) are not
+        embedded in the schema itself — they come from the live endpoint.
+        """
+        resp = _main_client().get("/api/openapi.json")
+        assert resp.status_code == 200
+        paths = set(resp.json().get("paths", {}).keys())
+        assert "/api/v1/model/references" in paths, (
+            "Public schema must expose /api/v1/model/references (Data Center is served there)"
+        )
+        assert "/api/v1/model/references/{reference_key}" in paths, (
+            "Public schema must expose /api/v1/model/references/{reference_key}"
+        )

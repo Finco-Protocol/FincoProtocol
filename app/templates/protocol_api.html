@@ -51,7 +51,7 @@
             <div class="papi__section-eyebrow">Model API</div>
             <h2 class="papi__section-title" id="model-api-heading">Reference Models</h2>
             <p class="papi__section-desc">
-              Canonical synthetic Solar and Wind reference models.
+              Canonical synthetic infrastructure reference models.
               Read-only endpoints return reference assumptions. The run endpoint executes
               one canonical financial calculation and returns summary KPIs. No project is created.
             </p>
@@ -67,7 +67,7 @@
             <div class="papi__endpoint-row" role="row">
               <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
               <div role="cell"><code class="papi__path">/api/v1/model/references</code></div>
-              <div role="cell" class="papi__endpoint-desc">List canonical synthetic Solar/Wind reference models.</div>
+              <div role="cell" class="papi__endpoint-desc">List canonical synthetic infrastructure reference models.</div>
             </div>
 
             <div class="papi__endpoint-row" role="row">
@@ -202,7 +202,7 @@
             </div>
 
             <div class="papi__example">
-              <div class="papi__example-label">Preview Solar at 100 MW (stateless — no project created)</div>
+              <div class="papi__example-label">Preview a reference model at 100 MW (stateless — no project created)</div>
               <div class="papi__code-block" role="region" aria-label="curl example: preview solar reference at 100 MW">
                 <pre><code>curl -X POST \
   {{ api_base_url }}/model/references/generic_solar_reference/preview \
