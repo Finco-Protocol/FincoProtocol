@@ -996,6 +996,31 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
     debt_fields = _lock_senior_fields_if_calibrated(
         _build_sheet_fields("debt", pis),
         senior_pricing_mode, senior_dscr_mode)
+    # Actual gearing presentation: derive from the runtime derivation evidence
+    # when a last-run result exists.  Total CAPEX from pis is always available as
+    # the denominator (it is the gearing basis for a senior-debt-only capital
+    # structure with no financing-cost uses).
+    _rs = d.runtime_summary or {}
+    _senior_debt_evidence = (_rs.get("senior_debt_derivation") or {})
+    _actual_senior_keur: float | None = None
+    try:
+        _sd_raw = _senior_debt_evidence.get("display_value_keur") or _rs.get("senior_debt_keur")
+        if _sd_raw is not None and str(_sd_raw) not in ("NOT_AVAILABLE", "", "—"):
+            _actual_senior_keur = float(str(_sd_raw).replace(",", "").replace(" kEUR", "").strip())
+    except (TypeError, ValueError):
+        _actual_senior_keur = None
+    _actual_gearing_pct: str | None = None
+    if _actual_senior_keur is not None:
+        try:
+            _total_capex = float(pis.values.get("capex.summary.total") or
+                                 pis.values.get("total_capex_keur") or 0)
+            if _total_capex > 0:
+                _actual_gearing_pct = f"{_actual_senior_keur / _total_capex * 100:.1f}%"
+        except (TypeError, ValueError):
+            pass
+    _actual_senior_display = (
+        f"{_actual_senior_keur:,.0f} kEUR" if _actual_senior_keur is not None else None
+    )
     return {
         "debt_fields": debt_fields,
         "debt_state": d.state.value,
@@ -1004,8 +1029,10 @@ def _build_debt_ctx(pis, ws, projection=None) -> dict:
         "runtime_summary": d.runtime_summary,
         "senior_pricing_mode": senior_pricing_mode,
         "senior_dscr_mode": senior_dscr_mode,
+        "debt_actual_senior_keur_display": _actual_senior_display,
+        "debt_actual_gearing_pct_display": _actual_gearing_pct,
         "senior_detail_rows": (
-            ("Gearing", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
+            ("Max. gearing cap", _pct(getattr(fin, "gearing_ratio", None)) if fin else None),
             ("All-in interest rate", _pct(getattr(fin, "base_rate", 0.0) + getattr(fin, "margin_bps", 0) / 10_000) if fin else None),
             ("Base rate", f"{getattr(fin, 'base_rate', 0.0) * 100:.2f}%" if fin else None),
             ("Margin", f"{getattr(fin, 'margin_bps', 0)} bps" if fin else None),
