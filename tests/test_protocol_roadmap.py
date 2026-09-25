@@ -56,7 +56,7 @@ def test_roadmap_keeps_finco_as_only_placeholder():
     assert 'href="/roadmap"' in nav
     assert 'href="/roadmap">Roadmap</a>' in brand
     assert "$FINCO" in nav and "$FINCO" in brand
-    assert "Coming soon">Roadmap" not in nav
+    assert "Coming soon\">Roadmap" not in nav
 
 
 def test_roadmap_css_has_mobile_breakpoints_without_overflow_hack():
