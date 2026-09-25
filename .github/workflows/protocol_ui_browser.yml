@@ -38,7 +38,12 @@ jobs:
         run: playwright install chromium --with-deps
 
       - name: Run Protocol UI browser acceptance suite
-        run: pytest -v tests/test_ui_protocol_shell.py
+        run: |
+          # API-B04 encoded the previous contract where Roadmap was a placeholder.
+          # Roadmap is now intentionally live; the focused roadmap browser suite
+          # below owns the replacement navigation + responsive acceptance.
+          pytest -v tests/test_ui_protocol_shell.py tests/test_protocol_roadmap_browser.py \
+            -k "not test_api_b04_placeholders_not_links"
         env:
           FINCO_VISUAL_CAPTURE: "1"
         # FINCO_TEST_CHROMIUM_PATH is intentionally unset here so Playwright
