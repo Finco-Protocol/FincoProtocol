@@ -139,8 +139,8 @@ def test_seeded_generic_wind_distribution_reconciles_each_public_parent(seeded_d
     from app.services.reference_seed_service import create_reference_seeded_project
 
     record = create_reference_seeded_project(
-        user_id="wind-pr76", template_source="generic_wind_reference",
-        requested_name="Wind PR76", capacity_mw=48.0,
+        user_id="wind-pr86", template_source="generic_wind_reference",
+        requested_name="Wind PR86", capacity_mw=48.0,
     )
     lines = get_active_sub_lines_for_project(record.project_id)
     c01 = [line for line in lines if line.parent_category_code == "C.01"]
@@ -149,6 +149,31 @@ def test_seeded_generic_wind_distribution_reconciles_each_public_parent(seeded_d
     assert sum(line.amount_keur for line in c01) == pytest.approx(30_000.0)
     assert sum(line.amount_keur for line in c02) == pytest.approx(6_000.0)
     assert any(line.label == "Wind Turbines" and line.amount_keur > 0 for line in c01)
+
+
+def test_generic_wind_taxonomy_reclassification_is_economically_equivalent():
+    """Test-only legacy layout proves taxonomy relocation does not alter economics."""
+    from dataclasses import replace
+    from app.api.project_runner import run_project
+
+    corrected = create_generic_wind_reference()
+    legacy_capex = replace(
+        corrected.capex,
+        production_units=corrected.capex.epc_other,
+        epc_contract=corrected.capex.production_units,
+        epc_other=corrected.capex.epc_contract,
+    )
+    legacy = replace(corrected, capex=legacy_capex)
+    corrected_run = run_project("Wind", "Base", project_inputs_override=corrected)
+    legacy_run = run_project("Wind", "Base", project_inputs_override=legacy)
+
+    assert corrected.capex.total_capex == legacy.capex.total_capex == pytest.approx(43_000.0)
+    # These payloads cover project uses/returns/debt/DSCR/tax and the complete
+    # period-level waterfall authority, without introducing a legacy runtime path.
+    assert corrected_run["kpis"] == legacy_run["kpis"]
+    assert corrected_run["tables"]["waterfall"] == legacy_run["tables"]["waterfall"]
+    assert corrected_run["tables"]["debt"] == legacy_run["tables"]["debt"]
+    assert corrected_run["financial_statements"] == legacy_run["financial_statements"]
 
 
 def test_opex_legacy_generic_labels_and_technology_specific_depth():

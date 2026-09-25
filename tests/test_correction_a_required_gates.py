@@ -18,12 +18,43 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import replace
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
+
+
+class _RenderedFormParser(HTMLParser):
+    """Extract submitted values from an actual rendered V2 form."""
+    def __init__(self):
+        super().__init__()
+        self.forms = []
+        self._form = None
+
+    def handle_starttag(self, tag, attrs):
+        data = dict(attrs)
+        if tag == "form":
+            self._form = {"action": data.get("hx-post"), "values": {}}
+        elif tag == "input" and self._form is not None and data.get("name"):
+            self._form["values"][data["name"]] = data.get("value", "")
+
+    def handle_endtag(self, tag):
+        if tag == "form" and self._form is not None:
+            self.forms.append(self._form)
+            self._form = None
+
+
+def _rendered_form_values(html: str, action: str, sub_line_id: str) -> dict[str, str]:
+    parser = _RenderedFormParser()
+    parser.feed(html)
+    for form in parser.forms:
+        values = form["values"]
+        if form["action"] == action and values.get("sub_line_id") == sub_line_id:
+            return dict(values)
+    raise AssertionError(f"Rendered form {action!r} for {sub_line_id!r} not found")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -473,7 +504,7 @@ class TestMwRescalingHttpPath:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PR76. Working-copy line editing through the actual HTTP endpoints
+# PR86 Correction A. Working-copy line editing through rendered HTTP forms
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestGenericWorkingCopyLineEditingHttp:
@@ -490,16 +521,15 @@ class TestGenericWorkingCopyLineEditingHttp:
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
         from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as get_opex
         from app.persistence.workspace_repository import get_workspace_state
-        from app.workbook.service import WorkbookService
         from fastapi.testclient import TestClient
         import main_web
         from app.services.reference_seed_service import create_reference_seeded_project
 
-        user_id = f"pr76-http-{template_source}"
+        user_id = f"pr86-http-{template_source}"
         record = create_reference_seeded_project(
             user_id=user_id,
             template_source=template_source,
-            requested_name=f"PR76 {template_source}",
+            requested_name=f"PR86 {template_source}",
             capacity_mw=capacity_mw,
         )
         cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="admin")}
@@ -511,30 +541,30 @@ class TestGenericWorkingCopyLineEditingHttp:
         assert page.status_code == 200
         assert 'href="/verify"' not in page.text
         assert "/scenarios?project=" not in page.text
-        assert "tab-scenarios').click()" in page.text
 
         capex_before = get_active_sub_lines_for_project(record.project_id)
         assert capex_before
         capex_line = next(line for line in capex_before if line.amount_keur > 0)
         capex_total_before = sum(line.amount_keur for line in capex_before)
-        capex_pis = _build_pis_with_hash(user_id, record)
+        from app.v2.router import _build_capex_vm_ctx
+        capex_before_vm = _build_capex_vm_ctx(
+            record, _build_pis_with_hash(user_id, record),
+            get_workspace_state(user_id, record.project_id), workspace_owner=user_id,
+        )["capex_vm"]
+        capex_form = _rendered_form_values(
+            page.text, "/v2/capex/line/update", capex_line.sub_line_id,
+        )
+        assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur"}.issubset(capex_form)
         capex_new_amount = capex_line.amount_keur + 17.0
+        capex_form["amount_keur"] = str(capex_new_amount)
         response = client.post(
             "/v2/capex/line/update",
-            data={
-                "project": record.project_code,
-                "sub_line_id": capex_line.sub_line_id,
-                "label": capex_line.label,
-                "amount_keur": str(capex_new_amount),
-                "notes": capex_line.comments,
-                "row_version": capex_line.updated_at,
-                "workbook_version": capex_pis.workbook_version,
-                "content_hash": capex_pis.content_hash,
-            },
+            data=capex_form,
             cookies=cookies,
+            headers={"HX-Request": "true"},
             follow_redirects=False,
         )
-        assert response.status_code == 303, response.text[:500]
+        assert response.status_code == 200, response.text[:500]
         capex_after = get_active_sub_lines_for_project(record.project_id)
         changed_capex = next(line for line in capex_after if line.sub_line_id == capex_line.sub_line_id)
         assert changed_capex.amount_keur == pytest.approx(capex_new_amount)
@@ -544,13 +574,41 @@ class TestGenericWorkingCopyLineEditingHttp:
         # The rendered V2 CAPEX model rebuilds subtotal, hard CAPEX, total
         # CAPEX and kEUR/MW from the persisted line rows.
         ws = get_workspace_state(user_id, record.project_id)
-        from app.v2.router import _build_capex_vm_ctx
         capex_vm = _build_capex_vm_ctx(
             record, _build_pis_with_hash(user_id, record), ws, workspace_owner=user_id
         )["capex_vm"]
-        assert capex_vm.hard_capex_keur == pytest.approx(sum(line.amount_keur for line in capex_after))
-        assert capex_vm.total_capex_keur == pytest.approx(capex_total_before + 17.0)
-        assert capex_vm.total_per_mw == pytest.approx((capex_total_before + 17.0) / capacity_mw)
+        capex_parent_before = next(g for g in capex_before_vm.groups if g.code == capex_line.parent_category_code)
+        capex_parent_after = next(g for g in capex_vm.groups if g.code == capex_line.parent_category_code)
+        assert capex_parent_after.subtotal_keur == pytest.approx(capex_parent_before.subtotal_keur + 17.0)
+        assert capex_vm.hard_capex_keur == pytest.approx(capex_before_vm.hard_capex_keur + 17.0)
+        assert capex_vm.total_capex_keur == pytest.approx(capex_before_vm.total_capex_keur + 17.0)
+        assert capex_vm.total_per_mw == pytest.approx(capex_before_vm.total_per_mw + 17.0 / capacity_mw)
+
+        # Second mutation must use the fresh form emitted by the HTMX swap.
+        capex_second_form = _rendered_form_values(
+            response.text, "/v2/capex/line/update", capex_line.sub_line_id,
+        )
+        assert capex_second_form["row_version"] == changed_capex.updated_at
+        assert capex_second_form["workbook_version"] == capex_form["workbook_version"]
+        assert capex_second_form["content_hash"] != capex_form["content_hash"]
+        capex_second_delta = 11.0
+        capex_second_form["amount_keur"] = str(capex_new_amount + capex_second_delta)
+        response = client.post(
+            "/v2/capex/line/update", data=capex_second_form, cookies=cookies,
+            headers={"HX-Request": "true"}, follow_redirects=False,
+        )
+        assert response.status_code == 200, response.text[:500]
+        capex_after_second = get_active_sub_lines_for_project(record.project_id)
+        changed_capex_second = next(line for line in capex_after_second if line.sub_line_id == capex_line.sub_line_id)
+        assert changed_capex_second.amount_keur == pytest.approx(capex_new_amount + capex_second_delta)
+        capex_vm_second = _build_capex_vm_ctx(
+            record, _build_pis_with_hash(user_id, record),
+            get_workspace_state(user_id, record.project_id), workspace_owner=user_id,
+        )["capex_vm"]
+        capex_parent_second = next(g for g in capex_vm_second.groups if g.code == capex_line.parent_category_code)
+        assert capex_parent_second.subtotal_keur == pytest.approx(capex_parent_after.subtotal_keur + capex_second_delta)
+        assert capex_vm_second.hard_capex_keur == pytest.approx(capex_vm.hard_capex_keur + capex_second_delta)
+        assert capex_vm_second.total_capex_keur == pytest.approx(capex_vm.total_capex_keur + capex_second_delta)
 
         opex_before = get_opex(record.project_id)
         assert opex_before
@@ -560,37 +618,87 @@ class TestGenericWorkingCopyLineEditingHttp:
         opex_vm_before = _build_opex_vm_ctx(
             record, _build_pis_with_hash(user_id, record)
         )["opex_vm"]
-        opex_pis = _build_pis_with_hash(user_id, record)
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200
+        opex_form = _rendered_form_values(
+            page.text, "/v2/opex/line/update", opex_line.sub_line_id,
+        )
+        assert {"project", "sub_line_id", "row_version", "workbook_version", "content_hash", "label", "amount_keur", "inflation_pct"}.issubset(opex_form)
         opex_new_amount = opex_line.amount_keur + 9.0
+        opex_form["amount_keur"] = str(opex_new_amount)
         response = client.post(
             "/v2/opex/line/update",
-            data={
-                "project": record.project_code,
-                "sub_line_id": opex_line.sub_line_id,
-                "label": opex_line.label,
-                "amount_keur": str(opex_new_amount),
-                "inflation_pct": str(opex_line.inflation_pct),
-                "notes": opex_line.comments,
-                "row_version": opex_line.updated_at,
-                "workbook_version": opex_pis.workbook_version,
-                "content_hash": opex_pis.content_hash,
-            },
+            data=opex_form,
             cookies=cookies,
+            headers={"HX-Request": "true"},
             follow_redirects=False,
         )
-        assert response.status_code == 303, response.text[:500]
+        assert response.status_code == 200, response.text[:500]
         opex_after = get_opex(record.project_id)
         changed_opex = next(line for line in opex_after if line.sub_line_id == opex_line.sub_line_id)
         assert changed_opex.amount_keur == pytest.approx(opex_new_amount)
         assert changed_opex.source == "user_override"
         assert sum(line.amount_keur for line in opex_after) == pytest.approx(opex_total_before + 9.0)
         opex_vm = _build_opex_vm_ctx(record, _build_pis_with_hash(user_id, record))["opex_vm"]
-        assert opex_vm.y1_total_opex > opex_vm_before.y1_total_opex
+        opex_parent_before = next(g for g in opex_vm_before.groups if g.code == opex_line.parent_group_code)
+        opex_parent_after = next(g for g in opex_vm.groups if g.code == opex_line.parent_group_code)
+        assert opex_parent_after.subtotal_per_year[0] == pytest.approx(opex_parent_before.subtotal_per_year[0] + 9.0)
+        expected_total_delta = 9.0 * (1 + opex_vm_before.contingency_rate / 100)
+        assert opex_vm.y1_total_opex == pytest.approx(opex_vm_before.y1_total_opex + expected_total_delta)
+
+        opex_second_form = _rendered_form_values(
+            response.text, "/v2/opex/line/update", opex_line.sub_line_id,
+        )
+        assert opex_second_form["row_version"] == changed_opex.updated_at
+        assert opex_second_form["workbook_version"] == opex_form["workbook_version"]
+        assert opex_second_form["content_hash"] != opex_form["content_hash"]
+        opex_second_delta = 5.0
+        opex_second_form["amount_keur"] = str(opex_new_amount + opex_second_delta)
+        response = client.post(
+            "/v2/opex/line/update", data=opex_second_form, cookies=cookies,
+            headers={"HX-Request": "true"}, follow_redirects=False,
+        )
+        assert response.status_code == 200, response.text[:500]
+        opex_after_second = get_opex(record.project_id)
+        changed_opex_second = next(line for line in opex_after_second if line.sub_line_id == opex_line.sub_line_id)
+        assert changed_opex_second.amount_keur == pytest.approx(opex_new_amount + opex_second_delta)
+        opex_vm_second = _build_opex_vm_ctx(record, _build_pis_with_hash(user_id, record))["opex_vm"]
+        opex_parent_second = next(g for g in opex_vm_second.groups if g.code == opex_line.parent_group_code)
+        assert opex_parent_second.subtotal_per_year[0] == pytest.approx(opex_parent_after.subtotal_per_year[0] + opex_second_delta)
+        expected_second_total_delta = opex_second_delta * (1 + opex_vm.contingency_rate / 100)
+        assert opex_vm_second.y1_total_opex == pytest.approx(opex_vm.y1_total_opex + expected_second_total_delta)
 
         # HTTP reload is the persistence proof, not only the project_editable flag.
         reloaded = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
         assert reloaded.status_code == 200
-        assert f'value="{opex_new_amount:.0f}"' in reloaded.text
+        assert f'value="{capex_new_amount + capex_second_delta:.0f}"' in reloaded.text
+        assert f'value="{opex_new_amount + opex_second_delta:.0f}"' in reloaded.text
+
+    def test_canonical_reference_remains_readonly_and_fails_closed_on_mutation(self, seeded_db):
+        """A working-copy edit path must never make the canonical model mutable."""
+        from app.services.project_library_service import ensure_reference_models
+        from app.persistence.projects_repository import get_project_by_code
+        from app.v2.capex_commands import CapexProtectedReferenceError, add_capex_line
+        from app.workbook.registry import WORKBOOK
+        from fastapi.testclient import TestClient
+        from app.auth import COOKIE_NAME, create_session_token
+        import main_web
+
+        ensure_reference_models()
+        reference = get_project_by_code("__reference__", "generic_wind_reference-reference")
+        assert reference is not None and reference.is_readonly
+        cookies = {COOKIE_NAME: create_session_token(user_id="gate-user", username="admin")}
+        client = TestClient(main_web.app, raise_server_exceptions=True)
+        page = client.get("/v2/workbook?project=generic_wind_reference-reference", cookies=cookies)
+        assert page.status_code == 200
+        assert "Reference project — create a working copy to edit." in page.text
+        assert 'hx-post="/v2/capex/line/update"' not in page.text
+        with pytest.raises(CapexProtectedReferenceError):
+            add_capex_line(
+                project_record=reference, user_id="__reference__", label="Rejected",
+                parent_category_code="C.01", amount_keur=1.0,
+                workbook_version=WORKBOOK.version, expected_content_hash="not-used",
+            )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

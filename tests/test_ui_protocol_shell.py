@@ -1,6 +1,6 @@
 """FINCO Protocol UI — Unified Shell Browser Acceptance Tests.
 
-Tests the three-surface protocol shell (Home · Model · Radar · Verify) at
+Tests the product protocol shell (Home · Model · Radar · API) at
 mobile (390 px) and desktop (1280 px).
 
 Chromium executable: set FINCO_TEST_CHROMIUM_PATH to an explicit binary path
@@ -10,7 +10,7 @@ pw.chromium.launch() uses the Playwright-managed install (the normal CI path
 after ``playwright install chromium``).
 
 Coverage:
-  1. Protocol home loads with three product cards and shared nav.
+  1. Protocol home loads with two product cards and shared nav.
   2. Model Library: accessible, contains Protocol links, no overflow.
   3. Workbook V2: accessible, contains Protocol links, end-to-end journey.
   4. Radar: READ-ONLY label + protocol nav; no transaction controls; sign-out
@@ -155,7 +155,7 @@ def _assert_no_overflow(page, surface: str, width: int) -> None:
 # ─── Protocol Home ─────────────────────────────────────────────────────────────
 
 class TestProtocolHomeDesktop:
-    def test_home_loads_three_product_cards_and_nav(self, live_url, browser):
+    def test_home_loads_product_cards_and_nav_without_verify(self, live_url, browser):
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         _auth_cookie(live_url, page)
         page.goto(f"{live_url}/")
@@ -167,14 +167,15 @@ class TestProtocolHomeDesktop:
         nav_text = page.inner_text(".proto-nav")
         assert "Radar" in nav_text
         assert "Model" in nav_text
-        assert "Verify" in nav_text
+        assert "API" in nav_text
+        assert "Verify" not in nav_text
 
         # Blueprint pass: home uses editorial architecture section (.proto-arch__product)
         # instead of equal-weight cards. Accept either the new product items
         # or the legacy proto-card class so both designs satisfy the invariant.
         products = page.query_selector_all(".proto-arch__product, .proto-card")
-        assert len(products) >= 3, (
-            f"Expected ≥3 product items (.proto-arch__product or .proto-card), "
+        assert len(products) == 2, (
+            f"Expected exactly 2 product items (.proto-arch__product or .proto-card), "
             f"got {len(products)}"
         )
 
@@ -329,6 +330,34 @@ class TestModelJourney:
         page.wait_for_load_state("domcontentloaded")
         assert "/v2/workbook" in page.url, f"Workbook redirected to {page.url}"
         _assert_no_overflow(page, "/v2/workbook", 390)
+
+    def test_scenario_toolbar_activates_v2_tab_without_legacy_navigation(self, live_url, browser):
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        _auth_cookie(live_url, page)
+        page.goto(f"{live_url}/v2/workbook?project=generic_solar_reference-reference")
+        page.wait_for_load_state("domcontentloaded")
+        assert page.locator("#panel-scenarios").is_hidden()
+        control = page.locator("button.v2-toolbar-scenario-link")
+        assert control.count() == 1
+        assert control.evaluate("""el => {
+            const style = getComputedStyle(el);
+            return {
+                borderTop: style.borderTopStyle,
+                borderRight: style.borderRightStyle,
+                borderBottom: style.borderBottomStyle,
+                borderLeft: style.borderLeftStyle,
+                background: style.backgroundColor,
+                paddingTop: style.paddingTop,
+            };
+        }""") == {
+            "borderTop": "none", "borderRight": "none", "borderBottom": "none",
+            "borderLeft": "solid", "background": "rgba(0, 0, 0, 0)", "paddingTop": "0px"
+        }
+        control.click()
+        expect(page.locator("#panel-scenarios")).to_be_visible()
+        assert page.locator("#tab-scenarios").get_attribute("aria-selected") == "true"
+        assert "/scenarios" not in page.url
+        assert "/scenarios?project=" not in page.content()
 
     def test_full_cross_surface_journey(self, live_url, browser):
         """Home → Library → Workbook → Radar → Home, no dead ends."""

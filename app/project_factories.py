@@ -191,6 +191,9 @@ def create_default_wind_project(
                       spending_profile=(0.4, 0.3), asset_class=AssetClass.CIVIL_GRID)
     grid = CapexItem(name="Grid Connection", amount_keur=3_000.0, y0_share=0.5,
                      spending_profile=(0.5,), asset_class=AssetClass.CIVIL_GRID)
+    # The canonical public generic input calls this ``Soft Costs`` but places
+    # it in the audit_legal CapexStructure field.  C.08 is therefore its
+    # established public owner; do not invent a C.15 split.
     soft = CapexItem(name="Soft Costs", amount_keur=4_000.0, y0_share=1.0,
                      asset_class=AssetClass.SOFT_COSTS)
 

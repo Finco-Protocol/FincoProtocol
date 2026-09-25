@@ -512,6 +512,12 @@ def test_a3_107_capex_solar_soft_costs_owner_c08(client):
     soft = next(it for it in items if it["canonical_label"] == "Soft Costs")
     assert soft["owner_category_code"] == "C.08"
 
+def test_a3_107b_capex_wind_soft_costs_owner_c08_is_canonical(client):
+    """Wind uses the same established audit_legal owner; no invented C.15 split."""
+    items = _capex(client, _WIND).json()["data"]["items"]
+    soft = next(it for it in items if it["canonical_label"] == "Soft Costs")
+    assert soft["owner_category_code"] == "C.08"
+
 def test_a3_108_capex_solar_modules_unit_rate(client):
     items = _capex(client, _SOLAR).json()["data"]["items"]
     mod = next(it for it in items if it["canonical_label"] == "Solar Modules")
