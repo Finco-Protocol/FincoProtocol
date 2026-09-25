@@ -236,21 +236,46 @@ _CANONICAL_LAST_RUN_SOURCES = frozenset({
     "generic_data_center_reference",
 })
 
-# Maps template_source → project_type string expected by run_clean_production.
-_TEMPLATE_SOURCE_TO_PROJECT_TYPE = {
-    "generic_solar_reference": "Solar",
-    "generic_wind_reference": "Wind",
-    "generic_data_center_reference": "Data Center",
+# Maps template_source → project_type string consumed by run_project().
+# These map to the factory-lookup keys inside run_project._run_project_impl.
+_TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE = {
+    "generic_solar_reference": "Generic Solar Reference",
+    "generic_wind_reference": "Generic Wind Reference",
+    "generic_data_center_reference": "Generic Data Center Reference",
 }
+
+
+def _reference_current_composite_hash(record) -> "Optional[str]":
+    """Compute the composite workbook identity hash for a canonical reference.
+
+    Returns None on any identity-assembly failure (fail-open: treat as unknown,
+    let the caller decide whether to re-seed or skip).
+    """
+    try:
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        identity = assemble_consistent_for_get(record.user_id, record.project_id, WORKBOOK.version)
+        return identity.composite_hash
+    except Exception:
+        return None
 
 
 def ensure_reference_canonical_last_runs() -> list[str]:
     """Idempotent: seed a canonical engine last-run for each cloneable reference.
 
     For each reference in _CANONICAL_LAST_RUN_SOURCES:
-      1. Skip if workspace already has a last_runtime_snapshot_id (already seeded).
-      2. Invoke run_clean_production() with the factory inputs.
-      3. Persist the runtime summary + snapshot id via record_workspace_runtime().
+      1. Compute the current composite workbook identity hash.
+      2. Skip if the workspace already has a matching last_runtime_composite_hash
+         (same canonical inputs, same workbook version — already current).
+      3. Invoke run_project() to get the full canonical runtime payload.
+      4. Persist via v2_atomic_run_commit() — same modern persistence path as
+         a normal user Run (composite hash bound, full schedule artifacts).
+
+    Idempotency / invalidation contract:
+      - NO-OP when last_runtime_composite_hash == current composite hash.
+      - Re-seeds when workbook version bumps, factory snapshot changes, or
+        any component of the composite identity changes.
+      - Re-seeds when provenance is missing or hash is absent.
 
     Returns a list of template_source strings for which a new last-run was seeded.
     Safe to call on every startup after ensure_reference_models().
@@ -264,10 +289,13 @@ def ensure_reference_canonical_last_runs() -> list[str]:
             record = get_reference_by_template_source(ts)
             if record is None:
                 continue
+            current_hash = _reference_current_composite_hash(record)
             ws = get_workspace_state(record.user_id, record.project_id)
-            if ws is not None and ws.last_runtime_snapshot_id:
+            stored_hash = getattr(ws, "last_runtime_composite_hash", None) if ws else None
+            if current_hash and stored_hash and stored_hash == current_hash:
+                # Last run is bound to the current canonical identity — skip.
                 continue
-            _seed_reference_last_run(record, defn)
+            _seed_reference_last_run(record, defn, current_composite_hash=current_hash)
             seeded.append(ts)
         except Exception as exc:
             import logging
@@ -278,66 +306,127 @@ def ensure_reference_canonical_last_runs() -> list[str]:
     return seeded
 
 
-def _seed_reference_last_run(record, defn: dict) -> None:
-    """Execute the canonical engine for one reference and persist the last-run."""
+def _seed_reference_last_run(record, defn: dict, *, current_composite_hash: "Optional[str]") -> None:
+    """Execute the canonical engine for one reference and persist the full last-run.
+
+    Uses run_project() so the full normal runtime payload (financial_statements,
+    debt_schedule, tax_schedule, distribution_schedule, sponsor_schedule) is
+    produced through the existing presentation adapters — no second calculator.
+
+    Persists via v2_atomic_run_commit() which binds the result to the current
+    composite workbook identity and sets last_runtime_composite_hash.  This
+    ensures the modern freshness authority (resolve_runtime_freshness) classifies
+    the reference as CURRENT rather than falling back to the legacy scalar path.
+
+    DC gearing semantics: persists actual_gearing_pct and gearing_cap_pct as
+    distinct fields so callers can display the correct value.  Does NOT use
+    gearing_ratio as a field name since that value is the cap constraint.
+    """
     from datetime import datetime, timezone
 
-    from app.services.production_financial_authority import run_clean_production
-    from app.services.clean_presentation_adapter import build_clean_waterfall_view
-    from app.persistence.repository import record_workspace_runtime
+    from app.api.project_runner import run_project
+    from app.persistence.workspace_repository import v2_atomic_run_commit
     from app.persistence.projects_repository import _compute_baseline_snapshot
+    from app.services.production_financial_authority import run_clean_production
 
     ts = defn["template_source"]
-    project_type = _TEMPLATE_SOURCE_TO_PROJECT_TYPE[ts]
+    run_project_type = _TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE[ts]
 
-    factory_fn = _get_factory(defn["factory"])
-    project_inputs = factory_fn()
+    # Full canonical runtime via the same run_project() path the production UI uses.
+    payload = run_project(run_project_type, "Base")
+    runtime_kpis = dict(payload["kpis"])
 
-    clean_run = run_clean_production(project_inputs, "Base", project_type=project_type)
-    view = build_clean_waterfall_view(clean_run)
+    # DC gearing semantics — resolve actual vs cap. run_project() omits gearing
+    # from kpis; add both clearly-labelled fields for downstream display authority.
+    # For all references: compute actual_gearing from senior_commitment / capex.
+    try:
+        factory_fn = _get_factory(defn["factory"])
+        pi = factory_fn()
+        clean = run_clean_production(pi, "Base", project_type=run_project_type.split(" Reference")[0])
+        fr = clean.g2c_result.financing_result
+        capex_total = pi.capex.total_capex
+        if capex_total and capex_total > 0:
+            runtime_kpis["actual_gearing_pct"] = fr.final_senior_commitment_keur / capex_total
+        runtime_kpis["gearing_cap_pct"] = getattr(fr, "gearing_ratio", None)
+        runtime_kpis["senior_debt_keur"] = getattr(fr, "final_senior_commitment_keur", None)
+    except Exception:
+        pass
 
-    runtime_kpis = {
-        "project_irr": view.project_irr,
-        "equity_irr": view.equity_irr,
-        "min_dscr": view.actual_min_dscr,
-        "avg_dscr": view.actual_avg_dscr,
-        "min_llcr": getattr(view, "min_llcr", None),
-        "total_capex_keur": project_inputs.capex.total_capex,
-        "senior_debt_keur": getattr(clean_run.g2c_result.financing_result, "final_senior_commitment_keur", None),
-        "gearing_ratio": getattr(clean_run.g2c_result.financing_result, "gearing_ratio", None),
-        "target_dscr": project_inputs.financing.target_dscr,
-        "total_revenue_keur": getattr(view, "total_revenue_keur", None),
-        "total_ebitda_keur": getattr(view, "total_ebitda_keur", None),
-        "total_opex_keur": getattr(view, "total_opex_keur", None),
-        "total_distributions_keur": getattr(view, "total_distribution_keur", None),
-        "total_senior_ds_keur": getattr(view, "total_senior_ds_keur", None),
-        "total_tax_keur": getattr(view, "total_tax_keur", None),
-    }
-
-    now_iso = datetime.now(timezone.utc).isoformat().replace(":", "").replace("-", "")
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat().replace(":", "").replace("-", "")
     runtime_snapshot_id = f"canonical_last_run__{ts}__{now_iso}"
 
     snapshot = _compute_baseline_snapshot(defn["project_type"], ts)
 
-    record_workspace_runtime(
+    ws = get_workspace_state(record.user_id, record.project_id)
+    active_scenario_id = getattr(ws, "active_scenario_id", None) if ws else None
+    active_scenario_name = getattr(ws, "active_scenario_name", None) if ws else None
+
+    if current_composite_hash is None:
+        # Composite hash unavailable — fall back to record_workspace_runtime so
+        # at least the KPIs and schedules are persisted even without the V2 hash.
+        from app.persistence.repository import record_workspace_runtime
+        record_workspace_runtime(
+            user_id=record.user_id,
+            project_id=record.project_id,
+            project_code=record.project_code,
+            runtime_snapshot=snapshot,
+            runtime_summary=runtime_kpis,
+            runtime_snapshot_id=runtime_snapshot_id,
+            runtime_origin="canonical_reference_last_run",
+            governance_state=record.governance_state,
+            financial_statements=payload.get("financial_statements"),
+            debt_schedule=payload.get("debt_schedule"),
+            tax_schedule=payload.get("tax_schedule"),
+            distribution_schedule=payload.get("distribution_schedule"),
+            sponsor_schedule=payload.get("sponsor_schedule"),
+            replay_metadata={
+                "origin": "canonical_reference_last_run",
+                "composite_hash_source": "unavailable",
+                "template_source": ts,
+                "factory": defn["factory"],
+                "seeded_at": now.isoformat(),
+                "reference_project_id": record.project_id,
+                "reference_project_code": record.project_code,
+            },
+        )
+        return
+
+    # V2 atomic commit — binds last_runtime_composite_hash to current canonical identity.
+    v2_atomic_run_commit(
         user_id=record.user_id,
         project_id=record.project_id,
         project_code=record.project_code,
-        runtime_snapshot=snapshot,
-        runtime_summary=runtime_kpis,
+        expected_composite_hash=current_composite_hash,
         runtime_snapshot_id=runtime_snapshot_id,
         runtime_origin="canonical_reference_last_run",
-        governance_state=record.governance_state,
-        replay_metadata={
-            "origin": "canonical_reference_last_run",
-            "template_source": ts,
-            "project_type": project_type,
-            "factory": defn["factory"],
-            "seeded_at": datetime.now(timezone.utc).isoformat(),
-            "reference_project_id": record.project_id,
-            "reference_project_code": record.project_code,
-        },
+        runtime_summary=runtime_kpis,
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=active_scenario_id,
+        active_scenario_name=active_scenario_name,
+        ran_at=now,
     )
+    # v2_atomic_run_commit does not accept replay_metadata; persist provenance separately.
+    import json as _json
+    from app.persistence.db import get_cursor
+    _provenance = {
+        "origin": "canonical_reference_last_run",
+        "composite_hash_source": "v2_atomic",
+        "template_source": ts,
+        "factory": defn["factory"],
+        "seeded_at": now.isoformat(),
+        "reference_project_id": record.project_id,
+        "reference_project_code": record.project_code,
+    }
+    with get_cursor() as _cur:
+        _cur.execute(
+            "UPDATE workspace_states SET replay_metadata_json=? WHERE user_id=? AND project_id=?",
+            (_json.dumps(_provenance, sort_keys=True), record.user_id, record.project_id),
+        )
 
 
 def _ensure_reference_project(defn: dict):

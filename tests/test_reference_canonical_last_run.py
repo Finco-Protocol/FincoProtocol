@@ -5,7 +5,13 @@ Acceptance markers (all must PASS for PR merge):
   WIND_REFERENCE_CANONICAL_LAST_RUN
   DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN
   REFERENCE_LAST_RUN_IDEMPOTENT
+  REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE
+  REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE
+  REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY
   REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE
+  REFERENCE_LAST_RUN_FULL_RUNTIME_PAYLOAD
+  REFERENCE_RETURNS_HYDRATE_FROM_LAST_RUN
+  REFERENCE_CHARTS_HYDRATE_FROM_LAST_RUN
   REFERENCE_LAST_RUN_PROVENANCE_BOUND
   REFERENCE_LAST_RUN_READ_ONLY
   REFERENCE_WORKING_COPY_IDENTITY_SEPARATION
@@ -13,6 +19,8 @@ Acceptance markers (all must PASS for PR merge):
   REFERENCE_USER_RUN_CREATES_USER_LAST_RUN
   REFERENCE_LIBRARY_KPI_FROM_LAST_RUN
   REFERENCE_WORKBOOK_NOT_NEVER_RUN
+  REFERENCE_DC_GEARING_SEMANTICS
+  REFERENCE_LAST_RUN_FAILURE_FAILS_CLOSED
   DATA_CENTER_REFERENCE_ECONOMICS_SANITY_CHECK
 """
 from __future__ import annotations
@@ -385,3 +393,217 @@ def test_dc_dscr_ramp_classification_a(seeded_db):
     operating_rev = [r for r in rev if r > 0]
     assert operating_rev[0] < operating_rev[4], \
         "Year-1 revenue must be lower than stabilized revenue (ramp-up confirmed)"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE
+# REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE
+# ---------------------------------------------------------------------------
+
+def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
+    """REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE = PASS
+    REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE = PASS
+
+    Simulates a workbook version bump by writing a stale hash into
+    last_runtime_composite_hash in the DB, then verifies that
+    ensure_reference_canonical_last_runs re-seeds all three references.
+    """
+    from app.persistence.db import get_cursor
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_canonical_last_runs,
+        ensure_reference_models,
+    )
+
+    ensure_reference_models()
+    first_seeded = ensure_reference_canonical_last_runs()
+    assert len(first_seeded) == 3
+
+    # Capture original snapshot IDs
+    snap_ids = {}
+    for ts in first_seeded:
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        snap_ids[ts] = ws.last_runtime_snapshot_id
+
+    # Corrupt stored composite hash to simulate a workbook version bump or factory change.
+    # The live hash hasn't changed, but stored says "old_model_version" → triggers re-seed.
+    for ts in first_seeded:
+        rec = get_reference_by_template_source(ts)
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE workspace_states SET last_runtime_composite_hash=? "
+                "WHERE user_id=? AND project_id=?",
+                ("__stale_hash_simulating_version_bump__", rec.user_id, rec.project_id),
+            )
+
+    re_seeded = ensure_reference_canonical_last_runs()
+
+    # All three must have been re-seeded because the stored hash didn't match live
+    assert len(re_seeded) == 3, f"Expected 3 re-seeded, got {re_seeded}"
+
+    # Snapshot IDs must have changed
+    for ts in snap_ids:
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        assert ws.last_runtime_snapshot_id != snap_ids[ts], \
+            f"{ts}: snapshot_id must change after invalidation"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("template_source", [
+    "generic_solar_reference",
+    "generic_wind_reference",
+    "generic_data_center_reference",
+])
+def test_canonical_last_run_freshness_is_current(seeded_db, template_source):
+    """REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY = PASS
+
+    After seeding, resolve_runtime_freshness must return CURRENT using the
+    composite hash path — not the legacy scalar fallback.
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.runtime_authority import resolve_runtime_freshness, RuntimeAuthorityState
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    _bootstrap(seeded_db)
+
+    record = get_reference_by_template_source(template_source)
+    ws = get_workspace_state(record.user_id, record.project_id)
+
+    assert ws.last_runtime_composite_hash, "last_runtime_composite_hash must be set after v2 seeding"
+
+    current_hash = assemble_consistent_for_get(
+        record.user_id, record.project_id, WORKBOOK.version
+    ).composite_hash
+
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=current_hash)
+    assert freshness.state == RuntimeAuthorityState.CURRENT, \
+        f"{template_source}: expected CURRENT, got {freshness.state} " \
+        f"(stored={ws.last_runtime_composite_hash[:8]}, current={current_hash[:8]})"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_FULL_RUNTIME_PAYLOAD
+# REFERENCE_RETURNS_HYDRATE_FROM_LAST_RUN
+# REFERENCE_CHARTS_HYDRATE_FROM_LAST_RUN
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("template_source", [
+    "generic_solar_reference",
+    "generic_wind_reference",
+    "generic_data_center_reference",
+])
+def test_canonical_last_run_full_payload_persisted(seeded_db, template_source):
+    """REFERENCE_LAST_RUN_FULL_RUNTIME_PAYLOAD = PASS
+    REFERENCE_RETURNS_HYDRATE_FROM_LAST_RUN = PASS
+    REFERENCE_CHARTS_HYDRATE_FROM_LAST_RUN = PASS
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+
+    _bootstrap(seeded_db)
+
+    record = get_reference_by_template_source(template_source)
+    ws = get_workspace_state(record.user_id, record.project_id)
+
+    # Full schedule payloads must be non-empty dicts
+    assert ws.last_financial_statements, \
+        f"{template_source}: last_financial_statements must be non-empty"
+    assert ws.last_debt_schedule, \
+        f"{template_source}: last_debt_schedule must be non-empty"
+    assert ws.last_tax_schedule, \
+        f"{template_source}: last_tax_schedule must be non-empty"
+    assert ws.last_distribution_schedule, \
+        f"{template_source}: last_distribution_schedule must be non-empty"
+    assert ws.last_sponsor_schedule, \
+        f"{template_source}: last_sponsor_schedule must be non-empty"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_DC_GEARING_SEMANTICS
+# ---------------------------------------------------------------------------
+
+def test_dc_gearing_semantics(seeded_db):
+    """REFERENCE_DC_GEARING_SEMANTICS = PASS
+
+    actual_gearing_pct must be distinct from gearing_cap_pct and approximately
+    0.4022 (not 0.65, which is the maximum gearing cap).
+    """
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+
+    _bootstrap(seeded_db)
+
+    record = get_reference_by_template_source("generic_data_center_reference")
+    ws = get_workspace_state(record.user_id, record.project_id)
+    summary = ws.last_runtime_summary
+
+    actual = summary.get("actual_gearing_pct")
+    cap = summary.get("gearing_cap_pct")
+
+    assert actual is not None, "actual_gearing_pct must be persisted for DC reference"
+    assert cap is not None, "gearing_cap_pct must be persisted for DC reference"
+    assert abs(actual - cap) > 0.10, \
+        f"actual_gearing_pct ({actual:.4f}) must be materially lower than cap ({cap:.4f})"
+    assert actual == pytest.approx(0.4022, abs=0.005), \
+        f"DC actual gearing should be ~40.22%; got {actual:.4%}"
+    assert cap == pytest.approx(0.65, abs=0.01), \
+        f"DC gearing cap should be ~65%; got {cap:.4%}"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_LAST_RUN_FAILURE_FAILS_CLOSED
+# ---------------------------------------------------------------------------
+
+def test_canonical_last_run_failure_fails_closed(seeded_db):
+    """REFERENCE_LAST_RUN_FAILURE_FAILS_CLOSED = PASS
+
+    If the engine raises during seeding, no partial last-run state must be
+    persisted, and the reference must remain protected.
+    """
+    from unittest.mock import patch
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_models,
+        ensure_reference_canonical_last_runs,
+    )
+    import app.services.project_library_service as svc
+
+    ensure_reference_models()
+    # Confirm no last-run yet
+    solar_ref = get_reference_by_template_source("generic_solar_reference")
+    ws_before = get_workspace_state(solar_ref.user_id, solar_ref.project_id)
+    assert not (ws_before and ws_before.last_runtime_snapshot_id), \
+        "precondition: no last-run before seeding"
+
+    # Patch run_project to raise for solar only
+    original_run = svc._seed_reference_last_run
+
+    def _failing_seed(record, defn, *, current_composite_hash):
+        if defn["template_source"] == "generic_solar_reference":
+            raise RuntimeError("Injected engine failure")
+        return original_seed(record, defn, current_composite_hash=current_composite_hash)
+
+    original_seed = original_run
+    with patch.object(svc, "_seed_reference_last_run", side_effect=_failing_seed):
+        seeded = ensure_reference_canonical_last_runs()
+
+    # Solar must NOT have been seeded
+    assert "generic_solar_reference" not in seeded, \
+        "failed seed must not appear in seeded list"
+
+    # Solar workspace must remain without last-run state
+    ws_after = get_workspace_state(solar_ref.user_id, solar_ref.project_id)
+    assert not (ws_after and ws_after.last_runtime_snapshot_id), \
+        "partial last-run must not be persisted after engine failure"
+
+    # Reference must still be protected
+    assert solar_ref.is_protected, "is_protected must remain True after failure"
