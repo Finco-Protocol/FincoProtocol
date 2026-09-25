@@ -588,9 +588,16 @@ def create_default_data_center_project(
 
     _dc = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
     z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
+    # Data Center technical plant (UPS/electrical, cooling, backup
+    # generation, white space): classified under the generic CIVIL_GRID
+    # asset class with an explicit per-item 15-year useful-life override
+    # (the frozen finco_core/financial_engine production paths gain zero
+    # diff; the class-level DC asset class is deliberately not introduced
+    # for V1).  See the PR asset-class decision.
     technical_plant = CapexItem(
         name="Data Center Technical Plant", amount_keur=80_000.0, y0_share=0.0,
-        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.DC_PLANT,
+        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.CIVIL_GRID,
+        useful_life_override=15,
     )
     building = CapexItem(
         name="Building Shell and Fit-Out", amount_keur=55_000.0, y0_share=0.0,
@@ -618,7 +625,8 @@ def create_default_data_center_project(
     )
     contingency = CapexItem(
         name="Construction Contingency", amount_keur=10_000.0, y0_share=0.0,
-        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.DC_PLANT,
+        spending_profile=(0.25, 0.35, 0.25, 0.15), asset_class=AssetClass.CIVIL_GRID,
+        useful_life_override=15,
     )
 
     capex = CapexStructure(

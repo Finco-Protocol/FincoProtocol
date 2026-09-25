@@ -51,8 +51,6 @@ _TAX_LIFE_YEARS_MAP = {
     "civil_grid": 30,
     "soft_costs": 5,
     "financial_costs": 14,
-    # Generic non-generation technical plant (Generic Data Center Reference V1)
-    "dc_plant": 15,
     # Fallback
     "other": 20,
     "grid": 20,

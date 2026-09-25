@@ -160,7 +160,7 @@ def validate_operating_model_input(
 
     _RECOGNIZED_ASSET_CLASSES = frozenset({
         "solar_panels", "wind_turbines", "bess_cells", "bess_pe",
-        "civil_grid", "soft_costs", "financial_costs", "dc_plant",
+        "civil_grid", "soft_costs", "financial_costs",
     })
 
     for basis_label, basis_items in (
