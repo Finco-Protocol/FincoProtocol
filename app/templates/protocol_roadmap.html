@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FINCO Roadmap</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/protocol-roadmap.css">
+</head>
+<body class="proad-body">
+  {% with proto_active_page="roadmap" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <header class="proad-hero">
+    <div class="proad-shell">
+      <p class="proad-eyebrow">FINCO Protocol / Roadmap</p>
+      <div class="proad-hero-grid">
+        <div>
+          <h1>From financial modelling to financial intelligence infrastructure.</h1>
+          <p class="proad-lead">
+            FINCO is being built in layers: first a deterministic model and evidence-aware
+            market terminal, then valuation, portfolio intelligence and an on-chain protocol layer.
+          </p>
+        </div>
+        <div class="proad-principle">
+          <span>Product principle</span>
+          <strong>AI explains. FINCO calculates.</strong>
+          <p>New interfaces may change quickly. Calculation authority, evidence boundaries and reproducible outputs do not.</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="proad-shell proad-main">
+    <section class="proad-section proad-now" aria-labelledby="now-heading">
+      <div class="proad-section-head">
+        <div>
+          <p class="proad-kicker">Public-release baseline</p>
+          <h2 id="now-heading">What FINCO ships with.</h2>
+        </div>
+        <span class="proad-status proad-status--shipped">Shipped</span>
+      </div>
+
+      <div class="proad-baseline-grid">
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">01</span>
+          <h3>Infrastructure Model</h3>
+          <p>One calculation framework across project economics, financing, tax, statements, debt coverage and returns.</p>
+          <div class="proad-chip-row">
+            <span>Solar</span><span>Wind</span><span>Data Center</span><span>EV Charging</span>
+          </div>
+          <p class="proad-note">Storage remains a limited/reference workflow rather than a full editable production vertical.</p>
+        </article>
+
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">02</span>
+          <h3>Multi-Market Radar</h3>
+          <p>Company, market and macro context without silently rewriting Model assumptions.</p>
+          <div class="proad-chip-row">
+            <span>Stocks</span><span>Crypto</span><span>Economy</span><span>RWA</span><span>Stablecoins</span><span>Derivatives</span>
+          </div>
+        </article>
+
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">03</span>
+          <h3>API Beta + Evidence</h3>
+          <p>Programmatic Model and Radar access, deterministic runs, evidence lineage, freshness and verification boundaries.</p>
+          <div class="proad-chip-row">
+            <span>Model API</span><span>Radar API</span><span>Verify</span><span>Exports</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="proad-section" aria-labelledby="q4-heading">
+      <div class="proad-quarter proad-quarter--primary">
+        <div class="proad-quarter-head">
+          <div>
+            <p class="proad-kicker">Q4 2026</p>
+            <h2 id="q4-heading">Terminal & On-chain Foundation</h2>
+          </div>
+          <span class="proad-status proad-status--target">Target</span>
+        </div>
+        <p class="proad-quarter-lead">Turn the existing Model, Radar, API and evidence stack into one coherent financial intelligence terminal — then add the minimum useful on-chain layer.</p>
+
+        <div class="proad-feature-grid">
+          <article class="proad-feature proad-feature--hero">
+            <span class="proad-feature-tag">Core product</span>
+            <h3>FINCO Terminal 1.0</h3>
+            <p>One product shell for Model, company intelligence, Radar, Verify and API workflows.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Intelligence</span>
+            <h3>FINCO Signals</h3>
+            <p>Evidence-backed events across Stocks, Crypto and Economy, with persistence, history and “why this fired” context.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Developer</span>
+            <h3>FINCO API v1</h3>
+            <p>Stable Model and Radar contracts, API keys, usage controls and production-oriented developer access.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Wallet</span>
+            <h3>Wallet Identity</h3>
+            <p>Connect wallet, signed authentication and a verified wallet session without custody or transaction signing by FINCO.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">On-chain</span>
+            <h3>Wallet Intelligence</h3>
+            <p>Read-only holdings mapped into FINCO asset identity, tokenized-equity context and Radar.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Verification</span>
+            <h3>On-chain Verify</h3>
+            <p>Anchor FINCO evidence or model-run digests on-chain while keeping financial calculation authority off-chain.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Protocol</span>
+            <h3>$FINCO Access</h3>
+            <p>Token-linked access and usage entitlements, subject to the final token design and launch decision.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Transparency</span>
+            <h3>Treasury Proof</h3>
+            <p>Public treasury balances, contract references and on-chain activity where the protocol layer uses them.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="proad-section" aria-labelledby="q1-heading">
+      <div class="proad-quarter proad-quarter--dark">
+        <div class="proad-quarter-head">
+          <div>
+            <p class="proad-kicker">Q1 2027</p>
+            <h2 id="q1-heading">Valuation & Protocol Intelligence</h2>
+          </div>
+          <span class="proad-status proad-status--target">Target</span>
+        </div>
+        <p class="proad-quarter-lead">Move from “what is happening?” to “what is it worth, how far is market price from that value, and what is different in the tokenized market?”</p>
+
+        <div class="proad-feature-grid">
+          <article class="proad-feature proad-feature--hero">
+            <span class="proad-feature-tag">Valuation</span>
+            <h3>FINCO Fair Value</h3>
+            <p>Normalized fundamentals, explicit assumptions and scenario-based company valuation with a traceable calculation path.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Signal</span>
+            <h3>Fundamental Gap</h3>
+            <p>FINCO Fair Value versus the underlying market price, tracked as a defined metric rather than a generic score.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Tokenized markets</span>
+            <h3>Tokenization Premium</h3>
+            <p>Tokenized-market reference and execution context versus the underlying security.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Discovery</span>
+            <h3>Valuation & Tokenized Equity Screener</h3>
+            <p>Screen by valuation gap, token premium, liquidity, financial quality and evidence state.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Portfolio</span>
+            <h3>Portfolio Intelligence Preview</h3>
+            <p>Holdings, sector exposure, valuation exposure, tokenized exposure and signal concentration.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Identity</span>
+            <h3>Financial Passport</h3>
+            <p>Asset identity, model version, valuation snapshot, market snapshot, evidence digest and verification state in one object.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">Payments</span>
+            <h3>Pay-per-use API</h3>
+            <p>Explore x402-style payment for selected API or agent workloads without replacing conventional API access.</p>
+          </article>
+          <article class="proad-feature">
+            <span class="proad-feature-tag">AI</span>
+            <h3>FINCO Agent Alpha</h3>
+            <p>Ask questions across FINCO outputs and evidence. The agent explains the authority; it does not invent a second calculator.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="proad-section proad-later" aria-labelledby="later-heading">
+      <div class="proad-section-head">
+        <div>
+          <p class="proad-kicker">2027 expansion</p>
+          <h2 id="later-heading">Broader infrastructure, portfolio and agentic workflows.</h2>
+        </div>
+      </div>
+
+      <div class="proad-later-grid">
+        <article>
+          <span>Q2 2027</span>
+          <h3>Real-World Asset Expansion</h3>
+          <p>BESS, real estate and additional infrastructure verticals; deeper operating-driver libraries and reusable project templates.</p>
+        </article>
+        <article>
+          <span>Q3 2027</span>
+          <h3>Portfolio & Institutional Infrastructure</h3>
+          <p>Portfolio X-Ray, institutional exports, Financial Passport expansion, SDK/data services and decision-workflow tooling.</p>
+        </article>
+        <article>
+          <span>Q4 2027</span>
+          <h3>Agentic Financial Infrastructure</h3>
+          <p>Monitoring, investment-committee workflows, digital twins and automation built on FINCO calculation and evidence authority.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="proad-section proad-boundary" aria-labelledby="boundary-heading">
+      <p class="proad-kicker">Roadmap boundary</p>
+      <h2 id="boundary-heading">Targets are sequencing, not guarantees.</h2>
+      <p>
+        Future items may move as product, data, regulatory or technical constraints change.
+        A roadmap entry does not mean a token, financial product, investment return or launch date is guaranteed.
+        Shipped capabilities and live product status are documented separately in <a href="/docs">Docs</a>.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
