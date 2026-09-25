@@ -1,10 +1,10 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across FINCO Protocol surfaces:
-   Home · Model (library/workbook) · Radar · API · Docs
-   Placeholders: Roadmap · $FINCO
+   Home · Model (library/workbook) · Radar · API · Docs · Roadmap
+   Placeholder: $FINCO
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "api" | "docs"
+     proto_active_page : str  — "home" | "model" | "radar" | "api" | "docs" | "roadmap"
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -45,12 +45,11 @@
          {% if proto_active_page == 'docs' %}aria-current="page"{% endif %}>
         Docs
       </a>
-      <span class="proto-nav__link proto-nav__link--placeholder"
-            aria-disabled="true"
-            title="Coming soon">
+      <a href="/roadmap"
+         class="proto-nav__link{% if proto_active_page == 'roadmap' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'roadmap' %}aria-current="page"{% endif %}>
         Roadmap
-        <span class="proto-nav__soon" aria-hidden="true">Soon</span>
-      </span>
+      </a>
       <span class="proto-nav__link proto-nav__link--placeholder"
             aria-disabled="true"
             title="Coming soon">
