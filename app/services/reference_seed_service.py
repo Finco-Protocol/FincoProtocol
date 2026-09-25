@@ -481,7 +481,12 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
     if record.template_source == "generic_data_center_reference":
         # B.08 power expenses are DERIVED, not PER_MW: recompute the Y1
         # power amount and the OPEX total from the Data Center authority.
-        drivers = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+        # Correction A: the CURRENT persisted drivers are the authority —
+        # resolve them from the existing draft snapshot so user edits to
+        # occupancy/PUE/electricity price survive the capacity change.
+        # Driver snapshot keys are never overwritten here.
+        from app.data_center_authority import drivers_from_snapshot
+        drivers = drivers_from_snapshot(dict(ws.draft_snapshot))
         power_y1 = annual_power_cost_keur(
             capacity_mw=capacity_mw,
             occupancy=drivers.occupancy_y1,
@@ -586,6 +591,39 @@ def build_reference_scaling_preview(template_source: str, capacity_mw: float) ->
     reference_seedable_opex = sum(it["reference_amount_keur"] for it in opex_items)
     scaled_seedable_opex = sum(it["scaled_amount_keur"] for it in opex_items)
 
+    if template_source == "generic_data_center_reference":
+        # Correction A: the Data Center OPEX Y1 summary is non-power PER_MW
+        # plus the DERIVED B.08 power amount at the requested capacity (B.08
+        # is never PER_MW-scaled).  Expose the derived item explicitly so the
+        # A4 preview and the A5 run share the same Y1 OPEX semantics.
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS as _dc_drivers,
+            annual_power_cost_keur,
+        )
+        _ref_power_y1 = annual_power_cost_keur(
+            capacity_mw=reference_capacity,
+            occupancy=_dc_drivers.occupancy_y1,
+            pue=_dc_drivers.pue,
+            electricity_price_eur_mwh=_dc_drivers.electricity_price_eur_mwh,
+        )
+        _scaled_power_y1 = annual_power_cost_keur(
+            capacity_mw=capacity_mw,
+            occupancy=_dc_drivers.occupancy_y1,
+            pue=_dc_drivers.pue,
+            electricity_price_eur_mwh=_dc_drivers.electricity_price_eur_mwh,
+        )
+        scaled_opex_y1 = scaled_seedable_opex + _scaled_power_y1
+        opex_items.append({
+            "canonical_key": "Power Expenses",
+            "group_code": "B.08",
+            "label": "Power Expenses (derived from IT MW × occupancy × PUE × 8,760 × EUR/MWh)",
+            "scaling_mode": "DERIVED",
+            "annual_inflation_rate": 0.0,
+            "reference_amount_keur": _ref_power_y1,
+            "unit_rate_keur_per_mw": None,
+            "scaled_amount_keur": _scaled_power_y1,
+        })
+
     return {
         "reference_capacity_mw": reference_capacity,
         "requested_capacity_mw": capacity_mw,
@@ -668,7 +706,23 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
         reconciled_opex_total = float(cur.fetchone()["total"])
     refreshed_snapshot = dict(ws.draft_snapshot)
     refreshed_snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
-    refreshed_snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
+    if record.template_source == "generic_data_center_reference":
+        # Correction A: B.08 is DERIVED with no persisted sub-line; the reset
+        # must not drop it from the OPEX summary.  Recompute it from the
+        # CURRENT capacity + CURRENT persisted driver authority (user driver
+        # edits are preserved; only seed OPEX lines are reset).
+        from app.data_center_authority import drivers_from_snapshot
+        _dc_drivers = drivers_from_snapshot(dict(ws.draft_snapshot))
+        _power_y1 = annual_power_cost_keur(
+            capacity_mw=float(ws.draft_snapshot["capacity_mw"]),
+            occupancy=_dc_drivers.occupancy_y1,
+            pue=_dc_drivers.pue,
+            electricity_price_eur_mwh=_dc_drivers.electricity_price_eur_mwh,
+        )
+        refreshed_snapshot["opex_power_expenses_y1_keur"] = f"{_power_y1:.12g}"
+        refreshed_snapshot["opex_y1_keur"] = f"{reconciled_opex_total + _power_y1:.12g}"
+    else:
+        refreshed_snapshot["opex_y1_keur"] = f"{reconciled_opex_total:.12g}"
     save_workspace_state(
         user_id=user_id,
         project_id=record.project_id,

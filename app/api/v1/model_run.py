@@ -31,7 +31,9 @@ _PROJECT_TYPE_BY_KEY: dict[str, str] = {
 }
 
 
-def _build_scaled_project_inputs(pi: Any, ratio: float, capacity_mw: float) -> Any:
+def _build_scaled_project_inputs(
+    pi: Any, ratio: float, capacity_mw: float, *, key_is_data_center: bool = False
+) -> Any:
     """Scale canonical ProjectInputs using the established canonical PER_MW authority.
 
     Only fields classified PER_MW by _canonical_capex_items / _canonical_opex_items
@@ -57,12 +59,27 @@ def _build_scaled_project_inputs(pi: Any, ratio: float, capacity_mw: float) -> A
     )
 
     scaled_technical = dataclasses.replace(pi.technical, capacity_mw=capacity_mw)
-    return dataclasses.replace(
+    scaled = dataclasses.replace(
         pi,
         technical=scaled_technical,
         capex=scaled_capex,
         opex=scaled_opex,
     )
+    if key_is_data_center:
+        # Correction A: generic PER_MW scaling cannot re-derive the Data
+        # Center authority (B.08 power expenses are DERIVED, sponsor equity
+        # is capacity-proportional, revenue rides the occupancy ramp).
+        # Re-apply the single application-layer authority with the canonical
+        # default drivers appropriate to this stateless Base run.  The
+        # formulas are NOT duplicated here.
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+            apply_data_center_runtime_adapter,
+        )
+        scaled = apply_data_center_runtime_adapter(
+            scaled, GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+        )
+    return scaled
 
 
 def _finite_float(v: Any) -> float | None:
@@ -150,7 +167,10 @@ def build_run_response_data(key: str, capacity_mw: float) -> dict[str, Any]:
     project_type = _PROJECT_TYPE_BY_KEY[key]
     preview = build_reference_scaling_preview(key, capacity_mw)
     ratio = preview["ratio"]
-    scaled_pi = _build_scaled_project_inputs(pi, ratio, capacity_mw)
+    scaled_pi = _build_scaled_project_inputs(
+        pi, ratio, capacity_mw,
+        key_is_data_center=(key == "generic_data_center_reference"),
+    )
 
     payload = run_project(
         project_type=project_type,

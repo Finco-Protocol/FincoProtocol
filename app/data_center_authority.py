@@ -156,7 +156,9 @@ def drivers_from_snapshot(
         electricity_price_escalation=_num(
             "dc_electricity_price_escalation", base.electricity_price_escalation
         ),
-        availability=_num("dc_availability", base.availability, low=0.0, high=1.0),
+        # V1 Availability policy: pinned neutral — dc_availability is not an
+        # economic driver and is never resolved from the snapshot.
+        availability=1.0,
         contract_term_years=_num(
             "dc_contract_term_years", base.contract_term_years, low=0.0
         ),
@@ -179,7 +181,7 @@ def dc_driver_snapshot_values(drivers: DataCenterDrivers) -> dict[str, str]:
         "dc_pue": f"{drivers.pue:.12g}",
         "dc_electricity_price_eur_mwh": f"{drivers.electricity_price_eur_mwh:.12g}",
         "dc_electricity_price_escalation": f"{drivers.electricity_price_escalation * 100.0:.12g}",
-        "dc_availability": f"{drivers.availability * 100.0:.12g}",
+        "dc_availability": "100",
         "dc_contract_term_years": f"{drivers.contract_term_years:.12g}",
     }
 
@@ -288,7 +290,12 @@ def apply_data_center_runtime_adapter(pi, drivers: DataCenterDrivers | None = No
         operating_hours_p50=8_760.0,
         operating_hours_p90_10y=8_760.0,
         pv_degradation=0.0,
-        plant_availability=drivers.availability,
+        # V1 Availability policy: availability is NOT an independent economic
+        # revenue driver.  Runtime availability remains neutral at 1.0 so the
+        # canonical revenue identity (IT MW × 1,000 × 12 × price × occupancy)
+        # is the exact revenue authority; a user-entered availability value
+        # can never silently reduce revenue.
+        plant_availability=1.0,
         grid_availability=1.0,
     )
     revenue = replace(
