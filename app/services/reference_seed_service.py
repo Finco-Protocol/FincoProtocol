@@ -279,6 +279,16 @@ def create_reference_seeded_project(
         from app.data_center_authority import dc_driver_snapshot_values
         snapshot.update(dc_driver_snapshot_values(GENERIC_DATA_CENTER_REFERENCE_DRIVERS))
         snapshot["opex_power_expenses_y1_keur"] = f"{float(pi.opex[-1].y1_amount_keur) * ratio:.12g}"
+    if template_source == "generic_ev_charging_reference":
+        # EV Charging drivers are part of the seeded working-copy authority:
+        # the runtime adapter derives the charging-revenue calendar schedule
+        # and the derived B.08 electricity OpexItem from these keys at every
+        # model resolution.
+        from app.ev_charging_economics import (
+            GENERIC_EV_CHARGING_REFERENCE_DRIVERS,
+            ev_driver_snapshot_values,
+        )
+        snapshot.update(ev_driver_snapshot_values(GENERIC_EV_CHARGING_REFERENCE_DRIVERS))
     update_project_record(
         user_id=user_id,
         project_code=record.project_code,

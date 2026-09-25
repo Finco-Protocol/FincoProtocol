@@ -149,7 +149,10 @@ def test_ev_journey_library_to_workbook_terminology(ev_db):
     assert page.status_code == 200
     assert "EV Charging" in page.text
     assert "Installed Charging Capacity (MW)" in page.text
-    assert "Charging Price (EUR/MWh)" in page.text
+    # Correction B: the editable EV driver section is the price authority.
+    assert "Charging Price" in page.text
+    assert "Equivalent Full-Load Hours — Y1" in page.text
+    assert "Charging Efficiency" in page.text
     assert "Energy Delivered" in page.text
     assert "Grid Energy Purchased" in page.text
     # renewable/PPA terminology must not surface as EV economic controls

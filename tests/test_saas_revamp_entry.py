@@ -90,6 +90,35 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     assert 'class="app-layout app-layout--no-project"' in html
 
 
+@pytest.mark.parametrize("count", [0, 1, 25, 50])
+def test_reference_templates_are_independent_of_working_project_pages(client_with_references, count):
+    from app.persistence.projects_repository import save_project
+    user_id, cookies = _cookie()
+    for i in range(count):
+        save_project(
+            user_id=user_id, project_code=f"project-{i:02d}",
+            project_name=f"Working {i:02d}", source_project_template="generic_solar_reference",
+            project_type="Solar", project_origin="user_created", project_role="working_copy",
+            baseline_snapshot={},
+        )
+    for url in ("/library", "/library/list?page=2") if count > 20 else ("/library",):
+        response = client_with_references.get(url, cookies=cookies)
+        assert response.status_code == 200
+        html = response.text
+        # Solar / Wind / Storage / Data Center / EV Charging reference cards.
+        assert html.count('class="fo-library-reference-card"') == 5
+        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference"):
+            assert f'library-row-{template}-reference' in html
+        # Create working copy: Solar / Wind / Data Center / EV Charging (Storage is not yet).
+        assert html.count("Create working copy") == 4
+        assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
+    search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text
+    assert 'library-row-generic_solar_reference-reference' in search
+    assert 'library-row-generic_wind_reference-reference' not in search
+    working_only = client_with_references.get("/library/list?role=working_copy", cookies=cookies).text
+    assert 'class="fo-library-reference-card"' not in working_only
+
+
 def test_clone_unexpected_error_htmx_returns_500_with_safe_body(client_with_references, monkeypatch, caplog):
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.services import project_library_service

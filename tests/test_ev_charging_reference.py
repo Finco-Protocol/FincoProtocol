@@ -250,8 +250,12 @@ def test_runtime_revenue_matches_ev_authority_schedule(ev_runtime_result):
     assert pairs[0] < ev.charging_revenue_keur(5.0, 3, apply_price_escalation=False)
     # ramp visible: revenue rises across the ramp years
     assert pairs[1] > pairs[0]
-    # stabilized years grow only by the 2% price escalation
-    assert pairs[2] == pytest.approx(pairs[1] * (pairs[2] / pairs[1]), rel=1e-9)
+    # real identities against the canonical EV authority
+    assert pairs[0] == pytest.approx(ev.charging_revenue_keur(5.0, 1), rel=1e-9)
+    assert pairs[1] == pytest.approx(ev.charging_revenue_keur(5.0, 2), rel=1e-9)
+    assert pairs[2] == pytest.approx(ev.charging_revenue_keur(5.0, 3), rel=1e-9)
+    # stabilized years grow by exactly the 2% price escalation
+    assert pairs[3] / pairs[2] == pytest.approx(1.02, rel=1e-9)
 
 
 def test_stabilized_total_revenue_sanity(ev_runtime_result):

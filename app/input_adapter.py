@@ -1400,6 +1400,19 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
         )
         result = apply_data_center_runtime_adapter(result, drivers_from_snapshot(snapshot))
 
+    # EV Charging runtime adapter: map the persisted EV driver authority
+    # (EFLH ramp, charging price/escalation, efficiency, electricity
+    # price/escalation) onto the canonical generic engine inputs.  Applied
+    # LAST for EV so generic PPA/merchant compatibility fields can never
+    # override the EV authority; the financial engine itself is
+    # technology-agnostic and untouched.
+    if project_type == "Ev Charging":
+        from app.ev_charging_economics import (
+            apply_ev_charging_runtime_adapter,
+            drivers_from_snapshot,
+        )
+        result = apply_ev_charging_runtime_adapter(result, drivers_from_snapshot(snapshot))
+
     return result
 
 

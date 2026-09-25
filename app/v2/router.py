@@ -276,21 +276,38 @@ def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
         DC_CAPACITY_LABEL,
         DC_DERIVED_OPEX_FIELD_ID,
         DC_RENEWABLE_EXCLUDED_FIELD_IDS,
+        EV_CHARGING_FIELD_IDS,
+        EV_RENEWABLE_EXCLUDED_FIELD_IDS,
         is_data_center_project_type,
     )
     sheet = WORKBOOK.sheet(sheet_id)
     # Technology-conditional visibility: Data Center projects show the Data
     # Center driver fields and never the renewable-only controls; every other
-    # technology hides the Data Center section.
+    # technology hides the Data Center section.  EV Charging (Correction B)
+    # mirrors this: EV shows the EV driver section and never the renewable/
+    # PPA controls; every other technology hides the EV section.
     _dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
     _dc_type = is_data_center_project_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
     is_data_center = _dc_template or _dc_type
+    _origin = getattr(pis, "snapshot_origin", None) or {}
+    try:
+        _ev_template = str(_origin.get("template_source", "") or "").strip().lower() == "generic_ev_charging_reference"
+    except AttributeError:
+        _ev_template = False
+    _ev_type = str(pis.get("project_setup.identity.project_type") or "").strip().lower() in (
+        "ev charging", "ev_charging",
+    ) if hasattr(pis, "get") else False
+    is_ev_charging = _ev_template or _ev_type
     rows: list[dict] = []
     for section in sorted(sheet.sections, key=lambda s: s.order):
         for fspec in sorted(section.fields, key=lambda f: f.order):
             if is_data_center and fspec.field_id in DC_RENEWABLE_EXCLUDED_FIELD_IDS:
                 continue
             if not is_data_center and fspec.field_id in DATA_CENTER_FIELD_IDS:
+                continue
+            if is_ev_charging and fspec.field_id in EV_RENEWABLE_EXCLUDED_FIELD_IDS:
+                continue
+            if not is_ev_charging and fspec.field_id in EV_CHARGING_FIELD_IDS:
                 continue
             bs = fspec.binding_status
             if bs == BindingStatus.DISPLAY_ONLY:
@@ -392,6 +409,10 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     freshness = _runtime_freshness(ws, pis)
     _dc_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
     _dc_type = _is_dc_type_bsc(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
+    _ev_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_ev_charging_reference"
+    _ev_type = str(pis.get("project_setup.identity.project_type") or "").strip().lower() in (
+        "ev charging", "ev_charging",
+    ) if hasattr(pis, "get") else False
     return {
         "request": request,
         "project_code": project,
@@ -399,6 +420,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
         "is_data_center": _dc_tmpl or _dc_type,
+        "is_ev_charging": _ev_tmpl or _ev_type,
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
         "runtime_is_stale": freshness.is_stale,
@@ -1418,12 +1440,17 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.workbook.registry import is_data_center_project_type as _is_dc_type
     _is_dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
     _is_dc = _is_dc_template or _is_dc_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
+    _is_ev_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_ev_charging_reference"
+    _is_ev = _is_ev_template or str(pis.get("project_setup.identity.project_type") or "").strip().lower() in (
+        "ev charging", "ev_charging",
+    ) if hasattr(pis, "get") else False
 
     context = {
         "project_code": project,
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
         "is_data_center": _is_dc,
+        "is_ev_charging": _is_ev,
         "active_scenario_name": ws.active_scenario_name or "",
         "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
@@ -2042,7 +2069,7 @@ async def v2_workbook_run(
     # the is_protected_reference check — the capability boundary is
     # "protected reference" vs "user-owned editable project".
     _run_type_lower = (getattr(project_record, "project_type", "") or "").strip().lower()
-    if _run_type_lower not in ("solar", "wind", "data center") and not is_protected_reference(project_record):
+    if _run_type_lower not in ("solar", "wind", "data center", "ev charging") and not is_protected_reference(project_record):
         _raw_type = project_record.project_type or "Unknown"
         msg = (
             f"{_raw_type} working-copy runtime is not yet supported. "
@@ -2135,6 +2162,8 @@ async def v2_workbook_run(
         runtime_project_key = "Wind"
     elif project_type_raw in ("data center", "data_center", "datacenter"):
         runtime_project_key = "Generic Data Center Reference"
+    elif project_type_raw in ("ev charging", "ev_charging"):
+        runtime_project_key = "Generic EV Charging Hub Reference"
     else:
         # Unsupported runtime — Storage and any future unimplemented types.
         # HTMX: 200 + banner fragment (HTMX pattern); non-HTMX: 409 Conflict so

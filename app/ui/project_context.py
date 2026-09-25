@@ -1435,6 +1435,16 @@ def build_project_context_for_record(
     else:
         canonical_capex_detail_items = base.capex_detail_items
 
+    # EV Charging (Correction B): rebuild the OPEX detail projection from the
+    # effective inputs so the derived B.08 electricity OpexItem (rebuilt by
+    # the EV runtime adapter from the persisted drivers) is visible in the
+    # display VM.  Solar/Wind/Storage keep their template detail items.
+    canonical_opex_detail_items = base.opex_detail_items
+    if effective_project_inputs is not None and technology == "EV Charging":
+        canonical_opex_detail_items = _build_opex_detail_items(
+            effective_project_inputs, code=project_code, horizon_years=horizon_years
+        )["categories"]
+
     return replace(
         base,
         code=project_code.upper(),
@@ -1451,6 +1461,7 @@ def build_project_context_for_record(
         ppa_term_years=ppa_term_years,
         opex_items=opex_items,
         opex_y1_total_keur=opex_y1_total_keur,
+        opex_detail_items=canonical_opex_detail_items,
         capex_items=base.capex_items,
         capex_detail_items=canonical_capex_detail_items,
         total_capex_keur=total_capex_keur,

@@ -466,7 +466,7 @@ KPI_LABELS = {
 }
 
 SCENARIOS = ["Base", "Downside", "Upside"]
-PROJECT_TYPES = ["Solar", "Wind", "Data Center"]
+PROJECT_TYPES = ["Solar", "Wind", "Data Center", "EV Charging"]
 
 # Phase 20E: Scenario tab editable fields (section groups)
 SCENARIO_EDITABLE_FIELDS = [

@@ -28,12 +28,16 @@
       <span><strong>Generic Solar Reference</strong><small>Solar assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
     </label>
     <label class="create-form-reference-card">
-      <input type="radio" name="template_source" value="generic_wind_reference" {% if submitted.project_type != 'Solar' and submitted.project_type != 'Data Center' %}checked{% endif %} required />
+      <input type="radio" name="template_source" value="generic_wind_reference" {% if submitted.project_type != 'Solar' and submitted.project_type != 'Data Center' and submitted.project_type != 'EV Charging' %}checked{% endif %} required />
       <span><strong>Generic Wind Reference</strong><small>Wind assumptions, financing inputs and editable CAPEX/OPEX seed.</small></span>
     </label>
     <label class="create-form-reference-card">
       <input type="radio" name="template_source" value="generic_data_center_reference" {% if submitted.project_type == 'Data Center' %}checked{% endif %} required />
       <span><strong>Generic Data Center Reference</strong><small>20 MW IT-load reference: occupancy, EUR/kW/month service revenue, PUE-derived power OPEX and editable CAPEX/OPEX seed.</small></span>
+    </label>
+    <label class="create-form-reference-card">
+      <input type="radio" name="template_source" value="generic_ev_charging_reference" {% if submitted.project_type == 'EV Charging' %}checked{% endif %} required />
+      <span><strong>Generic EV Charging Hub Reference</strong><small>5 MW charging reference: equivalent full-load hours, EUR/kWh charging price, derived electricity OPEX and editable CAPEX/OPEX seed.</small></span>
     </label>
   </fieldset>
   <label class="create-form-label">
@@ -59,6 +63,7 @@
       var projectType = 'Wind';
       if (value.indexOf('solar') !== -1) { projectType = 'Solar'; }
       else if (value.indexOf('data_center') !== -1) { projectType = 'Data Center'; }
+      else if (value.indexOf('ev_charging') !== -1) { projectType = 'EV Charging'; }
       document.querySelector('[data-project-type-from-reference]').value = projectType;
     });
   });

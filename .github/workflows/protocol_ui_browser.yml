@@ -43,6 +43,7 @@ jobs:
           # Roadmap is now intentionally live; the focused roadmap browser suite
           # below owns the replacement navigation + responsive acceptance.
           pytest -v tests/test_ui_protocol_shell.py tests/test_protocol_roadmap_browser.py \
+            tests/test_ev_charging_browser.py tests/test_data_center_browser_acceptance.py \
             -k "not test_api_b04_placeholders_not_links"
         env:
           FINCO_VISUAL_CAPTURE: "1"

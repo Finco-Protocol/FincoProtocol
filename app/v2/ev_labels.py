@@ -44,6 +44,7 @@ def is_ev_pis(pis) -> bool:
         return False
 
 
+
 def _bridge_rows(pis) -> list[dict]:
     """Transparent charging bridge (spec V): drivers → energy → grid purchase."""
     try:
@@ -123,7 +124,8 @@ def apply_ev_presentation(fields: list[dict], pis) -> list[dict]:
         if field_id in _EV_LABELS:
             relabeled["label"] = _EV_LABELS[field_id]
         out.append(relabeled)
-        # Inject the bridge rows after the stabilized hours row on project setup.
-        if field_id == "project_setup.technical.p50_hours":
+        # Inject the bridge + persisted-driver rows after the stabilized hours
+        # row on project setup (spec §11: the sheet exposes the true drivers).
+        if field_id == "project_setup.technical.capacity_mw":
             out.extend(_bridge_rows(pis))
     return out

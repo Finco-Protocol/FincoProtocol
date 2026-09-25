@@ -293,11 +293,6 @@ def _row_for_field(
     from app.v2.ev_labels import is_ev_pis as _is_ev_pis
     if _is_ev_pis(pis) and spec.field_id in _EV_ROW_LABELS:
         label = _EV_ROW_LABELS[spec.field_id]
-    # EV Charging (V1): presentation-only relabel from the shared adapter.
-    from app.v2.ev_labels import _EV_LABELS as _EV_ROW_LABELS
-    from app.v2.ev_labels import is_ev_pis as _is_ev_pis
-    if _is_ev_pis(pis) and spec.field_id in _EV_ROW_LABELS:
-        label = _EV_ROW_LABELS[spec.field_id]
     return {
         "field_id": spec.field_id,
         "label": label,

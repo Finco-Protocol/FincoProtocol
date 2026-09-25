@@ -220,3 +220,258 @@ __all__ = [
     "scaled_ev_reference_inputs",
     "effective_charging_price_eur_mwh", "merchant_price_schedule",
 ]
+
+
+# ── Correction B: typed driver authority (post-Data-Center pattern) ──────────
+#
+# The EV vertical now has ONE explicit, snapshot-persisted driver authority.
+# Snapshot-key storage convention follows the workbook registry: escalations
+# are persisted as human PERCENT values (2 means 2%), mirroring the DC
+# convention.  The runtime adapter re-derives the revenue calendar schedule
+# and the B.08 electricity OpexItem from the current drivers on every
+# materialization — nothing derived is ever cached or linearly scaled.
+
+
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass(frozen=True)
+class EVChargingDrivers:
+    """Synthetic public generic EV Charging operating/revenue drivers.
+
+    ``capacity_basis`` is always INSTALLED_CHARGING_MW: ``capacity_mw`` is
+    installed charging capacity, never generation capacity.  Equivalent
+    full-load hours are NET of availability effects (V1 policy): availability
+    stays informational metadata and is never an economic driver here.
+    """
+    capacity_basis: str = "INSTALLED_CHARGING_MW"
+    full_load_hours_y1: float = 1200.0
+    full_load_hours_y2: float = 1600.0
+    full_load_hours_stabilized: float = 2000.0
+    charging_price_eur_kwh: float = 0.40
+    charging_price_escalation: float = 0.02
+    charging_efficiency: float = 0.94
+    electricity_price_eur_kwh: float = 0.12
+    electricity_price_escalation: float = 0.02
+
+
+GENERIC_EV_CHARGING_REFERENCE_DRIVERS = EVChargingDrivers()
+
+# Snapshot keys (percent-convention keys are stored as human-% values).
+EV_DRIVER_SNAPSHOT_KEYS = {
+    "ev_full_load_hours_y1",
+    "ev_full_load_hours_y2",
+    "ev_full_load_hours_stabilized",
+    "ev_charging_price_eur_kwh",
+    "ev_charging_price_escalation",
+    "ev_charging_efficiency",
+    "ev_electricity_price_eur_kwh",
+    "ev_electricity_price_escalation",
+}
+_EV_PERCENT_KEYS = frozenset({
+    "ev_charging_price_escalation",
+    "ev_electricity_price_escalation",
+})
+
+
+def drivers_from_snapshot(
+    snapshot: dict, base: EVChargingDrivers | None = None
+) -> EVChargingDrivers:
+    """Resolve EV drivers from a workspace snapshot over defaults.
+
+    Unknown/blank/invalid keys fall back to the generic reference drivers;
+    explicit snapshot edits always win.  Percent-convention keys are
+    converted to fractions.
+    """
+    base = base or GENERIC_EV_CHARGING_REFERENCE_DRIVERS
+    if not isinstance(snapshot, dict):
+        return base
+
+    def _num(key, default, *, low=None, high=None):
+        raw = snapshot.get(key)
+        if raw in (None, ""):
+            return default
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            return default
+        if key in _EV_PERCENT_KEYS:
+            value = value / 100.0
+        if low is not None and value < low:
+            return default
+        if high is not None and value > high:
+            return default
+        return value
+
+    y1 = _num("ev_full_load_hours_y1", base.full_load_hours_y1, low=0.0)
+    y2 = _num("ev_full_load_hours_y2", base.full_load_hours_y2, low=0.0)
+    stabilized = _num("ev_full_load_hours_stabilized", base.full_load_hours_stabilized, low=0.0)
+    # The ramp is monotonically non-decreasing by authority; clamp defensively.
+    y2 = max(y2, y1)
+    stabilized = max(stabilized, y2)
+    efficiency = _num("ev_charging_efficiency", base.charging_efficiency, low=0.01, high=1.0)
+    return EVChargingDrivers(
+        capacity_basis="INSTALLED_CHARGING_MW",
+        full_load_hours_y1=y1,
+        full_load_hours_y2=y2,
+        full_load_hours_stabilized=stabilized,
+        charging_price_eur_kwh=_num(
+            "ev_charging_price_eur_kwh", base.charging_price_eur_kwh, low=0.0
+        ),
+        charging_price_escalation=_num(
+            "ev_charging_price_escalation", base.charging_price_escalation
+        ),
+        charging_efficiency=efficiency,
+        electricity_price_eur_kwh=_num(
+            "ev_electricity_price_eur_kwh", base.electricity_price_eur_kwh, low=0.0
+        ),
+        electricity_price_escalation=_num(
+            "ev_electricity_price_escalation", base.electricity_price_escalation
+        ),
+    )
+
+
+def ev_driver_snapshot_values(drivers: EVChargingDrivers) -> dict:
+    """Return snapshot-key → string-value pairs for the given drivers.
+
+    Escalations are emitted as human-% values per the snapshot convention.
+    """
+    return {
+        "ev_full_load_hours_y1": f"{drivers.full_load_hours_y1:.12g}",
+        "ev_full_load_hours_y2": f"{drivers.full_load_hours_y2:.12g}",
+        "ev_full_load_hours_stabilized": f"{drivers.full_load_hours_stabilized:.12g}",
+        "ev_charging_price_eur_kwh": f"{drivers.charging_price_eur_kwh:.12g}",
+        "ev_charging_price_escalation": f"{drivers.charging_price_escalation * 100:.12g}",
+        "ev_charging_efficiency": f"{drivers.charging_efficiency:.12g}",
+        "ev_electricity_price_eur_kwh": f"{drivers.electricity_price_eur_kwh:.12g}",
+        "ev_electricity_price_escalation": f"{drivers.electricity_price_escalation * 100:.12g}",
+    }
+
+
+def _driver_ramp(drivers: EVChargingDrivers) -> tuple:
+    return (
+        drivers.full_load_hours_y1,
+        drivers.full_load_hours_y2,
+        drivers.full_load_hours_stabilized,
+    )
+
+
+def driver_effective_rate_eur_mwh(
+    drivers: EVChargingDrivers, year_index: int
+) -> float:
+    """Effective per-MWh charging rate for operating year ``year_index``.
+
+    The engine runs at stabilized full-load hours; the utilisation ramp is
+    encoded exactly into this rate (hours(n)/stabilized × price × escalation).
+    """
+    ramp = _driver_ramp(drivers)
+    clamped = min(max(int(year_index), 1), len(ramp))
+    hours = ramp[clamped - 1]
+    return (
+        drivers.charging_price_eur_kwh * 1000.0
+        * (hours / drivers.full_load_hours_stabilized)
+        * ((1.0 + drivers.charging_price_escalation) ** (year_index - 1))
+    )
+
+
+def driver_electricity_expense_keur(
+    drivers: EVChargingDrivers, capacity_mw: float, year_index: int
+) -> float:
+    """Derived B.08 electricity expense from the CURRENT drivers."""
+    ramp = _driver_ramp(drivers)
+    clamped = min(max(int(year_index), 1), len(ramp))
+    delivered = capacity_mw * ramp[clamped - 1]
+    purchased = delivered / drivers.charging_efficiency
+    price = (
+        drivers.electricity_price_eur_kwh * 1000.0
+        * ((1.0 + drivers.electricity_price_escalation) ** (year_index - 1))
+    )
+    return purchased * price / 1000.0
+
+
+def apply_ev_charging_runtime_adapter(pi, drivers: EVChargingDrivers | None = None):
+    """Map EV Charging drivers onto canonical generic FINCO engine inputs.
+
+    Pure function: returns a replaced ``ProjectInputs``; the financial engine
+    is not aware of EV Charging and keeps full authority over financing, tax,
+    statements and returns.  MUST run LAST for EV-specific economic identity
+    so generic PPA/merchant compatibility fields can never silently override
+    the EV authority.
+
+    Mapping contract (documented, deterministic):
+      - technical.operating_hours_p50 = stabilized full-load hours;
+        availability/degradation are folded into the EFLH authority
+        (V1: EFLH are net of availability → runtime stays neutral at 1.0).
+      - revenue.market_prices_by_calendar_year_eur_mwh = the effective
+        per-calendar-year charging-rate schedule (utilisation ramp encoded
+        exactly), rebuilt from the CURRENT drivers on every call.
+      - ppa_base_tariff / ppa_index re-state the CURRENT declared price
+        authority (charging price EUR/MWh + escalation).
+      - the B.08 electricity OpexItem is rebuilt exactly from the current
+        drivers: y1 + Y2/Y3 sustained steps + escalation.
+    """
+    import dataclasses
+
+    drivers = drivers or GENERIC_EV_CHARGING_REFERENCE_DRIVERS
+    capacity = float(pi.technical.capacity_mw)
+    horizon = max(1, int(pi.info.horizon_years))
+    fc_year = int(pi.info.financial_close.year)
+
+    technical = dataclasses.replace(
+        pi.technical,
+        yield_scenario="P_50",
+        operating_hours_p50=drivers.full_load_hours_stabilized,
+        operating_hours_p90_10y=drivers.full_load_hours_stabilized,
+        pv_degradation=0.0,
+        plant_availability=1.0,
+        grid_availability=1.0,
+    )
+    # Calendar schedule rebuilt from CURRENT drivers (index 0 = FC-year
+    # placeholder at the Y1 rate; operating year n lives at index n).
+    cal_prices = [driver_effective_rate_eur_mwh(drivers, 1)]
+    for op_year in range(1, horizon + 1):
+        cal_prices.append(driver_effective_rate_eur_mwh(drivers, op_year))
+    revenue = dataclasses.replace(
+        pi.revenue,
+        ppa_base_tariff=drivers.charging_price_eur_kwh * 1000.0,
+        ppa_index=drivers.charging_price_escalation,
+        ppa_term_years=float(horizon),
+        ppa_production_share=0.0,
+        market_prices_by_calendar_year_eur_mwh=tuple(cal_prices),
+        market_price_calendar_start_year=fc_year,
+        market_inflation=drivers.charging_price_escalation,
+        balancing_cost_pv=0.0,
+        balancing_cost_bess=0.0,
+        balancing_cost_wind_eur_mwh=0.0,
+        balancing_cost_eur_per_mwh=0.0,
+        balancing_cost_schedule=None,
+        co2_enabled=False,
+        co2_price_eur=0.0,
+        co2_certificate_price_eur_per_mwh=0.0,
+        co2_sales_schedule=None,
+        ppa_tariff_by_operating_period=(),
+        first_merchant_operating_period_index=0,
+    )
+
+    def _elec(year_index: int) -> float:
+        return driver_electricity_expense_keur(drivers, capacity, year_index)
+
+    from finco_core.inputs import OpexItem
+    elec_item = OpexItem(
+        name="Electricity Procurement",
+        y1_amount_keur=_elec(1),
+        annual_inflation=drivers.electricity_price_escalation,
+        step_changes=((2, _elec(2)), (3, _elec(3))),
+    )
+    new_opex = []
+    for item in pi.opex:
+        if str(getattr(item, "name", "")) == "Electricity Procurement":
+            new_opex.append(elec_item)
+        else:
+            new_opex.append(item)
+    if not any(str(getattr(i, "name", "")) == "Electricity Procurement" for i in new_opex):
+        new_opex.append(elec_item)
+
+    return dataclasses.replace(
+        pi, technical=technical, revenue=revenue, opex=tuple(new_opex)
+    )
