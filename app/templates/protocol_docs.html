@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FINCO Documentation</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/protocol-docs.css">
+</head>
+<body class="pdocs-body">
+  {% with proto_active_page="docs" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <header class="pdocs-hero">
+    <div class="pdocs-shell">
+      <p class="pdocs-eyebrow">FINCO Protocol / Documentation</p>
+      <h1>Build, read and verify financial intelligence.</h1>
+      <p class="pdocs-lead">
+        Start with the task you are trying to complete. FINCO keeps model outputs,
+        company fundamentals, market observations, execution-aware analytics and
+        evidence lineage separate so each number keeps a clear meaning.
+      </p>
+      <div class="pdocs-hero-actions" aria-label="Documentation shortcuts">
+        <a class="pdocs-button pdocs-button--primary" href="#start-here">Start here</a>
+        <a class="pdocs-button" href="/library">Open Model</a>
+        <a class="pdocs-button" href="/radar">Open Radar</a>
+        <a class="pdocs-button" href="/api">API Beta</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="pdocs-shell pdocs-layout">
+    <aside class="pdocs-toc" aria-label="Documentation sections">
+      <div class="pdocs-toc__label">On this page</div>
+      <a href="#start-here">Start here</a>
+      <a href="#product-map">Product map</a>
+      <a href="#model">Model</a>
+      <a href="#outputs">Key outputs</a>
+      <a href="#radar">Radar</a>
+      <a href="#evidence">Evidence & verification</a>
+      <a href="#api">API Beta</a>
+      <a href="#concepts">Shared concepts</a>
+      <a href="#status">Status & limitations</a>
+    </aside>
+
+    <main class="pdocs-main">
+      <section id="start-here" class="pdocs-section pdocs-section--first">
+        <p class="pdocs-section-kicker">Start here</p>
+        <h2>Choose the path that matches your job.</h2>
+        <div class="pdocs-task-grid">
+          <a class="pdocs-task-card" href="/library">
+            <span class="pdocs-task-card__index">01</span>
+            <strong>Model an asset</strong>
+            <span>Build project economics, financing, tax, cash flow, returns and scenarios.</span>
+          </a>
+          <a class="pdocs-task-card" href="/radar">
+            <span class="pdocs-task-card__index">02</span>
+            <strong>Read market intelligence</strong>
+            <span>Explore Stocks, Crypto and Economy without silently changing the model.</span>
+          </a>
+          <a class="pdocs-task-card" href="#evidence">
+            <span class="pdocs-task-card__index">03</span>
+            <strong>Understand the evidence</strong>
+            <span>See how authority, lineage, freshness and snapshots affect interpretation.</span>
+          </a>
+          <a class="pdocs-task-card" href="/api">
+            <span class="pdocs-task-card__index">04</span>
+            <strong>Use FINCO programmatically</strong>
+            <span>Call the Model reference and Radar API Beta surfaces.</span>
+          </a>
+        </div>
+
+        <div class="pdocs-callout">
+          <div class="pdocs-callout__label">A first 10-minute walkthrough</div>
+          <ol>
+            <li><strong>Open Model.</strong> Start with a Solar or Wind reference and create an editable working copy.</li>
+            <li><strong>Change one or two assumptions.</strong> Capacity, pricing or a financing input is enough for a first run.</li>
+            <li><strong>Run the model.</strong> The run creates the authoritative Last Run output set.</li>
+            <li><strong>Read Radar separately.</strong> Market and company context does not silently rewrite project assumptions.</li>
+            <li><strong>Inspect evidence when it matters.</strong> Use lineage, snapshot and freshness information before treating a number as current or comparable.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="product-map" class="pdocs-section">
+        <p class="pdocs-section-kicker">Product map</p>
+        <h2>Different questions, different authorities.</h2>
+        <p>
+          You do not need to understand every internal boundary before using FINCO.
+          The important rule is that a project calculation, a company financial metric,
+          a market reference and an executable quote are not interchangeable facts.
+        </p>
+        <div class="pdocs-table-wrap">
+          <table class="pdocs-table">
+            <thead><tr><th>Surface</th><th>Primary question</th><th>Current scope</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Production workflows for Solar and Wind; Storage remains limited/reference scope.</td></tr>
+              <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces.</td></tr>
+              <tr><td><strong>API</strong></td><td>How can software read or run FINCO capabilities?</td><td>Beta Model reference/read/preview/run and Radar read/simulation endpoints.</td></tr>
+              <tr><td><strong>Evidence</strong></td><td>What produced this value and how should I interpret its state?</td><td>Source, snapshot, period, lineage, freshness and deterministic verification concepts.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="model" class="pdocs-section">
+        <p class="pdocs-section-kicker">FINCO Model</p>
+        <h2>From working assumptions to a Last Run.</h2>
+        <p>
+          Model is a financial calculation workspace. The most important distinction is
+          <strong>Working</strong> versus <strong>Last Run</strong>: an editable value can be saved
+          and still differ from the assumptions used in the last committed calculation.
+        </p>
+        <div class="pdocs-step-list">
+          <div><span>1</span><div><strong>Project Library</strong><p>Open a reference model or an existing working project. Solar and Wind are the main production modelling verticals.</p></div></div>
+          <div><span>2</span><div><strong>Inputs</strong><p>Edit project assumptions in Revenue, CAPEX, OPEX, Financing, Tax and related sections.</p></div></div>
+          <div><span>3</span><div><strong>Run</strong><p>Commit one deterministic calculation. The resulting snapshot becomes the Last Run authority for outputs tied to that run.</p></div></div>
+          <div><span>4</span><div><strong>Results</strong><p>Review decision KPIs, cash flow, debt, coverage, statements, distributions and returns.</p></div></div>
+          <div><span>5</span><div><strong>Scenarios & sensitivities</strong><p>Compare changed assumptions without treating an un-run working edit as a committed result.</p></div></div>
+          <div><span>6</span><div><strong>Export</strong><p>Use run-bound export paths when an artifact needs an explicit calculation authority and lineage.</p></div></div>
+        </div>
+
+        <div class="pdocs-two-col">
+          <article class="pdocs-panel">
+            <h3>What the model calculates</h3>
+            <ul>
+              <li>Operating and revenue assumptions</li>
+              <li>CAPEX, OPEX and escalation</li>
+              <li>Senior debt and sponsor funding</li>
+              <li>Tax, depreciation and reserves</li>
+              <li>Cash waterfalls and financial statements</li>
+              <li>Distributions, returns and coverage metrics</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel pdocs-panel--note">
+            <h3>Reference models</h3>
+            <p>
+              Canonical Solar and Wind reference models are synthetic product references.
+              They are useful for onboarding, scaling previews and stateless API runs;
+              they are not market benchmarks or a representation of a specific real project.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="outputs" class="pdocs-section">
+        <p class="pdocs-section-kicker">Reading the outputs</p>
+        <h2>Use defined financial quantities, not generic health scores.</h2>
+        <div class="pdocs-table-wrap">
+          <table class="pdocs-table">
+            <thead><tr><th>Output</th><th>How to read it</th><th>Avoid</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Project / Equity / Sponsor IRR</strong></td><td>Return calculated from the corresponding canonical cash-flow series.</td><td>Treating different IRR definitions as interchangeable.</td></tr>
+              <tr><td><strong>NPV</strong></td><td>Present value under the configured cash-flow and discount convention.</td><td>Comparing NPVs without matching basis and discount assumptions.</td></tr>
+              <tr><td><strong>DSCR</strong></td><td>CFADS relative to senior debt service for the applicable period.</td><td>Reading it as a market sentiment indicator.</td></tr>
+              <tr><td><strong>LLCR</strong></td><td>Discounted CFADS over remaining loan life relative to senior debt outstanding.</td><td>Ignoring eligibility, maturity or discount convention.</td></tr>
+              <tr><td><strong>Statements</strong></td><td>P&amp;L, balance sheet and cash-flow/waterfall outputs produced by the model.</td><td>Inferring distributable cash directly from EBITDA or net income.</td></tr>
+              <tr><td><strong>Distributions</strong></td><td>Cash available to sponsors after operating, financing, tax and reserve requirements.</td><td>Treating reserves and unrestricted operating cash as the same account.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="radar" class="pdocs-section">
+        <p class="pdocs-section-kicker">FINCO Radar</p>
+        <h2>Stocks, Crypto and Economy keep their own data semantics.</h2>
+        <div class="pdocs-domain-grid">
+          <article class="pdocs-panel">
+            <h3>Stocks</h3>
+            <p>Company fundamentals, financial history, corporate actions, tokenized-market context and amount-specific execution simulation.</p>
+            <ul>
+              <li>Featured Equities for discovery</li>
+              <li>Company Terminal for canonical asset identity</li>
+              <li>Underlying company context kept separate from token market state</li>
+              <li>Execution Simulation is analytics only; no order is submitted</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel">
+            <h3>Crypto</h3>
+            <p>Global market state plus focused market-structure views.</p>
+            <ul>
+              <li>Crypto Overview</li>
+              <li>Stablecoin liquidity and supply</li>
+              <li>Perpetual funding, leverage and liquidity context</li>
+              <li>Tokenized RWA market universe and leaders</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel">
+            <h3>Economy</h3>
+            <p>Rates, inflation, inflation expectations, labour and funding conditions with explicit period/freshness handling.</p>
+            <ul>
+              <li>Unavailable evidence is not silently substituted</li>
+              <li>Series are interpreted with their own observation periods</li>
+              <li>Macro context does not automatically rewrite Model assumptions</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="pdocs-definition-row">
+          <div><strong>Reference price</strong><span>Observed market/reference value; not automatically executable.</span></div>
+          <div><strong>Executable price</strong><span>Quote bound to direction, size, route, settlement context and time.</span></div>
+          <div><strong>Directional GAP</strong><span>Defined difference between executable quote authority and the relevant Radar reference authority.</span></div>
+        </div>
+      </section>
+
+      <section id="evidence" class="pdocs-section">
+        <p class="pdocs-section-kicker">Evidence & verification</p>
+        <h2>A digest identifies evidence; it does not make an external fact true.</h2>
+        <p>
+          FINCO uses source, period, snapshot and lineage information to keep calculations
+          and observations auditable. Supported verification checks deterministic identity
+          and configured internal relationships. It does not replace an external publisher,
+          filing or legal source with a second FINCO truth.
+        </p>
+        <div class="pdocs-evidence-chain" aria-label="Evidence chain">
+          <span>NUMBER</span><b>→</b><span>LINEAGE</span><b>→</b><span>EVIDENCE</span><b>→</b><span>STATUS</span>
+        </div>
+        <div class="pdocs-two-col">
+          <article class="pdocs-panel">
+            <h3>Verification can</h3>
+            <ul>
+              <li>Check deterministic identity of supported evidence.</li>
+              <li>Validate configured relationships and invariants.</li>
+              <li>Preserve run, snapshot, period and source context.</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel">
+            <h3>Verification cannot</h3>
+            <ul>
+              <li>Prove that an external publisher or filing is factually or legally correct.</li>
+              <li>Turn stale or unavailable evidence into a plausible current value.</li>
+              <li>Claim on-chain anchoring while verification remains off-chain.</li>
+            </ul>
+          </article>
+        </div>
+        <p class="pdocs-small-note">
+          The validation corpus remains an advanced, non-discoverable product surface rather than a primary navigation item.
+        </p>
+      </section>
+
+      <section id="api" class="pdocs-section">
+        <p class="pdocs-section-kicker">FINCO API Beta</p>
+        <h2>Programmatic access to Model references and Radar intelligence.</h2>
+        <p>
+          Base path: <code>/api/v1</code>. The public beta exposes Model reference capabilities
+          and Radar data/analytics. Availability in a particular environment still depends on
+          deployment and source configuration.
+        </p>
+        <div class="pdocs-api-links">
+          <a href="/api">API overview</a>
+          <a href="/api/docs">Interactive API docs</a>
+          <a href="/api/openapi.json">OpenAPI JSON</a>
+        </div>
+        <div class="pdocs-table-wrap">
+          <table class="pdocs-table">
+            <thead><tr><th>Method</th><th>Capability</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>GET</code></td><td><code>/model/references</code></td><td>List canonical Solar/Wind references.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/model/references/{reference_key}</code></td><td>Read grouped reference assumptions.</td></tr>
+              <tr><td><code>POST</code></td><td><code>.../{reference_key}/preview</code></td><td>Capacity-scaled stateless preview; no project and no model run.</td></tr>
+              <tr><td><code>POST</code></td><td><code>.../{reference_key}/run</code></td><td>One stateless canonical financial run; no project/workspace persistence.</td></tr>
+              <tr><td><code>GET</code></td><td><code>/radar/assets</code> and sub-resources</td><td>Identity, fundamentals, financial history, corporate actions and evidence.</td></tr>
+              <tr><td><code>POST</code></td><td><code>/radar/assets/{uid}/execution-simulation</code></td><td>Read-only amount/direction execution analytics; no order submitted.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="pdocs-small-note">The API contract is still Beta. A stable SDK, webhooks and formal GA support/deprecation policy are later work.</p>
+      </section>
+
+      <section id="concepts" class="pdocs-section">
+        <p class="pdocs-section-kicker">Shared concepts</p>
+        <h2>Terms used across FINCO.</h2>
+        <dl class="pdocs-glossary">
+          <div><dt>Working</dt><dd>The current editable workspace state. It may differ from the assumptions used for the Last Run.</dd></div>
+          <div><dt>Last Run</dt><dd>The last committed deterministic calculation authority and its bound input/scenario state.</dd></div>
+          <div><dt>Runtime snapshot</dt><dd>An immutable record of an acquired model or market runtime state used for evidence and replay.</dd></div>
+          <div><dt>Canonical authority</dt><dd>The designated source of truth for a particular calculation, identity or state within a defined scope.</dd></div>
+          <div><dt>Lineage</dt><dd>The sources, versions, periods, snapshots and transformations that produced an output.</dd></div>
+          <div><dt>Freshness</dt><dd>Whether observed evidence remains inside its configured time or period validity window.</dd></div>
+          <div><dt>Unavailable / Partial / Stale</dt><dd>Explicit states preferred over guessed or silently substituted values when required evidence is missing or old.</dd></div>
+        </dl>
+      </section>
+
+      <section id="status" class="pdocs-section">
+        <p class="pdocs-section-kicker">Status & limitations</p>
+        <h2>Code capability and deployed availability are not the same thing.</h2>
+        <div class="pdocs-status-grid">
+          <article><span class="pdocs-status pdocs-status--implemented">Implemented</span><p>Capability exists in the reviewed repository. This does not imply every environment has deployed or configured it.</p></article>
+          <article><span class="pdocs-status pdocs-status--beta">Beta</span><p>A user-facing capability exists, while its public operating or compatibility contract is still evolving.</p></article>
+          <article><span class="pdocs-status pdocs-status--planned">Planned</span><p>Direction only. Planned work is not described in the present tense and has no implied launch date.</p></article>
+          <article><span class="pdocs-status pdocs-status--unavailable">Unavailable</span><p>Required evidence or runtime authority is absent. FINCO prefers this to a synthetic fallback.</p></article>
+        </div>
+        <div class="pdocs-limitations">
+          <p><strong>Model:</strong> Solar and Wind are the main production modelling verticals. Broader infrastructure modules remain future work.</p>
+          <p><strong>Radar:</strong> Current Stocks, Crypto and Economy intelligence is read-only. No custody, wallet signing or order submission is represented as current product capability.</p>
+          <p><strong>Verification:</strong> Current verification is off-chain. A content digest proves deterministic identity of the hashed content, not truth of an external source.</p>
+          <p><strong>API:</strong> Real Beta endpoints exist; SDK/webhooks and a broader supported contract remain future work.</p>
+          <p><strong>$FINCO:</strong> The token remains planned and is not a calculation authority. It does not change model outputs, valuation mathematics, quote economics or evidence truth.</p>
+        </div>
+      </section>
+
+      <footer class="pdocs-footer">
+        <p>FINCO documentation describes product behavior and interpretation boundaries. Where deployment state differs from repository capability, the deployed environment is authoritative for availability.</p>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
