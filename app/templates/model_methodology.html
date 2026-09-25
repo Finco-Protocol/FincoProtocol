@@ -42,6 +42,17 @@
       .pmeth-layout { grid-template-columns: 1fr; }
       .pmeth-toc { display: none; }
     }
+    @media (max-width: 480px) {
+      html, body { overflow-x: hidden; max-width: 100%; }
+      .pmeth-shell { padding: 0 16px; max-width: 100%; box-sizing: border-box; }
+      .pmeth-formula { font-size: .78rem; overflow-x: auto; max-width: 100%; box-sizing: border-box; }
+      .pmeth-table-wrap { max-width: 100%; overflow-x: auto; }
+      .pmeth-table { font-size: .82rem; min-width: 0; }
+      .pmeth-table th, .pmeth-table td { padding: 7px 8px; }
+      .pmeth-metrics { grid-template-columns: 1fr 1fr; }
+      .pmeth-hero-badges { flex-direction: column; }
+      .pmeth-layout { max-width: 100%; }
+    }
 
     /* ── TOC ─────────────────────────────────────────────────────────────── */
     .pmeth-toc { position: sticky; top: 24px; align-self: start; }
@@ -150,6 +161,17 @@
       padding: 32px 0; font-size: 13px; text-align: center;
     }
     .pmeth-footer a { color: #60a5fa; }
+
+    /* ── Print styles ────────────────────────────────────────────────────── */
+    @media print {
+      .pmeth-notice, .pmeth-toc { display: none !important; }
+      .pmeth-layout { grid-template-columns: 1fr !important; }
+      .pmeth-hero { background: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .pmeth-formula { background: #f8f8f8 !important; color: #1e293b !important; border: 1px solid #cbd5e1; }
+      .pmeth-metrics { break-inside: avoid; }
+      .pmeth-main section { break-inside: avoid; }
+      a[href]::after { content: none; }
+    }
   </style>
 </head>
 <body class="pmeth-body">
@@ -203,6 +225,10 @@
       <a href="#xirr">XIRR convention</a>
       <a href="#scenarios">Scenarios</a>
       <a href="#reference">Solar reference example</a>
+      <a class="sub" href="#sources-uses">Sources &amp; uses</a>
+      <a class="sub" href="#period-walkthrough">Period walkthrough</a>
+      <a href="#working-last-run">Working vs Last Run</a>
+      <a href="#run-identity">Run identity</a>
       <a href="#limitations">Limitations</a>
     </aside>
 
@@ -564,8 +590,9 @@ interest_t = opening_balance × rate × day_fraction
 max_ds_t   = max(0, cfads_t / target_dscr)
 principal_t = max(0, min(max_ds_t − interest_t, balance_t))
 
-<span class="comment"># Level-principal (GEARING_CAP mode):</span>
+<span class="comment"># Level-principal alternative (for GEARING_CAP or EXPLICIT sizing modes):</span>
 level_install = opening_debt / n_repayment_periods
+<span class="comment"># Solar reference: FLAT_DSCR_SCULPTED amortization regardless of binding constraint.</span>
         </div>
 
         <span class="pmeth-authority">financial_engine/senior_debt/sculpting.py</span>
@@ -591,8 +618,20 @@ llcr_t = Σ[ fcf_s / (1 + rate)^(s−t+1)  for s in remaining_debt_life ] / debt
         <p>
           The lock-up DSCR gate is 1.10 for the Solar reference model: when
           <code>dscr &lt; 1.10</code> in any operating period, distributions to equity
-          are blocked. The minimum LLCR covenant is 1.20 (same value as target DSCR).
+          are blocked. LLCR is defined in the model architecture but is not configured
+          in the Solar reference run (production output:
+          <code>min_llcr = None</code>, status: <code>C2_COVERAGE_CFADS_CASE_NOT_CONFIGURED</code>).
         </p>
+        <div class="pmeth-callout pmeth-callout--info">
+          <strong>Sizing vs amortization — important distinction.</strong>
+          For the Solar Reference, the binding size constraint is <strong>GEARING</strong>:
+          the loan amount is capped at 75% × 33,000 = 24,750 kEUR, because the DSCR capacity
+          (36,113 kEUR) exceeds the gearing cap. Once the loan size is set by the gearing cap,
+          the amortization schedule is still determined by <strong>DSCR-sculpted</strong>
+          repayment (FLAT_DSCR_SCULPTED mode): each period's principal repayment is sized so
+          that CFADS / debt service = target DSCR. Gearing constrains the <em>size</em>;
+          DSCR sculpting determines the <em>shape</em> of repayment.
+        </div>
       </section>
 
       <hr class="pmeth-divider" />
@@ -620,12 +659,27 @@ top_up = min(available_fcf × 0.5, gap_to_target)
         <span class="pmeth-authority">finco_core/waterfall/dsra_engine.py</span>
 
         <p>
-          The Solar reference model uses a 6-month DSRA (<code>dsra_months = 6</code>).
-          The reserve is funded entirely by equity at financial close. In the generic
-          Solar/Wind factory path the DSRA is set to <code>mode=none</code> and all
-          reserve movements are zero (neutral pass-through); full DSRA mechanics
-          engage when <code>dsra_months &gt; 0</code> in a project model.
+          The Solar reference model has <code>dsra_months = 6</code> in its configuration
+          parameter, but the active production mode is
+          <code>dsra_support_mode = DebtServiceReserveSupportMode.NONE</code>.
+          This means: no reserve is funded at financial close, no reserve movements occur
+          in any period, and <code>debt_service_reserve_requirement_keur = 0</code>.
+          The terminal DSRA balance is 0 (status: <strong>NOT_APPLICABLE</strong>).
         </p>
+        <p>
+          In short: the DSRA parameter exists and is configurable, but the Solar reference
+          model intentionally runs without an active reserve. Full DSRA mechanics — initial
+          funding by equity, rolling target top-up from operating cash, and release at
+          maturity — are exercised when <code>dsra_support_mode ≠ NONE</code> in a
+          project-specific model.
+        </p>
+        <div class="pmeth-callout">
+          <strong>TRUST_PACK_SOLAR_DSRA_RUNTIME_RECONCILIATION:</strong> Solar Reference
+          production output — <code>dsra_support_mode = NONE</code>,
+          <code>debt_service_reserve_requirement_keur = 0.0</code>,
+          terminal DSRA = 0. Configuration parameter <code>dsra_months = 6</code>
+          is stored but overridden by the active mode at runtime.
+        </div>
       </section>
 
       <hr class="pmeth-divider" />
@@ -706,31 +760,59 @@ net_ucf[t] = cf_operating[t] + terminal_component_t − cf_construction[t]
 
       <!-- ── Equity IRR ────────────────────────────────────────────────── -->
       <section id="equity-irr">
-        <p class="pmeth-kicker">Equity return</p>
-        <h2>Equity IRR and Sponsor XIRR.</h2>
+        <p class="pmeth-kicker">Equity and sponsor returns</p>
+        <h2>Three distinct return metrics.</h2>
         <p>
-          The engine supports three equity IRR methods. The Solar reference model uses
-          <strong>EQUITY_ONLY</strong>; the total-sponsor metric adds SHL cash flows.
+          The engine produces three distinct return metrics. Each uses a different set of
+          cash flows; comparing them directly is meaningful only when their definitions
+          are understood.
         </p>
 
+        <h3>1. Project IRR — unlevered</h3>
         <div class="pmeth-formula">
-<span class="comment"># finco_core/waterfall/waterfall_engine.py lines 1270–1301</span>
+<span class="comment"># financial_engine/project_returns/model.py</span>
+<span class="comment"># Authority: C1_UNLEVERED_HARD_CAPEX_PLUS_EBITDA_MINUS_ZERO_FINANCING_INTEREST_CASH_TAX</span>
+construction_cf[t] = −hard_capex_draw_t
+operating_cf[t]    = ebitda_t − unlevered_tax_t   <span class="comment"># no debt service</span>
+project_irr = xirr(construction_cf + operating_cf, dates)
+<span class="comment"># Solar reference: 11.56%</span>
+        </div>
 
-<span class="comment"># Method EQUITY_ONLY (legal equity only):</span>
-initial_outflow = max(0, total_capex − senior_debt − shl_amount)
-periodic_cf     = equity_distributions_t
+        <h3>2. Equity IRR — legal equity only (EQUITY_ONLY)</h3>
+        <div class="pmeth-formula">
+<span class="comment"># finco_core/waterfall/waterfall_engine.py</span>
+<span class="comment"># Solar reference equity_irr_method = 'equity_only'</span>
+initial_outflow = share_capital_contributed_keur   <span class="comment"># 500 kEUR for Solar ref</span>
+periodic_cf     = equity_distributions_t           <span class="comment"># post-senior, post-SHL</span>
+equity_irr = xirr(−initial_outflow + periodic_cf, dates)
+<span class="comment"># Solar reference: 50.47%  (leveraged; SHL excluded from this metric)</span>
+        </div>
 
-<span class="comment"># Method SHL_PLUS_DIVIDENDS (total sponsor cash):</span>
-periodic_cf     = shl_interest_t  (while SHL outstanding)
-                + dividends_t     (after SHL repaid)
-
-<span class="comment"># Total Sponsor XIRR uses SHL + equity contributions and receipts:</span>
-initial_outflow = share_capital + shl_amount
-periodic_cf     = shl_interest + shl_principal_repaid + equity_distributions
+        <h3>3. Total Sponsor XIRR — all sponsor cash (equity + SHL)</h3>
+        <div class="pmeth-formula">
+<span class="comment"># financial_engine/sponsor_returns/model.py</span>
+contributions = share_capital + shl_cash_contributed   <span class="comment"># 500 + 7,750 = 8,250 kEUR</span>
+receipts      = shl_cash_interest + shl_principal_repaid + equity_distributions
+total_sponsor_xirr = xirr(−contributions + receipts, dates)
+<span class="comment"># Solar reference: 17.90%  (diluted by SHL cost of carry)</span>
         </div>
 
         <span class="pmeth-authority">finco_core/waterfall/waterfall_engine.py</span>
         <span class="pmeth-authority">financial_engine/sponsor_returns/model.py</span>
+        <span class="pmeth-authority">financial_engine/project_returns/model.py</span>
+
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead>
+              <tr><th>Metric</th><th>Perspective</th><th>Solar Reference</th><th>Cash flow basis</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Project IRR</td><td>Unlevered project</td><td class="num">11.56%</td><td>CAPEX outflows + EBITDA − unlevered tax</td></tr>
+              <tr><td>Equity IRR</td><td>Legal equity only</td><td class="num">50.47%</td><td>Share capital contributions &amp; equity distributions</td></tr>
+              <tr class="highlight"><td>Total Sponsor XIRR</td><td>All sponsor cash</td><td class="num">17.90%</td><td>Share capital + SHL contributions &amp; all receipts</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <hr class="pmeth-divider" />
@@ -800,14 +882,16 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
 
       <!-- ── Solar Reference Example ────────────────────────────────────── -->
       <section id="reference">
-        <p class="pmeth-kicker">Worked example — live engine output</p>
+        <p class="pmeth-kicker">Engine-reconciled canonical reference values</p>
         <h2>Generic Solar Reference: 64 MW, 25-year project.</h2>
 
         <div class="pmeth-callout pmeth-callout--green">
-          <strong>Live engine numbers.</strong> The values below are the direct output of
-          <code>create_generic_solar_reference()</code> run through the full Phase 2C
-          engine on the current production codebase. They are not historical estimates.
-          The <code>project_code = REF-SOLAR-A</code>.
+          <strong>Engine-reconciled canonical reference values.</strong> Every number in
+          this section is produced by <code>run_project("Generic Solar Reference", "Base")</code>
+          via the FINCO production runtime path
+          (<code>financial_engine.shareholder_waterfall.run_project_shareholder_waterfall_model</code>,
+          authority: <code>CLEAN_PRODUCTION_READY</code>). Values are stable across runs on the
+          same codebase revision. The <code>project_code = REF-SOLAR-A</code>.
         </div>
 
         <h3>Identity &amp; timeline</h3>
@@ -902,7 +986,12 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           <div class="pmeth-metric">
             <div class="pmeth-metric__value">11.56%</div>
             <div class="pmeth-metric__label">Project IRR</div>
-            <div class="pmeth-metric__note">Unlevered, XIRR<br/>hard CAPEX + EBITDA − tax</div>
+            <div class="pmeth-metric__note">Unlevered XIRR<br/>hard CAPEX + EBITDA − unlevered tax</div>
+          </div>
+          <div class="pmeth-metric">
+            <div class="pmeth-metric__value">50.47%</div>
+            <div class="pmeth-metric__label">Equity IRR</div>
+            <div class="pmeth-metric__note">EQUITY_ONLY method<br/>legal equity (500 kEUR) only</div>
           </div>
           <div class="pmeth-metric">
             <div class="pmeth-metric__value">17.90%</div>
@@ -945,14 +1034,136 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           </table>
         </div>
 
+        <h3 id="sources-uses">Sources &amp; uses reconciliation</h3>
+        <p>
+          Total project costs (Uses) must equal total funding sources (Sources).
+          For the Solar Reference, Sources and Uses balance at 33,000 kEUR:
+        </p>
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead><tr><th>Sources</th><th>Amount (kEUR)</th><th>Basis</th></tr></thead>
+            <tbody>
+              <tr><td>Senior debt</td><td class="num">24,750</td><td>75.0% × 33,000 (gearing cap, binding)</td></tr>
+              <tr><td>Share capital</td><td class="num">500</td><td>FinancingParams.share_capital_keur</td></tr>
+              <tr><td>Shareholder loan (SHL)</td><td class="num">7,750</td><td>FinancingParams.clean_shl_principal_keur</td></tr>
+              <tr class="total"><td>Total Sources</td><td class="num">33,000</td><td>= Total Uses (CAPEX)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="period-walkthrough">Representative period cash-flow walkthrough</h3>
+        <p>
+          The first operating period (Y2031-H1: 2031-03-01 → 2031-06-30, day fraction 0.3342)
+          illustrates how each line in the waterfall connects:
+        </p>
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead><tr><th>Line</th><th>Y2031-H1 (kEUR)</th><th>Formula / authority</th></tr></thead>
+            <tbody>
+              <tr><td>Revenue</td><td class="num">1,572.5</td><td>capacity × hours × day_frac × availability</td></tr>
+              <tr><td>OPEX</td><td class="num">127.0</td><td>y1_amount × (1+infl)^(yr−1) × day_frac</td></tr>
+              <tr class="highlight"><td>EBITDA</td><td class="num">1,445.4</td><td>Revenue − OPEX</td></tr>
+              <tr><td>Cash tax</td><td class="num">0</td><td>H1 period — tax cash paid in H2 only</td></tr>
+              <tr class="highlight"><td>CFADS</td><td class="num">1,445.4</td><td>EBITDA + fin. income − cash tax</td></tr>
+              <tr><td>Senior interest</td><td class="num">457.5</td><td>24,750 × 5.5% × day_frac</td></tr>
+              <tr><td>Senior principal</td><td class="num">659.6</td><td>DSCR-sculpted: CFADS/1.20 − interest</td></tr>
+              <tr><td>Total senior DS</td><td class="num">1,117.2</td><td>interest + principal</td></tr>
+              <tr class="highlight"><td>DSCR</td><td class="num">1.29×</td><td>CFADS / senior DS = 1,445.4 / 1,117.2</td></tr>
+              <tr><td>Closing senior balance</td><td class="num">24,090.4</td><td>24,750.0 − 659.6</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:.85rem; color:#6b7280;">
+          Note: DSCR of 1.29× in H1 (partial period, 0.33 day fraction) is higher than the
+          1.20× target because the partial period has proportionally smaller debt service.
+          Full 6-month periods converge to the sculpted target.
+        </p>
+
         <div class="pmeth-callout pmeth-callout--info">
-          <strong>How to reproduce this example.</strong> Call
-          <code>create_generic_solar_reference()</code> from
-          <code>app.project_factories</code>, pass the result to
+          <strong>How to reproduce this example.</strong>
+          Primary authority: <code>run_project("Generic Solar Reference", "Base")</code>
+          from <code>app.api.project_runner</code>. This returns all KPIs via the
+          <code>CLEAN_PRODUCTION_READY</code> path.
+          Direct-engine alternative: call <code>create_generic_solar_reference()</code>
+          from <code>app.project_factories</code>, then
           <code>run_project_financing_model(pi)</code> from
-          <code>financial_engine.financing.project</code>, then call
-          <code>run_project_sponsor_returns_model(pi)</code>. The numbers above
-          are stable across runs on the same codebase revision.
+          <code>financial_engine.financing.project</code>.
+          Both paths produce identical economics on the same codebase revision.
+        </div>
+      </section>
+
+      <hr class="pmeth-divider" />
+
+      <hr class="pmeth-divider" />
+
+      <!-- ── Working vs Last Run ──────────────────────────────────────────── -->
+      <section id="working-last-run">
+        <p class="pmeth-kicker">Model governance</p>
+        <h2>Working state vs Last Run.</h2>
+        <p>
+          The FINCO workspace maintains two distinct model states that must not be conflated:
+        </p>
+        <ul>
+          <li>
+            <strong>Working state:</strong> the current parameter values in the workspace UI.
+            These may have been edited since the last calculation. The working state is
+            <em>draft</em>; it has not been validated by the engine.
+          </li>
+          <li>
+            <strong>Last Run:</strong> the frozen engine output produced by the most recent
+            calculation. All published KPIs, schedules, and distributions are bound to Last Run.
+            If the working state has been modified after the last run, the workspace is
+            marked <strong>stale</strong>; if no run has been performed, it is
+            <strong>NOT_RUN</strong>.
+          </li>
+        </ul>
+        <p>
+          The Generic Solar Reference canonical model is always in a known Last Run state:
+          its inputs are frozen, its outputs are deterministic, and the results on this page
+          are bound to that Last Run. Any change to working state requires a new engine run
+          before the outputs update.
+        </p>
+        <div class="pmeth-callout pmeth-callout--info">
+          <strong>TRUST_PACK_WORKING_LAST_RUN_CONTRACT:</strong> Export and report
+          generation are bound exclusively to Last Run, not to working state.
+          A stale or NOT_RUN workspace cannot produce a verified export.
+        </div>
+      </section>
+
+      <hr class="pmeth-divider" />
+
+      <!-- ── Run Identity ──────────────────────────────────────────────────── -->
+      <section id="run-identity">
+        <p class="pmeth-kicker">Reproducibility</p>
+        <h2>Run identity and reproducibility.</h2>
+        <p>
+          Each engine run is identified by a composite set of immutable inputs. Providing
+          the same inputs to the same codebase revision produces bitwise-identical outputs:
+        </p>
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead><tr><th>Identity axis</th><th>Solar Reference value</th></tr></thead>
+            <tbody>
+              <tr><td>Reference model</td><td class="mono">Generic Solar Reference</td></tr>
+              <tr><td>Scenario</td><td class="mono">Base</td></tr>
+              <tr><td>Production authority</td><td class="mono">CLEAN_PRODUCTION_READY</td></tr>
+              <tr><td>Engine entry point</td><td class="mono">financial_engine.shareholder_waterfall</td></tr>
+              <tr><td>Period frequency</td><td class="mono">SEMESTRIAL (2/yr)</td></tr>
+              <tr><td>Horizon</td><td>25 years (50 operating periods)</td></tr>
+              <tr><td>Calculation count</td><td class="num">1 (clean single-pass)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The engine is deterministic and stateless: there are no random draws, no
+          external data fetches, and no time-dependent values. Re-running the model on
+          the same codebase revision and inputs always produces the same output.
+        </p>
+        <div class="pmeth-callout pmeth-callout--green">
+          <strong>TRUST_PACK_REPRODUCIBILITY_CONTRACT:</strong>
+          <code>run_project("Generic Solar Reference", "Base")</code> → Project IRR = 11.56%,
+          Senior debt = 24,750 kEUR, Total Sponsor XIRR = 17.90%. These values are stable
+          and auditable on any build of the current codebase.
         </div>
       </section>
 
@@ -1000,6 +1211,19 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
             in <code>finco_core/waterfall/waterfall_engine.py</code> and is available
             for project-level models. The generic reference models use a simplified
             cash-sweep path.
+          </li>
+          <li>
+            <strong>LLCR:</strong> The Loan Life Coverage Ratio is defined in the model
+            architecture but is not computed in the Solar Reference production path.
+            Production output: <code>min_llcr = None</code>
+            (status: <code>C2_COVERAGE_CFADS_CASE_NOT_CONFIGURED</code>).
+          </li>
+          <li>
+            <strong>Excel / XLSX export reconciliation:</strong>
+            <code>TRUST_PACK_SOLAR_EXCEL_RECONCILIATION = DEFERRED</code>.
+            The Institutional XLSX Export capability has not yet been released for
+            the Solar Reference model. Cell-level reconciliation between the engine
+            output and a published workbook is deferred until that export is available.
           </li>
         </ul>
       </section>

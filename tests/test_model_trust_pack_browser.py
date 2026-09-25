@@ -9,6 +9,7 @@ import threading
 import time
 import pytest
 
+pytest.importorskip("playwright", reason="playwright not installed in this workflow")
 from playwright.sync_api import sync_playwright, Page
 
 
@@ -18,7 +19,9 @@ from playwright.sync_api import sync_playwright, Page
 def app_server():
     """Start a live FINCO app server and yield its base URL."""
     import uvicorn
-    from app.main_web import app as web_app
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from main_web import app as web_app
 
     config = uvicorn.Config(web_app, host="127.0.0.1", port=19723, log_level="error")
     server = uvicorn.Server(config)
@@ -60,12 +63,18 @@ _REQUIRED_MARKERS = [
     "1.20",         # target DSCR
     "75.0%",        # gearing
     "50",           # operating periods
-    # Live engine outputs
+    # Engine-reconciled canonical reference values (not "live engine numbers")
     "11.56%",       # Project IRR
-    "17.90%",       # Sponsor XIRR
+    "50.47%",       # Equity IRR (EQUITY_ONLY)
+    "17.90%",       # Total Sponsor XIRR
     "24,750",       # senior debt kEUR
     "147,815",      # total EBITDA kEUR
     "123,129",      # total CFADS kEUR
+    # Sources & Uses reconciliation
+    "500",          # share capital kEUR
+    "7,750",        # SHL kEUR
+    # DSRA actual state
+    "NONE",         # dsra_support_mode = NONE
 ]
 
 
@@ -140,6 +149,40 @@ def test_methodology_page_no_500_error(app_server):
             assert response is not None, "No response received"
             assert response.status == 200, (
                 f"Expected HTTP 200, got {response.status}"
+            )
+        finally:
+            browser.close()
+
+
+def test_methodology_page_no_horizontal_overflow_390(app_server):
+    """TRUST_PACK_BROWSER_390 — no horizontal scroll at 390px mobile width."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        page = browser.new_page()
+        page.set_viewport_size({"width": 390, "height": 900})
+        try:
+            page.goto(f"{app_server}/model/methodology", wait_until="domcontentloaded")
+            scroll_width = page.evaluate("document.documentElement.scrollWidth")
+            client_width = page.evaluate("document.documentElement.clientWidth")
+            assert scroll_width <= client_width + 5, (
+                f"Horizontal overflow at 390px: scrollWidth={scroll_width} > clientWidth={client_width}"
+            )
+        finally:
+            browser.close()
+
+
+def test_docs_links_to_methodology(app_server):
+    """TRUST_PACK_DOCS_DISCOVERABILITY — /docs page must link to /model/methodology."""
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path="/opt/pw-browsers/chromium")
+        page = browser.new_page()
+        page.set_viewport_size({"width": 1280, "height": 900})
+        try:
+            response = page.goto(f"{app_server}/docs", wait_until="domcontentloaded")
+            assert response is not None and response.status == 200
+            links = page.locator("a[href='/model/methodology']")
+            assert links.count() >= 1, (
+                "/docs page must contain at least one link to /model/methodology"
             )
         finally:
             browser.close()

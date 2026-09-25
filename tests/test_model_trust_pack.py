@@ -242,6 +242,68 @@ def test_trust_solar_sponsor_xirr():
     )
 
 
+# ── Additional Layer 3 markers (corrections B, C, D, G) ──────────────────────
+
+def test_trust_production_runtime_authority():
+    """TRUST_PACK_PRODUCTION_RUNTIME_AUTHORITY — run_project() is the primary authority."""
+    from app.api.project_runner import run_project
+    result = run_project("Generic Solar Reference", "Base")
+    kpis = result["kpis"]
+    ra = result.get("runtime_authority", {})
+    assert ra.get("classification") == "CLEAN_PRODUCTION_READY", (
+        f"Expected CLEAN_PRODUCTION_READY authority, got {ra.get('classification')!r}"
+    )
+    assert math.isclose(float(kpis["total_capex_keur"]), 33_000.0, rel_tol=1e-4)
+    assert math.isclose(float(kpis["senior_debt_keur"]), 24_750.0, rel_tol=1e-4)
+    assert math.isclose(float(kpis["project_irr"]) * 100, 11.56, abs_tol=0.1)
+    assert kpis["min_dscr"] >= 1.20 - 0.001
+
+
+def test_trust_solar_equity_irr():
+    """TRUST_PACK_SOLAR_EQUITY_IRR — Pure equity IRR must be approximately 50.47%."""
+    from app.api.project_runner import run_project
+    result = run_project("Generic Solar Reference", "Base")
+    kpis = result["kpis"]
+    equity_irr = kpis.get("equity_irr")
+    assert equity_irr is not None, "equity_irr not in KPI output"
+    irr_pct = float(equity_irr) * 100
+    assert math.isclose(irr_pct, 50.47, abs_tol=0.2), (
+        f"Expected Equity IRR ≈ 50.47%, got {irr_pct:.4f}%"
+    )
+
+
+def test_trust_solar_sources_and_uses_reconcile():
+    """TRUST_PACK_SOLAR_SOURCES_AND_USES_RECONCILE — Sources must equal Uses (33,000 kEUR)."""
+    from app.project_factories import create_generic_solar_reference
+    from financial_engine.financing.project import run_project_financing_model
+    pi = create_generic_solar_reference()
+    fin = run_project_financing_model(pi)
+    senior = float(fin.final_senior_commitment_keur)
+    share_capital = float(fin.share_capital_keur)
+    shl = float(fin.derived_shl_cash_principal_keur)
+    total_uses = float(pi.capex.total_capex)
+    total_sources = senior + share_capital + shl
+    assert math.isclose(total_sources, total_uses, rel_tol=1e-4), (
+        f"Sources ({senior:.0f} + {share_capital:.0f} + {shl:.0f} = {total_sources:.0f}) "
+        f"≠ Uses ({total_uses:.0f} kEUR)"
+    )
+    assert math.isclose(total_uses, 33_000.0, rel_tol=1e-4)
+
+
+def test_trust_dsra_runtime_mode_none():
+    """TRUST_PACK_DSRA_RUNTIME_RECONCILIATION — Solar reference DSRA active mode is NONE."""
+    from app.project_factories import create_generic_solar_reference
+    pi = create_generic_solar_reference()
+    mode_str = str(pi.financing.dsra_support_mode).upper()
+    assert "NONE" in mode_str, (
+        f"Expected dsra_support_mode=NONE, got {pi.financing.dsra_support_mode!r}"
+    )
+    req = float(pi.financing.debt_service_reserve_requirement_keur)
+    assert math.isclose(req, 0.0, abs_tol=1e-6), (
+        f"Expected debt_service_reserve_requirement_keur=0, got {req}"
+    )
+
+
 # ── Final composite acceptance marker ─────────────────────────────────────────
 
 def test_finco_model_p1_institutional_trust_pack_complete():
