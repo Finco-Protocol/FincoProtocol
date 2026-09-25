@@ -166,6 +166,21 @@ async def protocol_docs_start_alias():
     return RedirectResponse(url="/docs", status_code=301)
 
 
+@router.get("/model/methodology", response_class=HTMLResponse)
+async def model_methodology(request: Request):
+    """FINCO model methodology — public, no auth required."""
+    from app.auth import resolve_request_session
+    user = resolve_request_session(request)
+    return _templates.TemplateResponse(
+        request=request,
+        name="model_methodology.html",
+        context={
+            "user": user,
+            "proto_active_page": "docs",
+        },
+    )
+
+
 @router.get("/roadmap", response_class=HTMLResponse)
 async def protocol_roadmap(request: Request):
     """FINCO public product roadmap. Public — no auth required."""
