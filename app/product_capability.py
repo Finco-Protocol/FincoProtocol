@@ -99,22 +99,21 @@ _storage = ProductCapability(
     status_note="Limited/reference workflow. Working-copy runtime not released.",
 )
 
+# EV Charging promotion (PR #89 Correction B): executed per the documented
+# promotion procedure above — the full fail-closed consistency suite passed
+# with all flags True.
 _ev_charging = ProductCapability(
     key="ev_charging",
     public_name="EV Charging",
-    status=ProductStatus.IN_DEVELOPMENT,
+    status=ProductStatus.LIVE,
     public_visible=True,
-    reference_available=False,
-    runnable=False,
-    cloneable=False,
-    working_copy_editable=False,
-    canonical_last_run=False,
-    api_available=False,
-    export_available=False,
-    status_note=(
-        "In development. To promote: change status to LIVE, set all capability "
-        "flags to True, remove this note, run full test suite."
-    ),
+    reference_available=True,
+    runnable=True,
+    cloneable=True,
+    working_copy_editable=True,
+    canonical_last_run=True,
+    api_available=True,
+    export_available=True,
 )
 
 # Canonical ordered registry — do not reorder without updating tests.

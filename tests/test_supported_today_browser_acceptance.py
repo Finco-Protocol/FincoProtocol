@@ -5,7 +5,7 @@ the canonical registry in app/product_capability.py:
 
   Solar = LIVE, Wind = LIVE, Data Center = LIVE
   Storage = PREVIEW (reference only, no clone)
-  EV Charging = IN_DEVELOPMENT (not exposed anywhere as runnable/live)
+  EV Charging = LIVE since PR #89 Correction B (shipped vertical)
 
 Routes covered: /, /library, /docs, /roadmap, /known-limitations
 
@@ -134,10 +134,10 @@ def test_supported_today_homepage_1280(app_server, browser):
     page.goto(f"{app_server}/")
     page.wait_for_load_state("domcontentloaded")
     content = page.content()
-    # EV Charging must not appear with live-implying framing on the home page
+    # EV Charging is a shipped vertical; it may appear on the home page.
     lower = content.lower()
-    assert "ev charging" not in lower or "in development" in lower or "not yet" in lower, (
-        "Homepage must not present EV Charging as a currently available vertical"
+    assert "in development and not yet released" not in lower or "ev charging" not in lower, (
+        "Homepage still frames EV Charging as not yet released"
     )
     assert _overflow_px(page) <= _WIDTH_TOLERANCE
     page.close()
@@ -194,11 +194,13 @@ def test_supported_today_library_1280(app_server, browser):
                 f"LIVE reference '{vertical}' must NOT show 'Working-copy runtime coming soon'"
             )
 
-    # EV Charging must NOT appear as a reference card
+    # EV Charging is a shipped vertical (PR #89): reference card + clone button.
     ev_cards = [t for t in card_texts if "ev" in t.lower() and "charging" in t.lower()]
-    assert not ev_cards, (
-        f"EV Charging must not appear as a reference card in the library; found: {ev_cards}"
-    )
+    assert ev_cards, "EV Charging reference card must be present in the library"
+    for card_text in ev_cards:
+        assert "create working copy" in card_text.lower(), (
+            f"LIVE reference 'EV Charging' must have a Create working copy button; got: {card_text!r}"
+        )
 
     # Storage, if seeded, must show clone-unavailable guard, not a clone button
     storage_cards = [t for t in card_texts if "storage" in t.lower()]
@@ -246,10 +248,10 @@ def test_supported_today_docs_1280(app_server, browser):
     assert "storage" in lower
     assert "limited" in lower or "preview" in lower or "reference scope" in lower
 
-    # EV Charging must be framed as in development, not live
+    # EV Charging is live: docs must not frame it as in development
     if "EV Charging" in content or "ev charging" in lower:
-        assert "in development" in lower or "not yet released" in lower, (
-            "Docs mentions EV Charging but doesn't frame it as in development"
+        assert "in development" not in lower or "ev charging is in development" not in lower, (
+            "Docs still frames EV Charging as in development"
         )
 
     assert _overflow_px(page) <= _WIDTH_TOLERANCE
@@ -289,15 +291,15 @@ def test_supported_today_roadmap_shipped_chips_1280(app_server, browser):
             f"Live vertical '{vertical}' missing from Shipped chip row"
         )
 
-    # EV Charging must NOT be in the shipped chip row
-    assert "EV Charging" not in chip_text, (
-        "EV Charging must not appear in the Shipped chip row"
+    # EV Charging is shipped (PR #89): must be in the shipped chip row
+    assert "EV Charging" in chip_text, (
+        "EV Charging must appear in the Shipped chip row"
     )
 
-    # EV Charging in-development note must be present somewhere on the page
+    # The in-development note must be gone now that EV shipped
     page_text = page.content()
-    assert "EV Charging is in development" in page_text, (
-        "Roadmap must state EV Charging is in development"
+    assert "EV Charging is in development" not in page_text, (
+        "Roadmap still states EV Charging is in development"
     )
 
     assert _overflow_px(page) <= _WIDTH_TOLERANCE
@@ -335,8 +337,8 @@ def test_supported_today_known_limitations_1280(app_server, browser):
     # EV Charging must be identified as in development
     lower = content.lower()
     assert "ev charging" in lower, "Known Limitations must mention EV Charging"
-    assert "in development" in lower, (
-        "Known Limitations must state EV Charging is in development"
+    assert "v1" in lower, (
+        "Known Limitations must document the EV Charging V1 limitations"
     )
 
     assert _overflow_px(page) <= _WIDTH_TOLERANCE
