@@ -7,6 +7,12 @@ ensure_reference_models()
     under the system sentinel user_id ``__reference__`` if they do not
     already exist.  Safe to call on every application startup.
 
+ensure_reference_canonical_last_runs()
+    Idempotent post-bootstrap step: run the canonical financial engine for each
+    cloneable reference (Solar, Wind, Data Center) if no last-run result has
+    been persisted yet.  Storage is deliberately excluded (runtime not released).
+    Safe to call on every application startup after ensure_reference_models().
+
 create_working_copy(user_id, source_reference_id, requested_name=None)
     Clone a reference project into a new user-owned working copy.
     Returns the new ProjectRecord.
@@ -220,6 +226,118 @@ def ensure_reference_models() -> list:
         if not was_existing:
             created.append(record)
     return created
+
+
+# Template sources that receive a canonical last run at startup.
+# Storage is deliberately excluded — its working-copy runtime is not released.
+_CANONICAL_LAST_RUN_SOURCES = frozenset({
+    "generic_solar_reference",
+    "generic_wind_reference",
+    "generic_data_center_reference",
+})
+
+# Maps template_source → project_type string expected by run_clean_production.
+_TEMPLATE_SOURCE_TO_PROJECT_TYPE = {
+    "generic_solar_reference": "Solar",
+    "generic_wind_reference": "Wind",
+    "generic_data_center_reference": "Data Center",
+}
+
+
+def ensure_reference_canonical_last_runs() -> list[str]:
+    """Idempotent: seed a canonical engine last-run for each cloneable reference.
+
+    For each reference in _CANONICAL_LAST_RUN_SOURCES:
+      1. Skip if workspace already has a last_runtime_snapshot_id (already seeded).
+      2. Invoke run_clean_production() with the factory inputs.
+      3. Persist the runtime summary + snapshot id via record_workspace_runtime().
+
+    Returns a list of template_source strings for which a new last-run was seeded.
+    Safe to call on every startup after ensure_reference_models().
+    """
+    seeded = []
+    for defn in _REFERENCE_DEFINITIONS:
+        ts = defn["template_source"]
+        if ts not in _CANONICAL_LAST_RUN_SOURCES:
+            continue
+        try:
+            record = get_reference_by_template_source(ts)
+            if record is None:
+                continue
+            ws = get_workspace_state(record.user_id, record.project_id)
+            if ws is not None and ws.last_runtime_snapshot_id:
+                continue
+            _seed_reference_last_run(record, defn)
+            seeded.append(ts)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "ensure_reference_canonical_last_runs: could not seed last-run "
+                "for %s: %s: %s", ts, type(exc).__name__, exc,
+            )
+    return seeded
+
+
+def _seed_reference_last_run(record, defn: dict) -> None:
+    """Execute the canonical engine for one reference and persist the last-run."""
+    from datetime import datetime, timezone
+
+    from app.services.production_financial_authority import run_clean_production
+    from app.services.clean_presentation_adapter import build_clean_waterfall_view
+    from app.persistence.repository import record_workspace_runtime
+    from app.persistence.projects_repository import _compute_baseline_snapshot
+
+    ts = defn["template_source"]
+    project_type = _TEMPLATE_SOURCE_TO_PROJECT_TYPE[ts]
+
+    factory_fn = _get_factory(defn["factory"])
+    project_inputs = factory_fn()
+
+    clean_run = run_clean_production(project_inputs, "Base", project_type=project_type)
+    view = build_clean_waterfall_view(clean_run)
+
+    runtime_kpis = {
+        "project_irr": view.project_irr,
+        "equity_irr": view.equity_irr,
+        "min_dscr": view.actual_min_dscr,
+        "avg_dscr": view.actual_avg_dscr,
+        "min_llcr": getattr(view, "min_llcr", None),
+        "total_capex_keur": project_inputs.capex.total_capex,
+        "senior_debt_keur": getattr(clean_run.g2c_result.financing_result, "final_senior_commitment_keur", None),
+        "gearing_ratio": getattr(clean_run.g2c_result.financing_result, "gearing_ratio", None),
+        "target_dscr": project_inputs.financing.target_dscr,
+        "total_revenue_keur": getattr(view, "total_revenue_keur", None),
+        "total_ebitda_keur": getattr(view, "total_ebitda_keur", None),
+        "total_opex_keur": getattr(view, "total_opex_keur", None),
+        "total_distributions_keur": getattr(view, "total_distribution_keur", None),
+        "total_senior_ds_keur": getattr(view, "total_senior_ds_keur", None),
+        "total_tax_keur": getattr(view, "total_tax_keur", None),
+    }
+
+    now_iso = datetime.now(timezone.utc).isoformat().replace(":", "").replace("-", "")
+    runtime_snapshot_id = f"canonical_last_run__{ts}__{now_iso}"
+
+    snapshot = _compute_baseline_snapshot(defn["project_type"], ts)
+
+    record_workspace_runtime(
+        user_id=record.user_id,
+        project_id=record.project_id,
+        project_code=record.project_code,
+        runtime_snapshot=snapshot,
+        runtime_summary=runtime_kpis,
+        runtime_snapshot_id=runtime_snapshot_id,
+        runtime_origin="canonical_reference_last_run",
+        governance_state=record.governance_state,
+        replay_metadata={
+            "origin": "canonical_reference_last_run",
+            "template_source": ts,
+            "project_type": project_type,
+            "factory": defn["factory"],
+            "seeded_at": datetime.now(timezone.utc).isoformat(),
+            "reference_project_id": record.project_id,
+            "reference_project_code": record.project_code,
+        },
+    )
 
 
 def _ensure_reference_project(defn: dict):
