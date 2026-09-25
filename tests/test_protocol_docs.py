@@ -83,7 +83,7 @@ def test_docs06_working_vs_last_run_boundary_present():
 
 def test_docs07_model_reference_scope_is_truthful():
     html = _client().get("/docs").text
-    assert "Solar and Wind" in html
+    assert "Solar, Wind and Data Center" in html
     assert "synthetic product references" in html
     assert "not market benchmarks" in html
     assert "Storage remains limited/reference scope" in html

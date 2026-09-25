@@ -29,7 +29,6 @@ def test_roadmap_release_baseline_and_quarters():
         "Solar",
         "Wind",
         "Data Center",
-        "EV Charging",
         "Q4 2026",
         "FINCO Signals",
         "Wallet Identity",
@@ -75,6 +74,23 @@ def test_roadmap_keeps_finco_as_only_placeholder():
     assert 'href="/roadmap">Roadmap</a>' in brand
     assert "$FINCO" in nav and "$FINCO" in brand
     assert "Coming soon\">Roadmap" not in nav
+
+
+def test_roadmap_ev_charging_is_not_in_shipped_chips():
+    """EV Charging must not appear in the 'Shipped' chip row — it is in development."""
+    from pathlib import Path
+    html = _client().get("/roadmap").text
+    # EV Charging in development note must be present somewhere in the page
+    assert "EV Charging is in development" in html
+    # The Infrastructure Model shipped chip row must NOT contain EV Charging
+    # (it is bounded between the "Infrastructure Model" heading and the proad-note)
+    start = html.find("Infrastructure Model")
+    end = html.find("proad-chip-row", start)
+    chip_end = html.find("</div>", end)
+    chip_section = html[end:chip_end]
+    assert "EV Charging" not in chip_section, (
+        "EV Charging must not appear in the Shipped chip row"
+    )
 
 
 def test_roadmap_css_has_mobile_breakpoints_without_overflow_hack():
