@@ -128,6 +128,14 @@ _OPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
         "B.02": (("Preventive and Corrective Maintenance", 26), ("Minor Maintenance", 10), ("HV Substation / O&M Building Maintenance", 11), ("Regulatory Inspections", 9), ("HSE Prevention Plan", 8), ("Meteorological Station Maintenance", 7), ("Special Equipment / Vehicle Maintenance", 8), ("Blade Maintenance", 14), ("Other Maintenance", 7)),
     },
     "data_center": {
+        # B.01: Technical Management — DC-specific; no meteorological service.
+        "B.01": (
+            ("Asset Management Contract", 25),
+            ("Operation Management Contract", 20),
+            ("Performance Monitoring", 18),
+            ("Technical Inspections", 16),
+            ("DCIM / Monitoring Platform", 21),
+        ),
         "B.02": (
             ("Preventive MEP Maintenance", 30),
             ("UPS / Electrical Maintenance", 20),
@@ -135,6 +143,12 @@ _OPEX_ROWS: dict[str, dict[str, tuple[tuple[str, int], ...]]] = {
             ("Generator Maintenance", 12),
             ("BMS / DCIM Systems Maintenance", 8),
             ("Critical Spares", 10),
+        ),
+        # B.03: Site Maintenance — DC-specific; no vegetation management.
+        "B.03": (
+            ("Access Road & Perimeter Maintenance", 40),
+            ("Civil / Structural Inspections", 35),
+            ("Site Inspections", 25),
         ),
         "B.05": (
             ("Physical Security", 55),

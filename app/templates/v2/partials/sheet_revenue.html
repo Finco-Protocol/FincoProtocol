@@ -62,6 +62,7 @@
       <span id="revenue-pricing-basis-title">Revenue Pricing Basis</span>
       <small>Canonical working-copy inputs used by the model</small>
     </div>
+    {% if not is_data_center %}
     <div class="v2-revenue-pricing-grid">
       {% for label, value, unit in revenue_pricing_basis %}
       <div class="v2-revenue-pricing-item">
@@ -70,13 +71,14 @@
       </div>
       {% endfor %}
     </div>
+    {% endif %}
     <div class="v2-revenue-output-context" data-testid="revenue-output-context">
-      <span>Generation used in current output</span>
+      <span>{% if is_data_center %}IT Load Hours used in current output{% else %}Generation used in current output{% endif %}</span>
       <strong>{% if revenue_output_context.generation is not none %}{{ revenue_output_context.generation }}{% if revenue_output_context.period %} · {{ revenue_output_context.period }}{% endif %}{% else %}—{% endif %}</strong>
       <span>Revenue persisted summary</span>
       <strong>{% if revenue_output_context.persisted_revenue is not none %}{{ revenue_output_context.persisted_revenue }} kEUR{% else %}—{% endif %}</strong>
     </div>
-    {% if merchant_curve_rows %}
+    {% if not is_data_center and merchant_curve_rows %}
     <div class="v2-revenue-curve-preview" data-testid="merchant-curve-preview">
       <span>Merchant curve</span>
       {% for row in merchant_curve_rows %}
@@ -104,9 +106,13 @@
 
   {# ── Local navigation ──────────────────────────────────────────────── #}
   <nav class="v2-inputs-nav" aria-label="Revenue sections">
+    {% if is_data_center %}
+    <a href="#nav-rev-data_center">Service Revenue</a>
+    {% else %}
     <a href="#nav-rev-commercial">Commercial</a>
     <a href="#nav-rev-balancing">Balancing &amp; CO2</a>
     <a href="#nav-rev-merchant">Merchant Curve</a>
+    {% endif %}
     <a href="#nav-rev-outputs">Outputs</a>
     <a href="#nav-rev-future">Future</a>
   </nav>
@@ -128,6 +134,9 @@
     </div>
   </details>
   {% endif %}
+
+  {# ── 1-3. Renewable-only sections: hidden for Data Center projects ──── #}
+  {% if not is_data_center %}
 
   {# ── 1. Commercial Structure ──────────────────────────────────────── #}
   {# Revenue Model V1: single PPA plus residual merchant.               #}
@@ -264,6 +273,8 @@
     </div>
   </details>
 
+  {% endif %}{# /not is_data_center — end of renewable-only sections 1-3 #}
+
   {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
   {#
     Data authority: runtime_summary["revenue_derivation"] from persisted RuntimeResult.
@@ -306,7 +317,7 @@
           <dl class="v2-revenue-derivation" data-testid="revenue-derivation">
 
             {# Generation evidence — labelled with the persisted sample period #}
-            <dt>Generation</dt>
+            <dt>{% if is_data_center %}IT Load Hours{% else %}Generation{% endif %}</dt>
             <dd data-testid="revenue-derivation-generation">
               {% set gen = rd.get("sample_generation_mwh") %}
               {% set period_lbl = rd.get("sample_period_label", "") %}
@@ -376,7 +387,7 @@
                 <thead>
                   <tr>
                     <th style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Period</th>
-                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Generation (MWh)</th>
+                    <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">{% if is_data_center %}IT Load Hours (MWh eq.){% else %}Generation (MWh){% endif %}</th>
                     <th style="text-align:right;padding:3px 8px;border-bottom:1px solid var(--v2-border,#e5e7eb);">Revenue (kEUR)</th>
                   </tr>
                 </thead>

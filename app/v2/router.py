@@ -386,13 +386,17 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
 
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     """Shared context dict for both sheet partials."""
+    from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
     freshness = _runtime_freshness(ws, pis)
+    _dc_tmpl = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
+    _dc_type = _is_dc_type_bsc(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
     return {
         "request": request,
         "project_code": project,
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
+        "is_data_center": _dc_tmpl or _dc_type,
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
         "runtime_is_stale": freshness.is_stale,
@@ -1376,10 +1380,15 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         except Exception:
             pass
 
+    from app.workbook.registry import is_data_center_project_type as _is_dc_type
+    _is_dc_template = str(getattr(pis, "template_source", "") or "").strip().lower() == "generic_data_center_reference"
+    _is_dc = _is_dc_template or _is_dc_type(pis.get("project_setup.identity.project_type") if hasattr(pis, "get") else None)
+
     context = {
         "project_code": project,
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
+        "is_data_center": _is_dc,
         "active_scenario_name": ws.active_scenario_name or "",
         "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
@@ -3056,9 +3065,17 @@ async def v2_scenario_sensitivity_run(
         return HTMLResponse(content="<p>Protected reference — cannot run sensitivity.</p>", status_code=409)
 
     project_type_raw = (project_record.project_type or "").strip().lower()
-    if project_type_raw not in ("solar", "wind"):
+    _dc_template_src = str(getattr(project_record, "template_source", "") or "").strip().lower()
+    _is_dc_sens = (
+        project_type_raw in ("data center", "data_center", "datacenter")
+        or _dc_template_src == "generic_data_center_reference"
+    )
+    if not _is_dc_sens and project_type_raw not in ("solar", "wind"):
         return HTMLResponse(content=f"<p>Unsupported project type: {project_record.project_type!r}.</p>", status_code=409)
-    runtime_key = project_type_raw.capitalize()
+    if _is_dc_sens:
+        runtime_key = "Generic Data Center Reference"
+    else:
+        runtime_key = project_type_raw.capitalize()
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
@@ -3089,6 +3106,27 @@ async def v2_scenario_sensitivity_run(
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
+            "dc_excluded": True,  # renewable-only driver
+        },
+        # Data Center-native drivers
+        "service_price": {
+            "label": "Service Price (EUR/kW/month)",
+            "field_id": "revenue.data_center.service_price",
+            "snapshot_key": "dc_service_price",
+            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
+            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
+            "mode": "pct_multiplier",
+            "dc_only": True,
+        },
+        "dc_occupancy": {
+            "label": "Stabilised Occupancy",
+            "field_id": "revenue.data_center.occupancy_stabilized",
+            "snapshot_key": "dc_occupancy_stabilized",
+            # ±10 pp absolute — stored as decimal (0.85 = 85%)
+            "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
+            "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
+            "mode": "absolute_add",
+            "dc_only": True,
         },
         # capex_total (capex.summary.total) and opex_total (opex.summary.total_y1) are
         # derived_display / source_of_truth=derived_ui — not writable via with_value().
@@ -3101,6 +3139,7 @@ async def v2_scenario_sensitivity_run(
             "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
             "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
             "mode": "pct_multiplier",
+            "dc_excluded": True,  # renewable-only driver
         },
         "interest_rate": {
             "label": "Senior Interest Rate",
@@ -3124,6 +3163,18 @@ async def v2_scenario_sensitivity_run(
 
     if driver not in DRIVER_SPECS:
         return HTMLResponse(content=f"<p>Unknown driver: {driver!r}.</p>", status_code=422)
+
+    _spec_candidate = DRIVER_SPECS[driver]
+    if _is_dc_sens and _spec_candidate.get("dc_excluded"):
+        return HTMLResponse(
+            content=f"<p>Driver {driver!r} is not available for Data Center projects.</p>",
+            status_code=422,
+        )
+    if not _is_dc_sens and _spec_candidate.get("dc_only"):
+        return HTMLResponse(
+            content=f"<p>Driver {driver!r} is only available for Data Center projects.</p>",
+            status_code=422,
+        )
 
     spec = DRIVER_SPECS[driver]
     field_id = spec["field_id"]
@@ -3287,6 +3338,7 @@ async def v2_scenario_sensitivity_run(
         "scenario_display": scenario_display,
         "results": results,
         "kpi_catalog": kpi_catalog_dicts,
+        "is_data_center": _is_dc_sens,
         "request": request,
     }
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))

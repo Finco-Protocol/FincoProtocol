@@ -1,13 +1,35 @@
 <!-- Sheet: Production — {{ project_ctx.name }} -->
 
+{% set _is_dc = project_ctx.technology == "Data Center" %}
+
 <div class="sheet-banner">
-  <span class="sheet-banner-tag">⚡ Production</span>
+  <span class="sheet-banner-tag">{% if _is_dc %}🖥️ Data Center{% else %}⚡ Production{% endif %}</span>
   <span class="sheet-banner-badge">
     <span class="badge badge-preview">Protected</span>
   </span>
 </div>
 
-<!-- Capacity & Yield -->
+{% if _is_dc %}
+<!-- Data Center: capacity & operational parameters -->
+<div class="sheet-card">
+  <div class="section-header">IT Capacity &amp; Operational Parameters</div>
+  <div class="assumption-grid">
+    <div class="assumption-item">
+      <span class="metric-label">IT Load Capacity</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.capacity_mw) }} MW IT</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Full-Time Operating Hours</span>
+      <span class="metric-value">{{ "{:,d}".format(project_ctx.operating_hours_p50|int) }} hrs/yr</span>
+    </div>
+    <div class="assumption-item">
+      <span class="metric-label">Availability</span>
+      <span class="metric-value">{{ "%.0f"|format(project_ctx.plant_availability * 100) }}%</span>
+    </div>
+  </div>
+</div>
+{% else %}
+<!-- Renewable: Capacity & Yield -->
 <div class="sheet-card">
   <div class="section-header">Capacity &amp; Yield Assumptions</div>
   <div class="assumption-grid">
@@ -48,6 +70,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 <div class="section-divider"></div>
 
