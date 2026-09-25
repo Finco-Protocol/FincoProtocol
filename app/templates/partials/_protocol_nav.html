@@ -1,10 +1,10 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
-   Shared across all FINCO Protocol surfaces:
-   Home · Model (library/workbook) · Radar · API
-   Placeholders: Docs · Roadmap · $FINCO
+   Shared across FINCO Protocol surfaces:
+   Home · Model (library/workbook) · Radar · API · Docs
+   Placeholders: Roadmap · $FINCO
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "api"
+     proto_active_page : str  — "home" | "model" | "radar" | "api" | "docs"
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -14,7 +14,6 @@
 <nav class="proto-nav" aria-label="FINCO Protocol navigation">
   <div class="proto-nav__inner">
     <a href="/" class="proto-nav__brand" aria-label="FINCO Protocol — Home">
-      {# Logo mark — reusable slot. Replace _finco_logo.html with the approved asset. #}
       {% with logo_variant="light", logo_size="sm" %}
       {% include "partials/_finco_logo.html" %}
       {% endwith %}
@@ -41,13 +40,11 @@
          {% if proto_active_page == 'api' %}aria-current="page"{% endif %}>
         API
       </a>
-      {# Placeholder items — not yet live. Non-interactive; aria-disabled. #}
-      <span class="proto-nav__link proto-nav__link--placeholder"
-            aria-disabled="true"
-            title="Coming soon">
+      <a href="/docs/start"
+         class="proto-nav__link{% if proto_active_page == 'docs' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'docs' %}aria-current="page"{% endif %}>
         Docs
-        <span class="proto-nav__soon" aria-hidden="true">Soon</span>
-      </span>
+      </a>
       <span class="proto-nav__link proto-nav__link--placeholder"
             aria-disabled="true"
             title="Coming soon">
