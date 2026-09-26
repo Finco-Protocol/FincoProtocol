@@ -31,7 +31,6 @@ CHALLENGE_TTL_SECONDS = 300  # 5 minutes
 def build_challenge_text(
     wallet_address: str,
     nonce: str,
-    user_id: str,
     chain_id: int,
     issued_at: datetime,
     expires_at: datetime,
@@ -39,14 +38,15 @@ def build_challenge_text(
 ) -> str:
     """Build the EIP-191 challenge message text.
 
-    The challenge binds: domain, wallet address, user id, nonce, timestamps,
-    and chain id.  The browser wallet signs this exact string.
+    Binds: domain, wallet address, chain id, nonce, timestamps.
+    Internal user_id is NOT included — it must never appear in a signed
+    browser-visible message.  Server-side nonce→user binding is maintained
+    in wallet_challenges.user_id (FINCO_WALLET_SERVER_SIDE_USER_BINDING).
     """
     return (
         f"FINCO Protocol wants you to verify wallet ownership.\n\n"
         f"Domain: {domain}\n"
         f"Wallet: {wallet_address}\n"
-        f"User: {user_id}\n"
         f"Chain ID: {chain_id}\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {issued_at.isoformat()}\n"
@@ -95,11 +95,12 @@ def issue_challenge(
     user_id: str,
     wallet_address: str,
     chain_id: int,
-    domain: str = "localhost",
+    domain: str,  # required — must be FINCO_APP_DOMAIN (never request-derived)
 ) -> dict:
     """Create a challenge nonce and store it in the DB.
 
     Returns a dict with challenge_text and nonce for the response.
+    FINCO_WALLET_DOMAIN_EXPLICIT: domain has no default to prevent localhost leaking.
     """
     from app.persistence.db import get_connection
 
@@ -110,7 +111,6 @@ def issue_challenge(
     text = build_challenge_text(
         wallet_address=wallet_address,
         nonce=nonce,
-        user_id=user_id,
         chain_id=chain_id,
         issued_at=now,
         expires_at=expires,
@@ -170,6 +170,26 @@ def verify_challenge(
         _ensure_challenge_table(conn)
         _ensure_wallet_table(conn)
 
+        # Atomic single-use nonce: flip used=0→1 in one statement.
+        # SQLite's exclusive write lock makes this safe under concurrent access —
+        # rowcount==0 means the nonce was already consumed or never existed.
+        # FINCO_WALLET_NONCE_ATOMIC_SINGLE_USE
+        cursor = conn.execute(
+            "UPDATE wallet_challenges SET used = 1 WHERE nonce = ? AND used = 0",
+            (nonce,),
+        )
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            row = conn.execute(
+                "SELECT nonce, used FROM wallet_challenges WHERE nonce = ?",
+                (nonce,),
+            ).fetchone()
+            if row is None:
+                raise WalletVerifyError("NONCE_NOT_FOUND", "Challenge nonce not found.")
+            raise WalletVerifyError("NONCE_ALREADY_USED", "Challenge nonce already used.")
+
+        # Nonce consumed — fetch full row for remaining validation.
         row = conn.execute(
             """
             SELECT nonce, user_id, wallet_address, challenge_text,
@@ -179,20 +199,6 @@ def verify_challenge(
             """,
             (nonce,),
         ).fetchone()
-
-        # Consume nonce regardless of outcome
-        if row is not None:
-            conn.execute(
-                "UPDATE wallet_challenges SET used = 1 WHERE nonce = ?",
-                (nonce,),
-            )
-            conn.commit()
-
-        if row is None:
-            raise WalletVerifyError("NONCE_NOT_FOUND", "Challenge nonce not found.")
-
-        if row["used"]:
-            raise WalletVerifyError("NONCE_ALREADY_USED", "Challenge nonce already used.")
 
         # Cross-user isolation
         if row["user_id"] != user_id:
@@ -208,14 +214,16 @@ def verify_challenge(
                 "Wallet address does not match challenge.",
             )
 
-        # Expiry check
+        # Expiry check — nonce already consumed above (expired nonce is spent)
+        # FINCO_WALLET_EXPIRED_CHALLENGE_CONSUMES_NONCE
         expires_at = datetime.fromisoformat(row["expires_at"])
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) > expires_at:
             raise WalletVerifyError("CHALLENGE_EXPIRED", "Challenge has expired.")
 
-        # EIP-191 signature verification
+        # EIP-191 signature verification — nonce already consumed above (bad sig is spent)
+        # FINCO_WALLET_INVALID_SIGNATURE_CONSUMES_NONCE
         challenge_text = row["challenge_text"]
         recovered = recover_eip191_signer(challenge_text, signature)
         if recovered is None:

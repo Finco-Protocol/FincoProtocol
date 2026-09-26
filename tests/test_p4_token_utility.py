@@ -67,14 +67,13 @@ class TestUtilityRegistry:
 class TestWalletChallenge:
     """B. Challenge contains required fields and is bound to user."""
 
-    def _make_challenge_text(self, wallet, nonce, user_id, chain_id=1, domain="test.domain"):
+    def _make_challenge_text(self, wallet, nonce, chain_id=1, domain="test.domain"):
         from app.protocol.wallet_auth import build_challenge_text
         now = datetime.now(timezone.utc)
         expires = now + timedelta(seconds=300)
         return build_challenge_text(
             wallet_address=wallet,
             nonce=nonce,
-            user_id=user_id,
             chain_id=chain_id,
             issued_at=now,
             expires_at=expires,
@@ -83,21 +82,24 @@ class TestWalletChallenge:
 
     def test_challenge_contains_nonce(self):
         nonce = str(uuid.uuid4())
-        text = self._make_challenge_text("0xabc" + "0" * 37, nonce, "user1")
+        text = self._make_challenge_text("0xabc" + "0" * 37, nonce)
         assert nonce in text
 
     def test_challenge_contains_wallet(self):
         wallet = "0x" + "a" * 40
-        text = self._make_challenge_text(wallet, str(uuid.uuid4()), "user1")
+        text = self._make_challenge_text(wallet, str(uuid.uuid4()))
         assert wallet in text
 
-    def test_challenge_contains_user_id(self):
-        user_id = "user_test_123"
-        text = self._make_challenge_text("0x" + "b" * 40, str(uuid.uuid4()), user_id)
-        assert user_id in text
+    def test_challenge_no_internal_user_id(self):
+        """FINCO_WALLET_CHALLENGE_NO_INTERNAL_USER_ID — internal user_id must not appear in signed challenge text."""
+        internal_user_id = "user_internal_123"
+        text = self._make_challenge_text("0x" + "b" * 40, str(uuid.uuid4()))
+        assert internal_user_id not in text
+        assert "User:" not in text
+        assert "user_id" not in text
 
     def test_challenge_contains_chain_id(self):
-        text = self._make_challenge_text("0x" + "c" * 40, str(uuid.uuid4()), "u1", chain_id=137)
+        text = self._make_challenge_text("0x" + "c" * 40, str(uuid.uuid4()), chain_id=137)
         assert "137" in text
 
     def test_challenge_contains_domain(self):
@@ -106,13 +108,23 @@ class TestWalletChallenge:
         text = build_challenge_text(
             wallet_address="0x" + "d" * 40,
             nonce=str(uuid.uuid4()),
-            user_id="u1",
             chain_id=1,
             issued_at=now,
             expires_at=now + timedelta(minutes=5),
             domain="test.example.com",
         )
         assert "test.example.com" in text
+
+    def test_domain_explicit_no_default(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_DOMAIN_EXPLICIT — issue_challenge() domain is required (no localhost default)."""
+        import inspect
+        from app.protocol.wallet_auth import issue_challenge
+        sig = inspect.signature(issue_challenge)
+        domain_param = sig.parameters.get("domain")
+        assert domain_param is not None, "domain param missing from issue_challenge"
+        assert domain_param.default is inspect.Parameter.empty, (
+            "domain must be a required arg; no default prevents localhost leaking into production"
+        )
 
     def test_challenge_issue_stores_in_db(self, tmp_path, monkeypatch):
         monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
@@ -121,11 +133,34 @@ class TestWalletChallenge:
             user_id="testuser",
             wallet_address="0x" + "e" * 40,
             chain_id=1,
+            domain="test.fincoprotocol.com",
         )
         assert "nonce" in result
         assert "challenge_text" in result
         assert "expires_at" in result
         assert len(result["nonce"]) > 10
+
+    def test_server_side_user_binding_preserved(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_SERVER_SIDE_USER_BINDING — user_id stored in DB even though absent from challenge text."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol.wallet_auth import issue_challenge
+        import app.persistence.db as _db_mod
+        result = issue_challenge(
+            user_id="internal_user_456",
+            wallet_address="0x" + "f" * 40,
+            chain_id=1,
+            domain="test.fincoprotocol.com",
+        )
+        # user_id is NOT in the signed text
+        assert "internal_user_456" not in result["challenge_text"]
+        # user_id IS stored in the DB for server-side isolation
+        conn = _db_mod.get_connection()
+        row = conn.execute(
+            "SELECT user_id FROM wallet_challenges WHERE nonce = ?", (result["nonce"],)
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["user_id"] == "internal_user_456"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -176,7 +211,7 @@ class TestSignatureVerification:
         kp = generate_keypair()
         addr = private_key_to_address(kp.private_key)
 
-        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1)
+        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1, domain="test.finco.local")
         sig = sign_personal_message(issued["challenge_text"], kp.private_key)
 
         result = verify_challenge(
@@ -202,7 +237,7 @@ class TestNonceReplay:
 
         kp = generate_keypair()
         addr = private_key_to_address(kp.private_key)
-        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1)
+        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1, domain="test.finco.local")
         sig = sign_personal_message(issued["challenge_text"], kp.private_key)
 
         # First use succeeds
@@ -231,7 +266,7 @@ class TestChallengeExpiration:
 
         kp = generate_keypair()
         addr = private_key_to_address(kp.private_key)
-        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1)
+        issued = issue_challenge(user_id="user1", wallet_address=addr, chain_id=1, domain="test.finco.local")
 
         # Manually expire the challenge in DB
         conn = _db_mod.get_connection()
@@ -266,7 +301,7 @@ class TestCrossUserIsolation:
         addrA = private_key_to_address(kpA.private_key)
 
         # Issue challenge for user A
-        issued = issue_challenge(user_id="userA", wallet_address=addrA, chain_id=1)
+        issued = issue_challenge(user_id="userA", wallet_address=addrA, chain_id=1, domain="test.finco.local")
         sig = sign_personal_message(issued["challenge_text"], kpA.private_key)
 
         # User B tries to use user A's nonce
@@ -278,6 +313,115 @@ class TestCrossUserIsolation:
                 signature=sig,
             )
         assert exc_info.value.reason_code == "USER_MISMATCH"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# F2. Atomic nonce
+# ────────────────────────────────────────────────────────────────────────────
+
+class TestAtomicNonce:
+    """FINCO_WALLET_NONCE_ATOMIC_SINGLE_USE, FINCO_WALLET_CONCURRENT_REPLAY_REJECTED,
+    FINCO_WALLET_INVALID_SIGNATURE_CONSUMES_NONCE, FINCO_WALLET_EXPIRED_CHALLENGE_CONSUMES_NONCE."""
+
+    def test_atomic_first_use_succeeds(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_NONCE_ATOMIC_SINGLE_USE — first use of a valid nonce succeeds."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol._evm_crypto import generate_keypair, sign_personal_message, private_key_to_address
+        from app.protocol.wallet_auth import issue_challenge, verify_challenge
+
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        issued = issue_challenge(user_id="u1", wallet_address=addr, chain_id=1, domain="test.local")
+        sig = sign_personal_message(issued["challenge_text"], kp.private_key)
+        result = verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        assert result.lower() == addr.lower()
+
+    def test_atomic_replay_rejected(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_NONCE_ATOMIC_SINGLE_USE — second use of same nonce is rejected atomically."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol._evm_crypto import generate_keypair, sign_personal_message, private_key_to_address
+        from app.protocol.wallet_auth import issue_challenge, verify_challenge, WalletVerifyError
+
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        issued = issue_challenge(user_id="u1", wallet_address=addr, chain_id=1, domain="test.local")
+        sig = sign_personal_message(issued["challenge_text"], kp.private_key)
+
+        verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        with pytest.raises(WalletVerifyError) as exc_info:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        assert exc_info.value.reason_code == "NONCE_ALREADY_USED"
+
+    def test_invalid_signature_consumes_nonce(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_INVALID_SIGNATURE_CONSUMES_NONCE — bad sig → SIGNATURE_INVALID, then nonce is spent."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol._evm_crypto import generate_keypair, private_key_to_address
+        from app.protocol.wallet_auth import issue_challenge, verify_challenge, WalletVerifyError
+
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        issued = issue_challenge(user_id="u1", wallet_address=addr, chain_id=1, domain="test.local")
+
+        # Use a signature that recovers to None (r=0, s=0)
+        bad_sig = "0x" + "00" * 64 + "1b"
+        with pytest.raises(WalletVerifyError) as exc_info:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=bad_sig)
+        assert exc_info.value.reason_code in ("SIGNATURE_INVALID", "SIGNER_MISMATCH")
+
+        # Nonce must now be spent — any second attempt raises NONCE_ALREADY_USED
+        with pytest.raises(WalletVerifyError) as exc_info2:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=bad_sig)
+        assert exc_info2.value.reason_code == "NONCE_ALREADY_USED"
+
+    def test_expired_challenge_consumes_nonce(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_EXPIRED_CHALLENGE_CONSUMES_NONCE — expired challenge uses up nonce."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol._evm_crypto import generate_keypair, sign_personal_message, private_key_to_address
+        from app.protocol.wallet_auth import issue_challenge, verify_challenge, WalletVerifyError
+        import app.persistence.db as _db_mod
+
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        issued = issue_challenge(user_id="u1", wallet_address=addr, chain_id=1, domain="test.local")
+
+        # Manually expire the challenge
+        conn = _db_mod.get_connection()
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        conn.execute("UPDATE wallet_challenges SET expires_at = ? WHERE nonce = ?", (past, issued["nonce"]))
+        conn.commit()
+        conn.close()
+
+        sig = sign_personal_message(issued["challenge_text"], kp.private_key)
+        with pytest.raises(WalletVerifyError) as exc_info:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        assert exc_info.value.reason_code == "CHALLENGE_EXPIRED"
+
+        # Nonce must now be spent
+        with pytest.raises(WalletVerifyError) as exc_info2:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        assert exc_info2.value.reason_code == "NONCE_ALREADY_USED"
+
+    def test_concurrent_replay_rejected(self, tmp_path, monkeypatch):
+        """FINCO_WALLET_CONCURRENT_REPLAY_REJECTED — nonce pre-consumed (simulated race) → NONCE_ALREADY_USED."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        from app.protocol._evm_crypto import generate_keypair, sign_personal_message, private_key_to_address
+        from app.protocol.wallet_auth import issue_challenge, verify_challenge, WalletVerifyError
+        import app.persistence.db as _db_mod
+
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        issued = issue_challenge(user_id="u1", wallet_address=addr, chain_id=1, domain="test.local")
+
+        # Simulate concurrent consumer: mark nonce used=1 directly (race winner)
+        conn = _db_mod.get_connection()
+        conn.execute("UPDATE wallet_challenges SET used = 1 WHERE nonce = ?", (issued["nonce"],))
+        conn.commit()
+        conn.close()
+
+        sig = sign_personal_message(issued["challenge_text"], kp.private_key)
+        with pytest.raises(WalletVerifyError) as exc_info:
+            verify_challenge(user_id="u1", wallet_address=addr, nonce=issued["nonce"], signature=sig)
+        assert exc_info.value.reason_code == "NONCE_ALREADY_USED"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -675,16 +819,49 @@ class TestNoSensitiveLeakage:
 # ────────────────────────────────────────────────────────────────────────────
 
 class TestModelIndependence:
-    """R. With and without entitlement, same model outputs."""
+    """R. FINCO_TOKEN_NEVER_CHANGES_MODEL_MATH — run_project() outputs identical regardless of P4 access state."""
 
     def test_financial_engine_unchanged(self):
         """financial_engine module must be importable and unaffected."""
         import financial_engine  # must not raise
-        # The module exists and is importable — our changes leave it alone.
 
     def test_finco_core_unchanged(self):
         """finco_core module must be importable and unaffected."""
         import finco_core  # must not raise
+
+    def test_model_math_independent_of_p4_access(self, tmp_path, monkeypatch):
+        """FINCO_TOKEN_NEVER_CHANGES_MODEL_MATH — run_project() outputs are identical whether P4 token
+        config is absent (NOT_CONFIGURED) or fully set (ENTITLED). The financial engine never reads
+        FINCO_TOKEN_* env vars or any P4 access layer."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        for key in ("FINCO_TOKEN_RPC_URL", "FINCO_TOKEN_CHAIN_ID", "FINCO_TOKEN_ADDRESS", "FINCO_ACCESS_MIN_BALANCE"):
+            monkeypatch.delenv(key, raising=False)
+
+        from app.services.project_library_service import ensure_reference_models
+        from app.api.project_runner import run_project
+        ensure_reference_models()
+
+        # Run 1: P4 NOT_CONFIGURED state (no token env vars)
+        payload1 = run_project("Generic Solar Reference", "Base")
+        irr1 = payload1["kpis"]["project_irr"]
+        dscr1 = payload1["kpis"]["min_dscr"]
+        debt1 = payload1["kpis"].get("senior_debt_keur")
+
+        # Run 2: P4 ENTITLED state (all token env vars set)
+        monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "http://rpc.test.local:8545")
+        monkeypatch.setenv("FINCO_TOKEN_CHAIN_ID", "1")
+        monkeypatch.setenv("FINCO_TOKEN_ADDRESS", "0x" + "a" * 40)
+        monkeypatch.setenv("FINCO_ACCESS_MIN_BALANCE", "1")
+
+        payload2 = run_project("Generic Solar Reference", "Base")
+        irr2 = payload2["kpis"]["project_irr"]
+        dscr2 = payload2["kpis"]["min_dscr"]
+        debt2 = payload2["kpis"].get("senior_debt_keur")
+
+        # Model outputs must be identical — P4 token config has zero effect on math
+        assert irr1 == irr2, f"project_irr changed with P4 token config: {irr1} → {irr2}"
+        assert dscr1 == dscr2, f"min_dscr changed with P4 token config: {dscr1} → {dscr2}"
+        assert debt1 == debt2, f"senior_debt_keur changed with P4 token config: {debt1} → {debt2}"
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -692,15 +869,13 @@ class TestModelIndependence:
 # ────────────────────────────────────────────────────────────────────────────
 
 class TestCertificateIndependence:
-    """S. Wallet/balance change does not change cert digests."""
+    """S. FINCO_TOKEN_NEVER_CHANGES_RUN_CERTIFICATE — cert digests identical regardless of wallet state."""
 
     def test_run_certificate_module_importable(self):
-        # P3 run certificate may not be on main yet; skip gracefully if absent
         try:
             from app.verify.run_certificate import build_run_certificate
         except ModuleNotFoundError:
             pytest.skip("app.verify not on this branch — P3 not yet merged to main")
-        # Import succeeded — cert hashing has no dependency on wallet
 
     def test_cert_builder_has_no_wallet_param(self):
         import inspect
@@ -714,17 +889,64 @@ class TestCertificateIndependence:
         assert "wallet_address" not in param_names
         assert "balance" not in param_names
 
+    def test_cert_digests_independent_of_wallet_state(self, tmp_path, monkeypatch):
+        """FINCO_TOKEN_NEVER_CHANGES_RUN_CERTIFICATE — building a cert before and after adding a wallet
+        binding produces identical composite_hash, assumptions_sha256, outputs_sha256,
+        certificate_digest_sha256, certificate_id and engine_version."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        try:
+            from app.verify.run_certificate import build_run_certificate
+        except ModuleNotFoundError:
+            pytest.skip("app.verify not on this branch — P3 not yet merged to main")
+
+        from app.services.project_library_service import ensure_reference_models, ensure_reference_canonical_last_runs
+        from app.persistence.projects_repository import get_reference_by_template_source
+        from app.persistence.workspace_repository import get_workspace_state
+
+        ensure_reference_models()
+        ensure_reference_canonical_last_runs()
+        record = get_reference_by_template_source("generic_solar_reference")
+        assert record is not None
+        ws = get_workspace_state(record.user_id, record.project_id)
+        assert ws is not None
+
+        # Cert 1: no wallet binding
+        cert1 = build_run_certificate(ws, record)
+
+        # Add wallet binding (simulates P4 ENTITLED state)
+        from app.protocol.wallet_auth import _ensure_wallet_table
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        _ensure_wallet_table(conn)
+        conn.execute(
+            "INSERT OR REPLACE INTO user_wallets (user_id, wallet_address, verified_at) VALUES (?, ?, ?)",
+            (record.user_id, "0x" + "b" * 40, "2026-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Cert 2: wallet binding present — workspace state unchanged, cert must be identical
+        ws2 = get_workspace_state(record.user_id, record.project_id)
+        cert2 = build_run_certificate(ws2, record)
+
+        assert cert1["certificate_id"] == cert2["certificate_id"]
+        assert cert1["identity"]["composite_hash"] == cert2["identity"]["composite_hash"]
+        assert cert1["identity"]["assumptions_sha256"] == cert2["identity"]["assumptions_sha256"]
+        assert cert1["identity"]["outputs_sha256"] == cert2["identity"]["outputs_sha256"]
+        assert cert1["certificate_digest_sha256"] == cert2["certificate_digest_sha256"]
+        assert cert1["model"]["engine_version"] == cert2["model"]["engine_version"]
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # T. Radar economic independence
 # ────────────────────────────────────────────────────────────────────────────
 
 class TestRadarIndependence:
-    """T. Entitlement change does not alter tokenization premium result."""
+    """T. FINCO_TOKEN_NEVER_CHANGES_RADAR_ECONOMICS — tokenization premium identical regardless of P4 access state."""
 
     def test_tokenization_premium_module_no_wallet_import(self):
         """finco_radar tokenization_premium must not import wallet or access_decision."""
-        import ast, os
+        import os
         radar_prem_dir = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "finco_radar", "tokenization_premium"
@@ -738,9 +960,73 @@ class TestRadarIndependence:
             fpath = os.path.join(radar_prem_dir, fname)
             with open(fpath) as f:
                 source = f.read()
-            # Must not import wallet_auth or access_decision
             assert "wallet_auth" not in source, f"{fname} imports wallet_auth"
             assert "access_decision" not in source, f"{fname} imports access_decision"
+
+    def test_radar_economics_independent_of_p4_access(self, monkeypatch):
+        """FINCO_TOKEN_NEVER_CHANGES_RADAR_ECONOMICS — compute_tokenization_premium() returns identical
+        observation before and after P4 entitlement state change. The radar engine accepts no wallet
+        or access-decision arguments."""
+        import os
+        radar_prem_dir = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "finco_radar", "tokenization_premium"
+        )
+        if not os.path.isdir(radar_prem_dir):
+            pytest.skip("finco_radar/tokenization_premium not found — skipping")
+
+        from finco_radar.tokenization_premium.engine import compute_tokenization_premium
+        from finco_radar.tokenization_premium.contracts import (
+            TokenizationPremiumPolicy, ComplementIdentityStatus
+        )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Deterministic fixture: rawBid=9.00, rawAsk=11.00, multiplier=1, price=10.00
+        # underlying_mid = (9+11)/2 = 10; recomputed_basis = 10*1 = 10 = price → lineage OK
+        ref_evidence = {
+            "available": True,
+            "isTradingHalt": False,
+            "price": "10.00",
+            "rawBid": "9.00",
+            "rawAsk": "11.00",
+            "currentMultiplier": "1",
+            "observedAt": now_iso,
+        }
+        buy_exec = {"available": True, "effectivePrice": "10.50", "quotedAt": now_iso}
+        sell_exec = {"available": True, "effectivePrice": "9.50", "quotedAt": now_iso}
+        policy = TokenizationPremiumPolicy(max_evidence_skew_seconds=300)
+
+        # Observation 1: P4 NOT_CONFIGURED (no token env vars)
+        for key in ("FINCO_TOKEN_RPC_URL", "FINCO_TOKEN_CHAIN_ID", "FINCO_TOKEN_ADDRESS", "FINCO_ACCESS_MIN_BALANCE"):
+            monkeypatch.delenv(key, raising=False)
+        obs1 = compute_tokenization_premium(
+            reference_evidence=ref_evidence,
+            buy_exec_evidence=buy_exec,
+            sell_exec_evidence=sell_exec,
+            policy=policy,
+            complement_identity_status=ComplementIdentityStatus.MATCHED,
+        )
+
+        # Observation 2: P4 ENTITLED (all token env vars set)
+        monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "http://rpc.test.local:8545")
+        monkeypatch.setenv("FINCO_TOKEN_CHAIN_ID", "1")
+        monkeypatch.setenv("FINCO_TOKEN_ADDRESS", "0x" + "a" * 40)
+        monkeypatch.setenv("FINCO_ACCESS_MIN_BALANCE", "1")
+        obs2 = compute_tokenization_premium(
+            reference_evidence=ref_evidence,
+            buy_exec_evidence=buy_exec,
+            sell_exec_evidence=sell_exec,
+            policy=policy,
+            complement_identity_status=ComplementIdentityStatus.MATCHED,
+        )
+
+        # All fields must be identical — P4 token state has zero effect on radar economics
+        assert obs1.status == obs2.status
+        assert obs1.tokenization_premium_bps == obs2.tokenization_premium_bps
+        assert obs1.underlying_token_basis_usd_per_token == obs2.underlying_token_basis_usd_per_token
+        assert obs1.buy_execution_premium_bps == obs2.buy_execution_premium_bps
+        assert obs1.sell_execution_premium_bps == obs2.sell_execution_premium_bps
 
 
 # ────────────────────────────────────────────────────────────────────────────
