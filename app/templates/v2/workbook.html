@@ -50,6 +50,16 @@
     <div class="v2-toolbar-export" id="v2-export-controls">
       {% include "partials/_v2_export_controls.html" %}
     </div>
+    {# Run Certificate link — shown only when a certified last run exists #}
+    {% if cert_project_code %}
+    <div class="v2-toolbar-cert" data-cert-link="true">
+      <a href="/verify/run/{{ cert_project_code }}"
+         class="last-run-indicator__cert-link"
+         title="View tamper-evident integrity record for this committed run">
+        View Run Certificate
+      </a>
+    </div>
+    {% endif %}
   </div>
   {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
   <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">

@@ -327,8 +327,13 @@ def ensure_reference_canonical_last_runs() -> list[str]:
                 ws.replay_metadata.get("engine_version")
                 if (ws and ws.replay_metadata) else None
             )
+            identity_engine_ver = (
+                ws.last_runtime_identity.get("engine_version")
+                if (ws and ws.last_runtime_identity) else None
+            )
             if (stored_hash and stored_hash == current_hash
-                    and stored_engine_ver and stored_engine_ver == current_engine_ver):
+                    and stored_engine_ver and stored_engine_ver == current_engine_ver
+                    and identity_engine_ver and identity_engine_ver != "NOT_AVAILABLE"):
                 # Last run bound to current composite identity AND engine version — skip.
                 continue
             _seed_reference_last_run(record, defn, current_composite_hash=current_hash)
