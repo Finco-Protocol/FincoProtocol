@@ -1220,10 +1220,15 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           </li>
           <li>
             <strong>Excel / XLSX export reconciliation:</strong>
-            <code>TRUST_PACK_SOLAR_EXCEL_RECONCILIATION = DEFERRED</code>.
-            The Institutional XLSX Export capability has not yet been released for
-            the Solar Reference model. Cell-level reconciliation between the engine
-            output and a published workbook is deferred until that export is available.
+            <code>TRUST_PACK_SOLAR_EXCEL_RECONCILIATION = PASS</code>.
+            The Institutional XLSX Export (P1.2) is delivered. The workbook includes
+            a <em>Returns</em> sheet (Project IRR, Equity IRR, Total Sponsor XIRR),
+            a <em>Run Identity</em> sheet (run_id, project_id, engine version, export
+            timestamp), and a <em>Reconciliation</em> sheet with explicit numeric
+            checks: Sources = Uses, CAPEX detail = total, Revenue detail = runtime
+            total, OPEX exported, Debt service period sum = runtime total, and all
+            three return metrics exported = runtime values within tolerance.
+            All reconciliation checks PASS for the Generic Solar Reference.
           </li>
         </ul>
       </section>
