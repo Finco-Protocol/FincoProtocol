@@ -40,7 +40,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
-from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
+from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, tokenization_premium_view, view_model
 from app.radar_ui.market_read import MarketReadService, board_metadata, normalize_asset_uid
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
@@ -473,6 +473,38 @@ def _selected_from_snapshot_identity(snapshot, universe):
     return None
 
 
+def _verify_complement_identity(
+    primary_payload: dict,
+    complement_payload: dict,
+    expected_complement_direction: str,
+) -> tuple[bool, str]:
+    """Check that a complement snapshot is for the same asset and notional.
+
+    Compares economicAssetUid, chainId, contractAddress (case-insensitive),
+    notionalUsd, and direction.  Returns (verified, reason).
+    """
+    def _get(p: dict, key: str) -> str:
+        return str(p.get(key) or "").strip()
+
+    for field in ("economicAssetUid", "chainId"):
+        if _get(primary_payload, field) != _get(complement_payload, field):
+            return False, f"COMPLEMENT_{field.upper()}_MISMATCH"
+
+    if _get(primary_payload, "contractAddress").lower() != _get(complement_payload, "contractAddress").lower():
+        return False, "COMPLEMENT_CONTRACT_ADDRESS_MISMATCH"
+
+    primary_req = primary_payload.get("request") or {}
+    complement_req = complement_payload.get("request") or {}
+
+    if str(primary_req.get("notionalUsd") or "") != str(complement_req.get("notionalUsd") or ""):
+        return False, "COMPLEMENT_NOTIONAL_MISMATCH"
+
+    if str(complement_req.get("direction") or "").upper() != expected_complement_direction.upper():
+        return False, "COMPLEMENT_DIRECTION_MISMATCH"
+
+    return True, ""
+
+
 @router.get("/radar/snapshot/{snapshot_id}", response_class=HTMLResponse)
 async def radar_snapshot(request: Request, snapshot_id: str):
     """Network-free re-render of a persisted snapshot's panels."""
@@ -652,10 +684,65 @@ async def radar_equity_simulate(
     snapshot = await run_in_threadpool(get_service().acquire, request_obj)
 
     sim = view_model.build_radar_view(snapshot)
+
+    # P2: compute tokenization premium from primary + complement direction.
+    # Look up the complement direction snapshot from the store (network-free).
+    complement_direction = "SELL" if direction == "BUY" else "BUY"
+    try:
+        complement_request = composition.build_request(
+            complement_direction, size, selected)
+        complement_ids = get_service()._store.snapshot_ids_for_fingerprint(
+            complement_request.fingerprint)
+        complement_snapshot = (
+            get_service().get_snapshot(complement_ids[-1])
+            if complement_ids else None
+        )
+    except Exception:  # noqa: BLE001 - P2 is additive; never block primary result
+        complement_snapshot = None
+
+    primary_payload = snapshot.to_payload()
+    primary_provider = next(
+        (p for p in primary_payload.get("providers", [])
+         if p.get("provider") == composition.PROVIDER_NAME), None)
+    primary_evidence = (primary_provider or {}).get("evidence") or {}
+    ref_evidence = primary_evidence.get("reference") or {}
+
+    # Verify complement identity before consuming its execution evidence.
+    # Three distinct states must not be collapsed to one boolean:
+    #   ABSENT   — no complement snapshot yet (first acquisition); not a failure.
+    #   MISMATCH — complement exists but identity fails; fail closed.
+    #   MATCHED  — complement exists and identity verified; evidence consumed.
+    comp_evidence: dict = {}
+    if complement_snapshot is None:
+        comp_id_status = tokenization_premium_view.ComplementIdentityStatus.ABSENT
+    else:
+        comp_payload = complement_snapshot.to_payload()
+        _id_ok, _id_reason = _verify_complement_identity(
+            primary_payload, comp_payload, complement_direction,
+        )
+        if _id_ok:
+            comp_id_status = tokenization_premium_view.ComplementIdentityStatus.MATCHED
+            comp_provider = next(
+                (p for p in comp_payload.get("providers", [])
+                 if p.get("provider") == composition.PROVIDER_NAME), None)
+            comp_evidence = (comp_provider or {}).get("evidence") or {}
+        else:
+            comp_id_status = tokenization_premium_view.ComplementIdentityStatus.MISMATCH
+
+    buy_exec = primary_evidence.get("execution") if direction == "BUY" else comp_evidence.get("execution")
+    sell_exec = primary_evidence.get("execution") if direction == "SELL" else comp_evidence.get("execution")
+
+    p2 = tokenization_premium_view.compute_p2_view(
+        reference_evidence=ref_evidence,
+        buy_exec_evidence=buy_exec,
+        sell_exec_evidence=sell_exec,
+        complement_identity_status=comp_id_status,
+    )
+
     return _templates.TemplateResponse(
         request=request,
         name="radar/partials/execution_simulator_result.html",
-        context={"sim": sim, "sim_error": None},
+        context={"sim": sim, "sim_error": None, "p2": p2},
         status_code=200,
     )
 

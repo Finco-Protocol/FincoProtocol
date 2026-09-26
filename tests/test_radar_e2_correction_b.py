@@ -1011,28 +1011,33 @@ class TestB15FrozenP3Gate:
         except (subprocess.CalledProcessError, FileNotFoundError):
             pytest.skip("base commit unavailable in shallow checkout")
 
+    # Permitted finco_radar sub-packages (explicitly authorized PRs):
+    #   finco_radar/equity/         — E2 equity enrichment (PR #34 base)
+    #   finco_radar/tokenization_premium/ — P2 tokenization premium (PR #100)
+    _PERMITTED_FINCO_RADAR_PREFIXES = (
+        "finco_radar/equity/",
+        "finco_radar/tokenization_premium/",
+    )
+
+    def _is_violation(self, path: str) -> bool:
+        if not path.startswith("finco_radar/"):
+            return False
+        return not any(path.startswith(p) for p in self._PERMITTED_FINCO_RADAR_PREFIXES)
+
     def test_b15_head_has_no_non_equity_finco_radar_changes(self):
-        """Actual HEAD: no finco_radar/** changes outside finco_radar/equity/."""
+        """Actual HEAD: no finco_radar/** changes outside permitted sub-packages."""
         changed = self._get_changed_files()
-        violations = [
-            p for p in changed
-            if p.startswith("finco_radar/")
-            and not p.startswith("finco_radar/equity/")
-        ]
+        violations = [p for p in changed if self._is_violation(p)]
         assert not violations, (
-            "Non-equity finco_radar paths modified (frozen): " + str(violations)
+            "Non-permitted finco_radar paths modified (frozen): " + str(violations)
         )
 
     def test_b15_simulated_non_equity_change_would_fail(self):
-        """Gate correctly flags a simulated new non-equity finco_radar path."""
+        """Gate correctly flags a simulated new non-permitted finco_radar path."""
         changed = self._get_changed_files()
-        # Simulate adding a new non-equity finco_radar file
+        # Simulate adding a new non-permitted finco_radar file
         simulated = changed + ["finco_radar/new_module/something.py"]
-        violations = [
-            p for p in simulated
-            if p.startswith("finco_radar/")
-            and not p.startswith("finco_radar/equity/")
-        ]
+        violations = [p for p in simulated if self._is_violation(p)]
         assert violations == ["finco_radar/new_module/something.py"], (
             f"Expected simulated violation to be caught; got: {violations}"
         )

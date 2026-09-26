@@ -411,6 +411,11 @@ def composition_radar_source(
                         reference_authority.token_midpoint_usd_per_token),
                     "bid": str(reference_authority.token_bid_usd_per_token),
                     "ask": str(reference_authority.token_ask_usd_per_token),
+                    # P2: raw underlying equity prices and multiplier authority
+                    # for tokenization-premium computation (never duplicated).
+                    "rawBid": str(reference_authority.raw_bid_usd_per_share),
+                    "rawAsk": str(reference_authority.raw_ask_usd_per_share),
+                    "currentMultiplier": str(reference_authority.current_multiplier),
                     "source": f"FROZEN::{type(reference_authority).__name__}",
                     "observedAt": reference_authority.generated_at.isoformat(),
                     "isTradingHalt": reference_authority.is_trading_halt,
