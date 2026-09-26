@@ -408,6 +408,209 @@ class TestCrossLayerInvariants:
         assert VERIFIED_ASSET_SCHEMA == "FINCO_VERIFIED_ASSET_V1"
 
 
+# ── F: Correction A — VERIFIED fail-closed guard ─────────────────────────────
+
+class TestVerifiedFailClosedGuard:
+    """Correction A: binding alone must never produce VERIFIED.
+
+    VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+    VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
+    VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
+    VERIFIED_ASSET_CURRENT_V1_REMAINS_MODEL_ONLY
+    """
+
+    def test_binding_alone_does_not_produce_verified(self):
+        """A discovered market binding without full P2 observation → not VERIFIED.
+
+        VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+        """
+        from app.verified.composer import build_verified_asset
+        from app.verified.contracts import VerifiedAssetStatus
+
+        asset_def = _make_asset_def()
+        pr = _make_project()
+        ws = _make_ws()
+
+        # Simulate discover_model_evidence returning a non-None binding.
+        fake_binding = object()
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64), \
+             patch("finco_radar.model_radar.bridge.discover_model_evidence",
+                   return_value=(fake_binding, None)):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["status"] != VerifiedAssetStatus.VERIFIED, (
+            "A bare market binding must not produce VERIFIED"
+        )
+
+    def test_binding_alone_does_not_produce_verified_market_partial(self):
+        """A bare binding also does not produce VERIFIED_MARKET_PARTIAL.
+
+        VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+        """
+        from app.verified.composer import build_verified_asset
+        from app.verified.contracts import VerifiedAssetStatus
+
+        asset_def = _make_asset_def()
+        pr = _make_project()
+        ws = _make_ws()
+
+        fake_binding = object()
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64), \
+             patch("finco_radar.model_radar.bridge.discover_model_evidence",
+                   return_value=(fake_binding, None)):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["status"] not in (
+            VerifiedAssetStatus.VERIFIED,
+            VerifiedAssetStatus.VERIFIED_MARKET_PARTIAL,
+        ), (
+            f"Bare binding must fail closed; got {record['status']}"
+        )
+
+    def test_binding_alone_fails_to_model_only(self):
+        """A discovered binding with no full market evidence → MODEL_ONLY.
+
+        VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+        VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
+        """
+        from app.verified.composer import build_verified_asset
+        from app.verified.contracts import VerifiedAssetStatus
+
+        asset_def = _make_asset_def()
+        pr = _make_project()
+        ws = _make_ws()
+
+        fake_binding = object()
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64), \
+             patch("finco_radar.model_radar.bridge.discover_model_evidence",
+                   return_value=(fake_binding, None)):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["status"] == VerifiedAssetStatus.MODEL_ONLY
+
+    def test_no_placeholder_market_section_emitted(self):
+        """Binding alone must not emit placeholder market evidence.
+
+        VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
+        """
+        from app.verified.composer import build_verified_asset
+
+        asset_def = _make_asset_def()
+        pr = _make_project()
+        ws = _make_ws()
+
+        fake_binding = object()
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64), \
+             patch("finco_radar.model_radar.bridge.discover_model_evidence",
+                   return_value=(fake_binding, None)):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["market"] is None, (
+            "No placeholder market section must be emitted from binding alone"
+        )
+        # Specifically: no fabricated premium, execution prices, or quotes
+        market = record.get("market")
+        if market is not None:
+            for forbidden in (
+                "tokenization_premium_bps",
+                "execution_mid",
+                "binding",
+            ):
+                assert forbidden not in market, (
+                    f"Fabricated market field '{forbidden}' must not appear"
+                )
+
+    def test_verified_requires_all_six_authorities_documented_in_source(self):
+        """VERIFIED gate is documented in composer source.
+
+        VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
+        """
+        import inspect
+        import app.verified.composer as mod
+        source = inspect.getsource(mod)
+        # All six required authorities must be named.
+        assert "canonical P2 tokenization-premium" in source or \
+               "compute_tokenization_premium" in source or \
+               "P2 tokenization" in source
+        assert "Run Certificate" in source or "build_run_certificate" in source
+        assert "VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED" in source
+        assert "VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED" in source
+
+    def test_current_v1_solar_remains_model_only(self):
+        """generic_solar_reference is MODEL_ONLY after Correction A.
+
+        VERIFIED_ASSET_CURRENT_V1_REMAINS_MODEL_ONLY
+        """
+        from app.verified.composer import build_verified_asset
+        from app.verified.contracts import VerifiedAssetStatus
+        from app.verified.asset_registry import get_asset_definition
+
+        asset_def = get_asset_definition("generic_solar_reference")
+        pr = _make_project("generic_solar_reference")
+        ws = _make_ws()
+
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["status"] == VerifiedAssetStatus.MODEL_ONLY
+
+    def test_current_v1_wind_remains_model_only(self):
+        """generic_wind_reference is MODEL_ONLY after Correction A.
+
+        VERIFIED_ASSET_CURRENT_V1_REMAINS_MODEL_ONLY
+        """
+        from app.verified.composer import build_verified_asset
+        from app.verified.contracts import VerifiedAssetStatus
+        from app.verified.asset_registry import get_asset_definition
+
+        asset_def = get_asset_definition("generic_wind_reference")
+        pr = _make_project("generic_wind_reference")
+        ws = _make_ws()
+
+        with patch("finco_protocol.verification.envelope.canonical_sha256", return_value="a" * 64):
+            record = build_verified_asset(asset_def, pr, ws)
+
+        assert record["status"] == VerifiedAssetStatus.MODEL_ONLY
+
+    def test_verified_state_not_emitted_by_any_v1_path(self):
+        """No code path in composer.py can currently emit VERIFIED.
+
+        VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
+        """
+        import inspect
+        import ast
+        import app.verified.composer as mod
+
+        source = inspect.getsource(mod)
+        tree = ast.parse(source)
+
+        # Walk AST looking for any assignment of VERIFIED (not VERIFIED_MARKET_PARTIAL)
+        # that isn't inside a comment/docstring.
+        class VerifiedAssignmentFinder(ast.NodeVisitor):
+            def __init__(self):
+                self.found = []
+
+            def visit_Assign(self, node):
+                val = node.value
+                # Look for status = VerifiedAssetStatus.VERIFIED (not PARTIAL)
+                if isinstance(val, ast.Attribute):
+                    if val.attr == "VERIFIED" and not val.attr.startswith("VERIFIED_"):
+                        self.found.append(ast.unparse(node))
+                self.generic_visit(node)
+
+        finder = VerifiedAssignmentFinder()
+        finder.visit(tree)
+
+        # Filter: only catch plain VERIFIED assignments, not VERIFIED_MARKET_PARTIAL
+        plain_verified = [
+            s for s in finder.found
+            if "VERIFIED_MARKET_PARTIAL" not in s and ".VERIFIED" in s
+        ]
+        assert plain_verified == [], (
+            f"composer.py must not assign plain VERIFIED status: {plain_verified}"
+        )
+
+
 # Acceptance marker — this test passing signals FINCO_P5_VERIFIED_ASSETS_V1_COMPLETE
 class TestP5AcceptanceMarker:
 

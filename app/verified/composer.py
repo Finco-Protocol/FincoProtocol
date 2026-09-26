@@ -147,21 +147,45 @@ def build_verified_asset(
     # discover_model_evidence returns MODEL_BINDING_UNAVAILABLE for all assets
     # in V1 — this is truthful, not an error.
     # FINCO_P5_NO_FABRICATED_MARKET_IDENTITY
+    #
+    # VERIFIED STATE GATE — all six authorities required, fail-closed:
+    #   1. valid committed FINCO Last Run          (certificate above)
+    #   2. valid P3 Run Certificate                (certificate above)
+    #   3. canonical model ↔ market economic identity reconciliation
+    #   4. no identity conflict/mismatch (ComplementIdentityStatus.MATCHED)
+    #   5. canonical Radar reference evidence
+    #   6. canonical P2 tokenization-premium observation (compute_tokenization_premium)
+    #
+    # A bare market-identity binding satisfies ONLY authority 3 (partial).
+    # Authorities 4–6 require full Radar evidence + P2 premium computation,
+    # which is not yet available for any V1 asset.
+    # A discovered binding alone MUST NOT produce VERIFIED.
+    # Until all six authorities are available: fail closed to MODEL_ONLY.
+    #
+    # VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+    # VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
+    # VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
     market_section = None
     status = VerifiedAssetStatus.MODEL_ONLY
 
     try:
         from finco_radar.model_radar.bridge import discover_model_evidence
-        from finco_radar.model_radar.contracts import ModelRadarGapKind
         # asset_uid would be needed for a real market binding;
         # in V1 no asset_uid → market identity mapping exists.
         # We do not fabricate one.
         discovered, gap = discover_model_evidence(None)
         if discovered is not None:
-            # If a binding ever becomes available, compose market section here.
-            # For V1 this branch is unreachable.
-            status = VerifiedAssetStatus.VERIFIED
-            market_section = {"binding": "available"}
+            # A market identity binding was discovered. This satisfies authority 3
+            # only. Authorities 4–6 (identity reconciliation, Radar reference
+            # evidence, P2 tokenization-premium) are still required for VERIFIED.
+            # Without them, fail closed to MODEL_ONLY — never emit VERIFIED from
+            # a binding alone. Do NOT fabricate tokenization premium, execution
+            # midpoint, BUY/SELL quotes, or market freshness values here.
+            #
+            # VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
+            # VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
+            status = VerifiedAssetStatus.MODEL_ONLY
+            market_section = None
         else:
             status = VerifiedAssetStatus.MODEL_ONLY
             market_section = None
