@@ -82,5 +82,72 @@
   <p class="muted small" style="margin:4px 0 0;font-style:italic;">
     Simulation only — no order is submitted.
   </p>
+
+{# ── P2: Tokenization Premium ────────────────────────────────────────────── #}
+{% if p2 %}
+<div class="p2-tokenization-premium" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px;" aria-label="Tokenization premium observation">
+  <h4 style="margin:0 0 10px;font-size:14px;font-weight:600;letter-spacing:0.03em;">
+    Tokenization Premium
+  </h4>
+
+  {% if p2.available %}
+  <dl class="kv sim-kv">
+    {% if p2.underlying %}
+    <dt>Underlying mid</dt>
+    <dd><span class="mono small">{{ p2.underlying.rawMid or '—' }}</span>
+      <span class="muted small" style="margin-left:4px;">(bid {{ p2.underlying.rawBid or '—' }} / ask {{ p2.underlying.rawAsk or '—' }})</span>
+    </dd>
+    {% endif %}
+
+    {% if p2.tokenReference %}
+    <dt>Token reference mid</dt>
+    <dd><span class="mono small">{{ p2.tokenReference.mid or '—' }}</span>
+      <span class="muted small" style="margin-left:4px;">(×{{ p2.tokenReference.multiplier or '—' }})</span>
+    </dd>
+    {% endif %}
+
+    {% if p2.referencePremiumBps is not none %}
+    <dt>Reference premium</dt>
+    <dd><strong class="mono">{{ p2.referencePremiumBps }}</strong></dd>
+    {% endif %}
+
+    {% if p2.execution %}
+    {% if p2.execution.buyGapBps is not none %}
+    <dt>Execution gap (current direction)</dt>
+    <dd>
+      <strong class="mono {% if '-' in (p2.execution.buyGapBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ p2.execution.buyGapBps }}
+      </strong>
+      <span class="muted small" style="margin-left:4px;">execution premium: {{ p2.execution.buyPremiumBps or '—' }}</span>
+    </dd>
+    {% endif %}
+    {% if p2.execution.sellGapBps is not none %}
+    <dt>Execution gap (complement)</dt>
+    <dd>
+      <strong class="mono {% if '-' in (p2.execution.sellGapBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ p2.execution.sellGapBps }}
+      </strong>
+      <span class="muted small" style="margin-left:4px;">execution premium: {{ p2.execution.sellPremiumBps or '—' }}</span>
+    </dd>
+    {% endif %}
+    {% endif %}
+  </dl>
+
+  {% if p2.status == 'REFERENCE_PREMIUM_OK_EXECUTION_UNAVAILABLE' %}
+  <p class="muted small" style="margin:6px 0 0;">Execution data unavailable — reference premium shown only.</p>
+  {% endif %}
+
+  {% else %}
+  <p class="state-unavailable muted small" style="margin:0;">
+    Tokenization premium unavailable: {{ p2.suppressionReason or p2.status or '—' }}
+  </p>
+  {% endif %}
+
+  <p class="muted small" style="margin:8px 0 0;font-style:italic;font-size:11px;">
+    {{ p2.disclaimer if p2.disclaimer else 'Observation only — not a trading signal.' }}
+  </p>
+</div>
+{% endif %}
+
 </div>
 {% endif %}

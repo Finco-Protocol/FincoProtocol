@@ -40,7 +40,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_runtime.contracts import RadarRuntimeError
-from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, view_model
+from app.radar_ui import composition, equity_enrichment, equity_terminal, equity_view_model, tokenization_premium_view, view_model
 from app.radar_ui.market_read import MarketReadService, board_metadata, normalize_asset_uid
 
 # Featured equities default — symbols present in the canonical Robinhood universe.
@@ -652,10 +652,51 @@ async def radar_equity_simulate(
     snapshot = await run_in_threadpool(get_service().acquire, request_obj)
 
     sim = view_model.build_radar_view(snapshot)
+
+    # P2: compute tokenization premium from primary + complement direction.
+    # Look up the complement direction snapshot from the store (network-free).
+    complement_direction = "SELL" if direction == "BUY" else "BUY"
+    try:
+        complement_request = composition.build_request(
+            complement_direction, size, selected)
+        complement_ids = get_service()._store.snapshot_ids_for_fingerprint(
+            complement_request.fingerprint)
+        complement_snapshot = (
+            get_service().get_snapshot(complement_ids[-1])
+            if complement_ids else None
+        )
+    except Exception:  # noqa: BLE001 - P2 is additive; never block primary result
+        complement_snapshot = None
+
+    primary_payload = snapshot.to_payload()
+    primary_provider = next(
+        (p for p in primary_payload.get("providers", [])
+         if p.get("provider") == composition.PROVIDER_NAME), None)
+    primary_evidence = (primary_provider or {}).get("evidence") or {}
+    ref_evidence = primary_evidence.get("reference") or {}
+
+    if complement_snapshot is not None:
+        comp_payload = complement_snapshot.to_payload()
+        comp_provider = next(
+            (p for p in comp_payload.get("providers", [])
+             if p.get("provider") == composition.PROVIDER_NAME), None)
+        comp_evidence = (comp_provider or {}).get("evidence") or {}
+    else:
+        comp_evidence = {}
+
+    buy_exec = primary_evidence.get("execution") if direction == "BUY" else comp_evidence.get("execution")
+    sell_exec = primary_evidence.get("execution") if direction == "SELL" else comp_evidence.get("execution")
+
+    p2 = tokenization_premium_view.compute_p2_view(
+        reference_evidence=ref_evidence,
+        buy_exec_evidence=buy_exec,
+        sell_exec_evidence=sell_exec,
+    )
+
     return _templates.TemplateResponse(
         request=request,
         name="radar/partials/execution_simulator_result.html",
-        context={"sim": sim, "sim_error": None},
+        context={"sim": sim, "sim_error": None, "p2": p2},
         status_code=200,
     )
 
