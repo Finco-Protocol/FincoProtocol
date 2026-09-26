@@ -4117,16 +4117,9 @@ async def projects_redirect(request: Request):
 
 
 @app.get("/known-limitations")
-async def known_limitations_page(request: Request):
-    """U6: standalone Known Limitations page, reachable from Help and footer."""
-    user = get_current_user(request)
-    if not user:
-        return RedirectResponse(url="/login", status_code=302)
-    return templates.TemplateResponse(
-        request=request,
-        name="known_limitations_page.html",
-        context={"user": user},
-    )
+async def known_limitations_redirect():
+    """PUBLIC_NO_KNOWN_LIMITATIONS_PAGE: redirect deep links to docs status section."""
+    return RedirectResponse(url="/docs#status", status_code=301)
 
 
 @app.get("/pilot-guide")

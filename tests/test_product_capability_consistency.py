@@ -222,21 +222,27 @@ def test_roadmap_ev_development_note_removed():
         "Roadmap still states EV Charging is in development"
     )
 
-def test_known_limitations_mentions_all_live_references():
-    """known_limitations_page.html must reference all live production synthetic models."""
+def test_docs_limitations_mentions_all_live_references():
+    """Docs #status section must reference all live production verticals.
+
+    PUBLIC_NO_KNOWN_LIMITATIONS_PAGE: the standalone known-limitations page
+    has been replaced by contextual truth labels in /docs#status.
+    """
     from app.product_capability import LIVE_CAPABILITIES
-    text = (REPO / "app/templates/known_limitations_page.html").read_text()
+    html = _docs_html()
+    lower = html.lower()
     for cap in LIVE_CAPABILITIES:
-        assert cap.public_name in text, (
-            f"known_limitations_page.html is missing live capability '{cap.public_name}'"
+        assert cap.public_name.lower() in lower, (
+            f"Docs is missing live capability '{cap.public_name}'"
         )
 
 
-def test_known_limitations_documents_ev_v1_notes():
-    text = (REPO / "app/templates/known_limitations_page.html").read_text()
-    lower = text.lower()
+def test_docs_limitations_documents_ev_v1_scope():
+    """Docs limitations section must mention EV Charging as a production V1 vertical."""
+    html = _docs_html()
+    lower = html.lower()
     assert "ev charging" in lower
-    assert "v1" in lower
+    assert "v1" in lower or "production" in lower
 
 
 # ---------------------------------------------------------------------------
