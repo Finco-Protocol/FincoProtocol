@@ -473,6 +473,38 @@ def _selected_from_snapshot_identity(snapshot, universe):
     return None
 
 
+def _verify_complement_identity(
+    primary_payload: dict,
+    complement_payload: dict,
+    expected_complement_direction: str,
+) -> tuple[bool, str]:
+    """Check that a complement snapshot is for the same asset and notional.
+
+    Compares economicAssetUid, chainId, contractAddress (case-insensitive),
+    notionalUsd, and direction.  Returns (verified, reason).
+    """
+    def _get(p: dict, key: str) -> str:
+        return str(p.get(key) or "").strip()
+
+    for field in ("economicAssetUid", "chainId"):
+        if _get(primary_payload, field) != _get(complement_payload, field):
+            return False, f"COMPLEMENT_{field.upper()}_MISMATCH"
+
+    if _get(primary_payload, "contractAddress").lower() != _get(complement_payload, "contractAddress").lower():
+        return False, "COMPLEMENT_CONTRACT_ADDRESS_MISMATCH"
+
+    primary_req = primary_payload.get("request") or {}
+    complement_req = complement_payload.get("request") or {}
+
+    if str(primary_req.get("notionalUsd") or "") != str(complement_req.get("notionalUsd") or ""):
+        return False, "COMPLEMENT_NOTIONAL_MISMATCH"
+
+    if str(complement_req.get("direction") or "").upper() != expected_complement_direction.upper():
+        return False, "COMPLEMENT_DIRECTION_MISMATCH"
+
+    return True, ""
+
+
 @router.get("/radar/snapshot/{snapshot_id}", response_class=HTMLResponse)
 async def radar_snapshot(request: Request, snapshot_id: str):
     """Network-free re-render of a persisted snapshot's panels."""
@@ -675,14 +707,19 @@ async def radar_equity_simulate(
     primary_evidence = (primary_provider or {}).get("evidence") or {}
     ref_evidence = primary_evidence.get("reference") or {}
 
+    # Verify complement identity before consuming its execution evidence.
+    comp_evidence: dict = {}
+    complement_identity_verified = False
     if complement_snapshot is not None:
         comp_payload = complement_snapshot.to_payload()
-        comp_provider = next(
-            (p for p in comp_payload.get("providers", [])
-             if p.get("provider") == composition.PROVIDER_NAME), None)
-        comp_evidence = (comp_provider or {}).get("evidence") or {}
-    else:
-        comp_evidence = {}
+        complement_identity_verified, _id_reason = _verify_complement_identity(
+            primary_payload, comp_payload, complement_direction,
+        )
+        if complement_identity_verified:
+            comp_provider = next(
+                (p for p in comp_payload.get("providers", [])
+                 if p.get("provider") == composition.PROVIDER_NAME), None)
+            comp_evidence = (comp_provider or {}).get("evidence") or {}
 
     buy_exec = primary_evidence.get("execution") if direction == "BUY" else comp_evidence.get("execution")
     sell_exec = primary_evidence.get("execution") if direction == "SELL" else comp_evidence.get("execution")
@@ -691,6 +728,7 @@ async def radar_equity_simulate(
         reference_evidence=ref_evidence,
         buy_exec_evidence=buy_exec,
         sell_exec_evidence=sell_exec,
+        complement_identity_verified=complement_identity_verified,
     )
 
     return _templates.TemplateResponse(

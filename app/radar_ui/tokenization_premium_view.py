@@ -17,8 +17,15 @@ from finco_radar.tokenization_premium.engine import compute_tokenization_premium
 
 _DISCLAIMER = (
     "OBSERVATION ONLY — not a trading signal, not a recommendation. "
-    "Gap values reflect quote vs. reference at the time of the snapshot only."
+    "Premium values reflect DEX execution vs. underlying-equivalent basis "
+    "at the time of the snapshot only."
 )
+
+# P2 cross-direction coherence window.
+# BUY and SELL execution evidence may come from separate acquisitions
+# (complement lookup), so the acceptable skew is wider than R2's
+# within-acquisition 120 s bound.
+_P2_CROSS_DIRECTION_SKEW_SECONDS = 300
 
 
 def _fmt_usd(value: Decimal | None) -> str | None:
@@ -56,44 +63,53 @@ def build_tokenization_premium_view(
 ) -> dict[str, Any]:
     """Build the token-market panel view from one frozen P2 observation."""
     ok = obs.is_ok()
-    ref_ok = obs.reference_premium_available()
+    basis_ok = obs.basis_available()
+    market_ok = obs.independent_market_available()
 
     return {
-        "available": ok or ref_ok,
+        "available": ok or basis_ok,
         "status": obs.status.value,
         "disclaimer": _DISCLAIMER,
-        # Underlying equity reference
+        # Underlying equity reference (unit conversion only; not premium)
         "underlying": {
             "rawBid": _fmt_usd(obs.underlying_raw_bid_usd_per_share),
             "rawAsk": _fmt_usd(obs.underlying_raw_ask_usd_per_share),
             "rawMid": _fmt_usd(obs.underlying_raw_mid_usd_per_share),
-        } if ref_ok else None,
-        # Token reference (multiplier-adjusted)
-        "tokenReference": {
-            "bid": _fmt_usd(obs.token_reference_bid_usd_per_token),
-            "ask": _fmt_usd(obs.token_reference_ask_usd_per_token),
-            "mid": _fmt_usd(obs.token_reference_mid_usd_per_token),
             "multiplier": _fmt_multiplier(obs.current_multiplier),
-        } if ref_ok else None,
-        # Reference premium
-        "referencePremiumBps": _fmt_bps(obs.reference_premium_bps) if ref_ok else None,
-        "referencePremiumRaw": str(obs.reference_premium_bps) if ref_ok and obs.reference_premium_bps is not None else None,
-        # Execution-adjusted premiums and gaps
+            "tokenBasis": _fmt_usd(obs.underlying_token_basis_usd_per_token),
+        } if basis_ok else None,
+        # Independent DEX execution prices — labeled by direction always
         "execution": {
-            "buyPrice": _fmt_usd(obs.buy_execution_price_usd_per_token),
-            "sellPrice": _fmt_usd(obs.sell_execution_price_usd_per_token),
-            "buyPremiumBps": _fmt_bps(obs.buy_execution_premium_bps),
-            "sellPremiumBps": _fmt_bps(obs.sell_execution_premium_bps),
-            "buyGapBps": _fmt_bps(obs.buy_execution_gap_bps),
-            "sellGapBps": _fmt_bps(obs.sell_execution_gap_bps),
-        } if ok else None,
+            "buyExecutionPrice": _fmt_usd(obs.buy_execution_price_usd_per_token),
+            "sellExecutionPrice": _fmt_usd(obs.sell_execution_price_usd_per_token),
+            "executionMidPrice": _fmt_usd(obs.execution_mid_price_usd_per_token),
+        } if market_ok else None,
+        # Tokenization premium: execution mid vs underlying basis (both directions required)
+        "tokenizationPremiumBps": _fmt_bps(obs.tokenization_premium_bps) if ok else None,
+        "tokenizationPremiumRaw": (
+            str(obs.tokenization_premium_bps)
+            if ok and obs.tokenization_premium_bps is not None
+            else None
+        ),
+        # Directional premiums: each direction vs underlying basis
+        # Labeled by direction (BUY/SELL), not by primary/complement position
+        "directionalPremiums": {
+            "buyExecutionPremiumBps": _fmt_bps(obs.buy_execution_premium_bps),
+            "sellExecutionPremiumBps": _fmt_bps(obs.sell_execution_premium_bps),
+        } if market_ok else None,
         # Timestamps
         "timestamps": {
-            "referenceObservedAt": obs.reference_observed_at.isoformat() if obs.reference_observed_at else None,
-            "buyQuoteObservedAt": obs.buy_quote_observed_at.isoformat() if obs.buy_quote_observed_at else None,
-            "sellQuoteObservedAt": obs.sell_quote_observed_at.isoformat() if obs.sell_quote_observed_at else None,
+            "referenceObservedAt": (
+                obs.reference_observed_at.isoformat() if obs.reference_observed_at else None
+            ),
+            "buyQuoteObservedAt": (
+                obs.buy_quote_observed_at.isoformat() if obs.buy_quote_observed_at else None
+            ),
+            "sellQuoteObservedAt": (
+                obs.sell_quote_observed_at.isoformat() if obs.sell_quote_observed_at else None
+            ),
         },
-        # Suppression reason when not OK
+        # Suppression reason when not fully OK
         "suppressionReason": obs.suppression_reason,
     }
 
@@ -103,7 +119,8 @@ def compute_p2_view(
     reference_evidence: Mapping[str, Any],
     buy_exec_evidence: Mapping[str, Any] | None,
     sell_exec_evidence: Mapping[str, Any] | None,
-    max_evidence_skew_seconds: int = 300,
+    complement_identity_verified: bool = True,
+    max_evidence_skew_seconds: int = _P2_CROSS_DIRECTION_SKEW_SECONDS,
 ) -> dict[str, Any]:
     """Entry point for router.py: compute P2 and return a view dict.
 
@@ -118,12 +135,13 @@ def compute_p2_view(
             buy_exec_evidence=buy_exec_evidence,
             sell_exec_evidence=sell_exec_evidence,
             policy=policy,
+            complement_identity_verified=complement_identity_verified,
         )
         return build_tokenization_premium_view(obs)
     except Exception:  # noqa: BLE001
         return {
             "available": False,
-            "status": "P2_COMPUTE_ERROR",
+            "status": TokenizationPremiumStatus.PRESENTATION_BOUNDARY_ERROR.value,
             "suppressionReason": "INTERNAL_ERROR",
             "disclaimer": _DISCLAIMER,
         }

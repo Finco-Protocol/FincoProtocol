@@ -92,49 +92,69 @@
 
   {% if p2.available %}
   <dl class="kv sim-kv">
+    {# Underlying equity basis (unit conversion; NOT premium source) #}
     {% if p2.underlying %}
     <dt>Underlying mid</dt>
     <dd><span class="mono small">{{ p2.underlying.rawMid or '—' }}</span>
       <span class="muted small" style="margin-left:4px;">(bid {{ p2.underlying.rawBid or '—' }} / ask {{ p2.underlying.rawAsk or '—' }})</span>
     </dd>
-    {% endif %}
-
-    {% if p2.tokenReference %}
-    <dt>Token reference mid</dt>
-    <dd><span class="mono small">{{ p2.tokenReference.mid or '—' }}</span>
-      <span class="muted small" style="margin-left:4px;">(×{{ p2.tokenReference.multiplier or '—' }})</span>
+    <dt>Token basis (×{{ p2.underlying.multiplier or '—' }})</dt>
+    <dd><span class="mono small">{{ p2.underlying.tokenBasis or '—' }}</span>
+      <span class="muted small" style="margin-left:4px;">unit-conversion basis, not premium</span>
     </dd>
     {% endif %}
 
-    {% if p2.referencePremiumBps is not none %}
-    <dt>Reference premium</dt>
-    <dd><strong class="mono">{{ p2.referencePremiumBps }}</strong></dd>
-    {% endif %}
-
+    {# Independent DEX execution prices — labeled by direction, not position #}
     {% if p2.execution %}
-    {% if p2.execution.buyGapBps is not none %}
-    <dt>Execution gap (current direction)</dt>
+    {% if p2.execution.buyExecutionPrice is not none %}
+    <dt>BUY execution price</dt>
+    <dd><span class="mono small">{{ p2.execution.buyExecutionPrice }}</span></dd>
+    {% endif %}
+    {% if p2.execution.sellExecutionPrice is not none %}
+    <dt>SELL execution price</dt>
+    <dd><span class="mono small">{{ p2.execution.sellExecutionPrice }}</span></dd>
+    {% endif %}
+    {% if p2.execution.executionMidPrice is not none %}
+    <dt>Execution mid price</dt>
+    <dd><span class="mono small">{{ p2.execution.executionMidPrice }}</span></dd>
+    {% endif %}
+    {% endif %}
+
+    {# Tokenization premium: execution mid vs underlying basis (both dirs required) #}
+    {% if p2.tokenizationPremiumBps is not none %}
+    <dt>Tokenization premium</dt>
     <dd>
-      <strong class="mono {% if '-' in (p2.execution.buyGapBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
-        {{ p2.execution.buyGapBps }}
+      <strong class="mono {% if '-' in (p2.tokenizationPremiumBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ p2.tokenizationPremiumBps }}
       </strong>
-      <span class="muted small" style="margin-left:4px;">execution premium: {{ p2.execution.buyPremiumBps or '—' }}</span>
     </dd>
     {% endif %}
-    {% if p2.execution.sellGapBps is not none %}
-    <dt>Execution gap (complement)</dt>
+
+    {# Directional premiums vs underlying basis — always by direction #}
+    {% if p2.directionalPremiums %}
+    {% if p2.directionalPremiums.buyExecutionPremiumBps is not none %}
+    <dt>BUY execution premium</dt>
     <dd>
-      <strong class="mono {% if '-' in (p2.execution.sellGapBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
-        {{ p2.execution.sellGapBps }}
+      <strong class="mono {% if '-' in (p2.directionalPremiums.buyExecutionPremiumBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ p2.directionalPremiums.buyExecutionPremiumBps }}
       </strong>
-      <span class="muted small" style="margin-left:4px;">execution premium: {{ p2.execution.sellPremiumBps or '—' }}</span>
+    </dd>
+    {% endif %}
+    {% if p2.directionalPremiums.sellExecutionPremiumBps is not none %}
+    <dt>SELL execution premium</dt>
+    <dd>
+      <strong class="mono {% if '-' in (p2.directionalPremiums.sellExecutionPremiumBps | string) %}sim-gap--neg{% else %}sim-gap--pos{% endif %}">
+        {{ p2.directionalPremiums.sellExecutionPremiumBps }}
+      </strong>
     </dd>
     {% endif %}
     {% endif %}
   </dl>
 
-  {% if p2.status == 'REFERENCE_PREMIUM_OK_EXECUTION_UNAVAILABLE' %}
-  <p class="muted small" style="margin:6px 0 0;">Execution data unavailable — reference premium shown only.</p>
+  {% if p2.status == 'TOKEN_MARKET_REFERENCE_UNAVAILABLE' %}
+  <p class="muted small" style="margin:6px 0 0;">No independent DEX execution available — underlying basis shown only.</p>
+  {% elif p2.status == 'EXECUTION_PREMIUM_PARTIAL' %}
+  <p class="muted small" style="margin:6px 0 0;">Only one execution direction available — execution mid and tokenization premium require both.</p>
   {% endif %}
 
   {% else %}

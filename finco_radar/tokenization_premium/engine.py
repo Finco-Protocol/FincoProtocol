@@ -6,10 +6,16 @@ quote normalization, liquidity math, slippage, VWAP, freshness authority,
 corporate-action authority, or hash/lineage authority.
 
 This is NOT a trading system.  No BUY/SELL/OPPORTUNITY/ARBITRAGE labels.
+
+Economic semantic note (Correction A):
+  currentMultiplier is a UNIT CONVERSION (shares per token), not premium.
+  underlying_token_basis = raw_underlying_mid × currentMultiplier
+  This equals R2's token_midpoint_usd_per_token — comparing them yields zero.
+  Real tokenization premium requires an INDEPENDENT DEX execution price.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
@@ -72,17 +78,14 @@ def _suppressed(
         underlying_raw_bid_usd_per_share=None,
         underlying_raw_ask_usd_per_share=None,
         underlying_raw_mid_usd_per_share=None,
-        token_reference_bid_usd_per_token=None,
-        token_reference_ask_usd_per_token=None,
-        token_reference_mid_usd_per_token=None,
         current_multiplier=None,
-        reference_premium_bps=None,
+        underlying_token_basis_usd_per_token=None,
         buy_execution_price_usd_per_token=None,
         sell_execution_price_usd_per_token=None,
+        execution_mid_price_usd_per_token=None,
+        tokenization_premium_bps=None,
         buy_execution_premium_bps=None,
         sell_execution_premium_bps=None,
-        buy_execution_gap_bps=None,
-        sell_execution_gap_bps=None,
         reference_observed_at=None,
         buy_quote_observed_at=None,
         sell_quote_observed_at=None,
@@ -97,29 +100,44 @@ def compute_tokenization_premium(
     buy_exec_evidence: Mapping[str, Any] | None,
     sell_exec_evidence: Mapping[str, Any] | None,
     policy: TokenizationPremiumPolicy,
+    complement_identity_verified: bool = True,
 ) -> TokenizationPremiumObservation:
     """Compute one tokenization-premium observation from frozen evidence dicts.
 
-    reference_evidence  — the "reference" section from the composition layer,
+    reference_evidence  — the "reference" section from the composition layer;
                           must include: rawBid, rawAsk, currentMultiplier,
-                          bid, ask, price (token-level), observedAt, isTradingHalt.
+                          observedAt, available, isTradingHalt.
     buy_exec_evidence   — the "execution" section from a BUY acquisition, or None.
     sell_exec_evidence  — the "execution" section from a SELL acquisition, or None.
     policy              — caller-supplied coherence policy; never invented here.
+    complement_identity_verified — False when the complement snapshot was rejected
+                          by the router's identity check (asset/notional mismatch);
+                          in that case the complement's execution evidence is
+                          not consumed and status reflects partial or unavailable.
 
-    Returns a TokenizationPremiumObservation with status indicating the outcome.
-    This is NOT a trading signal.
+    Returns a TokenizationPremiumObservation.  This is NOT a trading signal.
     """
     ref = dict(reference_evidence) if reference_evidence else {}
     buy_exec = dict(buy_exec_evidence) if buy_exec_evidence else None
     sell_exec = dict(sell_exec_evidence) if sell_exec_evidence else None
+
+    # --- complement identity guard --------------------------------------------
+    # When the complement snapshot failed identity verification, treat it as
+    # absent so its execution price is never mixed with a different asset.
+    if not complement_identity_verified:
+        return _suppressed(
+            TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH,
+            "COMPLEMENT_IDENTITY_NOT_VERIFIED",
+            ref=ref, buy_exec=buy_exec, sell_exec=sell_exec,
+        )
 
     # --- reference section availability ----------------------------------------
     if not ref.get("available"):
         reason = ref.get("unavailableReason") or ref.get("reason") or "REFERENCE_UNAVAILABLE"
         return _suppressed(
             TokenizationPremiumStatus.UNDERLYING_REFERENCE_INVALID,
-            reason, ref=ref,
+            reason,
+            ref=ref,
         )
 
     # --- trading halt -----------------------------------------------------------
@@ -134,7 +152,9 @@ def compute_tokenization_premium(
     try:
         raw_bid = _parse_positive_decimal(ref.get("rawBid"), "rawBid")
         raw_ask = _parse_positive_decimal(ref.get("rawAsk"), "rawAsk")
-        current_multiplier = _parse_positive_decimal(ref.get("currentMultiplier"), "currentMultiplier")
+        current_multiplier = _parse_positive_decimal(
+            ref.get("currentMultiplier"), "currentMultiplier"
+        )
     except ValueError as exc:
         return _suppressed(
             TokenizationPremiumStatus.UNDERLYING_REFERENCE_INVALID,
@@ -149,18 +169,6 @@ def compute_tokenization_premium(
             ref=ref,
         )
 
-    # --- parse token reference prices ------------------------------------------
-    try:
-        token_bid = _parse_positive_decimal(ref.get("bid"), "token_bid")
-        token_ask = _parse_positive_decimal(ref.get("ask"), "token_ask")
-        token_mid = _parse_positive_decimal(ref.get("price"), "token_mid")
-    except ValueError as exc:
-        return _suppressed(
-            TokenizationPremiumStatus.UNDERLYING_REFERENCE_INVALID,
-            f"TOKEN_REFERENCE_FIELDS_INVALID: {exc}",
-            ref=ref,
-        )
-
     # --- parse reference timestamp ---------------------------------------------
     try:
         ref_observed_at = _parse_iso_dt(ref.get("observedAt"), "reference.observedAt")
@@ -171,14 +179,12 @@ def compute_tokenization_premium(
             ref=ref,
         )
 
-    # --- compute underlying mid ------------------------------------------------
+    # --- compute underlying token basis ----------------------------------------
+    # underlying_token_basis = underlying_share_mid × currentMultiplier
+    # This equals R2's token_midpoint_usd_per_token: it is a unit conversion,
+    # NOT tokenization premium.  Real premium requires an independent DEX price.
     underlying_mid = (raw_bid + raw_ask) / Decimal("2")
-
-    # --- compute reference premium bps ----------------------------------------
-    # reference_premium_bps = ((token_mid / underlying_mid) - 1) × 10000
-    reference_premium_bps = (
-        (token_mid / underlying_mid) - Decimal("1")
-    ) * Decimal("10000")
+    underlying_token_basis = underlying_mid * current_multiplier
 
     # --- check execution availability ------------------------------------------
     buy_available = (
@@ -193,26 +199,24 @@ def compute_tokenization_premium(
     )
 
     if not buy_available and not sell_available:
+        # No independent market authority; can show basis but no premium.
         return TokenizationPremiumObservation(
-            status=TokenizationPremiumStatus.REFERENCE_PREMIUM_OK_EXECUTION_UNAVAILABLE,
+            status=TokenizationPremiumStatus.TOKEN_MARKET_REFERENCE_UNAVAILABLE,
             underlying_raw_bid_usd_per_share=raw_bid,
             underlying_raw_ask_usd_per_share=raw_ask,
             underlying_raw_mid_usd_per_share=underlying_mid,
-            token_reference_bid_usd_per_token=token_bid,
-            token_reference_ask_usd_per_token=token_ask,
-            token_reference_mid_usd_per_token=token_mid,
             current_multiplier=current_multiplier,
-            reference_premium_bps=reference_premium_bps,
+            underlying_token_basis_usd_per_token=underlying_token_basis,
             buy_execution_price_usd_per_token=None,
             sell_execution_price_usd_per_token=None,
+            execution_mid_price_usd_per_token=None,
+            tokenization_premium_bps=None,
             buy_execution_premium_bps=None,
             sell_execution_premium_bps=None,
-            buy_execution_gap_bps=None,
-            sell_execution_gap_bps=None,
             reference_observed_at=ref_observed_at,
             buy_quote_observed_at=None,
             sell_quote_observed_at=None,
-            suppression_reason="EXECUTION_UNAVAILABLE_FOR_BOTH_DIRECTIONS",
+            suppression_reason="NO_INDEPENDENT_DEX_EXECUTION_AVAILABLE",
             raw_evidence={"reference": ref, "buyExecution": buy_exec, "sellExecution": sell_exec},
         )
 
@@ -252,7 +256,7 @@ def compute_tokenization_premium(
                 ref=ref, buy_exec=buy_exec, sell_exec=sell_exec,
             )
 
-    # --- temporal coherence check (C1 analogue) --------------------------------
+    # --- temporal coherence check ---------------------------------------------
     timestamps: list[datetime] = [ref_observed_at]
     if buy_quoted_at is not None:
         timestamps.append(buy_quoted_at)
@@ -270,47 +274,51 @@ def compute_tokenization_premium(
                 ref=ref, buy_exec=buy_exec, sell_exec=sell_exec,
             )
 
-    # --- compute execution-adjusted premiums ----------------------------------
-    # buy_execution_premium_bps  = ((buy_exec_price  / underlying_mid) - 1) × 10000
-    # sell_execution_premium_bps = ((sell_exec_price / underlying_mid) - 1) × 10000
+    # --- compute tokenization premiums vs underlying basis --------------------
+    # tokenization_premium_bps = ((execution_mid / underlying_token_basis) - 1) × 10000
+    # When execution_mid = underlying_token_basis (unit-conversion only), result = 0 bps.
     buy_exec_premium: Decimal | None = None
     sell_exec_premium: Decimal | None = None
-    buy_exec_gap: Decimal | None = None
-    sell_exec_gap: Decimal | None = None
+    execution_mid: Decimal | None = None
+    tokenization_premium_bps: Decimal | None = None
 
     if buy_price is not None:
         buy_exec_premium = (
-            (buy_price / underlying_mid) - Decimal("1")
+            (buy_price / underlying_token_basis) - Decimal("1")
         ) * Decimal("10000")
-        buy_exec_gap = buy_exec_premium - reference_premium_bps
 
     if sell_price is not None:
         sell_exec_premium = (
-            (sell_price / underlying_mid) - Decimal("1")
+            (sell_price / underlying_token_basis) - Decimal("1")
         ) * Decimal("10000")
-        sell_exec_gap = sell_exec_premium - reference_premium_bps
+
+    if buy_price is not None and sell_price is not None:
+        execution_mid = (buy_price + sell_price) / Decimal("2")
+        tokenization_premium_bps = (
+            (execution_mid / underlying_token_basis) - Decimal("1")
+        ) * Decimal("10000")
 
     # --- determine final status ------------------------------------------------
-    # OK only when at least one execution direction is available.
-    # REFERENCE_PREMIUM_OK_EXECUTION_UNAVAILABLE already handled above (both None).
-    status = TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+    if buy_price is not None and sell_price is not None:
+        status = TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+    else:
+        # One direction available — directional premium vs basis is computable,
+        # but an execution mid cannot be formed.
+        status = TokenizationPremiumStatus.EXECUTION_PREMIUM_PARTIAL
 
     return TokenizationPremiumObservation(
         status=status,
         underlying_raw_bid_usd_per_share=raw_bid,
         underlying_raw_ask_usd_per_share=raw_ask,
         underlying_raw_mid_usd_per_share=underlying_mid,
-        token_reference_bid_usd_per_token=token_bid,
-        token_reference_ask_usd_per_token=token_ask,
-        token_reference_mid_usd_per_token=token_mid,
         current_multiplier=current_multiplier,
-        reference_premium_bps=reference_premium_bps,
+        underlying_token_basis_usd_per_token=underlying_token_basis,
         buy_execution_price_usd_per_token=buy_price,
         sell_execution_price_usd_per_token=sell_price,
+        execution_mid_price_usd_per_token=execution_mid,
+        tokenization_premium_bps=tokenization_premium_bps,
         buy_execution_premium_bps=buy_exec_premium,
         sell_execution_premium_bps=sell_exec_premium,
-        buy_execution_gap_bps=buy_exec_gap,
-        sell_execution_gap_bps=sell_exec_gap,
         reference_observed_at=ref_observed_at,
         buy_quote_observed_at=buy_quoted_at,
         sell_quote_observed_at=sell_quoted_at,
