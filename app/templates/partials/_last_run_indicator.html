@@ -135,5 +135,21 @@
     <div class="last-run-indicator__row last-run-indicator__row--note">
       <span class="last-run-indicator__note">Review model evidence before export.</span>
     </div>
+
+    {# View Run Certificate — shown only when a certified last run exists (any_run_committed
+       + last_runtime_identity present, meaning post-Correction-B lineage). #}
+    {% if workspace_state is defined and workspace_state
+          and workspace_state.any_run_committed
+          and workspace_state.last_runtime_identity is not none
+          and _project_code %}
+    <div class="last-run-indicator__row last-run-indicator__row--cert"
+         data-cert-link="true">
+      <a href="/verify/run/{{ _project_code }}"
+         class="last-run-indicator__cert-link"
+         title="View tamper-evident integrity record for this committed run">
+        View Run Certificate
+      </a>
+    </div>
+    {% endif %}
   </aside>
 {% endif %}
