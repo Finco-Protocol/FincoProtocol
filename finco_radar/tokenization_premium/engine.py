@@ -1,9 +1,15 @@
 """P2 tokenization-premium engine.
 
 Computes the tokenization-premium observation from frozen R2/R0 evidence
-dicts produced by the composition layer.  Zero duplication of existing
-quote normalization, liquidity math, slippage, VWAP, freshness authority,
+dicts produced by the composition layer.
+
+Does not duplicate quote normalization, settlement conversion, route
+economics, slippage, VWAP, effective-price authority, freshness authority,
 corporate-action authority, or hash/lineage authority.
+
+P2 currently owns only the cross-direction midpoint derivation over
+already-authoritative effectivePrice observations.  R3 executable-mid
+authority reuse is deferred to a separate architectural follow-up.
 
 This is NOT a trading system.  No BUY/SELL/OPPORTUNITY/ARBITRAGE labels.
 
