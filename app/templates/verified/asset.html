@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% if record %}{{ record.display_name }}{% else %}Asset Not Found{% endif %} — FINCO Verified Assets</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-verified.css">
+</head>
+<body>
+{% set proto_active_page = "verified" %}
+{% include "partials/_protocol_nav.html" %}
+
+<main class="va-page">
+  <div class="va-detail-header">
+    <a href="/verified" class="va-detail-header__back">← All Verified Assets</a>
+
+    {% if record %}
+    <p class="va-header__eyebrow">FINCO Protocol · Verified Assets V1</p>
+    <h1 class="va-detail-header__title">{{ record.display_name }}</h1>
+    <div class="va-detail-header__type">{{ record.asset_type }}</div>
+    {% else %}
+    <h1 class="va-detail-header__title">Asset Not Found</h1>
+    {% endif %}
+  </div>
+
+  {# ── error / not-found ── #}
+  {% if not record %}
+  <div class="va-error">
+    <div class="va-error__code">NOT_FOUND</div>
+    <div class="va-error__reason">
+      {% if error %}{{ error.reason }}{% else %}The requested asset does not exist.{% endif %}
+    </div>
+  </div>
+  {% else %}
+
+  {# ── status header ── #}
+  <div class="va-section" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 24px;">
+    <div>
+      <span class="va-status {{ record.status_display.css_class }}" style="font-size:13px;">
+        {{ record.status_display.label }}
+      </span>
+    </div>
+    <div style="font-size:13px;color:#6b7280;">{{ record.status_display.description }}</div>
+  </div>
+
+  {# ── cert error notice ── #}
+  {% if record.error %}
+  <div class="va-error">
+    <div class="va-error__code">{{ record.error.code }}</div>
+    <div class="va-error__reason">{{ record.error.reason }}</div>
+  </div>
+  {% endif %}
+
+  {# ── model section ── #}
+  {% if record.model %}
+  <div class="va-section">
+    <div class="va-section__title">
+      <span class="va-section__title-dot" style="color:#3b82f6;"></span>
+      FINCO Compute — Last Run
+    </div>
+
+    {% if record.model.headline_outputs %}
+    <div class="va-metrics">
+      {% set hl = record.model.headline_outputs %}
+      {% for key, label in [
+        ('project_irr', 'Project IRR'),
+        ('equity_irr', 'Equity IRR'),
+        ('sponsor_irr', 'Sponsor IRR'),
+        ('min_dscr', 'Min DSCR'),
+        ('senior_debt_keur', 'Senior Debt (k€)'),
+        ('total_capex_keur', 'Total CapEx (k€)'),
+      ] %}
+      <div class="va-metric">
+        <div class="va-metric__label">{{ label }}</div>
+        {% if hl[key] is not none %}
+        <div class="va-metric__value">
+          {% if key.endswith('_irr') or key == 'sponsor_irr' %}
+            {{ "%.2f"|format(hl[key] * 100) }}%
+          {% elif key == 'min_dscr' %}
+            {{ "%.2f"|format(hl[key]) }}x
+          {% else %}
+            {{ "{:,.0f}".format(hl[key]) }}
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="va-metric__value va-metric__value--null">—</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="va-kv">
+      <span class="va-kv__key">Run at</span>
+      <span class="va-kv__val">{{ record.model.last_runtime_at or '—' }}</span>
+      <span class="va-kv__key">Origin</span>
+      <span class="va-kv__val">{{ record.model.last_runtime_origin or '—' }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── verify section ── #}
+  {% if record.verify %}
+  <div class="va-section">
+    <div class="va-section__title">
+      <span class="va-section__title-dot" style="color:#10b981;"></span>
+      Verify &amp; Publish — Run Certificate
+    </div>
+    <div class="va-kv">
+      <span class="va-kv__key">Certificate ID</span>
+      <span class="va-kv__val">{{ record.verify.certificate_id or '—' }}</span>
+      <span class="va-kv__key">Engine version</span>
+      <span class="va-kv__val">{{ record.verify.engine_version or '—' }}</span>
+      <span class="va-kv__key">Committed at</span>
+      <span class="va-kv__val">{{ record.verify.committed_at or '—' }}</span>
+      <span class="va-kv__key">Snapshot ID</span>
+      <span class="va-kv__val">{{ record.verify.snapshot_id or '—' }}</span>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Composite Hash</div>
+      <div class="va-hash">{{ record.verify.composite_hash or '—' }}</div>
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;margin-top:10px;">Assumptions SHA-256</div>
+      <div class="va-hash">{{ record.verify.assumptions_sha256 or '—' }}</div>
+      <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;margin-top:10px;">Outputs SHA-256</div>
+      <div class="va-hash">{{ record.verify.outputs_sha256 or '—' }}</div>
+    </div>
+    {% if record.certificate %}
+    <div style="margin-top:14px;">
+      <a href="/verify/run/{{ asset_id }}.json" style="font-size:12px;color:#6b7280;text-decoration:none;">
+        View full Run Certificate (JSON) →
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── market section ── #}
+  <div class="va-section">
+    <div class="va-section__title">
+      <span class="va-section__title-dot" style="color:#8b5cf6;"></span>
+      Radar — Market Observation
+    </div>
+    {% if record.market %}
+    {# Future: render tokenization premium when VERIFIED #}
+    <div class="va-kv">
+      <span class="va-kv__key">Status</span>
+      <span class="va-kv__val">Available</span>
+    </div>
+    {% else %}
+    <div class="va-market-absent">
+      <div class="va-market-absent__title">No Tokenized-Market Identity Mapping</div>
+      <p style="margin:0;">
+        No canonical model↔market identity binding exists for this asset in V1.
+        The Run Certificate is available above. Market observation requires a
+        canonical R10 model-radar bridge, which is not yet established for this
+        reference asset.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── protocol section ── #}
+  {% if record.protocol %}
+  <div class="va-section">
+    <div class="va-section__title">
+      <span class="va-section__title-dot" style="color:#f59e0b;"></span>
+      Protocol Utilities
+    </div>
+    <div class="va-kv">
+      {% for uid, name in record.protocol.utilities.items() %}
+      <span class="va-kv__key">{{ uid }}</span>
+      <span class="va-kv__val" style="font-family:inherit;">{{ name }}</span>
+      {% endfor %}
+      <span class="va-kv__key">Template source</span>
+      <span class="va-kv__val">{{ record.protocol.template_source }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}{# end if record #}
+
+  <div class="va-footer">
+    <span class="va-footer__schema">FINCO_VERIFIED_ASSET_V1 · READ ONLY</span>
+    <a href="/verified/{{ asset_id }}.json" class="va-footer__json-link">
+      JSON →
+    </a>
+  </div>
+</main>
+</body>
+</html>

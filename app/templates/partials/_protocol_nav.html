@@ -49,6 +49,11 @@
          {% if proto_active_page == 'roadmap' %}aria-current="page"{% endif %}>
         Roadmap
       </a>
+      <a href="/verified"
+         class="proto-nav__link{% if proto_active_page == 'verified' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'verified' %}aria-current="page"{% endif %}>
+        Verified
+      </a>
       <a href="/protocol/finco"
          class="proto-nav__link{% if proto_active_page == 'finco' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'finco' %}aria-current="page"{% endif %}>
