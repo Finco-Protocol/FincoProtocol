@@ -113,21 +113,11 @@ def test_api08_finco_placeholder(client):
 def test_api09_placeholders_non_links(client):
     r = client.get("/api")
     html = r.text
-    # Docs, Roadmap, $FINCO placeholders use aria-disabled="true"
-    # and must not be <a href="..."> elements leading to routes
-    assert 'aria-disabled="true"' in html
-    # They must NOT have href="/docs" (the /docs LINK appears separately for OpenAPI)
-    # But the nav Docs placeholder must NOT be an anchor
-    # Verify Docs near aria-disabled appears as a span, not an anchor
-    import re
-    # Check that placeholder spans contain Docs/Roadmap/$FINCO
-    placeholder_pattern = re.compile(
-        r'<span[^>]*aria-disabled="true"[^>]*>(.*?)</span>',
-        re.DOTALL,
-    )
-    placeholder_texts = " ".join(m.group(0) for m in placeholder_pattern.finditer(html))
-    # At least one placeholder span for each item exists
-    assert "Docs" in placeholder_texts or 'aria-disabled="true"' in html
+    # P4: all nav items (Docs, Roadmap, $FINCO) are now live <a> links
+    # Verify all three have live href links in the nav
+    assert 'href="/docs"' in html
+    assert 'href="/roadmap"' in html
+    assert 'href="/protocol/finco"' in html
 
 
 # ── API10: Model references endpoint listed ──────────────────────────────────
@@ -404,8 +394,10 @@ def test_api39_brand_bar_api(client):
 
 def test_api40_responsive_placeholder_classes(client):
     r = client.get("/api")
-    # Placeholder nav items carry the --placeholder modifier for CSS targeting
-    assert "proto-nav__link--placeholder" in r.text
+    # P4: all nav items are live links; --placeholder modifier is gone
+    assert "proto-nav__link--placeholder" not in r.text
+    # All nav items are present as live anchors
+    assert 'href="/protocol/finco"' in r.text
 
 
 # ── API41: /api/v1/meta unchanged ────────────────────────────────────────────

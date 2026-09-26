@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>$FINCO — Protocol Access</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f9fafb;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #111827;
+    }
+
+    .finco-page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* Header */
+    .finco-header {
+      margin-bottom: 2rem;
+    }
+    .finco-header__eyebrow {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin: 0 0 4px;
+    }
+    .finco-header__title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: #111827;
+    }
+    .finco-header__sub {
+      font-size: 1rem;
+      color: #374151;
+      margin: 0;
+    }
+
+    /* Wallet section */
+    .finco-wallet {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .finco-wallet__label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #6b7280;
+      margin: 0 0 8px;
+    }
+    .finco-wallet__state {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+    }
+    .finco-wallet__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .finco-wallet__dot--connected { background: #10b981; }
+    .finco-wallet__dot--disconnected { background: #9ca3af; }
+    .finco-wallet__dot--error { background: #ef4444; }
+    .finco-wallet__dot--notconfigured { background: #d1d5db; }
+
+    .finco-wallet__address {
+      font-family: 'Courier New', monospace;
+      font-size: .85rem;
+      color: #1f2937;
+      word-break: break-all;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+    .finco-wallet__meta {
+      font-size: .8rem;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+
+    .finco-wallet__connect-area {
+      margin-top: 1rem;
+    }
+    .finco-wallet__connect-area input[type="text"] {
+      width: 100%;
+      max-width: 420px;
+      padding: .5rem .75rem;
+      font-family: 'Courier New', monospace;
+      font-size: .85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      margin-bottom: .5rem;
+      display: block;
+    }
+    .finco-wallet__connect-area input[type="text"]:focus {
+      outline: 2px solid #1a56db;
+      outline-offset: 1px;
+    }
+    .finco-btn {
+      display: inline-block;
+      padding: .45rem 1rem;
+      font-size: .875rem;
+      font-weight: 600;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .finco-btn--primary {
+      background: #1a56db;
+      color: #fff;
+    }
+    .finco-btn--primary:hover { background: #1447c0; }
+    .finco-btn--ghost {
+      background: transparent;
+      color: #4b5563;
+      border: 1px solid #d1d5db;
+    }
+    .finco-btn--ghost:hover { background: #f3f4f6; }
+
+    .finco-wallet__note {
+      font-size: .78rem;
+      color: #9ca3af;
+      margin-top: .35rem;
+    }
+
+    /* Observation metadata */
+    .finco-obs {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: .75rem 1rem;
+      margin-top: 1rem;
+      font-size: .82rem;
+      color: #4b5563;
+    }
+    .finco-obs dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: .2rem .75rem; }
+    .finco-obs dt { font-weight: 600; }
+    .finco-obs dd { margin: 0; font-family: 'Courier New', monospace; word-break: break-all; }
+
+    /* Utility cards */
+    .finco-utilities {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .finco-utility-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .finco-utility-card__id {
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: .06em;
+      color: #9ca3af;
+      margin: 0 0 4px;
+    }
+    .finco-utility-card__name {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: #111827;
+    }
+    .finco-utility-card__desc {
+      font-size: .82rem;
+      color: #6b7280;
+      margin: 0 0 .75rem;
+    }
+    .finco-utility-card__status {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .25rem .6rem;
+      border-radius: 999px;
+      font-size: .78rem;
+      font-weight: 600;
+    }
+    .finco-status--entitled {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .finco-status--insufficient {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .finco-status--wallet_not_connected,
+    .finco-status--not_configured,
+    .finco-status--observation_unavailable {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    /* Protocol boundary statement */
+    .finco-boundary {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #1a56db;
+      border-radius: 6px;
+      padding: .75rem 1rem;
+      font-size: .82rem;
+      color: #1e3a8a;
+      margin-top: 2rem;
+    }
+
+    /* Feedback */
+    .finco-feedback {
+      margin-top: 1rem;
+      font-size: .82rem;
+      color: #ef4444;
+      display: none;
+    }
+
+    @media (max-width: 480px) {
+      .finco-page { padding: 1.5rem 1rem 3rem; }
+      .finco-header__title { font-size: 1.4rem; }
+      .finco-utilities { grid-template-columns: 1fr; }
+      .finco-wallet__connect-area input[type="text"] { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  {% with proto_active_page="finco" %}
+  {% include "partials/_protocol_nav.html" %}
+  {% endwith %}
+
+  <div class="finco-page">
+
+    <!-- Header -->
+    <div class="finco-header">
+      <p class="finco-header__eyebrow">Protocol Access</p>
+      <h1 class="finco-header__title">$FINCO / Protocol Access</h1>
+      <p class="finco-header__sub">Access the FINCO intelligence stack.</p>
+    </div>
+
+    <!-- Wallet State -->
+    <div class="finco-wallet">
+      <p class="finco-wallet__label">Wallet</p>
+
+      {% if not config_available %}
+      {# NOT_CONFIGURED state — renders cleanly with no errors #}
+      <div class="finco-wallet__state">
+        <span class="finco-wallet__dot finco-wallet__dot--notconfigured"></span>
+        <span style="color:#6b7280;font-size:.9rem;">Token access not configured.</span>
+      </div>
+      <p class="finco-wallet__meta">
+        FINCO token gating has not been configured for this deployment.
+        Utilities show as not configured.
+      </p>
+
+      {% elif wallet_address %}
+      {# Wallet connected #}
+      <div class="finco-wallet__state">
+        {% set first_decision = decisions.values() | list | first %}
+        {% if first_decision and first_decision.status == "ENTITLED" %}
+        <span class="finco-wallet__dot finco-wallet__dot--connected"></span>
+        <strong style="color:#065f46;">Entitled</strong>
+        {% elif first_decision and first_decision.status == "INSUFFICIENT_BALANCE" %}
+        <span class="finco-wallet__dot finco-wallet__dot--error"></span>
+        <strong style="color:#991b1b;">Insufficient Balance</strong>
+        {% elif first_decision and first_decision.status == "OBSERVATION_UNAVAILABLE" %}
+        <span class="finco-wallet__dot finco-wallet__dot--error"></span>
+        <strong style="color:#b45309;">Observation Unavailable</strong>
+        {% else %}
+        <span class="finco-wallet__dot finco-wallet__dot--connected"></span>
+        <strong style="color:#1f2937;">Connected</strong>
+        {% endif %}
+      </div>
+      <p class="finco-wallet__address" title="Verified wallet address">{{ wallet_address }}</p>
+      {% if wallet_verified_at %}
+      <p class="finco-wallet__meta">Verified {{ wallet_verified_at[:19] }} UTC</p>
+      {% endif %}
+
+      {% if observation %}
+      <div class="finco-obs">
+        <dl>
+          {% if observation.chain_id is not none %}<dt>Chain</dt><dd>{{ observation.chain_id }}</dd>{% endif %}
+          {% if observation.block_number is not none %}<dt>Block</dt><dd>{{ observation.block_number }}</dd>{% endif %}
+          {% if observation.normalized_balance is not none %}<dt>Balance</dt><dd>{{ observation.normalized_balance }}</dd>{% endif %}
+          {% if observation.observed_at %}<dt>Observed</dt><dd>{{ observation.observed_at.isoformat()[:19] }} UTC</dd>{% endif %}
+        </dl>
+      </div>
+      {% endif %}
+
+      {% else %}
+      {# Not connected #}
+      <div class="finco-wallet__state">
+        <span class="finco-wallet__dot finco-wallet__dot--disconnected"></span>
+        <span style="color:#6b7280;">Not connected</span>
+      </div>
+      <p class="finco-wallet__meta">
+        Connect a wallet to verify token holdings.
+      </p>
+
+      <div class="finco-wallet__connect-area">
+        <div>
+          <button type="button" class="finco-btn finco-btn--primary" id="finco-connect-btn" onclick="fincoConnectWallet()">
+            Connect Wallet
+          </button>
+        </div>
+        <p class="finco-wallet__note">
+          Uses your browser wallet (EIP-1193). You will sign a challenge
+          message — no transaction is submitted, no private key leaves
+          your wallet.
+        </p>
+        <p class="finco-feedback" id="finco-feedback" role="alert"></p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Utility Cards — drawn from utility registry -->
+    <h2 style="font-size:1rem;font-weight:700;margin:0 0 .75rem;color:#374151;text-transform:uppercase;letter-spacing:.05em;">
+      Capabilities
+    </h2>
+    <div class="finco-utilities">
+      {% for uid, utility in utilities.items() %}
+      {% set dec = decisions.get(uid) %}
+      <div class="finco-utility-card" data-utility="{{ uid }}">
+        <p class="finco-utility-card__id">{{ uid }}</p>
+        <p class="finco-utility-card__name">{{ utility.display_name }}</p>
+        <p class="finco-utility-card__desc">{{ utility.description }}</p>
+        {% if dec %}
+        <span class="finco-utility-card__status finco-status--{{ dec.status | lower }}">
+          {% if dec.status == "ENTITLED" %}Entitled
+          {% elif dec.status == "INSUFFICIENT_BALANCE" %}Insufficient Balance
+          {% elif dec.status == "WALLET_NOT_CONNECTED" %}No Wallet
+          {% elif dec.status == "NOT_CONFIGURED" %}Not Configured
+          {% elif dec.status == "OBSERVATION_UNAVAILABLE" %}Unavailable
+          {% else %}{{ dec.status }}
+          {% endif %}
+        </span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Protocol Boundary Statement -->
+    <div class="finco-boundary" role="note">
+      $FINCO controls access to protocol services. It never changes FINCO calculations,
+      market observations, or evidence truth.
+    </div>
+
+  </div>{# /finco-page #}
+
+  <script>
+    // EIP-1193 browser wallet flow — no framework, no wallet branding.
+    // Requires window.ethereum (MetaMask, Rainbow, Coinbase Wallet, or any
+    // EIP-1193-compatible provider).  No transaction is submitted.
+    // No private key ever reaches this page or the FINCO server.
+
+    function _showFeedback(msg, isError) {
+      var el = document.getElementById('finco-feedback');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = msg;
+      el.style.color = isError ? '#ef4444' : '#065f46';
+    }
+
+    function _setConnectBtnDisabled(disabled) {
+      var btn = document.getElementById('finco-connect-btn');
+      if (btn) btn.disabled = disabled;
+    }
+
+    async function fincoConnectWallet() {
+      _setConnectBtnDisabled(true);
+      _showFeedback('', false);
+
+      try {
+        // 1. Detect EIP-1193 provider
+        if (!window.ethereum) {
+          _showFeedback(
+            'No wallet detected. Please install a browser wallet (e.g. MetaMask) that supports EIP-1193.',
+            true
+          );
+          return;
+        }
+
+        // 2. Request account access
+        var accounts;
+        try {
+          accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        } catch (err) {
+          if (err.code === 4001) {
+            _showFeedback('Wallet connection was rejected. Please approve the connection request.', true);
+          } else {
+            _showFeedback('Could not request accounts: ' + (err.message || err.code), true);
+          }
+          return;
+        }
+
+        if (!accounts || accounts.length === 0) {
+          _showFeedback('No accounts returned by wallet.', true);
+          return;
+        }
+
+        var walletAddress = accounts[0].toLowerCase();
+
+        // 3. Request challenge from FINCO server
+        _showFeedback('Requesting verification challenge…', false);
+        var challengeResp;
+        try {
+          challengeResp = await fetch('/protocol/finco/wallet/challenge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet_address: walletAddress })
+          });
+        } catch (err) {
+          _showFeedback('Network error requesting challenge: ' + err.message, true);
+          return;
+        }
+
+        var challengeData = await challengeResp.json().catch(function() { return {}; });
+        if (!challengeResp.ok) {
+          var code = challengeData.code || challengeResp.status;
+          if (code === 'NOT_CONFIGURED') {
+            _showFeedback('Token access is not configured for this deployment.', true);
+          } else {
+            _showFeedback('Challenge error: ' + (challengeData.error || challengeResp.status), true);
+          }
+          return;
+        }
+
+        var nonce = challengeData.nonce;
+        var challengeText = challengeData.challenge_text;
+
+        if (!nonce || !challengeText) {
+          _showFeedback('Invalid challenge response from server.', true);
+          return;
+        }
+
+        // 4. Ask the wallet to sign the challenge via personal_sign (EIP-191)
+        _showFeedback('Please sign the verification challenge in your wallet…', false);
+        var signature;
+        try {
+          signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [challengeText, walletAddress]
+          });
+        } catch (err) {
+          if (err.code === 4001) {
+            _showFeedback('Signature request was rejected. Wallet ownership could not be verified.', true);
+          } else {
+            _showFeedback('Signing failed: ' + (err.message || err.code), true);
+          }
+          return;
+        }
+
+        if (!signature) {
+          _showFeedback('No signature returned by wallet.', true);
+          return;
+        }
+
+        // 5. Submit signature to FINCO server for verification
+        _showFeedback('Verifying signature…', false);
+        var verifyResp;
+        try {
+          verifyResp = await fetch('/protocol/finco/wallet/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wallet_address: walletAddress,
+              nonce: nonce,
+              signature: signature
+            })
+          });
+        } catch (err) {
+          _showFeedback('Network error during verification: ' + err.message, true);
+          return;
+        }
+
+        var verifyData = await verifyResp.json().catch(function() { return {}; });
+        if (!verifyResp.ok) {
+          var vcode = verifyData.code || verifyResp.status;
+          var vmsg = verifyData.error || 'Verification failed.';
+          if (vcode === 'CHALLENGE_EXPIRED') {
+            _showFeedback('Challenge expired — please try again.', true);
+          } else if (vcode === 'SIGNER_MISMATCH') {
+            _showFeedback('Signature mismatch: the signing account does not match the connected address.', true);
+          } else if (vcode === 'SIGNATURE_INVALID') {
+            _showFeedback('Invalid signature.', true);
+          } else {
+            _showFeedback(vmsg, true);
+          }
+          return;
+        }
+
+        // 6. Success — reload to show updated access state
+        _showFeedback('Wallet verified. Refreshing…', false);
+        window.location.reload();
+
+      } finally {
+        _setConnectBtnDisabled(false);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -48,7 +48,8 @@ def test_docs03_docs_is_not_a_placeholder_anymore():
     # Must NOT be the old /docs/start workaround path
     assert 'href="/docs/start"' not in nav
     assert "Roadmap" in nav and "$FINCO" in nav
-    assert "proto-nav__link--placeholder" in nav
+    # P4: $FINCO is now a live link; all nav items are live — no placeholders remain
+    assert "proto-nav__link--placeholder" not in nav
 
 
 def test_docs04_model_brand_bar_links_to_product_docs():
