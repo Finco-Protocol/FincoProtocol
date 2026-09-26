@@ -832,8 +832,18 @@ _rv_data_center = _section("data_center", "Data Center Service Revenue", _RV, or
 # revenue and the derived B.08 electricity OpexItem from these keys on every
 # materialization.  Availability is informational-only (EFLH are net of
 # availability in V1) and is therefore a read-only display field.
+#
+# Correction D: min/max are NOT hardcoded here — they are derived from the
+# single canonical EV driver-range authority (EV_DRIVER_BOUNDS in
+# app.ev_charging_economics, converted to display units) so the UI validation
+# contract and the runtime validation contract cannot drift.
 def _ev_driver(field_id_suffix, label, snapshot_key, field_type, *, unit, decimals,
-               min_value, max_value, order, description, display_only=False):
+               order, description, display_only=False):
+    from app.ev_charging_economics import ev_driver_registry_bounds
+    if display_only:
+        min_value, max_value = 0, 100  # informational display rows only
+    else:
+        min_value, max_value = ev_driver_registry_bounds(snapshot_key)
     return _f(f"{_RV}.ev_charging.{field_id_suffix}", label, snapshot_key, field_type, _RV, "ev_charging",
               kind=FieldKind.DERIVED_DISPLAY if display_only else FieldKind.INPUT, persisted=True,
               source_of_truth=SourceOfTruth.DERIVED_UI if display_only else SourceOfTruth.INPUT_SET,
@@ -847,31 +857,31 @@ def _ev_driver(field_id_suffix, label, snapshot_key, field_type, *, unit, decima
 
 _rv_ev_charging = _section("ev_charging", "EV Charging Drivers", _RV, order=4, fields=[
     _ev_driver("hours_y1", "Equivalent Full-Load Hours — Y1", "ev_full_load_hours_y1", FieldType.MWH,
-               unit="h", decimals=0, min_value=0, max_value=8760, order=0,
+               unit="h", decimals=0, order=0,
                description="Operating-year 1 utilisation. Equivalent full-load hours are NET of availability."),
     _ev_driver("hours_y2", "Equivalent Full-Load Hours — Y2", "ev_full_load_hours_y2", FieldType.MWH,
-               unit="h", decimals=0, min_value=0, max_value=8760, order=1,
+               unit="h", decimals=0, order=1,
                description="Operating-year 2 utilisation."),
     _ev_driver("hours_stabilized", "Equivalent Full-Load Hours — Stabilized", "ev_full_load_hours_stabilized", FieldType.MWH,
-               unit="h", decimals=0, min_value=0, max_value=8760, order=2,
+               unit="h", decimals=0, order=2,
                description="Year 3+ utilisation; also the runtime hours authority."),
     _ev_driver("charging_price", "Charging Price", "ev_charging_price_eur_kwh", FieldType.FLOAT,
-               unit="EUR/kWh", decimals=3, min_value=0, max_value=10, order=3,
+               unit="EUR/kWh", decimals=3, order=3,
                description="Customer-facing charging service price. SYNTHETIC PUBLIC GENERIC DATA — not a market average."),
     _ev_driver("charging_price_escalation", "Charging Price Escalation", "ev_charging_price_escalation", FieldType.PCT,
-               unit="%/yr", decimals=2, min_value=0, max_value=50, order=4,
+               unit="%/yr", decimals=2, order=4,
                description="Annual charging price escalation. Stored as percent (e.g. 2)."),
     _ev_driver("charging_efficiency", "Charging Efficiency", "ev_charging_efficiency", FieldType.PCT,
-               unit="%", decimals=2, min_value=50, max_value=100, order=5,
+               unit="%", decimals=2, order=5,
                description="Delivered / purchased energy identity driver. Grid purchase = delivered / efficiency."),
     _ev_driver("electricity_price", "Electricity Procurement Price", "ev_electricity_price_eur_kwh", FieldType.FLOAT,
-               unit="EUR/kWh", decimals=3, min_value=0, max_value=10, order=6,
+               unit="EUR/kWh", decimals=3, order=6,
                description="Grid electricity procurement price feeding the derived B.08 power expense."),
     _ev_driver("electricity_price_escalation", "Electricity Price Escalation", "ev_electricity_price_escalation", FieldType.PCT,
-               unit="%/yr", decimals=2, min_value=0, max_value=50, order=7,
+               unit="%/yr", decimals=2, order=7,
                description="Annual electricity procurement price escalation. Stored as percent (e.g. 2)."),
     _ev_driver("availability_info", "Availability (informational)", "ev_availability_info", FieldType.PCT,
-               unit="%", decimals=0, min_value=0, max_value=100, order=8, display_only=True,
+               unit="%", decimals=0, order=8, display_only=True,
                description="Informational only — equivalent full-load hours are NET of availability; "
                            "this value does not enter the EV economics in V1."),
 ])

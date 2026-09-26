@@ -234,5 +234,10 @@ def test_efficiency_renders_94_percent_with_institutional_bounds(ev_wc):
     value = float(m.group(2))
     assert value == pytest.approx(94.0), "initial UI value must be 94 (%), not 0.94"
     attrs = m.group(1)
-    assert 'min="50"' in attrs and 'max="100"' in attrs
+    # bounds come from the canonical EV_DRIVER_BOUNDS authority (registry
+    # renders them in display units: 50..100 %)
+    mn = re.search(r'min="([0-9.]+)"', attrs)
+    mx = re.search(r'max="([0-9.]+)"', attrs)
+    assert mn and float(mn.group(1)) == pytest.approx(50.0)
+    assert mx and float(mx.group(1)) == pytest.approx(100.0)
     assert value >= 50 and value <= 100

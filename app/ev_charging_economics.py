@@ -219,6 +219,7 @@ __all__ = [
     "electricity_opex_item", "scale_capacity",
     "scaled_ev_reference_inputs",
     "effective_charging_price_eur_mwh", "merchant_price_schedule",
+    "EV_DRIVER_BOUNDS", "ev_driver_registry_bounds", "EVDriverValidationError",
 ]
 
 
@@ -275,6 +276,37 @@ _EV_PERCENT_KEYS = frozenset({
 })
 
 
+# Canonical product range contract (Correction D) — RUNTIME-unit bounds.
+# Single source of truth consumed by:
+#   - this resolver (drivers_from_snapshot fail-closed checks)
+#   - the Workbook registry (min/max for the editable EV driver fields,
+#     converted to display units via ev_driver_registry_bounds)
+#   - the range-parity tests that prevent the two from drifting
+# Percent-convention keys bound the FRACTION (0.02 == 2 %/yr, 0.94 == 94 %).
+EV_DRIVER_BOUNDS: dict = {
+    "ev_full_load_hours_y1": (0.0, 8760.0),
+    "ev_full_load_hours_y2": (0.0, 8760.0),
+    "ev_full_load_hours_stabilized": (0.0, 8760.0),
+    "ev_charging_price_eur_kwh": (0.0, 10.0),
+    "ev_charging_price_escalation": (0.0, 0.50),
+    "ev_charging_efficiency": (0.50, 1.00),
+    "ev_electricity_price_eur_kwh": (0.0, 10.0),
+    "ev_electricity_price_escalation": (0.0, 0.50),
+}
+
+
+def ev_driver_registry_bounds(snapshot_key: str) -> tuple:
+    """Return (min, max) in the registry/display unit for a driver key.
+
+    Percent-convention keys are expressed as human percent in the workbook
+    (escalation 2 == 2 %/yr, efficiency 94 == 94 %).
+    """
+    low, high = EV_DRIVER_BOUNDS[snapshot_key]
+    if snapshot_key in _EV_PERCENT_KEYS:
+        return low * 100.0, high * 100.0
+    return low, high
+
+
 class EVDriverValidationError(ValueError):
     """Raised when an explicitly persisted EV driver value is malformed,
     out of range, or economically inconsistent (ramp violation).
@@ -301,7 +333,7 @@ def drivers_from_snapshot(
     if not isinstance(snapshot, dict):
         return base
 
-    def _num(key, default, *, low=None, high=None):
+    def _num(key, default):
         raw = snapshot.get(key)
         if raw in (None, ""):
             return default
@@ -313,16 +345,17 @@ def drivers_from_snapshot(
             ) from exc
         if key in _EV_PERCENT_KEYS:
             value = value / 100.0
-        if (low is not None and value < low) or (high is not None and value > high):
+        low, high = EV_DRIVER_BOUNDS[key]
+        if value < low or value > high:
             raise EVDriverValidationError(
                 f"{key}: explicitly persisted value {raw!r} is outside the "
-                f"allowed range ({low!r}..{high!r} post-conversion)"
+                f"canonical product range ({low!r}..{high!r} post-conversion)"
             )
         return value
 
-    y1 = _num("ev_full_load_hours_y1", base.full_load_hours_y1, low=0.0)
-    y2 = _num("ev_full_load_hours_y2", base.full_load_hours_y2, low=0.0)
-    stabilized = _num("ev_full_load_hours_stabilized", base.full_load_hours_stabilized, low=0.0)
+    y1 = _num("ev_full_load_hours_y1", base.full_load_hours_y1)
+    y2 = _num("ev_full_load_hours_y2", base.full_load_hours_y2)
+    stabilized = _num("ev_full_load_hours_stabilized", base.full_load_hours_stabilized)
     # The ramp is monotonically non-decreasing by authority.  An explicit
     # user edit that violates it is a visible validation failure — never a
     # silent clamp that changes the user's value.
@@ -331,21 +364,20 @@ def drivers_from_snapshot(
             "ev_full_load_hours ramp must be non-decreasing "
             f"(Y1={y1:g} <= Y2={y2:g} <= stabilized={stabilized:g})"
         )
-    efficiency = _num("ev_charging_efficiency", base.charging_efficiency, low=0.01, high=1.0)
     return EVChargingDrivers(
         capacity_basis="INSTALLED_CHARGING_MW",
         full_load_hours_y1=y1,
         full_load_hours_y2=y2,
         full_load_hours_stabilized=stabilized,
         charging_price_eur_kwh=_num(
-            "ev_charging_price_eur_kwh", base.charging_price_eur_kwh, low=0.0
+            "ev_charging_price_eur_kwh", base.charging_price_eur_kwh
         ),
         charging_price_escalation=_num(
             "ev_charging_price_escalation", base.charging_price_escalation
         ),
-        charging_efficiency=efficiency,
+        charging_efficiency=_num("ev_charging_efficiency", base.charging_efficiency),
         electricity_price_eur_kwh=_num(
-            "ev_electricity_price_eur_kwh", base.electricity_price_eur_kwh, low=0.0
+            "ev_electricity_price_eur_kwh", base.electricity_price_eur_kwh
         ),
         electricity_price_escalation=_num(
             "ev_electricity_price_escalation", base.electricity_price_escalation
