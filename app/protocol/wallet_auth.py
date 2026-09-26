@@ -35,7 +35,7 @@ def build_challenge_text(
     chain_id: int,
     issued_at: datetime,
     expires_at: datetime,
-    domain: str = "fincoprotocol.com",
+    domain: str,
 ) -> str:
     """Build the EIP-191 challenge message text.
 
@@ -95,7 +95,7 @@ def issue_challenge(
     user_id: str,
     wallet_address: str,
     chain_id: int,
-    domain: str = "fincoprotocol.com",
+    domain: str = "localhost",
 ) -> dict:
     """Create a challenge nonce and store it in the DB.
 

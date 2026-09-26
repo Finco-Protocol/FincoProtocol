@@ -308,26 +308,15 @@
       </p>
 
       <div class="finco-wallet__connect-area">
-        <label for="wallet-input" style="font-size:.85rem;font-weight:600;display:block;margin-bottom:.35rem;">
-          Wallet Address
-        </label>
-        <input
-          type="text"
-          id="wallet-input"
-          placeholder="0x..."
-          autocomplete="off"
-          spellcheck="false"
-          maxlength="42"
-          aria-label="Ethereum wallet address"
-        />
         <div>
-          <button type="button" class="finco-btn finco-btn--primary" onclick="fincoRequestChallenge()">
-            Connect &amp; Verify
+          <button type="button" class="finco-btn finco-btn--primary" id="finco-connect-btn" onclick="fincoConnectWallet()">
+            Connect Wallet
           </button>
         </div>
         <p class="finco-wallet__note">
-          You will be asked to sign a challenge message with your wallet.
-          No transaction is submitted.
+          Uses your browser wallet (EIP-1193). You will sign a challenge
+          message — no transaction is submitted, no private key leaves
+          your wallet.
         </p>
         <p class="finco-feedback" id="finco-feedback" role="alert"></p>
       </div>
@@ -369,10 +358,10 @@
   </div>{# /finco-page #}
 
   <script>
-    // Minimal vanilla JS — no framework dependency.
-    // Sends challenge request, then verify request.
-    // The wallet must implement personal_sign (EIP-1193) for actual signing;
-    // this stub shows the flow. In production, integrate your wallet provider.
+    // EIP-1193 browser wallet flow — no framework, no wallet branding.
+    // Requires window.ethereum (MetaMask, Rainbow, Coinbase Wallet, or any
+    // EIP-1193-compatible provider).  No transaction is submitted.
+    // No private key ever reaches this page or the FINCO server.
 
     function _showFeedback(msg, isError) {
       var el = document.getElementById('finco-feedback');
@@ -382,35 +371,140 @@
       el.style.color = isError ? '#ef4444' : '#065f46';
     }
 
-    async function fincoRequestChallenge() {
-      var addr = (document.getElementById('wallet-input') || {}).value || '';
-      addr = addr.trim();
-      if (!addr || !addr.startsWith('0x') || addr.length !== 42) {
-        _showFeedback('Enter a valid 0x Ethereum address (42 characters).', true);
-        return;
-      }
+    function _setConnectBtnDisabled(disabled) {
+      var btn = document.getElementById('finco-connect-btn');
+      if (btn) btn.disabled = disabled;
+    }
 
-      _showFeedback('Requesting challenge…', false);
+    async function fincoConnectWallet() {
+      _setConnectBtnDisabled(true);
+      _showFeedback('', false);
+
       try {
-        var r = await fetch('/protocol/finco/wallet/challenge', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({wallet_address: addr})
-        });
-        var data = await r.json();
-        if (!r.ok) {
-          _showFeedback('Challenge error: ' + (data.error || r.status), true);
+        // 1. Detect EIP-1193 provider
+        if (!window.ethereum) {
+          _showFeedback(
+            'No wallet detected. Please install a browser wallet (e.g. MetaMask) that supports EIP-1193.',
+            true
+          );
           return;
         }
-        // In production: call window.ethereum.request({method:'personal_sign', params:[data.challenge_text, addr]})
-        // then POST /protocol/finco/wallet/verify with {wallet_address, signature, nonce}.
-        _showFeedback(
-          'Challenge issued (nonce: ' + data.nonce.slice(0,8) + '…). ' +
-          'Connect a Web3 wallet to sign and complete verification.',
-          false
-        );
-      } catch(e) {
-        _showFeedback('Request failed: ' + e.message, true);
+
+        // 2. Request account access
+        var accounts;
+        try {
+          accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        } catch (err) {
+          if (err.code === 4001) {
+            _showFeedback('Wallet connection was rejected. Please approve the connection request.', true);
+          } else {
+            _showFeedback('Could not request accounts: ' + (err.message || err.code), true);
+          }
+          return;
+        }
+
+        if (!accounts || accounts.length === 0) {
+          _showFeedback('No accounts returned by wallet.', true);
+          return;
+        }
+
+        var walletAddress = accounts[0].toLowerCase();
+
+        // 3. Request challenge from FINCO server
+        _showFeedback('Requesting verification challenge…', false);
+        var challengeResp;
+        try {
+          challengeResp = await fetch('/protocol/finco/wallet/challenge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wallet_address: walletAddress })
+          });
+        } catch (err) {
+          _showFeedback('Network error requesting challenge: ' + err.message, true);
+          return;
+        }
+
+        var challengeData = await challengeResp.json().catch(function() { return {}; });
+        if (!challengeResp.ok) {
+          var code = challengeData.code || challengeResp.status;
+          if (code === 'NOT_CONFIGURED') {
+            _showFeedback('Token access is not configured for this deployment.', true);
+          } else {
+            _showFeedback('Challenge error: ' + (challengeData.error || challengeResp.status), true);
+          }
+          return;
+        }
+
+        var nonce = challengeData.nonce;
+        var challengeText = challengeData.challenge_text;
+
+        if (!nonce || !challengeText) {
+          _showFeedback('Invalid challenge response from server.', true);
+          return;
+        }
+
+        // 4. Ask the wallet to sign the challenge via personal_sign (EIP-191)
+        _showFeedback('Please sign the verification challenge in your wallet…', false);
+        var signature;
+        try {
+          signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [challengeText, walletAddress]
+          });
+        } catch (err) {
+          if (err.code === 4001) {
+            _showFeedback('Signature request was rejected. Wallet ownership could not be verified.', true);
+          } else {
+            _showFeedback('Signing failed: ' + (err.message || err.code), true);
+          }
+          return;
+        }
+
+        if (!signature) {
+          _showFeedback('No signature returned by wallet.', true);
+          return;
+        }
+
+        // 5. Submit signature to FINCO server for verification
+        _showFeedback('Verifying signature…', false);
+        var verifyResp;
+        try {
+          verifyResp = await fetch('/protocol/finco/wallet/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wallet_address: walletAddress,
+              nonce: nonce,
+              signature: signature
+            })
+          });
+        } catch (err) {
+          _showFeedback('Network error during verification: ' + err.message, true);
+          return;
+        }
+
+        var verifyData = await verifyResp.json().catch(function() { return {}; });
+        if (!verifyResp.ok) {
+          var vcode = verifyData.code || verifyResp.status;
+          var vmsg = verifyData.error || 'Verification failed.';
+          if (vcode === 'CHALLENGE_EXPIRED') {
+            _showFeedback('Challenge expired — please try again.', true);
+          } else if (vcode === 'SIGNER_MISMATCH') {
+            _showFeedback('Signature mismatch: the signing account does not match the connected address.', true);
+          } else if (vcode === 'SIGNATURE_INVALID') {
+            _showFeedback('Invalid signature.', true);
+          } else {
+            _showFeedback(vmsg, true);
+          }
+          return;
+        }
+
+        // 6. Success — reload to show updated access state
+        _showFeedback('Wallet verified. Refreshing…', false);
+        window.location.reload();
+
+      } finally {
+        _setConnectBtnDisabled(false);
       }
     }
   </script>

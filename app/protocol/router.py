@@ -39,9 +39,15 @@ def _unauthorized() -> JSONResponse:
     )
 
 
-def _get_request_domain(request: Request) -> str:
-    host = request.headers.get("host", "fincoprotocol.com")
-    return host.split(":")[0] or "fincoprotocol.com"
+def _get_trusted_domain() -> str | None:
+    """Return the canonical FINCO application domain from deployment config.
+
+    Returns None if FINCO_APP_DOMAIN is not configured.
+    The domain is used to bind wallet challenges; it must NOT be derived
+    from an attacker-controlled Host header.
+    """
+    domain = os.getenv("FINCO_APP_DOMAIN", "").strip()
+    return domain if domain else None
 
 
 # ── HTML Surface ──────────────────────────────────────────────────────────────
@@ -191,14 +197,25 @@ async def finco_wallet_challenge(request: Request):
 
     from app.protocol.token_config import get_token_config
     config = get_token_config()
-    chain_id = config.chain_id if config else 1  # default chain_id for challenge
+    if config is None:
+        return JSONResponse(
+            {"error": "Token access is not configured.", "code": "NOT_CONFIGURED"},
+            status_code=503,
+        )
+
+    domain = _get_trusted_domain()
+    if domain is None:
+        return JSONResponse(
+            {"error": "Application domain is not configured (FINCO_APP_DOMAIN).", "code": "NOT_CONFIGURED"},
+            status_code=503,
+        )
 
     from app.protocol.wallet_auth import issue_challenge
     challenge_info = issue_challenge(
         user_id=user.user_id,
         wallet_address=validated,
-        chain_id=chain_id,
-        domain=_get_request_domain(request),
+        chain_id=config.chain_id,
+        domain=domain,
     )
 
     return JSONResponse({

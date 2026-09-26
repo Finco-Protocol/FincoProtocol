@@ -108,15 +108,16 @@ def test_api08_finco_placeholder(client):
     assert "$FINCO" in r.text
 
 
-# ── API09: $FINCO is a live nav link (P4: no longer a placeholder) ───────────
+# ── API09: placeholder items are non-links / non-navigating ─────────────────
 
 def test_api09_placeholders_non_links(client):
     r = client.get("/api")
     html = r.text
-    # P4: $FINCO is now a live link in _protocol_nav.html — not an aria-disabled span.
-    # Verify $FINCO appears as an anchor linking to /protocol/finco.
+    # P4: all nav items (Docs, Roadmap, $FINCO) are now live <a> links
+    # Verify all three have live href links in the nav
+    assert 'href="/docs"' in html
+    assert 'href="/roadmap"' in html
     assert 'href="/protocol/finco"' in html
-    assert "$FINCO" in html
 
 
 # ── API10: Model references endpoint listed ──────────────────────────────────
@@ -389,12 +390,13 @@ def test_api39_brand_bar_api(client):
     assert 'href="/api"' in brand_bar
 
 
-# ── API40: $FINCO nav is live — no placeholder classes (P4) ──────────────────
+# ── API40: responsive placeholder classes present ────────────────────────────
 
 def test_api40_responsive_placeholder_classes(client):
     r = client.get("/api")
-    # P4: $FINCO is now a live link; --placeholder modifier is gone from protocol nav.
+    # P4: all nav items are live links; --placeholder modifier is gone
     assert "proto-nav__link--placeholder" not in r.text
+    # All nav items are present as live anchors
     assert 'href="/protocol/finco"' in r.text
 
 

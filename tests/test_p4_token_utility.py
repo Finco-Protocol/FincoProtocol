@@ -67,7 +67,7 @@ class TestUtilityRegistry:
 class TestWalletChallenge:
     """B. Challenge contains required fields and is bound to user."""
 
-    def _make_challenge_text(self, wallet, nonce, user_id, chain_id=1):
+    def _make_challenge_text(self, wallet, nonce, user_id, chain_id=1, domain="test.domain"):
         from app.protocol.wallet_auth import build_challenge_text
         now = datetime.now(timezone.utc)
         expires = now + timedelta(seconds=300)
@@ -78,6 +78,7 @@ class TestWalletChallenge:
             chain_id=chain_id,
             issued_at=now,
             expires_at=expires,
+            domain=domain,
         )
 
     def test_challenge_contains_nonce(self):
@@ -740,3 +741,152 @@ class TestRadarIndependence:
             # Must not import wallet_auth or access_decision
             assert "wallet_auth" not in source, f"{fname} imports wallet_auth"
             assert "access_decision" not in source, f"{fname} imports access_decision"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Correction A tests — new tests added by P4 Correction A
+# ────────────────────────────────────────────────────────────────────────────
+
+class TestCorrectionA_StandardLibrary:
+    """FINCO_WALLET_NO_HANDROLLED_CRYPTO, FINCO_WALLET_STANDARD_EIP191_LIBRARY."""
+
+    def test_evm_crypto_uses_eth_account(self):
+        """_evm_crypto must delegate to eth_account, not contain custom Keccak/EC code."""
+        import inspect
+        import app.protocol._evm_crypto as mod
+        src = inspect.getsource(mod)
+        assert "eth_account" in src
+        assert "encode_defunct" in src or "eth_account.messages" in src
+
+    def test_recover_uses_eth_account_recover_message(self):
+        """recover_eip191_signer must be backed by eth_account.Account.recover_message."""
+        import inspect
+        import app.protocol._evm_crypto as mod
+        src = inspect.getsource(mod.recover_eip191_signer)
+        assert "Account.recover_message" in src or "recover_message" in src
+
+    def test_malformed_signature_returns_none(self):
+        """FINCO_WALLET_MALFORMED_SIGNATURE_FAILS_CLOSED — bad sig → None, not exception."""
+        from app.protocol._evm_crypto import recover_eip191_signer
+        assert recover_eip191_signer("test", "0xdeadbeef") is None
+        assert recover_eip191_signer("test", "not_hex") is None
+        assert recover_eip191_signer("test", "") is None
+        assert recover_eip191_signer("test", "0x" + "00" * 64) is None  # 64 bytes, not 65
+
+    def test_invalid_rs_bounds_fails_closed(self):
+        """FINCO_WALLET_INVALID_RS_BOUNDS_REJECTED — r=0 or s=0 sig returns None."""
+        from app.protocol._evm_crypto import recover_eip191_signer
+        # r=0, s=0, v=27 — invalid signature
+        invalid = "0x" + "00" * 64 + "1b"
+        result = recover_eip191_signer("test message", invalid)
+        assert result is None
+
+    def test_sign_recover_roundtrip_via_eth_account(self):
+        """Full sign-then-recover roundtrip using eth_account-backed helpers."""
+        from app.protocol._evm_crypto import (
+            generate_keypair, sign_personal_message, recover_eip191_signer,
+            private_key_to_address,
+        )
+        kp = generate_keypair()
+        addr = private_key_to_address(kp.private_key)
+        msg = "Correction A roundtrip test"
+        sig = sign_personal_message(msg, kp.private_key)
+        recovered = recover_eip191_signer(msg, sig)
+        assert recovered is not None
+        assert recovered.lower() == addr.lower()
+
+    def test_keccak256_known_vector(self):
+        """keccak256('') must equal known Ethereum vector — now via eth_utils."""
+        from app.protocol._evm_crypto import keccak256
+        result = keccak256(b"")
+        assert result.hex() == "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+
+
+class TestCorrectionB_NoChallengeChainDefault:
+    """FINCO_WALLET_CHALLENGE_NOT_CONFIGURED_FAILS_CLOSED, FINCO_TOKEN_NO_HARDCODED_CHAIN."""
+
+    def test_challenge_not_configured_returns_503(self, tmp_path, monkeypatch):
+        """Challenge endpoint returns NOT_CONFIGURED (503) when token config is absent."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.delenv("FINCO_TOKEN_RPC_URL", raising=False)
+        monkeypatch.delenv("FINCO_TOKEN_CHAIN_ID", raising=False)
+        monkeypatch.delenv("FINCO_TOKEN_ADDRESS", raising=False)
+        monkeypatch.delenv("FINCO_ACCESS_MIN_BALANCE", raising=False)
+        monkeypatch.delenv("FINCO_APP_DOMAIN", raising=False)
+
+        import main_web
+        from starlette.testclient import TestClient
+        from app.auth import create_demo_session_token, new_demo_user_id
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        token = create_demo_session_token(new_demo_user_id())
+        client.cookies.set("finco_demo", token)
+
+        resp = client.post(
+            "/protocol/finco/wallet/challenge",
+            json={"wallet_address": "0x" + "a" * 40},
+        )
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data.get("code") == "NOT_CONFIGURED"
+
+    def test_router_no_hardcoded_chain_1(self):
+        """router.py must NOT contain the literal fallback 'chain_id = config.chain_id if config else 1'."""
+        import os
+        router_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "app", "protocol", "router.py"
+        )
+        with open(router_path) as f:
+            src = f.read()
+        assert "else 1" not in src, "Hardcoded chain_id fallback to 1 found in router.py"
+        assert "chain_id if config else 1" not in src, "Hardcoded chain_id fallback to 1 found"
+
+
+class TestCorrectionD_TrustedDomain:
+    """FINCO_WALLET_DOMAIN_TRUSTED_AUTHORITY."""
+
+    def test_domain_not_from_host_header(self):
+        """_get_trusted_domain must not read from request Host header."""
+        import inspect
+        import app.protocol.router as router_mod
+        src = inspect.getsource(router_mod._get_trusted_domain)
+        assert "request" not in src
+        assert "headers" not in src
+        assert "host" not in src.lower() or "FINCO_APP_DOMAIN" in src
+
+    def test_domain_from_env_var(self, monkeypatch):
+        """FINCO_APP_DOMAIN env var is the domain authority."""
+        monkeypatch.setenv("FINCO_APP_DOMAIN", "test.fincoprotocol.com")
+        from app.protocol.router import _get_trusted_domain
+        domain = _get_trusted_domain()
+        assert domain == "test.fincoprotocol.com"
+
+    def test_domain_none_when_not_set(self, monkeypatch):
+        """_get_trusted_domain returns None when FINCO_APP_DOMAIN is absent."""
+        monkeypatch.delenv("FINCO_APP_DOMAIN", raising=False)
+        from app.protocol.router import _get_trusted_domain
+        domain = _get_trusted_domain()
+        assert domain is None
+
+    def test_challenge_not_configured_when_domain_missing(self, tmp_path, monkeypatch):
+        """Challenge endpoint returns NOT_CONFIGURED when FINCO_APP_DOMAIN is absent."""
+        monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "http://localhost:8545")
+        monkeypatch.setenv("FINCO_TOKEN_CHAIN_ID", "1")
+        monkeypatch.setenv("FINCO_TOKEN_ADDRESS", "0x" + "a" * 40)
+        monkeypatch.setenv("FINCO_ACCESS_MIN_BALANCE", "1")
+        monkeypatch.delenv("FINCO_APP_DOMAIN", raising=False)
+
+        import main_web
+        from starlette.testclient import TestClient
+        from app.auth import create_demo_session_token, new_demo_user_id
+        client = TestClient(main_web.app, raise_server_exceptions=False)
+        token = create_demo_session_token(new_demo_user_id())
+        client.cookies.set("finco_demo", token)
+
+        resp = client.post(
+            "/protocol/finco/wallet/challenge",
+            json={"wallet_address": "0x" + "a" * 40},
+        )
+        assert resp.status_code == 503
+        assert resp.json().get("code") == "NOT_CONFIGURED"
