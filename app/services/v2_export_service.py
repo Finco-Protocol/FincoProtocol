@@ -255,11 +255,16 @@ def _build_persisted_bundle(
     _input_composite_hash = str(
         getattr(ws, "last_runtime_composite_hash", None) or "not_applicable"
     ) if ws is not None else "not_applicable"
-    try:
-        from financial_engine.version import ENGINE_VERSION as _EV
-        _engine_version_str = str(_EV)
-    except Exception:
-        _engine_version_str = "not_applicable"
+    # Engine version: read from persisted run-bound identity (captured at run commit time).
+    # Do NOT read current ENGINE_VERSION at export time — that misrepresents historical run lineage.
+    # If the persisted identity lacks engine_version (legacy run), report NOT_AVAILABLE.
+    _engine_version_str = "NOT_AVAILABLE"
+    if ws is not None:
+        _ri = getattr(ws, "last_runtime_identity", None)
+        if isinstance(_ri, dict):
+            _ev = _ri.get("engine_version")
+            if _ev and str(_ev).strip():
+                _engine_version_str = str(_ev)
     # Senior debt authority from persisted runtime_summary — numeric float stored by run path.
     _senior_debt_auth: float | None = None
     _sd_raw = result_adapter.senior_debt_keur

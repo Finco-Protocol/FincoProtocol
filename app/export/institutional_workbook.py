@@ -127,6 +127,12 @@ def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
     sculpting = getattr(rt, "sculpting_result", None) if rt is not None else None
     if sculpting is not None and getattr(sculpting, "debt_keur", None) is not None:
         return float(sculpting.debt_keur)
+    # Final fallback: use the clean G2C authority value persisted on the bundle.
+    # This covers reference templates where context.senior_debt_keur is None and
+    # sculpting_result is absent from the skeleton run.
+    auth = getattr(bundle, "senior_debt_keur_authority", None)
+    if auth is not None and float(auth) > 0.0:
+        return float(auth)
     return 0.0
 
 

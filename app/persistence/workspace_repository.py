@@ -613,6 +613,13 @@ def v2_atomic_run_commit(
             "scenario_name": identity.scenario.scenario_name,
             "composite_hash": identity.composite_hash,
         }
+        # Correction C: persist engine version at run commit time so the XLSX export
+        # reads the version that CREATED this run, not the current export-time version.
+        try:
+            from financial_engine.version import ENGINE_VERSION as _EV
+            _identity_payload["engine_version"] = str(_EV)
+        except Exception:
+            _identity_payload["engine_version"] = "NOT_AVAILABLE"
 
         # Preserve existing replay_metadata when caller passes None; merge when provided.
         _existing_meta = _json.loads(row["replay_metadata_json"] or "{}")
