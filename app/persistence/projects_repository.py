@@ -898,6 +898,8 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
             "horizon_years": str(pi.info.horizon_years),
             "capacity_factor": "",
             "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+            "tax_corporate_rate_pct": str(pi.tax.corporate_rate * 100),
+            "tax_loss_carryforward_years": str(pi.tax.loss_carryforward_years),
         })
         return baseline
 
