@@ -58,6 +58,35 @@ def _get_certificate_result(project_code: str, user_id: str):
         }
 
 
+@router.get("/verify/run/{project_code}.json")
+async def run_certificate_json(project_code: str, request: Request):
+    """FINCO Run Certificate — machine-readable JSON."""
+    from app.auth import resolve_request_session
+
+    user = resolve_request_session(request)
+    if not user:
+        return JSONResponse({"error": "authentication_required"}, status_code=401)
+
+    project_record, certificate, error = await run_in_threadpool(
+        _get_certificate_result, project_code, user.user_id
+    )
+
+    if project_record is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    if error:
+        return JSONResponse(
+            {
+                "schema": "FINCO_RUN_CERTIFICATE_V1",
+                "available": False,
+                "error": error,
+            },
+            status_code=200,
+        )
+
+    return JSONResponse(certificate)
+
+
 @router.get("/verify/run/{project_code}", response_class=HTMLResponse)
 async def run_certificate_html(project_code: str, request: Request):
     """FINCO Run Certificate — HTML surface."""
@@ -95,32 +124,3 @@ async def run_certificate_html(project_code: str, request: Request):
             "error": error,
         },
     )
-
-
-@router.get("/verify/run/{project_code}.json")
-async def run_certificate_json(project_code: str, request: Request):
-    """FINCO Run Certificate — machine-readable JSON."""
-    from app.auth import resolve_request_session
-
-    user = resolve_request_session(request)
-    if not user:
-        return JSONResponse({"error": "authentication_required"}, status_code=401)
-
-    project_record, certificate, error = await run_in_threadpool(
-        _get_certificate_result, project_code, user.user_id
-    )
-
-    if project_record is None:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-
-    if error:
-        return JSONResponse(
-            {
-                "schema": "FINCO_RUN_CERTIFICATE_V1",
-                "available": False,
-                "error": error,
-            },
-            status_code=200,
-        )
-
-    return JSONResponse(certificate)

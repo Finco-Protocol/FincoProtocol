@@ -401,6 +401,7 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/health",
     "/favicon",
     "/api",  # public developer API — no demo session created on stateless API calls
+    "/verify/run",  # certificate routes require explicit authentication
 )
 
 

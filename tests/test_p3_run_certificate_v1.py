@@ -47,9 +47,12 @@ from __future__ import annotations
 
 import copy
 import json
+import pathlib
 from datetime import datetime, timezone
 
 import pytest
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +150,7 @@ class TestPersistedLastRunOnly:
     def test_no_engine_import_in_certificate_module(self):
         """RUN_CERTIFICATE_NO_ENGINE_RECALCULATION: certificate module never imports the engine."""
         import ast, pathlib, tokenize, io
-        src = pathlib.Path("/home/user/FincoProtocol/app/verify/run_certificate.py").read_text()
+        src = (_REPO_ROOT / "app/verify/run_certificate.py").read_text()
         assert "financial_engine" not in src, "certificate module must not import financial_engine"
 
         # Strip string literals (docstrings/comments) before checking for forbidden call names,
@@ -608,9 +611,63 @@ def test_reference_model_certificate(seeded_db, template_source):
 # RUN_CERTIFICATE_XLSX_IDENTITY_RECONCILES
 # ---------------------------------------------------------------------------
 
+def _read_run_identity_string(sheet, label: str):
+    """Read a string cell from the Run Identity sheet by matching the row label in column A."""
+    for row in sheet.iter_rows(min_col=1, max_col=2, values_only=True):
+        if row[0] == label:
+            return str(row[1]) if row[1] is not None else None
+    return None
+
+
+def _build_xlsx_from_last_run(rec, ws):
+    """Build Institutional XLSX bytes from the persisted Last Run — zero engine execution."""
+    import io
+    import openpyxl
+    from app.services.export_service import (
+        _resolve_canonical_last_run_path,
+        EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+    )
+    from app.services.v2_export_service import (
+        _RuntimeResultAdapter,
+        _StatementsAdapter,
+        _build_persisted_bundle,
+    )
+    from app.workbook.runtime_result import RuntimeResult
+    from app.export.institutional_workbook import export_institutional_workbook_from_bundle
+
+    authority = _resolve_canonical_last_run_path(rec, rec.user_id, ws)
+    rr = RuntimeResult.from_workspace_state(ws)
+    assert rr is not None, "RuntimeResult must be available for committed last run"
+
+    result_adapter = _RuntimeResultAdapter(rr.runtime_summary, rr.debt_schedule)
+    statements_adapter = _StatementsAdapter(rr.financial_statements) if rr.financial_statements else None
+
+    bundle = _build_persisted_bundle(
+        rec.template_source,  # factory project key, e.g. "generic_solar_reference"
+        project_record=rec,
+        project_inputs=authority.project_inputs,
+        current_snapshot=authority.current_snapshot,
+        result_adapter=result_adapter,
+        statements_adapter=statements_adapter,
+        runtime_origin=authority.runtime_origin,
+        scenario_id=authority.active_scenario_id,
+        scenario_name=authority.active_scenario_name,
+        export_authority=EXPORT_AUTHORITY_CANONICAL_LAST_RUN,
+        working_changed_since_run=authority.working_changed_since_run,
+        run_id=authority.run_id,
+        run_at=authority.run_at,
+        snapshot_id=rr.snapshot_id or ws.last_runtime_snapshot_id,
+        ws=ws,
+    )
+    return export_institutional_workbook_from_bundle(bundle)
+
+
 class TestXlsxReconciliation:
-    def test_certificate_composite_hash_matches_xlsx_run_identity(self, seeded_db):
-        """RUN_CERTIFICATE_XLSX_IDENTITY_RECONCILES: certificate composite_hash == XLSX Run Identity composite_hash."""
+    def test_certificate_composite_hash_matches_serialized_xlsx(self, seeded_db):
+        """RUN_CERTIFICATE_XLSX_SERIALIZED_IDENTITY_RECONCILES: certificate composite_hash matches
+        the Input composite hash cell in the serialized Institutional XLSX Run Identity sheet."""
+        import io
+        import openpyxl
         from app.verify.run_certificate import build_run_certificate
         from app.persistence.projects_repository import get_reference_by_template_source
         from app.persistence.workspace_repository import get_workspace_state
@@ -620,13 +677,24 @@ class TestXlsxReconciliation:
         ws = get_workspace_state(rec.user_id, rec.project_id)
 
         cert = build_run_certificate(ws, rec)
+        xlsx_bytes = _build_xlsx_from_last_run(rec, ws)
 
-        # XLSX Run Identity reads composite_hash from ws.last_runtime_composite_hash
-        # (same source the certificate uses — both from v2_atomic_run_commit)
-        assert cert["identity"]["composite_hash"] == ws.last_runtime_composite_hash
+        wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
+        assert "Run Identity" in wb.sheetnames, "Institutional XLSX must have a Run Identity sheet"
+        sheet = wb["Run Identity"]
 
-    def test_certificate_engine_version_matches_xlsx_run_identity(self, seeded_db):
-        """RUN_CERTIFICATE_XLSX_IDENTITY_RECONCILES: certificate engine_version == XLSX run-bound engine version."""
+        xlsx_composite_hash = _read_run_identity_string(sheet, "Input composite hash")
+        assert xlsx_composite_hash is not None, "Run Identity sheet must contain Input composite hash"
+        assert xlsx_composite_hash == cert["identity"]["composite_hash"], (
+            f"XLSX composite hash {xlsx_composite_hash!r} must match "
+            f"certificate composite_hash {cert['identity']['composite_hash']!r}"
+        )
+
+    def test_certificate_engine_version_matches_serialized_xlsx(self, seeded_db):
+        """RUN_CERTIFICATE_XLSX_SERIALIZED_IDENTITY_RECONCILES: certificate engine_version matches
+        the Engine version cell in the serialized Institutional XLSX Run Identity sheet."""
+        import io
+        import openpyxl
         from app.verify.run_certificate import build_run_certificate
         from app.persistence.projects_repository import get_reference_by_template_source
         from app.persistence.workspace_repository import get_workspace_state
@@ -636,10 +704,40 @@ class TestXlsxReconciliation:
         ws = get_workspace_state(rec.user_id, rec.project_id)
 
         cert = build_run_certificate(ws, rec)
+        xlsx_bytes = _build_xlsx_from_last_run(rec, ws)
 
-        # XLSX Run Identity reads engine_version from ws.last_runtime_identity["engine_version"]
-        # (same source the certificate uses)
-        assert cert["model"]["engine_version"] == ws.last_runtime_identity["engine_version"]
+        wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
+        sheet = wb["Run Identity"]
+
+        xlsx_engine_version = _read_run_identity_string(sheet, "Engine version")
+        assert xlsx_engine_version is not None, "Run Identity sheet must contain Engine version"
+        assert xlsx_engine_version == cert["model"]["engine_version"], (
+            f"XLSX engine version {xlsx_engine_version!r} must match "
+            f"certificate engine_version {cert['model']['engine_version']!r}"
+        )
+
+    def test_xlsx_uses_no_engine_recalculation(self, seeded_db):
+        """RUN_CERTIFICATE_XLSX_SAME_RUN_NO_RECALCULATION: building the XLSX does not trigger
+        financial_engine execution (proven by patching the engine entry point)."""
+        from unittest.mock import patch
+        from app.persistence.projects_repository import get_reference_by_template_source
+        from app.persistence.workspace_repository import get_workspace_state
+
+        _bootstrap(seeded_db)
+        rec = get_reference_by_template_source("generic_solar_reference")
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+
+        engine_called = []
+
+        def _sentinel(*a, **kw):
+            engine_called.append(True)
+            raise AssertionError("financial_engine must not be called during XLSX + certificate build")
+
+        with patch("financial_engine.run_project", _sentinel, create=True):
+            with patch("financial_engine.run_clean_production", _sentinel, create=True):
+                _build_xlsx_from_last_run(rec, ws)
+
+        assert engine_called == [], "No engine execution must occur"
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +753,7 @@ class TestFrozenNamespaces:
             ["git", "diff", "origin/main", "HEAD", "--name-only", "--",
              "financial_engine/", "finco_core/", "finco_radar/"],
             capture_output=True, text=True,
-            cwd="/home/user/FincoProtocol",
+            cwd=str(_REPO_ROOT),
         )
         changed = [
             line for line in result.stdout.strip().splitlines()
