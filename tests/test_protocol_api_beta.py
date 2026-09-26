@@ -108,26 +108,15 @@ def test_api08_finco_placeholder(client):
     assert "$FINCO" in r.text
 
 
-# ── API09: placeholder items are non-links / non-navigating ─────────────────
+# ── API09: $FINCO is a live nav link (P4: no longer a placeholder) ───────────
 
 def test_api09_placeholders_non_links(client):
     r = client.get("/api")
     html = r.text
-    # Docs, Roadmap, $FINCO placeholders use aria-disabled="true"
-    # and must not be <a href="..."> elements leading to routes
-    assert 'aria-disabled="true"' in html
-    # They must NOT have href="/docs" (the /docs LINK appears separately for OpenAPI)
-    # But the nav Docs placeholder must NOT be an anchor
-    # Verify Docs near aria-disabled appears as a span, not an anchor
-    import re
-    # Check that placeholder spans contain Docs/Roadmap/$FINCO
-    placeholder_pattern = re.compile(
-        r'<span[^>]*aria-disabled="true"[^>]*>(.*?)</span>',
-        re.DOTALL,
-    )
-    placeholder_texts = " ".join(m.group(0) for m in placeholder_pattern.finditer(html))
-    # At least one placeholder span for each item exists
-    assert "Docs" in placeholder_texts or 'aria-disabled="true"' in html
+    # P4: $FINCO is now a live link in _protocol_nav.html — not an aria-disabled span.
+    # Verify $FINCO appears as an anchor linking to /protocol/finco.
+    assert 'href="/protocol/finco"' in html
+    assert "$FINCO" in html
 
 
 # ── API10: Model references endpoint listed ──────────────────────────────────
@@ -400,12 +389,13 @@ def test_api39_brand_bar_api(client):
     assert 'href="/api"' in brand_bar
 
 
-# ── API40: responsive placeholder classes present ────────────────────────────
+# ── API40: $FINCO nav is live — no placeholder classes (P4) ──────────────────
 
 def test_api40_responsive_placeholder_classes(client):
     r = client.get("/api")
-    # Placeholder nav items carry the --placeholder modifier for CSS targeting
-    assert "proto-nav__link--placeholder" in r.text
+    # P4: $FINCO is now a live link; --placeholder modifier is gone from protocol nav.
+    assert "proto-nav__link--placeholder" not in r.text
+    assert 'href="/protocol/finco"' in r.text
 
 
 # ── API41: /api/v1/meta unchanged ────────────────────────────────────────────

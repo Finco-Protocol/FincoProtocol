@@ -1477,11 +1477,6 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "runtime_is_stale": runtime_freshness.is_stale,
         "runtime_state": runtime_freshness.state.value,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
-        "cert_project_code": (
-            project_record.project_code
-            if ws.any_run_committed and getattr(ws, "last_runtime_identity", None) is not None
-            else ""
-        ),
         "flash_error": flash_error,
         "field_error": "",
         "library_url": "/library",

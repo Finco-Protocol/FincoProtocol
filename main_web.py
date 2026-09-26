@@ -296,10 +296,6 @@ app.include_router(_protocol_router)
 from app.protocol.router import router as _finco_utility_router
 app.include_router(_finco_utility_router)
 
-# -- FINCO Verify — Run Certificate (contextual, no primary nav entry) ---------
-from app.verify.router import router as _verify_router
-app.include_router(_verify_router)
-
 # -- FINCO Public Model & Radar API v1 -----------------------------------------
 # Mount ONLY the canonical public v1 router so that:
 #   - /api/v1/model/references/** and /api/v1/radar/** are reachable
@@ -406,7 +402,6 @@ _DEMO_PROVISION_SKIP_PREFIXES = (
     "/favicon",
     "/api",  # public developer API — no demo session created on stateless API calls
     "/protocol/finco",  # P4 token utility — requires real auth, not auto-provisioned demo
-    "/verify/run",  # certificate routes require explicit authentication
 )
 
 
