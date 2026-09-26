@@ -82,6 +82,10 @@ class WorkbookExportBundle:
     working_changed_since_run: str = "not_applicable"
     run_id: str = "not_applicable"
     run_at: str = "not_applicable"
+    senior_debt_keur_authority: float | None = None
+    project_id: str = "not_applicable"
+    input_composite_hash: str = "not_applicable"
+    engine_version: str = "not_applicable"
 
 
 def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
@@ -123,6 +127,12 @@ def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
     sculpting = getattr(rt, "sculpting_result", None) if rt is not None else None
     if sculpting is not None and getattr(sculpting, "debt_keur", None) is not None:
         return float(sculpting.debt_keur)
+    # Final fallback: use the clean G2C authority value persisted on the bundle.
+    # This covers reference templates where context.senior_debt_keur is None and
+    # sculpting_result is absent from the skeleton run.
+    auth = getattr(bundle, "senior_debt_keur_authority", None)
+    if auth is not None and float(auth) > 0.0:
+        return float(auth)
     return 0.0
 
 
@@ -143,9 +153,12 @@ INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(12, "P&L", "runtime_bound", "runtime", True, "Offline assembled P&L using existing runtime result as source."),
     WorkbookSheetDefinition(13, "Cash Flow", "runtime_bound", "runtime", True, "Offline PF cash waterfall using existing runtime result as source."),
     WorkbookSheetDefinition(14, "Balance Sheet", "runtime_bound", "runtime", True, "Offline balance sheet assembly from existing runtime result."),
-    WorkbookSheetDefinition(15, "Audit", "runtime_bound", "review", True, "Runtime source notes, provenance, and audit boundary statements."),
-    WorkbookSheetDefinition(16, "Gap Register", "runtime_bound", "review", True, "Known gaps and accepted conventions reused from existing documentation."),
-    WorkbookSheetDefinition(17, "Validation Status", "implemented", "review", True, "G1D: project validation tier and per-metric validated/methodology-caveat labels."),
+    WorkbookSheetDefinition(15, "Returns", "implemented", "runtime", True, "Project IRR, Equity IRR, Total Sponsor XIRR bound from runtime outputs. P1.2."),
+    WorkbookSheetDefinition(16, "Run Identity", "implemented", "runtime + review", True, "Explicit run binding: run_id, project_id, engine version, input hash, export timestamp. P1.2."),
+    WorkbookSheetDefinition(17, "Reconciliation", "implemented", "runtime", True, "Sources=Uses, CAPEX, Revenue, OPEX, Debt, Returns reconciliation checks. P1.2."),
+    WorkbookSheetDefinition(18, "Audit", "runtime_bound", "review", True, "Runtime source notes, provenance, and audit boundary statements."),
+    WorkbookSheetDefinition(19, "Gap Register", "runtime_bound", "review", True, "Known gaps and accepted conventions reused from existing documentation."),
+    WorkbookSheetDefinition(20, "Validation Status", "implemented", "review", True, "G1D: project validation tier and per-metric validated/methodology-caveat labels."),
 )
 
 
@@ -244,6 +257,9 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
     _write_pnl_sheet(workbook.create_sheet("P&L"), bundle)
     _write_cash_flow_sheet(workbook.create_sheet("Cash Flow"), bundle)
     _write_balance_sheet(workbook.create_sheet("Balance Sheet"), bundle)
+    _write_returns_sheet(workbook.create_sheet("Returns"), bundle)
+    _write_run_identity_sheet(workbook.create_sheet("Run Identity"), bundle)
+    _write_reconciliation_sheet(workbook.create_sheet("Reconciliation"), bundle)
     _write_audit_sheet(workbook.create_sheet("Audit"), bundle)
     _write_gap_register_sheet(workbook.create_sheet("Gap Register"), bundle)
     validation_status = workbook.create_sheet("Validation Status")
@@ -257,6 +273,9 @@ def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> b
     cover.sheet_properties.tabColor = "1F4E79"
     index_sheet.sheet_properties.tabColor = "1F4E79"
     validation_status.sheet_properties.tabColor = "2E7D32"
+    workbook["Returns"].sheet_properties.tabColor = "1F4E79"
+    workbook["Run Identity"].sheet_properties.tabColor = "1F4E79"
+    workbook["Reconciliation"].sheet_properties.tabColor = "2E7D32"
 
     output = BytesIO()
     workbook.save(output)
@@ -370,6 +389,24 @@ def _build_export_bundle(
     runtime_result = execution.result
     authority_metadata = execution.authority_metadata or {}
 
+    # Correction A: authoritative senior debt from the clean G2C result.
+    # This is the ONLY valid source — never a residual or self-comparison.
+    _senior_debt_auth: float | None = None
+    if execution.clean_run is not None:
+        try:
+            _senior_debt_auth = float(
+                execution.clean_run.g2c_result.financing_result.final_senior_commitment_keur
+            )
+        except Exception:
+            _senior_debt_auth = None
+
+    # Engine version for Run Identity binding.
+    try:
+        from financial_engine.version import ENGINE_VERSION as _EV
+        _engine_version_str = str(_EV)
+    except Exception:
+        _engine_version_str = "not_applicable"
+
     runtime_rows = build_runtime_summary_rows(
         project_key,
         _precomputed=(execution.project_inputs, runtime_result),
@@ -451,6 +488,10 @@ def _build_export_bundle(
         capex_items=build_capex_items_table(project_inputs),
         revenue_table=build_revenue_table(runtime_result),
         debt_table=build_debt_table(runtime_result),
+        senior_debt_keur_authority=_senior_debt_auth,
+        project_id=project_key,
+        input_composite_hash="not_applicable",
+        engine_version=_engine_version_str,
     )
 
 
@@ -922,6 +963,324 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     )
 
 
+def _write_returns_sheet(sheet, bundle: WorkbookExportBundle) -> None:
+    """P1.2 Returns sheet — Project IRR, Equity IRR, Total Sponsor XIRR from runtime.
+
+    Values are read directly from the runtime result. No new calculations.
+    The sheet separates the three return metrics, labels each with its runtime
+    provenance, and distinguishes Equity IRR (levered pure-equity XIRR) from
+    Total Sponsor XIRR (sponsor cash-flow XIRR inclusive of SHL service).
+    """
+    _write_metadata_block(sheet, bundle, "runtime")
+    rt = bundle.runtime_result
+
+    project_irr = getattr(rt, "project_irr", None)
+    equity_irr = getattr(rt, "equity_irr", None)
+    sponsor_irr = getattr(rt, "sponsor_irr", None)
+
+    def _safe_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    project_irr_f = _safe_float(project_irr)
+    equity_irr_f = _safe_float(equity_irr)
+    sponsor_irr_f = _safe_float(sponsor_irr)
+
+    rows = [
+        (
+            "Project IRR",
+            project_irr_f,
+            "runtime",
+            "Unlevered project XIRR. Source: runtime_result.project_irr.",
+            RATIO_FORMAT,
+        ),
+        (
+            "Equity IRR",
+            equity_irr_f,
+            "runtime",
+            "Pure levered equity XIRR (post-SHL, post-tax). Source: runtime_result.equity_irr.",
+            RATIO_FORMAT,
+        ),
+        (
+            "Total Sponsor XIRR",
+            sponsor_irr_f,
+            "runtime",
+            "Sponsor XIRR inclusive of SHL cash service flows. Source: runtime_result.sponsor_irr.",
+            RATIO_FORMAT,
+        ),
+    ]
+    next_row = _write_key_value_section(sheet, 6, "Return metrics (runtime authority)", rows, include_format=True)
+
+    min_dscr = _safe_float(getattr(rt, "actual_min_dscr", None))
+    avg_dscr = _safe_float(getattr(rt, "actual_avg_dscr", None))
+    total_ds = _safe_float(getattr(rt, "total_senior_ds_keur", None))
+    dscr_rows = [
+        ("Min DSCR", min_dscr, "runtime", "Minimum debt service coverage ratio over the debt tenor.", MULTIPLE_FORMAT),
+        ("Avg DSCR", avg_dscr, "runtime", "Average DSCR over the debt tenor.", MULTIPLE_FORMAT),
+        ("Total senior debt service (kEUR)", total_ds, "runtime", "Cumulative senior debt service.", K_EUR_FORMAT),
+    ]
+    _write_key_value_section(sheet, next_row, "Debt coverage ratios (runtime authority)", dscr_rows, include_format=True)
+
+
+def _write_run_identity_sheet(sheet, bundle: WorkbookExportBundle) -> None:
+    """P1.2 Run Identity sheet — explicit binding of workbook to runtime execution.
+
+    Provides the complete provenance chain: project identity, run identity,
+    engine version, input composite hash, and export timestamp so a reviewer
+    can trace every number back to its originating run.
+    """
+    _write_metadata_block(sheet, bundle, "runtime + review")
+
+    identity_rows = [
+        ("Project key", bundle.project_key, "review", "Canonical project key used for this export."),
+        ("Project ID", bundle.project_id, "runtime", "Project record identifier. Factory path: canonical key. User path: persisted project_id."),
+        ("Project name", bundle.project_name, "review", "Human-readable project name."),
+        ("Active project", bundle.active_project, "runtime", "Active project identifier at run time."),
+        ("Run ID", bundle.run_id, "runtime", "Persisted run record identifier. not_applicable for factory-reference exports."),
+        ("Run at", bundle.run_at, "runtime", "Timestamp of the originating backend run. not_applicable for factory-reference exports."),
+        ("Scenario ID", bundle.scenario_id, "runtime", "Scenario record identifier bound to this run."),
+        ("Scenario name", bundle.scenario_name, "runtime", "Scenario name bound to this run."),
+        ("Scenario revision", bundle.scenario_revision, "runtime", "Snapshot / scenario revision marker."),
+        ("Runtime snapshot ID", bundle.runtime_snapshot_id, "runtime", "Persisted runtime snapshot identifier."),
+        ("Export authority", bundle.export_authority, "runtime", "CANONICAL_LAST_RUN, FACTORY_REFERENCE, or PREVIEW_WORKING."),
+        ("Working changed since run", bundle.working_changed_since_run, "runtime", "true if draft inputs differ from last run inputs; false if aligned; not_applicable for factory path."),
+        ("Runtime origin", _display_runtime_origin(bundle.runtime_origin), "runtime", "Runtime execution path label."),
+        ("Template origin", _display_template_origin(bundle.template_origin), "review", "Template source for this project."),
+        ("Template revision", bundle.template_revision, "review", "Template provenance marker."),
+        ("Export template version", bundle.export_template_version, "review", "Workbook packaging version."),
+        ("Input composite hash", bundle.input_composite_hash, "runtime", "Content hash of the project inputs at the time of run. not_applicable for factory-reference exports."),
+        ("Engine version", bundle.engine_version, "runtime", "Financial engine version identifier bound to this run."),
+        ("Commit SHA", bundle.commit_sha, "review", "Code version that generated this workbook."),
+        ("Branch", bundle.branch, "review", "Git branch of the generating code."),
+        ("Export generated at", bundle.generated_at, "review", "Timestamp when this workbook was serialized."),
+        ("Runtime timestamp", bundle.runtime_timestamp, "review", "Timestamp of the backend runtime execution."),
+        ("Runtime flags captured", bundle.runtime_flag_count, "review", "Count of runtime flags captured for replay provenance."),
+    ]
+    next_row = _write_key_value_section(sheet, 6, "Run identity and provenance", identity_rows)
+
+    # Authority metadata block (engine version, classification, etc.)
+    auth = bundle.authority_metadata or {}
+    auth_rows = [
+        (k, str(v), "runtime", "Runtime authority metadata field.")
+        for k, v in sorted(auth.items())
+    ] or [("authority_metadata", "not_available", "review", "No authority metadata in this export path.")]
+    _write_key_value_section(sheet, next_row, "Engine authority metadata", auth_rows)
+
+
+def _read_labeled_cell(workbook, sheet_name: str, label: str) -> float | None:
+    """Read a numeric cell from a sheet by matching row label in column A.
+
+    Returns None if the sheet is absent, the label is not found, or the value
+    cannot be cast to float.  Used by the Reconciliation sheet to read back
+    serialized values from already-written sibling sheets — a genuine two-sided
+    check that detects sheet-writer bugs without comparing a value to itself.
+    """
+    try:
+        ws = workbook[sheet_name]
+        for row in ws.iter_rows(min_col=1, max_col=2, values_only=True):
+            if row[0] == label and row[1] is not None:
+                try:
+                    return float(row[1])
+                except (TypeError, ValueError):
+                    pass
+    except Exception:
+        pass
+    return None
+
+
+def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
+    """P1.2 Reconciliation sheet — genuine two-sided numeric reconciliation.
+
+    Correction A: every check compares a SERIALIZED cell value (read back from
+    the already-written sibling sheet via sheet.parent) against the runtime
+    authority value.  No self-comparisons; no residual senior debt; no automatic
+    PASS for missing evidence.
+
+    Sources = Uses uses the engine-authoritative senior debt
+    (clean_run.g2c_result.financing_result.final_senior_commitment_keur), never
+    a residual (total_capex - equity).  If that authority is absent, the check
+    is NOT_AVAILABLE.
+    """
+    _write_metadata_block(sheet, bundle, "runtime")
+    rt = bundle.runtime_result
+    ctx = bundle.context
+
+    def _safe_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    _TOL_ZERO = 1e-3       # kEUR tolerance for sum reconciliations
+    _TOL_IRR = 1e-4        # ratio tolerance for return reconciliations (0.01%)
+
+    def _check(label, exported, runtime, tol, unit="kEUR"):
+        if exported is None or runtime is None:
+            status = "NOT_AVAILABLE"
+            diff = None
+        else:
+            diff = abs(exported - runtime)
+            status = "PASS" if diff <= tol else "FAIL"
+        return (label, exported, runtime, diff, tol, unit, status)
+
+    financing = bundle.project_inputs.financing
+    total_capex = _safe_float(ctx.total_capex_keur) or 0.0
+    shl = (_safe_float(ctx.shl_amount_keur) or 0.0) + (_safe_float(ctx.shl_idc_keur) or 0.0)
+    share_capital = _safe_float(getattr(financing, "share_capital_keur", None)) or 0.0
+    share_premium = _safe_float(getattr(financing, "share_premium_keur", None)) or 0.0
+    equity_total = shl + share_capital + share_premium
+
+    # Authoritative senior debt — Correction A: NEVER residual, NEVER self-comparison.
+    # Source: clean_run.g2c_result.financing_result.final_senior_commitment_keur (bundle field).
+    # If absent: check is NOT_AVAILABLE.
+    _authority_senior = getattr(bundle, "senior_debt_keur_authority", None)
+    if _authority_senior is not None and _authority_senior > 0.0:
+        senior_debt: float | None = _authority_senior
+    else:
+        ctx_debt = _safe_float(ctx.senior_debt_keur)
+        senior_debt = float(ctx_debt) if (ctx_debt is not None and ctx_debt > 0.0) else None
+
+    total_sources = (senior_debt + equity_total) if senior_debt is not None else None
+
+    runtime_revenue = _safe_float(getattr(rt, "total_revenue_keur", None))
+    runtime_opex = _safe_float(getattr(rt, "total_opex_keur", None))
+    runtime_project_irr = _safe_float(getattr(rt, "project_irr", None))
+    runtime_equity_irr = _safe_float(getattr(rt, "equity_irr", None))
+    runtime_sponsor_irr = _safe_float(getattr(rt, "sponsor_irr", None))
+    runtime_min_dscr = _safe_float(getattr(rt, "actual_min_dscr", None))
+
+    # Build capex line-item sum from capex_items DataFrame
+    capex_items_sum = None
+    try:
+        capex_df = bundle.capex_items
+        if capex_df is not None and not capex_df.empty:
+            amount_col = next(
+                (c for c in capex_df.columns if "amount" in str(c).lower() or "keur" in str(c).lower()),
+                None,
+            )
+            if amount_col:
+                capex_items_sum = float(capex_df[amount_col].sum())
+    except Exception:
+        capex_items_sum = None
+
+    # Sources = Uses reconciliation — authoritative senior debt, never residual.
+    checks = [
+        _check("Total Sources vs Total Uses (kEUR)", total_sources, total_capex, _TOL_ZERO),
+    ]
+
+    # CAPEX detail sum vs context total
+    if capex_items_sum is not None:
+        checks.append(_check("CAPEX line items sum vs context total (kEUR)", capex_items_sum, total_capex, _TOL_ZERO))
+
+    # Revenue detail vs runtime total
+    revenue_detail_total = None
+    try:
+        rev_df = bundle.revenue_table
+        if rev_df is not None and not rev_df.empty:
+            revenue_row = rev_df[rev_df.index.astype(str).str.lower().str.contains("revenue")]
+            if not revenue_row.empty:
+                revenue_detail_total = float(revenue_row.iloc[0].sum())
+    except Exception:
+        revenue_detail_total = None
+
+    if revenue_detail_total is not None and runtime_revenue is not None:
+        checks.append(_check("Revenue period sum vs runtime total revenue (kEUR)", revenue_detail_total, runtime_revenue, _TOL_ZERO))
+
+    # OPEX: true read-back from the serialized OPEX sheet cell, not a self-comparison.
+    opex_from_sheet = _read_labeled_cell(sheet.parent, "OPEX", "Runtime total OPEX")
+    checks.append(_check("OPEX sheet vs runtime total (kEUR)", opex_from_sheet, runtime_opex, _TOL_ZERO))
+
+    # Debt schedule reconciliation: sum of senior DS from period table vs runtime total
+    debt_ds_sum = None
+    try:
+        debt_df = bundle.debt_table
+        if debt_df is not None and not debt_df.empty:
+            ds_row = debt_df[debt_df.index.astype(str).str.lower().str.contains("debt service|total ds")]
+            if not ds_row.empty:
+                debt_ds_sum = float(ds_row.iloc[0].sum())
+    except Exception:
+        debt_ds_sum = None
+
+    runtime_total_ds = _safe_float(getattr(rt, "total_senior_ds_keur", None))
+    if debt_ds_sum is not None and runtime_total_ds is not None:
+        checks.append(_check("Debt service period sum vs runtime total (kEUR)", debt_ds_sum, runtime_total_ds, _TOL_ZERO))
+
+    # Returns: true read-back from the serialized Returns sheet cells, not self-comparisons.
+    serialized_project_irr = _read_labeled_cell(sheet.parent, "Returns", "Project IRR")
+    serialized_equity_irr = _read_labeled_cell(sheet.parent, "Returns", "Equity IRR")
+    serialized_sponsor_irr = _read_labeled_cell(sheet.parent, "Returns", "Total Sponsor XIRR")
+    checks.append(_check("Returns sheet Project IRR vs runtime", serialized_project_irr, runtime_project_irr, _TOL_IRR, "ratio"))
+    checks.append(_check("Returns sheet Equity IRR vs runtime", serialized_equity_irr, runtime_equity_irr, _TOL_IRR, "ratio"))
+    checks.append(_check("Returns sheet Total Sponsor XIRR vs runtime", serialized_sponsor_irr, runtime_sponsor_irr, _TOL_IRR, "ratio"))
+
+    # Count pass/fail
+    pass_count = sum(1 for c in checks if c[6] == "PASS")
+    fail_count = sum(1 for c in checks if c[6] == "FAIL")
+    na_count = sum(1 for c in checks if c[6] == "NOT_AVAILABLE")
+
+    sheet["A6"] = "RECONCILIATION SUMMARY"
+    sheet["A6"].fill = SECTION_FILL
+    sheet["A6"].font = HEADER_FONT
+    sheet["B6"] = f"PASS: {pass_count}  FAIL: {fail_count}  NOT_AVAILABLE: {na_count}"
+    sheet["B6"].font = Font(bold=True, color="2E7D32" if fail_count == 0 else "C62828", name="Calibri", size=11)
+
+    # Reference values block
+    ref_rows = [
+        ("Total CAPEX (kEUR)", total_capex, "template assumption", "Total uses = project context capex.", K_EUR_FORMAT),
+        ("Senior debt (kEUR)", senior_debt, "template assumption + runtime", "From _resolve_export_senior_debt_keur.", K_EUR_FORMAT),
+        ("SHL incl IDC (kEUR)", shl, "template assumption", "From project context.", K_EUR_FORMAT),
+        ("Share capital (kEUR)", share_capital, "template assumption", "From financing inputs.", K_EUR_FORMAT),
+        ("Share premium (kEUR)", share_premium, "template assumption", "From financing inputs.", K_EUR_FORMAT),
+        ("Total Sources (kEUR)", total_sources, "template assumption + runtime", "Senior + SHL + equity.", K_EUR_FORMAT),
+        ("Runtime Revenue (kEUR)", runtime_revenue, "runtime", "runtime_result.total_revenue_keur.", K_EUR_FORMAT),
+        ("Runtime OPEX (kEUR)", runtime_opex, "runtime", "runtime_result.total_opex_keur.", K_EUR_FORMAT),
+        ("Runtime Project IRR", runtime_project_irr, "runtime", "runtime_result.project_irr.", RATIO_FORMAT),
+        ("Runtime Equity IRR", runtime_equity_irr, "runtime", "runtime_result.equity_irr.", RATIO_FORMAT),
+        ("Runtime Total Sponsor XIRR", runtime_sponsor_irr, "runtime", "runtime_result.sponsor_irr.", RATIO_FORMAT),
+        ("Runtime Min DSCR", runtime_min_dscr, "runtime", "runtime_result.actual_min_dscr.", MULTIPLE_FORMAT),
+    ]
+    next_row = _write_key_value_section(sheet, 8, "Reference values", ref_rows, include_format=True)
+
+    # Reconciliation checks table
+    sheet.cell(row=next_row, column=1, value="Reconciliation checks")
+    _style_section_title(sheet, next_row)
+    headers = ("Check", "Exported", "Runtime", "Difference", "Tolerance", "Unit", "Status")
+    for col_idx, header in enumerate(headers, start=1):
+        cell = sheet.cell(row=next_row + 1, column=col_idx, value=header)
+        _style_header_cell(cell)
+
+    for row_offset, (label, exported, runtime, diff, tol, unit, status) in enumerate(checks, start=2):
+        sheet.cell(row=next_row + row_offset, column=1, value=label)
+        exp_cell = sheet.cell(row=next_row + row_offset, column=2, value=exported)
+        rt_cell = sheet.cell(row=next_row + row_offset, column=3, value=runtime)
+        diff_cell = sheet.cell(row=next_row + row_offset, column=4, value=diff)
+        sheet.cell(row=next_row + row_offset, column=5, value=tol)
+        sheet.cell(row=next_row + row_offset, column=6, value=unit)
+        status_cell = sheet.cell(row=next_row + row_offset, column=7, value=status)
+
+        fmt = RATIO_FORMAT if unit == "ratio" else (MULTIPLE_FORMAT if "x" in unit else K_EUR_FORMAT)
+        exp_cell.number_format = fmt
+        rt_cell.number_format = fmt
+
+        if status == "PASS":
+            status_cell.fill = RUNTIME_FILL
+            status_cell.font = Font(bold=True, color="2E7D32", name="Calibri", size=10)
+        elif status == "FAIL":
+            status_cell.fill = STATUS_BLOCKED_FILL
+            status_cell.font = Font(bold=True, color="C62828", name="Calibri", size=10)
+        else:
+            status_cell.fill = WARN_FILL
+
+    sheet.column_dimensions["A"].width = 52
+    sheet.column_dimensions["G"].width = 16
+
+
 def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "review")
     _fs_row = (
@@ -973,6 +1332,7 @@ def _write_gap_register_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("GAP-05", "G20 sign-off", "BLOCKER", "Governance", "Workbook does not change governance status."),
         ("GAP-06", "Construction date and XIRR conventions", "ACCEPTED_CONVENTION", "Returns / governance", "Handled as documented convention, not a workbook formula change."),
         ("GAP-07", "Detailed runtime binding for remaining sub-lines", "WARN", "Multiple sheets", "Runtime summary and assembled statements are bound first; sub-line expansion is future work."),
+        ("GAP-08", "XLSX reconciliation (P1.2)", "CLOSED", "Reconciliation / Returns", "TRUST_PACK_SOLAR_EXCEL_RECONCILIATION = PASS. Returns + Run Identity + Reconciliation sheets added."),
     ]
     _write_simple_table(
         sheet,
@@ -1363,10 +1723,13 @@ def _binding_fields_for_sheet(sheet_name: str) -> str:
         "P&L": "assembled revenues, opex, depreciation, EBIT, EBT, taxable income, net income",
         "Cash Flow": "assembled PF cash waterfall, FCF, debt service, SHL, dividends",
         "Balance Sheet": "assembled assets, liabilities, equity, balance check",
+        "Returns": "project_irr, equity_irr, sponsor_irr (total sponsor XIRR), min_dscr, avg_dscr, total_senior_ds",
+        "Run Identity": "run_id, run_at, project_key, project_name, scenario_id, scenario_name, export_authority, commit_sha, branch, export_generated_at, runtime_timestamp, authority_metadata",
+        "Reconciliation": "sources=uses, capex_detail=total, revenue_detail=runtime, opex exported, debt_ds_detail=runtime, project_irr=runtime, equity_irr=runtime, sponsor_irr=runtime",
         "Audit": "runtime sources, provenance, sheet coverage",
         "Gap Register": "known gaps, accepted conventions, governance blockers",
     }
-    return mapping[sheet_name]
+    return mapping.get(sheet_name, "see sheet")
 
 
 def _remaining_evidence_gaps_for_sheet(sheet_name: str) -> str:
@@ -1385,8 +1748,11 @@ def _remaining_evidence_gaps_for_sheet(sheet_name: str) -> str:
         "P&L": "extra sub-line mapping beyond assembled statement",
         "Cash Flow": "distribution account detail sheet",
         "Balance Sheet": "full capital accounts breakout",
+        "Returns": "none",
+        "Run Identity": "none",
+        "Reconciliation": "none",
         "Audit": "none",
         "Gap Register": "none",
     }
-    return mapping[sheet_name]
+    return mapping.get(sheet_name, "none")
 

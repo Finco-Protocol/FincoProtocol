@@ -19,6 +19,7 @@ from app.project_factories import (
     create_generic_wind_reference,
     create_default_wind_project,
     create_generic_data_center_reference,
+    create_generic_ev_charging_reference,
 )
 
 
@@ -66,6 +67,7 @@ PROJECT_FACTORIES = {
     "generic_data_center_reference": create_generic_data_center_reference,
     "generic_solar": create_default_solar_project,
     "generic_wind": create_default_wind_project,
+    "generic_ev_charging_reference": create_generic_ev_charging_reference,
 }
 
 

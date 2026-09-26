@@ -205,6 +205,7 @@ def _build_persisted_bundle(
     run_at: "str | None",
     snapshot_id: str,
     runtime_timestamp: "str | None" = None,
+    ws: "Any | None" = None,
 ) -> Any:  # WorkbookExportBundle
     from app.export.institutional_workbook import WorkbookExportBundle
     from app.export.runtime_summary import build_runtime_summary_rows
@@ -249,6 +250,32 @@ def _build_persisted_bundle(
             effective_project_inputs=project_inputs,
         )
 
+    # Correction B — Section A: wire real persisted lineage fields.
+    _project_id = str(getattr(project_record, "project_id", None) or "not_applicable")
+    _input_composite_hash = str(
+        getattr(ws, "last_runtime_composite_hash", None) or "not_applicable"
+    ) if ws is not None else "not_applicable"
+    # Engine version: read from persisted run-bound identity (captured at run commit time).
+    # Do NOT read current ENGINE_VERSION at export time — that misrepresents historical run lineage.
+    # If the persisted identity lacks engine_version (legacy run), report NOT_AVAILABLE.
+    _engine_version_str = "NOT_AVAILABLE"
+    if ws is not None:
+        _ri = getattr(ws, "last_runtime_identity", None)
+        if isinstance(_ri, dict):
+            _ev = _ri.get("engine_version")
+            if _ev and str(_ev).strip():
+                _engine_version_str = str(_ev)
+    # Senior debt authority from persisted runtime_summary — numeric float stored by run path.
+    _senior_debt_auth: float | None = None
+    _sd_raw = result_adapter.senior_debt_keur
+    if _sd_raw is not None:
+        try:
+            _v = float(str(_sd_raw).replace(",", "").strip())
+            if _v > 0.0:
+                _senior_debt_auth = _v
+        except (TypeError, ValueError):
+            _senior_debt_auth = None
+
     return WorkbookExportBundle(
         project_key=project_key_norm,
         project_name=runtime_rows[0]["project"],
@@ -284,6 +311,10 @@ def _build_persisted_bundle(
         capex_items=build_capex_items_table(project_inputs),
         revenue_table=build_revenue_table(result_adapter),
         debt_table=build_debt_table(result_adapter),
+        project_id=_project_id,
+        input_composite_hash=_input_composite_hash,
+        engine_version=_engine_version_str,
+        senior_debt_keur_authority=_senior_debt_auth,
     )
 
 
@@ -377,6 +408,7 @@ def build_canonical_last_run_institutional_workbook_export(
             run_at=authority.run_at,
             snapshot_id=rr.snapshot_id,
             runtime_timestamp=getattr(rr, "ran_at", None),  # F08: persisted run time
+            ws=ws,  # Correction B: pass workspace for composite hash
         )
 
         from app.export.institutional_workbook import export_institutional_workbook_from_bundle
