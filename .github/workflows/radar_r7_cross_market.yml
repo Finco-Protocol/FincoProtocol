@@ -269,7 +269,7 @@ jobs:
         run: python tools/public_safety_scan.py
       - name: Upload R7 evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: radar-r7-cross-market-evidence
           path: |

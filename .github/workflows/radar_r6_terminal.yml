@@ -141,7 +141,7 @@ jobs:
           sha256sum radar_r6_terminal.html > radar_r6_terminal_html.sha256
           zip -9 radar_r6_terminal_evidence.zip radar_r6_terminal_evidence.json radar_r6_terminal.html radar_r6_terminal_evidence.sha256 radar_r6_terminal_html.sha256
           sha256sum radar_r6_terminal_evidence.zip > radar_r6_terminal_evidence_zip.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: radar-r6-terminal-evidence
           path: artifacts/radar_r6_*

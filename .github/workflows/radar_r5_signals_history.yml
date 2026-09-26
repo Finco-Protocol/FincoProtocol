@@ -72,7 +72,7 @@ jobs:
           sha256sum radar_r5_signals_history_evidence.json > radar_r5_signals_history_evidence.sha256
           zip -9 radar_r5_signals_history_evidence.zip radar_r5_signals_history_evidence.json radar_r5_signals_history_evidence.sha256
           sha256sum radar_r5_signals_history_evidence.zip > radar_r5_signals_history_evidence_zip.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: radar-r5-signals-history-evidence
           path: artifacts/radar_r5_signals_history_*
