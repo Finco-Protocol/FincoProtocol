@@ -1,0 +1,347 @@
+/* FINCO Verified Assets — protocol-verified.css
+   Namespace: .va-* (verified assets)
+   Breakpoints: 1280px desktop, 390px mobile (no horizontal scroll)
+*/
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #f9fafb;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ── page layout ── */
+.va-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+/* ── header ── */
+.va-header {
+  margin-bottom: 32px;
+}
+.va-header__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin: 0 0 6px;
+}
+.va-header__title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 6px;
+}
+.va-header__sub {
+  font-size: 15px;
+  color: #374151;
+  margin: 0;
+}
+
+/* ── pipeline banner ── */
+.va-pipeline {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 28px;
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.va-pipeline__step {
+  font-weight: 500;
+  color: #374151;
+}
+.va-pipeline__sep {
+  color: #d1d5db;
+}
+
+/* ── asset grid ── */
+.va-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+/* ── asset card ── */
+.va-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: border-color .15s, box-shadow .15s;
+}
+.va-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 2px 8px rgba(59,130,246,.1);
+}
+.va-card__type {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+.va-card__name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+.va-card__desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 14px;
+  line-height: 1.45;
+}
+
+/* ── status badge ── */
+.va-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 100px;
+}
+.va-status--verified        { background: #d1fae5; color: #065f46; }
+.va-status--partial         { background: #fef9c3; color: #713f12; }
+.va-status--model-only      { background: #dbeafe; color: #1e40af; }
+.va-status--market-only     { background: #ede9fe; color: #5b21b6; }
+.va-status--stale           { background: #fef3c7; color: #92400e; }
+.va-status--unavailable     { background: #f3f4f6; color: #6b7280; }
+.va-status--mismatch        { background: #fee2e2; color: #991b1b; }
+
+/* ── no-assets notice ── */
+.va-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: #6b7280;
+  font-size: 15px;
+}
+.va-empty__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+/* ── detail page ── */
+.va-detail-header {
+  margin-bottom: 28px;
+}
+.va-detail-header__back {
+  font-size: 13px;
+  color: #6b7280;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.va-detail-header__back:hover { color: #111827; }
+.va-detail-header__title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 6px;
+}
+.va-detail-header__type {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* ── section cards ── */
+.va-section {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.va-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.va-section__title-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── headline metrics row ── */
+.va-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.va-metric {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.va-metric__label {
+  font-size: 11px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-bottom: 2px;
+}
+.va-metric__value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+.va-metric__value--null {
+  color: #d1d5db;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── key-value rows ── */
+.va-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  font-size: 13px;
+}
+.va-kv__key {
+  color: #9ca3af;
+  white-space: nowrap;
+}
+.va-kv__val {
+  color: #111827;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  word-break: break-all;
+}
+.va-kv__val--none {
+  color: #d1d5db;
+  font-family: inherit;
+}
+
+/* ── hash / digest display ── */
+.va-hash {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-top: 8px;
+}
+
+/* ── market absent notice ── */
+.va-market-absent {
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+.va-market-absent__title {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 4px;
+}
+
+/* ── error/unavailable notice ── */
+.va-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.va-error__code {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #991b1b;
+  margin-bottom: 4px;
+}
+.va-error__reason {
+  font-size: 14px;
+  color: #7f1d1d;
+}
+
+/* ── footer provenance ── */
+.va-footer {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.va-footer__schema {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+}
+.va-footer__json-link {
+  color: #6b7280;
+  text-decoration: none;
+  font-size: 12px;
+}
+.va-footer__json-link:hover { color: #1d4ed8; }
+
+/* ── responsive: phone ── */
+@media (max-width: 480px) {
+  .va-page {
+    padding: 20px 16px 48px;
+  }
+  .va-grid {
+    grid-template-columns: 1fr;
+  }
+  .va-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .va-kv {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .va-kv__key {
+    color: #6b7280;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .va-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -300,6 +300,10 @@ app.include_router(_finco_utility_router)
 from app.verify.router import router as _verify_router
 app.include_router(_verify_router)
 
+# -- FINCO Verified Assets V1 --------------------------------------------------
+from app.verified.router import router as _verified_router
+app.include_router(_verified_router)
+
 # -- FINCO Public Model & Radar API v1 -----------------------------------------
 # Mount ONLY the canonical public v1 router so that:
 #   - /api/v1/model/references/** and /api/v1/radar/** are reachable

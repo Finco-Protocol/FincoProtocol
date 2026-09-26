@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verified Assets — FINCO Protocol</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-verified.css">
+</head>
+<body>
+{% set proto_active_page = "verified" %}
+{% include "partials/_protocol_nav.html" %}
+
+<main class="va-page">
+  <header class="va-header">
+    <p class="va-header__eyebrow">FINCO Protocol · Verified Assets V1</p>
+    <h1 class="va-header__title">Verified Assets</h1>
+    <p class="va-header__sub">
+      Real-world asset economics connected to verifiable model lineage.
+      NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION
+    </p>
+  </header>
+
+  <div class="va-pipeline" aria-label="Protocol pipeline">
+    <span class="va-pipeline__step">FINCO Compute</span>
+    <span class="va-pipeline__sep">→</span>
+    <span class="va-pipeline__step">Verify &amp; Publish</span>
+    <span class="va-pipeline__sep">→</span>
+    <span class="va-pipeline__step">Radar</span>
+    <span class="va-pipeline__sep">→</span>
+    <span class="va-pipeline__step">$FINCO</span>
+    <span style="margin-left: auto; color: #9ca3af;">FINCO_VERIFIED_ASSET_V1</span>
+  </div>
+
+  {% if assets %}
+  <div class="va-grid" role="list">
+    {% for asset in assets %}
+    <a class="va-card" href="/verified/{{ asset.asset_id }}" role="listitem">
+      <div class="va-card__type">{{ asset.asset_type }}</div>
+      <div class="va-card__name">{{ asset.display_name }}</div>
+      <div class="va-card__desc">{{ asset.description }}</div>
+      <span class="va-status {{ asset.status_display.css_class }}">
+        {{ asset.status_display.label }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="va-empty">
+    <div class="va-empty__title">No Verified Assets Available</div>
+    <p>
+      Reference projects must be seeded and run before asset records can be composed.
+      Check system initialisation status.
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="va-footer">
+    <span class="va-footer__schema">FINCO_VERIFIED_ASSET_V1 · READ ONLY</span>
+    <span>{{ assets | length }} asset{{ 's' if assets | length != 1 else '' }}</span>
+  </div>
+</main>
+</body>
+</html>
