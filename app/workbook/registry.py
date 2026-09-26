@@ -826,15 +826,89 @@ _rv_data_center = _section("data_center", "Data Center Service Revenue", _RV, or
        excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=9),
 ])
 
-_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center], icon="💰", order=3)
+# EV Charging (Correction B): editable driver fields — the TRUE EV authority.
+# Each field is bound to its persisted ev_* snapshot key; the runtime adapter
+# (app.ev_charging_economics.apply_ev_charging_runtime_adapter) rebuilds
+# revenue and the derived B.08 electricity OpexItem from these keys on every
+# materialization.  Availability is informational-only (EFLH are net of
+# availability in V1) and is therefore a read-only display field.
+#
+# Correction D: min/max are NOT hardcoded here — they are derived from the
+# single canonical EV driver-range authority (EV_DRIVER_BOUNDS in
+# app.ev_charging_economics, converted to display units) so the UI validation
+# contract and the runtime validation contract cannot drift.
+def _ev_driver(field_id_suffix, label, snapshot_key, field_type, *, unit, decimals,
+               order, description, display_only=False):
+    from app.ev_charging_economics import ev_driver_registry_bounds
+    if display_only:
+        min_value, max_value = 0, 100  # informational display rows only
+    else:
+        min_value, max_value = ev_driver_registry_bounds(snapshot_key)
+    return _f(f"{_RV}.ev_charging.{field_id_suffix}", label, snapshot_key, field_type, _RV, "ev_charging",
+              kind=FieldKind.DERIVED_DISPLAY if display_only else FieldKind.INPUT, persisted=True,
+              source_of_truth=SourceOfTruth.DERIVED_UI if display_only else SourceOfTruth.INPUT_SET,
+              engine_path=None,
+              scenario_policy=ScenarioPolicy.NOT_ALLOWED,
+              binding_status=BindingStatus.DISPLAY_ONLY if display_only else BindingStatus.BOUND,
+              required=False, editable=not display_only,
+              unit=unit, decimals=decimals, min_value=min_value, max_value=max_value,
+              description=description,
+              excel_generic_wind_reference=None, excel_generic_solar_reference=None, order=order)
+
+_rv_ev_charging = _section("ev_charging", "EV Charging Drivers", _RV, order=4, fields=[
+    _ev_driver("hours_y1", "Equivalent Full-Load Hours — Y1", "ev_full_load_hours_y1", FieldType.MWH,
+               unit="h", decimals=0, order=0,
+               description="Operating-year 1 utilisation. Equivalent full-load hours are NET of availability."),
+    _ev_driver("hours_y2", "Equivalent Full-Load Hours — Y2", "ev_full_load_hours_y2", FieldType.MWH,
+               unit="h", decimals=0, order=1,
+               description="Operating-year 2 utilisation."),
+    _ev_driver("hours_stabilized", "Equivalent Full-Load Hours — Stabilized", "ev_full_load_hours_stabilized", FieldType.MWH,
+               unit="h", decimals=0, order=2,
+               description="Year 3+ utilisation; also the runtime hours authority."),
+    _ev_driver("charging_price", "Charging Price", "ev_charging_price_eur_kwh", FieldType.FLOAT,
+               unit="EUR/kWh", decimals=3, order=3,
+               description="Customer-facing charging service price. SYNTHETIC PUBLIC GENERIC DATA — not a market average."),
+    _ev_driver("charging_price_escalation", "Charging Price Escalation", "ev_charging_price_escalation", FieldType.PCT,
+               unit="%/yr", decimals=2, order=4,
+               description="Annual charging price escalation. Stored as percent (e.g. 2)."),
+    _ev_driver("charging_efficiency", "Charging Efficiency", "ev_charging_efficiency", FieldType.PCT,
+               unit="%", decimals=2, order=5,
+               description="Delivered / purchased energy identity driver. Grid purchase = delivered / efficiency."),
+    _ev_driver("electricity_price", "Electricity Procurement Price", "ev_electricity_price_eur_kwh", FieldType.FLOAT,
+               unit="EUR/kWh", decimals=3, order=6,
+               description="Grid electricity procurement price feeding the derived B.08 power expense."),
+    _ev_driver("electricity_price_escalation", "Electricity Price Escalation", "ev_electricity_price_escalation", FieldType.PCT,
+               unit="%/yr", decimals=2, order=7,
+               description="Annual electricity procurement price escalation. Stored as percent (e.g. 2)."),
+    _ev_driver("availability_info", "Availability (informational)", "ev_availability_info", FieldType.PCT,
+               unit="%", decimals=0, order=8, display_only=True,
+               description="Informational only — equivalent full-load hours are NET of availability; "
+                           "this value does not enter the EV economics in V1."),
+])
+
+_SHEET_REVENUE = _sheet(_RV, "Revenue", [_rv_ppa, _rv_balancing, _rv_merchant, _rv_data_center, _rv_ev_charging], icon="💰", order=3)
 
 # ── Technology-conditional field visibility (V2 Workbook) ────────────────────
 # Data Center shows the Data Center section and hides renewable-only controls;
 # every other technology hides the Data Center section.
 DATA_CENTER_FIELD_IDS: frozenset[str] = frozenset(f.field_id for f in _rv_data_center.fields)
 
+# EV Charging shows the EV driver section and never the renewable-only
+# controls; every other technology hides the EV section (spec §11).
+EV_CHARGING_FIELD_IDS: frozenset[str] = frozenset(f.field_id for f in _rv_ev_charging.fields)
+
 # Renewable-only controls that must never render as primary Data Center inputs.
 DC_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
+    f.field_id
+    for section in (_rv_ppa, _rv_balancing, _rv_merchant)
+    for f in section.fields
+) | {
+    f"{_PS}.technical.p50_hours",
+    f"{_PS}.technical.capacity_factor",
+}
+
+# Renewable/PPA controls that must never render as primary EV Charging inputs.
+EV_RENEWABLE_EXCLUDED_FIELD_IDS: frozenset[str] = frozenset(
     f.field_id
     for section in (_rv_ppa, _rv_balancing, _rv_merchant)
     for f in section.fields

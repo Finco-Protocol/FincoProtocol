@@ -18,6 +18,7 @@ PROTECTED_REFERENCE_TEMPLATE_SOURCES: frozenset[str] = frozenset({
     "generic_solar_reference",
     "generic_storage_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 })
 
 

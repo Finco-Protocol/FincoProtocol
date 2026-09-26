@@ -425,6 +425,18 @@ def build_capex_view_model(
             subtotal_keur = effective_base + custom_subtotal
         else:
             subtotal_keur = sum(ln.amount_keur for ln in active_lines)
+        # EV Charging (V1): C.13 carries real canonical economics (the 500 kEUR
+        # reference contingency), persisted as reference-seed sub-lines that
+        # the contingency group never renders as rows. Its subtotal must be
+        # the persisted sub-line sum, or the group silently drops from the
+        # total. For Solar/Wind these sub-lines are all zero, so this is a
+        # no-op for every existing technology.
+        if group_is_contingency and field_has_sub_lines:
+            subtotal_keur = sum(
+                float(sl.amount_keur or 0.0)
+                for sl in group_sub_lines
+                if sl.is_active
+            )
         subtotal_per_mw = _safe_per_mw(subtotal_keur, capacity_mw)
 
         # Alias groups that are neither readonly nor contingency may hold custom

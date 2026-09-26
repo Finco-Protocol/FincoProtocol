@@ -466,7 +466,7 @@ KPI_LABELS = {
 }
 
 SCENARIOS = ["Base", "Downside", "Upside"]
-PROJECT_TYPES = ["Solar", "Wind", "Data Center"]
+PROJECT_TYPES = ["Solar", "Wind", "Data Center", "EV Charging"]
 
 # Phase 20E: Scenario tab editable fields (section groups)
 SCENARIO_EDITABLE_FIELDS = [
@@ -537,7 +537,7 @@ NEW_PROJECT_TEMPLATE_OPTIONS = [
     {"value": "generic_solar_reference", "label": "Generic Solar Reference", "project_type": "Solar"},
     {"value": "generic_storage_reference", "label": "Generic Storage Reference", "project_type": "Storage"},
     {"value": "generic_data_center_reference", "label": "Generic Data Center Reference", "project_type": "Data Center"},
-]
+    {"value": "generic_ev_charging_reference", "label": "Generic EV Charging Hub Reference", "project_type": "EV Charging"},]
 
 
 # -- Auth dependency ----------------------------------------------------------
@@ -584,17 +584,25 @@ def _canonical_project_type(project_type: str | None) -> str:
         return "Data Center"
     if value == "solar":
         return "Solar"
+    if value in {"ev charging", "ev_charging", "evcharging"}:
+        return "EV Charging"
     return "Wind"
 
 
 def _normalize_template_source(template_source: str | None, project_type: str | None) -> str:
     source = (template_source or "").strip().lower()
-    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center"}:
+    if source in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center", "generic_ev_charging"}:
         return source
-    if _canonical_project_type(project_type) == "Data Center":
+    canonical = _canonical_project_type(project_type)
+    if canonical == "Solar":
+        return "generic_solar"
+    if canonical == "Storage":
+        return "generic_storage"
+    if canonical == "Data Center":
         return "generic_data_center"
-    return "generic_solar" if _canonical_project_type(project_type) == "Solar" else ("generic_storage" if _canonical_project_type(project_type) == "Storage" else "generic_wind")
-
+    if canonical == "EV Charging":
+        return "generic_ev_charging"
+    return "generic_wind"
 
 def _template_source_label(template_source: str | None) -> str:
     mapping = {
@@ -622,8 +630,12 @@ def _project_identity_from_template_source(template_source: str, fallback_projec
         return "generic_data_center_reference", "Generic Data Center Reference"
     if source == "generic_data_center":
         return "generic_data_center", "Generic Data Center Project"
+    if source == "generic_ev_charging_reference":
+        return "generic_ev_charging_reference", "Generic EV Charging Hub Reference"
     if source == "generic_solar":
         return "generic_solar", "Generic Solar Project"
+    if source == "generic_ev_charging":
+        return "generic_ev_charging", "Generic EV Charging Project"
     return "generic_wind", "Generic Wind Project"
 
 
@@ -1968,8 +1980,7 @@ def _consolidated_project_records(user) -> list[dict[str, str]]:
         )
     items.sort(
         key=lambda it: (
-            0 if it["project_code"] in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference"} else 1,
-            it["label"].lower(),
+            0 if it["project_code"] in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference"} else 1,            it["label"].lower(),
         )
     )
     return items
@@ -2039,13 +2050,15 @@ def _resolve_project_record(user, project_selection: str | None, form_snapshot: 
         if user_project is not None:
             return user_project
 
-    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center"}:
+    if selection in {"generic_wind_reference", "generic_solar_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference", "generic_wind", "generic_solar", "generic_storage", "generic_data_center", "generic_ev_charging"}:
         project_code = selection
         project_name = _project_identity_from_template_source(selection)[1]
         if selection in {"generic_solar_reference", "generic_solar"}:
             project_type = "Solar"
         elif selection in {"generic_data_center_reference", "generic_data_center"}:
             project_type = "Data Center"
+        elif selection in {"generic_ev_charging_reference", "generic_ev_charging"}:
+            project_type = "EV Charging"
         else:
             project_type = "Wind"
         template_source = selection

@@ -371,8 +371,8 @@ def test_bootstrap_contract_exactly_3_refs_idempotent():
     ).fetchall()}
     conn.close()
 
-    assert ref_count == 4, (
-        f"Bootstrap must seed exactly 4 canonical refs, got {ref_count}"
+    assert ref_count == 5, (
+        f"Bootstrap must seed exactly 5 canonical refs, got {ref_count}"
     )
     # ensure_reference_models must not CREATE any new demo user rows
     new_demo_rows = demo_after - demo_before

@@ -81,7 +81,8 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     assert response.status_code == 200
     html = response.text
     assert "Model Workspace" in html and "Reference Templates" in html
-    assert html.count("Create working copy") == 3
+    # Solar + Wind + Data Center + EV Charging are cloneable (Storage is not yet).
+    assert html.count("Create working copy") == 4
     assert "Working-copy runtime coming soon" in html
     assert 'id="fo-kpi-strip"' not in html
     assert 'id="fo-btn-run"' not in html
@@ -104,9 +105,12 @@ def test_reference_templates_are_independent_of_working_project_pages(client_wit
         response = client_with_references.get(url, cookies=cookies)
         assert response.status_code == 200
         html = response.text
-        assert html.count('class="fo-library-reference-card"') == 4
-        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference", "generic_data_center_reference"):
+        # Solar / Wind / Storage / Data Center / EV Charging reference cards.
+        assert html.count('class="fo-library-reference-card"') == 5
+        for template in ("generic_solar_reference", "generic_wind_reference", "generic_storage_reference", "generic_data_center_reference", "generic_ev_charging_reference"):
             assert f'library-row-{template}-reference' in html
+        # Create working copy: Solar / Wind / Data Center / EV Charging (Storage is not yet).
+        assert html.count("Create working copy") == 4
         assert html.count('class="fo-library-open"') == min(count - (20 if "page=2" in url else 0), 20)
     search = client_with_references.get("/library/list?search=Solar", cookies=cookies).text
     assert 'library-row-generic_solar_reference-reference' in search

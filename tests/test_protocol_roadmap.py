@@ -76,23 +76,19 @@ def test_roadmap_keeps_finco_as_only_placeholder():
     assert "Coming soon\">Roadmap" not in nav
 
 
-def test_roadmap_ev_charging_is_not_in_shipped_chips():
-    """EV Charging must not appear in the 'Shipped' chip row — it is in development."""
-    from pathlib import Path
+def test_roadmap_ev_charging_is_in_shipped_chips():
+    """EV Charging shipped (PR #89): it must appear in the Shipped chip row."""
     html = _client().get("/roadmap").text
-    # EV Charging in development note must be present somewhere in the page
-    assert "EV Charging is in development" in html
-    # The Infrastructure Model shipped chip row must NOT contain EV Charging
-    # (it is bounded between the "Infrastructure Model" heading and the proad-note)
+    # The in-development note is gone now that EV Charging shipped.
+    assert "EV Charging is in development" not in html
+    # The Infrastructure Model shipped chip row must contain EV Charging.
     start = html.find("Infrastructure Model")
     end = html.find("proad-chip-row", start)
     chip_end = html.find("</div>", end)
     chip_section = html[end:chip_end]
-    assert "EV Charging" not in chip_section, (
-        "EV Charging must not appear in the Shipped chip row"
+    assert "EV Charging" in chip_section, (
+        "EV Charging must appear in the Shipped chip row"
     )
-
-
 def test_roadmap_css_has_mobile_breakpoints_without_overflow_hack():
     css = (REPO / "static/css/protocol-roadmap.css").read_text()
     assert ".proad-model-track__grid" in css

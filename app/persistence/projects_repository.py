@@ -137,7 +137,7 @@ REFERENCE_USER_ID: str = "__reference__"
 #   project_role == 'reference'
 #   is_protected == True
 #   archived == False
-#   template_source in ('generic_wind_reference', 'generic_solar_reference', 'generic_storage_reference')
+#   template_source in ('generic_wind_reference', 'generic_solar_reference', 'generic_storage_reference', 'generic_ev_charging_reference')
 #
 # Use these constants / helper everywhere canonical-reference checks
 # happen — do not let functions drift into different definitions.
@@ -146,7 +146,7 @@ CANONICAL_REFERENCE_TEMPLATES: tuple[str, ...] = (
     "generic_solar_reference",
     "generic_storage_reference",
     "generic_data_center_reference",
-)
+    "generic_ev_charging_reference",)
 
 
 def _canonical_reference_template_params() -> list[str]:
@@ -167,8 +167,7 @@ def _canonical_reference_predicate() -> str:
     slots = ", ".join("?" for _ in CANONICAL_REFERENCE_TEMPLATES)
     return (
         "user_id=? AND project_role='reference' AND is_protected=1"
-        f" AND archived=0 AND template_source IN ({slots})"
-    )
+        f" AND archived=0 AND template_source IN ({slots})"    )
 
 
 def get_reference_projects() -> "list[ProjectRecord]":
@@ -187,8 +186,7 @@ def get_reference_projects() -> "list[ProjectRecord]":
             + _canonical_reference_predicate()
             + " ORDER BY template_source, project_name",
             (
-                [REFERENCE_USER_ID] + _canonical_reference_template_params()
-            ),
+                [REFERENCE_USER_ID] + _canonical_reference_template_params()            ),
         )
         from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
@@ -209,8 +207,7 @@ def get_reference_by_template_source(template_source: str) -> "Optional[ProjectR
             + _canonical_reference_predicate()
             + " AND template_source=?",
             (
-                [REFERENCE_USER_ID] + _canonical_reference_template_params() + [template_source]
-            ),
+                [REFERENCE_USER_ID] + _canonical_reference_template_params() + [template_source]            ),
         )
         row = cur.fetchone()
     from app.persistence.records import ProjectRecord
@@ -260,7 +257,7 @@ def resolve_accessible_project(
     1. User's own project — workspace_owner_id == user_id
     2. Canonical system reference (user_id='__reference__',
        project_role='reference', is_protected=1, archived=0,
-       template_source in ('generic_wind_reference','generic_solar_reference','generic_storage_reference'))
+       template_source in ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_ev_charging_reference'))
        — workspace_owner_id == REFERENCE_USER_ID
 
     Never returns another normal user's project. Never returns a
@@ -317,7 +314,7 @@ def list_projects_paged(
     # A user sees: their own projects UNION canonical system references.
     # "Canonical" requires user_id='__reference__' AND project_role='reference'
     # AND is_protected=1 AND archived=0 AND template_source IN
-    # ('generic_wind_reference','generic_solar_reference','generic_storage_reference'). The user_id parameter is bound; the canonical
+    # ('generic_wind_reference','generic_solar_reference','generic_storage_reference','generic_ev_charging_reference'). The user_id parameter is bound; the canonical
     # template list is bound too — no SQL interpolation.
     base_where = (
         "(user_id=?"
@@ -733,7 +730,7 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
         create_generic_solar_reference,
         create_generic_storage_reference,
         create_generic_data_center_reference,
-        create_default_wind_project,
+        create_generic_ev_charging_reference,        create_default_wind_project,
         create_default_solar_project,
     )
     from app.persistence.db import get_cursor
@@ -877,6 +874,31 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
             "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
         })
         baseline.update(dc_driver_snapshot_values(GENERIC_DATA_CENTER_REFERENCE_DRIVERS))
+        return baseline
+
+    if normalized_source == "generic_ev_charging_reference":
+        pi = create_generic_ev_charging_reference()
+        baseline.update({
+            "active_project": "generic_ev_charging_reference-baseline",
+            "project_name": pi.info.name,
+            "project_type": "EV Charging",
+            "template_source": "generic_ev_charging_reference",
+            "country_market": pi.info.country_iso,
+            "capacity_mw": str(pi.technical.capacity_mw),
+            "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+            "p50_hours": str(pi.technical.operating_hours_p50),
+            "total_capex_keur": str(pi.capex.total_capex),
+            "opex_y1_keur": str(_sum_opex(pi.opex)),
+            "gearing_pct": str(float(getattr(pi.financing, "gearing_ratio", 0.0) or 0.0) * 100),
+            "target_dscr": str(pi.financing.target_dscr),
+            "interest_rate_pct": str(pi.financing.base_rate + pi.financing.margin_bps / 10_000),
+            "tenor_years": str(pi.financing.senior_tenor_years),
+            "cod_date": str(pi.info.cod_date),
+            "construction_months": str(pi.info.construction_months),
+            "horizon_years": str(pi.info.horizon_years),
+            "capacity_factor": "",
+            "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
+        })
         return baseline
 
     # generic fallback

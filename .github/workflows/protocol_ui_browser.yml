@@ -42,8 +42,12 @@ jobs:
           # API-B04 encoded the previous contract where Roadmap was a placeholder.
           # Roadmap is now intentionally live; the focused roadmap browser suite
           # below owns the replacement navigation + responsive acceptance.
-          pytest -v tests/test_ui_protocol_shell.py tests/test_protocol_roadmap_browser.py \
-            -k "not test_api_b04_placeholders_not_links"
+          # test_data_center_browser_acceptance.py excluded: it was never in a
+          # CI selection before and its HTMX workflow test fails on pristine
+          # main too (lazy-tab race in the test itself). The DC workstream owns
+          # its repair. The EV browser journey below is the Correction B
+          # section-14 acceptance and passes on CI.
+          pytest -v tests/test_ui_protocol_shell.py tests/test_protocol_roadmap_browser.py tests/test_ev_charging_browser.py -k "not test_api_b04_placeholders_not_links"
         env:
           FINCO_VISUAL_CAPTURE: "1"
         # FINCO_TEST_CHROMIUM_PATH is intentionally unset here so Playwright

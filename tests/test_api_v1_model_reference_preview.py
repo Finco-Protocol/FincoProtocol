@@ -709,7 +709,8 @@ def test_a4_82_a2_regression(client):
 def test_a4_83_a3_regression(client):
     r = client.get("/api/v1/model/references")
     assert r.status_code == 200
-    assert r.json()["data"]["count"] == 3
+    # Solar + Wind + Data Center + EV Charging (V1).
+    assert r.json()["data"]["count"] == 4
 
 
 def test_a4_84_reference_seed_regression(client):

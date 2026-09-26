@@ -104,8 +104,7 @@ def test_capacity_rescale_preserves_user_override(seeded_db):
 def test_storage_is_not_supported_by_reference_seed_service(seeded_db):
     from app.services.reference_seed_service import create_reference_seeded_project
 
-    with pytest.raises(ValueError, match="Solar, Wind and Data Center only"):
-        create_reference_seeded_project(
+    with pytest.raises(ValueError, match="Solar, Wind, Data Center and EV Charging only"):        create_reference_seeded_project(
             user_id="storage-user",
             template_source="generic_storage_reference",
             requested_name="No Storage",

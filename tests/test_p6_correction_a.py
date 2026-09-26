@@ -314,7 +314,7 @@ def _seed_refs():
 
 
 def test_reference_models_seeded_deterministically():
-    """ensure_reference_models() is idempotent and always yields exactly 3 refs."""
+    """ensure_reference_models() is idempotent and always yields exactly 5 refs."""
     from app.persistence.db import get_connection
     _seed_refs()
     _seed_refs()  # second call must not create duplicates
@@ -323,7 +323,7 @@ def test_reference_models_seeded_deterministically():
         "SELECT COUNT(*) FROM projects WHERE user_id='__reference__'"
     ).fetchone()[0]
     conn.close()
-    assert count == 4, f"Expected exactly 4 reference projects, got {count}"
+    assert count == 5, f"Expected exactly 5 reference projects, got {count}"
 
 
 def test_reference_projects_readable_by_library(client):

@@ -65,7 +65,8 @@ def test_registry_imports_cleanly():
     assert len(PRODUCT_CAPABILITIES) >= 5
     assert len(LIVE_CAPABILITIES) >= 3
     assert len(PREVIEW_CAPABILITIES) >= 1
-    assert len(IN_DEVELOPMENT_CAPABILITIES) >= 1
+    # EV Charging shipped via PR #89: no vertical is currently in development.
+    assert len(IN_DEVELOPMENT_CAPABILITIES) >= 0
 
 
 def test_solar_wind_dc_are_live():
@@ -75,9 +76,10 @@ def test_solar_wind_dc_are_live():
     assert "data_center" in LIVE_KEYS
 
 
-def test_ev_charging_is_in_development():
-    from app.product_capability import IN_DEVELOPMENT_CAPABILITIES, ProductStatus
-    keys = {c.key for c in IN_DEVELOPMENT_CAPABILITIES}
+def test_ev_charging_is_live():
+    # PR #89 Correction B executed the documented EV promotion procedure.
+    from app.product_capability import LIVE_CAPABILITIES
+    keys = {c.key for c in LIVE_CAPABILITIES}
     assert "ev_charging" in keys
 
 
@@ -87,13 +89,13 @@ def test_storage_is_preview():
     assert "storage" in keys
 
 
-def test_ev_charging_has_no_live_capability_flags():
+def test_ev_charging_live_capability_flags():
     from app.product_capability import PRODUCT_CAPABILITIES
     ev = next(c for c in PRODUCT_CAPABILITIES if c.key == "ev_charging")
-    assert not ev.runnable
-    assert not ev.cloneable
-    assert not ev.api_available
-    assert not ev.canonical_last_run
+    assert ev.runnable
+    assert ev.cloneable
+    assert ev.api_available
+    assert ev.canonical_last_run
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +159,10 @@ def test_docs_product_map_mentions_all_live_verticals():
         )
 
 
-def test_docs_does_not_claim_ev_is_live():
-    """Docs must not claim EV Charging is a current production vertical."""
+def test_docs_presents_ev_as_live():
+    """Docs must present EV Charging as a production vertical (PR #89)."""
     html = _docs_html()
-    # EV Charging may appear on the page but only as in-development / future
-    lower = html.lower()
-    # The limitations section must state it is in development or not yet released
-    assert "ev charging is in development" in lower or "ev charging" not in lower, (
-        "Docs must not present EV Charging as a live production vertical"
-    )
-
+    assert "EV Charging" in html
 
 def test_docs_reference_models_panel_mentions_data_center():
     html = _docs_html()
@@ -192,8 +188,8 @@ def test_docs_limitations_section_is_accurate():
 # SUPPORTED_TODAY_ROADMAP_CONSISTENCY
 # ---------------------------------------------------------------------------
 
-def test_roadmap_shipped_chips_do_not_include_ev():
-    """EV Charging must not appear in the Shipped baseline chip row."""
+def test_roadmap_shipped_chips_include_ev():
+    """EV Charging must appear in the Shipped baseline chip row (PR #89)."""
     html = _roadmap_html()
     start = html.find("Infrastructure Model")
     assert start != -1, "Infrastructure Model section not found in Roadmap"
@@ -201,10 +197,9 @@ def test_roadmap_shipped_chips_do_not_include_ev():
     assert chip_div_start != -1
     chip_div_end = html.find("</div>", chip_div_start)
     chip_section = html[chip_div_start:chip_div_end]
-    assert "EV Charging" not in chip_section, (
-        "EV Charging must not be listed in the Shipped infrastructure chip row"
+    assert "EV Charging" in chip_section, (
+        "EV Charging must be listed in the Shipped infrastructure chip row"
     )
-
 
 def test_roadmap_shipped_chips_include_all_live_verticals():
     """All LIVE verticals must appear in the Shipped chip row."""
@@ -220,17 +215,12 @@ def test_roadmap_shipped_chips_include_all_live_verticals():
         )
 
 
-def test_roadmap_ev_development_note_present():
-    """Roadmap must note that EV Charging is in development."""
+def test_roadmap_ev_development_note_removed():
+    """EV Charging shipped: the in-development note must be gone."""
     html = _roadmap_html()
-    assert "EV Charging is in development" in html, (
-        "Roadmap must state EV Charging is in development"
+    assert "EV Charging is in development" not in html, (
+        "Roadmap still states EV Charging is in development"
     )
-
-
-# ---------------------------------------------------------------------------
-# SUPPORTED_TODAY_LIMITATIONS_CONSISTENCY
-# ---------------------------------------------------------------------------
 
 def test_known_limitations_mentions_all_live_references():
     """known_limitations_page.html must reference all live production synthetic models."""
@@ -242,11 +232,11 @@ def test_known_limitations_mentions_all_live_references():
         )
 
 
-def test_known_limitations_mentions_ev_in_development():
+def test_known_limitations_documents_ev_v1_notes():
     text = (REPO / "app/templates/known_limitations_page.html").read_text()
     lower = text.lower()
     assert "ev charging" in lower
-    assert "in development" in lower
+    assert "v1" in lower
 
 
 # ---------------------------------------------------------------------------

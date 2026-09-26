@@ -376,15 +376,23 @@ def test_DC_HTMX_WORKING_COPY_WORKFLOW(dc_app, browser):
         )
         kpi_irr_before = page.locator('[data-testid="kpi-project-irr"]').inner_text()
 
-        # Navigate to revenue tab
+        # Navigate to revenue tab.  Each sheet panel is an iframe that
+        # navigates to ?sheet=<id> asynchronously when its tab is first
+        # activated — wait for the revenue frame before probing it.
         page.locator("#tab-revenue").click()
-        revenue_panel = page.locator("#panel-revenue")
-        revenue_panel.locator(
+        page.wait_for_url("**/v2/workbook?project=**&sheet=revenue**", timeout=30_000)
+        revenue_frame = next(
+            f for f in page.frames if "sheet=revenue" in (f.url or "")
+        )
+        revenue_frame.locator(
             '[data-field-id="revenue.data_center.service_price"]'
         ).wait_for(state="visible", timeout=30_000)
 
         # Revenue should be clean after the run
-        assert revenue_panel.locator(
+        revenue_frame.locator(
+            '[data-testid="revenue-state-clean"]'
+        ).wait_for(state="visible", timeout=30_000)
+        assert revenue_frame.locator(
             '[data-testid="revenue-state-clean"]'
         ).count() >= 1, "Revenue state must be 'clean' immediately after a run"
 

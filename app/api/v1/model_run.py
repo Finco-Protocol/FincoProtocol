@@ -28,7 +28,15 @@ _PROJECT_TYPE_BY_KEY: dict[str, str] = {
     "generic_solar_reference": "Generic Solar Reference",
     "generic_wind_reference": "Generic Wind Reference",
     "generic_data_center_reference": "Generic Data Center Reference",
+    "generic_ev_charging_reference": "Generic EV Charging Hub Reference",
 }
+
+# EV Charging (V1) uses a dedicated stateless run builder: the derived
+# B.08 electricity OpexItem carries capacity-dependent y1 + Y2/Y3 sustained
+# steps, so a generic PER_MW y1-scaler would leave the steps anchored to the
+# 5 MW reference. The EV authority rebuilds the entire requested-capacity
+# ProjectInputs from the same single economic authority the factory uses.
+_EV_REFERENCE_KEY = "generic_ev_charging_reference"
 
 
 def _build_scaled_project_inputs(
@@ -167,11 +175,20 @@ def build_run_response_data(key: str, capacity_mw: float) -> dict[str, Any]:
     project_type = _PROJECT_TYPE_BY_KEY[key]
     preview = build_reference_scaling_preview(key, capacity_mw)
     ratio = preview["ratio"]
-    scaled_pi = _build_scaled_project_inputs(
-        pi, ratio, capacity_mw,
-        key_is_data_center=(key == "generic_data_center_reference"),
-    )
-
+    if key == "generic_ev_charging_reference":
+        # EV Correction A: the derived B.08 electricity OpexItem carries
+        # capacity-dependent y1 + Y2/Y3 sustained steps, so a generic PER_MW
+        # y1-scaler would leave the steps anchored to the 5 MW reference.
+        # The EV authority rebuilds the entire requested-capacity
+        # ProjectInputs (formulas are NOT duplicated here) before the one
+        # canonical clean G2C calculation.
+        from app.ev_charging_economics import scaled_ev_reference_inputs
+        scaled_pi = scaled_ev_reference_inputs(float(capacity_mw))
+    else:
+        scaled_pi = _build_scaled_project_inputs(
+            pi, ratio, capacity_mw,
+            key_is_data_center=(key == "generic_data_center_reference"),
+        )
     payload = run_project(
         project_type=project_type,
         scenario="Base",
