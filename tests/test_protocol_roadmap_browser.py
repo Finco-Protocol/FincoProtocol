@@ -88,13 +88,15 @@ def test_roadmap_mobile_390_has_no_horizontal_overflow(roadmap_url, roadmap_brow
     page.close()
 
 
-def test_docs_and_roadmap_are_live_finco_remains_placeholder(roadmap_url, roadmap_browser):
+def test_docs_and_roadmap_are_live_finco_is_live(roadmap_url, roadmap_browser):
+    # P4 update: $FINCO is now a live link to /protocol/finco (no longer a placeholder).
     page = roadmap_browser.new_page(viewport={"width": 1280, "height": 900})
     page.goto(f"{roadmap_url}/roadmap")
     page.wait_for_load_state("domcontentloaded")
     nav = page.locator(".proto-nav")
     assert nav.locator("a[href='/docs']", has_text="Docs").count() == 1
     assert nav.locator("a[href='/roadmap']", has_text="Roadmap").count() == 1
-    assert nav.locator("a", has_text="$FINCO").count() == 0
-    assert nav.locator(".proto-nav__link--placeholder", has_text="$FINCO").count() == 1
+    # $FINCO is now a live link (not a placeholder span)
+    assert nav.locator("a[href='/protocol/finco']").count() == 1
+    assert nav.locator(".proto-nav__link--placeholder").count() == 0
     page.close()
