@@ -115,13 +115,13 @@
      protected-original state is shown once, at the bottom of
      the sheet, rather than repeated on every identity row. #}
   {% if project_ctx.template_source %}
-    {{ field_row("Template Origin", project_ctx.template_source, section="identity", field_key="template_origin", raw=project_ctx.template_source) }}
+    {{ field_row("Source Template", project_ctx.template_source, section="identity", field_key="template_origin", raw=project_ctx.template_source) }}
   {% elif "generic_wind_reference" in project_ctx.code|lower %}
-    {{ field_row("Template Origin", "Generic Wind Reference", section="identity", field_key="template_origin", raw="Generic Wind Reference") }}
+    {{ field_row("Source Template", "Generic Wind Reference", section="identity", field_key="template_origin", raw="Generic Wind Reference") }}
   {% elif "generic_solar_reference" in project_ctx.code|lower %}
-    {{ field_row("Template Origin", "Generic Solar Reference", section="identity", field_key="template_origin", raw="Generic Solar Reference") }}
+    {{ field_row("Source Template", "Generic Solar Reference", section="identity", field_key="template_origin", raw="Generic Solar Reference") }}
   {% else %}
-    {{ field_row("Template Origin", "Generic", section="identity", field_key="template_origin", raw="Generic") }}
+    {{ field_row("Source Template", "Generic", section="identity", field_key="template_origin", raw="Generic") }}
   {% endif %}
 {% endset %}
 {{ section_card("Identity", identity_rows) }}

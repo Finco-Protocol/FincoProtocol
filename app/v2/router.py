@@ -962,16 +962,16 @@ def _build_sponsor_funding_presentation(fin, rr, freshness) -> dict:
     )
     return {
         "sponsor_working_rows": (
-            ("Sponsor funding mode", _enum_value(getattr(fin, "sponsor_funding_mode", None)) if fin else None, "BOUND READ-ONLY"),
-            ("Share capital contribution", getattr(fin, "share_capital_keur", None), "BOUND READ-ONLY"),
-            ("Share premium contribution", getattr(fin, "share_premium_keur", None), "BOUND READ-ONLY"),
-            ("Other equity before SHL", getattr(fin, "other_equity_funding_before_shl_keur", None), "BOUND READ-ONLY"),
-            ("Configured SHL amount", getattr(fin, "shl_amount_keur", None), "BOUND READ-ONLY"),
-            ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "BOUND READ-ONLY"),
-            ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "BOUND READ-ONLY"),
-            ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "BOUND READ-ONLY"),
-            ("SHL maturity", getattr(fin, "shl_maturity_period_index", None) if fin else None, "BOUND READ-ONLY"),
-            ("SHL day-count convention", _enum_value(getattr(fin, "shl_day_count_convention", None)) if fin else None, "BOUND READ-ONLY"),
+            ("Sponsor funding mode", _enum_value(getattr(fin, "sponsor_funding_mode", None)) if fin else None, "Reference model"),
+            ("Share capital contribution", getattr(fin, "share_capital_keur", None), "Reference model"),
+            ("Share premium contribution", getattr(fin, "share_premium_keur", None), "Reference model"),
+            ("Other equity before SHL", getattr(fin, "other_equity_funding_before_shl_keur", None), "Reference model"),
+            ("Configured SHL amount", getattr(fin, "shl_amount_keur", None), "Reference model"),
+            ("SHL interest rate", f"{getattr(fin, 'shl_rate', 0.0) * 100:.2f}%" if fin else None, "Reference model"),
+            ("SHL repayment method", _enum_value(getattr(fin, "clean_shl_repayment_method", None)) if fin else None, "Reference model"),
+            ("SHL repayment eligibility start", getattr(fin, "shl_principal_eligibility_start_period", None) if fin else None, "Reference model"),
+            ("SHL maturity", getattr(fin, "shl_maturity_period_index", None) if fin else None, "Reference model"),
+            ("SHL day-count convention", _enum_value(getattr(fin, "shl_day_count_convention", None)) if fin else None, "Reference model"),
         ),
         "sponsor_last_run_rows": (
             ("Runtime-derived SHL principal", sponsor_summary.get("total_shl_cash_contributed_keur"), evidence_status),

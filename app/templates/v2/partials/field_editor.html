@@ -132,14 +132,18 @@
     </form>
   {% else %}
     <span class="v2-field-value">
-      {%- if f.value is none or f.value == '' -%}
+      {%- set _ro = f.display_value if f.display_value is defined else f.value -%}
+      {%- if _ro is none or _ro == '' or _ro == 'None' -%}
         <span class="v2-field-empty">—</span>
       {%- elif f.field_type == 'bool' -%}
         {{ 'Yes' if f.value else 'No' }}
       {%- elif f.option_labels and f.value in f.option_labels -%}
         {{ f.option_labels[f.value] }}
+      {%- elif _ro is number -%}
+        {%- if _ro is integer -%}{{ _ro }}
+        {%- else -%}{{ '%.2f'|format(_ro) }}{%- endif -%}
       {%- else -%}
-        {{ f.display_value if f.display_value is defined else f.value }}
+        {{ _ro }}
       {%- endif -%}
     </span>
     {%- if f.binding_label not in ('bound',) -%}
