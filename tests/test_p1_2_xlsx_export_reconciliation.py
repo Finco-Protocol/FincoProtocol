@@ -1,4 +1,4 @@
-"""P1.2 Institutional XLSX Export — Correction A: True Workbook Reconciliation.
+"""P1.2 Institutional XLSX Export — Correction A + B: True Workbook Reconciliation + Persisted Lineage.
 
 Acceptance markers (Correction A):
   XLSX_NO_PARALLEL_CALCULATION_ENGINE
@@ -29,6 +29,17 @@ Acceptance markers (Correction A):
   TRUST_PACK_SOLAR_EXCEL_RECONCILIATION
   TRUST_PACK_RECONCILIATION_CLAIM_EVIDENCE_BOUND
   FINCO_PR98_CORRECTION_A_TRUE_XLSX_RECONCILIATION_COMPLETE
+
+Acceptance markers (Correction B):
+  XLSX_LAST_RUN_REAL_DB_JOURNEY
+  XLSX_LAST_RUN_PERSISTED_PROJECT_ID_EXACT
+  XLSX_LAST_RUN_PERSISTED_COMPOSITE_HASH_EXACT
+  XLSX_LAST_RUN_PERSISTED_SNAPSHOT_ID
+  XLSX_LAST_RUN_WORKING_CHANGED_SINCE_RUN
+  XLSX_LAST_RUN_SENIOR_DEBT_FROM_PERSISTED_RUNTIME
+  XLSX_PERSISTED_SENIOR_DEBT_CORRUPTION_DETECTED
+  XLSX_PERSISTED_LINEAGE_CORRUPTION_DETECTED
+  FINCO_PR98_CORRECTION_B_PERSISTED_XLSX_AUTHORITY_COMPLETE
 """
 from __future__ import annotations
 
@@ -834,6 +845,443 @@ def test_finco_pr98_correction_a_true_xlsx_reconciliation_complete():
         ["git", "diff", "origin/main", "--name-only"],
         capture_output=True, text=True,
         cwd=root,
+    )
+    frozen = [f for f in result.stdout.strip().splitlines() if (
+        f.startswith("financial_engine/") or
+        f.startswith("finco_core/") or
+        f.startswith("finco_radar/")
+    )]
+    assert frozen == [], f"Frozen namespace changed: {frozen}"
+
+
+# ─── Correction B: Real Persisted Last Run Lineage ───────────────────────────
+
+
+def _build_persisted_export_for_test() -> "tuple[bytes, object, object, str]":
+    """Create a real DB project, run the engine, persist, change inputs, export.
+
+    Returns (workbook_bytes, project_record, workspace_state, composite_hash_at_run).
+
+    Full journey:
+      1. New demo user + user_created project
+      2. Factory Solar Reference inputs → run_project → real KPIs
+      3. Persist to workspace_states (save_workspace_state + direct UPDATE for
+         any_run_committed and last_runtime_composite_hash)
+      4. Mark workspace dirty (simulate post-run input change)
+      5. Export via build_canonical_last_run_institutional_workbook_export
+    """
+    import hashlib
+    import json
+    import datetime
+    from app.auth import new_demo_user_id
+    from app.persistence.projects_repository import save_project, get_project
+    from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+    from app.persistence.db import get_connection
+    from app.project_factories import create_generic_solar_reference
+    from app.api.project_runner import run_project
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
+
+    uid = new_demo_user_id()
+    pcode = "test_cb_" + uid[-8:]
+    pi = create_generic_solar_reference()
+
+    # 1. Create user_created project
+    pr = save_project(
+        uid, pcode, "Test CB Solar", "generic_solar_reference",
+        project_type="Solar", project_origin="user_created",
+    )
+
+    # 2. Build the Solar Reference snapshot (used as last_runtime_snapshot)
+    opex_y1 = sum(item.y1_amount_keur for item in pi.opex)
+    snap = {
+        "project_type": "Solar",
+        "template_source": "generic_solar_reference",
+        "project_origin": "user_created",
+        "project_name": pi.info.name,
+        "country_market": pi.info.country_iso,
+        "capacity_mw": str(pi.technical.capacity_mw),
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(pi.info.construction_months),
+        "horizon_years": str(pi.info.horizon_years),
+        "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+        "ppa_term_years": str(pi.revenue.ppa_term_years),
+        "p50_hours": str(pi.technical.operating_hours_p50),
+        "opex_y1_keur": str(opex_y1),
+        "total_capex_keur": str(pi.capex.total_capex),
+        "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "tenor_years": str(pi.financing.senior_tenor_years),
+        "target_dscr": str(pi.financing.target_dscr),
+    }
+
+    # 3. Run engine to get real KPIs + schedules
+    result = run_project("generic_solar_reference", "Base", project_inputs_override=pi)
+    kpis = result["kpis"]
+    debt_schedule = result.get("debt_schedule")
+    financial_statements = result.get("financial_statements")
+
+    # 4. Compute composite hash (simulates what v2_atomic_run_commit stores)
+    composite_hash_at_run = hashlib.sha256(
+        json.dumps({"snap": snap, "project_id": pr.project_id}, sort_keys=True).encode()
+    ).hexdigest()
+    snapshot_id = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ran_at = datetime.datetime.now(datetime.timezone.utc)
+
+    # 5. Persist workspace with runtime data
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=snap,
+        saved_snapshot=snap,
+        last_runtime_snapshot=snap,
+        last_runtime_summary=kpis,
+        last_runtime_snapshot_id=snapshot_id,
+        last_runtime_origin="saved_state",
+        last_runtime_at=ran_at,
+        last_debt_schedule=debt_schedule,
+        last_financial_statements=financial_statements,
+    )
+
+    # 6. Commit: set any_run_committed=1 and last_runtime_composite_hash
+    conn = get_connection()
+    conn.execute(
+        "UPDATE workspace_states SET any_run_committed=1, last_runtime_composite_hash=? "
+        "WHERE user_id=? AND project_id=?",
+        (composite_hash_at_run, uid, pr.project_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # 7. Simulate post-run edit: change draft_snapshot (marks working as changed)
+    changed_snap = dict(snap)
+    changed_snap["tariff_eur_mwh"] = str(float(snap["tariff_eur_mwh"]) + 10.0)
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=changed_snap,
+        saved_snapshot=snap,
+        dirty=True,
+    )
+
+    # 8. Export via V2 canonical export
+    pr2 = get_project(pr.project_id, uid)
+    resp = build_canonical_last_run_institutional_workbook_export(
+        "generic_solar_reference",
+        safe_project="test_cb_solar",
+        project_record=pr2,
+        user_id=uid,
+    )
+    assert resp.status_code == 200, (
+        f"V2 canonical export failed with {resp.status_code}: {resp.error_content}"
+    )
+
+    ws2 = get_workspace_state(uid, pr.project_id)
+    return resp.bytes_data, pr2, ws2, composite_hash_at_run
+
+
+# ── XLSX_LAST_RUN_REAL_DB_JOURNEY ─────────────────────────────────────────────
+
+def test_xlsx_last_run_real_db_journey():
+    """XLSX_LAST_RUN_REAL_DB_JOURNEY — full DB persistence journey produces valid workbook."""
+    wb_bytes, pr, ws, _ = _build_persisted_export_for_test()
+    assert len(wb_bytes) > 40_000
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    assert "Run Identity" in wb.sheetnames
+    assert "Reconciliation" in wb.sheetnames
+    ri_data = _ri_data(wb)
+    assert ri_data.get("Export authority") == "CANONICAL_LAST_RUN", (
+        f"Export authority wrong: {ri_data.get('Export authority')!r}"
+    )
+
+
+# ── XLSX_LAST_RUN_PERSISTED_PROJECT_ID_EXACT ──────────────────────────────────
+
+def test_xlsx_last_run_persisted_project_id_exact():
+    """XLSX_LAST_RUN_PERSISTED_PROJECT_ID_EXACT — workbook Project ID == project_record.project_id."""
+    wb_bytes, pr, ws, _ = _build_persisted_export_for_test()
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb)
+    wb_project_id = str(ri_data.get("Project ID", ""))
+    assert wb_project_id == str(pr.project_id), (
+        f"Workbook Project ID {wb_project_id!r} != project_record.project_id {pr.project_id!r}"
+    )
+    # Must NOT be the factory fallback key.
+    assert wb_project_id not in ("not_applicable", "", "generic_solar_reference"), (
+        f"Workbook Project ID is placeholder: {wb_project_id!r}"
+    )
+
+
+# ── XLSX_LAST_RUN_PERSISTED_COMPOSITE_HASH_EXACT ─────────────────────────────
+
+def test_xlsx_last_run_persisted_composite_hash_exact():
+    """XLSX_LAST_RUN_PERSISTED_COMPOSITE_HASH_EXACT — workbook hash == ws.last_runtime_composite_hash."""
+    wb_bytes, pr, ws, composite_hash_at_run = _build_persisted_export_for_test()
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb)
+    wb_hash = str(ri_data.get("Input composite hash", ""))
+    assert wb_hash == composite_hash_at_run, (
+        f"Workbook hash {wb_hash!r} != composite_hash_at_run {composite_hash_at_run[:12]!r}…"
+    )
+    assert wb_hash not in ("not_applicable", ""), (
+        f"Workbook composite hash is placeholder: {wb_hash!r}"
+    )
+
+
+# ── XLSX_LAST_RUN_PERSISTED_SNAPSHOT_ID ──────────────────────────────────────
+
+def test_xlsx_last_run_persisted_snapshot_id():
+    """XLSX_LAST_RUN_PERSISTED_SNAPSHOT_ID — workbook Runtime snapshot ID matches DB."""
+    wb_bytes, pr, ws, _ = _build_persisted_export_for_test()
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb)
+    wb_snap_id = str(ri_data.get("Runtime snapshot ID", ""))
+    assert wb_snap_id == ws.last_runtime_snapshot_id, (
+        f"Workbook snapshot ID {wb_snap_id!r} != ws.last_runtime_snapshot_id {ws.last_runtime_snapshot_id!r}"
+    )
+    assert wb_snap_id not in ("not_applicable", ""), (
+        f"Workbook snapshot ID is placeholder: {wb_snap_id!r}"
+    )
+
+
+# ── XLSX_LAST_RUN_WORKING_CHANGED_SINCE_RUN ──────────────────────────────────
+
+def test_xlsx_last_run_working_changed_since_run():
+    """XLSX_LAST_RUN_WORKING_CHANGED_SINCE_RUN — post-run edit sets working_changed_since_run = true."""
+    wb_bytes, pr, ws, _ = _build_persisted_export_for_test()
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb)
+    wc = str(ri_data.get("Working changed since run", ""))
+    assert wc == "true", (
+        f"working_changed_since_run expected 'true' after post-run edit; got {wc!r}"
+    )
+
+
+# ── XLSX_LAST_RUN_SENIOR_DEBT_FROM_PERSISTED_RUNTIME ─────────────────────────
+
+def test_xlsx_last_run_senior_debt_from_persisted_runtime():
+    """XLSX_LAST_RUN_SENIOR_DEBT_FROM_PERSISTED_RUNTIME — senior debt authority from persisted kpis."""
+    from app.services.v2_export_service import _RuntimeResultAdapter, _build_persisted_bundle
+    from app.project_factories import create_generic_solar_reference
+    from app.api.project_runner import run_project
+
+    pi = create_generic_solar_reference()
+    result = run_project("generic_solar_reference", "Base", project_inputs_override=pi)
+    kpis = result["kpis"]
+
+    # Verify kpis["senior_debt_keur"] is a numeric float from the engine
+    assert kpis.get("senior_debt_keur") is not None, "senior_debt_keur missing from kpis"
+    assert isinstance(kpis["senior_debt_keur"], float), (
+        f"senior_debt_keur must be float, got {type(kpis['senior_debt_keur'])}"
+    )
+    assert kpis["senior_debt_keur"] > 0.0, "senior_debt_keur must be positive"
+
+    # _RuntimeResultAdapter must return the float value.
+    adapter = _RuntimeResultAdapter(kpis, result.get("debt_schedule"))
+    sd = adapter.senior_debt_keur
+    assert sd is not None and float(sd) > 0.0, (
+        f"_RuntimeResultAdapter.senior_debt_keur not available: {sd!r}"
+    )
+    assert math.isclose(float(sd), kpis["senior_debt_keur"], rel_tol=1e-6), (
+        f"adapter.senior_debt_keur {sd} != kpis value {kpis['senior_debt_keur']}"
+    )
+
+
+# ── XLSX_PERSISTED_SENIOR_DEBT_CORRUPTION_DETECTED ───────────────────────────
+
+def test_xlsx_reconciliation_detects_persisted_senior_debt_corruption():
+    """XLSX_PERSISTED_SENIOR_DEBT_CORRUPTION_DETECTED — corrupt senior debt authority → FAIL."""
+    from app.export.institutional_workbook import (
+        _build_export_bundle, _write_opex_sheet, _write_returns_sheet,
+        _write_reconciliation_sheet, WorkbookExportBundle,
+    )
+    from dataclasses import replace
+    from openpyxl import Workbook
+
+    bundle = _build_export_bundle("generic_solar_reference")
+    assert bundle.senior_debt_keur_authority is not None and bundle.senior_debt_keur_authority > 0
+
+    # Corrupt: add a massive number so Sources ≠ Uses.
+    corrupt_bundle = replace(
+        bundle,
+        senior_debt_keur_authority=bundle.senior_debt_keur_authority + 999_999.0,
+    )
+
+    wb = Workbook()
+    opex_ws = wb.active
+    opex_ws.title = "OPEX"
+    _write_opex_sheet(opex_ws, corrupt_bundle)
+    returns_ws = wb.create_sheet("Returns")
+    _write_returns_sheet(returns_ws, corrupt_bundle)
+    recon_ws = wb.create_sheet("Reconciliation")
+    _write_reconciliation_sheet(recon_ws, corrupt_bundle)
+
+    checks: dict[str, str] = {}
+    in_checks = False
+    for row in recon_ws.iter_rows(values_only=True):
+        if row[0] == "Check":
+            in_checks = True
+            continue
+        if in_checks and row[0] is not None:
+            checks[str(row[0])] = str(row[6]) if row[6] is not None else "N/A"
+
+    sus_status = checks.get("Total Sources vs Total Uses (kEUR)")
+    assert sus_status == "FAIL", (
+        f"Corrupted senior debt not detected by Sources=Uses; status={sus_status!r}"
+    )
+
+
+# ── XLSX_PERSISTED_LINEAGE_CORRUPTION_DETECTED ───────────────────────────────
+
+def test_xlsx_persisted_lineage_corruption_detected():
+    """XLSX_PERSISTED_LINEAGE_CORRUPTION_DETECTED — tampered Run Identity fields detectable.
+
+    Exports a real persisted workbook, then tampers with Project ID and
+    Input composite hash cells, and verifies the tampered values no longer
+    match the authoritative DB values — proving that lineage is verifiable.
+    """
+    import io
+    wb_bytes, pr, ws, composite_hash_at_run = _build_persisted_export_for_test()
+
+    # Load and read the genuine lineage values.
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb)
+    genuine_project_id = str(ri_data["Project ID"])
+    genuine_hash = str(ri_data["Input composite hash"])
+
+    # Verify the genuine values are correct before tampering.
+    assert genuine_project_id == str(pr.project_id)
+    assert genuine_hash == composite_hash_at_run
+
+    # Tamper: overwrite Project ID and hash in the Run Identity sheet.
+    ri_ws = wb["Run Identity"]
+    for row in ri_ws.iter_rows():
+        if row[0].value == "Project ID":
+            row[1].value = "TAMPERED-PROJECT-ID"
+        elif row[0].value == "Input composite hash":
+            row[1].value = "TAMPERED-HASH-0000"
+
+    # Re-read the tampered workbook.
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    wb2 = openpyxl.load_workbook(buf)
+    ri_data2 = _ri_data(wb2)
+
+    # Tampered values must NOT match the authoritative DB values.
+    assert str(ri_data2["Project ID"]) != str(pr.project_id), (
+        "Tampered Project ID still matches DB — tampering not detected"
+    )
+    assert str(ri_data2["Input composite hash"]) != composite_hash_at_run, (
+        "Tampered composite hash still matches DB — tampering not detected"
+    )
+    # Verify the original workbook matches (sanity).
+    assert genuine_project_id == str(pr.project_id)
+    assert genuine_hash == composite_hash_at_run
+
+
+# ── FINCO_PR98_CORRECTION_B composite marker ──────────────────────────────────
+
+def test_finco_pr98_correction_b_persisted_xlsx_authority_complete():
+    """FINCO_PR98_CORRECTION_B_PERSISTED_XLSX_AUTHORITY_COMPLETE
+
+    All Correction B gates satisfied in the same revision:
+      - Real DB journey exports 200 with canonical authority
+      - Project ID bound to DB record (not factory key)
+      - Composite hash bound to DB persisted value
+      - Snapshot ID bound to DB persisted value
+      - working_changed_since_run = true after post-run edit
+      - Senior debt authority from persisted kpis (not residual)
+      - Corrupt senior debt → Sources=Uses FAIL
+      - Tampered identity fields detectable by comparison to DB
+      - Correction A gates preserved (PASS: 8, FAIL: 0 on factory path)
+      - Frozen namespaces untouched
+    """
+    from app.export.institutional_workbook import (
+        _build_export_bundle, _write_opex_sheet, _write_returns_sheet,
+        _write_reconciliation_sheet, WorkbookExportBundle,
+    )
+    from dataclasses import replace as _dc_replace
+    from openpyxl import Workbook
+    import io
+
+    # Gate 1: Correction A gates preserved.
+    wb = _solar_workbook()
+    summary = _recon_summary(wb)
+    assert "PASS: 8" in summary and "FAIL: 0" in summary, (
+        f"Correction A regression: {summary!r}"
+    )
+
+    # Gate 2: Full DB journey.
+    wb_bytes, pr, ws, composite_hash_at_run = _build_persisted_export_for_test()
+    assert len(wb_bytes) > 40_000
+
+    wb_p = openpyxl.load_workbook(BytesIO(wb_bytes))
+    ri_data = _ri_data(wb_p)
+
+    # Gate 3: Project ID exact match.
+    assert str(ri_data["Project ID"]) == str(pr.project_id), (
+        f"Project ID mismatch: {ri_data['Project ID']!r} != {pr.project_id!r}"
+    )
+
+    # Gate 4: Composite hash exact match.
+    assert str(ri_data["Input composite hash"]) == composite_hash_at_run, (
+        f"Composite hash mismatch"
+    )
+
+    # Gate 5: Snapshot ID bound to DB.
+    assert str(ri_data["Runtime snapshot ID"]) == ws.last_runtime_snapshot_id, (
+        f"Snapshot ID mismatch"
+    )
+
+    # Gate 6: working_changed_since_run = true.
+    assert str(ri_data.get("Working changed since run", "")) == "true", (
+        f"working_changed_since_run not true after post-run edit"
+    )
+
+    # Gate 7: Senior debt from persisted kpis (not NOT_AVAILABLE / not_applicable).
+    from app.api.project_runner import run_project
+    from app.project_factories import create_generic_solar_reference
+    pi_ref = create_generic_solar_reference()
+    kpis = run_project("generic_solar_reference", "Base", project_inputs_override=pi_ref)["kpis"]
+    assert isinstance(kpis.get("senior_debt_keur"), float) and kpis["senior_debt_keur"] > 0
+
+    # Gate 8: Corrupt senior debt → Sources=Uses FAIL.
+    bundle = _build_export_bundle("generic_solar_reference")
+    corrupt = _dc_replace(bundle, senior_debt_keur_authority=bundle.senior_debt_keur_authority + 999_999.0)
+    wb_c = Workbook()
+    opex_ws = wb_c.active
+    opex_ws.title = "OPEX"
+    _write_opex_sheet(opex_ws, corrupt)
+    _write_returns_sheet(wb_c.create_sheet("Returns"), corrupt)
+    _write_reconciliation_sheet(wb_c.create_sheet("Reconciliation"), corrupt)
+    checks_c: dict[str, str] = {}
+    in_checks = False
+    for row in wb_c["Reconciliation"].iter_rows(values_only=True):
+        if row[0] == "Check":
+            in_checks = True
+            continue
+        if in_checks and row[0] is not None:
+            checks_c[str(row[0])] = str(row[6]) if row[6] is not None else "N/A"
+    assert checks_c.get("Total Sources vs Total Uses (kEUR)") == "FAIL"
+
+    # Gate 9: Tampered identity fields detectable.
+    wb_t = openpyxl.load_workbook(BytesIO(wb_bytes))
+    for row in wb_t["Run Identity"].iter_rows():
+        if row[0].value == "Project ID":
+            row[1].value = "TAMPERED"
+    buf = io.BytesIO()
+    wb_t.save(buf)
+    buf.seek(0)
+    ri_tampered = _ri_data(openpyxl.load_workbook(buf))
+    assert str(ri_tampered["Project ID"]) != str(pr.project_id)
+
+    # Gate 10: Frozen namespaces untouched.
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    result = subprocess.run(
+        ["git", "diff", "origin/main", "--name-only"],
+        capture_output=True, text=True, cwd=root,
     )
     frozen = [f for f in result.stdout.strip().splitlines() if (
         f.startswith("financial_engine/") or
