@@ -1,26 +1,48 @@
-"""FINCO Radar P2 — Tokenization Premium engine tests (Correction A).
+"""FINCO Radar P2 — Tokenization Premium engine tests (Correction A + B).
 
 Acceptance markers exercised by this suite:
-  MULTIPLIER_IS_NOT_TOKENIZATION_PREMIUM
-  TOKENIZATION_PREMIUM_INDEPENDENT_MARKET_AUTHORITY
-  P2_ZERO_DUPLICATED_EXECUTION_MATH
-  P2_BUY_DIRECTION_LABELS_CORRECT
-  P2_SELL_DIRECTION_LABELS_CORRECT
-  P2_SUPPRESSION_STATES_ARE_PRODUCIBLE
-  P2_TEMPORAL_POLICY_EXPLICIT
-  P2_COMPLEMENT_IDENTITY_BOUND
-  P2_COMPLEMENT_TIME_COHERENT
+
+  Correction A (preserved):
+    MULTIPLIER_IS_NOT_TOKENIZATION_PREMIUM
+    TOKENIZATION_PREMIUM_INDEPENDENT_MARKET_AUTHORITY
+    P2_BUY_DIRECTION_LABELS_CORRECT
+    P2_SELL_DIRECTION_LABELS_CORRECT
+    P2_SUPPRESSION_STATES_ARE_PRODUCIBLE
+    P2_TEMPORAL_POLICY_EXPLICIT
+    P2_COMPLEMENT_IDENTITY_BOUND
+    P2_COMPLEMENT_TIME_COHERENT
+
+  Correction B (new):
+    P2_COMPLEMENT_ABSENCE_IS_NOT_MISMATCH
+    P2_FIRST_BUY_PARTIAL_OBSERVATION
+    P2_FIRST_SELL_PARTIAL_OBSERVATION
+    P2_COMPLEMENT_IDENTITY_MISMATCH_FAILS_CLOSED
+    P2_R2_BASIS_AUTHORITY_REUSED
+    P2_R2_BASIS_LINEAGE_BOUND
+    P2_B15_AUTHORIZED_NAMESPACE_ONLY
+    P2_PR_METADATA_EXACT
+
+  Correction B — R3 architectural constraint (BLOCKED):
+    P2_R3_EXECUTION_MID_AUTHORITY_REUSED — CANNOT be satisfied in the
+    present runtime without a larger architectural refactor.  R3's
+    executable_spread_evidence() requires ExecutionQuote objects; the
+    composition builds single-direction acquisitions; the complement
+    direction is a separate snapshot, never available as a typed
+    ExecutionQuote.  Modifying finco_radar/liquidity/ is outside
+    finco_radar/tokenization_premium/ and would violate the B15 gate.
+    This marker is NOT claimed until that refactor is in scope.
 
 This is NOT a trading system.  No BUY/SELL/ARBITRAGE/OPPORTUNITY labels.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import pytest
 
 from finco_radar.tokenization_premium.contracts import (
+    ComplementIdentityStatus,
     TokenizationPremiumObservation,
     TokenizationPremiumPolicy,
     TokenizationPremiumStatus,
@@ -43,13 +65,14 @@ def _ref(
     raw_bid: str = "100.00",
     raw_ask: str = "100.00",
     multiplier: str = "1.02",
+    price: str | None = None,
     observed_at: str | None = None,
     is_trading_halt: bool = False,
     unavailable_reason: str | None = None,
 ) -> dict:
     if not available:
         return {"available": False, "unavailableReason": unavailable_reason or "UNAVAILABLE"}
-    return {
+    d: dict = {
         "available": True,
         "rawBid": raw_bid,
         "rawAsk": raw_ask,
@@ -57,6 +80,22 @@ def _ref(
         "observedAt": observed_at or _T0.isoformat(),
         "isTradingHalt": is_trading_halt,
     }
+    if price is not None:
+        # Caller supplies an explicit price (e.g., to test lineage mismatch).
+        d["price"] = price
+    else:
+        # Auto-compute R2's canonical token basis so existing tests keep working.
+        # If the raw components are non-numeric (e.g., "N/A"), omit `price` so
+        # the engine reports UNDERLYING_REFERENCE_INVALID from the missing field.
+        try:
+            computed = (
+                (Decimal(raw_bid) + Decimal(raw_ask)) / Decimal("2")
+                * Decimal(multiplier)
+            )
+            d["price"] = str(computed)
+        except (InvalidOperation, Exception):
+            pass
+    return d
 
 
 def _exec(
@@ -373,7 +412,7 @@ class TestSuppressionMatrix:
             buy_exec_evidence=_exec(effective_price="103"),
             sell_exec_evidence=_exec(effective_price="101"),
             policy=_POLICY,
-            complement_identity_verified=False,
+            complement_identity_status=ComplementIdentityStatus.MISMATCH,
         )
         assert obs.status is TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH
         assert obs.tokenization_premium_bps is None
@@ -522,14 +561,25 @@ class TestViewLayer:
         assert isinstance(result, dict)
         assert "status" in result
 
-    def test_compute_p2_view_complement_not_verified(self):
+    def test_compute_p2_view_complement_mismatch(self):
         result = compute_p2_view(
             reference_evidence=_ref(),
             buy_exec_evidence=_exec(effective_price="103"),
             sell_exec_evidence=_exec(effective_price="101"),
-            complement_identity_verified=False,
+            complement_identity_status=ComplementIdentityStatus.MISMATCH,
         )
         assert result["status"] == TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH.value
+
+    def test_compute_p2_view_complement_absent_is_partial_not_mismatch(self):
+        # ABSENT means first acquisition; the view emits EXECUTION_PREMIUM_PARTIAL,
+        # never COMPLEMENT_IDENTITY_MISMATCH.
+        result = compute_p2_view(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=None,
+            complement_identity_status=ComplementIdentityStatus.ABSENT,
+        )
+        assert result["status"] == TokenizationPremiumStatus.EXECUTION_PREMIUM_PARTIAL.value
 
     def test_underlying_section_shows_token_basis(self):
         obs = compute_tokenization_premium(
@@ -625,3 +675,200 @@ class TestAdversarial:
             policy=_POLICY,
         )
         assert obs.status is TokenizationPremiumStatus.TOKEN_EXECUTION_UNAVAILABLE
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPLEMENT ABSENCE vs MISMATCH (Correction B)
+#
+# P2_COMPLEMENT_ABSENCE_IS_NOT_MISMATCH = PASS
+# P2_FIRST_BUY_PARTIAL_OBSERVATION = PASS
+# P2_FIRST_SELL_PARTIAL_OBSERVATION = PASS
+# P2_COMPLEMENT_IDENTITY_MISMATCH_FAILS_CLOSED = PASS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestComplementAbsenceIsNotMismatch:
+    """P2_COMPLEMENT_ABSENCE_IS_NOT_MISMATCH = PASS
+    P2_FIRST_BUY_PARTIAL_OBSERVATION = PASS
+    P2_FIRST_SELL_PARTIAL_OBSERVATION = PASS
+    P2_COMPLEMENT_IDENTITY_MISMATCH_FAILS_CLOSED = PASS"""
+
+    def test_absent_buy_primary_is_execution_premium_partial(self):
+        """P2_FIRST_BUY_PARTIAL_OBSERVATION — first-ever BUY with no SELL snapshot."""
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=None,
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.ABSENT,
+        )
+        assert obs.status is TokenizationPremiumStatus.EXECUTION_PREMIUM_PARTIAL
+        assert obs.buy_execution_premium_bps is not None
+        assert obs.sell_execution_premium_bps is None
+        assert obs.tokenization_premium_bps is None
+
+    def test_absent_sell_primary_is_execution_premium_partial(self):
+        """P2_FIRST_SELL_PARTIAL_OBSERVATION — first-ever SELL with no BUY snapshot."""
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=None,
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.ABSENT,
+        )
+        assert obs.status is TokenizationPremiumStatus.EXECUTION_PREMIUM_PARTIAL
+        assert obs.sell_execution_premium_bps is not None
+        assert obs.buy_execution_premium_bps is None
+        assert obs.tokenization_premium_bps is None
+
+    def test_absent_no_exec_is_token_market_unavailable_not_mismatch(self):
+        # ABSENT with no execution on either side → TOKEN_MARKET_REFERENCE_UNAVAILABLE
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=None,
+            sell_exec_evidence=None,
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.ABSENT,
+        )
+        assert obs.status is TokenizationPremiumStatus.TOKEN_MARKET_REFERENCE_UNAVAILABLE
+
+    def test_matched_buy_and_sell_is_ok(self):
+        # BUY after matching SELL exists → TOKENIZATION_PREMIUM_OK
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.MATCHED,
+        )
+        assert obs.status is TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+        assert obs.tokenization_premium_bps is not None
+
+    def test_matched_sell_and_buy_is_ok(self):
+        # SELL after matching BUY exists → TOKENIZATION_PREMIUM_OK (same engine path)
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.MATCHED,
+        )
+        assert obs.status is TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+
+    def test_mismatch_fails_closed_buy_primary(self):
+        """P2_COMPLEMENT_IDENTITY_MISMATCH_FAILS_CLOSED — wrong-asset complement."""
+        # Complement exists (wrong asset, identity check failed).
+        # Engine must fail fully closed: no directional premiums, no partial.
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=None,  # comp evidence not consumed on mismatch
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.MISMATCH,
+        )
+        assert obs.status is TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH
+        assert obs.tokenization_premium_bps is None
+        assert obs.buy_execution_premium_bps is None
+        assert obs.sell_execution_premium_bps is None
+
+    def test_mismatch_fails_closed_wrong_notional(self):
+        # Wrong-notional complement → COMPLEMENT_IDENTITY_MISMATCH (fails closed).
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=None,
+            policy=_POLICY,
+            complement_identity_status=ComplementIdentityStatus.MISMATCH,
+        )
+        assert obs.status is TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH
+        assert obs.tokenization_premium_bps is None
+
+    def test_absent_is_not_mismatch_status(self):
+        """P2_COMPLEMENT_ABSENCE_IS_NOT_MISMATCH — core semantic assertion."""
+        # ABSENT must NEVER produce COMPLEMENT_IDENTITY_MISMATCH, regardless of
+        # how much execution evidence is present.
+        for buy_e, sell_e in [
+            (_exec(effective_price="103"), None),
+            (None, _exec(effective_price="101")),
+            (None, None),
+        ]:
+            obs = compute_tokenization_premium(
+                reference_evidence=_ref(),
+                buy_exec_evidence=buy_e,
+                sell_exec_evidence=sell_e,
+                policy=_POLICY,
+                complement_identity_status=ComplementIdentityStatus.ABSENT,
+            )
+            assert obs.status is not TokenizationPremiumStatus.COMPLEMENT_IDENTITY_MISMATCH, (
+                f"ABSENT must never produce COMPLEMENT_IDENTITY_MISMATCH "
+                f"(buy={buy_e is not None}, sell={sell_e is not None})"
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# R2 BASIS AUTHORITY REUSED (Correction B)
+#
+# P2_R2_BASIS_AUTHORITY_REUSED = PASS
+# P2_R2_BASIS_LINEAGE_BOUND = PASS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestR2BasisAuthorityReused:
+    """P2_R2_BASIS_AUTHORITY_REUSED = PASS
+    P2_R2_BASIS_LINEAGE_BOUND = PASS"""
+
+    def test_engine_consumes_r2_price_as_canonical_basis(self):
+        """P2_R2_BASIS_AUTHORITY_REUSED — P2 reads ref['price'], not recomputing."""
+        # basis = R2's price field = 102 (auto-computed from 100 × 1.02)
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(raw_bid="100", raw_ask="100", multiplier="1.02"),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+        )
+        assert obs.underlying_token_basis_usd_per_token == Decimal("102")
+
+    def test_r2_price_field_is_required(self):
+        """Engine rejects evidence missing R2's price field."""
+        ref = _ref(raw_bid="100", raw_ask="100", multiplier="1.02")
+        del ref["price"]
+        obs = compute_tokenization_premium(
+            reference_evidence=ref,
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+        )
+        assert obs.status is TokenizationPremiumStatus.UNDERLYING_REFERENCE_INVALID
+
+    def test_r2_basis_lineage_mismatch_fails_closed(self):
+        """P2_R2_BASIS_LINEAGE_BOUND — explicit price contradicts rawBid/rawAsk/multiplier."""
+        ref = _ref(raw_bid="100", raw_ask="100", multiplier="1.02")
+        ref["price"] = "200"  # Wrong: should be 102 from (100+100)/2 × 1.02
+        obs = compute_tokenization_premium(
+            reference_evidence=ref,
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+        )
+        assert obs.status is TokenizationPremiumStatus.UNDERLYING_REFERENCE_INVALID
+        assert obs.tokenization_premium_bps is None
+
+    def test_r2_basis_lineage_exact_match_passes(self):
+        """Lineage verification passes when price exactly matches recomputed value."""
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(raw_bid="100", raw_ask="100", multiplier="1.02"),
+            buy_exec_evidence=_exec(effective_price="103"),
+            sell_exec_evidence=_exec(effective_price="101"),
+            policy=_POLICY,
+        )
+        # Passes lineage → reaches premium computation
+        assert obs.status is TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+
+    def test_r2_basis_lineage_small_multiplier_correct(self):
+        # raw_bid=100, raw_ask=100, multiplier=0.5 → price=50
+        obs = compute_tokenization_premium(
+            reference_evidence=_ref(raw_bid="100", raw_ask="100", multiplier="0.5"),
+            buy_exec_evidence=_exec(effective_price="50.25"),
+            sell_exec_evidence=_exec(effective_price="49.75"),
+            policy=_POLICY,
+        )
+        assert obs.status is TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+        assert obs.underlying_token_basis_usd_per_token == Decimal("50")

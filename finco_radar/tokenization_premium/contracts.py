@@ -38,6 +38,36 @@ from enum import Enum
 from typing import Any, Mapping
 
 
+class ComplementIdentityStatus(str, Enum):
+    """Typed state of the complement-direction snapshot's identity check.
+
+    Distinguishes three cases that must not be collapsed to one boolean:
+
+    MATCHED  — a complement snapshot exists and passes identity verification
+               (economicAssetUid, chainId, contractAddress, notionalUsd,
+               direction all agree).  The complement's execution evidence
+               is safe to consume.
+
+    ABSENT   — no complement snapshot exists yet (first-ever acquisition of
+               this direction, or the complement expired / was not cached).
+               This is NOT a failure.  The P2 engine proceeds with whatever
+               evidence is available and emits EXECUTION_PREMIUM_PARTIAL when
+               only the primary direction is present.
+
+    MISMATCH — a complement snapshot was found but failed identity
+               verification.  The complement's execution evidence must NOT
+               be consumed.  P2 fails closed with
+               COMPLEMENT_IDENTITY_MISMATCH.
+
+    Do not use one boolean for both ABSENT and MISMATCH — they have different
+    economic meanings and different fail-close semantics.
+    """
+
+    MATCHED = "MATCHED"
+    ABSENT = "ABSENT"
+    MISMATCH = "MISMATCH"
+
+
 class TokenizationPremiumStatus(str, Enum):
     """Typed fail-closed status for each P2 tokenization-premium computation.
 

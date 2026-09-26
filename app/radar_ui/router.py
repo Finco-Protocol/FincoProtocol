@@ -708,18 +708,26 @@ async def radar_equity_simulate(
     ref_evidence = primary_evidence.get("reference") or {}
 
     # Verify complement identity before consuming its execution evidence.
+    # Three distinct states must not be collapsed to one boolean:
+    #   ABSENT   — no complement snapshot yet (first acquisition); not a failure.
+    #   MISMATCH — complement exists but identity fails; fail closed.
+    #   MATCHED  — complement exists and identity verified; evidence consumed.
     comp_evidence: dict = {}
-    complement_identity_verified = False
-    if complement_snapshot is not None:
+    if complement_snapshot is None:
+        comp_id_status = tokenization_premium_view.ComplementIdentityStatus.ABSENT
+    else:
         comp_payload = complement_snapshot.to_payload()
-        complement_identity_verified, _id_reason = _verify_complement_identity(
+        _id_ok, _id_reason = _verify_complement_identity(
             primary_payload, comp_payload, complement_direction,
         )
-        if complement_identity_verified:
+        if _id_ok:
+            comp_id_status = tokenization_premium_view.ComplementIdentityStatus.MATCHED
             comp_provider = next(
                 (p for p in comp_payload.get("providers", [])
                  if p.get("provider") == composition.PROVIDER_NAME), None)
             comp_evidence = (comp_provider or {}).get("evidence") or {}
+        else:
+            comp_id_status = tokenization_premium_view.ComplementIdentityStatus.MISMATCH
 
     buy_exec = primary_evidence.get("execution") if direction == "BUY" else comp_evidence.get("execution")
     sell_exec = primary_evidence.get("execution") if direction == "SELL" else comp_evidence.get("execution")
@@ -728,7 +736,7 @@ async def radar_equity_simulate(
         reference_evidence=ref_evidence,
         buy_exec_evidence=buy_exec,
         sell_exec_evidence=sell_exec,
-        complement_identity_verified=complement_identity_verified,
+        complement_identity_status=comp_id_status,
     )
 
     return _templates.TemplateResponse(

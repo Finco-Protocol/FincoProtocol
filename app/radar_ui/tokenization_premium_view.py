@@ -9,11 +9,20 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Mapping
 
 from finco_radar.tokenization_premium.contracts import (
+    ComplementIdentityStatus,
     TokenizationPremiumObservation,
     TokenizationPremiumPolicy,
     TokenizationPremiumStatus,
 )
 from finco_radar.tokenization_premium.engine import compute_tokenization_premium
+
+# Re-export ComplementIdentityStatus so router.py can import it from this module
+# without importing finco_radar directly (test_ui_20 boundary contract).
+__all__ = [
+    "ComplementIdentityStatus",
+    "compute_p2_view",
+    "build_tokenization_premium_view",
+]
 
 _DISCLAIMER = (
     "OBSERVATION ONLY — not a trading signal, not a recommendation. "
@@ -119,13 +128,18 @@ def compute_p2_view(
     reference_evidence: Mapping[str, Any],
     buy_exec_evidence: Mapping[str, Any] | None,
     sell_exec_evidence: Mapping[str, Any] | None,
-    complement_identity_verified: bool = True,
+    complement_identity_status: ComplementIdentityStatus = ComplementIdentityStatus.MATCHED,
     max_evidence_skew_seconds: int = _P2_CROSS_DIRECTION_SKEW_SECONDS,
 ) -> dict[str, Any]:
     """Entry point for router.py: compute P2 and return a view dict.
 
     Keeps all finco_radar imports out of router.py (test_ui_20 contract).
     Never raises — returns a suppressed view dict on any error.
+
+    complement_identity_status must be one of ComplementIdentityStatus:
+      MATCHED  — complement snapshot verified, evidence consumed.
+      ABSENT   — no complement snapshot yet; partial observation is normal.
+      MISMATCH — complement snapshot found but identity failed; fails closed.
     """
     try:
         policy = TokenizationPremiumPolicy(
@@ -135,7 +149,7 @@ def compute_p2_view(
             buy_exec_evidence=buy_exec_evidence,
             sell_exec_evidence=sell_exec_evidence,
             policy=policy,
-            complement_identity_verified=complement_identity_verified,
+            complement_identity_status=complement_identity_status,
         )
         return build_tokenization_premium_view(obs)
     except Exception:  # noqa: BLE001
