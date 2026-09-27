@@ -50,6 +50,20 @@ _TECHNOLOGY_BY_TEMPLATE_SOURCE = {
 _DC_DERIVED_OPEX_ITEM_NAME = "Power Expenses"
 
 
+def _ev_b08_from_snapshot(snapshot: dict, capacity_mw: float) -> float:
+    """Return EV B.08 Y1 electricity expense using CURRENT persisted drivers.
+
+    Reads ev_* snapshot keys via the single EV driver authority so that user
+    edits to charging efficiency or electricity price flow through; falls back
+    to GENERIC_EV_CHARGING_REFERENCE_DRIVERS for missing keys.
+    """
+    from app.ev_charging_economics import (
+        drivers_from_snapshot,
+        driver_electricity_expense_keur,
+    )
+    return driver_electricity_expense_keur(drivers_from_snapshot(snapshot), capacity_mw, 1)
+
+
 class ScalingMode(str, Enum):
     PER_MW = "PER_MW"
     FIXED = "FIXED"
@@ -502,9 +516,10 @@ def rescale_reference_seeded_project(*, user_id: str, project_code: str, capacit
         # EV Charging: the derived B.08 electricity line is a factory item
         # (never a seeded sub-line) that scales exactly with capacity; add its
         # driver-derived Y1 amount so the reconciled snapshot total includes it.
+        # Current persisted EV drivers are the authority — user edits to
+        # charging efficiency or electricity price survive the capacity change.
         if record.template_source == "generic_ev_charging_reference":
-            from app.ev_charging_economics import electricity_expense_keur
-            reconciled_opex_total += electricity_expense_keur(float(capacity_mw), 1)
+            reconciled_opex_total += _ev_b08_from_snapshot(dict(ws.draft_snapshot), float(capacity_mw))
     snapshot = dict(ws.draft_snapshot)
     snapshot["capacity_mw"] = f"{capacity_mw:.12g}"
     snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
@@ -737,9 +752,10 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
         # EV Charging: the derived B.08 electricity line is a factory item
         # (never a seeded sub-line) that scales exactly with capacity; add its
         # driver-derived Y1 amount so the reconciled snapshot total includes it.
+        # Current persisted EV drivers are the authority — user edits to
+        # charging efficiency or electricity price survive the reset.
         if record.template_source == "generic_ev_charging_reference":
-            from app.ev_charging_economics import electricity_expense_keur
-            reconciled_opex_total += electricity_expense_keur(float(capacity), 1)
+            reconciled_opex_total += _ev_b08_from_snapshot(dict(ws.draft_snapshot), float(capacity))
     refreshed_snapshot = dict(ws.draft_snapshot)
     refreshed_snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
     if record.template_source == "generic_data_center_reference":
