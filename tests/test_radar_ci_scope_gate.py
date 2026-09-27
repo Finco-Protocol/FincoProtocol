@@ -23,7 +23,7 @@ def _git(repo: Path, *args: str) -> str:
 def _pr_commits(repo: Path, changed: tuple[str, ...]) -> tuple[str, str]:
     _git(repo, "init", "--quiet")
     _git(repo, "config", "user.name", "Radar CI Fixture")
-    _git(repo, "config", "user.email", "radar-ci@example.invalid")
+    _git(repo, "config", "user.email", "radar-ci-fixture")
     (repo / "baseline.txt").write_text("base\n", encoding="utf-8")
     _git(repo, "add", ".")
     _git(repo, "commit", "--quiet", "-m", "base")
