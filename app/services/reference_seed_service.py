@@ -739,7 +739,7 @@ def reset_reference_seeded_lines(*, user_id: str, project_code: str) -> None:
         # driver-derived Y1 amount so the reconciled snapshot total includes it.
         if record.template_source == "generic_ev_charging_reference":
             from app.ev_charging_economics import electricity_expense_keur
-            reconciled_opex_total += electricity_expense_keur(float(capacity_mw), 1)
+            reconciled_opex_total += electricity_expense_keur(float(capacity), 1)
     refreshed_snapshot = dict(ws.draft_snapshot)
     refreshed_snapshot["total_capex_keur"] = f"{reconciled_capex_total:.12g}"
     if record.template_source == "generic_data_center_reference":

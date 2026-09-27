@@ -272,3 +272,35 @@ def test_stabilized_total_revenue_sanity(ev_runtime_result):
         actual > authority_total and (actual - authority_total) / authority_total < 0.03
     ), (actual, authority_total)
     assert actual >= expected_min * 0.99
+
+
+# ── Z.10 EV reset_reference_seeded_lines (capacity authority) ────────────────
+
+def test_reset_reference_seeded_lines_uses_current_capacity(tmp_path):
+    """reset_reference_seeded_lines must use the workspace capacity, not an
+    undefined 'capacity_mw' variable (regression guard for NameError bug)."""
+    import tempfile
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "reset_ev.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        reset_reference_seeded_lines,
+    )
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+
+    ensure_reference_models()
+    record = create_reference_seeded_project(
+        user_id="reset-user", template_source="generic_ev_charging_reference",
+        requested_name="ResetTest 5MW", capacity_mw=5.0,
+    )
+    # Simulate a user override on a seeded OPEX line, then reset to reference
+    ws = get_workspace_state("reset-user", record.project_id)
+    # reset must not raise NameError and must preserve the B.08 derived amount
+    reset_reference_seeded_lines(user_id="reset-user", project_code=record.project_code)
+    ws2 = get_workspace_state("reset-user", record.project_id)
+    opex_total = float(ws2.draft_snapshot["opex_y1_keur"])
+    # After reset the OPEX total must include the B.08 electricity expense at 5 MW Y1
+    b08_y1 = ev.electricity_expense_keur(5.0, 1)
+    assert opex_total >= b08_y1, "B.08 electricity must be included in OPEX total after reset"
+    assert opex_total == pytest.approx(960.0 + b08_y1, rel=1e-4)
