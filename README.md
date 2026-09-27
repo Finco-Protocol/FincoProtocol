@@ -25,7 +25,7 @@ FINCO Model is the deterministic modelling surface for real-world infrastructure
 The current modelling verticals are:
 
 - Solar and Wind — mature production modelling workflows;
-- Data Center and EV Charging — implemented modelling workflows; vertical-integrity validation in progress;
+- Data Center and EV Charging — implemented modelling workflows; final validation in progress;
 - Storage — limited/reference scope.
 
 Solar and Wind are the most mature modules.
@@ -69,7 +69,7 @@ Planned infrastructure verticals include:
 - **Telecom infrastructure** — towers, networks, and connectivity assets;
 - **Industrial infrastructure** — long-life industrial and process facilities.
 
-These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented current modelling workflows with vertical-integrity validation in progress; Storage remains limited/reference scope.
+These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented current modelling workflows with final validation in progress; Storage remains limited/reference scope.
 
 See [docs/RWA_INFRASTRUCTURE.md](docs/RWA_INFRASTRUCTURE.md) for the RWA infrastructure thesis, current engine capabilities, and planned module expansion.
 
@@ -179,7 +179,7 @@ FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is 
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with vertical-integrity validation in progress; Storage remains limited/reference scope; further asset-class modules are roadmap items until implemented and validated;
+- Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with final validation in progress; Storage remains limited/reference scope; further asset-class modules are roadmap items until implemented and validated;
 - FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
 - Radar and Protocol verification remain architecturally separate from the RWA infrastructure modelling engine;
 - a deterministic evidence digest is not proof that external market data is true and is not an on-chain notarization by itself;
@@ -197,4 +197,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with vertical-integrity validation in progress; Storage remains limited/reference scope. Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
+Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with final validation in progress; Storage remains limited/reference scope. Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.

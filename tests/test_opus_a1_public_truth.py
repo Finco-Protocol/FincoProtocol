@@ -141,11 +141,9 @@ def test_a1_15_readme_dc_ev_present_with_qualification():
     assert "data center" in lower
     assert "ev charging" in lower or "ev" in lower
     # Must carry qualification language (not unconditional production claims)
-    assert (
-        "validation in progress" in lower
-        or "vertical-integrity" in lower
-        or "undergoing" in lower
-    )
+    assert "validation in progress" in lower or "undergoing" in lower
+    # Internal engineering term must not appear in public product copy
+    assert "vertical-integrity" not in lower
 
 
 def test_a1_16_readme_solar_wind_described_as_mature():
@@ -189,7 +187,9 @@ def test_a1_19_roadmap_vertical_status_distinguishes_maturity():
     assert "ev charging" in lower or "ev" in lower
     assert "storage" in lower
     assert "mature" in lower
-    assert "validation in progress" in lower or "vertical-integrity" in lower
+    assert "validation in progress" in lower
+    # Internal engineering term must not appear in public roadmap copy
+    assert "vertical-integrity" not in lower
 
 
 def test_a1_20_readme_no_unconditional_all_four_production_verticals():
