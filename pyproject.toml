@@ -21,6 +21,7 @@ dependencies = [
     "scipy",
     "httpx",
     "click",
+    "pycryptodome",
 ]
 
 [tool.setuptools]

@@ -300,6 +300,10 @@ app.include_router(_finco_utility_router)
 from app.verify.router import router as _verify_router
 app.include_router(_verify_router)
 
+# -- FINCO Public Reference Verify — anonymous, no auth required ---------------
+from app.verify.public_reference_router import router as _public_ref_router
+app.include_router(_public_ref_router)
+
 # -- FINCO Verified Assets V1 --------------------------------------------------
 from app.verified.router import router as _verified_router
 app.include_router(_verified_router)
