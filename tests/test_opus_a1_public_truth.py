@@ -132,6 +132,74 @@ def test_a1_13_readme_mentions_verified_assets():
     assert "Verified Assets" in readme
 
 
+# ── Vertical-status semantic invariants (Correction A) ─────────────────────
+
+def test_a1_15_readme_dc_ev_present_with_qualification():
+    """README must show Data Center and EV Charging but qualify their validation state."""
+    readme = (REPO / "README.md").read_text()
+    lower = readme.lower()
+    assert "data center" in lower
+    assert "ev charging" in lower or "ev" in lower
+    # Must carry qualification language (not unconditional production claims)
+    assert (
+        "validation in progress" in lower
+        or "vertical-integrity" in lower
+        or "undergoing" in lower
+    )
+
+
+def test_a1_16_readme_solar_wind_described_as_mature():
+    """README must describe Solar and Wind as the mature production modelling workflows."""
+    readme = (REPO / "README.md").read_text()
+    lower = readme.lower()
+    assert "solar" in lower and "wind" in lower
+    assert "mature" in lower
+
+
+def test_a1_17_readme_storage_limited_reference():
+    """README must describe Storage as limited/reference scope."""
+    readme = (REPO / "README.md").read_text()
+    lower = readme.lower()
+    assert "storage" in lower
+    assert "limited" in lower
+    assert "reference" in lower
+
+
+def test_a1_18_docs_vertical_status_qualified():
+    """Docs product map must not call all four verticals unconditional production workflows."""
+    html = _client().get("/docs").text
+    lower = html.lower()
+    assert "data center" in lower
+    assert "ev" in lower
+    assert "solar" in lower and "wind" in lower
+    # Must carry qualification language for DC/EV
+    assert (
+        "validation in progress" in lower
+        or "mature production" in lower
+        or "implemented modelling" in lower
+    )
+
+
+def test_a1_19_roadmap_vertical_status_distinguishes_maturity():
+    """Roadmap Infrastructure Model card must distinguish Solar/Wind maturity from DC/EV."""
+    roadmap = (REPO / "app/templates/protocol_roadmap.html").read_text()
+    lower = roadmap.lower()
+    assert "solar" in lower and "wind" in lower
+    assert "data center" in lower
+    assert "ev charging" in lower or "ev" in lower
+    assert "storage" in lower
+    assert "mature" in lower
+    assert "validation in progress" in lower or "vertical-integrity" in lower
+
+
+def test_a1_20_readme_no_unconditional_all_four_production_verticals():
+    """README must not claim all four are unconditionally current production modelling verticals."""
+    readme = (REPO / "README.md").read_text()
+    # The specific stale unconditional list must not appear
+    assert "Solar, Wind, Data Center and EV Charging are the current production modelling verticals" not in readme
+    assert "Solar, Wind, Data Center and EV Charging are the current RWA infrastructure modelling verticals" not in readme
+
+
 # ── Known Limitations remains absent ───────────────────────────────────────
 
 def test_a1_14_no_standalone_known_limitations_route():
