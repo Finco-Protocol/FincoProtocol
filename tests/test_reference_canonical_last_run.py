@@ -1157,3 +1157,113 @@ def test_ev_reference_working_copy_separation(seeded_db):
     copy_ws_after = get_workspace_state("ev-wc-sep-user", copy.project_id)
     assert copy_ws_after.last_runtime_snapshot_id == "ev-wc-user-run-001", \
         "Working Copy must have the user run as its Last Run"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_CANONICAL_SNAPSHOT_ID_SUBSECOND_UNIQUE
+# ---------------------------------------------------------------------------
+
+def test_canonical_snapshot_id_subsecond_unique(seeded_db):
+    """REFERENCE_CANONICAL_SNAPSHOT_ID_SUBSECOND_UNIQUE = PASS
+
+    Canonical snapshot IDs:
+    1. Contain no decimal-form microsecond fragment (no pattern \\d+\\.\\d{6,}).
+    2. Two distinct datetimes within the same second produce distinct IDs.
+    3. An invalidation/reseed produces a different last_runtime_snapshot_id.
+
+    Timestamps for assertions 1 and 2 are constructed directly — no sleeps
+    or wall-clock timing.
+    """
+    import re
+    from datetime import datetime, timezone
+
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_canonical_last_runs,
+        ensure_reference_models,
+    )
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+    long_float_re = re.compile(r"\b\d+\.\d{6,}\b")
+
+    # 1 ── No decimal point in any canonical snapshot ID ───────────────────── #
+    for ts in (
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ):
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        snap_id = ws.last_runtime_snapshot_id or ""
+        assert long_float_re.search(snap_id) is None, (
+            f"Canonical snapshot ID for {ts} contains a decimal microsecond "
+            f"fragment (would leak as raw long float): {snap_id!r}"
+        )
+
+    # 2 ── Same second, different microseconds → distinct IDs ──────────────── #
+    # Directly exercise the format string used by _seed_reference_last_run.
+    # Two datetimes that share year/month/day/hour/minute/second but differ in
+    # microseconds must produce different strftime outputs.
+    t_a = datetime(2030, 1, 1, 0, 0, 0, 1, tzinfo=timezone.utc)
+    t_b = datetime(2030, 1, 1, 0, 0, 0, 999999, tzinfo=timezone.utc)
+
+    fmt = "%Y%m%dT%H%M%S%fZ"
+    iso_a = t_a.strftime(fmt)
+    iso_b = t_b.strftime(fmt)
+
+    assert iso_a != iso_b, (
+        "strftime('%Y%m%dT%%H%M%S%fZ') must differ for same-second datetimes "
+        f"with different microseconds: {iso_a!r} vs {iso_b!r}"
+    )
+
+    sid_a = f"canonical_last_run__generic_solar_reference__{iso_a}"
+    sid_b = f"canonical_last_run__generic_solar_reference__{iso_b}"
+    assert sid_a != sid_b, "Snapshot IDs must differ within the same second"
+
+    for sid in (sid_a, sid_b):
+        assert long_float_re.search(sid) is None, (
+            f"Snapshot ID from same-second pair contains decimal microsecond "
+            f"fragment: {sid!r}"
+        )
+
+    # 3 ── Reseed after invalidation changes last_runtime_snapshot_id ─────── #
+    from app.api.project_runner import run_project
+    from app.persistence.workspace_repository import v2_atomic_run_commit
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    solar_rec = get_reference_by_template_source("generic_solar_reference")
+    ws_before = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    snap_before = ws_before.last_runtime_snapshot_id
+
+    identity = assemble_consistent_for_get(
+        solar_rec.user_id, solar_rec.project_id, WORKBOOK.version
+    )
+    payload = run_project("Generic Solar Reference", "Base")
+    v2_atomic_run_commit(
+        user_id=solar_rec.user_id,
+        project_id=solar_rec.project_id,
+        project_code=solar_rec.project_code,
+        expected_composite_hash=identity.composite_hash,
+        runtime_snapshot_id="reseed-invalidation-test-001",
+        runtime_origin="canonical_reference_last_run",
+        runtime_summary=payload["kpis"],
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=None,
+        active_scenario_name=None,
+        ran_at=datetime(2030, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    ws_after = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    snap_after = ws_after.last_runtime_snapshot_id
+    assert snap_after != snap_before, (
+        "Reseed must produce a different last_runtime_snapshot_id; "
+        f"before={snap_before!r}, after={snap_after!r}"
+    )
