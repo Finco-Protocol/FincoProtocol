@@ -41,10 +41,11 @@
       <a href="#model">Model</a>
       <a href="#outputs">Key outputs</a>
       <a href="#radar">Radar</a>
+      <a href="#verified">Verified Assets</a>
       <a href="#evidence">Evidence & verification</a>
       <a href="#api">API Beta</a>
       <a href="#concepts">Shared concepts</a>
-      <a href="#status">Status & limitations</a>
+      <a href="#status">Status</a>
     </aside>
 
     <main class="pdocs-main">
@@ -98,8 +99,11 @@
           <table class="pdocs-table">
             <thead><tr><th>Surface</th><th>Primary question</th><th>Current scope</th></tr></thead>
             <tbody>
-              <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Production workflows for Solar, Wind and Data Center; Storage remains limited/reference scope.</td></tr>
-              <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces.</td></tr>
+              <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Production workflows for Solar, Wind, Data Center and EV Charging; Storage remains limited/reference scope.</td></tr>
+              <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces. Execution simulation is analytics only; no order submitted.</td></tr>
+              <tr><td><strong>Verify</strong></td><td>How was this output certified?</td><td>Deterministic run certificates (<code>FINCO_RUN_CERTIFICATE_V1</code>). Off-chain; a digest proves identity of the hashed content, not truth of an external source.</td></tr>
+              <tr><td><strong>Verified Assets</strong></td><td>How does a model run connect to market identity?</td><td>Composed <code>FINCO_VERIFIED_ASSET_V1</code> records: model economics + run certificate + Radar evidence + $FINCO protocol metadata.</td></tr>
+              <tr><td><strong>$FINCO</strong></td><td>How do I access protocol capabilities?</td><td>The P4 entitlement rail is implemented. The $FINCO token is not yet launched. Token access is not a calculation authority and does not change model outputs or evidence truth.</td></tr>
               <tr><td><strong>API</strong></td><td>How can software read or run FINCO capabilities?</td><td>Beta Model reference/read/preview/run and Radar read/simulation endpoints.</td></tr>
               <tr><td><strong>Evidence</strong></td><td>What produced this value and how should I interpret its state?</td><td>Source, snapshot, period, lineage, freshness and deterministic verification concepts.</td></tr>
             </tbody>
@@ -183,6 +187,7 @@
               <li>Company Terminal for canonical asset identity</li>
               <li>Underlying company context kept separate from token market state</li>
               <li>Execution Simulation is analytics only; no order is submitted</li>
+              <li>No custody, wallet signing or order submission</li>
             </ul>
           </article>
           <article class="pdocs-panel">
@@ -213,6 +218,41 @@
         </div>
       </section>
 
+      <section id="verified" class="pdocs-section">
+        <p class="pdocs-section-kicker">FINCO Verified Assets</p>
+        <h2>Connect model economics to market identity.</h2>
+        <p>
+          Verified Assets compose existing FINCO authorities into a single
+          <code>FINCO_VERIFIED_ASSET_V1</code> record. The composition
+          principle is: NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION.
+        </p>
+        <div class="pdocs-two-col">
+          <article class="pdocs-panel">
+            <h3>What a Verified Asset record contains</h3>
+            <ul>
+              <li><strong>model</strong> — persisted canonical Last Run economics</li>
+              <li><strong>verify</strong> — P3 Run Certificate (<code>FINCO_RUN_CERTIFICATE_V1</code>)</li>
+              <li><strong>market</strong> — Radar model/market bridge evidence (when available)</li>
+              <li><strong>protocol</strong> — $FINCO utility registry metadata</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel pdocs-panel--note">
+            <h3>V1 status</h3>
+            <p>
+              V1 reference assets render as <strong>MODEL_ONLY</strong> — a canonical
+              model↔market identity mapping is not yet established. A discovered
+              market binding alone is never sufficient for VERIFIED status; full
+              identity reconciliation, Radar reference evidence and P2 tokenization-premium
+              observation are all required.
+            </p>
+            <p>
+              Use <a href="/verified">Verified Assets →</a> to view the current
+              asset composition and certificate state.
+            </p>
+          </article>
+        </div>
+      </section>
+
       <section id="evidence" class="pdocs-section">
         <p class="pdocs-section-kicker">Evidence & verification</p>
         <h2>A digest identifies evidence; it does not make an external fact true.</h2>
@@ -223,7 +263,7 @@
           filing or legal source with a second FINCO truth.
         </p>
         <div class="pdocs-evidence-chain" aria-label="Evidence chain">
-          <span>NUMBER</span><b>→</b><span>LINEAGE</span><b>→</b><span>EVIDENCE</span><b>→</b><span>STATUS</span>
+          <span>NUMBER</span><b>→</b><span>LINEAGE</span><b>→</b><span>EVIDENCE</span><b>→</b><span>MARKET OBSERVATION</span>
         </div>
         <div class="pdocs-two-col">
           <article class="pdocs-panel">
@@ -292,7 +332,7 @@
       </section>
 
       <section id="status" class="pdocs-section">
-        <p class="pdocs-section-kicker">Status & limitations</p>
+        <p class="pdocs-section-kicker">Status</p>
         <h2>Code capability and deployed availability are not the same thing.</h2>
         <div class="pdocs-status-grid">
           <article><span class="pdocs-status pdocs-status--implemented">Implemented</span><p>Capability exists in the reviewed repository. This does not imply every environment has deployed or configured it.</p></article>
@@ -300,13 +340,11 @@
           <article><span class="pdocs-status pdocs-status--planned">Planned</span><p>Direction only. Planned work is not described in the present tense and has no implied launch date.</p></article>
           <article><span class="pdocs-status pdocs-status--unavailable">Unavailable</span><p>Required evidence or runtime authority is absent. FINCO prefers this to a synthetic fallback.</p></article>
         </div>
-        <div class="pdocs-limitations">
-          <p><strong>Model:</strong> Solar, Wind, Data Center and EV Charging are production modelling verticals. Storage is limited/reference scope.</p>
-          <p><strong>Radar:</strong> Current Stocks, Crypto and Economy intelligence is read-only. No custody, wallet signing or order submission is represented as current product capability.</p>
-          <p><strong>Verification:</strong> Current verification is off-chain. A content digest proves deterministic identity of the hashed content, not truth of an external source.</p>
-          <p><strong>API:</strong> Real Beta endpoints exist; SDK/webhooks and a broader supported contract remain future work.</p>
-          <p><strong>$FINCO:</strong> The token remains planned and is not a calculation authority. It does not change model outputs, valuation mathematics, quote economics or evidence truth.</p>
-        </div>
+        <p class="pdocs-small-note">
+          Status labels appear at point of use — on individual surfaces and in
+          capability output — rather than in a centralized limitations catalog.
+          See the <a href="#product-map">Product map</a> for per-surface scope.
+        </p>
       </section>
 
       <footer class="pdocs-footer">

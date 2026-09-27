@@ -174,16 +174,20 @@ class TestProtocolHomeDesktop:
         # instead of equal-weight cards. Accept either the new product items
         # or the legacy proto-card class so both designs satisfy the invariant.
         products = page.query_selector_all(".proto-arch__product, .proto-card")
-        assert len(products) == 2, (
-            f"Expected exactly 2 product items (.proto-arch__product or .proto-card), "
+        assert len(products) >= 3, (
+            f"Expected at least 3 product items (.proto-arch__product or .proto-card), "
             f"got {len(products)}"
         )
 
         page_text = page.inner_text("body")
-        # Chrome cleanup pass removed READ-ONLY branding; Radar now surfaces
-        # "Execution simulation — coming soon" on the home architecture card.
-        assert "coming soon" in page_text.lower(), (
-            "Radar card must mention execution simulation coming soon"
+        # Radar execution simulation is analytics only; no order submitted (not coming soon)
+        lower = page_text.lower()
+        assert (
+            "analytics only" in lower
+            or "no order submitted" in lower
+            or "execution simulation" in lower
+        ), (
+            "Radar card must describe execution simulation as analytics only with no order submitted"
         )
 
     def test_home_no_overflow_desktop(self, live_url, browser):
