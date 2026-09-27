@@ -7,6 +7,8 @@ on:
       - "financial_engine/**"
       - "finco_core/**"
       - "tests/test_radar_r*.py"
+      - "tests/test_radar_ci_scope_gate.py"
+      - "tools/radar_ci_scope_gate.py"
       - "pyproject.toml"
       - ".github/workflows/radar_r6_terminal.yml"
   workflow_dispatch:
@@ -26,6 +28,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -e . pytest
+      - name: Scope governance fixtures
+        run: python -m pytest -q tests/test_radar_ci_scope_gate.py
       - name: Wheel-installed terminal smoke
         run: |
           python -m pip install build
@@ -138,9 +142,12 @@ jobs:
           python -m finco_radar.r0.live_proof
       - name: Original R0 size-aware gate
         run: python -m pytest -q tests/test_radar_r0_quotes.py
-      - name: Protected production paths remain frozen
-        run: |
-          test -z "$(git diff --name-only b37a4da81dafcdc271e98839db38fe74b7feb0b7...HEAD -- finco_radar/quotes finco_radar/r0 finco_radar/assets finco_radar/r1 finco_radar/gap finco_radar/r2 finco_radar/liquidity finco_radar/r3 finco_radar/reference_state finco_radar/r4 finco_radar/signals finco_radar/history finco_radar/r5 financial_engine finco_core finco_protocol)"
+      - name: Isolate R6-owned changes from unrelated upstream edits
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python tools/radar_ci_scope_gate.py r6 --base "$PR_BASE_SHA" --head "$PR_HEAD_SHA"
       - name: Package evidence and hashes
         run: |
           cd artifacts
