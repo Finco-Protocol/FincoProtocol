@@ -7,9 +7,8 @@ Does not duplicate quote normalization, settlement conversion, route
 economics, slippage, VWAP, effective-price authority, freshness authority,
 corporate-action authority, or hash/lineage authority.
 
-P2 currently owns only the cross-direction midpoint derivation over
-already-authoritative effectivePrice observations.  R3 executable-mid
-authority reuse is deferred to a separate architectural follow-up.
+P2 owns the existing premium formula; R3 owns the executable midpoint
+arithmetic consumed by P2 after its own evidence binding and time checks.
 
 This is NOT a trading system.  No BUY/SELL/OPPORTUNITY/ARBITRAGE labels.
 
@@ -25,6 +24,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
+from finco_radar.liquidity.engine import execution_midpoint_usd_per_token
 from finco_radar.tokenization_premium.contracts import (
     ComplementIdentityStatus,
     TokenizationPremiumObservation,
@@ -63,6 +63,18 @@ def _parse_iso_dt(value: Any, field_name: str) -> datetime:
     if dt.tzinfo is None:
         raise ValueError(f"{field_name} must be timezone-aware")
     return dt
+
+
+def premium_bps(numerator_price: Decimal, underlying_token_basis: Decimal) -> Decimal:
+    """P2's sole ratio authority; caller supplies a named independent numerator.
+
+    The caller must distinguish a token reference observation from a routed
+    execution price. This function only owns the deterministic ratio arithmetic.
+    """
+    if (not numerator_price.is_finite() or numerator_price <= 0
+            or not underlying_token_basis.is_finite() or underlying_token_basis <= 0):
+        raise ValueError("premium requires positive finite numerator and denominator")
+    return (numerator_price / underlying_token_basis - Decimal("1")) * Decimal("10000")
 
 
 def _suppressed(
@@ -175,17 +187,9 @@ def compute_tokenization_premium(
     # fields remain in evidence for lineage audit; P2 verifies the lineage
     # binding and fails closed on mismatch rather than substituting its own value.
     #
-    # R3 architectural constraint (Correction B):
-    # R3's executable_spread_evidence() computes the cross-side execution mid
-    # ((buy_price + sell_price) / 2) from ExecutionQuote objects.  P2's engine
-    # cannot call executable_spread_evidence() because the composition builds
-    # single-direction acquisitions; the complement direction comes from a
-    # separate snapshot and is never available as a typed ExecutionQuote.
-    # Modifying finco_radar/liquidity/ is outside finco_radar/tokenization_premium/
-    # and would violate the B15 gate.  P2's cross-direction midpoint computation
-    # therefore cannot delegate to R3 in the present runtime without a larger
-    # architectural refactor.  P2_R3_EXECUTION_MID_AUTHORITY_REUSED is not
-    # claimed until that refactor is complete.
+    # Complement execution can arrive from a separate snapshot rather than
+    # two typed ExecutionQuote objects. P2 validates identity/time upstream,
+    # then delegates only the shared midpoint arithmetic to R3.
     try:
         r2_token_basis = _parse_positive_decimal(ref.get("price"), "price")
     except ValueError as exc:
@@ -340,20 +344,14 @@ def compute_tokenization_premium(
     tokenization_premium_bps: Decimal | None = None
 
     if buy_price is not None:
-        buy_exec_premium = (
-            (buy_price / underlying_token_basis) - Decimal("1")
-        ) * Decimal("10000")
+        buy_exec_premium = premium_bps(buy_price, underlying_token_basis)
 
     if sell_price is not None:
-        sell_exec_premium = (
-            (sell_price / underlying_token_basis) - Decimal("1")
-        ) * Decimal("10000")
+        sell_exec_premium = premium_bps(sell_price, underlying_token_basis)
 
     if buy_price is not None and sell_price is not None:
-        execution_mid = (buy_price + sell_price) / Decimal("2")
-        tokenization_premium_bps = (
-            (execution_mid / underlying_token_basis) - Decimal("1")
-        ) * Decimal("10000")
+        execution_mid = execution_midpoint_usd_per_token(buy_price, sell_price)
+        tokenization_premium_bps = premium_bps(execution_mid, underlying_token_basis)
 
     # --- determine final status ------------------------------------------------
     if buy_price is not None and sell_price is not None:

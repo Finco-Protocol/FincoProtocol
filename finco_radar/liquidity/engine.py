@@ -190,6 +190,26 @@ def execution_price_usd_per_token(quote: ExecutionQuote) -> Decimal:
     return price
 
 
+def execution_midpoint_usd_per_token(buy_price: Decimal, sell_price: Decimal) -> Decimal:
+    """R3 authority for the mean of two independent executable prices.
+
+    This is an execution observation, never a token reference price. P2 may
+    consume it after separately validating quote identity and time coherence.
+    """
+    if any(not price.is_finite() or price <= 0 for price in (buy_price, sell_price)):
+        raise LiquidityComputationError(
+            "executable prices must be positive and finite",
+            LiquidityStatus.NON_FINITE_ECONOMICS,
+        )
+    midpoint = (buy_price + sell_price) / Decimal("2")
+    if not midpoint.is_finite() or midpoint <= 0:
+        raise LiquidityComputationError(
+            "executable mid must be positive and finite",
+            LiquidityStatus.NON_FINITE_ECONOMICS,
+        )
+    return midpoint
+
+
 def executable_spread_evidence(
     buy_quote: ExecutionQuote | None,
     sell_quote: ExecutionQuote | None,
@@ -217,12 +237,7 @@ def executable_spread_evidence(
         )
     p_buy = execution_price_usd_per_token(buy_quote)
     p_sell = execution_price_usd_per_token(sell_quote)
-    p_mid = (p_buy + p_sell) / Decimal("2")
-    if not p_mid.is_finite() or p_mid <= 0:
-        raise LiquidityComputationError(
-            "executable mid must be positive and finite",
-            LiquidityStatus.NON_FINITE_ECONOMICS,
-        )
+    p_mid = execution_midpoint_usd_per_token(p_buy, p_sell)
     spread_bps = ((p_buy - p_sell) / p_mid) * Decimal("10000")
     if not spread_bps.is_finite():
         raise LiquidityComputationError(
