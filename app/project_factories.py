@@ -695,6 +695,11 @@ def create_default_data_center_project(
     # generic SHL CASH_SWEEP convention (sweep after senior maturity).  This
     # is a financing-mix choice, NOT a calibration to a target IRR: no
     # CAPEX/price/occupancy/OPEX value was tuned.
+    # A3.1 Option B (documented distressed reference): the SYNTHETIC PUBLIC
+    # GENERIC DATA produces a sub-bankable result by design — project IRR
+    # ~2.29% and minimum DSCR ~0.94x (occupancy ramp + DSRA seeding in
+    # early periods).  This is the documented state; see
+    # test_data_center_a3_1.py::test_DC_A3_ECONOMICS_DISTRESSED_DOCUMENTED.
     # share_capital/shl amounts below are 20 MW placeholders; the runtime
     # adapter scales sponsor equity proportionally (4,000 kEUR/MW IT).
     financing = FinancingParams(share_capital_keur=80_000.0, shl_amount_keur=39_600.0, shl_rate=0.08,
