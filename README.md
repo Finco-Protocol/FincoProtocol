@@ -22,12 +22,13 @@ The architecture combines a deterministic infrastructure-modelling engine, crypt
 
 FINCO Model is the deterministic modelling surface for real-world infrastructure assets.
 
-The **first production vertical is renewable infrastructure**, beginning with:
+The current modelling verticals are:
 
-- solar,
-- wind.
+- Solar and Wind — mature production modelling workflows;
+- Data Center and EV Charging — implemented modelling workflows; final validation in progress;
+- Storage — limited/reference scope.
 
-Renewables are the starting module, not the intended boundary of the engine.
+Solar and Wind are the most mature modules.
 
 The current engine can model and reconcile:
 
@@ -50,9 +51,9 @@ The current engine can model and reconcile:
 - IRR, NPV, DSCR, and other credit / return metrics,
 - scenarios, sensitivities, reporting, and controlled exports.
 
-For a renewable asset, FINCO can take the model from installed capacity, production, pricing, and operating assumptions through debt, tax, reserves, distributions, and final investor returns.
+For a Solar or Wind asset, FINCO can take the model from installed capacity, production, pricing, and operating assumptions through debt, tax, reserves, distributions, and final investor returns. Data Center and EV Charging follow the same framework with asset-specific operating assumptions.
 
-That same deterministic architecture is intended to support additional RWA infrastructure verticals by adding asset-specific operating assumptions while preserving the common financial, financing, tax, cash-flow, reporting, and verification layers.
+That same deterministic architecture is designed to support additional RWA infrastructure verticals by adding asset-specific operating assumptions while preserving the common financial, financing, tax, cash-flow, reporting, and verification layers.
 
 ### Infrastructure expansion roadmap
 
@@ -68,7 +69,7 @@ Planned infrastructure verticals include:
 - **Telecom infrastructure** — towers, networks, and connectivity assets;
 - **Industrial infrastructure** — long-life industrial and process facilities.
 
-These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and wind are the initial supported modelling verticals.
+These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented current modelling workflows with final validation in progress; Storage remains limited/reference scope.
 
 See [docs/RWA_INFRASTRUCTURE.md](docs/RWA_INFRASTRUCTURE.md) for the RWA infrastructure thesis, current engine capabilities, and planned module expansion.
 
@@ -98,9 +99,12 @@ The purpose is to analyze how a tokenized or crypto asset actually trades while 
 
 ### FINCO Protocol layer — verification now, on-chain later
 
-The first Protocol-layer capability is implemented off-chain: deterministic, content-addressed evidence envelopes and cross-surface verification for synthetic FINCO Model and FINCO Radar evidence.
+The Protocol layer implements off-chain verification and composition. Current capabilities include:
 
-The verification layer validates already-produced evidence rather than replacing either calculation engine. A sanitized public corpus currently covers generic Solar, generic Wind, and synthetic Radar liquidity evidence. Each case receives a SHA-256 content address, and CI independently rebuilds the corpus twice and requires byte-identical output.
+- **Run Certificates** — deterministic, content-addressed evidence envelopes for FINCO Model outputs. Each calculation snapshot receives a SHA-256 content address; CI independently rebuilds the corpus twice and requires byte-identical output.
+- **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar evidence and protocol metadata into a single verifiable asset record. V1 assets currently render as MODEL_ONLY because no canonical model↔market identity mapping is yet established.
+
+The verification layer validates already-produced evidence rather than replacing either calculation engine. A sanitized public corpus covers generic Solar, generic Wind, and synthetic Radar liquidity evidence.
 
 No blockchain anchoring or smart-contract deployment is claimed by the current verification implementation.
 
@@ -110,7 +114,7 @@ The intended architecture remains:
 
 A future anchoring layer can publish compact evidence digests while full calculations and evidence remain off-chain.
 
-A future FINCO token is planned as an access and utility layer rather than a substitute for deterministic asset modelling. Potential utility may include access to selected Model and Radar tiers, premium analytics, higher usage limits, verification services, API/data access, and future Protocol functionality. Exact token economics, access thresholds, network deployment, and smart-contract design are not final and should not be inferred from the current codebase.
+**$FINCO access and entitlement:** The protocol access and service-entitlement layer is implemented. The $FINCO token is not yet launched. Token access is not a calculation authority and does not change model outputs or evidence truth. Exact token economics, access thresholds, network deployment, and smart-contract design are not final and should not be inferred from the current codebase.
 
 ## Verification and CI
 
@@ -169,13 +173,13 @@ python tools/build_public_validation_corpus.py \
   --output artifacts/finco-public-validation-corpus.json
 ```
 
-FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is under active staged development, and the verification layer is implemented off-chain. Token utility and blockchain anchoring remain roadmap functionality until separately specified and implemented.
+FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is under active staged development. The verification layer, Run Certificates, and Verified Assets V1 are implemented off-chain. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Blockchain anchoring remains future work.
 
 ## Safety boundaries
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- only the renewable infrastructure module should be treated as the current initial asset vertical; future asset-class modules are roadmap items until implemented and validated;
+- Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with final validation in progress; Storage remains limited/reference scope; further asset-class modules are roadmap items until implemented and validated;
 - FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
 - Radar and Protocol verification remain architecturally separate from the RWA infrastructure modelling engine;
 - a deterministic evidence digest is not proof that external market data is true and is not an on-chain notarization by itself;
@@ -193,4 +197,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate codebase under active development and prepared for controlled public release. Solar and wind are the initial RWA infrastructure modelling verticals. Synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. Additional infrastructure verticals, public deployment, final public-readiness controls, token utility, and blockchain anchoring remain roadmap functionality until separately implemented and validated.
+Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented modelling workflows with final validation in progress; Storage remains limited/reference scope. Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.

@@ -119,12 +119,18 @@ def test_docs10_api_beta_contract_present():
 
 
 def test_docs11_finco_token_current_contract():
-    """Docs must state: P4 entitlement rail implemented, token not yet launched, not calculation authority."""
+    """Docs must state: access/entitlement infra implemented, token not yet launched, not calculation authority."""
     html = _client().get("/docs").text
     lower = html.lower()
     assert "$FINCO" in html
-    # P4 entitlement rail is implemented (not merely planned)
-    assert "p4 entitlement rail is implemented" in lower or "entitlement rail is implemented" in lower
+    # Access/entitlement infrastructure is implemented (not merely planned)
+    assert (
+        "entitlement infrastructure is implemented" in lower
+        or "service-entitlement" in lower
+        or "entitlement" in lower
+    )
+    # Must NOT use internal milestone codes in product copy
+    assert "p4 entitlement rail" not in lower
     # Token itself is not yet launched
     assert "token is not yet launched" in lower or "not yet launched" in lower
     # Token access is not a calculation authority
