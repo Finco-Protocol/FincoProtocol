@@ -2,6 +2,12 @@ name: Radar R6 Terminal
 
 on:
   pull_request:
+    paths:
+      - "finco_radar/**"
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "tests/test_radar_r*.py"
+      - ".github/workflows/radar_r6_terminal.yml"
   workflow_dispatch:
 
 permissions:

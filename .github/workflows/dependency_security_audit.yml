@@ -27,6 +27,10 @@ jobs:
         with:
           python-version: "3.12"
           check-latest: false
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
 
       - name: Install application dependencies
         run: |

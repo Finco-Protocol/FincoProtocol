@@ -2,6 +2,12 @@ name: Radar R5 Signals History
 
 on:
   pull_request:
+    paths:
+      - "finco_radar/**"
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "tests/test_radar_r*.py"
+      - ".github/workflows/radar_r5_signals_history.yml"
   workflow_dispatch:
 
 permissions:
