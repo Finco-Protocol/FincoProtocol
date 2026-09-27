@@ -13,6 +13,7 @@ Acceptance markers (all must PASS):
   EV_CHARGING_REFERENCE_PRERUN_BROWSER
   REFERENCE_WORKING_COPY_BROWSER_SEPARATION
   REFERENCE_MOBILE_390_NO_OVERFLOW
+  EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW
 """
 from __future__ import annotations
 
@@ -289,29 +290,42 @@ def test_reference_working_copy_browser_separation(ref_app, browser):
 
 # ---------------------------------------------------------------------------
 # REFERENCE_MOBILE_390_NO_OVERFLOW
+# EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW
 # ---------------------------------------------------------------------------
 
-def test_reference_mobile_390_no_overflow(ref_app, browser):
+@pytest.mark.parametrize("template_source,label", [
+    ("generic_solar_reference", "solar"),
+    ("generic_wind_reference", "wind"),
+    ("generic_data_center_reference", "dc"),
+    ("generic_ev_charging_reference", "ev"),
+])
+def test_reference_mobile_390_no_overflow(ref_app, browser, template_source, label):
     """REFERENCE_MOBILE_390_NO_OVERFLOW = PASS
+    EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW = PASS
 
-    At 390px viewport, the Solar reference workbook overview (with canonical
-    last-run showing CURRENT) must have no horizontal overflow.
+    At 390px viewport, each reference workbook overview (with canonical
+    last-run showing CURRENT) must have no horizontal overflow and no NOT RUN state.
     """
-    # Open at 1280px, wait for CURRENT, then resize to 390px and re-check.
-    page = _page(browser, ref_app, user_id="mobile-390-" + uuid.uuid4().hex[:6], width=1280)
+    page = _page(browser, ref_app, user_id=f"mobile-390-{label}-" + uuid.uuid4().hex[:6], width=1280)
     try:
-        pc = _find_reference_project_code(ref_app, "generic_solar_reference")
+        pc = _find_reference_project_code(ref_app, template_source)
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
         page.locator("#tab-overview").click()
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
-        # Confirm CURRENT before resizing
+        # Confirm CURRENT at desktop before resizing
         page.locator('[data-testid="overview-status-current"]').wait_for(
             state="attached", timeout=10_000
         )
-        # Resize to 390px and check no overflow
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            f"{template_source}: must not show NOT RUN at desktop"
+        # Resize to 390px and check CURRENT + no overflow
         page.set_viewport_size({"width": 390, "height": 844})
         page.locator("#tab-overview").click()
         page.locator("#panel-overview").wait_for(state="visible", timeout=10_000)
+        assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
+            f"{template_source}: must show CURRENT at 390px"
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            f"{template_source}: must not show NOT RUN at 390px"
         _assert_no_horizontal_overflow(page)
     finally:
         page.close()

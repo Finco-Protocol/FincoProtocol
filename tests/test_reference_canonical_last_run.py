@@ -29,6 +29,8 @@ Acceptance markers (all must PASS for PR merge):
   V2_USER_RUN_PERSISTENCE_REGRESSION
   REFERENCE_REAL_CANONICAL_INPUT_CHANGE_INVALIDATES
   REFERENCE_REAL_MODEL_IDENTITY_CHANGE_INVALIDATES
+  REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE
+  EV_REFERENCE_WORKING_COPY_SEPARATION
 """
 from __future__ import annotations
 
@@ -123,33 +125,79 @@ def test_canonical_last_run_idempotent(seeded_db):
 
 # ---------------------------------------------------------------------------
 # REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE
+# REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("template_source,factory_fn,project_type", [
-    ("generic_solar_reference", "create_generic_solar_reference", "Solar"),
-    ("generic_wind_reference", "create_generic_wind_reference", "Wind"),
-    ("generic_data_center_reference", "create_generic_data_center_reference", "Data Center"),
-    ("generic_ev_charging_reference", "create_generic_ev_charging_reference", "EV Charging"),
-])
-def test_canonical_last_run_matches_engine_output(seeded_db, template_source, factory_fn, project_type):
-    """REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE = PASS — stored KPIs match live engine."""
-    from app import project_factories
+_REFERENCE_RUN_PARAMS = [
+    ("generic_solar_reference", "Generic Solar Reference"),
+    ("generic_wind_reference", "Generic Wind Reference"),
+    ("generic_data_center_reference", "Generic Data Center Reference"),
+    ("generic_ev_charging_reference", "Generic EV Charging Reference"),
+]
+
+
+@pytest.mark.parametrize("template_source,run_project_type", _REFERENCE_RUN_PARAMS)
+def test_canonical_last_run_matches_engine_output(seeded_db, template_source, run_project_type):
+    """REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE = PASS — stored KPIs match live engine.
+    REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE = PASS — all material quantities match.
+
+    Compares every economically material quantity in the persisted canonical Last Run
+    against a fresh production-engine run from the identical canonical factory inputs.
+    Does NOT manually recompute formulas — reads from the production payload directly.
+    """
+    from app.api.project_runner import run_project
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
-    from app.services.production_financial_authority import run_clean_production
-    from app.services.clean_presentation_adapter import build_clean_waterfall_view
 
     _bootstrap(seeded_db)
 
     record = get_reference_by_template_source(template_source)
     ws = get_workspace_state(record.user_id, record.project_id)
+    stored = ws.last_runtime_summary
 
-    pi = getattr(project_factories, factory_fn)()
-    clean_run = run_clean_production(pi, "Base", project_type=project_type)
-    view = build_clean_waterfall_view(clean_run)
+    fresh = run_project(run_project_type, "Base")["kpis"]
 
-    assert ws.last_runtime_summary["project_irr"] == pytest.approx(view.project_irr, rel=1e-6)
-    assert ws.last_runtime_summary["min_dscr"] == pytest.approx(view.actual_min_dscr, rel=1e-6)
+    # ── Core returns ─────────────────────────────────────────────────────────
+    assert stored["project_irr"] == pytest.approx(fresh["project_irr"], rel=1e-6), \
+        f"{template_source}: project_irr mismatch"
+    assert stored["equity_irr"] == pytest.approx(fresh["equity_irr"], rel=1e-6), \
+        f"{template_source}: equity_irr mismatch"
+    if fresh.get("sponsor_irr") is not None:
+        assert stored.get("sponsor_irr") == pytest.approx(fresh["sponsor_irr"], rel=1e-6), \
+            f"{template_source}: sponsor_irr mismatch"
+
+    # ── DSCR / LLCR ──────────────────────────────────────────────────────────
+    assert stored["min_dscr"] == pytest.approx(fresh["min_dscr"], rel=1e-6), \
+        f"{template_source}: min_dscr mismatch"
+    assert stored["avg_dscr"] == pytest.approx(fresh["avg_dscr"], rel=1e-6), \
+        f"{template_source}: avg_dscr mismatch"
+    assert stored["target_dscr"] == pytest.approx(fresh["target_dscr"], rel=1e-6), \
+        f"{template_source}: target_dscr mismatch"
+
+    # ── CapEx & debt ─────────────────────────────────────────────────────────
+    assert stored["total_capex_keur"] == pytest.approx(fresh["total_capex_keur"], rel=1e-6), \
+        f"{template_source}: total_capex_keur mismatch"
+    assert stored["senior_debt_keur"] == pytest.approx(fresh["senior_debt_keur"], rel=1e-6), \
+        f"{template_source}: senior_debt_keur mismatch"
+    assert stored["actual_gearing_pct"] == pytest.approx(fresh["actual_gearing_pct"], rel=1e-4), \
+        f"{template_source}: actual_gearing_pct mismatch"
+
+    # ── P&L totals ────────────────────────────────────────────────────────────
+    assert stored["total_revenue_keur"] == pytest.approx(fresh["total_revenue_keur"], rel=1e-6), \
+        f"{template_source}: total_revenue_keur mismatch"
+    assert stored["total_opex_keur"] == pytest.approx(fresh["total_opex_keur"], rel=1e-6), \
+        f"{template_source}: total_opex_keur mismatch"
+    assert stored["total_ebitda_keur"] == pytest.approx(fresh["total_ebitda_keur"], rel=1e-6), \
+        f"{template_source}: total_ebitda_keur mismatch"
+    assert stored["total_senior_ds_keur"] == pytest.approx(fresh["total_senior_ds_keur"], rel=1e-6), \
+        f"{template_source}: total_senior_ds_keur mismatch"
+    assert stored["total_tax_keur"] == pytest.approx(fresh["total_tax_keur"], rel=1e-6), \
+        f"{template_source}: total_tax_keur mismatch"
+
+    # ── Distributions ─────────────────────────────────────────────────────────
+    assert stored["total_distributions_keur"] == pytest.approx(
+        fresh["total_distributions_keur"], rel=1e-6
+    ), f"{template_source}: total_distributions_keur mismatch"
 
 
 # ---------------------------------------------------------------------------
@@ -1024,3 +1072,88 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
     assert idempotent == [], (
         f"Second pass with same engine version must be idempotent; got {idempotent}"
     )
+
+
+# ---------------------------------------------------------------------------
+# EV_REFERENCE_WORKING_COPY_SEPARATION
+# ---------------------------------------------------------------------------
+
+def test_ev_reference_working_copy_separation(seeded_db):
+    """EV_REFERENCE_WORKING_COPY_SEPARATION = PASS
+
+    After canonical seeding, creating an EV Charging Working Copy and running
+    it must NOT mutate the canonical EV reference Last Run.
+
+    Steps proven:
+    1. EV reference has a canonical Last Run after bootstrap.
+    2. Create an EV Working Copy — it starts with empty Last Run.
+    3. Run the Working Copy (simulate v2_atomic_run_commit on copy).
+    4. EV reference retains its original canonical Last Run identity and summary.
+    """
+    from datetime import datetime, timezone
+
+    from app.api.project_runner import run_project
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state, v2_atomic_run_commit
+    from app.services.project_library_service import (
+        create_working_copy,
+        ensure_reference_canonical_last_runs,
+        ensure_reference_models,
+    )
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+    # 1. EV reference has a canonical Last Run.
+    ev_rec = get_reference_by_template_source("generic_ev_charging_reference")
+    ev_ws_before = get_workspace_state(ev_rec.user_id, ev_rec.project_id)
+    assert ev_ws_before.last_runtime_snapshot_id, \
+        "EV reference must have a canonical Last Run snapshot_id after bootstrap"
+    canonical_snap_id = ev_ws_before.last_runtime_snapshot_id
+    canonical_irr = ev_ws_before.last_runtime_summary["project_irr"]
+    canonical_hash = ev_ws_before.last_runtime_composite_hash
+
+    # 2. Create EV Working Copy — it starts with empty Last Run.
+    copy = create_working_copy("ev-wc-sep-user", ev_rec.project_id)
+    copy_ws = get_workspace_state("ev-wc-sep-user", copy.project_id)
+    assert not copy_ws.last_runtime_snapshot_id, \
+        "EV Working Copy must start with empty Last Run (not inherit reference)"
+    assert not copy_ws.last_runtime_summary, \
+        "EV Working Copy must start with empty last_runtime_summary"
+
+    # 3. Run the Working Copy via v2_atomic_run_commit.
+    payload = run_project("Generic EV Charging Reference", "Base")
+    identity = assemble_consistent_for_get("ev-wc-sep-user", copy.project_id, WORKBOOK.version)
+    v2_atomic_run_commit(
+        user_id="ev-wc-sep-user",
+        project_id=copy.project_id,
+        project_code=copy.project_code,
+        expected_composite_hash=identity.composite_hash,
+        runtime_snapshot_id="ev-wc-user-run-001",
+        runtime_origin="user_run",
+        runtime_summary=payload["kpis"],
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=copy_ws.active_scenario_id,
+        active_scenario_name=copy_ws.active_scenario_name,
+        ran_at=datetime.now(timezone.utc),
+    )
+
+    # 4. EV reference retains its canonical Last Run — unchanged.
+    ev_ws_after = get_workspace_state(ev_rec.user_id, ev_rec.project_id)
+    assert ev_ws_after.last_runtime_snapshot_id == canonical_snap_id, \
+        "Working Copy run must NOT change canonical EV reference Last Run snapshot_id"
+    assert ev_ws_after.last_runtime_summary["project_irr"] == pytest.approx(canonical_irr, rel=1e-9), \
+        "Working Copy run must NOT mutate canonical EV reference project_irr"
+    assert ev_ws_after.last_runtime_composite_hash == canonical_hash, \
+        "Working Copy run must NOT change canonical EV reference composite hash"
+
+    # Working Copy itself is updated — confirm it has the user run.
+    copy_ws_after = get_workspace_state("ev-wc-sep-user", copy.project_id)
+    assert copy_ws_after.last_runtime_snapshot_id == "ev-wc-user-run-001", \
+        "Working Copy must have the user run as its Last Run"
