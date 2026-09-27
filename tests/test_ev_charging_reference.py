@@ -272,3 +272,296 @@ def test_stabilized_total_revenue_sanity(ev_runtime_result):
         actual > authority_total and (actual - authority_total) / authority_total < 0.03
     ), (actual, authority_total)
     assert actual >= expected_min * 0.99
+
+
+# ── Z.10 EV reset_reference_seeded_lines (capacity + driver authority) ───────
+
+def test_reset_reference_seeded_lines_uses_current_capacity(tmp_path):
+    """reset_reference_seeded_lines must use the workspace capacity AND the
+    current persisted EV driver authority for B.08 (regression guard)."""
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "reset_ev.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        reset_reference_seeded_lines,
+    )
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.ev_charging_economics import (
+        GENERIC_EV_CHARGING_REFERENCE_DRIVERS,
+        driver_electricity_expense_keur,
+    )
+
+    ensure_reference_models()
+    record = create_reference_seeded_project(
+        user_id="reset-user", template_source="generic_ev_charging_reference",
+        requested_name="ResetTest 5MW", capacity_mw=5.0,
+    )
+    # reset must not raise and must preserve the B.08 derived amount at 5 MW
+    reset_reference_seeded_lines(user_id="reset-user", project_code=record.project_code)
+    ws2 = get_workspace_state("reset-user", record.project_id)
+    opex_total = float(ws2.draft_snapshot["opex_y1_keur"])
+    # B.08 must use the dynamic authority (matches reference drivers for an
+    # unedited project; never the static electricity_expense_keur shortcut)
+    b08_y1 = driver_electricity_expense_keur(GENERIC_EV_CHARGING_REFERENCE_DRIVERS, 5.0, 1)
+    assert opex_total >= b08_y1, "B.08 electricity must be included in OPEX total after reset"
+    assert opex_total == pytest.approx(960.0 + b08_y1, rel=1e-4)
+
+
+# ── Z.11 EV Correction A — current driver authority in reset + rescale ────────
+
+def test_reset_preserves_non_default_ev_drivers(tmp_path):
+    """A: reset_reference_seeded_lines must read CURRENT persisted EV drivers,
+    not the static reference constants.  User edits to charging efficiency
+    and electricity price must survive the reset and flow through to B.08."""
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "reset_drivers.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        reset_reference_seeded_lines,
+    )
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+    from app.ev_charging_economics import (
+        drivers_from_snapshot,
+        driver_electricity_expense_keur,
+    )
+
+    ensure_reference_models()
+    record = create_reference_seeded_project(
+        user_id="u-reset-a", template_source="generic_ev_charging_reference",
+        requested_name="ResetA 5MW", capacity_mw=5.0,
+    )
+    ws = get_workspace_state("u-reset-a", record.project_id)
+    # persist non-default EV driver edits
+    modified = dict(ws.draft_snapshot)
+    modified["ev_charging_efficiency"] = "90"        # 90% instead of 94%
+    modified["ev_electricity_price_eur_kwh"] = "0.15"  # 0.15 instead of 0.12
+    save_workspace_state(
+        user_id="u-reset-a", project_id=record.project_id,
+        project_code=record.project_code,
+        draft_snapshot=modified, saved_snapshot=ws.saved_snapshot,
+        dirty=True, governance_state=ws.governance_state,
+        replay_metadata=ws.replay_metadata,
+    )
+
+    reset_reference_seeded_lines(user_id="u-reset-a", project_code=record.project_code)
+
+    ws2 = get_workspace_state("u-reset-a", record.project_id)
+    snap2 = ws2.draft_snapshot
+    # driver keys must be preserved (not overwritten by reset)
+    assert snap2.get("ev_charging_efficiency") == "90"
+    assert snap2.get("ev_electricity_price_eur_kwh") == "0.15"
+    # B.08 must use CURRENT drivers — compute expected with current drivers
+    current_drivers = drivers_from_snapshot(dict(snap2))
+    expected_b08 = driver_electricity_expense_keur(current_drivers, 5.0, 1)
+    opex_total = float(snap2["opex_y1_keur"])
+    assert opex_total == pytest.approx(960.0 + expected_b08, rel=1e-4), (
+        f"opex_y1_keur {opex_total:.4f} must equal seed OPEX 960 + B.08 {expected_b08:.4f}"
+    )
+    # expected_b08 must differ from the static reference value
+    static_b08 = ev.electricity_expense_keur(5.0, 1)
+    assert not pytest.approx(expected_b08, rel=1e-6) == static_b08, (
+        "non-default drivers must produce a B.08 different from the static reference"
+    )
+
+
+def test_rescale_preserves_non_default_ev_drivers(tmp_path):
+    """B: rescale_reference_seeded_project must read CURRENT persisted EV drivers
+    for B.08 after a 5→8 MW rescale; driver edits must survive the rescale."""
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "rescale_drivers.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        rescale_reference_seeded_project,
+    )
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+    from app.ev_charging_economics import (
+        drivers_from_snapshot,
+        driver_electricity_expense_keur,
+    )
+
+    ensure_reference_models()
+    record = create_reference_seeded_project(
+        user_id="u-rescale-b", template_source="generic_ev_charging_reference",
+        requested_name="RescaleB 5MW", capacity_mw=5.0,
+    )
+    ws = get_workspace_state("u-rescale-b", record.project_id)
+    # persist non-default drivers
+    modified = dict(ws.draft_snapshot)
+    modified["ev_charging_efficiency"] = "88"          # 88% instead of 94%
+    modified["ev_electricity_price_eur_kwh"] = "0.18"  # 0.18 instead of 0.12
+    save_workspace_state(
+        user_id="u-rescale-b", project_id=record.project_id,
+        project_code=record.project_code,
+        draft_snapshot=modified, saved_snapshot=ws.saved_snapshot,
+        dirty=True, governance_state=ws.governance_state,
+        replay_metadata=ws.replay_metadata,
+    )
+
+    rescale_reference_seeded_project(
+        user_id="u-rescale-b", project_code=record.project_code, capacity_mw=8.0
+    )
+
+    ws2 = get_workspace_state("u-rescale-b", record.project_id)
+    snap2 = ws2.draft_snapshot
+    # driver keys must be preserved after rescale
+    assert snap2.get("ev_charging_efficiency") == "88"
+    assert snap2.get("ev_electricity_price_eur_kwh") == "0.18"
+    assert float(snap2["capacity_mw"]) == pytest.approx(8.0)
+    # B.08 must use CURRENT drivers at 8 MW
+    current_drivers = drivers_from_snapshot(dict(snap2))
+    expected_b08_8mw = driver_electricity_expense_keur(current_drivers, 8.0, 1)
+    opex_total = float(snap2["opex_y1_keur"])
+    # per-MW seed OPEX at 8 MW = 960 kEUR/MW * 8 / 5 * (8/5) ... actually
+    # seed OPEX is PER_MW so scales from 5MW reference:
+    # reference seed opex (excl B.08) at 5MW = 960 kEUR → at 8MW = 960 * 8/5 = 1536 kEUR
+    expected_seed_opex = 960.0 * (8.0 / 5.0)
+    assert opex_total == pytest.approx(expected_seed_opex + expected_b08_8mw, rel=1e-4), (
+        f"opex_y1_keur {opex_total:.4f} != seed {expected_seed_opex:.4f} + B.08 {expected_b08_8mw:.4f}"
+    )
+    # B.08 at 8 MW must differ from the 5 MW static reference value
+    static_b08_5mw = ev.electricity_expense_keur(5.0, 1)
+    assert opex_total != pytest.approx(960.0 + static_b08_5mw, rel=1e-4), (
+        "a 5 MW static B.08 must not survive a rescale to 8 MW"
+    )
+
+
+def test_runtime_snapshot_opex_reconciles_after_rescale(tmp_path):
+    """C: after rescale_reference_seeded_project, the snapshot opex_y1_keur must
+    reconcile with the B.08 the production materializer (build_projectinputs_from_snapshot)
+    delivers to the engine via apply_ev_charging_runtime_adapter.
+
+    Design: snapshot["opex_y1_keur"] = seed_non_b08_opex + service_b08 (current drivers).
+    The production materializer rebuilds B.08 from the same current drivers through
+    apply_ev_charging_runtime_adapter; its "Electricity Procurement" item Y1 amount
+    is the authoritative runtime B.08.  The reconciliation identity is:
+
+        snapshot_opex_y1 - runtime_b08_y1 == seed_non_b08_opex (PER_MW lines)
+
+    This FAILS under the old static electricity_expense_keur implementation:
+    when non-default drivers are persisted the service stores a different B.08
+    than the runtime adapter computes, breaking the identity above.
+
+    Production path used: build_projectinputs_from_snapshot (app/input_adapter.py)
+    which calls apply_ev_charging_runtime_adapter(result, drivers_from_snapshot(snap))
+    as its final step for "Ev Charging" project_type — the same path every UI
+    financial route takes.
+    """
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "runtime_reconcile.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        rescale_reference_seeded_project,
+    )
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+    from app.input_adapter import build_projectinputs_from_snapshot
+
+    ensure_reference_models()
+    record = create_reference_seeded_project(
+        user_id="u-runtime-c", template_source="generic_ev_charging_reference",
+        requested_name="RuntimeC 5MW", capacity_mw=5.0,
+    )
+    ws = get_workspace_state("u-runtime-c", record.project_id)
+    # persist non-default electricity price
+    modified = dict(ws.draft_snapshot)
+    modified["ev_electricity_price_eur_kwh"] = "0.14"   # non-default; ref = 0.12
+    save_workspace_state(
+        user_id="u-runtime-c", project_id=record.project_id,
+        project_code=record.project_code,
+        draft_snapshot=modified, saved_snapshot=ws.saved_snapshot,
+        dirty=True, governance_state=ws.governance_state,
+        replay_metadata=ws.replay_metadata,
+    )
+    rescale_reference_seeded_project(
+        user_id="u-runtime-c", project_code=record.project_code, capacity_mw=6.0
+    )
+
+    ws2 = get_workspace_state("u-runtime-c", record.project_id)
+    snap2 = ws2.draft_snapshot
+    snapshot_opex_y1 = float(snap2["opex_y1_keur"])
+
+    # ── Production materializer ──────────────────────────────────────────────
+    # build_projectinputs_from_snapshot is the real production materializer used
+    # by every financial route (run, preview, sensitivity, download).  For
+    # "Ev Charging" project_type it applies apply_ev_charging_runtime_adapter
+    # last, which rebuilds the "Electricity Procurement" (B.08) OpexItem from
+    # drivers_from_snapshot(snap) — the current persisted driver authority.
+    pi = build_projectinputs_from_snapshot(dict(snap2))
+
+    # Authoritative runtime B.08: the "Electricity Procurement" item in pi.opex
+    # was set by apply_ev_charging_runtime_adapter from current drivers.
+    # This is NOT the EV economic helper called directly — it is the item the
+    # engine actually receives.
+    elec_item = next(
+        (i for i in pi.opex if str(getattr(i, "name", "")) == "Electricity Procurement"),
+        None,
+    )
+    assert elec_item is not None, "production materializer must produce an Electricity Procurement item"
+    runtime_b08_y1 = float(elec_item.y1_amount_keur)
+
+    # ── Reconciliation identity ──────────────────────────────────────────────
+    # snapshot_opex_y1 = seed_non_b08 + service_b08(current drivers)
+    # runtime_b08_y1   = apply_ev_runtime_adapter_b08(current drivers)
+    # Both terms use driver_electricity_expense_keur(drivers_from_snapshot, 6, 1).
+    # When they agree: snapshot_opex_y1 - runtime_b08_y1 == seed_non_b08_opex.
+    # At 6 MW the reference seed (excl B.08) scales PER_MW: 960 * 6/5 = 1152.
+    expected_seed_non_b08 = 960.0 * (6.0 / 5.0)
+    residual = snapshot_opex_y1 - runtime_b08_y1
+    assert residual == pytest.approx(expected_seed_non_b08, rel=1e-4), (
+        f"snapshot_opex_y1({snapshot_opex_y1:.4f}) - runtime_b08({runtime_b08_y1:.4f}) "
+        f"= {residual:.4f}, expected seed_non_b08={expected_seed_non_b08:.4f}; "
+        "service and runtime B.08 must use the same current-driver authority"
+    )
+
+    # ── Non-default driver reached runtime ───────────────────────────────────
+    # The runtime B.08 must differ from the static reference (price=0.12).
+    # electricity_expense_keur is the static reference helper; its result at
+    # 6 MW is used here only as the NEGATIVE proof-of-difference.
+    static_ref_b08_6mw = ev.electricity_expense_keur(6.0, 1)
+    assert runtime_b08_y1 != pytest.approx(static_ref_b08_6mw, rel=1e-6), (
+        "non-default electricity price (0.14 vs 0.12 ref) must reach the runtime "
+        "adapter and produce a different B.08 from the static reference"
+    )
+
+
+def test_ev_reset_rescale_fail_closed_on_invalid_driver(tmp_path):
+    """D: an explicitly persisted out-of-range EV driver must raise
+    EVDriverValidationError through both reset and rescale paths."""
+    from app.persistence import db as db_mod
+    db_mod.DB_PATH = str(tmp_path / "fail_closed.db")
+    from app.services.project_library_service import ensure_reference_models
+    from app.services.reference_seed_service import (
+        create_reference_seeded_project,
+        rescale_reference_seeded_project,
+        reset_reference_seeded_lines,
+    )
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+    from app.ev_charging_economics import EVDriverValidationError
+
+    ensure_reference_models()
+    for suffix, fn, kwargs in (
+        ("reset", reset_reference_seeded_lines,
+         lambda code: {"user_id": f"u-fail-reset", "project_code": code}),
+        ("rescale", rescale_reference_seeded_project,
+         lambda code: {"user_id": f"u-fail-rescale", "project_code": code, "capacity_mw": 7.0}),
+    ):
+        uid = f"u-fail-{suffix}"
+        record = create_reference_seeded_project(
+            user_id=uid, template_source="generic_ev_charging_reference",
+            requested_name=f"FailClosed {suffix}", capacity_mw=5.0,
+        )
+        ws = get_workspace_state(uid, record.project_id)
+        bad = dict(ws.draft_snapshot)
+        bad["ev_charging_efficiency"] = "150"  # out of range (>100%)
+        save_workspace_state(
+            user_id=uid, project_id=record.project_id,
+            project_code=record.project_code,
+            draft_snapshot=bad, saved_snapshot=ws.saved_snapshot,
+            dirty=True, governance_state=ws.governance_state,
+            replay_metadata=ws.replay_metadata,
+        )
+        with pytest.raises(EVDriverValidationError):
+            fn(**kwargs(record.project_code))
