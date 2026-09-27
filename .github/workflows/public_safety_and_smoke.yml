@@ -6,13 +6,18 @@ on:
   pull_request:
     paths:
       - "app/**"
+      - "domain/**"
+      - "finco_app/**"
       - "financial_engine/**"
       - "finco_core/**"
       - "finco_protocol/**"
       - "finco_radar/**"
+      - "utils/**"
       - "tests/**"
       - "tools/**"
+      - "main_api.py"
       - "main_web.py"
+      - "pytest.ini"
       - "requirements.txt"
       - "constraints.txt"
       - "setup.py"
