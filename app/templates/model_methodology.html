@@ -277,8 +277,9 @@
 <span class="comment"># finco_core/engine/period_engine.py</span>
 <span class="keyword">PeriodFrequency</span>.SEMESTRIAL  <span class="comment"># = 2 periods per year</span>
 
-<span class="comment"># Day fraction for each period:</span>
-day_fraction = days_in_period / 365  <span class="comment"># or /366 in leap year end</span>
+<span class="comment"># Day fraction — two conventions in use:</span>
+day_fraction_ops  = days_in_period / 365  <span class="comment"># ACT/365 inclusive — revenue, OPEX, generation</span>
+day_fraction_debt = days_in_period / 360  <span class="comment"># ACT/360 exclusive  — senior interest only</span>
 
 <span class="comment"># Operating period count:</span>
 operating_period_count = horizon_years × 2  <span class="comment"># (2 per year)</span>
@@ -1053,30 +1054,50 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
 
         <h3 id="period-walkthrough">Representative period cash-flow walkthrough</h3>
         <p>
-          The first operating period (Y2031-H1: 2031-03-01 → 2031-06-30, day fraction 0.3342)
-          illustrates how each line in the waterfall connects:
+          The first operating period (Y2031-H1: 2031-03-01 → 2031-06-30) illustrates how each
+          line in the waterfall connects. Two separate day-count conventions apply in the same
+          period: revenue and OPEX use <strong>ACT/365 inclusive</strong> (122 calendar days,
+          day fraction = 122/365 = 0.3342); senior interest uses <strong>ACT/360 exclusive</strong>
+          (121 days, day fraction = 121/360 = 0.3361).
         </p>
+        <div class="pmeth-callout pmeth-callout--info" style="margin-bottom:14px;">
+          <strong>Bank (P90_10Y) case vs Base (P50) case — debt sculpting uses bank CFADS.</strong>
+          The engine runs two separate operating-model phases before sizing debt.
+          The <em>base</em> case (P50 yield, 1,500 hr/yr) produces the revenue and CFADS reported
+          in financial statements and KPIs. The <em>bank</em> case (P90_10Y yield, 1,400 hr/yr)
+          is used exclusively to size the DSCR-sculpted principal repayment in each period
+          (<code>derive_debt_sizing_operating_input()</code>,
+          <code>financial_engine/orchestrator.py</code>). Bank revenue = base revenue × (1,400 /
+          1,500); bank CFADS = bank revenue − OPEX. The sculpted principal therefore equals
+          bank_CFADS / target_DSCR − interest — producing a conservative repayment schedule
+          that the bank case cash flows can always service at exactly the target DSCR.
+        </div>
         <div class="pmeth-table-wrap">
           <table class="pmeth-table">
             <thead><tr><th>Line</th><th>Y2031-H1 (kEUR)</th><th>Formula / authority</th></tr></thead>
             <tbody>
-              <tr><td>Revenue</td><td class="num">1,572.5</td><td>capacity × hours × day_frac × availability</td></tr>
-              <tr><td>OPEX</td><td class="num">127.0</td><td>y1_amount × (1+infl)^(yr−1) × day_frac</td></tr>
-              <tr class="highlight"><td>EBITDA</td><td class="num">1,445.4</td><td>Revenue − OPEX</td></tr>
+              <tr><td>Revenue (base, P50)</td><td class="num">1,572.5</td><td>capacity × hours_p50 × tariff × day_frac<sub>ACT/365</sub></td></tr>
+              <tr><td>OPEX</td><td class="num">127.0</td><td>y1_amount × (1+infl)^(yr−1) × day_frac<sub>ACT/365</sub></td></tr>
+              <tr class="highlight"><td>EBITDA (base, P50)</td><td class="num">1,445.4</td><td>Revenue − OPEX</td></tr>
               <tr><td>Cash tax</td><td class="num">0</td><td>H1 period — tax cash paid in H2 only</td></tr>
-              <tr class="highlight"><td>CFADS</td><td class="num">1,445.4</td><td>EBITDA + fin. income − cash tax</td></tr>
-              <tr><td>Senior interest</td><td class="num">457.5</td><td>24,750 × 5.5% × day_frac</td></tr>
-              <tr><td>Senior principal</td><td class="num">659.6</td><td>DSCR-sculpted: CFADS/1.20 − interest</td></tr>
+              <tr class="highlight"><td>CFADS (base, P50)</td><td class="num">1,445.4</td><td>EBITDA + fin. income − cash tax</td></tr>
+              <tr style="background:#fef9c3;"><td>Revenue (bank, P90_10Y)</td><td class="num">1,467.6</td><td>1,572.5 × (1,400 / 1,500) — used for debt sculpting only</td></tr>
+              <tr style="background:#fef9c3;"><td>CFADS (bank, P90_10Y)</td><td class="num">1,340.6</td><td>1,467.6 − 127.0 — sculpting input, not reported in statements</td></tr>
+              <tr><td>Senior interest</td><td class="num">457.5</td><td>24,750 × 5.5% × (121/360) — ACT/360 exclusive day-count</td></tr>
+              <tr><td>Senior principal</td><td class="num">659.6</td><td>bank_CFADS / target_DSCR − interest = 1,340.6 / 1.20 − 457.5</td></tr>
               <tr><td>Total senior DS</td><td class="num">1,117.2</td><td>interest + principal</td></tr>
-              <tr class="highlight"><td>DSCR</td><td class="num">1.29×</td><td>CFADS / senior DS = 1,445.4 / 1,117.2</td></tr>
+              <tr class="highlight"><td>Achieved DSCR (P50)</td><td class="num">1.29×</td><td>base CFADS / senior DS = 1,445.4 / 1,117.2</td></tr>
               <tr><td>Closing senior balance</td><td class="num">24,090.4</td><td>24,750.0 − 659.6</td></tr>
             </tbody>
           </table>
         </div>
         <p style="font-size:.85rem; color:#6b7280;">
-          Note: DSCR of 1.29× in H1 (partial period, 0.33 day fraction) is higher than the
-          1.20× target because the partial period has proportionally smaller debt service.
-          Full 6-month periods converge to the sculpted target.
+          Target DSCR (1.20×) is the sculpting parameter — it controls how large each
+          principal repayment is relative to bank-case CFADS. Achieved DSCR (1.29× in Y2031-H1)
+          is the runtime ratio of base-case CFADS to actual debt service; it varies by period
+          and exceeds 1.20× whenever base CFADS &gt; bank CFADS (i.e., P50 yield &gt; P90_10Y yield).
+          The minimum achieved DSCR across all operating periods is reported as
+          <code>min_dscr</code> in KPIs (runtime value: 1.25×).
         </p>
 
         <div class="pmeth-callout pmeth-callout--info">
