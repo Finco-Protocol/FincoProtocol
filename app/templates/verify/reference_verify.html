@@ -238,33 +238,46 @@
       <li class="rv-step">
         <span class="rv-step-num">1</span>
         <div class="rv-step-body">
-          <p class="rv-step-title">Download the verifier script</p>
-          <p class="rv-step-desc">No FINCO code, no internal packages. Only Python stdlib + optional pycryptodome.</p>
-          <pre>curl -O {{ request.base_url | string | trim('/') }}{{ base_path }}/verify.py</pre>
+          <p class="rv-step-title">Install the required signature dependency</p>
+          <p class="rv-step-desc">
+            <strong>Required</strong> for full PASS. Ed25519 issuer signature verification
+            is mandatory — hash checks alone prove content integrity but do not prove
+            FINCO issued the certificate.
+          </p>
+          <pre>pip install pycryptodome</pre>
         </div>
       </li>
       <li class="rv-step">
         <span class="rv-step-num">2</span>
         <div class="rv-step-body">
-          <p class="rv-step-title">Install optional signature dependency</p>
-          <p class="rv-step-desc">Skip if you only want hash verification (steps 1–3 in the script).</p>
-          <pre>pip install pycryptodome</pre>
+          <p class="rv-step-title">Download the verifier script</p>
+          <p class="rv-step-desc">No FINCO internal code, no internal packages. Requires Python stdlib + pycryptodome.</p>
+          <pre>curl -O {{ request.base_url | string | trim('/') }}{{ base_path }}/verify.py</pre>
         </div>
       </li>
       <li class="rv-step">
         <span class="rv-step-num">3</span>
         <div class="rv-step-body">
           <p class="rv-step-title">Run the verifier</p>
-          <p class="rv-step-desc">Exits 0 on PASS, non-zero on any FAIL.</p>
-          <pre>python verify.py</pre>
+          <p class="rv-step-desc">Exits 0 on full PASS (all four checks including issuer signature), non-zero on any FAIL.</p>
+          <pre>python verify.py --base-url {{ request.base_url | string | trim('/') }}</pre>
         </div>
       </li>
     </ol>
     <div class="rv-note">
-      The verifier checks four things: (1) assumptions hash matches certificate,
+      Full PASS requires all four checks: (1) assumptions hash matches certificate,
       (2) outputs hash matches certificate, (3) certificate digest is self-consistent,
       (4) FINCO's Ed25519 issuer signature is valid. A single modified byte in any
-      artifact causes a FAIL.
+      artifact causes FAIL. If pycryptodome is absent, the verifier exits with a non-zero
+      failure — it never returns PASS without signature verification.
+      <br/><br/>
+      <strong>Hash checks (1–3)</strong> prove content integrity and self-consistency.
+      <strong>Ed25519 signature (4)</strong> proves FINCO issued this exact certificate —
+      not that the underlying economic results are correct, that external data is authentic,
+      or that the asset has been audited or anchored on-chain.
+      <br/><br/>
+      Use <code>--integrity-only</code> for hash-only inspection; this outputs
+      <em>INTEGRITY CHECK ONLY</em> and never <em>PASS</em>.
     </div>
   </div>
 

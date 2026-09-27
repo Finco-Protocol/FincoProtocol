@@ -58,7 +58,7 @@ def _build_reference_package():
 
 def _sign_certificate(certificate: dict) -> dict | None:
     """Sign certificate with issuer key. Returns None if key is not configured."""
-    from finco_protocol.verification.issuer import sign_certificate, IssuerKeyNotConfigured
+    from app.verify.issuer import sign_certificate, IssuerKeyNotConfigured
     try:
         return sign_certificate(certificate)
     except IssuerKeyNotConfigured:
@@ -140,7 +140,7 @@ async def reference_signature_json(request: Request):
 @router.get(f"{_BASE_PATH}/public-key.pem", response_class=PlainTextResponse)
 async def reference_public_key_pem(request: Request):
     """FINCO Solar Reference — issuer Ed25519 public key in PEM format (anonymous)."""
-    from finco_protocol.verification.issuer import get_public_key_pem, IssuerKeyNotConfigured
+    from app.verify.issuer import get_public_key_pem, IssuerKeyNotConfigured
     try:
         pem = await run_in_threadpool(get_public_key_pem)
     except IssuerKeyNotConfigured:
@@ -153,10 +153,24 @@ async def reference_public_key_pem(request: Request):
 
 @router.get(f"{_BASE_PATH}/verify.py", response_class=PlainTextResponse)
 async def reference_verify_script(request: Request):
-    """FINCO Solar Reference — standalone Python verifier script (anonymous)."""
-    base_url = str(request.base_url).rstrip("/")
-    script = _build_verifier_script(base_url)
+    """FINCO Solar Reference — canonical standalone Python verifier script (anonymous).
+
+    Serves the canonical verifier from tools/verify_reference_package.py — single source.
+    """
+    script = _read_canonical_verifier_script()
     return PlainTextResponse(script, media_type="text/x-python")
+
+
+def _read_canonical_verifier_script() -> str:
+    """Read the canonical standalone verifier from tools/verify_reference_package.py."""
+    repo_root = os.path.dirname(_APP_DIR)
+    script_path = os.path.join(repo_root, "tools", "verify_reference_package.py")
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError as exc:
+        logger.error("Cannot read canonical verifier script at %s: %s", script_path, exc)
+        return f"# ERROR: canonical verifier script not available: {exc}\n"
 
 
 @router.get(f"{_BASE_PATH}", response_class=HTMLResponse)
@@ -176,154 +190,3 @@ async def reference_verify_html(request: Request):
     )
 
 
-def _build_verifier_script(base_url: str) -> str:
-    """Generate the standalone Python verification script."""
-    return f'''#!/usr/bin/env python3
-"""FINCO Solar Reference — standalone verifier.
-
-Verifies the FINCO Solar Reference package without any FINCO internal imports.
-Requires only: Python 3.9+, hashlib, json, urllib.request, base64, sys (stdlib).
-Optional: pycryptodome (pip install pycryptodome) for signature verification.
-
-Usage:
-    python verify.py [--base-url {base_url}]
-
-Exits 0 on PASS, non-zero on FAIL.
-"""
-import base64
-import hashlib
-import json
-import sys
-import urllib.request
-from typing import Any
-
-BASE_URL = "{base_url}"
-ASSET_ID = "solar-reference-a"
-
-CERTIFICATE_URL = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/certificate.json"
-ASSUMPTIONS_URL = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/assumptions.json"
-OUTPUTS_URL     = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/outputs.json"
-SIGNATURE_URL   = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/signature.json"
-PUBLIC_KEY_URL  = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/public-key.pem"
-
-
-def _fetch(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=30) as r:
-        return r.read()
-
-
-def _canonical_json(obj: Any) -> bytes:
-    """FINCO_SORTED_JSON_V1: sort_keys=True, compact separators, no ASCII escaping."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-
-
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _fail(msg: str):
-    print(f"FAIL: {{msg}}", file=sys.stderr)
-    sys.exit(1)
-
-
-def _ok(msg: str):
-    print(f"  OK  {{msg}}")
-
-
-def main():
-    print(f"FINCO Solar Reference Verifier")
-    print(f"Base URL: {{BASE_URL}}")
-    print()
-
-    print("Fetching artifacts...")
-    try:
-        certificate  = json.loads(_fetch(CERTIFICATE_URL))
-        assumptions  = json.loads(_fetch(ASSUMPTIONS_URL))
-        outputs      = json.loads(_fetch(OUTPUTS_URL))
-        signature    = json.loads(_fetch(SIGNATURE_URL))
-        public_key   = _fetch(PUBLIC_KEY_URL).decode()
-    except Exception as exc:
-        _fail(f"Failed to fetch artifacts: {{exc}}")
-
-    print()
-    print("Step 1 — Assumptions hash")
-    expected_assumptions_sha256 = certificate["identity"]["assumptions_sha256"]
-    computed_assumptions_sha256 = _sha256(_canonical_json(assumptions))
-    if computed_assumptions_sha256 != expected_assumptions_sha256:
-        _fail(
-            f"Assumptions hash mismatch:\\n"
-            f"  expected: {{expected_assumptions_sha256}}\\n"
-            f"  computed: {{computed_assumptions_sha256}}"
-        )
-    _ok(f"assumptions_sha256 = {{computed_assumptions_sha256[:16]}}...")
-
-    print()
-    print("Step 2 — Outputs hash")
-    expected_outputs_sha256 = certificate["identity"]["outputs_sha256"]
-    computed_outputs_sha256 = _sha256(_canonical_json(outputs))
-    if computed_outputs_sha256 != expected_outputs_sha256:
-        _fail(
-            f"Outputs hash mismatch:\\n"
-            f"  expected: {{expected_outputs_sha256}}\\n"
-            f"  computed: {{computed_outputs_sha256}}"
-        )
-    _ok(f"outputs_sha256 = {{computed_outputs_sha256[:16]}}...")
-
-    print()
-    print("Step 3 — Certificate digest")
-    stored_digest = certificate.get("certificate_digest_sha256")
-    stored_id     = certificate.get("certificate_id")
-    payload_without_digest = {{
-        k: v for k, v in certificate.items()
-        if k not in ("certificate_id", "certificate_digest_sha256")
-    }}
-    computed_digest = _sha256(_canonical_json(payload_without_digest))
-    if computed_digest != stored_digest:
-        _fail(
-            f"Certificate digest mismatch (tampered?):\\n"
-            f"  expected: {{stored_digest}}\\n"
-            f"  computed: {{computed_digest}}"
-        )
-    expected_id = "frc_" + computed_digest[:16]
-    if stored_id != expected_id:
-        _fail(f"Certificate ID mismatch: expected {{expected_id}}, got {{stored_id}}")
-    _ok(f"certificate_digest_sha256 = {{computed_digest[:16]}}...")
-    _ok(f"certificate_id = {{stored_id}}")
-
-    print()
-    print("Step 4 — Issuer signature")
-    try:
-        from Crypto.PublicKey import ECC
-        from Crypto.Signature import eddsa
-    except ImportError:
-        print("  SKIP: pycryptodome not installed (pip install pycryptodome to verify signature)")
-    else:
-        try:
-            pub = ECC.import_key(public_key)
-            sig_bytes = base64.b64decode(signature["signature_b64"])
-            message = _canonical_json(certificate)
-            verifier = eddsa.new(pub, "rfc8032")
-            verifier.verify(message, sig_bytes)
-            _ok(f"Ed25519 signature valid (fingerprint: {{signature.get('public_key_fingerprint', 'n/a')}})")
-        except Exception as exc:
-            _fail(f"Signature verification failed: {{exc}}")
-
-    print()
-    print("PASS — FINCO Solar Reference package is authentic and unmodified.")
-    print(f"  Certificate ID: {{certificate.get('certificate_id')}}")
-    print(f"  Engine version: {{certificate.get('model', {{}}).get('engine_version')}}")
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    # Allow --base-url override.
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg == "--base-url" and i + 1 < len(sys.argv):
-            BASE_URL = sys.argv[i + 1]
-            CERTIFICATE_URL = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/certificate.json"
-            ASSUMPTIONS_URL = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/assumptions.json"
-            OUTPUTS_URL     = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/outputs.json"
-            SIGNATURE_URL   = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/signature.json"
-            PUBLIC_KEY_URL  = f"{{BASE_URL}}/verify/reference/{{ASSET_ID}}/public-key.pem"
-    main()
-'''

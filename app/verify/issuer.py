@@ -1,4 +1,4 @@
-"""FINCO Issuer Signature V1 — Ed25519 signing and verification.
+"""FINCO Issuer Signature V1 — Ed25519 signing and verification (application layer).
 
 Private key: loaded from FINCO_ISSUER_PRIVATE_KEY_HEX env var (hex-encoded 32-byte seed).
 Public key: derived from private key; may be served publicly.
