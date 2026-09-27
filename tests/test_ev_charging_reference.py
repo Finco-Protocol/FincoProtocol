@@ -430,7 +430,25 @@ def test_rescale_preserves_non_default_ev_drivers(tmp_path):
 
 def test_runtime_snapshot_opex_reconciles_after_rescale(tmp_path):
     """C: after rescale_reference_seeded_project, the snapshot opex_y1_keur must
-    equal the Y1 OPEX the engine computes from the same snapshot."""
+    reconcile with the B.08 the production materializer (build_projectinputs_from_snapshot)
+    delivers to the engine via apply_ev_charging_runtime_adapter.
+
+    Design: snapshot["opex_y1_keur"] = seed_non_b08_opex + service_b08 (current drivers).
+    The production materializer rebuilds B.08 from the same current drivers through
+    apply_ev_charging_runtime_adapter; its "Electricity Procurement" item Y1 amount
+    is the authoritative runtime B.08.  The reconciliation identity is:
+
+        snapshot_opex_y1 - runtime_b08_y1 == seed_non_b08_opex (PER_MW lines)
+
+    This FAILS under the old static electricity_expense_keur implementation:
+    when non-default drivers are persisted the service stores a different B.08
+    than the runtime adapter computes, breaking the identity above.
+
+    Production path used: build_projectinputs_from_snapshot (app/input_adapter.py)
+    which calls apply_ev_charging_runtime_adapter(result, drivers_from_snapshot(snap))
+    as its final step for "Ev Charging" project_type — the same path every UI
+    financial route takes.
+    """
     from app.persistence import db as db_mod
     db_mod.DB_PATH = str(tmp_path / "runtime_reconcile.db")
     from app.services.project_library_service import ensure_reference_models
@@ -439,10 +457,7 @@ def test_runtime_snapshot_opex_reconciles_after_rescale(tmp_path):
         rescale_reference_seeded_project,
     )
     from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
-    from app.ev_charging_economics import (
-        drivers_from_snapshot,
-        driver_electricity_expense_keur,
-    )
+    from app.input_adapter import build_projectinputs_from_snapshot
 
     ensure_reference_models()
     record = create_reference_seeded_project(
@@ -452,7 +467,7 @@ def test_runtime_snapshot_opex_reconciles_after_rescale(tmp_path):
     ws = get_workspace_state("u-runtime-c", record.project_id)
     # persist non-default electricity price
     modified = dict(ws.draft_snapshot)
-    modified["ev_electricity_price_eur_kwh"] = "0.14"
+    modified["ev_electricity_price_eur_kwh"] = "0.14"   # non-default; ref = 0.12
     save_workspace_state(
         user_id="u-runtime-c", project_id=record.project_id,
         project_code=record.project_code,
@@ -468,14 +483,47 @@ def test_runtime_snapshot_opex_reconciles_after_rescale(tmp_path):
     snap2 = ws2.draft_snapshot
     snapshot_opex_y1 = float(snap2["opex_y1_keur"])
 
-    # Compute what the engine would use for B.08 Y1 via the same authority
-    current_drivers = drivers_from_snapshot(dict(snap2))
-    engine_b08_y1 = driver_electricity_expense_keur(current_drivers, 6.0, 1)
-    engine_seed_opex = 960.0 * (6.0 / 5.0)  # PER_MW seed OPEX at 6 MW
-    engine_opex_y1 = engine_seed_opex + engine_b08_y1
+    # ── Production materializer ──────────────────────────────────────────────
+    # build_projectinputs_from_snapshot is the real production materializer used
+    # by every financial route (run, preview, sensitivity, download).  For
+    # "Ev Charging" project_type it applies apply_ev_charging_runtime_adapter
+    # last, which rebuilds the "Electricity Procurement" (B.08) OpexItem from
+    # drivers_from_snapshot(snap) — the current persisted driver authority.
+    pi = build_projectinputs_from_snapshot(dict(snap2))
 
-    assert snapshot_opex_y1 == pytest.approx(engine_opex_y1, rel=1e-4), (
-        f"snapshot opex_y1_keur {snapshot_opex_y1:.4f} != engine Y1 OPEX {engine_opex_y1:.4f}"
+    # Authoritative runtime B.08: the "Electricity Procurement" item in pi.opex
+    # was set by apply_ev_charging_runtime_adapter from current drivers.
+    # This is NOT the EV economic helper called directly — it is the item the
+    # engine actually receives.
+    elec_item = next(
+        (i for i in pi.opex if str(getattr(i, "name", "")) == "Electricity Procurement"),
+        None,
+    )
+    assert elec_item is not None, "production materializer must produce an Electricity Procurement item"
+    runtime_b08_y1 = float(elec_item.y1_amount_keur)
+
+    # ── Reconciliation identity ──────────────────────────────────────────────
+    # snapshot_opex_y1 = seed_non_b08 + service_b08(current drivers)
+    # runtime_b08_y1   = apply_ev_runtime_adapter_b08(current drivers)
+    # Both terms use driver_electricity_expense_keur(drivers_from_snapshot, 6, 1).
+    # When they agree: snapshot_opex_y1 - runtime_b08_y1 == seed_non_b08_opex.
+    # At 6 MW the reference seed (excl B.08) scales PER_MW: 960 * 6/5 = 1152.
+    expected_seed_non_b08 = 960.0 * (6.0 / 5.0)
+    residual = snapshot_opex_y1 - runtime_b08_y1
+    assert residual == pytest.approx(expected_seed_non_b08, rel=1e-4), (
+        f"snapshot_opex_y1({snapshot_opex_y1:.4f}) - runtime_b08({runtime_b08_y1:.4f}) "
+        f"= {residual:.4f}, expected seed_non_b08={expected_seed_non_b08:.4f}; "
+        "service and runtime B.08 must use the same current-driver authority"
+    )
+
+    # ── Non-default driver reached runtime ───────────────────────────────────
+    # The runtime B.08 must differ from the static reference (price=0.12).
+    # electricity_expense_keur is the static reference helper; its result at
+    # 6 MW is used here only as the NEGATIVE proof-of-difference.
+    static_ref_b08_6mw = ev.electricity_expense_keur(6.0, 1)
+    assert runtime_b08_y1 != pytest.approx(static_ref_b08_6mw, rel=1e-6), (
+        "non-default electricity price (0.14 vs 0.12 ref) must reach the runtime "
+        "adapter and produce a different B.08 from the static reference"
     )
 
 
