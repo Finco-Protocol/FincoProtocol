@@ -143,9 +143,11 @@ def test_DC_A3_FORBIDDEN_VOCAB_REGISTRY_FIELDS():
     registry_path = pathlib.Path("app/workbook/registry.py")
     src = registry_path.read_text()
 
-    # Find the DC-specific data_center section
-    if '"data_center"' not in src and "'data_center'" not in src:
-        return  # No DC section found — pass (nothing to check)
+    # DC section must exist — fail if it has disappeared
+    assert '"data_center"' in src or "'data_center'" in src, (
+        "DC registry section not found in app/workbook/registry.py. "
+        "Expected a '_rv_data_center' / 'data_center' section — it must not be removed."
+    )
 
     # Extract DC section: from _rv_data_center definition to next _section call
     lines = src.split("\n")
@@ -160,6 +162,10 @@ def test_DC_A3_FORBIDDEN_VOCAB_REGISTRY_FIELDS():
             if len(dc_lines) > 2 and ("_section(" in line or (
                     line.strip().startswith("_rv_") and "_rv_data_center" not in line)):
                 break
+
+    assert dc_lines, (
+        "DC registry section body is empty — _rv_data_center section must contain field definitions."
+    )
 
     dc_src = "\n".join(dc_lines).lower()
 
