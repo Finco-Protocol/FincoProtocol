@@ -118,14 +118,20 @@ def test_docs10_api_beta_contract_present():
     assert "The API contract is still Beta" in html
 
 
-def test_docs11_planned_token_does_not_claim_live_utility():
+def test_docs11_finco_token_current_contract():
+    """Docs must state: P4 entitlement rail implemented, token not yet launched, not calculation authority."""
     html = _client().get("/docs").text
+    lower = html.lower()
     assert "$FINCO" in html
-    assert "token remains planned" in html.lower()
+    # P4 entitlement rail is implemented (not merely planned)
+    assert "p4 entitlement rail is implemented" in lower or "entitlement rail is implemented" in lower
+    # Token itself is not yet launched
+    assert "token is not yet launched" in lower or "not yet launched" in lower
+    # Token access is not a calculation authority
     assert "not a calculation authority" in html
     forbidden = ("staking is live", "guaranteed yield", "dividend rights", "token contract:")
     for phrase in forbidden:
-        assert phrase not in html.lower()
+        assert phrase not in lower
 
 
 def test_docs12_product_docs_have_no_provider_branding():

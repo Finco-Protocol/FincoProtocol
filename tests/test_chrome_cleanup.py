@@ -65,10 +65,15 @@ class TestRadarReadOnlyBadgeRemoved:
             "FINCO home still renders 'Read-only execution simulation' bullet"
         )
 
-    def test_home_radar_card_coming_soon_wording(self, home_html):
-        """Radar card must use truthful 'coming soon' execution wording."""
-        assert "coming soon" in home_html.lower() or "Coming soon" in home_html, (
-            "Radar card must use coming-soon wording for execution"
+    def test_home_radar_card_execution_analytics_wording(self, home_html):
+        """Radar card must use truthful analytics-only / no-order-submitted execution wording."""
+        lower = home_html.lower()
+        assert (
+            "analytics only" in lower
+            or "no order submitted" in lower
+            or "execution simulation" in lower
+        ), (
+            "Radar card must describe execution simulation as analytics only with no order submitted"
         )
 
     def test_home_arch_radar_card_no_readonly_label(self, home_html):

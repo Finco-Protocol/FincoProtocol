@@ -350,10 +350,14 @@ def test_api34_home_links_to_api(client):
 
 # ── API35: home describes the two product surfaces ───────────────────────────
 
-def test_api35_home_two_product_surfaces(client):
+def test_api35_home_product_surfaces(client):
     r = client.get("/")
-    html_lower = r.text.lower()
-    assert "two interconnected surfaces" in html_lower
+    html = r.text
+    html_lower = html.lower()
+    # Three primary product surfaces: Model, Radar, Verified Assets
+    assert "finco model" in html_lower or "model library" in html_lower
+    assert "finco radar" in html_lower or "open radar" in html_lower
+    assert "verified assets" in html_lower
 
 
 # ── API36: Model existing nav still works ────────────────────────────────────
