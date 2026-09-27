@@ -121,15 +121,18 @@ def _pct(fraction, digits: int = 2) -> str | None:
     return f"{float(fraction) * 100:.{digits}f}%"
 
 
-def _fmt_runtime_at(ts: str) -> str:
-    """Format an ISO timestamp into a human-readable string for the toolbar."""
+def _fmt_runtime_at(ts) -> str:
+    """Format an ISO timestamp or datetime into a human-readable string for the toolbar."""
     if not ts:
         return ""
     try:
-        dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if isinstance(ts, datetime.datetime):
+            dt = ts
+        else:
+            dt = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
         return dt.strftime("%-d %b %Y, %H:%M")
     except Exception:
-        return ts
+        return ""
 
 
 def _build_pis_with_composite_identity(ws, project_record, workspace_owner_id: str):

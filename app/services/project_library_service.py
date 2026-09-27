@@ -375,7 +375,7 @@ def _seed_reference_last_run(record, defn: dict, *, current_composite_hash: str)
     runtime_kpis = dict(payload["kpis"])
 
     now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace(":", "").replace("-", "")
+    now_iso = now.strftime("%Y%m%dT%H%M%S")
     runtime_snapshot_id = f"canonical_last_run__{ts}__{now_iso}"
 
     ws = get_workspace_state(record.user_id, record.project_id)
