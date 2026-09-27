@@ -7,6 +7,7 @@ on:
       - "financial_engine/**"
       - "finco_core/**"
       - "tests/test_radar_r*.py"
+      - "pyproject.toml"
       - ".github/workflows/radar_r5_signals_history.yml"
   workflow_dispatch:
 

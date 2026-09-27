@@ -6,8 +6,14 @@ on:
   pull_request:
     paths:
       - "finco_protocol/**"
+      - "app/verify/**"
       - "tests/test_protocol_verification.py"
+      - "tests/test_a2_public_verify.py"
       - "tools/build_public_validation_corpus.py"
+      - "tools/verify_reference_package.py"
+      - "requirements.txt"
+      - "constraints.txt"
+      - "pyproject.toml"
       - ".github/workflows/protocol_verification.yml"
   workflow_dispatch:
   schedule:

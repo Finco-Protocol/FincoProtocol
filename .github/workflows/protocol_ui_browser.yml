@@ -16,6 +16,10 @@ on:
       - "tests/test_data_center_browser_acceptance.py"
       - "tests/test_p5_browser_acceptance.py"
       - "tests/test_model_golden_flows_browser.py"
+      - "requirements.txt"
+      - "constraints.txt"
+      - "pyproject.toml"
+      - "pytest.ini"
       - ".github/workflows/protocol_ui_browser.yml"
   workflow_dispatch:
 
