@@ -156,6 +156,17 @@ class TestPublicRoutes:
         assert r.status_code == 200
         assert "Public Verification" in r.text
 
+    def test_canonical_verifier_route_functional(self, client):
+        """Route serves the canonical verifier, not an error stub."""
+        r = client.get("/verify/reference/solar-reference-a/verify.py")
+        assert r.status_code == 200
+        assert not r.text.startswith("# ERROR"), (
+            "Route returned an error stub — canonical verifier file is missing or unreadable"
+        )
+        assert "def main" in r.text
+        assert "FINCO Solar Reference" in r.text
+        assert "--package-dir" in r.text
+
     def test_signer_absent_fails_closed(self):
         """Without the issuer key, signature/public-key routes return 503."""
         saved = os.environ.pop("FINCO_ISSUER_PRIVATE_KEY_HEX", None)
@@ -253,6 +264,61 @@ class TestSignatureVerification:
         assert len(sig["signature_b64"]) > 0
         # Ed25519 signature is 64 bytes = 88 base64 chars (padded)
         assert len(base64.b64decode(sig["signature_b64"])) == 64
+
+
+# ── A2.2: Signature envelope metadata tamper tests ────────────────────────────
+
+class TestSignatureEnvelopeMetadata:
+    """Proves each envelope metadata field is independently verified.
+
+    A tampered schema, algorithm, certificate_id, certificate_digest_sha256, or
+    public_key_fingerprint must all be detected before Ed25519 is reached.
+    """
+
+    def test_wrong_schema_fails(self, reference_package):
+        """Tampered schema field fails envelope binding."""
+        from app.verify.issuer import verify_signature_with_pem
+        cert = reference_package["certificate"]
+        sig = copy.deepcopy(reference_package["signature"])
+        pub_pem = reference_package["public_key_pem"]
+        sig["schema"] = "WRONG_SCHEMA"
+        assert verify_signature_with_pem(cert, sig, pub_pem) is False
+
+    def test_wrong_algorithm_fails(self, reference_package):
+        """Tampered algorithm field fails envelope binding."""
+        from app.verify.issuer import verify_signature_with_pem
+        cert = reference_package["certificate"]
+        sig = copy.deepcopy(reference_package["signature"])
+        pub_pem = reference_package["public_key_pem"]
+        sig["algorithm"] = "RSA"
+        assert verify_signature_with_pem(cert, sig, pub_pem) is False
+
+    def test_altered_certificate_id_fails(self, reference_package):
+        """Tampered certificate_id binding fails."""
+        from app.verify.issuer import verify_signature_with_pem
+        cert = reference_package["certificate"]
+        sig = copy.deepcopy(reference_package["signature"])
+        pub_pem = reference_package["public_key_pem"]
+        sig["certificate_id"] = "frc_0000000000000000"
+        assert verify_signature_with_pem(cert, sig, pub_pem) is False
+
+    def test_altered_certificate_digest_fails(self, reference_package):
+        """Tampered certificate_digest_sha256 binding fails."""
+        from app.verify.issuer import verify_signature_with_pem
+        cert = reference_package["certificate"]
+        sig = copy.deepcopy(reference_package["signature"])
+        pub_pem = reference_package["public_key_pem"]
+        sig["certificate_digest_sha256"] = "0" * 64
+        assert verify_signature_with_pem(cert, sig, pub_pem) is False
+
+    def test_altered_public_key_fingerprint_fails(self, reference_package):
+        """Tampered public_key_fingerprint binding fails."""
+        from app.verify.issuer import verify_signature_with_pem
+        cert = reference_package["certificate"]
+        sig = copy.deepcopy(reference_package["signature"])
+        pub_pem = reference_package["public_key_pem"]
+        sig["public_key_fingerprint"] = "0" * 16
+        assert verify_signature_with_pem(cert, sig, pub_pem) is False
 
 
 # ── A2.2: Tamper tests ─────────────────────────────────────────────────────────
@@ -568,12 +634,14 @@ class TestMethodologyReproducibility:
 
 class TestMethodologyHtmlBinding:
     """Proves the public methodology page contains authoritative runtime values.
-    If the HTML drifts, these tests fail.
+
+    Every numeric invariant is derived from the current authoritative runtime/
+    reference objects — never from hardcoded literals. Drift between HTML and
+    the engine immediately fails these tests.
     """
 
     @pytest.fixture(scope="class")
     def methodology_html(self):
-        """Read the rendered methodology HTML file."""
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "app", "templates", "model_methodology.html",
@@ -583,118 +651,224 @@ class TestMethodologyHtmlBinding:
 
     @pytest.fixture(scope="class")
     def runtime_values(self):
-        """Canonical runtime values from the authoritative engine run."""
+        """All authoritative runtime values for methodology binding tests."""
         from app.project_factories import create_generic_solar_reference
         from financial_engine.financing.project import run_project_financing_model
+        from app.api.project_runner import run_project
+
         inputs = create_generic_solar_reference()
         result = run_project_financing_model(inputs)
         pmr = result.project_model_result
         ds = pmr.debt_sizing
+        tac = pmr.tax_and_cfads
+        os_ = pmr.operating_schedules
 
-        from app.api.project_runner import run_project
         run = run_project("Generic Solar Reference", "Base")
-
         debt = run.get("debt_schedule", {})
         stub = next(
             (p for p in debt.get("periods", [])
              if p.get("is_operation") and p.get("year_index") == 2031 and p.get("period_in_year") == 1),
             None,
         )
-        assert stub is not None, "canonical stub period missing"
+        assert stub is not None, "canonical stub period missing from debt_schedule"
 
-        idx = ds.period_indices.index(3)
+        idx_ds = ds.period_indices.index(3)
+        idx_tac = tac.period_indices.index(3)
+        idx_os = os_.period_indices.index(3)
+
+        # Stub period calendar attributes
+        stub_period = next(p for p in pmr.periods if p.period_index == 3)
+        days_in_period = stub_period.days_in_period      # 122 ACT/365 inclusive
+        interest_days = days_in_period - 1               # 121 ACT/360 exclusive (drop end date)
+        day_fraction_ops = days_in_period / 365
+        day_fraction_debt = interest_days / 360
+
         return {
+            # Technical assumptions
             "p50_operating_hours": inputs.technical.operating_hours_p50,
             "p90_operating_hours": inputs.technical.operating_hours_p90_10y,
-            "bank_cfads": ds.bank_cfads_keur[idx],
-            "bank_revenue": ds.bank_revenue_keur[idx],
+            # P50/base operating schedule (period 3)
+            "p50_revenue": os_.revenue_keur[idx_os],
+            "p50_opex": os_.opex_keur[idx_os],
+            "p50_ebitda": os_.ebitda_keur[idx_os],
+            "p50_cfads": tac.cfads_keur[idx_tac],
+            # Bank/P90 debt-sizing inputs (period 3)
+            "bank_revenue": ds.bank_revenue_keur[idx_ds],
+            "bank_cfads": ds.bank_cfads_keur[idx_ds],
+            # Senior debt service (period 3)
             "senior_interest": stub["senior_interest_keur"],
             "senior_principal": stub["senior_principal_keur"],
             "senior_ds": stub["senior_ds_keur"],
+            "achieved_stub_dscr": stub["dscr"],
+            # KPIs
             "target_dscr": run["kpis"]["target_dscr"],
             "min_dscr": run["kpis"]["min_dscr"],
             "total_capex": run["kpis"]["total_capex_keur"],
             "senior_debt": run["kpis"]["senior_debt_keur"],
+            # Period calendar
+            "days_in_period": days_in_period,
+            "interest_days": interest_days,
+            "day_fraction_ops": day_fraction_ops,
+            "day_fraction_debt": day_fraction_debt,
         }
 
+    def _fmt(self, val: float, decimals: int = 1) -> tuple[str, str]:
+        """Return (plain, comma-formatted) string pair for assertion."""
+        return f"{val:.{decimals}f}", f"{val:,.{decimals}f}"
+
     def test_p50_operating_hours_in_html(self, methodology_html, runtime_values):
-        """HTML contains canonical P50 operating hours."""
-        assert "1,500" in methodology_html or "1500" in methodology_html, (
-            "P50 operating hours (1,500 hr/yr) not found in methodology HTML"
+        """P50 operating hours derived from reference inputs."""
+        v = runtime_values["p50_operating_hours"]
+        plain, fmt = self._fmt(v, 0)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"P50 operating hours ({fmt} hr/yr) not found in methodology HTML"
         )
 
     def test_p90_operating_hours_in_html(self, methodology_html, runtime_values):
-        """HTML contains canonical P90 operating hours."""
-        assert "1,400" in methodology_html or "1400" in methodology_html, (
-            "P90 operating hours (1,400 hr/yr) not found in methodology HTML"
+        """P90_10Y operating hours derived from reference inputs."""
+        v = runtime_values["p90_operating_hours"]
+        plain, fmt = self._fmt(v, 0)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"P90_10Y operating hours ({fmt} hr/yr) not found in methodology HTML"
+        )
+
+    def test_p50_revenue_in_html(self, methodology_html, runtime_values):
+        """P50/base revenue (period 3) from operating schedules."""
+        v = runtime_values["p50_revenue"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"P50 revenue ({fmt} kEUR) not found in methodology HTML"
+        )
+
+    def test_p50_opex_in_html(self, methodology_html, runtime_values):
+        """P50 OPEX (period 3) from operating schedules."""
+        v = runtime_values["p50_opex"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"P50 OPEX ({fmt} kEUR) not found in methodology HTML"
+        )
+
+    def test_p50_cfads_in_html(self, methodology_html, runtime_values):
+        """P50 CFADS (period 3) from TaxAndCfadsSchedules."""
+        v = runtime_values["p50_cfads"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"P50 CFADS ({fmt} kEUR) not found in methodology HTML"
+        )
+
+    def test_bank_revenue_in_html(self, methodology_html, runtime_values):
+        """Bank/P90 revenue (period 3) from DebtSizingSchedules."""
+        v = runtime_values["bank_revenue"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Bank revenue ({fmt} kEUR) not found in methodology HTML"
         )
 
     def test_bank_cfads_in_html(self, methodology_html, runtime_values):
-        """HTML contains bank CFADS value for stub period."""
-        bank_cfads = runtime_values["bank_cfads"]
-        # 1340.6 → "1,340.6" or "1340.6"
-        rounded = f"{bank_cfads:.1f}"
-        formatted = f"{bank_cfads:,.1f}"
-        assert rounded in methodology_html or formatted in methodology_html, (
-            f"Bank CFADS ({formatted} kEUR) not found in methodology HTML"
-        )
-
-    def test_senior_principal_in_html(self, methodology_html, runtime_values):
-        """HTML contains senior principal for stub period."""
-        principal = runtime_values["senior_principal"]
-        rounded = f"{principal:.1f}"
-        formatted = f"{principal:,.1f}"
-        assert rounded in methodology_html or formatted in methodology_html, (
-            f"Senior principal ({formatted} kEUR) not found in methodology HTML"
+        """Bank/P90 CFADS (period 3) from DebtSizingSchedules."""
+        v = runtime_values["bank_cfads"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Bank CFADS ({fmt} kEUR) not found in methodology HTML"
         )
 
     def test_senior_interest_in_html(self, methodology_html, runtime_values):
-        """HTML contains senior interest for stub period."""
-        interest = runtime_values["senior_interest"]
-        rounded = f"{interest:.1f}"
-        formatted = f"{interest:,.1f}"
-        assert rounded in methodology_html or formatted in methodology_html, (
-            f"Senior interest ({formatted} kEUR) not found in methodology HTML"
+        """Senior interest (period 3) from debt schedule."""
+        v = runtime_values["senior_interest"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Senior interest ({fmt} kEUR) not found in methodology HTML"
+        )
+
+    def test_senior_principal_in_html(self, methodology_html, runtime_values):
+        """Senior principal (period 3) from debt schedule."""
+        v = runtime_values["senior_principal"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Senior principal ({fmt} kEUR) not found in methodology HTML"
+        )
+
+    def test_senior_ds_in_html(self, methodology_html, runtime_values):
+        """Total senior debt service (period 3) from debt schedule."""
+        v = runtime_values["senior_ds"]
+        plain, fmt = self._fmt(v)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Senior debt service ({fmt} kEUR) not found in methodology HTML"
         )
 
     def test_capex_in_html(self, methodology_html, runtime_values):
-        """HTML contains total CAPEX."""
-        capex = runtime_values["total_capex"]
-        assert "33,000" in methodology_html or "33000" in methodology_html, (
-            f"Total CAPEX ({capex} kEUR) not found in methodology HTML"
+        """Total CAPEX from KPIs."""
+        v = runtime_values["total_capex"]
+        plain, fmt = self._fmt(v, 0)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Total CAPEX ({fmt} kEUR) not found in methodology HTML"
         )
 
     def test_senior_debt_in_html(self, methodology_html, runtime_values):
-        """HTML contains senior debt amount."""
-        assert "24,750" in methodology_html or "24750" in methodology_html, (
-            "Senior debt (24,750 kEUR) not found in methodology HTML"
+        """Senior debt from KPIs."""
+        v = runtime_values["senior_debt"]
+        plain, fmt = self._fmt(v, 0)
+        assert plain in methodology_html or fmt in methodology_html, (
+            f"Senior debt ({fmt} kEUR) not found in methodology HTML"
         )
 
     def test_target_dscr_in_html(self, methodology_html, runtime_values):
-        """HTML contains target DSCR (sculpting parameter)."""
-        assert "1.20" in methodology_html, (
-            "Target DSCR (1.20×) not found in methodology HTML"
+        """Target DSCR (sculpting parameter) from KPIs."""
+        v = runtime_values["target_dscr"]
+        assert f"{v:.2f}" in methodology_html, (
+            f"Target DSCR ({v:.2f}×) not found in methodology HTML"
         )
 
     def test_min_dscr_in_html(self, methodology_html, runtime_values):
-        """HTML contains minimum achieved DSCR."""
-        assert "1.25" in methodology_html, (
-            "Minimum achieved DSCR (1.25×) not found in methodology HTML"
+        """Minimum achieved DSCR from KPIs."""
+        v = runtime_values["min_dscr"]
+        # HTML rounds to 2dp: "1.25"
+        assert f"{v:.2f}" in methodology_html, (
+            f"Min DSCR ({v:.2f}×) not found in methodology HTML"
         )
 
-    def test_bank_vs_base_distinction_in_html(self, methodology_html):
+    def test_achieved_stub_dscr_in_html(self, methodology_html, runtime_values):
+        """Achieved DSCR for stub period from debt schedule."""
+        v = runtime_values["achieved_stub_dscr"]
+        # HTML uses 2dp format: 1.29
+        assert f"{v:.2f}" in methodology_html, (
+            f"Achieved stub DSCR ({v:.2f}×) not found in methodology HTML"
+        )
+
+    def test_operational_day_count_in_html(self, methodology_html, runtime_values):
+        """ACT/365 operational day count (122) in methodology HTML."""
+        days = runtime_values["days_in_period"]
+        assert str(days) in methodology_html, (
+            f"Operational day count ({days} days ACT/365) not found in methodology HTML"
+        )
+
+    def test_interest_day_count_in_html(self, methodology_html, runtime_values):
+        """ACT/360 exclusive interest day count (121) in methodology HTML."""
+        days = runtime_values["interest_days"]
+        assert str(days) in methodology_html, (
+            f"Interest day count ({days} days ACT/360) not found in methodology HTML"
+        )
+
+    def test_interest_day_fraction_in_html(self, methodology_html, runtime_values):
+        """Interest day fraction (121/360) appears in methodology HTML."""
+        frac = runtime_values["day_fraction_debt"]
+        # HTML shows "121/360" and/or the decimal "0.3361"
+        assert "121/360" in methodology_html or f"{frac:.4f}" in methodology_html, (
+            f"Interest day fraction (121/360 = {frac:.4f}) not found in methodology HTML"
+        )
+
+    def test_operational_day_fraction_in_html(self, methodology_html, runtime_values):
+        """Operational day fraction (122/365) appears in methodology HTML."""
+        frac = runtime_values["day_fraction_ops"]
+        assert "122/365" in methodology_html or f"{frac:.4f}" in methodology_html, (
+            f"Operational day fraction (122/365 = {frac:.4f}) not found in methodology HTML"
+        )
+
+    def test_bank_vs_base_distinction_in_html(self, methodology_html, runtime_values):
         """HTML explicitly distinguishes bank (P90_10Y) from base (P50) cases."""
         assert "P90" in methodology_html or "bank" in methodology_html.lower(), (
             "Bank/P90 distinction missing from methodology HTML"
         )
         assert "P50" in methodology_html, (
             "P50 base case missing from methodology HTML"
-        )
-
-    def test_interest_day_count_in_html(self, methodology_html):
-        """HTML mentions ACT/360 or 121 days for interest day-count."""
-        has_act360 = "ACT/360" in methodology_html or "act/360" in methodology_html.lower()
-        has_121 = "121" in methodology_html
-        assert has_act360 or has_121, (
-            "ACT/360 exclusive day-count convention (or 121 days) not documented in methodology HTML"
         )

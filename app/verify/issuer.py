@@ -49,7 +49,6 @@ def get_public_key_hex() -> str:
     """Return hex-encoded raw Ed25519 public key bytes (32 bytes = 64 hex chars)."""
     priv = _load_private_key()
     pub = priv.public_key()
-    # Raw public key is the x coordinate for Ed25519
     return pub.pointQ.x.to_bytes(32, "little").hex()
 
 
@@ -89,14 +88,40 @@ def verify_signature_with_pem(
 ) -> bool:
     """Verify FINCO_ISSUER_SIGNATURE_V1 against certificate using a PEM public key.
 
-    Returns True if valid, False on any failure (including tampered certificate).
+    Checks ALL envelope metadata bindings before attempting Ed25519 verification:
+      1. schema == FINCO_ISSUER_SIGNATURE_V1
+      2. algorithm == Ed25519
+      3. certificate_id matches certificate
+      4. certificate_digest_sha256 matches certificate
+      5. public_key_fingerprint matches recomputed fingerprint from PEM
+      6. Ed25519 signature over canonical certificate JSON
+
+    Returns True only if all six checks pass; False on any failure.
     """
     from Crypto.PublicKey import ECC
     from Crypto.Signature import eddsa
-    from finco_protocol.verification.envelope import canonical_json_bytes
+    from finco_protocol.verification.envelope import canonical_json_bytes, canonical_sha256
 
     try:
+        # 1. Schema
+        if signature_dict.get("schema") != ISSUER_SIGNATURE_SCHEMA:
+            return False
+        # 2. Algorithm
+        if signature_dict.get("algorithm") != "Ed25519":
+            return False
+        # 3. Certificate ID binding
+        if signature_dict.get("certificate_id") != certificate.get("certificate_id"):
+            return False
+        # 4. Certificate digest binding
+        if signature_dict.get("certificate_digest_sha256") != certificate.get("certificate_digest_sha256"):
+            return False
+        # 5. Public key fingerprint binding
         pub = ECC.import_key(public_key_pem)
+        computed_pem = pub.export_key(format="PEM")
+        computed_fingerprint = canonical_sha256(computed_pem)[:16]
+        if computed_fingerprint != signature_dict.get("public_key_fingerprint"):
+            return False
+        # 6. Ed25519 signature
         sig_bytes = base64.b64decode(signature_dict["signature_b64"])
         message = canonical_json_bytes(certificate)
         verifier = eddsa.new(pub, "rfc8032")

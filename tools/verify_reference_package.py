@@ -168,8 +168,56 @@ def _verify_issuer_signature(
         )
         return  # unreachable; _fail exits
 
+    # ── Envelope metadata bindings ────────────────────────────────────────────
+    # All five must pass before Ed25519 is attempted.
+
+    schema = signature.get("schema")
+    if schema != "FINCO_ISSUER_SIGNATURE_V1":
+        _fail("signature_schema", f"expected FINCO_ISSUER_SIGNATURE_V1, got {schema!r}")
+    _ok("signature_schema", "FINCO_ISSUER_SIGNATURE_V1")
+
+    algorithm = signature.get("algorithm")
+    if algorithm != "Ed25519":
+        _fail("signature_algorithm", f"expected Ed25519, got {algorithm!r}")
+    _ok("signature_algorithm", "Ed25519")
+
+    sig_cert_id = signature.get("certificate_id")
+    cert_id = certificate.get("certificate_id")
+    if sig_cert_id != cert_id:
+        _fail(
+            "signature_certificate_id",
+            f"mismatch\n  certificate: {cert_id}\n  signature:   {sig_cert_id}",
+        )
+    _ok("signature_certificate_id", cert_id)
+
+    sig_digest = signature.get("certificate_digest_sha256")
+    cert_digest = certificate.get("certificate_digest_sha256")
+    if sig_digest != cert_digest:
+        _fail(
+            "signature_certificate_digest",
+            f"mismatch\n  certificate: {cert_digest}\n  signature:   {sig_digest}",
+        )
+    _ok("signature_certificate_digest", f"{cert_digest[:32]}...")
+
     try:
         pub = ECC.import_key(public_key_pem)
+        computed_pem = pub.export_key(format="PEM")
+        # Fingerprint = first 16 hex chars of SHA-256(FINCO_SORTED_JSON_V1(pem_string))
+        computed_fingerprint = _sha256(_canonical_json(computed_pem))[:16]
+    except Exception as exc:
+        _fail("signature_fingerprint", f"cannot compute fingerprint from PEM: {exc}")
+        return  # unreachable
+
+    expected_fingerprint = signature.get("public_key_fingerprint")
+    if computed_fingerprint != expected_fingerprint:
+        _fail(
+            "signature_fingerprint",
+            f"mismatch\n  signature: {expected_fingerprint}\n  computed:  {computed_fingerprint}",
+        )
+    _ok("signature_fingerprint", computed_fingerprint)
+
+    # ── Ed25519 signature ─────────────────────────────────────────────────────
+    try:
         sig_bytes = base64.b64decode(signature["signature_b64"])
         message = _canonical_json(certificate)
         verifier = eddsa.new(pub, "rfc8032")
@@ -177,8 +225,7 @@ def _verify_issuer_signature(
     except Exception as exc:
         _fail("signature", f"Ed25519 verification failed: {exc}")
 
-    fingerprint = signature.get("public_key_fingerprint", "n/a")
-    _ok("signature", f"Ed25519 valid (fingerprint: {fingerprint})")
+    _ok("signature", f"Ed25519 valid (fingerprint: {computed_fingerprint})")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ numpy==1.26.4
 openpyxl==3.1.5
 pandas==2.2.3
 pydantic==2.13.2
+pycryptodome==3.23.0
 pytest==9.0.3
 pytest-asyncio==1.4.0
 python-multipart==0.0.31
