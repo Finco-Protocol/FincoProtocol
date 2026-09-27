@@ -103,7 +103,7 @@
               <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces. Execution simulation is analytics only; no order submitted.</td></tr>
               <tr><td><strong>Verify</strong></td><td>How was this output certified?</td><td>Deterministic run certificates (<code>FINCO_RUN_CERTIFICATE_V1</code>). Off-chain; a digest proves identity of the hashed content, not truth of an external source.</td></tr>
               <tr><td><strong>Verified Assets</strong></td><td>How does a model run connect to market identity?</td><td>Composed <code>FINCO_VERIFIED_ASSET_V1</code> records: model economics + run certificate + Radar evidence + $FINCO protocol metadata.</td></tr>
-              <tr><td><strong>$FINCO</strong></td><td>How do I access protocol capabilities?</td><td>The P4 entitlement rail is implemented. The $FINCO token is not yet launched. Token access is not a calculation authority and does not change model outputs or evidence truth.</td></tr>
+              <tr><td><strong>$FINCO</strong></td><td>How do I access protocol capabilities?</td><td>Protocol access and service-entitlement infrastructure is implemented. The $FINCO token is not yet launched. Token access is not a calculation authority and does not change model outputs or evidence truth.</td></tr>
               <tr><td><strong>API</strong></td><td>How can software read or run FINCO capabilities?</td><td>Beta Model reference/read/preview/run and Radar read/simulation endpoints.</td></tr>
               <tr><td><strong>Evidence</strong></td><td>What produced this value and how should I interpret its state?</td><td>Source, snapshot, period, lineage, freshness and deterministic verification concepts.</td></tr>
             </tbody>
@@ -231,7 +231,7 @@
             <h3>What a Verified Asset record contains</h3>
             <ul>
               <li><strong>model</strong> — persisted canonical Last Run economics</li>
-              <li><strong>verify</strong> — P3 Run Certificate (<code>FINCO_RUN_CERTIFICATE_V1</code>)</li>
+              <li><strong>verify</strong> — Run Certificate (<code>FINCO_RUN_CERTIFICATE_V1</code>)</li>
               <li><strong>market</strong> — Radar model/market bridge evidence (when available)</li>
               <li><strong>protocol</strong> — $FINCO utility registry metadata</li>
             </ul>
@@ -242,7 +242,7 @@
               V1 reference assets render as <strong>MODEL_ONLY</strong> — a canonical
               model↔market identity mapping is not yet established. A discovered
               market binding alone is never sufficient for VERIFIED status; full
-              identity reconciliation, Radar reference evidence and P2 tokenization-premium
+              identity reconciliation, Radar reference evidence and tokenization premium
               observation are all required.
             </p>
             <p>
