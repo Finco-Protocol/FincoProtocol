@@ -47,10 +47,10 @@ jobs:
           python -m pip check
 
       - name: Compile verification package
-        run: python -m compileall -q finco_protocol
+        run: python -m compileall -q finco_protocol app/verify
 
       - name: Focused verification tests
-        run: pytest -q tests/test_protocol_verification.py
+        run: pytest -q tests/test_protocol_verification.py tests/test_a2_public_verify.py
 
       - name: Build corpus twice and prove byte reproducibility
         run: |
