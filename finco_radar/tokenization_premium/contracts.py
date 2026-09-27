@@ -23,6 +23,10 @@ Tokenization premium requires an INDEPENDENT market price observation.
 The independent authority in the current runtime is the DEX execution
 quote: ``evidence["execution"]["effectivePrice"]``.  The midpoint of the
 BUY and SELL DEX execution prices is the independent market observation.
+Consequently the existing public ``tokenization_premium_bps`` field is an
+execution-mid-versus-underlying-basis comparison. It is retained for public
+compatibility; it is not a standalone token-reference premium. B1's internal
+reference premium requires a separately attested token reference observation.
 
 Producible suppression states
 ------------------------------
