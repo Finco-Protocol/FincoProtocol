@@ -1,15 +1,16 @@
 """Browser acceptance for canonical reference last-run (pre-seeded KPIs).
 
-Verifies that Solar, Wind, and Data Center reference workbooks open showing
-CURRENT status and populated KPIs — not "NOT RUN" — because the startup
-canonical last-run seeding has already run.  Also verifies that a working
-copy created from a reference starts with an empty last-run state (NOT RUN),
-and that no horizontal overflow occurs at 390 px.
+Verifies that Solar, Wind, Data Center, and EV Charging reference workbooks
+open showing CURRENT status and populated KPIs — not "NOT RUN" — because the
+startup canonical last-run seeding has already run.  Also verifies that a
+working copy created from a reference starts with an empty last-run state
+(NOT RUN), and that no horizontal overflow occurs at 390 px.
 
 Acceptance markers (all must PASS):
   SOLAR_REFERENCE_PRERUN_BROWSER
   WIND_REFERENCE_PRERUN_BROWSER
   DATA_CENTER_REFERENCE_PRERUN_BROWSER
+  EV_CHARGING_REFERENCE_PRERUN_BROWSER
   REFERENCE_WORKING_COPY_BROWSER_SEPARATION
   REFERENCE_MOBILE_390_NO_OVERFLOW
 """
@@ -211,6 +212,39 @@ def test_data_center_reference_prerun_browser(ref_app, browser):
         irr_text = irr_tile.inner_text()
         assert irr_text.strip() not in ("—", "", "N/A"), \
             f"DC reference project_irr tile must show a value; got: {irr_text!r}"
+
+        _assert_no_horizontal_overflow(page)
+    finally:
+        page.close()
+
+
+# ---------------------------------------------------------------------------
+# EV_CHARGING_REFERENCE_PRERUN_BROWSER
+# ---------------------------------------------------------------------------
+
+def test_ev_charging_reference_prerun_browser(ref_app, browser):
+    """EV_CHARGING_REFERENCE_PRERUN_BROWSER = PASS
+
+    The EV Charging Hub reference workbook must open showing CURRENT status
+    and populated KPIs at 1280px.
+    """
+    page = _page(browser, ref_app, user_id="ev-ref-browser-" + uuid.uuid4().hex[:6])
+    try:
+        pc = _find_reference_project_code(ref_app, "generic_ev_charging_reference")
+        page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
+        page.locator("#tab-overview").click()
+        page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
+
+        assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
+            "EV Charging reference must show CURRENT status after canonical seeding"
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            "EV Charging reference must NOT show NOT RUN after canonical seeding"
+
+        irr_tile = page.locator('[data-testid="kpi-project-irr"]')
+        assert irr_tile.count() >= 1
+        irr_text = irr_tile.inner_text()
+        assert irr_text.strip() not in ("—", "", "N/A"), \
+            f"EV Charging reference project_irr tile must show a value; got: {irr_text!r}"
 
         _assert_no_horizontal_overflow(page)
     finally:

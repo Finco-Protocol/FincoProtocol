@@ -253,6 +253,7 @@ _CANONICAL_LAST_RUN_SOURCES = frozenset({
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 })
 
 # Maps template_source → project_type string consumed by run_project().
@@ -261,6 +262,7 @@ _TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE = {
     "generic_solar_reference": "Generic Solar Reference",
     "generic_wind_reference": "Generic Wind Reference",
     "generic_data_center_reference": "Generic Data Center Reference",
+    "generic_ev_charging_reference": "Generic EV Charging Reference",
 }
 
 

@@ -1,9 +1,10 @@
-"""Canonical last-run tests for Solar, Wind, and Data Center reference models.
+"""Canonical last-run tests for Solar, Wind, Data Center, and EV Charging reference models.
 
 Acceptance markers (all must PASS for PR merge):
   SOLAR_REFERENCE_CANONICAL_LAST_RUN
   WIND_REFERENCE_CANONICAL_LAST_RUN
   DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN
+  EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN
   REFERENCE_LAST_RUN_IDEMPOTENT
   REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE
   REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE
@@ -58,15 +59,17 @@ def _bootstrap(seeded_db):
 # SOLAR_REFERENCE_CANONICAL_LAST_RUN
 # WIND_REFERENCE_CANONICAL_LAST_RUN
 # DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN
+# EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("template_source", [
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_canonical_last_run_seeded(seeded_db, template_source):
-    """SOLAR/WIND/DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN = PASS"""
+    """SOLAR/WIND/DATA_CENTER/EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN = PASS"""
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
 
@@ -99,7 +102,7 @@ def test_canonical_last_run_idempotent(seeded_db):
 
     ensure_reference_models()
     first_seeded = ensure_reference_canonical_last_runs()
-    assert len(first_seeded) == 3  # solar, wind, dc
+    assert len(first_seeded) == 4  # solar, wind, dc, ev_charging
 
     # Capture snapshot IDs
     snap_ids = {}
@@ -126,6 +129,7 @@ def test_canonical_last_run_idempotent(seeded_db):
     ("generic_solar_reference", "create_generic_solar_reference", "Solar"),
     ("generic_wind_reference", "create_generic_wind_reference", "Wind"),
     ("generic_data_center_reference", "create_generic_data_center_reference", "Data Center"),
+    ("generic_ev_charging_reference", "create_generic_ev_charging_reference", "EV Charging"),
 ])
 def test_canonical_last_run_matches_engine_output(seeded_db, template_source, factory_fn, project_type):
     """REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE = PASS — stored KPIs match live engine."""
@@ -156,6 +160,7 @@ def test_canonical_last_run_matches_engine_output(seeded_db, template_source, fa
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_provenance(seeded_db, template_source):
     """REFERENCE_LAST_RUN_PROVENANCE_BOUND = PASS — replay_metadata records origin."""
@@ -186,7 +191,12 @@ def test_reference_last_run_is_read_only(seeded_db):
 
     _bootstrap(seeded_db)
 
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         record = get_reference_by_template_source(ts)
         assert record.is_protected, f"{ts}: is_protected must remain True after seeding"
         assert record.is_readonly, f"{ts}: is_readonly must remain True after seeding"
@@ -313,6 +323,7 @@ def test_user_run_on_working_copy_does_not_mutate_reference(seeded_db):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_library_kpi_populated(seeded_db, template_source):
     """REFERENCE_LIBRARY_KPI_FROM_LAST_RUN = PASS — project_irr non-null in workspace."""
@@ -335,6 +346,7 @@ def test_reference_library_kpi_populated(seeded_db, template_source):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_workbook_not_never_run(seeded_db, template_source):
     """REFERENCE_WORKBOOK_NOT_NEVER_RUN = PASS — RuntimeResult is non-None after seeding."""
@@ -424,7 +436,7 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
 
     ensure_reference_models()
     first_seeded = ensure_reference_canonical_last_runs()
-    assert len(first_seeded) == 3
+    assert len(first_seeded) == 4
 
     # Capture original snapshot IDs
     snap_ids = {}
@@ -446,8 +458,8 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
 
     re_seeded = ensure_reference_canonical_last_runs()
 
-    # All three must have been re-seeded because the stored hash didn't match live
-    assert len(re_seeded) == 3, f"Expected 3 re-seeded, got {re_seeded}"
+    # All four must have been re-seeded because the stored hash didn't match live
+    assert len(re_seeded) == 4, f"Expected 4 re-seeded, got {re_seeded}"
 
     # Snapshot IDs must have changed
     for ts in snap_ids:
@@ -465,6 +477,7 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_freshness_is_current(seeded_db, template_source):
     """REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY = PASS
@@ -505,6 +518,7 @@ def test_canonical_last_run_freshness_is_current(seeded_db, template_source):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_full_payload_persisted(seeded_db, template_source):
     """REFERENCE_LAST_RUN_FULL_RUNTIME_PAYLOAD = PASS
@@ -701,9 +715,9 @@ def test_reference_last_run_single_calculation(seeded_db):
     with patch.object(_runner, "run_project", side_effect=counting_run):
         seeded = ensure_reference_canonical_last_runs()
 
-    assert len(seeded) == 3, f"Expected 3 seeds; got {seeded}"
-    assert len(call_log) == 3, (
-        f"Expected exactly 3 engine calls for 3 references; got {len(call_log)}: {call_log}"
+    assert len(seeded) == 4, f"Expected 4 seeds; got {seeded}"
+    assert len(call_log) == 4, (
+        f"Expected exactly 4 engine calls for 4 references; got {len(call_log)}: {call_log}"
     )
 
     # Second idempotent pass must perform zero engine calls.
@@ -743,9 +757,14 @@ def test_reference_last_run_provenance_atomic(seeded_db):
 
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         rec = get_reference_by_template_source(ts)
         ws = get_workspace_state(rec.user_id, rec.project_id)
 
@@ -866,7 +885,7 @@ def test_reference_real_canonical_input_change_invalidates(seeded_db, monkeypatc
     # --- Baseline bootstrap ---
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
     solar_rec = get_reference_by_template_source("generic_solar_reference")
     ws_before = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
@@ -967,10 +986,15 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
     # --- Baseline bootstrap ---
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
     snap_ids = {}
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         rec = get_reference_by_template_source(ts)
         ws = get_workspace_state(rec.user_id, rec.project_id)
         snap_ids[ts] = ws.last_runtime_snapshot_id
@@ -983,8 +1007,8 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
 
     # --- Re-seed: must detect changed engine version and produce new runs ---
     re_seeded = ensure_reference_canonical_last_runs()
-    assert len(re_seeded) == 3, (
-        f"All 3 references must re-seed after engine version change; got {re_seeded}"
+    assert len(re_seeded) == 4, (
+        f"All 4 references must re-seed after engine version change; got {re_seeded}"
     )
 
     for ts in snap_ids:
