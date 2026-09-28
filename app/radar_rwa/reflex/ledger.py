@@ -5,18 +5,22 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
 
 from finco_radar.assets.contracts import normalize_asset_uid
 
+from .evaluation import OUTCOME_POLICY_VERSION
+
 
 LEDGER_SCHEMA_VERSION = "RWA_REFLEX_LEDGER_V2"
 OUTCOME_SOURCE_CONTRACT = "FINCO_AUTHORITY_SNAPSHOT_V1"
 MODEL_VERSION_CHANGED = "RWA_REFLEX_MODEL_VERSION_CHANGED"
 REQUEST_SCHEMA_CHANGED = "RWA_REFLEX_REQUEST_SCHEMA_CHANGED"
+OUTCOME_ELIGIBLE_OBSERVATION_MISSING = "OUTCOME_ELIGIBLE_OBSERVATION_MISSING"
+OUTCOME_IDENTITY_LINEAGE_CONFLICT = "OUTCOME_IDENTITY_LINEAGE_CONFLICT"
 
 
 def _canonical(payload: dict[str, object]) -> str:
@@ -35,6 +39,11 @@ def _aware_iso(value: str, name: str) -> datetime:
     return parsed
 
 
+def _aware(value: datetime, name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be timezone-aware")
+
+
 @dataclass(frozen=True)
 class ReflexOutcomeObservation:
     observed_at: datetime
@@ -48,18 +57,18 @@ class ReflexOutcomeObservation:
     effective_gap_bps: Decimal | None
     liquidity_usd: Decimal | None
     depth_1pct_usd: Decimal | None
+    identity_conflict: bool = False
     source_contract: str = OUTCOME_SOURCE_CONTRACT
 
     def __post_init__(self) -> None:
-        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
-            raise ValueError("outcome observed_at must be timezone-aware")
-        if self.registry_observed_at is not None and (
-            self.registry_observed_at.tzinfo is None or self.registry_observed_at.utcoffset() is None
-        ):
-            raise ValueError("registry_observed_at must be timezone-aware")
+        _aware(self.observed_at, "outcome observed_at")
+        if self.registry_observed_at is not None:
+            _aware(self.registry_observed_at, "registry_observed_at")
         object.__setattr__(self, "economic_asset_uid", normalize_asset_uid(self.economic_asset_uid))
         if not self.asset_key.strip() or not self.registry_source.strip():
             raise ValueError("outcome requires canonical asset key and registry source")
+        if not isinstance(self.identity_conflict, bool):
+            raise ValueError("identity_conflict must be boolean")
         if self.source_contract != OUTCOME_SOURCE_CONTRACT:
             raise ValueError("RWA_REFLEX_OUTCOME_SOURCE_SPOOF_REJECTED")
         for name in ("reference_premium_bps", "effective_gap_bps", "liquidity_usd", "depth_1pct_usd"):
@@ -73,6 +82,7 @@ class ReflexOutcomeObservation:
 
     def to_payload(self) -> dict[str, object]:
         return {
+            "observation_kind": "CANDIDATE_OBSERVATION",
             "observed_at": self.observed_at.isoformat(),
             "economic_asset_uid": self.economic_asset_uid,
             "asset_key": self.asset_key,
@@ -84,6 +94,7 @@ class ReflexOutcomeObservation:
             "effective_gap_bps": str(self.effective_gap_bps) if self.effective_gap_bps is not None else None,
             "liquidity_usd": str(self.liquidity_usd) if self.liquidity_usd is not None else None,
             "depth_1pct_usd": str(self.depth_1pct_usd) if self.depth_1pct_usd is not None else None,
+            "identity_conflict": self.identity_conflict,
             "source_contract": self.source_contract,
         }
 
@@ -121,11 +132,18 @@ class ReflexExperimentLedger:
             );
             CREATE INDEX IF NOT EXISTS idx_reflex_outcome_prediction_time
                 ON reflex_outcomes(prediction_digest, observed_at);
+            CREATE TABLE IF NOT EXISTS reflex_canonical_outcomes (
+                prediction_digest TEXT NOT NULL,
+                outcome_policy_version TEXT NOT NULL,
+                digest TEXT NOT NULL UNIQUE,
+                payload TEXT NOT NULL,
+                PRIMARY KEY(prediction_digest, outcome_policy_version),
+                FOREIGN KEY(prediction_digest) REFERENCES reflex_predictions(digest)
+            );
         """)
         self._lock = RLock()
 
     def _assert_sample_model_lock(self, interpretation: dict[str, object]) -> None:
-        """Do not silently mix resolved Jev versions or request schemas in one ledger sample."""
         if interpretation.get("state") != "AVAILABLE":
             return
         resolved_model = interpretation.get("resolved_model")
@@ -200,6 +218,7 @@ class ReflexExperimentLedger:
         return None if row is None else dict(row)
 
     def put_outcome(self, prediction_digest: str, outcome: ReflexOutcomeObservation) -> str:
+        """Append a raw candidate observation; this method never chooses the scored label."""
         with self._lock:
             prediction = self._conn.execute(
                 "SELECT economic_asset_uid, asset_key, registry_source, observed_at FROM reflex_predictions WHERE digest = ?",
@@ -207,9 +226,11 @@ class ReflexExperimentLedger:
             ).fetchone()
             if prediction is None:
                 raise ValueError("outcome requires an existing prediction")
-            if (normalize_asset_uid(prediction["economic_asset_uid"]) != outcome.economic_asset_uid
-                    or prediction["asset_key"] != outcome.asset_key
-                    or prediction["registry_source"] != outcome.registry_source):
+            if (
+                normalize_asset_uid(prediction["economic_asset_uid"]) != outcome.economic_asset_uid
+                or prediction["asset_key"] != outcome.asset_key
+                or prediction["registry_source"] != outcome.registry_source
+            ):
                 raise ValueError("RWA_REFLEX_OUTCOME_CROSS_ASSET_REJECTED")
             if outcome.source_contract != OUTCOME_SOURCE_CONTRACT:
                 raise ValueError("RWA_REFLEX_OUTCOME_SOURCE_SPOOF_REJECTED")
@@ -235,6 +256,105 @@ class ReflexExperimentLedger:
                     raise ValueError("outcome digest conflict") from None
         return digest
 
+    def finalize_canonical_outcome(
+        self,
+        prediction_digest: str,
+        *,
+        as_of: datetime,
+        outcome_policy_version: str = OUTCOME_POLICY_VERSION,
+        target_horizon_seconds: int = 3600,
+        finalization_window_seconds: int = 300,
+    ) -> dict[str, object]:
+        """Finalize exactly one immutable scored outcome per prediction/policy.
+
+        The selected candidate is the first canonical AVAILABLE regular-session
+        observation at or after T+60m and no later than T+65m. Pre-target
+        observations can never be selected.
+        """
+        _aware(as_of, "finalization as_of")
+        if target_horizon_seconds <= 0 or finalization_window_seconds < 0:
+            raise ValueError("invalid canonical outcome horizon")
+        with self._lock:
+            existing = self._conn.execute(
+                "SELECT payload FROM reflex_canonical_outcomes WHERE prediction_digest = ? AND outcome_policy_version = ?",
+                (prediction_digest, outcome_policy_version),
+            ).fetchone()
+            if existing is not None:
+                return json.loads(existing["payload"])
+
+            prediction = self._conn.execute(
+                "SELECT observed_at FROM reflex_predictions WHERE digest = ?", (prediction_digest,),
+            ).fetchone()
+            if prediction is None:
+                raise ValueError("canonical outcome requires an existing prediction")
+            predicted_at = _aware_iso(prediction["observed_at"], "prediction observed_at")
+            finalize_not_before = predicted_at + timedelta(seconds=target_horizon_seconds + finalization_window_seconds)
+            if as_of < finalize_not_before:
+                raise ValueError("RWA_REFLEX_OUTCOME_FINALIZATION_TOO_EARLY")
+
+            upper = target_horizon_seconds + finalization_window_seconds
+            rows = self._conn.execute(
+                "SELECT digest, payload, horizon_seconds FROM reflex_outcomes "
+                "WHERE prediction_digest = ? AND horizon_seconds >= ? AND horizon_seconds <= ? "
+                "ORDER BY horizon_seconds ASC, observed_at ASC, digest ASC",
+                (prediction_digest, target_horizon_seconds, upper),
+            ).fetchall()
+
+            selected_digest: str | None = None
+            selected_payload: dict[str, object] | None = None
+            final_state = "NO_LABEL"
+            final_reason = OUTCOME_ELIGIBLE_OBSERVATION_MISSING
+            for row in rows:
+                candidate = json.loads(row["payload"])
+                if candidate.get("identity_conflict") is True:
+                    selected_digest = row["digest"]
+                    selected_payload = candidate
+                    final_reason = OUTCOME_IDENTITY_LINEAGE_CONFLICT
+                    break
+                if candidate.get("authority_state") == "AVAILABLE" and candidate.get("market_session") == "OPEN":
+                    selected_digest = row["digest"]
+                    selected_payload = candidate
+                    final_state = "AVAILABLE"
+                    final_reason = None
+                    break
+
+            finalization: dict[str, object] = {
+                "ledger_schema_version": LEDGER_SCHEMA_VERSION,
+                "canonical_finalization": True,
+                "prediction_digest": prediction_digest,
+                "outcome_policy_version": outcome_policy_version,
+                "canonical_outcome_state": final_state,
+                "canonical_reason": final_reason,
+                "candidate_digest": selected_digest,
+                "target_horizon_seconds": target_horizon_seconds,
+                "finalization_window_seconds": finalization_window_seconds,
+                "finalized_at": as_of.isoformat(),
+            }
+            if selected_payload is not None:
+                finalization.update(selected_payload)
+                finalization["canonical_finalization"] = True
+                finalization["outcome_policy_version"] = outcome_policy_version
+                finalization["canonical_outcome_state"] = final_state
+                finalization["canonical_reason"] = final_reason
+                finalization["candidate_digest"] = selected_digest
+                finalization["finalized_at"] = as_of.isoformat()
+
+            digest, canonical = _digest(finalization)
+            try:
+                self._conn.execute(
+                    "INSERT INTO reflex_canonical_outcomes VALUES (?, ?, ?, ?)",
+                    (prediction_digest, outcome_policy_version, digest, canonical),
+                )
+            except sqlite3.IntegrityError:
+                row = self._conn.execute(
+                    "SELECT payload FROM reflex_canonical_outcomes WHERE prediction_digest = ? AND outcome_policy_version = ?",
+                    (prediction_digest, outcome_policy_version),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("canonical outcome uniqueness conflict") from None
+                return json.loads(row["payload"])
+            return finalization
+
     def read_prediction(self, digest: str) -> dict[str, object] | None:
         with self._lock:
             row = self._conn.execute("SELECT payload FROM reflex_predictions WHERE digest = ?", (digest,)).fetchone()
@@ -256,6 +376,20 @@ class ReflexExperimentLedger:
                 raise ValueError("outcome digest does not reconstruct")
             result.append(json.loads(row["payload"]))
         return result
+
+    def read_canonical_outcome(
+        self, prediction_digest: str, *, outcome_policy_version: str = OUTCOME_POLICY_VERSION,
+    ) -> dict[str, object] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT digest, payload FROM reflex_canonical_outcomes WHERE prediction_digest = ? AND outcome_policy_version = ?",
+                (prediction_digest, outcome_policy_version),
+            ).fetchone()
+        if row is None:
+            return None
+        if hashlib.sha256(row["payload"].encode("utf-8")).hexdigest() != row["digest"]:
+            raise ValueError("canonical outcome digest does not reconstruct")
+        return json.loads(row["payload"])
 
     def close(self) -> None:
         with self._lock:
