@@ -9,6 +9,7 @@ from .contracts import MarketSession, RwaReflexState
 
 
 FEATURE_SCHEMA_VERSION = "RWA_REFLEX_FEATURES_V2"
+FIRST_SAMPLE_DEPTH_POLICY = "SINGLE_COMPARABLE_ASSET_COHORT_ABSOLUTE_DEPTH_BUCKETS"
 OUTBOUND_FIELD_ALLOWLIST = frozenset({
     "schema_version", "market_session", "deviation_bucket", "depth_bucket",
 })
@@ -43,6 +44,10 @@ def build_parity_feature_state(state: RwaReflexState) -> dict[str, str]:
     RWA_REFLEX_JEV_BASELINE_INFORMATION_PARITY: no identity, ticker, contract,
     wallet, entitlement, workspace, raw prices, private model inputs, warnings or
     provider-specific labels can enter this payload.
+
+    The first calibration sample deliberately keeps absolute depth buckets only
+    for one pre-declared comparable asset cohort. Heterogeneous-asset sampling is
+    blocked by live preflight until an asset-relative depth feature is designed.
     """
     if state.state is not AuthorityState.AVAILABLE:
         raise ValueError("feature state requires AVAILABLE canonical Reflex state")
