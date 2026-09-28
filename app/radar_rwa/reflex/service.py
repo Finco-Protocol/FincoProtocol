@@ -68,6 +68,9 @@ def serialize_reflex_state(state: RwaReflexState) -> dict[str, object]:
             "liquidity_venue_id": provenance.liquidity_venue_id,
             "session_source": provenance.session_source,
             "session_resolver_version": provenance.session_resolver_version,
+            "regular_session_date": provenance.regular_session_date,
+            "regular_session_open_at": _time(provenance.regular_session_open_at),
+            "regular_session_close_at": _time(provenance.regular_session_close_at),
             "context_builder_version": provenance.context_builder_version,
         },
     }
@@ -88,6 +91,7 @@ def serialize_reflex_interpretation(result: ReflexInterpretation) -> dict[str, o
         "attempt_count": result.attempt_count,
         "usage": dict(result.usage),
         "reason": result.reason,
+        "failure_category": result.failure_category,
     }
 
 
@@ -127,6 +131,7 @@ class ReflexExperimentService:
                 provider=self.jev_config.provider,
                 requested_model=self.jev_config.model,
                 reason=("JEV_TRANSPORT_NOT_CONFIGURED" if enabled else "JEV_REFLEX_DISABLED"),
+                failure_category=("NETWORK" if enabled else None),
             )
         else:
             interpretation = interpret_reflex_with_jev(state, self.jev_transport, config=self.jev_config)
