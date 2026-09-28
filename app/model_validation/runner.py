@@ -53,33 +53,12 @@ _REL_POLICIES: frozenset[str] = frozenset({"money_keur_rel", "xlsx_vs_runtime_re
 
 # Known pre-existing product gaps — surfaced in ValidationResult.gaps, not hidden
 VERTICAL_GAPS: dict[str, list[ValidationGap]] = {
-    "ev_charging": [
-        ValidationGap(
-            name="EV Sources=Uses reconciliation FAIL",
-            vertical="ev_charging",
-            category="xlsx_reconciliation",
-            gap_type="FAIL",
-            description=(
-                "EV Charging workbook Sources vs Uses reconciliation check reports FAIL. "
-                "Pre-existing limitation: EV-specific capital structure Sources & Uses "
-                "reconciliation is not yet fully implemented in the workbook builder."
-            ),
-            registry_key="initial_senior_debt",
-            notes="Carry to P1.4 for resolution.",
-        ),
-        ValidationGap(
-            name="EV CAPEX line items sum vs context total FAIL",
-            vertical="ev_charging",
-            category="xlsx_reconciliation",
-            gap_type="FAIL",
-            description=(
-                "EV Charging workbook CAPEX line items sum vs context total reports FAIL. "
-                "Pre-existing limitation: CAPEX detail reconciliation not implemented for EV vertical."
-            ),
-            registry_key="total_capex",
-            notes="Carry to P1.4 for resolution.",
-        ),
-    ],
+    # P1.4: EV Sources=Uses and CAPEX-items-sum FAIL gaps resolved.
+    # Root cause: get_project_context("generic_ev_charging_reference") was falling back to
+    # the Wind reference context (total_capex=43,000 kEUR, shl=10,250 kEUR).
+    # Fix: _build_generic_ev_charging_reference_context() added to _CONTEXTS, giving
+    # total_capex=9,000 kEUR, shl=2,650 kEUR.  Sources (5,850+2,650+500=9,000) == Uses (9,000).
+    "ev_charging": [],
     "data_center": [
         ValidationGap(
             name="DC Equity IRR NOT_AVAILABLE (distressed reference)",

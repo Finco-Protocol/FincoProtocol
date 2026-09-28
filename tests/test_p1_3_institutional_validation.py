@@ -442,23 +442,25 @@ def test_p1_3_ev_charging_xlsx_structure():
 
 
 def test_p1_3_ev_charging_xlsx_reconciliation():
-    """EV workbook Reconciliation sheet: Returns checks all PASS.
+    """EV workbook Reconciliation sheet: all checks PASS after P1.4 closure.
 
-    Note: Sources=Uses and CAPEX-items-sum checks currently FAIL for the EV
-    vertical (pre-existing limitation: EV S&U reconciliation not yet implemented
-    in the workbook for the EV-specific capital structure).  Returns reconciliation
-    (Project IRR, Equity IRR, Sponsor XIRR) all PASS.
+    P1.4 fixed: get_project_context('generic_ev_charging_reference') was falling back
+    to the Wind reference (total_capex=43,000 kEUR).  The EV context now gives
+    total_capex=9,000 kEUR, matching the CAPEX items sum and the financing structure.
+    All reconciliation checks — including Sources=Uses and CAPEX-items-sum — PASS.
     """
     wb = _wb("generic_ev_charging_reference")
     checks = _recon_checks(wb)
-    for returns_label in (
+    for label in (
+        "Total Sources vs Total Uses (kEUR)",
+        "CAPEX line items sum vs context total (kEUR)",
         "Returns sheet Project IRR vs runtime",
         "Returns sheet Equity IRR vs runtime",
         "Returns sheet Total Sponsor XIRR vs runtime",
     ):
-        assert checks.get(returns_label) == "PASS", (
-            f"EV Reconciliation: {returns_label!r} expected PASS, got "
-            f"{checks.get(returns_label)!r}"
+        assert checks.get(label) == "PASS", (
+            f"EV Reconciliation: {label!r} expected PASS, got "
+            f"{checks.get(label)!r}. All checks: {checks}"
         )
 
 
@@ -1654,15 +1656,21 @@ def test_p1_3_runner_four_vertical_coverage():
         f"got {len(dc_na_gaps)}: {[g.name for g in dc_na_gaps]}"
     )
 
-    # EV Charging must pass all KPI checks AND have FAIL gaps (pre-existing product limitations)
+    # EV Charging: P1.4 closed both FAIL gaps — EV is now fully reconciled.
     assert results["ev_charging"].passed, (
         f"EV: {results['ev_charging'].fail_count} KPI failures: "
         f"{[str(c) for c in results['ev_charging'].failed_checks()]}"
     )
     ev_fail_gaps = results["ev_charging"].gaps_by_type("FAIL")
-    assert len(ev_fail_gaps) >= 2, (
-        f"EV must report ≥2 FAIL gaps (Sources=Uses, CAPEX-items-sum); "
+    assert len(ev_fail_gaps) == 0, (
+        f"P1.4: EV must have 0 FAIL gaps after reconciliation closure; "
         f"got {len(ev_fail_gaps)}: {[g.name for g in ev_fail_gaps]}"
+    )
+    assert results["ev_charging"].product_reconciled, (
+        "P1.4: EV product_reconciled must be True after gap closure"
+    )
+    assert results["ev_charging"].validation_state == "PASS", (
+        f"P1.4: EV validation_state must be 'PASS'; got {results['ev_charging'].validation_state!r}"
     )
 
     # Summary must be machine-readable for all verticals
@@ -1744,16 +1752,18 @@ def test_p1_3_financial_statements_gap_documented():
 def test_p1_3_validation_status_distinguishes_framework_from_product_gaps():
     """P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS
 
-    A machine consumer must NOT interpret EV Charging as "fully reconciled" while
-    material FAIL gaps exist. The validation contract exposes:
+    P1.3 established the typed validation contract (framework_passed / product_reconciled /
+    validation_state).  P1.4 resolved both EV FAIL gaps, so the expected EV state is now:
       framework_passed=True  — all KPI checks pass
-      product_reconciled=False — one or more FAIL gaps remain
-      validation_state="PASS_WITH_KNOWN_GAPS"
+      product_reconciled=True — 0 FAIL gaps remain after closure
+      validation_state="PASS"
+
+    The test preserves the contract semantics by verifying Solar and DC also hold, and that
+    the summary dict correctly carries the typed fields.
 
     Required marker: P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS
     """
     from app.model_validation.runner import run_vertical_validation
-    from app.model_validation import ValidationGap
 
     ev_result = run_vertical_validation("ev_charging")
 
@@ -1769,27 +1779,26 @@ def test_p1_3_validation_status_distinguishes_framework_from_product_gaps():
         "passed and framework_passed must agree for EV (both use KPI checks only)"
     )
 
-    # EV has FAIL gaps — product is NOT fully reconciled
+    # P1.4: EV is fully reconciled — 0 FAIL gaps, product_reconciled=True, validation_state="PASS"
     ev_fail_gaps = ev_result.gaps_by_type("FAIL")
-    assert len(ev_fail_gaps) >= 2, (
-        f"EV must have ≥2 FAIL gaps for this test to be meaningful; "
+    assert len(ev_fail_gaps) == 0, (
+        f"P1.4: EV must have 0 FAIL gaps after reconciliation closure; "
         f"got {len(ev_fail_gaps)}: {[g.name for g in ev_fail_gaps]}"
     )
-    assert not ev_result.product_reconciled, (
-        "product_reconciled must be False when FAIL gaps exist — "
-        "a machine consumer must not treat EV as fully reconciled"
+    assert ev_result.product_reconciled, (
+        "P1.4: product_reconciled must be True after EV FAIL gap closure"
     )
-    assert ev_result.validation_state == "PASS_WITH_KNOWN_GAPS", (
-        f"validation_state must be 'PASS_WITH_KNOWN_GAPS' for EV; "
+    assert ev_result.validation_state == "PASS", (
+        f"P1.4: validation_state must be 'PASS' for EV after closure; "
         f"got {ev_result.validation_state!r}"
     )
 
     # Summary must expose the typed contract
     s = ev_result.summary()
     assert s["framework_passed"] is True, "summary['framework_passed'] must be True for EV"
-    assert s["product_reconciled"] is False, "summary['product_reconciled'] must be False for EV"
-    assert s["validation_state"] == "PASS_WITH_KNOWN_GAPS", (
-        f"summary['validation_state'] must be 'PASS_WITH_KNOWN_GAPS'; got {s['validation_state']!r}"
+    assert s["product_reconciled"] is True, "P1.4: summary['product_reconciled'] must be True for EV"
+    assert s["validation_state"] == "PASS", (
+        f"P1.4: summary['validation_state'] must be 'PASS'; got {s['validation_state']!r}"
     )
     assert isinstance(s["framework_passed"], bool), "framework_passed must be bool"
     assert isinstance(s["product_reconciled"], bool), "product_reconciled must be bool"
@@ -1847,8 +1856,13 @@ def test_finco_p1_3_institutional_validation_pack_complete():
 
     ev_vr = run_vertical_validation("ev_charging")
     assert ev_vr.passed, f"EV KPI validation fails: {ev_vr.failed_checks()}"
-    assert len(ev_vr.gaps_by_type("FAIL")) >= 2, (
-        f"EV must report FAIL gaps; got {ev_vr.gaps}"
+    # P1.4: EV FAIL gaps resolved — EV is now fully reconciled.
+    assert len(ev_vr.gaps_by_type("FAIL")) == 0, (
+        f"P1.4: EV must have 0 FAIL gaps after reconciliation closure; got {ev_vr.gaps}"
+    )
+    assert ev_vr.product_reconciled, "P1.4: EV product_reconciled must be True"
+    assert ev_vr.validation_state == "PASS", (
+        f"P1.4: EV validation_state must be 'PASS'; got {ev_vr.validation_state!r}"
     )
 
     # 4. Wind runner passes (already checked above — kept for marker compatibility)
