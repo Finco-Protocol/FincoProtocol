@@ -51,10 +51,24 @@ class SQLiteUsageLedgerStore:
     collisions are independent and safe.
     BEGIN IMMEDIATE + explicit IntegrityError handling serialises concurrent
     duplicates without broad INSERT OR IGNORE suppression.
+    Schema initialisation is serialised per-instance so concurrent calls to
+    record() do not race on DDL (which cannot be retried by busy_timeout).
     """
 
     def __init__(self, db_path: str | None = None) -> None:
+        import threading
         self._db_path = db_path  # None → use default from app.persistence.db
+        self._schema_lock = threading.Lock()
+        self._schema_ready = False
+
+    def _ensure_schema(self, conn) -> None:
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if not self._schema_ready:
+                _maybe_migrate_usage_v0(conn)
+                _ensure_usage_schema(conn)
+                self._schema_ready = True
 
     def _get_conn(self):
         if self._db_path is not None:
@@ -63,13 +77,11 @@ class SQLiteUsageLedgerStore:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
-            _maybe_migrate_usage_v0(conn)
-            _ensure_usage_schema(conn)
+            self._ensure_schema(conn)
             return conn
         from app.persistence.db import get_connection
         conn = get_connection()
-        _maybe_migrate_usage_v0(conn)
-        _ensure_usage_schema(conn)
+        self._ensure_schema(conn)
         return conn
 
     def record(self, event: UsageEvent) -> UsageEvent:
