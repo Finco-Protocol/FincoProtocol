@@ -1,6 +1,6 @@
 """Typed contracts for the experimental FINCO RWA Reflex state.
 
-Reflex is strictly downstream of FINCO's canonical authority layer.  Context may
+Reflex is strictly downstream of FINCO's canonical authority layer. Context may
 add versioned statistics for an experiment, but never establishes identity,
 reference prices, premium, execution truth, or canonical evidence.
 """
@@ -45,7 +45,7 @@ def _finite(value: Decimal | None, name: str, *, nonnegative: bool = False) -> N
 
 @dataclass(frozen=True)
 class BasisHistoryStats:
-    """Pre-t0 canonical premium history; no future observations are permitted."""
+    """Pre-t0 canonical premium history; event policy proves the cutoff is truly pre-t0."""
 
     mean_bps: Decimal
     std_bps: Decimal
@@ -97,10 +97,22 @@ class RwaReflexContext:
     liquidity: LiquidityContext | None = None
     session_source: str = "UNSPECIFIED"
     session_resolver_version: str = SESSION_RESOLVER_VERSION
+    regular_session_date: str | None = None
+    regular_session_open_at: datetime | None = None
+    regular_session_close_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.session_source.strip() or not self.session_resolver_version.strip():
             raise ValueError("session source and resolver version are required")
+        if self.regular_session_date is not None and not self.regular_session_date.strip():
+            raise ValueError("regular_session_date must be named when present")
+        for name in ("regular_session_open_at", "regular_session_close_at"):
+            value = getattr(self, name)
+            if value is not None:
+                _aware(value, name)
+        if self.regular_session_open_at is not None and self.regular_session_close_at is not None:
+            if self.regular_session_open_at >= self.regular_session_close_at:
+                raise ValueError("regular session open must precede close")
 
 
 @dataclass(frozen=True)
@@ -123,10 +135,16 @@ class ReflexProvenance:
     liquidity_venue_id: str | None = None
     session_source: str = "UNSPECIFIED"
     session_resolver_version: str = SESSION_RESOLVER_VERSION
+    regular_session_date: str | None = None
+    regular_session_open_at: datetime | None = None
+    regular_session_close_at: datetime | None = None
     context_builder_version: str = CONTEXT_BUILDER_VERSION
 
     def __post_init__(self) -> None:
-        for name in ("registry_observed_at", "history_observed_at", "liquidity_observed_at"):
+        for name in (
+            "registry_observed_at", "history_observed_at", "liquidity_observed_at",
+            "regular_session_open_at", "regular_session_close_at",
+        ):
             value = getattr(self, name)
             if value is not None:
                 _aware(value, name)
@@ -134,6 +152,11 @@ class ReflexProvenance:
             _finite(getattr(self, name), name, nonnegative=name == "history_std_bps")
         if self.history_sample_count is not None and self.history_sample_count < 2:
             raise ValueError("history_sample_count must be >= 2")
+        if self.regular_session_date is not None and not self.regular_session_date.strip():
+            raise ValueError("regular_session_date must be named when present")
+        if self.regular_session_open_at is not None and self.regular_session_close_at is not None:
+            if self.regular_session_open_at >= self.regular_session_close_at:
+                raise ValueError("regular session open must precede close")
         if not self.session_source.strip() or not self.session_resolver_version.strip() or not self.context_builder_version.strip():
             raise ValueError("provenance versions/sources must be named")
 
