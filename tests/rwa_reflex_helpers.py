@@ -33,15 +33,23 @@ def authority(*, uid=UID, key=KEY, premium_bps=Decimal("142"), observed_at=NOW,
     return AuthoritySnapshot(uid, key, registry_source, observed_at, underlying, token, premium, execution, gap)
 
 
-def context(*, observed_at=NOW, median=Decimal("20"), session=MarketSession.OPEN,
-            history_source="FINCO_CANONICAL_PREMIUM_HISTORY", depth=Decimal("84200")):
+def context(*, observed_at=NOW, history_observed_at=None, median=Decimal("20"), session=MarketSession.OPEN,
+            history_source="FINCO_CANONICAL_PREMIUM_HISTORY", history_window="trailing_5_regular_sessions",
+            history_methodology="RWA_REFLEX_PREMIUM_HISTORY_V2", history_sample_count=50,
+            depth=Decimal("84200"), session_open_at=None, session_close_at=None):
+    history_observed_at = history_observed_at or (observed_at - timedelta(seconds=1))
+    session_open_at = session_open_at or (observed_at - timedelta(hours=4))
+    session_close_at = session_close_at or (observed_at + timedelta(hours=2))
     return RwaReflexContext(
         market_session=session,
         session_source="NYSE_CALENDAR",
+        regular_session_date=observed_at.date().isoformat(),
+        regular_session_open_at=session_open_at,
+        regular_session_close_at=session_close_at,
         basis_history=BasisHistoryStats(
-            mean_bps=Decimal("12"), std_bps=Decimal("46"), sample_count=50,
-            observed_at=observed_at, source=history_source, window="trailing_5_regular_sessions",
-            median_bps=median,
+            mean_bps=Decimal("12"), std_bps=Decimal("46"), sample_count=history_sample_count,
+            observed_at=history_observed_at, source=history_source, window=history_window,
+            median_bps=median, methodology_version=history_methodology,
         ),
         liquidity=LiquidityContext(
             observed_at=observed_at, source="ROBINHOOD_CHAIN_DEX", liquidity_usd=Decimal("250000"),
@@ -51,9 +59,16 @@ def context(*, observed_at=NOW, median=Decimal("20"), session=MarketSession.OPEN
 
 
 def state(*, premium_bps=Decimal("142"), observed_at=NOW, median=Decimal("20"), session=MarketSession.OPEN,
-          history_source="FINCO_CANONICAL_PREMIUM_HISTORY", depth=Decimal("84200"), uid=UID, key=KEY):
+          history_source="FINCO_CANONICAL_PREMIUM_HISTORY", history_observed_at=None,
+          history_window="trailing_5_regular_sessions", history_methodology="RWA_REFLEX_PREMIUM_HISTORY_V2",
+          history_sample_count=50, depth=Decimal("84200"), uid=UID, key=KEY, session_close_at=None):
     return build_reflex_state(
         authority(uid=uid, key=key, premium_bps=premium_bps, observed_at=observed_at),
         as_of=observed_at + timedelta(seconds=10),
-        context=context(observed_at=observed_at, median=median, session=session, history_source=history_source, depth=depth),
+        context=context(
+            observed_at=observed_at, history_observed_at=history_observed_at, median=median,
+            session=session, history_source=history_source, history_window=history_window,
+            history_methodology=history_methodology, history_sample_count=history_sample_count,
+            depth=depth, session_close_at=session_close_at,
+        ),
     )
