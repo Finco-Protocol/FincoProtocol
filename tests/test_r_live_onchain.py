@@ -16,6 +16,7 @@ from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.tokenization_premium.engine import premium_bps
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
 from app.radar_rwa.r_live_service import compose_r_live
+from app.radar_rwa.r_live_collect import collect_once
 
 
 UID = "0x" + "ab" * 32
@@ -309,3 +310,177 @@ def test_api_exposes_only_canonical_reference_and_premium(monkeypatch):
     assert payload["reference"]["evidence"]["pool"] == AAPL_POOL.pool_address
     assert payload["reference_premium"]["state"] == "AVAILABLE"
     assert "FAKE_SECRET" not in str(payload)
+
+
+def _basis():
+    return BoundReferencePrice(
+        asset_uid=UID, asset_key=AAPL_KEY, symbol="AAPL",
+        raw_bid_usd_per_share=Decimal("100"), raw_ask_usd_per_share=Decimal("100"),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME - 10, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+
+
+def test_operational_collector_repeat_is_idempotent_across_retrieval_times():
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    def acquire(*, rpc_url, as_of, history):
+        assert rpc_url == "https://example.invalid/FAKE_SECRET"
+        return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
+                              as_of=as_of, history=history)
+    try:
+        first = collect_once(rpc_url="https://example.invalid/FAKE_SECRET",
+                             as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                             history=store, acquire=acquire)
+        second = collect_once(rpc_url="https://example.invalid/FAKE_SECRET",
+                              as_of=datetime.fromtimestamp(BLOCK_TIME + 2, timezone.utc),
+                              history=store, acquire=acquire)
+        assert first["state"] == second["state"] == "AVAILABLE"
+        assert first["history_digest"] == second["history_digest"]
+        points = store.read(UID, AAPL_KEY)
+        assert len(points) == 1
+        point = points[0]
+        assert point["economic_asset_uid"] == UID
+        assert point["asset_key"] == AAPL_KEY.canonical_id
+        assert point["independent_token_reference"]["evidence"]["blockHash"] == BLOCK_HASH
+        assert point["independent_token_reference"]["evidence"]["quoteRoundId"] == "7"
+        assert point["independent_token_reference"]["evidence"]["twapWindowSeconds"] == 300
+        assert point["independent_token_reference"]["evidence"]["retrievedAt"]
+        assert point["independent_token_reference"]["evidence"]["policyVersion"]
+        assert point["independent_token_reference"]["evidence"]["poolAuthorityVersion"]
+        assert point["independent_token_reference"]["evidence"]["quoteAuthorityVersion"]
+        assert Decimal(point["reference_premium_bps"]) == premium_bps(
+            Decimal("999940000000"), Decimal("100"))
+        assert "FAKE_SECRET" not in str(first) + str(point)
+    finally:
+        store.close()
+
+
+def test_operational_idempotency_across_ledger_connections(tmp_path):
+    path = str(tmp_path / "existing_b13_history.db")
+    def acquire(*, rpc_url, as_of, history):
+        return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
+                              as_of=as_of, history=history)
+    first_store = BnbIntelligenceHistoryStore(path, allowed_chain_id=4663)
+    second_store = BnbIntelligenceHistoryStore(path, allowed_chain_id=4663)
+    try:
+        first = collect_once(rpc_url="https://example.invalid",
+                             as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                             history=first_store, acquire=acquire)
+        second = collect_once(rpc_url="https://example.invalid",
+                              as_of=datetime.fromtimestamp(BLOCK_TIME + 2, timezone.utc),
+                              history=second_store, acquire=acquire)
+        assert first["history_digest"] == second["history_digest"]
+        assert len(second_store.read(UID, AAPL_KEY)) == 1
+    finally:
+        first_store.close()
+        second_store.close()
+
+
+@pytest.mark.parametrize("rpc,expected", [
+    (FakeRpc(feed_updated=BLOCK_TIME - 86401), "STALE"),
+    (FakeRpc(feed_answer=0), "UNAVAILABLE"),
+])
+def test_operational_collector_never_persists_non_available(rpc, expected):
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    def acquire(*, rpc_url, as_of, history):
+        return compose_r_live(registry=registry(), underlying=_basis(), rpc=rpc,
+                              as_of=as_of, history=history)
+    try:
+        status = collect_once(rpc_url="https://example.invalid",
+                              as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                              history=store, acquire=acquire)
+        assert status["state"] == expected
+        assert status["history_digest"] is None
+        assert store.read(UID, AAPL_KEY) == []
+    finally:
+        store.close()
+
+
+def test_operational_collector_rpc_failure_and_missing_config_are_redacted(monkeypatch):
+    def failing(**_):
+        raise RuntimeError("https://rpc.example/FAKE_SECRET")
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    try:
+        status = collect_once(rpc_url="https://rpc.example/FAKE_SECRET",
+                              history=store, acquire=failing)
+        assert status == {"state": "UNAVAILABLE", "reason": "R_LIVE_COLLECTION_UNAVAILABLE",
+                          "history_digest": None}
+        assert "FAKE_SECRET" not in str(status)
+        assert store.read(UID, AAPL_KEY) == []
+    finally:
+        store.close()
+    monkeypatch.delenv("ROBINHOOD_RPC_URL", raising=False)
+    assert collect_once()["reason"] == "RPC_NOT_CONFIGURED"
+
+
+def test_operational_collector_rejects_wrong_exact_identity():
+    wrong = RobinhoodAssetRegistryAdapter.parse_snapshot({"assets": [{
+        "id": UID, "tokenSymbol": "AAPL", "tokenName": "Apple Robinhood Token",
+        "deployments": [{"chainId": 4663, "contractAddress": "0x" + "11" * 20}],
+        "currentMultiplier": "1", "status": "ASSET_STATUS_ACTIVE",
+    }]}, observed_at=datetime.fromtimestamp(BLOCK_TIME, timezone.utc))
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    def acquire(*, rpc_url, as_of, history):
+        return compose_r_live(registry=wrong, underlying=_basis(), rpc=FakeRpc(),
+                              as_of=as_of, history=history)
+    try:
+        status = collect_once(rpc_url="https://example.invalid",
+                              as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                              history=store, acquire=acquire)
+        assert status["state"] == "UNAVAILABLE"
+        assert status["history_digest"] is None
+        assert store.read(UID, AAPL_KEY) == []
+    finally:
+        store.close()
+
+
+def test_operational_collector_reports_history_failure_not_success():
+    def acquire(*, rpc_url, as_of, history):
+        return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
+                              as_of=as_of, history=history)
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    try:
+        store.close()
+        status = collect_once(rpc_url="https://example.invalid",
+                              as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                              history=store, acquire=acquire)
+        assert status["state"] == "UNAVAILABLE"
+        assert status["history_digest"] is None
+    finally:
+        pass
+
+
+def test_radar_live_surface_age_history_and_fail_closed(monkeypatch):
+    import asyncio
+    from pathlib import Path
+    from app.radar_ui import rwa_router
+    result = compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
+                            as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example/FAKE_SECRET")
+    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: result)
+    payload = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
+    assert payload["state"] == "AVAILABLE"
+    assert payload["source_label"] == "Direct On-Chain"
+    assert payload["observation_age_seconds"] >= 0
+    assert payload["observed_at"] == result.onchain.observed_at.isoformat()
+    assert payload["reference_premium"]["value_bps"] == str(result.authority.premium.value_bps)
+    assert "FAKE_SECRET" not in str(payload)
+
+    stale = compose_r_live(registry=registry(), underlying=_basis(),
+                           rpc=FakeRpc(feed_updated=BLOCK_TIME - 86401),
+                           as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
+    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: stale)
+    hidden = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
+    assert hidden["state"] == "STALE"
+    assert hidden["reference"] is None
+    assert hidden["reference_premium"]["value_bps"] is None
+    assert hidden["robinhood_basis"]["price_usd_per_token"] is None
+
+    template = Path("app/templates/radar/rwa.html").read_text(encoding="utf-8")
+    script = Path("static/radar/r_live.js").read_text(encoding="utf-8")
+    assert "Direct On-Chain" in template and "not VERIFIED" in template
+    assert "Historical observations only" in template
+    assert "field(\"values\").hidden = true" in script
+    assert "textContent" in script and "innerHTML" not in script
+    assert "BUY" not in template + script and "SELL" not in template + script

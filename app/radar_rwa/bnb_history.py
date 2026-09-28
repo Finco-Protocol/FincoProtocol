@@ -88,6 +88,13 @@ def _canonical(point: dict) -> str:
     return json.dumps(point, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def _r_live_source_identity(point: dict) -> str:
+    """Retrieval time is not a new source observation of the same evidence."""
+    stable = json.loads(_canonical(point))
+    stable["independent_token_reference"]["evidence"].pop("retrievedAt", None)
+    return _canonical(stable)
+
+
 class BnbIntelligenceHistoryStore:
     """Dedicated durable, append-only ledger; no update/delete operations."""
 
@@ -139,6 +146,37 @@ class BnbIntelligenceHistoryStore:
                 if existing is None or existing["payload"] != payload:
                     raise ValueError("history digest conflicts with existing evidence") from None
         return digest
+
+    def put_r_live(self, point: dict) -> str:
+        """Append once per exact source/basis evidence, even after a later retrieval."""
+        if self.allowed_chain_id != 4663:
+            raise ValueError("R_LIVE_REQUIRES_ROBINHOOD_HISTORY")
+        identity = _r_live_source_identity(point)
+        uid = normalize_asset_uid(point["economic_asset_uid"])
+        key = point["asset_key"]
+        with self._lock:
+            # Serialize the read/append across independent collector processes.
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                rows = self._conn.execute(
+                    "SELECT digest, payload FROM bnb_intelligence_history "
+                    "WHERE economic_asset_uid = ? AND asset_key = ? AND observed_at = ?",
+                    (uid, key, point["observed_at"]),
+                ).fetchall()
+                for row in rows:
+                    if hashlib.sha256(row["payload"].encode("utf-8")).hexdigest() != row["digest"]:
+                        raise ValueError("history digest does not reconstruct")
+                    existing = json.loads(row["payload"])
+                    if ("independent_token_reference" in existing
+                            and _r_live_source_identity(existing) == identity):
+                        self._conn.execute("COMMIT")
+                        return row["digest"]
+                digest = self.put(point)
+                self._conn.execute("COMMIT")
+                return digest
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
 
     def read(self, uid: str, key: AssetKey, *, limit: int = 30) -> list[dict]:
         if key.chain_id != self.allowed_chain_id or not 1 <= limit <= 100:

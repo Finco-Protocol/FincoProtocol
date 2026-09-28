@@ -56,7 +56,7 @@ def compose_r_live(
     digest = None
     if history is not None and point is not None:
         try:
-            digest = history.put(point)
+            digest = history.put_r_live(point)
         except Exception:
             pass  # storage failure cannot erase a source-proven live reference
     return RLiveResult(observation, snapshot, digest)
