@@ -11,7 +11,7 @@ Contract guarantees (mirrors Correction A + Correction B):
   - /validation != /verify (separate authorities, separate tools).
   - Verify fails closed when no source-proven binding exists.
   - R-LIVE GET performs zero history writes.
-  - No raw exception text in tool responses.
+  - No raw exception text, stack traces, secrets, or env values in responses.
   - financial_engine/**, finco_core/**, app/radar_rwa/**, finco_radar/authority/** = ZERO DIFF.
   - PRODUCTION_VERIFIED_ASSET_COUNT must not increase.
   - No XLSX binary exposed via MCP V1.
@@ -19,11 +19,29 @@ Contract guarantees (mirrors Correction A + Correction B):
 Auth: FINCO_SESSION_TOKEN env var → signed session → user_id.
       Tools that require auth return AUTHENTICATION_REQUIRED state when absent.
 
-SDK: mcp>=2.0.0 (MCPServer, formerly FastMCP).
+Versioning: every response carries api_version + schema_version from API v1.1.
+Exception boundary: unexpected service exceptions → UNAVAILABLE/SERVICE_UNAVAILABLE.
+
+SDK: mcp==2.2.0 (MCPServer).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+
+from importlib.metadata import version as _pkg_version
+
+# ── SDK version gate ───────────────────────────────────────────────────────────
+# Fail fast if a version that lacks MCPServer is loaded at import time.
+_MCP_VERSION: str = _pkg_version("mcp")
+_mcp_version_parts = _MCP_VERSION.split(".")
+_mcp_major = int(_mcp_version_parts[0])
+_mcp_minor = int(_mcp_version_parts[1]) if len(_mcp_version_parts) > 1 else 0
+if (_mcp_major, _mcp_minor) < (2, 2):
+    raise RuntimeError(
+        f"FINCO MCP V1 requires mcp>=2.2.0; "
+        f"running mcp=={_MCP_VERSION}. "
+        "Update the mcp package: pip install 'mcp>=2.2.0,<3.0.0'"
+    )
 
 from mcp.server.mcpserver import MCPServer
 
@@ -40,16 +58,75 @@ mcp = MCPServer(
     version="1.0.0",
 )
 
-# ── Auth response helper ────────────────────────────────────────────────────
+# ── Sentinel for service-layer errors ────────────────────────────────────────
+_SERVICE_ERROR = object()
+
+
+# ── Response helpers ──────────────────────────────────────────────────────────
+
+def _build_response(
+    state: str,
+    *,
+    project_id: Optional[str] = None,
+    data: Optional[Any] = None,
+    evidence: Optional[Any] = None,
+    reason: Optional[str] = None,
+) -> dict[str, Any]:
+    """Build a versioned MCP tool response.
+
+    Every response carries api_version and schema_version from API v1.1.
+    These are the same constants used by the HTTP router — MCP is NOT
+    a second schema authority.
+    """
+    from app.api.v1_1.schemas import API_VERSION, SCHEMA_VERSION
+    r: dict[str, Any] = {
+        "api_version": API_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "state": state,
+    }
+    if project_id is not None:
+        r["project_id"] = project_id
+    if reason is not None:
+        r["reason"] = reason
+    if data is not None:
+        r["data"] = data
+    if evidence is not None:
+        r["evidence"] = evidence
+    return r
+
 
 def _auth_required_response() -> dict[str, Any]:
-    return {
-        "state": "AUTHENTICATION_REQUIRED",
-        "reason": (
+    """Typed AUTHENTICATION_REQUIRED response — versioned, no session details."""
+    return _build_response(
+        "AUTHENTICATION_REQUIRED",
+        reason=(
             "A valid FINCO_SESSION_TOKEN environment variable is required. "
             "Set a signed session token before starting the MCP server."
         ),
-    }
+    )
+
+
+def _service_unavailable_response(project_id: Optional[str] = None) -> dict[str, Any]:
+    """Closed-boundary SERVICE_UNAVAILABLE — no exception text, no secrets."""
+    return _build_response(
+        "UNAVAILABLE",
+        project_id=project_id,
+        reason="SERVICE_UNAVAILABLE",
+    )
+
+
+def _safe_call(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Call fn(*args, **kwargs), returning _SERVICE_ERROR on any exception.
+
+    Never exposes exception text, repr, stack traces, session tokens,
+    RPC URLs, database paths, or any environment value.
+    AuthenticationRequired is NOT caught here — it is handled before
+    service calls and has its own typed state.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        return _SERVICE_ERROR
 
 
 # ── Tool 1: finco_supported_today ──────────────────────────────────────────
@@ -63,10 +140,10 @@ def _auth_required_response() -> dict[str, Any]:
 def finco_supported_today() -> dict[str, Any]:
     """Return the full set of capabilities FINCO supports today."""
     from app.api.v1_1.institutional import get_supported_today
-    return {
-        "state": "AVAILABLE",
-        "data": get_supported_today(),
-    }
+    result = _safe_call(get_supported_today)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response()
+    return _build_response("AVAILABLE", data=result)
 
 
 # ── Tool 2: finco_projects ─────────────────────────────────────────────────
@@ -85,10 +162,10 @@ def finco_projects() -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_projects_for_user
-    return {
-        "state": "AVAILABLE",
-        "data": get_projects_for_user(user_id),
-    }
+    result = _safe_call(get_projects_for_user, user_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response()
+    return _build_response("AVAILABLE", data=result)
 
 
 # ── Tool 3: finco_last_run ─────────────────────────────────────────────────
@@ -109,8 +186,11 @@ def finco_last_run(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_last_run_summary
-    state, data = get_last_run_summary(user_id, project_id)
-    return {"state": state, "project_id": project_id, "data": data}
+    result = _safe_call(get_last_run_summary, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, data = result
+    return _build_response(state, project_id=project_id, data=data)
 
 
 # ── Tool 4: finco_run_identity ─────────────────────────────────────────────
@@ -130,8 +210,11 @@ def finco_run_identity(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_run_identity
-    state, data = get_run_identity(user_id, project_id)
-    return {"state": state, "project_id": project_id, "data": data}
+    result = _safe_call(get_run_identity, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, data = result
+    return _build_response(state, project_id=project_id, data=data)
 
 
 # ── Tool 5: finco_kpis ─────────────────────────────────────────────────────
@@ -152,8 +235,11 @@ def finco_kpis(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_kpis
-    state, data = get_kpis(user_id, project_id)
-    return {"state": state, "project_id": project_id, "data": data}
+    result = _safe_call(get_kpis, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, data = result
+    return _build_response(state, project_id=project_id, data=data)
 
 
 # ── Tool 6: finco_validation ───────────────────────────────────────────────
@@ -174,8 +260,11 @@ def finco_validation(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_institutional_validation
-    state, evidence = get_institutional_validation(user_id, project_id)
-    return {"state": state, "project_id": project_id, "evidence": evidence}
+    result = _safe_call(get_institutional_validation, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, evidence = result
+    return _build_response(state, project_id=project_id, evidence=evidence)
 
 
 # ── Tool 7: finco_verify ───────────────────────────────────────────────────
@@ -197,8 +286,11 @@ def finco_verify(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_verify_state
-    state, evidence = get_verify_state(user_id, project_id)
-    return {"state": state, "project_id": project_id, "evidence": evidence}
+    result = _safe_call(get_verify_state, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, evidence = result
+    return _build_response(state, project_id=project_id, evidence=evidence)
 
 
 # ── Tool 8: finco_r_live ───────────────────────────────────────────────────
@@ -218,8 +310,11 @@ def finco_verify(project_id: str) -> dict[str, Any]:
 def finco_r_live(uid: str) -> dict[str, Any]:
     """Return R-LIVE reference data for the exact AssetKey uid."""
     from app.api.v1_1.institutional import get_r_live
-    state, data = get_r_live(uid)
-    return {"state": state, "data": data}
+    result = _safe_call(get_r_live, uid)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response()
+    state, data = result
+    return _build_response(state, data=data)
 
 
 # ── Tool 9: finco_export_metadata ──────────────────────────────────────────
@@ -240,5 +335,8 @@ def finco_export_metadata(project_id: str) -> dict[str, Any]:
         return _auth_required_response()
 
     from app.api.v1_1.institutional import get_export_metadata
-    state, data = get_export_metadata(user_id, project_id)
-    return {"state": state, "project_id": project_id, "data": data}
+    result = _safe_call(get_export_metadata, user_id, project_id)
+    if result is _SERVICE_ERROR:
+        return _service_unavailable_response(project_id)
+    state, data = result
+    return _build_response(state, project_id=project_id, data=data)

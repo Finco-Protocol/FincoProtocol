@@ -543,3 +543,223 @@ def test_finco_mcp_v1_readonly_complete(monkeypatch):
     assert r["state"] == "AUTHENTICATION_REQUIRED"
 
     assert True, "FINCO_MCP_V1_READONLY_COMPLETE"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction A markers (PR #129)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── MCP_V1_DEPENDENCY_PINNED_2_2_0 ────────────────────────────────────────────
+
+def test_mcp_v1_dependency_pinned_2_2_0():
+    """mcp package is 2.x (>=2.2.0) as tested; MCPServer API is available.
+
+    Marker: MCP_V1_DEPENDENCY_PINNED_2_2_0 = PASS
+    """
+    from importlib.metadata import version as pkg_version
+    mcp_ver = pkg_version("mcp")
+    parts = mcp_ver.split(".")
+    major = int(parts[0])
+    minor = int(parts[1]) if len(parts) > 1 else 0
+    assert major == 2, f"mcp major must be 2, got {mcp_ver}"
+    assert minor >= 2, f"mcp minor must be >= 2, got {mcp_ver}"
+    # Confirm constraints.txt records the pinned version
+    constraints = open("constraints.txt").read()
+    assert "mcp==2.2.0" in constraints, (
+        "constraints.txt must pin mcp==2.2.0 per repository constraints policy"
+    )
+    # Confirm requirements.txt uses a 2.x-compatible range
+    requirements = open("requirements.txt").read()
+    assert "mcp>=2.2.0,<3.0.0" in requirements, (
+        "requirements.txt must declare mcp>=2.2.0,<3.0.0"
+    )
+    # Confirm MCPServer is importable (the tested API surface)
+    from mcp.server.mcpserver import MCPServer  # noqa: F401
+    # Confirm server.py exposes the pinned version constant
+    from app.mcp.v1.server import _MCP_VERSION
+    assert _MCP_VERSION == mcp_ver
+
+
+# ── MCP_V1_SCHEMA_VERSION_ON_SUCCESS ──────────────────────────────────────────
+
+def test_mcp_v1_schema_version_on_success(monkeypatch):
+    """Every AVAILABLE tool response carries api_version and schema_version from API v1.1.
+
+    Marker: MCP_V1_SCHEMA_VERSION_ON_SUCCESS = PASS
+    """
+    from app.api.v1_1.schemas import API_VERSION, SCHEMA_VERSION
+
+    _env_with_token(monkeypatch, user_id="schema_success_user")
+
+    cases = [
+        # (patch_target, tool_fn_name, tool_kwargs, mock_return)
+        ("app.api.v1_1.institutional.get_supported_today",
+         "finco_supported_today", {},
+         {"capabilities": [], "count": 0}),
+        ("app.api.v1_1.institutional.get_last_run_summary",
+         "finco_last_run", {"project_id": "p1"},
+         ("AVAILABLE", {"project_id": "p1", "any_run_committed": True})),
+        ("app.api.v1_1.institutional.get_kpis",
+         "finco_kpis", {"project_id": "p2"},
+         ("AVAILABLE", {"project_irr": {"value": 0.08, "state": "AVAILABLE", "unit": "pct"}})),
+    ]
+
+    for target, fn_name, kwargs, mock_ret in cases:
+        with patch(target, return_value=mock_ret):
+            import importlib
+            mod = importlib.import_module("app.mcp.v1.server")
+            fn = getattr(mod, fn_name)
+            result = fn(**kwargs)
+        assert result["api_version"] == API_VERSION, (
+            f"{fn_name}: api_version must be {API_VERSION!r}, got {result.get('api_version')!r}"
+        )
+        assert result["schema_version"] == SCHEMA_VERSION, (
+            f"{fn_name}: schema_version must be {SCHEMA_VERSION!r}"
+        )
+        assert result["state"] == "AVAILABLE"
+
+
+# ── MCP_V1_SCHEMA_VERSION_ON_UNAVAILABLE ──────────────────────────────────────
+
+def test_mcp_v1_schema_version_on_unavailable(monkeypatch):
+    """Every UNAVAILABLE tool response carries api_version and schema_version.
+
+    Marker: MCP_V1_SCHEMA_VERSION_ON_UNAVAILABLE = PASS
+    """
+    from app.api.v1_1.schemas import API_VERSION, SCHEMA_VERSION
+
+    _env_with_token(monkeypatch, user_id="schema_unavail_user")
+
+    with patch("app.api.v1_1.institutional.get_last_run_summary",
+               return_value=("UNAVAILABLE", {})):
+        from app.mcp.v1.server import finco_last_run
+        result = finco_last_run(project_id="proj_unavail")
+
+    assert result["api_version"] == API_VERSION
+    assert result["schema_version"] == SCHEMA_VERSION
+    assert result["state"] == "UNAVAILABLE"
+
+
+def test_mcp_v1_schema_version_on_service_error(monkeypatch):
+    """SERVICE_UNAVAILABLE (exception-boundary) response also carries version fields."""
+    from app.api.v1_1.schemas import API_VERSION, SCHEMA_VERSION
+
+    _env_with_token(monkeypatch, user_id="schema_err_user")
+
+    with patch("app.api.v1_1.institutional.get_kpis",
+               side_effect=RuntimeError("internal error")):
+        from app.mcp.v1.server import finco_kpis
+        result = finco_kpis(project_id="proj_err")
+
+    assert result["api_version"] == API_VERSION
+    assert result["schema_version"] == SCHEMA_VERSION
+    assert result["state"] == "UNAVAILABLE"
+    assert result["reason"] == "SERVICE_UNAVAILABLE"
+
+
+# ── MCP_V1_SCHEMA_VERSION_ON_AUTH_REQUIRED ────────────────────────────────────
+
+def test_mcp_v1_schema_version_on_auth_required(monkeypatch):
+    """AUTHENTICATION_REQUIRED response carries api_version and schema_version.
+
+    Marker: MCP_V1_SCHEMA_VERSION_ON_AUTH_REQUIRED = PASS
+    """
+    from app.api.v1_1.schemas import API_VERSION, SCHEMA_VERSION
+
+    _env_without_token(monkeypatch)
+
+    from app.mcp.v1.server import finco_last_run, finco_kpis, finco_verify
+    for fn, kwargs in [
+        (finco_last_run, {"project_id": "p1"}),
+        (finco_kpis, {"project_id": "p2"}),
+        (finco_verify, {"project_id": "p3"}),
+    ]:
+        result = fn(**kwargs)
+        assert result["api_version"] == API_VERSION, (
+            f"{fn.__name__}: api_version missing on AUTHENTICATION_REQUIRED"
+        )
+        assert result["schema_version"] == SCHEMA_VERSION, (
+            f"{fn.__name__}: schema_version missing on AUTHENTICATION_REQUIRED"
+        )
+        assert result["state"] == "AUTHENTICATION_REQUIRED"
+
+
+# ── MCP_V1_UNEXPECTED_EXCEPTION_FAILS_CLOSED ──────────────────────────────────
+
+def test_mcp_v1_unexpected_exception_fails_closed(monkeypatch):
+    """Unexpected service exceptions produce UNAVAILABLE/SERVICE_UNAVAILABLE.
+
+    Marker: MCP_V1_UNEXPECTED_EXCEPTION_FAILS_CLOSED = PASS
+    """
+    _env_with_token(monkeypatch, user_id="exc_boundary_user")
+
+    exception_cases = [
+        ("app.api.v1_1.institutional.get_last_run_summary", "finco_last_run", {"project_id": "p1"}),
+        ("app.api.v1_1.institutional.get_kpis", "finco_kpis", {"project_id": "p2"}),
+        ("app.api.v1_1.institutional.get_verify_state", "finco_verify", {"project_id": "p3"}),
+        ("app.api.v1_1.institutional.get_institutional_validation", "finco_validation", {"project_id": "p4"}),
+        ("app.api.v1_1.institutional.get_r_live", "finco_r_live", {"uid": "eth:0xtest"}),
+    ]
+
+    import importlib
+    mod = importlib.import_module("app.mcp.v1.server")
+
+    for target, fn_name, kwargs in exception_cases:
+        with patch(target, side_effect=Exception("boom")):
+            result = getattr(mod, fn_name)(**kwargs)
+        assert result["state"] == "UNAVAILABLE", (
+            f"{fn_name}: expected UNAVAILABLE on exception, got {result['state']!r}"
+        )
+        assert result.get("reason") == "SERVICE_UNAVAILABLE", (
+            f"{fn_name}: expected reason SERVICE_UNAVAILABLE, got {result.get('reason')!r}"
+        )
+
+
+# ── MCP_V1_EXCEPTION_SECRET_NOT_EXPOSED ───────────────────────────────────────
+
+def test_mcp_v1_exception_secret_not_exposed(monkeypatch):
+    """Exception text containing secret material is NOT present in tool output.
+
+    Injects exceptions whose str() contains fake secrets and verifies
+    none of that text leaks into the serialized MCP tool response.
+
+    Marker: MCP_V1_EXCEPTION_SECRET_NOT_EXPOSED = PASS
+    """
+    import json
+
+    _env_with_token(monkeypatch, user_id="secret_safety_user")
+
+    fake_secrets = [
+        "FAKE_DB_PASSWORD=hunter2",
+        "FINCO_SECRET_KEY=do-not-leak-this",
+        "rpc_url=https://node.example.com/api-key-abc123",
+        "session_token=fake_signed_token_SHOULD_NOT_APPEAR",
+    ]
+
+    import importlib
+    mod = importlib.import_module("app.mcp.v1.server")
+
+    for secret in fake_secrets:
+        exc = RuntimeError(f"internal failure: {secret}")
+        with patch("app.api.v1_1.institutional.get_kpis", side_effect=exc):
+            result = mod.finco_kpis(project_id="proj_secret_test")
+
+        serialized = json.dumps(result)
+        assert secret not in serialized, (
+            f"Secret material leaked into tool response: {secret!r} found in output"
+        )
+        # Also confirm the word "hunter2" and key fragments don't appear
+        for fragment in ("hunter2", "do-not-leak-this", "api-key-abc123", "fake_signed_token"):
+            assert fragment not in serialized, (
+                f"Secret fragment {fragment!r} found in tool response"
+            )
+
+    # Confirm only safe fields are present on error
+    with patch("app.api.v1_1.institutional.get_kpis",
+               side_effect=RuntimeError("FINCO_SECRET_KEY=should-not-appear")):
+        result = mod.finco_kpis(project_id="proj_final")
+
+    assert result["state"] == "UNAVAILABLE"
+    assert result["reason"] == "SERVICE_UNAVAILABLE"
+    assert "should-not-appear" not in json.dumps(result)
+    assert "FINCO_SECRET_KEY" not in json.dumps(result)
