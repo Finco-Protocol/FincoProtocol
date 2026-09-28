@@ -89,6 +89,21 @@ def test_synthetic_secret_never_escapes_client_exception_or_retry_failure():
     # RWA_REFLEX_TYPESAFE_SECRET_NEVER_PERSISTS
 
 
+def test_success_response_echoing_secret_is_rejected_before_service_or_ledger():
+    echoed = Response(200, {
+        "model": "jev-1",
+        "id": f"provider-echo-{SECRET}",
+        "answers": {"likely_transient": {"type": "noul", "noul": 0.5}},
+    })
+    transport = TypeSafeJevHttpTransport(SECRET, client=Client([echoed]))
+    with pytest.raises(TypeSafeJevTransportError) as exc:
+        transport.evaluate(request())
+    assert str(exc.value) == "TYPESAFE_SECRET_ECHO_REJECTED"
+    assert SECRET not in str(exc.value)
+    assert SECRET not in repr(exc.value)
+    # RWA_REFLEX_TYPESAFE_SECRET_NEVER_PERSISTS
+
+
 def test_invalid_json_and_shape_are_sanitized():
     bad_json = TypeSafeJevHttpTransport(SECRET, client=Client([Response(200, json_error=ValueError(SECRET))]))
     with pytest.raises(TypeSafeJevTransportError, match="^TYPESAFE_RESPONSE_JSON_INVALID$"):
