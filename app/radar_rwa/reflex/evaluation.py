@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 
@@ -13,14 +14,14 @@ OUTCOME_POLICY_VERSION = "RWA_REFLEX_OUTCOME_POLICY_V2"
 @dataclass(frozen=True)
 class ReflexOutcomePolicy:
     target_horizon_seconds: int = 3600
-    horizon_tolerance_seconds: int = 300
+    finalization_window_seconds: int = 300
     compression_ratio_threshold: Decimal = Decimal("0.50")
     minimum_initial_deviation_bps: Decimal = Decimal("100")
     probability_clip: Decimal = Decimal("0.000001")
 
     def __post_init__(self) -> None:
-        if self.target_horizon_seconds <= 0 or self.horizon_tolerance_seconds < 0:
-            raise ValueError("outcome horizon must be positive with nonnegative tolerance")
+        if self.target_horizon_seconds <= 0 or self.finalization_window_seconds < 0:
+            raise ValueError("outcome horizon must be positive with nonnegative finalization window")
         if not Decimal("0") < self.compression_ratio_threshold <= Decimal("1"):
             raise ValueError("compression ratio threshold must be in (0,1]")
         if not self.minimum_initial_deviation_bps.is_finite() or self.minimum_initial_deviation_bps <= 0:
@@ -78,7 +79,8 @@ def _no_label(reason: str, horizon: object, policy: ReflexOutcomePolicy) -> dict
 def _policy_payload(policy: ReflexOutcomePolicy) -> dict[str, object]:
     return {
         "target_horizon_seconds": policy.target_horizon_seconds,
-        "horizon_tolerance_seconds": policy.horizon_tolerance_seconds,
+        "finalization_window_seconds": policy.finalization_window_seconds,
+        "canonical_selector": "FIRST_AVAILABLE_AT_OR_AFTER_TARGET",
         "compression_ratio_threshold": str(policy.compression_ratio_threshold),
         "minimum_initial_deviation_bps": str(policy.minimum_initial_deviation_bps),
         "probability_clip": str(policy.probability_clip),
@@ -93,26 +95,47 @@ def evaluate_recorded_outcome(
     *,
     policy: ReflexOutcomePolicy = ReflexOutcomePolicy(),
 ) -> dict[str, object]:
-    """Score only the V2 future event; all ineligible observations return NO_LABEL."""
+    """Score only the immutable canonical OUTCOME_POLICY_V2 finalization."""
+    horizon = outcome.get("horizon_seconds")
+    if outcome.get("canonical_finalization") is not True:
+        return _no_label("OUTCOME_NOT_CANONICALLY_FINALIZED", horizon, policy)
+    if outcome.get("outcome_policy_version") != OUTCOME_POLICY_VERSION:
+        return _no_label("OUTCOME_POLICY_VERSION_MISMATCH", horizon, policy)
+    if outcome.get("canonical_outcome_state") != "AVAILABLE":
+        reason = outcome.get("canonical_reason")
+        return _no_label(str(reason or "OUTCOME_ELIGIBLE_OBSERVATION_MISSING"), horizon, policy)
+    if outcome.get("identity_conflict") is True:
+        return _no_label("OUTCOME_IDENTITY_LINEAGE_CONFLICT", horizon, policy)
+
     event = prediction.get("event")
     interpretation = prediction.get("interpretation")
     baseline = prediction.get("baseline")
     if not isinstance(event, dict) or not isinstance(interpretation, dict) or not isinstance(baseline, dict):
-        return _no_label("PREDICTION_EVENT_OR_CONTROL_MISSING", outcome.get("horizon_seconds"), policy)
+        return _no_label("PREDICTION_EVENT_OR_CONTROL_MISSING", horizon, policy)
     if event.get("session") != "OPEN":
-        return _no_label("PREDICTION_NOT_REGULAR_SESSION", outcome.get("horizon_seconds"), policy)
+        return _no_label("PREDICTION_NOT_REGULAR_SESSION", horizon, policy)
     if outcome.get("market_session") != "OPEN":
-        return _no_label("OUTCOME_SESSION_BOUNDARY", outcome.get("horizon_seconds"), policy)
+        return _no_label("OUTCOME_SESSION_BOUNDARY", horizon, policy)
     if outcome.get("authority_state") != "AVAILABLE":
-        return _no_label("OUTCOME_CANONICAL_NOT_AVAILABLE", outcome.get("horizon_seconds"), policy)
+        return _no_label("OUTCOME_CANONICAL_NOT_AVAILABLE", horizon, policy)
 
-    horizon = outcome.get("horizon_seconds")
     if not isinstance(horizon, int) or isinstance(horizon, bool) or horizon <= 0:
         return _no_label("OUTCOME_HORIZON_INVALID", horizon, policy)
-    lower = policy.target_horizon_seconds - policy.horizon_tolerance_seconds
-    upper = policy.target_horizon_seconds + policy.horizon_tolerance_seconds
+    lower = policy.target_horizon_seconds
+    upper = policy.target_horizon_seconds + policy.finalization_window_seconds
     if not lower <= horizon <= upper:
         return _no_label("OUTCOME_OUTSIDE_HORIZON_WINDOW", horizon, policy)
+
+    close_raw = event.get("session_close_at")
+    observed_raw = outcome.get("observed_at")
+    if isinstance(close_raw, str) and isinstance(observed_raw, str):
+        try:
+            close_at = datetime.fromisoformat(close_raw)
+            observed_at = datetime.fromisoformat(observed_raw)
+            if observed_at > close_at:
+                return _no_label("OUTCOME_SESSION_BOUNDARY", horizon, policy)
+        except ValueError:
+            return _no_label("OUTCOME_SESSION_EVIDENCE_INVALID", horizon, policy)
 
     structural_raw = event.get("structural_premium_bps")
     initial_dev_raw = event.get("initial_deviation_bps")
