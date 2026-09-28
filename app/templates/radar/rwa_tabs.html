@@ -1,0 +1,4 @@
+<nav class="rwa-tabs" aria-label="RWA views">
+  <a href="/radar/crypto/rwa" {% if rwa_view|default('overview') == 'overview' %}class="is-active" aria-current="page"{% endif %}>Overview</a>
+  <a href="/radar/crypto/rwa/bnb" {% if rwa_view|default('overview') == 'bnb' %}class="is-active" aria-current="page"{% endif %}>BNB Chain</a>
+</nav>
