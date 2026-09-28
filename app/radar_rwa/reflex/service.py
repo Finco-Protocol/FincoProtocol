@@ -9,7 +9,7 @@ from finco_radar.authority.contracts import AuthoritySnapshot
 from .baseline import EmpiricalTransientBaselineConfig, evaluate_transient_baseline
 from .contracts import RwaReflexContext, RwaReflexState
 from .interpretation import InterpretationState, ReflexInterpretation
-from .jev import JevReflexConfig, JevTransport, interpret_reflex_with_jev, reflex_input_fingerprint
+from .jev import JEV_REQUEST_SCHEMA_VERSION, JevReflexConfig, JevTransport, interpret_reflex_with_jev, reflex_input_fingerprint
 from .state import build_reflex_state
 
 
@@ -78,6 +78,7 @@ def serialize_reflex_interpretation(result: ReflexInterpretation) -> dict[str, o
         "schema_version": result.schema_version,
         "state": result.state.value,
         "input_fingerprint": result.input_fingerprint,
+        "request_schema_version": result.request_schema_version,
         "likely_transient_probability": _number(result.likely_transient_probability),
         "provider": result.provider,
         "requested_model": result.requested_model,
@@ -122,6 +123,7 @@ class ReflexExperimentService:
             interpretation = ReflexInterpretation(
                 state=(InterpretationState.UNAVAILABLE if enabled else InterpretationState.DISABLED),
                 input_fingerprint=reflex_input_fingerprint(state),
+                request_schema_version=(JEV_REQUEST_SCHEMA_VERSION if enabled else None),
                 provider=self.jev_config.provider,
                 requested_model=self.jev_config.model,
                 reason=("JEV_TRANSPORT_NOT_CONFIGURED" if enabled else "JEV_REFLEX_DISABLED"),
