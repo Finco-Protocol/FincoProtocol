@@ -312,6 +312,44 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         ),
     ),
     MetricAuthority(
+        key="total_capex",
+        label="Total CAPEX (including IDC)",
+        unit="kEUR",
+        sign_convention="positive = total capital expenditure (outflow)",
+        formula="total_capex_before_idc + idc_keur",
+        source_file="finco_core/inputs/_models.py",
+        source_function="CapexInputs.total_capex",
+        period_timing="financial close (point-in-time scalar)",
+        period_frequency="SEMESTRIAL",
+        applicable_verticals=("all",),
+        notes=(
+            "total_capex_before_idc = hard_capex_keur + commitment_fees_keur + "
+            "bank_fees_keur + other_financial_keur + vat_costs_keur + reserve_accounts_keur. "
+            "idc_keur = interest during construction, accrued over construction periods. "
+            "Exposed as kpis['total_capex_keur'] via the production API."
+        ),
+    ),
+    MetricAuthority(
+        key="initial_senior_debt",
+        label="Initial Senior Debt Commitment (at financial close)",
+        unit="kEUR",
+        sign_convention="positive = debt drawn at financial close",
+        formula="min(gearing_capacity_keur, dscr_capacity_keur)",
+        source_file="financial_engine/financing/project.py",
+        source_function="run_project_financing_model",
+        period_timing="financial close (point-in-time scalar)",
+        period_frequency="SEMESTRIAL",
+        applicable_verticals=("all",),
+        production_caller="financial_engine/financing/project.py::run_project_financing_model",
+        notes=(
+            "Binding constraint: gearing_capacity_keur = gearing_ratio × total_capex; "
+            "dscr_capacity_keur = sculpted to DSCR covenant. "
+            "Solar Reference: GEARING-bound = 0.75 × 33,000 = 24,750 kEUR. "
+            "DC Reference: DSCR-sculpted ≈ 80,437 kEUR. "
+            "Exposed as kpis['senior_debt_keur'] and WorkbookExportBundle.senior_debt_keur_authority."
+        ),
+    ),
+    MetricAuthority(
         key="xirr_year_fraction",
         label="XIRR Year Fraction Convention",
         unit="dimensionless",

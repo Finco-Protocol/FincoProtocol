@@ -27,6 +27,24 @@ P1.3 validation covers:
   - G2C waterfall gate structure
   - XIRR date-axis convention proof
 
+VALIDATION CATEGORIES
+---------------------
+kpi_pinning          — runtime KPI vs. published reference value
+xlsx_reconciliation  — XLSX Returns/Reconciliation sheet vs. runtime
+statements           — balance sheet, P&L, cash flow identity
+debt                 — debt roll-forward per-period
+waterfall            — cash waterfall identity
+returns              — IRR/XIRR convention proof
+identity             — run identity, snapshot, engine version
+g2c                  — G2C gate structure and component coverage
+
+GAP TYPES
+---------
+FAIL           — a real product reconciliation failure (not a test failure)
+NOT_AVAILABLE  — the quantity cannot be computed for this vertical/scenario
+NOT_SUPPORTED  — the surface is not wired up for this vertical
+NOT_APPLICABLE — the check is architecturally not relevant for this vertical
+
 FROZEN NAMESPACES
 -----------------
 financial_engine/**  = ZERO DIFF
@@ -41,12 +59,47 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ValidationMetric:
-    """Declares what to validate, against which registry authority, at what tolerance."""
+    """Declares what to validate, against which registry authority, at what tolerance.
+
+    Fields
+    ------
+    name              Human-readable check label.
+    registry_key      P1.1 registry key for the economic quantity being checked.
+    tolerance_policy  Named key in TOLERANCES dict.
+    vertical          Target vertical ('solar', 'wind', 'data_center', 'ev_charging').
+    category          Validation category ('kpi_pinning', 'xlsx_reconciliation', etc.).
+    extractor_key     Key in BUNDLE_EXTRACTORS for runtime value extraction.
+    expected_value    Typed float — the reference value to check against (None = XLSX/gap only).
+    expected_state    Expected string state for XLSX or gap checks ('PASS', 'NOT_AVAILABLE', etc.).
+    assertion         Human-readable description of the assertion (documentation only).
+    notes             Additional context.
+    """
     name: str
     registry_key: str
     tolerance_policy: str
     vertical: str
-    assertion: str
+    category: str
+    extractor_key: str
+    expected_value: float | None = None
+    expected_state: str = ""
+    assertion: str = ""
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class ValidationGap:
+    """A known product gap surfaced in the validation result.
+
+    These are real product limitations — not validation framework failures.
+    A ValidationResult may PASS while containing ValidationGap entries that
+    document honest, unresolved product deficiencies for institutional review.
+    """
+    name: str
+    vertical: str
+    category: str
+    gap_type: str  # "FAIL" | "NOT_AVAILABLE" | "NOT_SUPPORTED" | "NOT_APPLICABLE"
+    description: str
+    registry_key: str = ""
     notes: str = ""
 
 
@@ -58,6 +111,7 @@ class CheckResult:
     actual: Any
     expected: Any
     tolerance: float | None = None
+    tolerance_policy: str = ""
     notes: str = ""
 
     def __repr__(self) -> str:
@@ -71,6 +125,7 @@ class ValidationResult:
     vertical: str
     project_type: str
     checks: list[CheckResult] = field(default_factory=list)
+    gaps: list[ValidationGap] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -87,6 +142,9 @@ class ValidationResult:
     def failed_checks(self) -> list[CheckResult]:
         return [c for c in self.checks if not c.passed]
 
+    def gaps_by_type(self, gap_type: str) -> list[ValidationGap]:
+        return [g for g in self.gaps if g.gap_type == gap_type]
+
     def summary(self) -> dict[str, Any]:
         return {
             "vertical": self.vertical,
@@ -95,4 +153,14 @@ class ValidationResult:
             "pass_count": self.pass_count,
             "fail_count": self.fail_count,
             "failed_names": [c.name for c in self.failed_checks()],
+            "gap_count": len(self.gaps),
+            "gaps": [
+                {
+                    "name": g.name,
+                    "gap_type": g.gap_type,
+                    "category": g.category,
+                    "registry_key": g.registry_key,
+                }
+                for g in self.gaps
+            ],
         }

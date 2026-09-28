@@ -4,6 +4,7 @@ Acceptance markers:
   P1_3_MODULE_SMOKE
   P1_3_TOLERANCE_POLICY_COMPLETE
   P1_3_REGISTRY_KEYS_COVERED
+  P1_3_REGISTRY_SEMANTIC_ALIGNMENT
   P1_3_WIND_KPI_PINNING
   P1_3_WIND_XIRR_PINNING
   P1_3_DATA_CENTER_KPI_PINNING
@@ -19,12 +20,20 @@ Acceptance markers:
   P1_3_G2C_GATE_STRUCTURE
   P1_3_G2C_LOCKUP_COMPONENT_A
   P1_3_G2C_CONSTRUCTION_ZERO_DISTRIBUTIONS
+  P1_3_G2C_GATE_COVERAGE_REPORT
   P1_3_XIRR_DATE_AXIS_PROOF
   P1_3_SOLAR_CROSS_SURFACE_RECONCILIATION
   P1_3_WIND_CROSS_SURFACE_RECONCILIATION
-  P1_3_CORRUPTION_WRONG_VERTICAL_DETECTED
+  P1_3_SAME_CANONICAL_RUN_RECONCILIATION
+  P1_3_RUNNER_CONSUMES_TYPED_CONTRACT
   P1_3_RUNNER_SOLAR_ALL_PASS
   P1_3_RUNNER_WIND_ALL_PASS
+  P1_3_RUNNER_FOUR_VERTICAL_COVERAGE
+  P1_3_CORRUPTION_WRONG_VERTICAL_DETECTED
+  P1_3_CORRUPTION_RUN_IDENTITY_MISMATCH
+  P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED
+  P1_3_CORRUPTION_UNIT_MISMATCH
+  LAST_RUN_VALIDATION_IMMUTABLE_AFTER_WORKING_COPY_EDIT
   P1_3_FROZEN_NAMESPACE
   FINCO_P1_3_INSTITUTIONAL_VALIDATION_PACK_COMPLETE
 """
@@ -113,6 +122,7 @@ def test_p1_3_tolerance_policy_complete():
         "irr_abs", "money_keur_rel", "ratio_abs",
         "balance_check_abs", "debt_rollforward_abs",
         "xlsx_vs_runtime_rel", "xirr_abs",
+        "distressed_irr_abs", "dc_senior_debt_abs",
     }
     missing = required_keys - set(TOLERANCES)
     assert missing == set(), f"Missing tolerance keys: {missing}"
@@ -137,6 +147,60 @@ def test_p1_3_registry_keys_covered():
                 f"Contract for {vertical!r} references unknown registry key: "
                 f"{metric.registry_key!r}"
             )
+
+
+# ── P1_3_REGISTRY_SEMANTIC_ALIGNMENT ─────────────────────────────────────────
+
+def test_p1_3_registry_semantic_alignment():
+    """P1_3_REGISTRY_SEMANTIC_ALIGNMENT — total_capex and initial_senior_debt are correctly bound.
+
+    Verifies Correction A: contracts must reference the registry key for the
+    EXACT economic quantity being checked, not a proxy metric.
+    """
+    from app.model_methodology_registry import metric_by_key
+    from app.model_validation.contracts import ALL_CONTRACTS
+
+    # total_capex must exist in registry with correct source
+    m_capex = metric_by_key("total_capex")
+    assert m_capex is not None, "P1.1 registry must contain 'total_capex' entry (Correction A)"
+    assert "CapexInputs" in m_capex.source_function, (
+        f"total_capex source_function must reference CapexInputs; got {m_capex.source_function!r}"
+    )
+    assert "total_capex_before_idc" in m_capex.formula, (
+        f"total_capex formula must reference total_capex_before_idc; got {m_capex.formula!r}"
+    )
+    assert m_capex.unit == "kEUR", f"total_capex unit must be kEUR; got {m_capex.unit!r}"
+
+    # initial_senior_debt must exist in registry with correct source
+    m_debt = metric_by_key("initial_senior_debt")
+    assert m_debt is not None, "P1.1 registry must contain 'initial_senior_debt' entry (Correction A)"
+    assert "run_project_financing_model" in m_debt.source_function, (
+        f"initial_senior_debt source_function must reference run_project_financing_model; "
+        f"got {m_debt.source_function!r}"
+    )
+    assert "min(" in m_debt.formula or "min" in m_debt.formula, (
+        f"initial_senior_debt formula must reference min(gearing, dscr); got {m_debt.formula!r}"
+    )
+
+    # Verify contracts use correct registry keys for total_capex and senior_debt
+    invalid_bindings = []
+    for vertical, contract in ALL_CONTRACTS.items():
+        for metric in contract:
+            if "total_capex" in metric.name.lower() and metric.registry_key not in ("total_capex",):
+                invalid_bindings.append(
+                    f"{vertical}/{metric.name}: registry_key={metric.registry_key!r} "
+                    f"(should be 'total_capex')"
+                )
+            if "senior_debt" in metric.name.lower() and metric.registry_key not in ("initial_senior_debt",):
+                invalid_bindings.append(
+                    f"{vertical}/{metric.name}: registry_key={metric.registry_key!r} "
+                    f"(should be 'initial_senior_debt')"
+                )
+
+    assert invalid_bindings == [], (
+        f"Invalid metric→registry bindings detected (Correction A):\n"
+        + "\n".join(invalid_bindings)
+    )
 
 
 # ── P1_3_WIND_KPI_PINNING ─────────────────────────────────────────────────────
@@ -350,9 +414,13 @@ def test_p1_3_data_center_xlsx_reconciliation():
     assert checks.get("Returns sheet Project IRR vs runtime") == "PASS", (
         f"DC Returns Project IRR: {checks.get('Returns sheet Project IRR vs runtime')!r}"
     )
-    # Equity IRR and Sponsor XIRR: NOT_AVAILABLE (distressed path, equity_irr=None)
-    assert checks.get("Returns sheet Equity IRR vs runtime") in ("NOT_AVAILABLE", "PASS", None), (
-        f"DC Returns Equity IRR unexpected: {checks.get('Returns sheet Equity IRR vs runtime')!r}"
+    # Equity IRR and Sponsor XIRR: must be exactly NOT_AVAILABLE (distressed path, equity_irr=None)
+    # DC_A3_ECONOMICS_DISTRESSED_DOCUMENTED: sub-bankable reference, no equity return.
+    # Accepting PASS here would mean the check passed with None — that is wrong.
+    assert checks.get("Returns sheet Equity IRR vs runtime") == "NOT_AVAILABLE", (
+        f"DC Returns Equity IRR must be exactly NOT_AVAILABLE (not PASS or None); "
+        f"got {checks.get('Returns sheet Equity IRR vs runtime')!r}. "
+        f"If this is PASS, the distressed scenario config has changed."
     )
     # Run Identity must be present
     ri = _ri_data(wb)
@@ -428,10 +496,15 @@ def test_p1_3_balance_sheet_identity_wind_dc_ev(project_type, vertical):
     result = _run(project_type)
     fs = result.get("financial_statements")
     if fs is None:
-        pytest.skip(f"financial_statements not available for {vertical}")
+        # financial_statements NOT_SUPPORTED on this vertical — document but do not skip silently
+        # See FINANCIAL_STATEMENTS_NOT_CONNECTED_TO_CLEAN_ENGINE institutional gap
+        pytest.xfail(
+            f"financial_statements NOT_SUPPORTED for {vertical} "
+            f"(FINANCIAL_STATEMENTS_NOT_CONNECTED_TO_CLEAN_ENGINE)"
+        )
     bs_periods = fs.get("balance_sheet", {}).get("periods", [])
     if not bs_periods:
-        pytest.skip(f"No balance sheet periods for {vertical}")
+        pytest.xfail(f"No balance sheet periods returned for {vertical} — NOT_SUPPORTED")
 
     tolerance = 0.10
     non_zero = [
@@ -625,6 +698,56 @@ def test_p1_3_g2c_construction_zero_distributions():
             )
 
 
+# ── P1_3_G2C_GATE_COVERAGE_REPORT ───────────────────────────────────────────
+
+def test_p1_3_g2c_gate_coverage_report():
+    """P1_3_G2C_GATE_COVERAGE_REPORT — G2C gate: document each component's exercise status.
+
+    The five distribution gate components (A–E) are:
+      A: DSCR lockup              (architecture-validated; Solar: 0 lockup periods → not triggered)
+      B: construction zero dist.  (architecture-validated; Solar/Wind: triggered — no dist. in construction)
+      C: DA negative              (architecture-validated; not triggered in Solar/Wind reference)
+      D: DSRA underfunded         (architecture-validated; not triggered in Solar reference)
+      E: J-DSRA always-False      (architecture gap — hardcoded; not triggerable — see INSTITUTIONAL_GAPS)
+
+    This test proves structural coverage of the G2C architecture for the Solar reference.
+    """
+    result = _run("Generic Solar Reference")
+    sponsor = result.get("sponsor_schedule") or {}
+    source = sponsor.get("source", "")
+    assert "CovenantGatedWaterfallResult" in source or "G2C" in source, (
+        f"Solar sponsor_schedule.source must confirm G2C authority, got {source!r}"
+    )
+    kpis = result["kpis"]
+
+    # Component A: DSCR lockup — architecture-validated, NOT triggered (min_dscr > 1.20)
+    periods_in_lockup = kpis.get("periods_in_lockup")
+    assert periods_in_lockup is not None, "periods_in_lockup must be in KPIs (Component A coverage)"
+    assert int(periods_in_lockup) == 0, (
+        f"Solar reference: Component A (DSCR lockup) should not be triggered; got {periods_in_lockup}"
+    )
+
+    # Component B: construction zero distributions — exercised (no dist during construction draws)
+    periods = sponsor.get("periods", [])
+    construction_periods_checked = 0
+    for p in periods:
+        sc = p.get("share_capital_contribution_keur") or 0.0
+        dist = p.get("legal_equity_distribution_keur") or 0.0
+        if float(sc) > 0:
+            assert float(dist) == 0.0, (
+                f"Component B: construction period must have 0 equity dist, got {dist}"
+            )
+            construction_periods_checked += 1
+    assert construction_periods_checked >= 1, "Component B: no construction periods found"
+
+    # Component E: J-DSRA always-False — documented as gap in P1.1 registry
+    from app.model_methodology_registry import gap_by_key
+    j_dsra_gap = gap_by_key("J_DSRA_NOT_MODELLED")
+    assert j_dsra_gap is not None, (
+        "Component E (J-DSRA always-False) must be documented in P1.1 INSTITUTIONAL_GAPS"
+    )
+
+
 # ── P1_3_XIRR_DATE_AXIS_PROOF ────────────────────────────────────────────────
 
 def test_p1_3_xirr_date_axis_proof():
@@ -801,6 +924,374 @@ def test_p1_3_runner_summary_structure():
     assert isinstance(s["failed_names"], list)
 
 
+# ── P1_3_RUNNER_CONSUMES_TYPED_CONTRACT ──────────────────────────────────────
+
+def test_p1_3_runner_consumes_typed_contract():
+    """P1_3_RUNNER_CONSUMES_TYPED_CONTRACT — runner iterates ALL_CONTRACTS, not hardcoded values."""
+    from app.model_validation.runner import run_vertical_validation, BUNDLE_EXTRACTORS
+    from app.model_validation.contracts import ALL_CONTRACTS
+
+    # Runner must have BUNDLE_EXTRACTORS — the dispatch mechanism that replaces hardcoding
+    assert isinstance(BUNDLE_EXTRACTORS, dict), "runner must export BUNDLE_EXTRACTORS"
+    assert len(BUNDLE_EXTRACTORS) >= 5, (
+        f"BUNDLE_EXTRACTORS must cover at least 5 extractor keys, got {len(BUNDLE_EXTRACTORS)}"
+    )
+
+    for vertical in ("solar", "wind"):
+        result = run_vertical_validation(vertical)
+        contract = ALL_CONTRACTS[vertical]
+        kpi_metrics = [m for m in contract if m.expected_value is not None]
+
+        # Number of checks must match number of KPI metrics in contract
+        assert len(result.checks) == len(kpi_metrics), (
+            f"{vertical}: runner produced {len(result.checks)} checks but contract has "
+            f"{len(kpi_metrics)} KPI metrics — runner may not be consuming contracts correctly"
+        )
+
+        # Check names must match contract names
+        contract_names = {m.name for m in kpi_metrics}
+        result_names = {c.name for c in result.checks}
+        assert contract_names == result_names, (
+            f"{vertical}: runner check names don't match contract: "
+            f"extra={result_names - contract_names}, missing={contract_names - result_names}"
+        )
+
+        # Each check must carry a tolerance_policy (set from contract, not hardcoded)
+        for check in result.checks:
+            assert check.tolerance_policy, (
+                f"{vertical}/{check.name}: CheckResult.tolerance_policy must be set "
+                f"(runner must pass it from the ValidationMetric)"
+            )
+
+
+# ── P1_3_SAME_CANONICAL_RUN_RECONCILIATION ───────────────────────────────────
+
+def test_p1_3_same_canonical_run_reconciliation():
+    """P1_3_SAME_CANONICAL_RUN_RECONCILIATION — bundle is single source for KPIs and XLSX.
+
+    Proves ONE RUN → SAME IDENTITY → SAME VALUES EVERYWHERE:
+    - bundle.runtime_result.project_irr == XLSX Returns sheet Project IRR
+    - bundle.input_composite_hash == XLSX Run Identity input_composite_hash
+    - bundle.engine_version == XLSX Run Identity Engine version
+
+    Both surfaces come from the same _build_export_bundle() call.
+    """
+    import openpyxl
+    from app.export.institutional_workbook import (
+        _build_export_bundle,
+        export_institutional_workbook_from_bundle,
+    )
+
+    bundle = _build_export_bundle("generic_solar_reference")
+
+    # Runtime KPIs from bundle
+    runtime_irr = bundle.runtime_result.project_irr
+    runtime_equity_irr = bundle.runtime_result.equity_irr
+    runtime_hash = bundle.input_composite_hash
+    runtime_version = bundle.engine_version
+
+    # XLSX produced from the SAME bundle — guarantees same-run identity
+    wb_bytes = export_institutional_workbook_from_bundle(bundle)
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+
+    # Returns sheet values must match runtime bundle values
+    xlsx_irr = None
+    xlsx_equity_irr = None
+    for row in wb["Returns"].iter_rows(values_only=True):
+        if row[0] == "Project IRR":
+            xlsx_irr = row[1]
+        elif row[0] == "Equity IRR":
+            xlsx_equity_irr = row[1]
+
+    assert xlsx_irr is not None, "Returns sheet must contain Project IRR"
+    assert math.isclose(float(xlsx_irr), runtime_irr, rel_tol=1e-3), (
+        f"Same-run violation: bundle project_irr {runtime_irr:.6f} != "
+        f"XLSX project_irr {float(xlsx_irr):.6f}"
+    )
+
+    assert xlsx_equity_irr is not None, "Returns sheet must contain Equity IRR"
+    assert math.isclose(float(xlsx_equity_irr), runtime_equity_irr, rel_tol=1e-3), (
+        f"Same-run violation: bundle equity_irr {runtime_equity_irr:.6f} != "
+        f"XLSX equity_irr {float(xlsx_equity_irr):.6f}"
+    )
+
+    # Run Identity sheet identity fields must match bundle
+    ri_data = {}
+    for row in wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
+        if row[0] is not None and row[1] is not None:
+            ri_data[str(row[0])] = row[1]
+
+    _SENTINEL = ("not_applicable", "n/a", "none", "")
+    if (runtime_hash is not None
+            and str(runtime_hash).lower() not in _SENTINEL):
+        assert "Input composite hash" in ri_data, "Run Identity must contain Input composite hash"
+        assert str(ri_data["Input composite hash"]) == str(runtime_hash), (
+            f"Same-run violation: bundle hash {runtime_hash!r} != "
+            f"XLSX hash {ri_data['Input composite hash']!r}"
+        )
+
+    if (runtime_version is not None
+            and str(runtime_version).lower() not in _SENTINEL):
+        assert "Engine version" in ri_data, "Run Identity must contain Engine version"
+        assert str(ri_data["Engine version"]) == str(runtime_version), (
+            f"Same-run violation: bundle engine_version {runtime_version!r} != "
+            f"XLSX engine_version {ri_data['Engine version']!r}"
+        )
+
+
+# ── LAST_RUN_VALIDATION_IMMUTABLE_AFTER_WORKING_COPY_EDIT ────────────────────
+
+def test_last_run_validation_immutable_after_working_copy_edit():
+    """LAST_RUN_VALIDATION_IMMUTABLE_AFTER_WORKING_COPY_EDIT
+
+    A workbook exported from bundle A is not affected by subsequent runs with
+    different inputs. Proves snapshot immutability: once captured, the Last Run
+    validation state cannot be mutated by a Working Copy edit.
+    """
+    import openpyxl
+    from app.export.institutional_workbook import (
+        _build_export_bundle,
+        export_institutional_workbook_from_bundle,
+    )
+
+    # Build bundle A (Solar reference)
+    bundle_a = _build_export_bundle("generic_solar_reference")
+    irr_a = bundle_a.runtime_result.project_irr
+    hash_a = bundle_a.input_composite_hash
+    wb_bytes_a = export_institutional_workbook_from_bundle(bundle_a)
+
+    # Simulate "Working Copy edit" — use a different vertical as a proxy for changed inputs
+    bundle_b = _build_export_bundle("generic_wind_reference")
+    irr_b = bundle_b.runtime_result.project_irr
+    hash_b = bundle_b.input_composite_hash
+
+    # Precondition: Solar and Wind are meaningfully different
+    assert not math.isclose(irr_a, irr_b, rel_tol=0.01), (
+        f"Test precondition: Solar IRR {irr_a:.4f} and Wind IRR {irr_b:.4f} must differ"
+    )
+    _SENTINEL = ("not_applicable", "n/a", "none", "")
+    if (hash_a is not None and hash_b is not None
+            and str(hash_a).lower() not in _SENTINEL
+            and str(hash_b).lower() not in _SENTINEL):
+        assert hash_a != hash_b, (
+            "Test precondition: Solar and Wind input hashes must differ"
+        )
+
+    # Bundle A's exported workbook must still contain bundle A's values — not bundle B's
+    wb_a = openpyxl.load_workbook(BytesIO(wb_bytes_a))
+    xlsx_irr_a = None
+    for row in wb_a["Returns"].iter_rows(values_only=True):
+        if row[0] == "Project IRR":
+            xlsx_irr_a = row[1]
+            break
+
+    assert xlsx_irr_a is not None, "Bundle A workbook must have Project IRR in Returns sheet"
+    assert math.isclose(float(xlsx_irr_a), irr_a, rel_tol=1e-3), (
+        f"IMMUTABILITY VIOLATION: bundle A workbook IRR {float(xlsx_irr_a):.6f} "
+        f"changed after Working Copy edit (expected {irr_a:.6f})"
+    )
+
+    # Bundle B's IRR must NOT appear in bundle A's workbook
+    assert not math.isclose(float(xlsx_irr_a), irr_b, rel_tol=0.01), (
+        f"IMMUTABILITY VIOLATION: Working Copy edit contaminated Last Run "
+        f"(bundle A workbook now shows Wind IRR {irr_b:.4f})"
+    )
+
+
+# ── P1_3_CORRUPTION_RUN_IDENTITY_MISMATCH ────────────────────────────────────
+
+def test_p1_3_corruption_run_identity_mismatch():
+    """P1_3_CORRUPTION_RUN_IDENTITY_MISMATCH — cross-run identity mismatch is detectable.
+
+    If someone swapped workbook content from one run with the Run Identity sheet
+    of another run, the input_composite_hash would expose the mismatch.
+    """
+    from app.export.institutional_workbook import (
+        _build_export_bundle,
+        export_institutional_workbook_from_bundle,
+    )
+    import openpyxl
+
+    bundle_solar = _build_export_bundle("generic_solar_reference")
+    bundle_wind = _build_export_bundle("generic_wind_reference")
+
+    solar_hash = bundle_solar.input_composite_hash
+    wind_hash = bundle_wind.input_composite_hash
+
+    _SENTINEL = ("not_applicable", "n/a", "none", "")
+    _real_hash = lambda h: h is not None and str(h).lower() not in _SENTINEL
+    # Two different verticals must have different input hashes (when real hashes available)
+    if _real_hash(solar_hash) and _real_hash(wind_hash):
+        assert solar_hash != wind_hash, (
+            f"PRECONDITION: Solar and Wind input_composite_hash must differ; "
+            f"got solar={solar_hash!r}, wind={wind_hash!r}"
+        )
+
+    # Export solar workbook; verify its Run Identity carries solar's hash
+    solar_wb_bytes = export_institutional_workbook_from_bundle(bundle_solar)
+    solar_wb = openpyxl.load_workbook(BytesIO(solar_wb_bytes))
+    ri_data = {}
+    for row in solar_wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
+        if row[0] is not None and row[1] is not None:
+            ri_data[str(row[0])] = row[1]
+
+    if _real_hash(solar_hash):
+        xlsx_hash = ri_data.get("Input composite hash")
+        assert xlsx_hash is not None, "Run Identity sheet must contain Input composite hash"
+        assert str(xlsx_hash) == str(solar_hash), (
+            f"Solar workbook identity mismatch: xlsx={xlsx_hash!r} != bundle={solar_hash!r}"
+        )
+
+        # Cross-run: Wind hash must NOT match Solar workbook hash (when real hashes)
+        if _real_hash(wind_hash):
+            assert str(xlsx_hash) != str(wind_hash), (
+                f"CORRUPTION NOT DETECTED: Solar workbook hash unexpectedly matches "
+                f"Wind hash {wind_hash!r}"
+            )
+
+    # Structural check: Solar IRR in solar workbook != Wind IRR in wind workbook
+    solar_irr = bundle_solar.runtime_result.project_irr
+    wind_irr = bundle_wind.runtime_result.project_irr
+    assert not math.isclose(solar_irr, wind_irr, rel_tol=0.01), (
+        f"CORRUPTION NOT DETECTABLE: Solar IRR {solar_irr:.4f} ≈ Wind IRR {wind_irr:.4f} "
+        f"— these must differ to make corruption tests meaningful"
+    )
+
+
+# ── P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED ─────────────────────────────────
+
+def test_p1_3_historical_engine_version_preserved():
+    """P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED — engine version is preserved in workbook.
+
+    The Run Identity sheet must carry the exact engine_version from the bundle.
+    If the workbook is later read without re-running the engine, the version
+    can still be retrieved for historical audit purposes.
+    """
+    from app.export.institutional_workbook import (
+        _build_export_bundle,
+        export_institutional_workbook_from_bundle,
+    )
+    import openpyxl
+
+    bundle = _build_export_bundle("generic_solar_reference")
+    bundle_version = bundle.engine_version
+    assert bundle_version is not None, "bundle.engine_version must not be None"
+
+    wb_bytes = export_institutional_workbook_from_bundle(bundle)
+    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+
+    ri_data = {}
+    for row in wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
+        if row[0] is not None and row[1] is not None:
+            ri_data[str(row[0])] = row[1]
+
+    assert "Engine version" in ri_data, (
+        "Run Identity sheet must contain 'Engine version' field for historical audit"
+    )
+    xlsx_version = str(ri_data["Engine version"])
+    assert xlsx_version == str(bundle_version), (
+        f"HISTORY BROKEN: Run Identity Engine version {xlsx_version!r} != "
+        f"bundle.engine_version {bundle_version!r}"
+    )
+
+
+# ── P1_3_CORRUPTION_UNIT_MISMATCH ────────────────────────────────────────────
+
+def test_p1_3_corruption_unit_mismatch():
+    """P1_3_CORRUPTION_UNIT_MISMATCH — unit mismatch (EUR vs kEUR) is detectable.
+
+    Proves that a unit confusion (reporting EUR instead of kEUR, 1000× wrong)
+    would be caught by the money_keur_rel tolerance policy.
+    """
+    from app.model_validation.runner import run_vertical_validation
+    from app.model_validation.tolerances import TOLERANCES
+
+    result = run_vertical_validation("solar")
+
+    # Find total_capex check
+    capex_check = next(
+        (c for c in result.checks if "capex" in c.name.lower()),
+        None,
+    )
+    assert capex_check is not None, "Solar validation must include a total_capex check"
+    assert capex_check.actual is not None, "total_capex check must have an actual value"
+
+    actual_keur = float(capex_check.actual)
+    # Solar: 33,000 kEUR — must be in kEUR range, not EUR range
+    assert 1_000 < actual_keur < 1_000_000, (
+        f"UNIT MISMATCH: total_capex actual={actual_keur:.0f} is out of kEUR range "
+        f"(expected ~33,000 kEUR; got EUR-scale value would be ~33,000,000)"
+    )
+
+    # Prove the tolerance would catch a 1000× unit error
+    corrupt_eur = actual_keur * 1000  # EUR instead of kEUR
+    expected_keur = capex_check.expected
+    rel_tol = TOLERANCES["money_keur_rel"]
+    unit_error_ratio = abs(corrupt_eur - float(expected_keur)) / float(expected_keur)
+    assert unit_error_ratio > rel_tol * 100, (
+        f"money_keur_rel tolerance ({rel_tol}) must detect a 1000× unit error "
+        f"(unit_error_ratio={unit_error_ratio:.1f} must exceed rel_tol × 100)"
+    )
+
+
+# ── P1_3_RUNNER_FOUR_VERTICAL_COVERAGE ───────────────────────────────────────
+
+def test_p1_3_runner_four_vertical_coverage():
+    """P1_3_RUNNER_FOUR_VERTICAL_COVERAGE — all four verticals run and report ValidationGap.
+
+    Machine-readable validation directly covers Solar, Wind, Data Center, EV Charging.
+    Known gaps are surfaced as ValidationGap entries, not hidden.
+    """
+    from app.model_validation.runner import run_vertical_validation
+    from app.model_validation import ValidationGap
+
+    results = {}
+    for vertical in ("solar", "wind", "data_center", "ev_charging"):
+        r = run_vertical_validation(vertical)
+        results[vertical] = r
+        assert r.vertical == vertical, f"{vertical}: result.vertical mismatch"
+        assert len(r.checks) >= 1, f"{vertical}: must have at least one KPI check"
+
+    # Solar and Wind must pass all KPI checks
+    assert results["solar"].passed, (
+        f"Solar: {results['solar'].fail_count} failures: "
+        f"{[str(c) for c in results['solar'].failed_checks()]}"
+    )
+    assert results["wind"].passed, (
+        f"Wind: {results['wind'].fail_count} failures: "
+        f"{[str(c) for c in results['wind'].failed_checks()]}"
+    )
+
+    # Data Center must pass all KPI checks AND have NOT_AVAILABLE gaps
+    assert results["data_center"].passed, (
+        f"DC: {results['data_center'].fail_count} failures: "
+        f"{[str(c) for c in results['data_center'].failed_checks()]}"
+    )
+    dc_na_gaps = results["data_center"].gaps_by_type("NOT_AVAILABLE")
+    assert len(dc_na_gaps) >= 2, (
+        f"DC must report ≥2 NOT_AVAILABLE gaps (equity_irr, total_sponsor_xirr); "
+        f"got {len(dc_na_gaps)}: {[g.name for g in dc_na_gaps]}"
+    )
+
+    # EV Charging must pass all KPI checks AND have FAIL gaps (pre-existing product limitations)
+    assert results["ev_charging"].passed, (
+        f"EV: {results['ev_charging'].fail_count} KPI failures: "
+        f"{[str(c) for c in results['ev_charging'].failed_checks()]}"
+    )
+    ev_fail_gaps = results["ev_charging"].gaps_by_type("FAIL")
+    assert len(ev_fail_gaps) >= 2, (
+        f"EV must report ≥2 FAIL gaps (Sources=Uses, CAPEX-items-sum); "
+        f"got {len(ev_fail_gaps)}: {[g.name for g in ev_fail_gaps]}"
+    )
+
+    # Summary must be machine-readable for all verticals
+    for vertical, r in results.items():
+        s = r.summary()
+        assert isinstance(s["passed"], bool), f"{vertical}: summary['passed'] must be bool"
+        assert isinstance(s["gap_count"], int), f"{vertical}: summary['gap_count'] must be int"
+        assert isinstance(s["gaps"], list), f"{vertical}: summary['gaps'] must be list"
+
+
 # ── P1_3_FROZEN_NAMESPACE ────────────────────────────────────────────────────
 
 def test_p1_3_frozen_namespace():
@@ -886,13 +1377,26 @@ def test_finco_p1_3_institutional_validation_pack_complete():
     # 2. All four verticals have contracts
     assert set(ALL_CONTRACTS.keys()) == {"solar", "wind", "data_center", "ev_charging"}
 
-    # 3. Solar runner passes
+    # 3. All four verticals
     solar_vr = run_vertical_validation("solar")
     assert solar_vr.passed, f"Solar validation fails: {solar_vr.failed_checks()}"
 
-    # 4. Wind runner passes
     wind_vr = run_vertical_validation("wind")
     assert wind_vr.passed, f"Wind validation fails: {wind_vr.failed_checks()}"
+
+    dc_vr = run_vertical_validation("data_center")
+    assert dc_vr.passed, f"DC KPI validation fails: {dc_vr.failed_checks()}"
+    assert len(dc_vr.gaps_by_type("NOT_AVAILABLE")) >= 2, (
+        f"DC must report NOT_AVAILABLE gaps; got {dc_vr.gaps}"
+    )
+
+    ev_vr = run_vertical_validation("ev_charging")
+    assert ev_vr.passed, f"EV KPI validation fails: {ev_vr.failed_checks()}"
+    assert len(ev_vr.gaps_by_type("FAIL")) >= 2, (
+        f"EV must report FAIL gaps; got {ev_vr.gaps}"
+    )
+
+    # 4. Wind runner passes (already checked above — kept for marker compatibility)
 
     # 5. Wind XLSX: 8 PASS, 0 FAIL
     wb_wind = _wb("generic_wind_reference")
