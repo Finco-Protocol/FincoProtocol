@@ -15,6 +15,8 @@ from finco_radar.assets.contracts import normalize_asset_uid
 
 LEDGER_SCHEMA_VERSION = "RWA_REFLEX_LEDGER_V2"
 OUTCOME_SOURCE_CONTRACT = "FINCO_AUTHORITY_SNAPSHOT_V1"
+MODEL_VERSION_CHANGED = "RWA_REFLEX_MODEL_VERSION_CHANGED"
+REQUEST_SCHEMA_CHANGED = "RWA_REFLEX_REQUEST_SCHEMA_CHANGED"
 
 
 def _canonical(payload: dict[str, object]) -> str:
@@ -122,6 +124,27 @@ class ReflexExperimentLedger:
         """)
         self._lock = RLock()
 
+    def _assert_sample_model_lock(self, interpretation: dict[str, object]) -> None:
+        """Do not silently mix resolved Jev versions or request schemas in one ledger sample."""
+        if interpretation.get("state") != "AVAILABLE":
+            return
+        resolved_model = interpretation.get("resolved_model")
+        request_schema = interpretation.get("request_schema_version")
+        if not isinstance(resolved_model, str) or not resolved_model.strip():
+            raise ValueError("available prediction requires resolved model")
+        if not isinstance(request_schema, str) or not request_schema.strip():
+            raise ValueError("available prediction requires request schema version")
+        rows = self._conn.execute("SELECT payload FROM reflex_predictions").fetchall()
+        for row in rows:
+            existing = json.loads(row["payload"])
+            existing_interpretation = existing.get("interpretation")
+            if not isinstance(existing_interpretation, dict) or existing_interpretation.get("state") != "AVAILABLE":
+                continue
+            if existing_interpretation.get("resolved_model") != resolved_model:
+                raise ValueError(MODEL_VERSION_CHANGED)
+            if existing_interpretation.get("request_schema_version") != request_schema:
+                raise ValueError(REQUEST_SCHEMA_CHANGED)
+
     def put_prediction(self, experiment: dict[str, object]) -> str:
         if experiment.get("experimental") is not True:
             raise ValueError("prediction requires experimental Reflex payload")
@@ -155,6 +178,7 @@ class ReflexExperimentLedger:
         digest, canonical = _digest(payload)
         uid = normalize_asset_uid(uid_raw)
         with self._lock:
+            self._assert_sample_model_lock(interpretation)
             try:
                 self._conn.execute(
                     "INSERT INTO reflex_predictions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
