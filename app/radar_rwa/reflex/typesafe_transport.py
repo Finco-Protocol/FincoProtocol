@@ -69,6 +69,17 @@ def _retry_after_seconds(response: _HttpResponse) -> float | None:
             return None
 
 
+def _contains_secret(value: object, secret: str) -> bool:
+    """Structural exact-secret scan before any provider response can leave transport."""
+    if isinstance(value, str):
+        return secret in value
+    if isinstance(value, Mapping):
+        return any(_contains_secret(key, secret) or _contains_secret(item, secret) for key, item in value.items())
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return any(_contains_secret(item, secret) for item in value)
+    return False
+
+
 class TypeSafeJevHttpTransport:
     """Explicit-key transport. The key is held in memory only and never serialized."""
 
@@ -103,7 +114,6 @@ class TypeSafeJevHttpTransport:
         except httpx.HTTPError:
             raise TypeSafeJevTransportError("TYPESAFE_NETWORK_ERROR") from None
         except Exception:
-            # Injected clients are also prevented from leaking secret-bearing exception text.
             raise TypeSafeJevTransportError("TYPESAFE_CLIENT_ERROR") from None
 
     def evaluate(self, request: Mapping[str, object]) -> Mapping[str, object]:
@@ -126,6 +136,8 @@ class TypeSafeJevHttpTransport:
                         raise TypeSafeJevTransportError("TYPESAFE_RESPONSE_JSON_INVALID") from None
                     if not isinstance(raw, Mapping):
                         raise TypeSafeJevTransportError("TYPESAFE_RESPONSE_SHAPE_INVALID")
+                    if _contains_secret(raw, self._api_key):
+                        raise TypeSafeJevTransportError("TYPESAFE_SECRET_ECHO_REJECTED")
                     payload = dict(raw)
                     payload["_transport_meta"] = {
                         "latency_ms": str(Decimal(str((self._clock() - started) * 1000)).quantize(Decimal("0.001"))),
