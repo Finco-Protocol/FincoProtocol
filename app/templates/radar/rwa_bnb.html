@@ -6,7 +6,7 @@
   <title>FINCO Radar — BNB Tokenized Assets</title>
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
-  <link rel="stylesheet" href="/static/radar/rwa.css?v=b1-1">
+  <link rel="stylesheet" href="/static/radar/rwa.css?v=b1-2">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
 </head>
 <body class="radar rwa-page">
@@ -31,7 +31,7 @@
 
   <section class="panel rwa-boundary bnb-boundary">
     <strong>Authority boundary</strong>
-    <span>BNB deployment identity is chain 56 plus exact contract address when CoinGecko supplies one. Market prices, caps and volumes are CoinGecko coin-level observations, not BNB-only quantities or executable quotes. Robinhood economic binding: Unavailable. No underlying parity or premium is inferred.</span>
+    <span>BNB deployment identity is chain 56 plus exact contract address when CoinGecko supplies one. Market prices, caps and volumes are CoinGecko coin-level observations, not BNB-only quantities or executable quotes. Robinhood economic binding: Unavailable without exact canonical Robinhood registry evidence. No underlying parity or premium is inferred.</span>
   </section>
 
   <section class="rwa-count-grid bnb-count-grid" aria-label="BNB observed-set summary">
@@ -65,7 +65,7 @@
   {% endif %}
 
   <section class="rwa-section" aria-label="BNB tokenized-asset observations">
-    <div class="rwa-section__heading"><div><h2>Observed assets</h2><p class="muted small">Market data and deployment evidence are separate; every Robinhood binding remains unavailable in B1.1.</p></div></div>
+    <div class="rwa-section__heading"><div><h2>Observed assets</h2><p class="muted small">Market data, BNB deployment, and Robinhood economic identity are separate evidence layers. No ticker or provider-ID mapping is inferred.</p></div></div>
     {% if dashboard.observations %}
     <div class="rwa-table-wrap panel bnb-table-wrap">
       <table class="rwa-table bnb-rwa-table">
@@ -80,7 +80,16 @@
             <td data-label="Asset-level 24h volume">{{ row.volume_display }}</td>
             <td data-label="24h change">{{ row.change_display }}</td>
             <td data-label="Freshness / source"><span class="rwa-state rwa-state--{{ row.state|lower }}">{{ row.state }}</span><span class="mono rwa-time">{{ row.observed_at or 'Timestamp unavailable' }}</span><span class="mono rwa-time">{{ row.source }} · {{ row.market_endpoint }}</span></td>
-            <td data-label="Robinhood binding" class="state-unavailable">Unavailable</td>
+            <td data-label="Robinhood binding" class="bnb-identity-cell">
+              {% if row.canonical_identity.state == 'AVAILABLE' %}
+                <span class="rwa-state rwa-state--available">AVAILABLE</span>
+                <span class="mono rwa-time bnb-identity-uid">{{ row.canonical_identity.economic_asset_uid }}</span>
+                <span class="mono rwa-time">{{ row.canonical_identity.authority_source }} · {{ row.canonical_identity.observed_at }}</span>
+              {% else %}
+                <span class="state-unavailable">Unavailable</span>
+                <span class="mono rwa-time">{{ row.canonical_identity.state }} · {{ row.canonical_identity.reason }}</span>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
         </tbody>

@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Mapping
+
+from finco_radar.assets.contracts import AssetKey
+from finco_radar.authority.contracts import AuthorityState
+from finco_radar.authority.cross_chain import CrossChainIdentityBinding
 
 from .bnb_coingecko import CoinGeckoBnbRwaProvider
 from .bnb_contracts import BnbRwaMarketObservation, BnbRwaMarketSnapshot
+from .bnb_identity import BnbCrossChainIdentityService
 
 
 _CATEGORY_URL = "https://www.coingecko.com/en/categories/tokenized-products"
@@ -34,8 +40,32 @@ def _percent(value: Decimal | None) -> str:
     return "Unavailable" if value is None else f"{value:+.2f}%"
 
 
-def _row(row: BnbRwaMarketObservation) -> dict:
+def _identity_block(binding: CrossChainIdentityBinding | None, key: AssetKey | None) -> dict:
+    if binding is None:
+        binding = CrossChainIdentityBinding(
+            AuthorityState.IDENTITY_UNAVAILABLE, key, None, (), None, None,
+            "BNB_DEPLOYMENT_UNAVAILABLE" if key is None else "CANONICAL_IDENTITY_EVIDENCE_UNAVAILABLE",
+        )
+    return {
+        "state": binding.state.value,
+        "economic_asset_uid": binding.economic_asset_uid,
+        "canonical_deployments": [
+            {"chain_id": item.chain_id, "contract_address": item.contract_address,
+             "canonical_id": item.canonical_id}
+            for item in binding.canonical_deployments
+        ],
+        "authority_source": binding.authority_source,
+        "observed_at": binding.observed_at.isoformat() if binding.observed_at else None,
+        "reason": binding.reason,
+    }
+
+
+def _row(
+    row: BnbRwaMarketObservation,
+    identities: Mapping[AssetKey, CrossChainIdentityBinding],
+) -> dict:
     key = row.asset_key
+    identity = _identity_block(identities.get(key) if key is not None else None, key)
     return {
         "provider_id": row.provider_id,
         "symbol": row.symbol,
@@ -46,7 +76,8 @@ def _row(row: BnbRwaMarketObservation) -> dict:
             "canonical_id": key.canonical_id,
         },
         "deployment_reason": row.deployment_reason,
-        "robinhood_binding": row.robinhood_binding.value,
+        "robinhood_binding": identity["state"],
+        "canonical_identity": identity,
         "state": row.state.value,
         "observed_at": row.observed_at.isoformat() if row.observed_at else None,
         "price_usd": _decimal(row.price_usd),
@@ -69,8 +100,11 @@ def _row(row: BnbRwaMarketObservation) -> dict:
     }
 
 
-def serialize_bnb_snapshot(snapshot: BnbRwaMarketSnapshot) -> dict:
-    rows = [_row(row) for row in snapshot.observations]
+def serialize_bnb_snapshot(
+    snapshot: BnbRwaMarketSnapshot,
+    identities: Mapping[AssetKey, CrossChainIdentityBinding] | None = None,
+) -> dict:
+    rows = [_row(row, identities or {}) for row in snapshot.observations]
     rows.sort(key=lambda row: (
         row["state"] != "AVAILABLE",
         row["market_cap_usd"] is None,
@@ -109,8 +143,14 @@ def serialize_bnb_snapshot(snapshot: BnbRwaMarketSnapshot) -> dict:
 
 
 class BnbRwaDashboardService:
-    def __init__(self, provider=None) -> None:
+    def __init__(self, provider=None, identity_service=None) -> None:
         self.provider = provider or CoinGeckoBnbRwaProvider()
+        self.identity_service = identity_service or BnbCrossChainIdentityService()
 
     def read_payload(self) -> dict:
-        return serialize_bnb_snapshot(self.provider.read_snapshot())
+        snapshot = self.provider.read_snapshot()
+        try:
+            identities = self.identity_service.resolve_snapshot(snapshot)
+        except Exception:  # identity failure cannot erase independent market observations
+            identities = {}
+        return serialize_bnb_snapshot(snapshot, identities)
