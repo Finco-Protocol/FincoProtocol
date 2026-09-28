@@ -6,12 +6,16 @@ The modelling strategy is vertical: begin with a deeply modelled infrastructure 
 
 ## Now
 
-### FINCO Model — renewable RWA infrastructure
+### FINCO Model — RWA infrastructure modelling
 
-The first production modelling vertical is renewable infrastructure:
+Current production modelling verticals:
 
-- Solar
-- Wind
+- **Solar** — mature production modelling workflow
+- **Wind** — mature production modelling workflow
+- **Data Center** — implemented and vertically validated modelling workflow (A3.1)
+- **EV Charging** — implemented modelling workflow (A3.2, P0.3 canonical reference)
+
+Storage is available as a reference model (viewable) but its working-copy runtime is not yet released.
 
 Current shared engine capabilities include:
 
@@ -54,8 +58,9 @@ Priority candidates:
 - **Transport infrastructure** — toll roads, highways, concessions;
 - **Real estate** — commercial and residential buildings;
 - **Hospitality** — hotels and operating real-estate assets;
-- **Water infrastructure** — desalination, water treatment, wastewater;
-- **Digital infrastructure** — data centers and related capacity assets.
+- **Water infrastructure** — desalination, water treatment, wastewater.
+
+Note: Data Center and EV Charging are already implemented and live — they are no longer roadmap items.
 
 These modules should reuse the common financing, tax, cash-flow, financial-statement, return, and verification layers while adding vertical-specific operating assumptions.
 

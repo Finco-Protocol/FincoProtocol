@@ -547,6 +547,13 @@ FACTORY_TEMPLATE_OPTIONS = [
         "project_type": "Data Center",
         "template_source": "generic_data_center_reference",
     },
+    {
+        "project_code": "generic_ev_charging_reference",
+        "label": "Generic EV Charging Hub Reference",
+        "meta": "5 MW · Generic Market E",
+        "project_type": "EV Charging",
+        "template_source": "generic_ev_charging_reference",
+    },
 ]
 NEW_PROJECT_TEMPLATE_OPTIONS = [
     {"value": "generic_wind", "label": "Generic Wind (exploratory)", "project_type": "Wind"},

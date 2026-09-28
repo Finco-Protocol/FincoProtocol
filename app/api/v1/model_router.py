@@ -6,8 +6,8 @@ HTTP status mapping:
   404  Not Found    — key not in canonical supported set (exact membership only)
 
 Supported keys: generic_solar_reference, generic_wind_reference,
-generic_data_center_reference.  Everything else (including storage, aliases,
-invalid format) → 404.
+generic_data_center_reference, generic_ev_charging_reference.
+Everything else (including storage, aliases, invalid format) → 404.
 
 All route handlers are synchronous (def) so FastAPI dispatches to a threadpool.
 """
@@ -29,8 +29,28 @@ from app.api.v1.schemas import (
     ModelReferenceRunEnvelope,
     ModelReferenceRunRequest,
 )
+from app.product_capability import PRODUCT_CAPABILITIES, as_api_dict
 
 router = APIRouter()
+
+
+# ── GET /api/v1/capabilities ──────────────────────────────────────────────────
+
+@router.get("/capabilities")
+def get_capabilities():
+    """Return the canonical product-capability registry.
+
+    Read-only, deterministic, user-state-free.  Sourced directly from
+    app.product_capability — the single source of truth for what FINCO
+    supports today.
+    """
+    return {
+        "api_version": API_VERSION,
+        "state": "AVAILABLE",
+        "data": {
+            "capabilities": [as_api_dict(c) for c in PRODUCT_CAPABILITIES],
+        },
+    }
 
 
 def _not_found(key: str) -> JSONResponse:

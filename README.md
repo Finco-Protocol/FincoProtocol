@@ -26,8 +26,8 @@ The current modelling verticals are:
 
 - Solar and Wind — mature production modelling workflows;
 - Data Center — implemented and vertically validated modelling workflow (A3.1);
-- EV Charging — implemented modelling workflow; final validation in progress;
-- Storage — limited/reference scope.
+- EV Charging — implemented modelling workflow (A3.2, canonical reference and working-copy runtime supported);
+- Storage — limited/reference scope (reference viewable; working-copy runtime not released).
 
 Solar and Wind are the most mature modules.
 
@@ -70,7 +70,7 @@ Planned infrastructure verticals include:
 - **Telecom infrastructure** — towers, networks, and connectivity assets;
 - **Industrial infrastructure** — long-life industrial and process facilities.
 
-These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow with final validation in progress; Storage remains limited/reference scope.
+These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
 See [docs/RWA_INFRASTRUCTURE.md](docs/RWA_INFRASTRUCTURE.md) for the RWA infrastructure thesis, current engine capabilities, and planned module expansion.
 
@@ -146,9 +146,11 @@ This repository contains only synthetic reference data:
 | --- | --- | --- |
 | Generic Solar Reference | Generic Market A (`XA`) | renewable RWA modelling demonstration |
 | Generic Wind Reference | Generic Market B (`XB`) | renewable RWA modelling demonstration |
-| Generic Storage Reference | Generic Market C (`XC`) | storage / BESS reference capability |
+| Generic Storage Reference | Generic Market C (`XC`) | storage / BESS reference capability (view-only; runtime not released) |
+| Generic Data Center Reference | Generic Market D (`XD`) | data-center RWA modelling demonstration |
+| Generic EV Charging Hub Reference | Generic Market E (`XE`) | EV charging RWA modelling demonstration |
 
-`XA`, `XB`, and `XC` are user-assigned market identifiers used only for synthetic examples. They do not represent real jurisdictions.
+`XA`, `XB`, `XC`, `XD`, and `XE` are user-assigned market identifiers used only for synthetic examples. They do not represent real jurisdictions.
 
 No client project, company, workbook, saved project, production database, project-specific spreadsheet, or historical calibration artifact is part of the corporate repository.
 
@@ -180,7 +182,7 @@ FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is 
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow with final validation in progress; Storage remains limited/reference scope; further asset-class modules are roadmap items until implemented and validated;
+- Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete); Storage remains limited/reference scope (reference viewable; working-copy runtime not released); further asset-class modules are roadmap items until implemented and validated;
 - FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
 - Radar and Protocol verification remain architecturally separate from the RWA infrastructure modelling engine;
 - a deterministic evidence digest is not proof that external market data is true and is not an on-chain notarization by itself;
@@ -198,4 +200,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow with final validation in progress; Storage remains limited/reference scope. Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
+Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released). Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
