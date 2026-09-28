@@ -11,7 +11,7 @@ from finco_radar.authority.contracts import AuthorityState
 
 from .contracts import RwaReflexState
 from .features import OUTBOUND_FIELD_ALLOWLIST, build_parity_feature_state
-from .interpretation import InterpretationState, ReflexInterpretation, normalized_usage
+from .interpretation import JEV_FAILURE_CATEGORIES, InterpretationState, ReflexInterpretation, normalized_usage
 
 
 JEV_REQUEST_SCHEMA_VERSION = "RWA_REFLEX_JEV_REQUEST_V2"
@@ -80,6 +80,9 @@ def _evidence_payload(state: RwaReflexState) -> dict[str, object]:
             "liquidity_venue_id": provenance.liquidity_venue_id,
             "session_source": provenance.session_source,
             "session_resolver_version": provenance.session_resolver_version,
+            "regular_session_date": provenance.regular_session_date,
+            "regular_session_open_at": _time(provenance.regular_session_open_at),
+            "regular_session_close_at": _time(provenance.regular_session_close_at),
             "context_builder_version": provenance.context_builder_version,
         },
     }
@@ -115,9 +118,9 @@ def build_jev_request(
                 "type": "noul",
                 "instructions": (
                     "Estimate the probability that this eligible regular-session dislocation event "
-                    "will be TRANSIENT under RWA_REFLEX_OUTCOME_POLICY_V2: at the first eligible "
-                    "canonical AVAILABLE observation around 60 regular-session minutes after event "
-                    "start, the absolute premium deviation from the frozen pre-event structural "
+                    "will be TRANSIENT under RWA_REFLEX_OUTCOME_POLICY_V2: using the first eligible "
+                    "canonical AVAILABLE observation at or after T+60 minutes and no later than T+65 "
+                    "minutes, the absolute premium deviation from the frozen pre-event structural "
                     "premium level is at most 50% of its initial absolute deviation. Use only the "
                     "supplied blinded feature buckets. Do not infer asset identity, recalculate "
                     "prices/premium, or produce investment advice."
@@ -158,6 +161,7 @@ def _invalid(fingerprint: str, config: JevReflexConfig, reason: str) -> ReflexIn
         provider=config.provider,
         requested_model=config.model,
         reason=reason,
+        failure_category="INVALID_RESPONSE",
     )
 
 
@@ -232,14 +236,22 @@ def interpret_reflex_with_jev(
     request = build_jev_request(state, config=config)
     try:
         response = transport.evaluate(request)
-    except Exception:
+    except Exception as exc:
+        category = getattr(exc, "failure_category", "NETWORK")
+        if category not in JEV_FAILURE_CATEGORIES:
+            category = "NETWORK"
+        attempts = getattr(exc, "attempt_count", None)
+        latency = getattr(exc, "latency_ms", None)
         return ReflexInterpretation(
             state=InterpretationState.UNAVAILABLE,
             input_fingerprint=fingerprint,
             request_schema_version=JEV_REQUEST_SCHEMA_VERSION,
             provider=config.provider,
             requested_model=config.model,
+            attempt_count=attempts if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts > 0 else None,
+            latency_ms=latency if isinstance(latency, Decimal) else None,
             reason="JEV_TRANSPORT_UNAVAILABLE",
+            failure_category=category,
         )
     if not isinstance(response, Mapping):
         return _invalid(fingerprint, config, "JEV_RESPONSE_NOT_MAPPING")
