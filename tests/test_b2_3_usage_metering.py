@@ -402,13 +402,18 @@ def test_B2_3_WALLET_CANONICAL_LINK_ONLY(monkeypatch):
             return {"wallet_address": canonical_wallet}
         return None
 
-    # Inject a mock wallet_auth module so the test doesn't need eth_account
+    # Inject a mock wallet_auth module so the test doesn't need eth_account.
+    # Must patch both sys.modules AND the attribute on app.protocol, because
+    # `import app.protocol.wallet_auth as _wauth` resolves via the parent package
+    # attribute when the real module was already imported in the same session.
+    import app.protocol as _proto_pkg
     mock_wauth = types.ModuleType("app.protocol.wallet_auth")
     mock_wauth.get_verified_wallet = mock_get_verified_wallet
-    original = sys.modules.get("app.protocol.wallet_auth")
+    original_sys = sys.modules.get("app.protocol.wallet_auth")
+    original_attr = getattr(_proto_pkg, "wallet_auth", None)
     sys.modules["app.protocol.wallet_auth"] = mock_wauth
+    _proto_pkg.wallet_auth = mock_wauth
     try:
-        # Re-import ledger to pick up the mock (UsageRecorder.record imports lazily)
         recorder, store = _recorder_with_store()
 
         # User with a linked wallet
@@ -428,10 +433,17 @@ def test_B2_3_WALLET_CANONICAL_LINK_ONLY(monkeypatch):
         )
         assert ev_no_wallet.wallet_address is None
     finally:
-        if original is None:
+        if original_sys is None:
             sys.modules.pop("app.protocol.wallet_auth", None)
         else:
-            sys.modules["app.protocol.wallet_auth"] = original
+            sys.modules["app.protocol.wallet_auth"] = original_sys
+        if original_attr is None:
+            try:
+                delattr(_proto_pkg, "wallet_auth")
+            except AttributeError:
+                pass
+        else:
+            _proto_pkg.wallet_auth = original_attr
 
 
 # ── B2_3_QUERY_FAILURE_NOT_ZERO ──────────────────────────────────────────────────────────────
