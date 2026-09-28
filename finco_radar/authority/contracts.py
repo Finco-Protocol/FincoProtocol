@@ -1,10 +1,11 @@
 """Distinct underlying, token reference, and execution observations."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Any, Mapping
 
 from finco_radar.assets.contracts import AssetKey, normalize_asset_uid
 from finco_radar.quotes.contracts import QuoteSide
@@ -42,6 +43,7 @@ class IndependentTokenReference:
     price_usd_per_token: Decimal
     source: str
     observed_at: datetime
+    evidence: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "registry_asset_uid", normalize_asset_uid(self.registry_asset_uid))
@@ -61,6 +63,7 @@ class ReferenceLayer:
     source: str | None
     observed_at: datetime | None
     reason: str | None = None
+    evidence: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
