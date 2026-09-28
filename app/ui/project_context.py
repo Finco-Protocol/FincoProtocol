@@ -18,6 +18,7 @@ from app.project_factories import (
     create_default_data_center_project,
     create_generic_wind_reference,
     create_default_wind_project,
+    create_generic_ev_charging_reference,
 )
 from domain.opex.templates import build_generic_solar_reference_opex_template, build_generic_wind_reference_opex_template
 from app.reference_detail_catalog import (
@@ -1226,10 +1227,23 @@ def _build_generic_solar_context() -> ProjectContext:
     )
 
 
+def _build_generic_ev_charging_reference_context() -> ProjectContext:
+    return _build_context_from_project_inputs(
+        create_generic_ev_charging_reference(),
+        code="GENERIC_EV_CHARGING_REFERENCE",
+        technology="EV Charging",
+        opex_contingency_method="fixed_amount",
+        opex_contingency_pct=0.0,
+        parity_status="CONVENTION",
+        data_source="Factory context - read-only template data",
+    )
+
+
 _CONTEXTS: dict[str, ProjectContext] = {
     "generic_wind_reference": _build_generic_wind_reference_context(),
     "generic_solar_reference": _build_generic_solar_reference_context(),
     "generic_data_center_reference": _build_generic_data_center_reference_context(),
+    "generic_ev_charging_reference": _build_generic_ev_charging_reference_context(),
     "generic_wind": _build_generic_wind_context(),
     "generic_solar": _build_generic_solar_context(),
     "generic_data_center": _build_generic_data_center_context(),
@@ -1296,8 +1310,12 @@ def build_project_context_for_record(
         base = _CONTEXTS["generic_solar_reference"]
     elif seed_key in ("generic_data_center_reference", "generic_data_center"):
         base = _CONTEXTS[seed_key]
+    elif seed_key == "generic_ev_charging_reference":
+        base = _CONTEXTS["generic_ev_charging_reference"]
     elif (project_type or "").strip().lower() in {"data center", "data_center", "datacenter"}:
         base = _CONTEXTS["generic_data_center"]
+    elif (project_type or "").strip().lower() in {"ev charging", "ev_charging"}:
+        base = _CONTEXTS["generic_ev_charging_reference"]
     elif (project_type or "").strip().lower() == "solar":
         base = _CONTEXTS["generic_solar"]
     else:
