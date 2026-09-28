@@ -9,30 +9,33 @@ from typing import Mapping
 from finco_radar.authority.contracts import AuthorityState
 
 from .contracts import RwaReflexState
-from .features import build_parity_feature_state, feature_cell_key
+from .evaluation import OUTCOME_POLICY_VERSION
+from .event import EVENT_POLICY_VERSION
+from .features import FEATURE_SCHEMA_VERSION, FIRST_SAMPLE_DEPTH_POLICY, build_parity_feature_state, feature_cell_key
 
 
 BASELINE_SCHEMA_VERSION = "RWA_REFLEX_TRANSIENT_BASELINE_V2"
 INFORMATION_PARITY_MARKER = "RWA_REFLEX_JEV_BASELINE_INFORMATION_PARITY"
+BASELINE_POLICY_BOUND_MARKER = "RWA_REFLEX_BASELINE_POLICY_BOUND"
 
 
 @dataclass(frozen=True)
 class EmpiricalTransientBaselineConfig:
-    """Pre-period empirical rates; callers must freeze this before a sample begins.
-
-    ``cell_counts`` maps the exact blinded feature-cell key to
-    ``(transient_count, total_count)``. Sparse cells shrink toward the frozen
-    global pre-period rate; no post-t0 outcomes may update this config in-place.
-    """
+    """Frozen pre-period empirical rates under the exact live experiment semantics."""
 
     training_cutoff: datetime | None = None
     training_source: str = "UNCONFIGURED"
     cell_counts: Mapping[str, tuple[int, int]] = field(default_factory=dict)
     global_transient_count: int = 0
     global_total_count: int = 0
+    training_sample_count: int = 0
     minimum_global_observations: int = 20
     minimum_cell_observations: int = 5
     shrinkage_strength: Decimal = Decimal("10")
+    feature_schema_version: str = FEATURE_SCHEMA_VERSION
+    event_policy_version: str = EVENT_POLICY_VERSION
+    outcome_policy_version: str = OUTCOME_POLICY_VERSION
+    depth_policy: str = FIRST_SAMPLE_DEPTH_POLICY
 
     def __post_init__(self) -> None:
         if self.training_cutoff is not None and (
@@ -41,11 +44,23 @@ class EmpiricalTransientBaselineConfig:
             raise ValueError("training_cutoff must be timezone-aware")
         if not self.training_source.strip():
             raise ValueError("training_source is required")
-        if min(self.global_transient_count, self.global_total_count, self.minimum_global_observations,
-               self.minimum_cell_observations) < 0:
+        if min(
+            self.global_transient_count, self.global_total_count, self.training_sample_count,
+            self.minimum_global_observations, self.minimum_cell_observations,
+        ) < 0:
             raise ValueError("baseline counts must be nonnegative")
         if self.global_transient_count > self.global_total_count:
             raise ValueError("global transient count cannot exceed total")
+        if self.training_sample_count != self.global_total_count:
+            raise ValueError("RWA_REFLEX_BASELINE_TRAINING_COUNT_MISMATCH")
+        if self.feature_schema_version != FEATURE_SCHEMA_VERSION:
+            raise ValueError("RWA_REFLEX_BASELINE_FEATURE_SCHEMA_MISMATCH")
+        if self.event_policy_version != EVENT_POLICY_VERSION:
+            raise ValueError("RWA_REFLEX_BASELINE_EVENT_POLICY_MISMATCH")
+        if self.outcome_policy_version != OUTCOME_POLICY_VERSION:
+            raise ValueError("RWA_REFLEX_BASELINE_OUTCOME_POLICY_MISMATCH")
+        if self.depth_policy != FIRST_SAMPLE_DEPTH_POLICY:
+            raise ValueError("RWA_REFLEX_BASELINE_DEPTH_POLICY_MISMATCH")
         if not self.shrinkage_strength.is_finite() or self.shrinkage_strength < 0:
             raise ValueError("shrinkage_strength must be finite and nonnegative")
         for key, counts in self.cell_counts.items():
@@ -62,12 +77,23 @@ def evaluate_transient_baseline(
     config: EmpiricalTransientBaselineConfig,
 ) -> dict[str, object]:
     """Return P(transient) using exactly the same blinded information as Jev."""
+    provenance = {
+        "feature_schema_version": config.feature_schema_version,
+        "event_policy_version": config.event_policy_version,
+        "outcome_policy_version": config.outcome_policy_version,
+        "training_cutoff": config.training_cutoff.isoformat() if config.training_cutoff else None,
+        "training_source": config.training_source,
+        "training_sample_count": config.training_sample_count,
+        "depth_policy": config.depth_policy,
+        "policy_bound_marker": BASELINE_POLICY_BOUND_MARKER,
+    }
     if state.state is not AuthorityState.AVAILABLE:
         return {
             "schema_version": BASELINE_SCHEMA_VERSION,
             "state": "UNAVAILABLE",
             "reason": state.reason or "REFLEX_STATE_NOT_AVAILABLE",
             "transient_probability": None,
+            "provenance": provenance,
             "information_parity": INFORMATION_PARITY_MARKER,
         }
     if config.training_cutoff is None or config.global_total_count < config.minimum_global_observations:
@@ -76,6 +102,7 @@ def evaluate_transient_baseline(
             "state": "UNAVAILABLE",
             "reason": "FROZEN_PREPERIOD_BASELINE_INSUFFICIENT",
             "transient_probability": None,
+            "provenance": provenance,
             "information_parity": INFORMATION_PARITY_MARKER,
         }
     if state.observed_at is not None and config.training_cutoff >= state.observed_at:
@@ -107,6 +134,8 @@ def evaluate_transient_baseline(
         "global_total_count": config.global_total_count,
         "training_cutoff": config.training_cutoff.isoformat(),
         "training_source": config.training_source,
+        "training_sample_count": config.training_sample_count,
+        "provenance": provenance,
         "mode": mode,
         "information_parity": INFORMATION_PARITY_MARKER,
     }
