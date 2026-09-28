@@ -83,11 +83,19 @@ def test_docs06_working_vs_last_run_boundary_present():
 
 
 def test_docs07_model_reference_scope_is_truthful():
+    """Docs must name all four LIVE model verticals as canonical synthetic references."""
+    from app.product_capability import LIVE_CAPABILITIES
     html = _client().get("/docs").text
-    assert "Solar, Wind and Data Center" in html
+    for cap in LIVE_CAPABILITIES:
+        if cap.product_area == "model":
+            assert cap.public_name in html, (
+                f"Docs must mention LIVE model vertical {cap.public_name!r}"
+            )
     assert "synthetic product references" in html
     assert "not market benchmarks" in html
-    assert "Storage remains limited/reference scope" in html
+    # Storage is PREVIEW — docs must describe its limited scope
+    assert "Storage" in html
+    assert "reference view only" in html or "limited/reference scope" in html or "working-copy runtime not released" in html
 
 
 def test_docs08_radar_domains_and_readonly_boundary_present():

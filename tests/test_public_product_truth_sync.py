@@ -334,7 +334,7 @@ class TestRoadmapAligned:
     """PUBLIC_ROADMAP_ALIGNED — roadmap reflects what is actually shipped."""
 
     def test_roadmap_shipped_includes_solar_wind_dc_ev(self):
-        """All four live verticals in Shipped chip row."""
+        """All four live model verticals in Shipped chip row."""
         from app.product_capability import LIVE_CAPABILITIES
         html = _roadmap_html()
         start = html.find("Infrastructure Model")
@@ -342,6 +342,8 @@ class TestRoadmapAligned:
         chip_end = html.find("</div>", chip_start)
         chip_section = html[chip_start:chip_end]
         for cap in LIVE_CAPABILITIES:
+            if cap.product_area != "model":
+                continue
             assert cap.public_name in chip_section
 
     def test_roadmap_ai_explains_principle_present(self):
@@ -476,14 +478,16 @@ class TestSupportedTodaySingleAuthority:
         assert len(LIVE_CAPABILITIES) >= 4  # Solar, Wind, DC, EV now all live
 
     def test_all_live_verticals_appear_in_docs(self):
-        """All live verticals from the registry must appear in docs."""
+        """All live model verticals from the registry must appear in docs."""
         from app.product_capability import LIVE_CAPABILITIES
         html = _docs_html()
         for cap in LIVE_CAPABILITIES:
-            assert cap.public_name in html, f"Docs missing live vertical: {cap.public_name}"
+            if cap.product_area != "model":
+                continue
+            assert cap.public_name in html, f"Docs missing live model vertical: {cap.public_name}"
 
     def test_all_live_verticals_appear_in_roadmap_shipped(self):
-        """All live verticals from the registry must appear in roadmap shipped section."""
+        """All live model verticals from the registry must appear in roadmap shipped section."""
         from app.product_capability import LIVE_CAPABILITIES
         html = _roadmap_html()
         start = html.find("Infrastructure Model")
@@ -491,6 +495,8 @@ class TestSupportedTodaySingleAuthority:
         chip_end = html.find("</div>", chip_start)
         chip_section = html[chip_start:chip_end]
         for cap in LIVE_CAPABILITIES:
+            if cap.product_area != "model":
+                continue
             assert cap.public_name in chip_section, (
                 f"Roadmap Shipped chip row missing: {cap.public_name}"
             )

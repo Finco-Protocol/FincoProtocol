@@ -17,11 +17,17 @@ downgrade an actually supported capability to PREVIEW merely because future
 enhancement remains.  Likewise, do not advertise a future enhancement as LIVE
 because its internal groundwork exists.
 
+PRODUCT AREAS
+-------------
+product_area="model"  — deterministic financial model vertical (Solar, Wind, etc.)
+product_area="radar"  — read-only market-intelligence surface (Radar, RWA, etc.)
+product_area="verify" — evidence/verification layer
+
 DERIVED HELPERS
 ---------------
 LIVE_KEYS          — frozenset of capability keys at LIVE status
 API_AVAILABLE_KEYS — frozenset of keys with api_available=True
-live_vertical_names() — ordered tuple of public_name strings for LIVE verticals
+live_vertical_names() — ordered tuple of public_name strings for LIVE model verticals
 
 PROMOTION PROCEDURE
 -------------------
@@ -59,6 +65,7 @@ class ProductCapability:
     export_available: bool
     status_note: str = ""
     limitations: tuple[str, ...] = field(default_factory=tuple)
+    product_area: str = "model"
 
 
 _solar = ProductCapability(
@@ -155,6 +162,28 @@ _ev_charging = ProductCapability(
     ),
 )
 
+_bnb_rwa = ProductCapability(
+    key="bnb_rwa",
+    public_name="BNB Tokenized Assets",
+    status=ProductStatus.LIVE,
+    public_visible=True,
+    reference_available=True,
+    runnable=False,
+    cloneable=False,
+    working_copy_editable=False,
+    canonical_last_run=False,
+    api_available=False,
+    export_available=False,
+    product_area="radar",
+    status_note="Read-only BNB chain RWA market observations via CoinGecko. No TVL claim, no trading, no cross-chain identity (B1.2/B1.3 are not live).",
+    limitations=(
+        "Read-only market observations — no order submission, no custody, no wallet signing.",
+        "Robinhood binding is IDENTITY_UNAVAILABLE; cross-chain canonical identity (B1.2) is not live.",
+        "RWA TVL aggregate is not claimed; observations are per-asset market data only.",
+        "CoinGecko is the sole observation authority; data freshness depends on provider availability.",
+    ),
+)
+
 # Canonical ordered registry — do not reorder without updating tests.
 PRODUCT_CAPABILITIES: tuple[ProductCapability, ...] = (
     _solar,
@@ -162,6 +191,7 @@ PRODUCT_CAPABILITIES: tuple[ProductCapability, ...] = (
     _data_center,
     _storage,
     _ev_charging,
+    _bnb_rwa,
 )
 
 LIVE_CAPABILITIES: tuple[ProductCapability, ...] = tuple(
@@ -181,8 +211,8 @@ API_AVAILABLE_KEYS: frozenset[str] = frozenset(
 
 
 def live_vertical_names() -> tuple[str, ...]:
-    """Ordered tuple of public_name strings for LIVE model verticals."""
-    return tuple(c.public_name for c in LIVE_CAPABILITIES)
+    """Ordered tuple of public_name strings for LIVE model-area verticals."""
+    return tuple(c.public_name for c in LIVE_CAPABILITIES if c.product_area == "model")
 
 
 def capability_by_key(key: str) -> ProductCapability | None:
@@ -209,4 +239,5 @@ def as_api_dict(cap: ProductCapability) -> dict:
         "export_available": cap.export_available,
         "status_note": cap.status_note,
         "limitations": list(cap.limitations),
+        "product_area": cap.product_area,
     }

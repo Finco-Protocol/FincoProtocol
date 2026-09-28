@@ -135,13 +135,20 @@ def test_a1_13_readme_mentions_verified_assets():
 # ── Vertical-status semantic invariants (Correction A) ─────────────────────
 
 def test_a1_15_readme_dc_ev_present_with_qualification():
-    """README must show Data Center and EV Charging but qualify their validation state."""
+    """README must show all four LIVE model verticals per the canonical contract.
+    DC A3.1 and EV A3.2 are merged capabilities; stale 'validation in progress'
+    language must NOT be required."""
+    from app.product_capability import LIVE_CAPABILITIES
     readme = (REPO / "README.md").read_text()
     lower = readme.lower()
-    assert "data center" in lower
-    assert "ev charging" in lower or "ev" in lower
-    # Must carry qualification language (not unconditional production claims)
-    assert "validation in progress" in lower or "undergoing" in lower
+    for cap in LIVE_CAPABILITIES:
+        if cap.product_area == "model":
+            assert cap.public_name.lower() in lower, (
+                f"LIVE model vertical {cap.public_name!r} not found in README"
+            )
+    # Storage must remain marked limited/reference scope
+    assert "storage" in lower
+    assert "limited" in lower or "reference scope" in lower
     # Internal engineering term must not appear in public product copy
     assert "vertical-integrity" not in lower
 
@@ -179,15 +186,20 @@ def test_a1_18_docs_vertical_status_qualified():
 
 
 def test_a1_19_roadmap_vertical_status_distinguishes_maturity():
-    """Roadmap Infrastructure Model card must distinguish Solar/Wind maturity from DC/EV."""
+    """Roadmap Infrastructure Model card must list all LIVE model verticals and distinguish
+    Solar/Wind maturity from DC/EV. DC A3.1 and EV A3.2 are implemented; stale
+    'validation in progress' must NOT be asserted."""
+    from app.product_capability import LIVE_CAPABILITIES
     roadmap = (REPO / "app/templates/protocol_roadmap.html").read_text()
     lower = roadmap.lower()
-    assert "solar" in lower and "wind" in lower
-    assert "data center" in lower
-    assert "ev charging" in lower or "ev" in lower
+    for cap in LIVE_CAPABILITIES:
+        if cap.product_area == "model":
+            assert cap.public_name.lower() in lower, (
+                f"LIVE model vertical {cap.public_name!r} not found in protocol_roadmap.html"
+            )
     assert "storage" in lower
     assert "mature" in lower
-    assert "validation in progress" in lower
+    assert "implemented" in lower
     # Internal engineering term must not appear in public roadmap copy
     assert "vertical-integrity" not in lower
 
