@@ -9,7 +9,7 @@ existing authorities — no financial calculations here.
 Authorities composed:
   model section   — WorkspaceStateRecord (last_runtime_summary, identity fields)
   verify section  — build_run_certificate() → FINCO_RUN_CERTIFICATE_V1
-  market section  — compute_tokenization_premium() + CanonicalAssetRecord
+  market section  — exact model/run binding + canonical Radar AuthoritySnapshot
   protocol section — UTILITY_REGISTRY
 
 Eligibility states:

@@ -4,10 +4,9 @@ V1 ships with two reference assets:
   - generic_solar_reference  → solar PPA reference model
   - generic_wind_reference   → wind PPA reference model
 
-Both are MODEL_ONLY in V1: run certificates are available via the
-canonical reference engine, but no tokenized-market identity mapping
-exists in the current runtime (discover_model_evidence returns
-MODEL_BINDING_UNAVAILABLE for all assets).
+Both are MODEL_ONLY: run certificates are available via the canonical
+reference engine, but neither has an approved, source-proven model-to-market
+economic identity binding.
 
 This registry is the single source of truth for which assets appear
 on the /verified surface. Extending V1 to VERIFIED status requires

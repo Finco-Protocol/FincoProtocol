@@ -17,7 +17,8 @@
     <p class="va-header__eyebrow">FINCO Protocol · Verified Assets V1</p>
     <h1 class="va-header__title">Verified Assets</h1>
     <p class="va-header__sub">
-      Real-world asset economics connected to verifiable model lineage.
+      Reference model records are shown here. VERIFIED is reserved for an exact,
+      source-proven model-to-market chain; none is implied by a run certificate alone.
       NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION
     </p>
   </header>
@@ -29,7 +30,7 @@
     <span class="va-pipeline__sep">→</span>
     <span class="va-pipeline__step">Radar</span>
     <span class="va-pipeline__sep">→</span>
-    <span class="va-pipeline__step">$FINCO</span>
+    <span class="va-pipeline__step">Access controlled separately</span>
     <span style="margin-left: auto; color: #9ca3af;">FINCO_VERIFIED_ASSET_V1</span>
   </div>
 
@@ -58,7 +59,7 @@
 
   <div class="va-footer">
     <span class="va-footer__schema">FINCO_VERIFIED_ASSET_V1 · READ ONLY</span>
-    <span>{{ assets | length }} asset{{ 's' if assets | length != 1 else '' }}</span>
+    <span>{{ assets | selectattr('status.value', 'equalto', 'VERIFIED') | list | length }} VERIFIED · {{ assets | length }} reference records</span>
   </div>
 </main>
 </body>

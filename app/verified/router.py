@@ -147,14 +147,59 @@ async def verified_asset_json(asset_id: str, request: Request):
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     record = result["record"]
-    # Serialise VerifiedAssetStatus enum to string value.
-    output = dict(record)
-    if hasattr(output.get("status"), "value"):
-        output["status"] = output["status"].value
-    if isinstance(output.get("status_display"), dict):
-        pass  # already plain dict
+    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement
+    # Explicit projection: future dossier fields cannot leak by default.
+    status = record.get("status")
+    verification = record.get("verification") or {
+        "status": status.value if hasattr(status, "value") else status,
+        "reason": (record.get("error") or {}).get("code"),
+    }
+    verify = record.get("verify") or {}
+    market = record.get("market_observation") or record.get("market") or {}
+    output = {
+        "schema": record.get("schema"),
+        "asset_id": record.get("asset_id"),
+        "display_name": record.get("display_name"),
+        "asset_type": record.get("asset_type"),
+        "description": record.get("description"),
+        "status": status.value if hasattr(status, "value") else status,
+        "status_display": record.get("status_display"),
+        "verification": verification,
+        "model": record.get("model"),
+        "verify": {"certificate_id": verify.get("certificate_id"),
+                   "committed_at": verify.get("committed_at")},
+        "evidence": {"state": "AVAILABLE" if record.get("evidence") else "UNAVAILABLE"},
+        "identity": {"state": "AVAILABLE" if record.get("identity") else "UNAVAILABLE"},
+        "market_observation": {"state": market.get("state", "UNAVAILABLE"),
+                               "observed_at": market.get("observed_at")},
+        "entitlement": entitlement_public_view(resolve_verified_entitlement(user)),
+    }
 
     return JSONResponse(output)
+
+
+@router.get("/verified/{asset_id}/dossier.json")
+async def verified_asset_dossier(asset_id: str, request: Request):
+    """Full run/evidence dossier; access does not affect verification truth."""
+    from app.auth import resolve_request_session
+    from app.verified.entitlement import (
+        EntitlementState, entitlement_public_view, resolve_verified_entitlement,
+    )
+
+    user = resolve_request_session(request)
+    if user is None:
+        return JSONResponse({"error": "authentication_required"}, status_code=401)
+    entitlement = resolve_verified_entitlement(user)
+    if entitlement.state is not EntitlementState.ACTIVE:
+        return JSONResponse({"error": "entitlement_required"}, status_code=403)
+    result = await run_in_threadpool(_load_verified_asset, asset_id)
+    if not result["found"]:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    record = dict(result["record"])
+    if hasattr(record.get("status"), "value"):
+        record["status"] = record["status"].value
+    record["entitlement"] = entitlement_public_view(entitlement)
+    return JSONResponse(record)
 
 
 @router.get("/verified/{asset_id}", response_class=HTMLResponse)
@@ -167,6 +212,8 @@ async def verified_asset_detail(asset_id: str, request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     result = await run_in_threadpool(_load_verified_asset, asset_id)
+    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement
+    entitlement = entitlement_public_view(resolve_verified_entitlement(user))
 
     if not result["found"]:
         return _templates.TemplateResponse(
@@ -178,6 +225,7 @@ async def verified_asset_detail(asset_id: str, request: Request):
                 "record": None,
                 "error": {"code": "NOT_FOUND", "reason": "Asset not found."},
                 "proto_active_page": "verified",
+                "entitlement": entitlement,
             },
             status_code=404,
         )
@@ -191,5 +239,6 @@ async def verified_asset_detail(asset_id: str, request: Request):
             "record": result["record"],
             "error": result["record"].get("error"),
             "proto_active_page": "verified",
+            "entitlement": entitlement,
         },
     )
