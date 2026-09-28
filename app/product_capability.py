@@ -175,12 +175,21 @@ _bnb_rwa = ProductCapability(
     api_available=False,
     export_available=False,
     product_area="radar",
-    status_note="Read-only BNB chain RWA market observations via CoinGecko. No TVL claim, no trading, no cross-chain identity (B1.2/B1.3 are not live).",
+    status_note=(
+        "Read-only BNB chain RWA market observations (B1.1) with canonical cross-chain identity "
+        "resolution (B1.2). CoinGecko observation authority. Robinhood registry-first identity "
+        "binding — current production observations may carry IDENTITY_UNAVAILABLE if the live "
+        "Robinhood registry contains zero chain-56 bindings. No premium/execution intelligence (B1.3 not live). "
+        "No trading, no custody, no wallet signing."
+    ),
     limitations=(
         "Read-only market observations — no order submission, no custody, no wallet signing.",
-        "Robinhood binding is IDENTITY_UNAVAILABLE; cross-chain canonical identity (B1.2) is not live.",
+        "Canonical cross-chain identity (B1.2) is implemented; Robinhood registry-first binding "
+        "is live but may produce IDENTITY_UNAVAILABLE if no chain-56 bindings exist in the "
+        "current Robinhood registry — that is truthful, not a capability gap.",
         "RWA TVL aggregate is not claimed; observations are per-asset market data only.",
         "CoinGecko is the sole observation authority; data freshness depends on provider availability.",
+        "Premium/execution gap intelligence (B1.3) is not yet supported.",
     ),
 )
 

@@ -14,7 +14,7 @@ Acceptance markers (all must PASS for PR merge):
   CAPABILITY_KNOWN_LIMITATIONS_LIVE_VERTICAL_AGREEMENT
   CAPABILITY_API_ENDPOINT_AGREEMENT
   CAPABILITY_FUTURE_NOT_LIVE_STORAGE
-  CAPABILITY_B11_BNB_RWA_CURRENT_STATE
+  CAPABILITY_B11_B12_BNB_RWA_CURRENT_STATE
   CAPABILITY_FUTURE_NOT_LIVE_WALLET
   CAPABILITY_FUTURE_NOT_LIVE_TOKEN_ENTITLEMENT
   CAPABILITY_FUTURE_NOT_LIVE_ONCHAIN_ANCHORING
@@ -274,21 +274,30 @@ def test_storage_is_preview_not_live():
     assert not storage.api_available
 
 
-def test_b11_bnb_rwa_current_state():
-    """CAPABILITY_B11_BNB_RWA_CURRENT_STATE: B1.1 BNB RWA is merged and LIVE as a
-    read-only Radar capability. It must be in the registry as Radar area, LIVE,
-    not runnable/cloneable/canonical_last_run. B1.2/B1.3 (cross-chain identity,
-    premium/execution intelligence) must remain non-live."""
+def test_b11_b12_bnb_rwa_current_state():
+    """CAPABILITY_B11_B12_BNB_RWA_CURRENT_STATE: B1.1 (observations) and B1.2
+    (canonical cross-chain identity) are both merged. bnb_rwa must be LIVE,
+    radar-area, read-only. IDENTITY_UNAVAILABLE is a valid production state when
+    Robinhood chain-56 bindings are absent — that is truthful, not a gap.
+    B1.3 premium/execution intelligence is not yet supported."""
     bnb = capability_by_key("bnb_rwa")
-    assert bnb is not None, "bnb_rwa must be in PRODUCT_CAPABILITIES (merged B1.1)"
+    assert bnb is not None, "bnb_rwa must be in PRODUCT_CAPABILITIES (B1.1 + B1.2 merged)"
     assert bnb.status == ProductStatus.LIVE
     assert bnb.product_area == "radar", "bnb_rwa must be a radar-area capability"
-    assert not bnb.runnable, "B1.1 is read-only; not a model run"
+    assert not bnb.runnable, "Radar observations are read-only; not a model run"
     assert not bnb.cloneable
     assert not bnb.canonical_last_run
-    # B1.2/B1.3 remain non-live
-    b12 = capability_by_key("bnb_identity") or capability_by_key("rwa_cross_chain")
-    assert b12 is None or b12.status != ProductStatus.LIVE, "B1.2 cross-chain identity not live"
+    # B1.2 identity resolution is implemented — status_note must reflect current truth
+    assert "B1.2" in bnb.status_note or "cross-chain identity" in bnb.status_note, (
+        "bnb_rwa status_note must reference B1.2 canonical identity resolution"
+    )
+    assert "IDENTITY_UNAVAILABLE" in bnb.status_note, (
+        "bnb_rwa status_note must acknowledge IDENTITY_UNAVAILABLE as a valid production state"
+    )
+    # B1.3 premium/execution intelligence is not yet supported
+    assert "B1.3" in bnb.status_note or "premium" in bnb.status_note.lower(), (
+        "bnb_rwa status_note must note that B1.3 premium/execution is not live"
+    )
     b13 = capability_by_key("bnb_premium") or capability_by_key("rwa_execution")
     assert b13 is None or b13.status != ProductStatus.LIVE, "B1.3 premium/execution not live"
 
