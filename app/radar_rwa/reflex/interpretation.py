@@ -35,6 +35,7 @@ def _probability(value: Decimal | None, name: str) -> None:
 class ReflexInterpretation:
     state: InterpretationState
     input_fingerprint: str
+    request_schema_version: str | None = None
     likely_transient_probability: Decimal | None = None
     provider: str | None = None
     requested_model: str | None = None
@@ -51,6 +52,8 @@ class ReflexInterpretation:
             raise ValueError("unsupported Reflex interpretation schema version")
         if not _FINGERPRINT_RE.fullmatch(self.input_fingerprint):
             raise ValueError("input_fingerprint must be a lowercase sha256 hex digest")
+        if self.request_schema_version is not None and not self.request_schema_version.strip():
+            raise ValueError("request_schema_version must be named when present")
         _probability(self.likely_transient_probability, "likely_transient_probability")
         if self.latency_ms is not None and (not self.latency_ms.is_finite() or self.latency_ms < 0):
             raise ValueError("latency_ms must be finite and nonnegative")
@@ -60,6 +63,8 @@ class ReflexInterpretation:
             raise ValueError("usage metadata keys must be named")
 
         if self.state is InterpretationState.AVAILABLE:
+            if self.request_schema_version is None:
+                raise ValueError("available interpretation requires request schema provenance")
             if self.likely_transient_probability is None:
                 raise ValueError("available interpretation requires transient probability")
             if self.provider is None or not self.provider.strip():
