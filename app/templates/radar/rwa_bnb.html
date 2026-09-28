@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — BNB Tokenized Assets</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/rwa.css?v=b1-1">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar rwa-page">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+{% include "radar/crypto_subnav.html" %}
+{% set rwa_view = 'bnb' %}
+{% include "radar/rwa_tabs.html" %}
+
+<main class="radar-main rwa-main bnb-rwa-main">
+  <header class="rwa-hero">
+    <div>
+      <p class="rwa-eyebrow">FINCO RADAR / BNB SMART CHAIN / MARKET OBSERVATION</p>
+      <h1>BNB Tokenized Assets</h1>
+      <p class="muted">CoinGecko-listed tokenized assets with BNB platform evidence. This is an observed subset, not a verified BNB RWA universe.</p>
+    </div>
+    <div class="rwa-health" data-state="{{ dashboard.state }}">
+      <span class="rwa-health__state">{{ dashboard.state }}</span>
+      <span class="mono">retrieved {{ dashboard.retrieved_at }}</span>
+    </div>
+  </header>
+
+  <section class="panel rwa-boundary bnb-boundary">
+    <strong>Authority boundary</strong>
+    <span>BNB deployment identity is chain 56 plus exact contract address when CoinGecko supplies one. Market prices, caps and volumes are CoinGecko coin-level observations, not BNB-only quantities or executable quotes. Robinhood economic binding: Unavailable. No underlying parity or premium is inferred.</span>
+  </section>
+
+  <section class="rwa-count-grid bnb-count-grid" aria-label="BNB observed-set summary">
+    <article class="panel rwa-count"><span>Observed BNB listings</span><strong>{{ dashboard.observed_count }}</strong></article>
+    <article class="panel rwa-count"><span>Exact deployments</span><strong>{{ dashboard.deployment_available_count }}</strong><small>{{ dashboard.deployment_unavailable_count }} unavailable</small></article>
+    <article class="panel rwa-count"><span>Observed-set market cap</span><strong>{{ dashboard.observed_market_cap_display }}</strong><small>{{ dashboard.market_cap_contributors }} current, identified contributors</small></article>
+    <article class="panel rwa-count"><span>Observed-set 24h volume</span><strong>{{ dashboard.observed_volume_24h_display }}</strong><small>{{ dashboard.volume_contributors }} current, identified contributors</small></article>
+  </section>
+
+  <section class="panel bnb-provenance">
+    <div><strong>Source and coverage</strong><p>{{ dashboard.source }} · {{ dashboard.selection }}</p></div>
+    <div><strong>Metric scope</strong><p>CoinGecko asset-level, across its listed deployments; not BNB-specific market size.</p></div>
+    <div><strong>RWA TVL</strong><p class="state-unavailable">Unavailable — no RWA-specific TVL authority.</p></div>
+    <div><strong>Freshness</strong><p>{{ dashboard.current_count }} current · {{ dashboard.stale_count }} stale. Stale and unidentified rows are excluded from aggregates.</p></div>
+    <a href="{{ dashboard.category_source_url }}" rel="noopener noreferrer" target="_blank">CoinGecko category source</a>
+  </section>
+
+  {% if dashboard.reason %}
+  <section class="panel panel-error" role="status">
+    <h2>BNB market observation unavailable</h2>
+    <p class="state-unavailable">No current, exact-deployment market aggregate is available.</p>
+    <p class="muted small">Missing source evidence is not replaced with a symbol match, a guessed contract, or generic chain TVL.</p>
+  </section>
+  {% endif %}
+
+  {% if dashboard.degraded_reasons %}
+  <section class="panel bnb-caveats" role="status">
+    <strong>Coverage caveats</strong>
+    <ul>{% for reason in dashboard.degraded_reasons %}<li class="mono">{{ reason }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="rwa-section" aria-label="BNB tokenized-asset observations">
+    <div class="rwa-section__heading"><div><h2>Observed assets</h2><p class="muted small">Market data and deployment evidence are separate; every Robinhood binding remains unavailable in B1.1.</p></div></div>
+    {% if dashboard.observations %}
+    <div class="rwa-table-wrap panel bnb-table-wrap">
+      <table class="rwa-table bnb-rwa-table">
+        <thead><tr><th>Asset / provider ID</th><th>BNB deployment</th><th>Asset-level price</th><th>Asset-level mcap</th><th>Asset-level 24h volume</th><th>24h</th><th>Freshness / source</th><th>Robinhood binding</th></tr></thead>
+        <tbody>
+        {% for row in dashboard.observations %}
+          <tr data-provider-id="{{ row.provider_id }}" data-state="{{ row.state }}">
+            <td data-label="Asset"><strong>{{ row.name }}</strong><span class="mono rwa-symbol">{{ row.symbol }} · {{ row.provider_id }}</span></td>
+            <td data-label="BNB deployment" class="bnb-deployment">{% if row.asset_key %}<span class="mono">{{ row.asset_key.canonical_id }}</span>{% else %}<span class="state-unavailable">Unavailable</span><span class="mono rwa-time">{{ row.deployment_reason }}</span>{% endif %}</td>
+            <td data-label="Asset-level price">{{ row.price_display }}</td>
+            <td data-label="Asset-level mcap">{{ row.market_cap_display }}</td>
+            <td data-label="Asset-level 24h volume">{{ row.volume_display }}</td>
+            <td data-label="24h change">{{ row.change_display }}</td>
+            <td data-label="Freshness / source"><span class="rwa-state rwa-state--{{ row.state|lower }}">{{ row.state }}</span><span class="mono rwa-time">{{ row.observed_at or 'Timestamp unavailable' }}</span><span class="mono rwa-time">{{ row.source }} · {{ row.market_endpoint }}</span></td>
+            <td data-label="Robinhood binding" class="state-unavailable">Unavailable</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="panel bnb-empty">No BNB-listed tokenized-asset observations with usable provider evidence are available.</div>
+    {% endif %}
+  </section>
+
+  <footer class="rwa-footnote"><span>Read-only market intelligence. No trading, custody, economic-equivalence claim, or execution authority.</span></footer>
+</main>
+</body>
+</html>

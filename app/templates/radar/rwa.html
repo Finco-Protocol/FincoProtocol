@@ -13,6 +13,8 @@
 {% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 {% include "radar/domain_nav.html" %}
 {% include "radar/crypto_subnav.html" %}
+{% set rwa_view = 'overview' %}
+{% include "radar/rwa_tabs.html" %}
 
 <main class="radar-main rwa-main">
   <header class="rwa-hero">
