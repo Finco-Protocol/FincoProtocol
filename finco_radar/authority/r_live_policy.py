@@ -3,9 +3,10 @@
 The pool was verified on chain 4663 on 2026-09-28: Uniswap's official
 factory returned it for the exact Paxos USDG and canonical Robinhood AAPL
 pair at fee 500. Pool bytecode, token ordering, liquidity, cardinality 3000,
-and a 300-second ``observe`` call were checked. Fee 100 had no pool; fee
-3000 had lower active liquidity; fee 10000 had no recent activity in the
-bounded 5000-block inspection. Runtime never discovers a replacement.
+and a 300-second ``observe`` call were checked. Fee 100 had no pool.
+A bounded 5000-block Swap-event check on 2026-09-28 found 15 swaps in
+fee 500 and none in fee 3000 or 10000; fee 500 also had the largest active
+liquidity. Runtime never discovers a replacement.
 """
 from __future__ import annotations
 
@@ -20,6 +21,8 @@ QUOTE_AUTHORITY_VERSION = "CHAINLINK_ROBINHOOD_USDG_USD_RDD_2026_09_28"
 SUPPORTED_CHAIN_ID = 4663
 TWAP_WINDOW_SECONDS = 300
 MAX_BLOCK_AGE_SECONDS = 120
+MAX_BLOCK_FUTURE_SKEW_SECONDS = 30
+MAX_REGISTRY_AGE_SECONDS = 300
 MAX_QUOTE_AGE_SECONDS = 86400  # Chainlink Robinhood RDD heartbeat
 RPC_TIMEOUT_SECONDS = 15
 RPC_TRANSIENT_RETRIES = 1

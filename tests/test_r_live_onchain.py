@@ -1,7 +1,6 @@
 """Deterministic, network-free checks of the R-LIVE on-chain authority."""
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -11,8 +10,12 @@ import pytest
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.authority.contracts import AuthorityState
-from finco_radar.authority.r_live_onchain import JsonRpc, observe_onchain_reference
+from finco_radar.authority.r_live_onchain import JsonRpc, RpcUnavailable, observe_onchain_reference
 from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, TWAP_WINDOW_SECONDS
+from finco_radar.gap.contracts import BoundReferencePrice
+from finco_radar.tokenization_premium.engine import premium_bps
+from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
+from app.radar_rwa.r_live_service import compose_r_live
 
 
 UID = "0x" + "ab" * 32
@@ -105,19 +108,52 @@ def test_exact_identity_and_approved_pool_only():
     assert observe(key=AssetKey(56, AAPL_KEY.contract_address)).state is AuthorityState.UNAVAILABLE
     assert observe(key=AssetKey(4663, "0x" + "11" * 20)).state is AuthorityState.UNAVAILABLE
     assert result.to_independent_reference().asset_key == AAPL_KEY
+    stale_registry = RobinhoodAssetRegistryAdapter.parse_snapshot({"assets": [{
+        "id": UID, "tokenSymbol": "AAPL", "tokenName": "Apple Robinhood Token",
+        "deployments": [{"chainId": 4663, "contractAddress": AAPL_KEY.contract_address}],
+        "currentMultiplier": "1", "status": "ASSET_STATUS_ACTIVE",
+    }]}, observed_at=datetime.fromtimestamp(BLOCK_TIME - 301, timezone.utc))
+    assert observe_onchain_reference(
+        registry=stale_registry, key=AAPL_KEY, rpc=FakeRpc(),
+        retrieved_at=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+    ).state is AuthorityState.STALE
 
 
 def test_twap_conversion_and_negative_tick_without_float():
     zero = observe(FakeRpc(tick=0))
     assert zero.evidence["twapWindowSeconds"] == 300
     assert zero.evidence["arithmeticMeanTick"] == 0
-    assert zero.evidence["tokenQuotePrice"] == "1E+12"
+    assert Decimal(zero.evidence["tokenQuotePrice"]) == Decimal("1E+12")
     assert zero.evidence["quoteUsdPrice"] == "0.99994"
     assert zero.price_usd_per_token == Decimal("999940000000")
     negative = observe(FakeRpc(tick=-1))
     assert negative.state is AuthorityState.AVAILABLE
     assert negative.evidence["arithmeticMeanTick"] == -1
     assert negative.price_usd_per_token > zero.price_usd_per_token
+    positive = observe(FakeRpc(tick=1))
+    assert positive.evidence["arithmeticMeanTick"] == 1
+    assert positive.price_usd_per_token < zero.price_usd_per_token
+
+
+def test_reversed_token_ordering_and_negative_rounding():
+    rpc = FakeRpc(tick=0)
+    rpc.overrides[(AAPL_POOL.pool_address, "0x0dfe1681")] = "0x" + word(int(AAPL_KEY.contract_address, 16))
+    rpc.overrides[(AAPL_POOL.pool_address, "0xd21220a7")] = "0x" + word(int(AAPL_POOL.quote_token_address, 16))
+    result = observe(rpc)
+    assert result.state is AuthorityState.AVAILABLE
+    assert Decimal(result.evidence["tokenQuotePrice"]) == Decimal("1E+12")
+    rpc.tick = -1
+    negative = observe(rpc)
+    assert negative.evidence["arithmeticMeanTick"] == -1
+    assert negative.price_usd_per_token < result.price_usd_per_token
+    # -301 / 300 floors to -2, matching OracleLibrary arithmeticMeanTick.
+    rpc.tick = -1
+    class FractionalNegative(FakeRpc):
+        def call(self, method, params):
+            if method == "eth_call" and params[0]["data"].startswith("0x883bdbfd"):
+                return "0x" + "".join(map(word, [64, 160, 2, 0, -301, 2, 0, 0]))
+            return super().call(method, params)
+    assert observe(FractionalNegative()).evidence["arithmeticMeanTick"] == -2
 
 
 @pytest.mark.parametrize("field,data", [
@@ -149,6 +185,24 @@ def test_stale_invalid_round_and_missing_code():
     assert observe(rpc).state is AuthorityState.UNAVAILABLE
 
 
+def test_insufficient_history_invalid_round_and_rpc_error():
+    rpc = FakeRpc()
+    rpc.overrides[(AAPL_POOL.pool_address, "0x3850c7bd")] = "0x" + "".join(
+        map(word, [1, 0, 1, 1, 1, 0, 1]))
+    assert observe(rpc).reason == "POOL_LIQUIDITY_OR_CARDINALITY_INSUFFICIENT"
+    rpc = FakeRpc()
+    rpc.overrides[(AAPL_POOL.quote_feed_address, "0xfeaf968c")] = "0x" + "".join(
+        map(word, [7, 99_994_000, BLOCK_TIME - 30, BLOCK_TIME - 20, 6]))
+    assert observe(rpc).reason == "QUOTE_FEED_ROUND_INVALID"
+    rpc = FakeRpc()
+    rpc.overrides[(AAPL_POOL.pool_address, "0x1a686502")] = "0xZZ"
+    assert observe(rpc).state is AuthorityState.UNAVAILABLE
+    class Timeout(FakeRpc):
+        def call(self, method, params):
+            raise RpcUnavailable("RPC_TRANSPORT_UNAVAILABLE")
+    assert observe(Timeout()).state is AuthorityState.UNAVAILABLE
+
+
 def test_every_contract_read_uses_one_block_and_reorg_fails_closed():
     rpc = FakeRpc()
     assert observe(rpc).state is AuthorityState.AVAILABLE
@@ -157,6 +211,18 @@ def test_every_contract_read_uses_one_block_and_reorg_fails_closed():
     rpc = FakeRpc()
     rpc.overrides["chain"] = "0x1"
     assert observe(rpc).reason == "CHAIN_ID_MISMATCH"
+    class Reorg(FakeRpc):
+        def __init__(self):
+            super().__init__()
+            self.block_reads = 0
+        def call(self, method, params):
+            if method == "eth_getBlockByNumber":
+                self.block_reads += 1
+                if self.block_reads == 2:
+                    return {"number": "0x123", "hash": "0x" + "cd" * 32,
+                            "timestamp": hex(BLOCK_TIME)}
+            return super().call(method, params)
+    assert observe(Reorg()).reason == "BLOCK_REORG_OR_MISMATCH"
 
 
 def test_rpc_secret_never_in_repr_or_exception():
@@ -170,3 +236,76 @@ def test_rpc_secret_never_in_repr_or_exception():
         rpc.call("eth_chainId", [])
     assert secret not in str(exc.value)
     client.close()
+
+
+def test_existing_b1_premium_and_b13_history_reused():
+    basis = BoundReferencePrice(
+        asset_uid=UID, asset_key=AAPL_KEY, symbol="AAPL",
+        raw_bid_usd_per_share=Decimal("100"),
+        raw_ask_usd_per_share=Decimal("100"),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME - 10, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    try:
+        result = compose_r_live(registry=registry(), underlying=basis,
+                                rpc=FakeRpc(),
+                                as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                                history=store)
+        assert result.authority.premium.state is AuthorityState.AVAILABLE
+        assert result.authority.premium.value_bps == premium_bps(
+            result.onchain.price_usd_per_token, Decimal("100"))
+        assert result.authority.token.evidence["pool"] == AAPL_POOL.pool_address
+        assert result.history_digest is not None
+        points = store.read(UID, AAPL_KEY)
+        assert len(points) == 1
+        assert points[0]["independent_token_reference"]["evidence"]["pool"] == AAPL_POOL.pool_address
+        assert points[0]["asset_key"] == AAPL_KEY.canonical_id
+        assert store.read("0x" + "cd" * 32, AAPL_KEY) == []
+    finally:
+        store.close()
+
+
+def test_stale_quote_never_enters_history():
+    store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
+    try:
+        result = compose_r_live(registry=registry(), underlying=None,
+                                rpc=FakeRpc(feed_updated=BLOCK_TIME - 86401),
+                                as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+                                history=store)
+        assert result.onchain.state is AuthorityState.STALE
+        assert result.history_digest is None
+        assert store.read(UID, AAPL_KEY) == []
+    finally:
+        store.close()
+
+
+def test_api_without_config_fails_closed(monkeypatch):
+    import asyncio
+    from app.radar_ui.rwa_router import radar_r_live_aapl_snapshot
+    monkeypatch.delenv("ROBINHOOD_RPC_URL", raising=False)
+    assert asyncio.run(radar_r_live_aapl_snapshot()) == {
+        "state": "UNAVAILABLE", "reason": "RPC_NOT_CONFIGURED"}
+
+
+def test_api_exposes_only_canonical_reference_and_premium(monkeypatch):
+    import asyncio
+    from app.radar_ui import rwa_router
+    from app.radar_rwa.r_live_service import RLiveResult
+    basis = BoundReferencePrice(
+        asset_uid=UID, asset_key=AAPL_KEY, symbol="AAPL",
+        raw_bid_usd_per_share=Decimal("100"), raw_ask_usd_per_share=Decimal("100"),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME - 10, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+    result = compose_r_live(registry=registry(), underlying=basis, rpc=FakeRpc(),
+                            as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://example.invalid/FAKE_SECRET")
+    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: result)
+    payload = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
+    assert payload["state"] == "AVAILABLE"
+    assert payload["reference"]["evidence"]["pool"] == AAPL_POOL.pool_address
+    assert payload["reference_premium"]["state"] == "AVAILABLE"
+    assert "FAKE_SECRET" not in str(payload)

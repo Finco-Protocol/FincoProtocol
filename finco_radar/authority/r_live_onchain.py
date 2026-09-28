@@ -18,7 +18,8 @@ from finco_radar.assets.registry import RegistrySnapshot
 from finco_radar.authority.contracts import AuthorityState, IndependentTokenReference
 
 from .r_live_policy import (
-    APPROVED_POOLS, MAX_BLOCK_AGE_SECONDS, MAX_QUOTE_AGE_SECONDS,
+    APPROVED_POOLS, MAX_BLOCK_AGE_SECONDS, MAX_BLOCK_FUTURE_SKEW_SECONDS,
+    MAX_QUOTE_AGE_SECONDS, MAX_REGISTRY_AGE_SECONDS,
     POLICY_VERSION, QUOTE_AUTHORITY_VERSION, RPC_TIMEOUT_SECONDS,
     RPC_TRANSIENT_RETRIES, SUPPORTED_CHAIN_ID, TWAP_WINDOW_SECONDS, PoolAuthority,
 )
@@ -112,10 +113,12 @@ def _hex(value: Any) -> str:
 
 
 def _uint(value: Any) -> int:
-    raw = _hex(value)
-    if not raw:
-        raise _BadEvidence("EMPTY_HEX")
-    return int(raw, 16)
+    if not isinstance(value, str) or not value.startswith("0x") or len(value) <= 2:
+        raise _BadEvidence("MALFORMED_HEX_QUANTITY")
+    try:
+        return int(value[2:], 16)
+    except ValueError:
+        raise _BadEvidence("MALFORMED_HEX_QUANTITY") from None
 
 
 def _words(value: Any, count: int) -> list[int]:
@@ -171,7 +174,7 @@ def _quote_price(mean_tick: int, pool: PoolAuthority, token0: str) -> Decimal:
         ratio = Decimal("1.0001") ** mean_tick  # raw token1 / raw token0
         if token0 == pool.quote_token_address:
             return +(Decimal(10) ** (pool.token_decimals - pool.quote_decimals) / ratio)
-        return +(ratio * Decimal(10) ** (pool.quote_decimals - pool.token_decimals))
+        return +(ratio * Decimal(10) ** (pool.token_decimals - pool.quote_decimals))
 
 
 def _availability(key: AssetKey, uid: str | None, reason: str,
@@ -184,8 +187,7 @@ def observe_onchain_reference(
     retrieved_at: datetime | None = None,
 ) -> OnchainReferenceObservation:
     """Observe only a reviewed exact deployment; never discover/select pools."""
-    now = retrieved_at or datetime.now(timezone.utc)
-    if now.tzinfo is None or now.utcoffset() is None:
+    if retrieved_at is not None and (retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None):
         raise ValueError("retrieved_at must be timezone-aware")
     pool = APPROVED_POOLS.get(key)
     if key.chain_id != SUPPORTED_CHAIN_ID or pool is None:
@@ -193,6 +195,9 @@ def observe_onchain_reference(
     if (registry is None or registry.source != RobinhoodAssetRegistryAdapter.source_name
             or registry.observed_at.tzinfo is None):
         return _availability(key, None, "CANONICAL_REGISTRY_UNAVAILABLE")
+    registry_age = ((retrieved_at or datetime.now(timezone.utc)) - registry.observed_at).total_seconds()
+    if not 0 <= registry_age <= MAX_REGISTRY_AGE_SECONDS:
+        return _availability(key, None, "CANONICAL_REGISTRY_STALE", AuthorityState.STALE)
     asset = registry.get_by_key(key)
     if asset is None:
         return _availability(key, None, "CANONICAL_DEPLOYMENT_ABSENT")
@@ -209,8 +214,9 @@ def observe_onchain_reference(
             raise _BadEvidence("BLOCK_HASH_UNAVAILABLE")
         block_time = _uint(block.get("timestamp"))
         tag = f"0x{number:x}"
+        now = retrieved_at or datetime.now(timezone.utc)
         age = int(now.timestamp()) - block_time
-        if age < 0 or age > MAX_BLOCK_AGE_SECONDS:
+        if age < -MAX_BLOCK_FUTURE_SKEW_SECONDS or age > MAX_BLOCK_AGE_SECONDS:
             return _availability(key, uid, "DEX_BLOCK_STALE", AuthorityState.STALE)
         for address, label in ((pool.factory_address, "FACTORY"),
                                (pool.pool_address, "POOL"),
@@ -239,8 +245,6 @@ def observe_onchain_reference(
             raise _BadEvidence("POOL_LIQUIDITY_OR_CARDINALITY_INSUFFICIENT")
         cumulative_start, cumulative_end = _tick_cumulatives(
             _call(rpc, pool.pool_address, _observe_calldata(TWAP_WINDOW_SECONDS), tag))
-        if cumulative_end <= cumulative_start:
-            raise _BadEvidence("INVALID_TWAP_CUMULATIVE")
         mean_tick = (cumulative_end - cumulative_start) // TWAP_WINDOW_SECONDS
         token_quote = _quote_price(mean_tick, pool, token0)
         if _abi_string(_call(rpc, pool.quote_feed_address, "0x7284e416", tag)) != "USDG / USD":
@@ -287,7 +291,7 @@ def observe_onchain_reference(
             "quoteUsdPrice": str(quote_usd), "quoteStartedAt": datetime.fromtimestamp(started, timezone.utc).isoformat(),
             "quoteUpdatedAt": quote_at.isoformat(), "quoteAnsweredInRound": str(answered_in),
             "tokenUsdPrice": str(token_usd), "effectiveObservedAt": observed.isoformat(),
-            "retrievedAt": now.isoformat(),
+            "retrievedAt": (retrieved_at or datetime.now(timezone.utc)).isoformat(),
         }
         return OnchainReferenceObservation(AuthorityState.AVAILABLE, key, uid, None,
                                             token_usd, observed, evidence)

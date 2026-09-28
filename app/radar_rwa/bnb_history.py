@@ -16,6 +16,8 @@ from threading import RLock
 
 from finco_radar.assets.contracts import AssetKey, normalize_asset_uid
 from finco_radar.authority.cross_chain import CrossChainIdentityBinding
+from finco_radar.authority.contracts import AuthoritySnapshot, AuthorityState
+from finco_radar.authority.r_live_onchain import OnchainReferenceObservation
 
 
 DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[1] / "data" / "radar_bnb_intelligence.db")
@@ -52,6 +54,36 @@ def make_history_point(binding: CrossChainIdentityBinding, intelligence: dict, o
     }
 
 
+def make_r_live_history_point(snapshot: AuthoritySnapshot,
+                              observation: OnchainReferenceObservation) -> dict | None:
+    """Use the existing B1.3 digest/append-only history for exact R-LIVE evidence."""
+    if (observation.state is not AuthorityState.AVAILABLE
+            or snapshot.premium.state is not AuthorityState.AVAILABLE
+            or snapshot.premium.value_bps is None
+            or snapshot.economic_asset_uid != observation.registry_asset_uid
+            or snapshot.canonical_token != observation.asset_key):
+        return None
+    assert observation.observed_at is not None
+    return {
+        "economic_asset_uid": snapshot.economic_asset_uid,
+        "asset_key": snapshot.canonical_token.canonical_id,
+        "identity_source": snapshot.registry_source,
+        "identity_observed_at": snapshot.registry_observed_at.isoformat() if snapshot.registry_observed_at else None,
+        "observed_at": observation.observed_at.isoformat(),
+        "state": snapshot.premium.state.value,
+        "robinhood_basis": {
+            "price_usd_per_token": str(snapshot.underlying.price_usd_per_token),
+            "source": snapshot.underlying.source,
+            "observed_at": snapshot.underlying.observed_at.isoformat() if snapshot.underlying.observed_at else None,
+        },
+        "independent_token_reference": observation.to_evidence_dict(),
+        "reference_premium_bps": str(snapshot.premium.value_bps),
+        "premium_sources": list(snapshot.premium.sources),
+        "premium_evidence_at": [value.isoformat() for value in snapshot.premium.observed_at],
+        "execution_state": snapshot.execution.state.value,
+    }
+
+
 def _canonical(point: dict) -> str:
     return json.dumps(point, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -59,7 +91,10 @@ def _canonical(point: dict) -> str:
 class BnbIntelligenceHistoryStore:
     """Dedicated durable, append-only ledger; no update/delete operations."""
 
-    def __init__(self, path: str | None = None) -> None:
+    def __init__(self, path: str | None = None, *, allowed_chain_id: int = 56) -> None:
+        if allowed_chain_id not in (56, 4663):
+            raise ValueError("history chain must be BNB or Robinhood")
+        self.allowed_chain_id = allowed_chain_id
         location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
         if location != ":memory:":
             Path(location).parent.mkdir(parents=True, exist_ok=True)
@@ -86,8 +121,9 @@ class BnbIntelligenceHistoryStore:
         uid = normalize_asset_uid(point["economic_asset_uid"])
         key = point["asset_key"]
         observed_at = datetime.fromisoformat(point["observed_at"])
-        if not isinstance(key, str) or not key.startswith("56:") or point["state"] != "AVAILABLE" or point["reference_premium_bps"] is None:
-            raise ValueError("history requires available exact BNB premium evidence")
+        if (not isinstance(key, str) or not key.startswith(f"{self.allowed_chain_id}:")
+                or point["state"] != "AVAILABLE" or point["reference_premium_bps"] is None):
+            raise ValueError("history requires available exact premium evidence")
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:
             raise ValueError("history observation must be timezone-aware")
         with self._lock:
@@ -105,8 +141,8 @@ class BnbIntelligenceHistoryStore:
         return digest
 
     def read(self, uid: str, key: AssetKey, *, limit: int = 30) -> list[dict]:
-        if key.chain_id != 56 or not 1 <= limit <= 100:
-            raise ValueError("exact BNB key and bounded limit required")
+        if key.chain_id != self.allowed_chain_id or not 1 <= limit <= 100:
+            raise ValueError("exact chain key and bounded limit required")
         with self._lock:
             rows = self._conn.execute(
                 "SELECT digest, payload FROM bnb_intelligence_history "
