@@ -14,6 +14,20 @@ USAGE
     print(m.formula)  # "revenue_keur - opex_keur"
     print(m.source_file)  # "finco_core/ebitda.py"
 
+PERIOD FREQUENCY VOCABULARY
+----------------------------
+SEMESTRIAL       — 2 periods per year (standard operating model output)
+DATED_IRREGULAR  — date-aware XIRR: construction dates + operating period-end dates
+ANNUAL_TAX       — computed annually, cash-settled in H2 period
+STANDALONE_UTILITY — not called from production path; point-in-time utility only
+
+APPLICABLE VERTICALS VOCABULARY
+---------------------------------
+("all",)          — cross-vertical metric, applies to all supported verticals
+("solar", "wind") — renewable-generation verticals only
+("data_center",)  — Data Center only
+("ev_charging",)  — EV Charging only
+
 PROMOTION PROCEDURE
 -------------------
 When a new quantity is exposed in the product:
@@ -37,6 +51,8 @@ class MetricAuthority:
     source_function: str
     period_timing: str
     period_frequency: str = "SEMESTRIAL"
+    applicable_verticals: tuple[str, ...] = ("all",)
+    production_caller: str = ""
     notes: str = ""
 
 
@@ -47,6 +63,8 @@ class InstitutionalGap:
     description: str
     implications: str
     workaround: str = ""
+    public_visible: bool = True
+    public_label: str = ""
 
 
 METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
@@ -59,16 +77,51 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         source_file="finco_core/revenue/generation.py",
         source_function="full_generation_schedule",
         period_timing="period-end",
+        applicable_verticals=("solar", "wind"),
+        notes=(
+            "Renewable generation formula. For Data Center and EV Charging, "
+            "energy consumption / throughput is not the primary revenue driver. "
+            "See revenue_data_center and revenue_ev_charging entries."
+        ),
     ),
     MetricAuthority(
         key="revenue",
-        label="Revenue",
+        label="Revenue — Solar/Wind (generation-based)",
         unit="kEUR",
         sign_convention="positive = inflow to SPV",
         formula="production_mwh × blended_tariff_eur_mwh (PPA + merchant blend)",
         source_file="finco_core/revenue/generation.py",
         source_function="full_revenue_schedule",
         period_timing="period-end",
+        applicable_verticals=("solar", "wind"),
+        notes=(
+            "Generation-based revenue. Applicable to Solar and Wind verticals only. "
+            "Data Center: see revenue_data_center. EV Charging: see revenue_ev_charging."
+        ),
+    ),
+    MetricAuthority(
+        key="revenue_data_center",
+        label="Revenue — Data Center (capacity-based)",
+        unit="kEUR",
+        sign_convention="positive = inflow to SPV",
+        formula="it_capacity_mw × 1000 × 12 × eur_per_kw_month × occupancy_rate / 1000",
+        source_file="app/data_center_authority.py",
+        source_function="core_capacity_revenue_keur",
+        period_timing="period-end",
+        applicable_verticals=("data_center",),
+        notes="Capacity-based colocation revenue. IT load MW × contracted rate × occupancy.",
+    ),
+    MetricAuthority(
+        key="revenue_ev_charging",
+        label="Revenue — EV Charging (energy throughput-based)",
+        unit="kEUR",
+        sign_convention="positive = inflow to SPV",
+        formula="energy_delivered_mwh × charging_price_eur_per_mwh / 1000",
+        source_file="app/ev_charging_economics.py",
+        source_function="charging_revenue_keur",
+        period_timing="period-end",
+        applicable_verticals=("ev_charging",),
+        notes="Energy throughput revenue. Charging points are display metadata; revenue driven by MWh delivered.",
     ),
     MetricAuthority(
         key="opex",
@@ -99,6 +152,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         source_file="financial_engine/tax/engine.py",
         source_function="calculate_tax",
         period_timing="H2 period-end of each tax year",
+        period_frequency="ANNUAL_TAX",
         notes=(
             "H1 cash tax = 0 (accrual only). "
             "Taxable income = EBITDA − tax_depreciation − deductible_interest + reintegrations. "
@@ -144,6 +198,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         source_file="finco_core/debt/covenants.py",
         source_function="dscr",
         period_timing="standalone utility only",
+        period_frequency="STANDALONE_UTILITY",
         notes=(
             "Legacy utility function. Uses EBITDA, not CFADS, as numerator. "
             "Returns float('inf') when debt_service <= 0. "
@@ -169,7 +224,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         sign_convention="positive = cost to SPV",
         formula="opening_balance × all_in_rate × day_fraction_ACT_360",
         source_file="financial_engine/senior_debt/interest.py",
-        source_function="calculate_interest",
+        source_function="period_interest",
         period_timing="period-end",
         notes="ACT/360 exclusive day-count convention.",
     ),
@@ -200,6 +255,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         source_file="financial_engine/project_returns/model.py",
         source_function="_project_return",
         period_timing="dated cash-flows",
+        period_frequency="DATED_IRREGULAR",
         notes=(
             "Unlevered: excludes all financing (no senior debt, no SHL, no DSRA). "
             "Authority code: C1_UNLEVERED_HARD_CAPEX_PLUS_EBITDA_MINUS_ZERO_FINANCING_INTEREST_CASH_TAX. "
@@ -208,7 +264,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
     ),
     MetricAuthority(
         key="equity_irr",
-        label="Pure Equity IRR (EQUITY_ONLY method)",
+        label="Pure Equity IRR (EQUITY_ONLY method) — G2C production authority",
         unit="decimal",
         sign_convention="n/a",
         formula=(
@@ -216,13 +272,23 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
             "at construction dates + legal equity distributions (positive) at operating period ends"
         ),
         source_file="financial_engine/sponsor_returns/model.py",
-        source_function="run_project_sponsor_returns_model",
+        source_function="compute_gated_sponsor_return_metrics",
         period_timing="dated cash-flows",
-        notes="EQUITY_ONLY method: SHL excluded. Series: pure_equity_net_cashflow_keur.",
+        period_frequency="DATED_IRREGULAR",
+        production_caller=(
+            "financial_engine/shareholder_waterfall/model.py::run_project_shareholder_waterfall_model"
+        ),
+        notes=(
+            "EQUITY_ONLY method: SHL excluded. Series: pure_equity_net_cashflow_keur. "
+            "Calculation function: compute_gated_sponsor_return_metrics (G2C gated path). "
+            "Production caller: run_project_shareholder_waterfall_model in the G2C waterfall. "
+            "run_project_sponsor_returns_model is the G2B simple path and is NOT the "
+            "production authority for G2C outputs."
+        ),
     ),
     MetricAuthority(
         key="total_sponsor_xirr",
-        label="Total Sponsor XIRR",
+        label="Total Sponsor XIRR — G2C production authority",
         unit="decimal",
         sign_convention="n/a",
         formula=(
@@ -230,11 +296,19 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
             "+ equity distributions + SHL cash interest receipts + SHL principal receipts (all positive)"
         ),
         source_file="financial_engine/sponsor_returns/model.py",
-        source_function="run_project_sponsor_returns_model",
+        source_function="compute_gated_sponsor_return_metrics",
         period_timing="dated cash-flows",
+        period_frequency="DATED_IRREGULAR",
+        production_caller=(
+            "financial_engine/shareholder_waterfall/model.py::run_project_shareholder_waterfall_model"
+        ),
         notes=(
             "Includes all sponsor capital: share capital, share premium, SHL. "
-            "Series: total_sponsor_net_cashflow_keur."
+            "Series: total_sponsor_net_cashflow_keur. "
+            "Calculation function: compute_gated_sponsor_return_metrics (G2C gated path). "
+            "Production caller: run_project_shareholder_waterfall_model in the G2C waterfall. "
+            "run_project_sponsor_returns_model is the G2B simple path and is NOT the "
+            "production authority for G2C outputs."
         ),
     ),
     MetricAuthority(
@@ -246,6 +320,7 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         source_file="finco_core/sponsor/xirr.py",
         source_function="xirr",
         period_timing="date-aware (not period-averaged)",
+        period_frequency="DATED_IRREGULAR",
         notes=(
             "365-day year, Excel-compatible. "
             "NOT actual/365 or actual/actual — fixed 365. "
@@ -271,6 +346,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "Always use financial_engine/senior_debt/sculpting.py::build_schedule for DSCR "
             "in sizing and covenant reporting. The legacy utility is not called from the production path."
         ),
+        public_visible=True,
+        public_label="DSCR dual definition",
     ),
     InstitutionalGap(
         key="XIRR_NOT_PERIODIC_IRR",
@@ -284,21 +361,31 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "to a periodic-semi-annual IRR × 2. The difference is material for short first periods."
         ),
         workaround="Use the XIRR output directly. Do not convert to periodic convention.",
+        public_visible=True,
+        public_label="XIRR vs periodic IRR",
     ),
     InstitutionalGap(
-        key="THIN_CAP_ATAD_ONLY",
+        key="COUNTRY_SPECIFIC_INTEREST_LIMITATION_NOT_MODELLED",
         description=(
-            "Interest deductibility limitation follows ATAD (Directive 2016/1164/EU): "
-            "30% of EBITDA rule with group carve-outs. "
-            "Country-specific thin-capitalisation rules (e.g., France 3:1 debt-to-equity, "
-            "Netherlands earnings stripping, UK corporate interest restriction) are NOT implemented."
+            "Interest deductibility limitation is configured via a model-level ATAD annual calculation "
+            "(atad_ebitda_limit × EBITDA, floor atad_de_minimis_threshold_keur_annual). "
+            "This is a configurable financial contract modelled in "
+            "financial_engine/tax/atad.py::calculate_annual_atad(). "
+            "Country-specific interest limitation regimes beyond this configured calculation "
+            "are not implemented."
         ),
         implications=(
-            "In jurisdictions with thin-cap rules stricter than ATAD, the modelled tax "
-            "may be understated. FINCO is a pre-feasibility / indicative model, not a "
-            "tax-filing system."
+            "In jurisdictions where local interest limitation rules impose a stricter cap than the "
+            "configured ATAD parameters, the modelled tax may be understated. "
+            "FINCO is a pre-feasibility / indicative model, not a tax-filing system."
         ),
-        workaround="Apply a jurisdiction-specific haircut to deductible interest outside the model.",
+        workaround=(
+            "Adjust atad_ebitda_limit to reflect the applicable regime. "
+            "For jurisdiction-specific rules not representable as a single EBITDA fraction, "
+            "apply an external adjustment."
+        ),
+        public_visible=True,
+        public_label="Country-specific interest limitation not modelled",
     ),
     InstitutionalGap(
         key="DSRF_NO_DRAW_ENGINE",
@@ -312,6 +399,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "treats the gate as open. For project-specific models using DSRF, the distribution "
             "gate Component D (DSRA underfunding) may not fire correctly."
         ),
+        public_visible=True,
+        public_label="DSRF: no draw engine",
     ),
     InstitutionalGap(
         key="J_DSRA_NOT_MODELLED",
@@ -320,6 +409,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "J-DSRA balance is hardcoded to 0 for no-junior-debt projects."
         ),
         implications="Not material for single-tranche senior-only capital structures.",
+        public_visible=False,
+        public_label="J-DSRA always False",
     ),
     InstitutionalGap(
         key="JUNIOR_DEBT_NOT_IMPLEMENTED",
@@ -328,11 +419,15 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "('G2C_JUNIOR_DEBT_WATERFALL_NOT_IMPLEMENTED') if junior_or_other_project_funding_keur > 0."
         ),
         implications="Mezzanine or junior tranche structures cannot be modelled.",
+        public_visible=True,
+        public_label="Junior debt not implemented",
     ),
     InstitutionalGap(
         key="SINGLE_CURRENCY_KEUR",
         description="All monetary values are in kEUR. Multi-currency structures are not in scope for V1.",
         implications="FX exposure, currency swaps, and non-EUR projects require conversion outside the model.",
+        public_visible=True,
+        public_label="Single currency (kEUR)",
     ),
     InstitutionalGap(
         key="FINANCIAL_STATEMENTS_NOT_CONNECTED_TO_CLEAN_ENGINE",
@@ -347,6 +442,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "computed via the clean engine. Reconciliation between KPI outputs and formal "
             "financial statements should be treated with care."
         ),
+        public_visible=True,
+        public_label="Financial statements not in clean engine",
     ),
     InstitutionalGap(
         key="REFINANCING_NOT_MODELLED",
@@ -356,6 +453,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "cannot capture the lower margin post-re-fi. Project IRR will be understated "
             "if a material refinancing benefit is expected."
         ),
+        public_visible=True,
+        public_label="Refinancing not modelled",
     ),
     InstitutionalGap(
         key="CANONICAL_LAST_RUN_NO_UUID",
@@ -368,6 +467,8 @@ INSTITUTIONAL_GAPS: tuple[InstitutionalGap, ...] = (
             "Audit trail linking exported workbook to a specific RunRecord by UUID is not available "
             "on the canonical path. The git_sha and input_fingerprint remain traceable."
         ),
+        public_visible=True,
+        public_label="Canonical last run: no UUID linkage",
     ),
 )
 
@@ -389,3 +490,8 @@ def registry_keys() -> frozenset[str]:
 
 def gap_keys() -> frozenset[str]:
     return frozenset(_GAPS_BY_KEY)
+
+
+def public_gaps() -> tuple[InstitutionalGap, ...]:
+    """Ordered tuple of gaps with public_visible=True, for template rendering."""
+    return tuple(g for g in INSTITUTIONAL_GAPS if g.public_visible)

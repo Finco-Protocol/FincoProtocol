@@ -200,7 +200,7 @@
         <span class="pmeth-badge">Unlevered Project IRR</span>
         <span class="pmeth-badge">Newton–Raphson XIRR</span>
         <span class="pmeth-badge">25% corporate tax</span>
-        <span class="pmeth-badge">Solar / Wind / Data Center</span>
+        <span class="pmeth-badge">{% for name in live_vertical_names %}{{ name }}{% if not loop.last %} / {% endif %}{% endfor %}</span>
       </div>
     </div>
   </header>
@@ -1245,14 +1245,20 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
         </div>
         <div class="pmeth-callout pmeth-callout--info">
           <strong>Distribution gate — five components (G2C).</strong>
-          Cash is locked to the Distribution Account (not released to SHL/equity) if ANY of:
+          Cash is locked to the Distribution Account (not released to SHL/equity) if ANY gate component fires:
           <ul style="margin:6px 0 0 16px;">
-            <li><strong>A</strong>: DSCR &lt; lockup_dscr (default 1.10×) AND within senior maturity</li>
-            <li><strong>B</strong>: construction not complete</li>
-            <li><strong>C</strong>: Distribution Account balance &lt; 0</li>
-            <li><strong>D</strong>: DSRA underfunded (gap to target &gt; tolerance)</li>
-            <li><strong>E</strong>: J-DSRA underfunded — always False for single-tranche projects (not modelled)</li>
+            <li><strong>A</strong>: DSCR &lt; lockup_dscr (default 1.10×) AND within senior maturity — DSCR lockup gate</li>
+            <li><strong>B</strong>: construction not complete — construction state gate</li>
+            <li><strong>C</strong>: Distribution Account balance &lt; 0 — DA negative gate</li>
+            <li><strong>D</strong>: DSRA underfunded (cash gap to target &gt; tolerance) — DSRA top-up gate</li>
+            <li><strong>E</strong>: J-DSRA underfunded — always False for single-tranche senior-only projects
+              (<code>j_dsra_closing_keur = 0</code> hardcoded; not modelled)</li>
           </ul>
+          <strong>DSRF note:</strong> DSRF (letter-of-credit reserve facility) has a fee engine
+          but <em>no draw engine</em> (<code>DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE</code>).
+          Actual LoC draws are not modelled; gate Component D availability check is based on
+          DSRA cash balance only, not DSRF draw capacity.
+          <br><br>
           BULLET SHL fail-closed: after an unpaid BULLET maturity, all subsequent equity distributions
           are zeroed and IRR metrics carry <code>ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY</code>.
         </div>
@@ -1276,55 +1282,17 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           <table class="pmeth-table">
             <thead><tr><th>Gap</th><th>Description</th><th>Implication</th></tr></thead>
             <tbody>
+              {% for gap in institutional_gaps %}
               <tr>
-                <td><strong>DSCR dual definition</strong></td>
-                <td>Clean engine: CFADS/DS. Legacy utility (<code>finco_core/debt/covenants.py</code>): EBITDA/DS.</td>
-                <td>Differs when financing_income ≠ 0 or cash_tax ≠ 0. Legacy utility not used in production path.</td>
+                <td><strong>{{ gap.public_label }}</strong></td>
+                <td>{{ gap.description }}</td>
+                <td>{{ gap.implications }}</td>
               </tr>
-              <tr>
-                <td><strong>XIRR vs periodic IRR</strong></td>
-                <td>FINCO uses true date-aware XIRR (365-day year). Bank models often annualise a periodic semi-annual IRR.</td>
-                <td>Project IRR (11.56%) is not directly comparable to (1+r_semi)² − 1. Use XIRR output directly.</td>
-              </tr>
-              <tr>
-                <td><strong>Thin-cap: ATAD only</strong></td>
-                <td>Interest limitation follows ATAD (30% EBITDA). Country-specific rules (France, Netherlands, UK) not implemented.</td>
-                <td>Tax may be understated in high-thin-cap jurisdictions. Apply external haircut if material.</td>
-              </tr>
-              <tr>
-                <td><strong>DSRF: no draw engine</strong></td>
-                <td>DSRF letter-of-credit has fee engine but no draw engine (<code>DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE</code>).</td>
-                <td>Actual LoC draws not modelled. Gate Component D may not fire correctly for DSRF-mode projects.</td>
-              </tr>
-              <tr>
-                <td><strong>Junior debt not implemented</strong></td>
-                <td><code>G2C_JUNIOR_DEBT_WATERFALL_NOT_IMPLEMENTED</code> raised if junior funding &gt; 0.</td>
-                <td>Mezzanine / junior tranche structures cannot be modelled.</td>
-              </tr>
-              <tr>
-                <td><strong>Refinancing not modelled</strong></td>
-                <td>Senior debt runs to contractual maturity.</td>
-                <td>Post-re-fi margin reduction not captured. Project IRR may be understated for assets with known re-fi.</td>
-              </tr>
-              <tr>
-                <td><strong>Single currency (kEUR)</strong></td>
-                <td>All monetary values in kEUR. Multi-currency not in scope for V1.</td>
-                <td>FX exposure, hedging, or non-EUR-denominated projects require external conversion.</td>
-              </tr>
-              <tr>
-                <td><strong>Financial statements not in clean engine</strong></td>
-                <td>Formal BS/CFS use legacy <code>WaterfallPeriod</code> objects. <code>_PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")</code>.</td>
-                <td>KPI outputs (clean engine) and formal BS/CFS may reflect different computation paths. Reconcile before reporting.</td>
-              </tr>
-              <tr>
-                <td><strong>Canonical last run: no UUID linkage</strong></td>
-                <td><code>ResolvedExportAuthority.run_id = None</code> on CANONICAL_LAST_RUN path. Uses compact-timestamp snapshot ID, not a UUID RunRecord.</td>
-                <td>Audit trail UUID cross-reference unavailable on canonical export. git_sha and input_fingerprint remain traceable.</td>
-              </tr>
+              {% endfor %}
             </tbody>
           </table>
         </div>
-        <span class="pmeth-authority">app/model_methodology_registry.py · INSTITUTIONAL_GAPS</span>
+        <span class="pmeth-authority">app/model_methodology_registry.py · INSTITUTIONAL_GAPS (public_visible=True)</span>
       </section>
 
       <hr class="pmeth-divider" />
@@ -1348,8 +1316,8 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           </li>
           <li>
             <strong>Tax:</strong> A single corporate-income-tax jurisdiction is modelled.
-            Transfer pricing, consolidated group tax, or country-specific thin-cap regimes
-            beyond ATAD are not implemented.
+            Transfer pricing, consolidated group tax, or country-specific interest limitation
+            regimes beyond the configured ATAD parameters are not implemented.
           </li>
           <li>
             <strong>Merchant price:</strong> The engine accepts a user-supplied merchant
