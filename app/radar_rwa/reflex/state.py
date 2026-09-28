@@ -40,6 +40,9 @@ def _provenance(authority: AuthoritySnapshot, context: RwaReflexContext) -> Refl
         liquidity_venue_id=liquidity.venue_id if liquidity else None,
         session_source=context.session_source,
         session_resolver_version=context.session_resolver_version,
+        regular_session_date=context.regular_session_date,
+        regular_session_open_at=context.regular_session_open_at,
+        regular_session_close_at=context.regular_session_close_at,
     )
 
 
@@ -79,7 +82,7 @@ def build_reflex_state(
     """Build state without changing FINCO authority conclusions.
 
     Canonical identity, references and premium are consumed exactly from
-    ``AuthoritySnapshot``.  Any canonical upstream state other than AVAILABLE,
+    ``AuthoritySnapshot``. Any canonical upstream state other than AVAILABLE,
     including STALE, fails closed. Optional stale context is merely omitted.
     """
     if as_of.tzinfo is None or as_of.utcoffset() is None:
@@ -95,8 +98,6 @@ def build_reflex_state(
     if premium.state is not AuthorityState.AVAILABLE:
         return _unavailable(authority, context, premium.state,
                             premium.reason or "REFERENCE_PREMIUM_UNAVAILABLE")
-    # RWA_REFLEX_CANONICAL_STALE_FAILS_CLOSED: every canonical reference must itself
-    # be AVAILABLE; a stale canonical layer can never be rescued by optional context.
     if authority.underlying.state is not AuthorityState.AVAILABLE:
         return _unavailable(authority, context, authority.underlying.state,
                             authority.underlying.reason or "UNDERLYING_REFERENCE_NOT_AVAILABLE")
