@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app.radar_rwa.service import RwaDashboardService
 from app.radar_rwa.bnb_service import BnbRwaDashboardService, serialize_bnb_snapshot
 from app.radar_rwa.bnb_snapshot import unavailable_bnb_snapshot
+from finco_radar.assets.contracts import AssetKey, normalize_asset_uid
 
 router = APIRouter()
 _templates = Jinja2Templates(directory="app/templates")
@@ -76,6 +77,21 @@ async def radar_crypto_rwa_bnb_snapshot():
         return await run_in_threadpool(_bnb_service.read_payload)
     except Exception as exc:  # read-only API boundary fails closed
         return _bnb_payload_failure(exc)
+
+
+@router.get("/radar/crypto/rwa/bnb/history")
+async def radar_crypto_rwa_bnb_history(economic_asset_uid: str, contract_address: str):
+    """Network-free exact-identity history read; never search by symbol."""
+    try:
+        uid = normalize_asset_uid(economic_asset_uid)
+        key = AssetKey(56, contract_address)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="INVALID_EXACT_IDENTITY") from exc
+    try:
+        points = await run_in_threadpool(lambda: _bnb_service.read_history(uid, key))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="HISTORY_UNAVAILABLE") from exc
+    return {"economic_asset_uid": uid, "asset_key": key.canonical_id, "points": points}
 
 
 @router.get("/radar/crypto/rwa/bnb", response_class=HTMLResponse)
