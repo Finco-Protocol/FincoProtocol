@@ -55,6 +55,13 @@ class ReflexShadowRunner:
             "session": event.session.value,
             "structural_premium_bps": str(event.structural_premium_bps),
             "initial_deviation_bps": str(event.initial_deviation_bps),
+            "session_date": event.session_date,
+            "session_open_at": event.session_open_at.isoformat(),
+            "session_close_at": event.session_close_at.isoformat(),
+            "session_source": event.session_source,
+            "session_resolver_version": event.session_resolver_version,
+            "structural_premium_policy_version": event.structural_premium_policy_version,
+            "history_cutoff_at": event.history_cutoff_at.isoformat(),
             "policy_version": event.policy_version,
         }
         experiment = {**experiment, "event": event_payload}
@@ -70,7 +77,7 @@ class ReflexShadowRunner:
         context: RwaReflexContext,
         max_context_age_seconds: int = 300,
     ) -> str:
-        """Build outcome from canonical authority; manual state/source labels are forbidden."""
+        """Build a raw candidate outcome from canonical authority only."""
         state = build_reflex_state(
             authority, as_of=as_of, context=context,
             max_context_age_seconds=max_context_age_seconds,
@@ -91,5 +98,6 @@ class ReflexShadowRunner:
             effective_gap_bps=state.effective_gap_bps,
             liquidity_usd=state.liquidity_usd,
             depth_1pct_usd=state.depth_1pct_usd,
+            identity_conflict=False,
         )
         return self.ledger.put_outcome(prediction_digest, outcome)
