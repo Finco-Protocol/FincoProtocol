@@ -15,6 +15,7 @@ from app.radar_rwa.bnb_snapshot import unavailable_bnb_snapshot
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
 from app.radar_rwa.r_live_service import collect_aapl_r_live
 from finco_radar.assets.contracts import AssetKey, normalize_asset_uid
+from finco_radar.authority.contracts import AuthorityState
 from finco_radar.authority.r_live_policy import AAPL_KEY
 
 router = APIRouter()
@@ -30,21 +31,33 @@ async def radar_r_live_aapl_snapshot():
     if not rpc_url:
         return {"state": "UNAVAILABLE", "reason": "RPC_NOT_CONFIGURED"}
     try:
-        result = await run_in_threadpool(lambda: collect_aapl_r_live(rpc_url=rpc_url))
+        result = await run_in_threadpool(lambda: collect_aapl_r_live(
+            rpc_url=rpc_url, persist_history=False))
     except Exception:
         return {"state": "UNAVAILABLE", "reason": "R_LIVE_EVIDENCE_UNAVAILABLE"}
     premium = result.authority.premium
     basis = result.authority.underlying
+    current = (result.onchain.state is AuthorityState.AVAILABLE
+               and premium.state is AuthorityState.AVAILABLE
+               and basis.state is AuthorityState.AVAILABLE)
+    state = ("AVAILABLE" if current else "STALE" if AuthorityState.STALE in (
+        result.onchain.state, premium.state, basis.state) else "UNAVAILABLE")
+    observed = result.onchain.observed_at if current else None
+    age = max(0, int((datetime.now(timezone.utc) - observed).total_seconds())) if observed else None
     return {
-        "state": result.onchain.state.value,
-        "reference": result.onchain.to_evidence_dict(),
+        "state": state,
+        "source_label": "Direct On-Chain",
+        "observation_age_seconds": age,
+        "observed_at": observed.isoformat() if observed else None,
+        "reason": None if current else premium.reason or result.onchain.reason or basis.reason,
+        "reference": result.onchain.to_evidence_dict() if current else None,
         "robinhood_basis": {"state": basis.state.value,
-                            "price_usd_per_token": str(basis.price_usd_per_token) if basis.price_usd_per_token is not None else None,
-                            "observed_at": basis.observed_at.isoformat() if basis.observed_at else None},
+                            "price_usd_per_token": str(basis.price_usd_per_token) if current else None,
+                            "observed_at": basis.observed_at.isoformat() if current else None},
         "reference_premium": {"state": premium.state.value,
-                              "value_bps": str(premium.value_bps) if premium.value_bps is not None else None,
+                              "value_bps": str(premium.value_bps) if current else None,
                               "reason": premium.reason},
-        "history_digest": result.history_digest,
+        "history_digest": result.history_digest if current else None,
     }
 
 

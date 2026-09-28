@@ -34,6 +34,20 @@
     <span>RWA market data describes the aggregated tokenized market. It is not the underlying stock, commodity, or ETF spot-price authority. No premium/discount or parity signal is inferred in this slice.</span>
   </section>
 
+  <section class="panel r-live-panel" id="r-live-aapl" aria-live="polite" data-state="UNAVAILABLE">
+    <div class="rwa-section__heading"><div><h2>AAPL live premium</h2><p class="muted small">Direct On-Chain · exact Robinhood deployment · read-only observation, not VERIFIED</p></div></div>
+    <p>State: <strong data-r-live="state">UNAVAILABLE</strong> <span class="muted small" data-r-live="age"></span></p>
+    <div class="r-live-values" data-r-live="values" hidden>
+      <p>Independent token reference: <strong data-r-live="reference"></strong> USD</p>
+      <p>Robinhood equivalent basis: <strong data-r-live="basis"></strong> USD</p>
+      <p>Premium: <strong data-r-live="premium"></strong> bps</p>
+    </div>
+    <p class="muted small" data-r-live="reason">Fresh evidence is not available.</p>
+    <h3>Premium history</h3>
+    <p class="muted small">Historical observations only; never a substitute for a current premium.</p>
+    <ul class="r-live-history" data-r-live="history"><li>No historical observation loaded.</li></ul>
+  </section>
+
   {% if dashboard.reason %}
   <section class="panel panel-error">
     <h2>RWA data unavailable</h2>
@@ -80,5 +94,6 @@
     <span>Read-only tokenized market intelligence. Unavailable evidence fails closed.</span>
   </footer>
 </main>
+<script src="/static/radar/r_live.js" defer></script>
 </body>
 </html>

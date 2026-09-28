@@ -56,15 +56,18 @@ def compose_r_live(
     digest = None
     if history is not None and point is not None:
         try:
-            digest = history.put(point)
+            digest = history.put_r_live(point)
         except Exception:
             pass  # storage failure cannot erase a source-proven live reference
     return RLiveResult(observation, snapshot, digest)
 
 
 def collect_aapl_r_live(*, rpc_url: str, as_of: datetime | None = None,
+                        persist_history: bool = False,
                         history: BnbIntelligenceHistoryStore | None = None) -> RLiveResult:
-    """Bounded read-only live acquisition; RPC endpoint is configuration, not authority."""
+    """Acquire read-only by default; only an explicit collector path may write."""
+    if history is not None and not persist_history:
+        raise ValueError("HISTORY_REQUIRES_EXPLICIT_PERSISTENCE")
     with RobinhoodAssetRegistryAdapter() as adapter:
         registry = adapter.fetch_snapshot()
         asset = registry.get_by_key(AAPL_KEY)
@@ -76,9 +79,9 @@ def collect_aapl_r_live(*, rpc_url: str, as_of: datetime | None = None,
             except Exception:
                 underlying = None  # independent reference survives unavailable basis
     rpc = JsonRpc(rpc_url)
-    owned_history = history is None
-    ledger = history
-    if ledger is None:
+    owned_history = persist_history and history is None
+    ledger = history if persist_history else None
+    if persist_history and ledger is None:
         try:
             ledger = BnbIntelligenceHistoryStore(allowed_chain_id=4663)
         except Exception:
