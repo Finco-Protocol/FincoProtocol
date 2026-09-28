@@ -2,7 +2,9 @@
 
 Returns aggregated UsageSummary records for the authenticated subject.
 No billing/pricing engine in V1. No fiat or token prices.
-User isolation: queries are always scoped to the authenticated subject_id.
+User isolation: queries are always scoped to the authenticated session's
+subject_id. No public method accepts a caller-supplied subject_id.
+Query failure is distinct from zero usage: UNAVAILABLE vs AVAILABLE+empty.
 """
 from __future__ import annotations
 
@@ -11,6 +13,10 @@ from typing import Sequence
 
 from app.usage.contracts import (
     ALL_FEATURE_KEYS,
+    QUERY_STATE_AVAILABLE,
+    QUERY_STATE_UNAVAILABLE,
+    QUERY_UNAVAILABLE_REASON,
+    UsageQueryResult,
     UsageSummary,
 )
 
@@ -18,8 +24,10 @@ from app.usage.contracts import (
 class UsageQueryService:
     """Read-only query surface over the usage_events table.
 
-    All queries are strictly scoped to the authenticated subject_id.
+    All queries are strictly scoped to the authenticated session's subject_id.
     No cross-user reads are possible through this interface.
+    Query failures return UsageQueryResult(state=UNAVAILABLE) — never an empty
+    list that would be indistinguishable from genuine zero usage.
     """
 
     def __init__(self, db_path: str | None = None) -> None:
@@ -35,19 +43,36 @@ class UsageQueryService:
         from app.persistence.db import get_connection
         return get_connection()
 
-    def summaries_for_subject(
+    def summaries_for_session(
+        self,
+        *,
+        session,
+        feature_key: str | None = None,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+    ) -> UsageQueryResult:
+        """Return usage summaries for the authenticated session's subject.
+
+        subject_id is derived from session.user_id — never caller-supplied.
+        Cross-user spoofing is structurally impossible through this method.
+        """
+        subject_id: str = session.user_id
+        return self._summaries_for_subject(
+            subject_id=subject_id,
+            feature_key=feature_key,
+            period_start=period_start,
+            period_end=period_end,
+        )
+
+    def _summaries_for_subject(
         self,
         *,
         subject_id: str,
         feature_key: str | None = None,
         period_start: datetime | None = None,
         period_end: datetime | None = None,
-    ) -> list[UsageSummary]:
-        """Return usage summaries grouped by feature_key for this subject only.
-
-        Never returns data for any other subject_id. Optionally filtered by
-        feature_key and/or time period.
-        """
+    ) -> UsageQueryResult:
+        """Internal query scoped to subject_id derived from the session."""
         if not subject_id:
             raise ValueError("subject_id is required")
         if feature_key is not None and feature_key not in ALL_FEATURE_KEYS:
@@ -79,15 +104,26 @@ class UsageQueryService:
              GROUP BY feature_key
              ORDER BY feature_key
         """
-        conn = self._get_conn()
+        conn = None
         try:
+            conn = self._get_conn()
             rows = conn.execute(sql, params).fetchall()
         except Exception:
-            conn.close()
-            return []
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            # Storage failure: return structured UNAVAILABLE — never expose raw
+            # exception text, DB paths, SQL, or secrets.
+            return UsageQueryResult(
+                state=QUERY_STATE_UNAVAILABLE,
+                summaries=(),
+                reason=QUERY_UNAVAILABLE_REASON,
+            )
         conn.close()
 
-        return [
+        summaries = [
             UsageSummary(
                 subject_id=subject_id,
                 feature_key=row["feature_key"],
@@ -98,3 +134,7 @@ class UsageQueryService:
             )
             for row in rows
         ]
+        return UsageQueryResult(
+            state=QUERY_STATE_AVAILABLE,
+            summaries=summaries,
+        )

@@ -11,6 +11,16 @@ B2_3_TOKEN_CONFIG_UNAVAILABLE_FAILS_CLOSED = PASS
 B2_3_QUERY_USER_ISOLATION            = PASS
 B2_3_SECRET_SAFETY                   = PASS
 
+B2_3_IDEMPOTENCY_SUBJECT_SCOPED              = PASS
+B2_3_CROSS_USER_IDEMPOTENCY_COLLISION_SAFE   = PASS
+B2_3_CROSS_FEATURE_IDEMPOTENCY_COLLISION_SAFE = PASS
+B2_3_QUERY_SIGNED_IDENTITY_ONLY             = PASS
+B2_3_QUERY_CROSS_USER_SPOOF_IMPOSSIBLE       = PASS
+B2_3_WALLET_NOT_CALLER_CONTROLLED            = PASS
+B2_3_WALLET_CANONICAL_LINK_ONLY              = PASS
+B2_3_QUERY_FAILURE_NOT_ZERO                  = PASS
+B2_3_QUERY_ERROR_SECRET_SAFE                 = PASS
+
 No financial math. No verification truth. No billing engine.
 """
 from __future__ import annotations
@@ -28,8 +38,12 @@ from app.usage.contracts import (
     FEATURE_MCP_TOOL_CALL,
     FEATURE_TRUST_PACK_ACCESS,
     FEATURE_XLSX_EXPORT,
+    QUERY_STATE_AVAILABLE,
+    QUERY_STATE_UNAVAILABLE,
+    QUERY_UNAVAILABLE_REASON,
     SAFE_METADATA_KEYS,
     UsageEvent,
+    UsageQueryResult,
     UsageSummary,
     _sanitise_metadata,
 )
@@ -92,7 +106,9 @@ def test_B2_3_APPEND_ONLY_USAGE():
     assert all_events[1].event_id == e2.event_id
 
     # Existing events are untouched after new records are appended
-    r1_again = store.get_by_idempotency_key("idem-a1")
+    r1_again = store.get_by_scoped_key(
+        e1.subject_id, e1.feature_key, "idem-a1"
+    )
     assert r1_again is not None
     assert r1_again.event_id == r1.event_id
     assert r1_again.quantity == e1.quantity
@@ -107,14 +123,14 @@ def test_B2_3_APPEND_ONLY_USAGE():
 # ── B2_3_IDEMPOTENCY ──────────────────────────────────────────────────────────────────────
 
 def test_B2_3_IDEMPOTENCY():
-    """Same idempotency_key delivered twice produces exactly one event."""
+    """Same (subject_id, feature_key, idempotency_key) delivered twice produces one event."""
     store = InMemoryUsageLedgerStore()
     key = "idem-idempotency-test"
     e1 = _event(idempotency_key=key, quantity=1)
-    e2 = _event(idempotency_key=key, quantity=99)  # different event, same key
+    e2 = _event(idempotency_key=key, quantity=99)  # different event, same scoped key
 
     r1 = store.record(e1)
-    r2 = store.record(e2)  # must be ignored — key already present
+    r2 = store.record(e2)  # must be ignored — scoped key already present
 
     assert len(store.all_events()) == 1
     # Both calls return the same canonical event (the first one)
@@ -128,10 +144,110 @@ def test_B2_3_IDEMPOTENCY():
     assert r3.event_id == r1.event_id
 
 
+# ── B2_3_IDEMPOTENCY_SUBJECT_SCOPED ──────────────────────────────────────────────────────
+
+def test_B2_3_IDEMPOTENCY_SUBJECT_SCOPED():
+    """Idempotency key is scoped per subject: same key for different subjects = two events."""
+    store = InMemoryUsageLedgerStore()
+    shared_key = "shared-idem-key"
+    e_alice = _event(subject_id="user-alice", idempotency_key=shared_key, quantity=1)
+    e_bob = _event(subject_id="user-bob", idempotency_key=shared_key, quantity=2)
+
+    r_alice = store.record(e_alice)
+    r_bob = store.record(e_bob)
+
+    # Two distinct events — different subjects, same idempotency_key
+    assert len(store.all_events()) == 2
+    assert r_alice.event_id != r_bob.event_id
+    assert r_alice.subject_id == "user-alice"
+    assert r_bob.subject_id == "user-bob"
+    assert r_alice.quantity == 1
+    assert r_bob.quantity == 2
+
+    # Each subject's scoped key resolves to their own event
+    looked_up_alice = store.get_by_scoped_key(
+        "user-alice", FEATURE_INSTITUTIONAL_API_REQUEST, shared_key
+    )
+    looked_up_bob = store.get_by_scoped_key(
+        "user-bob", FEATURE_INSTITUTIONAL_API_REQUEST, shared_key
+    )
+    assert looked_up_alice is not None and looked_up_alice.event_id == r_alice.event_id
+    assert looked_up_bob is not None and looked_up_bob.event_id == r_bob.event_id
+
+
+# ── B2_3_CROSS_USER_IDEMPOTENCY_COLLISION_SAFE ───────────────────────────────────────────
+
+def test_B2_3_CROSS_USER_IDEMPOTENCY_COLLISION_SAFE():
+    """User A's idempotency key cannot shadow or collide with User B's event."""
+    store = InMemoryUsageLedgerStore()
+    shared_key = "collision-key"
+
+    # Record for user-A first
+    e_a = _event(subject_id="user-A", idempotency_key=shared_key, quantity=10)
+    r_a = store.record(e_a)
+
+    # Record for user-B with same key — must succeed as a separate event
+    e_b = _event(subject_id="user-B", idempotency_key=shared_key, quantity=20)
+    r_b = store.record(e_b)
+
+    # Neither event was suppressed
+    assert len(store.all_events()) == 2
+    assert r_a.quantity == 10
+    assert r_b.quantity == 20
+    assert r_a.subject_id == "user-A"
+    assert r_b.subject_id == "user-B"
+
+    # Idempotent re-delivery for user-A doesn't affect user-B's event
+    r_a2 = store.record(_event(subject_id="user-A", idempotency_key=shared_key, quantity=99))
+    assert r_a2.event_id == r_a.event_id
+    assert r_a2.quantity == 10  # original preserved
+    assert len(store.all_events()) == 2  # still two events
+
+
+# ── B2_3_CROSS_FEATURE_IDEMPOTENCY_COLLISION_SAFE ────────────────────────────────────────
+
+def test_B2_3_CROSS_FEATURE_IDEMPOTENCY_COLLISION_SAFE():
+    """Same user, same idempotency key, different feature_key = two independent events."""
+    store = InMemoryUsageLedgerStore()
+    shared_key = "feature-cross-key"
+    subject = "user-zeta"
+
+    e_api = _event(
+        subject_id=subject,
+        feature_key=FEATURE_INSTITUTIONAL_API_REQUEST,
+        idempotency_key=shared_key,
+        quantity=5,
+    )
+    e_xlsx = _event(
+        subject_id=subject,
+        feature_key=FEATURE_XLSX_EXPORT,
+        idempotency_key=shared_key,
+        quantity=3,
+        unit="export",
+    )
+
+    r_api = store.record(e_api)
+    r_xlsx = store.record(e_xlsx)
+
+    # Two distinct events for the same user on different features
+    assert len(store.all_events()) == 2
+    assert r_api.event_id != r_xlsx.event_id
+    assert r_api.feature_key == FEATURE_INSTITUTIONAL_API_REQUEST
+    assert r_xlsx.feature_key == FEATURE_XLSX_EXPORT
+    assert r_api.quantity == 5
+    assert r_xlsx.quantity == 3
+
+    # Scoped lookup for each feature returns the correct event
+    got_api = store.get_by_scoped_key(subject, FEATURE_INSTITUTIONAL_API_REQUEST, shared_key)
+    got_xlsx = store.get_by_scoped_key(subject, FEATURE_XLSX_EXPORT, shared_key)
+    assert got_api is not None and got_api.quantity == 5
+    assert got_xlsx is not None and got_xlsx.quantity == 3
+
+
 # ── B2_3_CONCURRENT_DUPLICATE_SAFE ─────────────────────────────────────────────────────────
 
 def test_B2_3_CONCURRENT_DUPLICATE_SAFE():
-    """Concurrent delivery of the same idempotency_key produces one event."""
+    """Concurrent delivery of the same scoped key produces one event."""
     store = InMemoryUsageLedgerStore()
     key = "idem-concurrent-test"
     results: list[UsageEvent] = []
@@ -194,6 +310,166 @@ def test_B2_3_SIGNED_IDENTITY_ONLY():
     )
     assert ev_b.subject_id == "user-beta"
     assert ev.subject_id != ev_b.subject_id
+
+
+# ── B2_3_QUERY_SIGNED_IDENTITY_ONLY ─────────────────────────────────────────────────────────
+
+def test_B2_3_QUERY_SIGNED_IDENTITY_ONLY():
+    """UsageQueryService.summaries_for_session derives subject_id from session only."""
+    import inspect
+    sig = inspect.signature(UsageQueryService.summaries_for_session)
+    assert "subject_id" not in sig.parameters, (
+        "summaries_for_session must not accept subject_id as a parameter")
+
+    # The public method is summaries_for_session, not summaries_for_subject
+    assert hasattr(UsageQueryService, "summaries_for_session"), (
+        "UsageQueryService must expose summaries_for_session")
+    assert not hasattr(UsageQueryService, "summaries_for_subject") or \
+        getattr(UsageQueryService.summaries_for_subject, "__isabstractmethod__", False), (
+        "summaries_for_subject must not be a public method")
+
+
+# ── B2_3_QUERY_CROSS_USER_SPOOF_IMPOSSIBLE ───────────────────────────────────────────────────
+
+def test_B2_3_QUERY_CROSS_USER_SPOOF_IMPOSSIBLE():
+    """A session for user-A cannot query usage data belonging to user-B."""
+    import os
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        from app.usage.ledger import SQLiteUsageLedgerStore
+        sqlite_store = SQLiteUsageLedgerStore(db_path=db_path)
+        sq_recorder = UsageRecorder(store=sqlite_store)
+
+        session_a = _session(user_id="user-spoof-A")
+        session_b = _session(user_id="user-spoof-B")
+
+        sq_recorder.record(
+            session=session_b,
+            feature_key=FEATURE_INSTITUTIONAL_API_REQUEST,
+            idempotency_key="spoof-b1",
+        )
+        sq_recorder.record(
+            session=session_b,
+            feature_key=FEATURE_INSTITUTIONAL_API_REQUEST,
+            idempotency_key="spoof-b2",
+        )
+
+        qs = UsageQueryService(db_path=db_path)
+        # User A queries their own usage — should be empty, not user B's data
+        result_a = qs.summaries_for_session(session=session_a)
+        assert result_a.state == QUERY_STATE_AVAILABLE
+        assert len(result_a.summaries) == 0, (
+            "User A must not see User B's events")
+
+        # User B queries their own usage — should see their two events
+        result_b = qs.summaries_for_session(session=session_b)
+        assert result_b.state == QUERY_STATE_AVAILABLE
+        assert len(result_b.summaries) == 1
+        assert result_b.summaries[0].event_count == 2
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+# ── B2_3_WALLET_NOT_CALLER_CONTROLLED ───────────────────────────────────────────────────────
+
+def test_B2_3_WALLET_NOT_CALLER_CONTROLLED():
+    """UsageRecorder.record must not accept wallet_address as a parameter."""
+    import inspect
+    sig = inspect.signature(UsageRecorder.record)
+    assert "wallet_address" not in sig.parameters, (
+        "UsageRecorder.record must not accept wallet_address — "
+        "it must be resolved internally from wallet_auth only"
+    )
+
+
+# ── B2_3_WALLET_CANONICAL_LINK_ONLY ─────────────────────────────────────────────────────────
+
+def test_B2_3_WALLET_CANONICAL_LINK_ONLY(monkeypatch):
+    """wallet_address in recorded events comes from wallet_auth, not caller args."""
+    import sys
+    import types
+
+    canonical_wallet = "0x" + "c" * 40
+
+    def mock_get_verified_wallet(user_id: str):
+        if user_id == "user-with-wallet":
+            return {"wallet_address": canonical_wallet}
+        return None
+
+    # Inject a mock wallet_auth module so the test doesn't need eth_account
+    mock_wauth = types.ModuleType("app.protocol.wallet_auth")
+    mock_wauth.get_verified_wallet = mock_get_verified_wallet
+    original = sys.modules.get("app.protocol.wallet_auth")
+    sys.modules["app.protocol.wallet_auth"] = mock_wauth
+    try:
+        # Re-import ledger to pick up the mock (UsageRecorder.record imports lazily)
+        recorder, store = _recorder_with_store()
+
+        # User with a linked wallet
+        session_linked = _session(user_id="user-with-wallet")
+        ev_linked = recorder.record(
+            session=session_linked,
+            feature_key=FEATURE_INSTITUTIONAL_API_REQUEST,
+        )
+        assert ev_linked.wallet_address == canonical_wallet
+
+        # User without a linked wallet
+        session_no_wallet = _session(user_id="user-no-wallet")
+        ev_no_wallet = recorder.record(
+            session=session_no_wallet,
+            feature_key=FEATURE_XLSX_EXPORT,
+            unit="export",
+        )
+        assert ev_no_wallet.wallet_address is None
+    finally:
+        if original is None:
+            sys.modules.pop("app.protocol.wallet_auth", None)
+        else:
+            sys.modules["app.protocol.wallet_auth"] = original
+
+
+# ── B2_3_QUERY_FAILURE_NOT_ZERO ──────────────────────────────────────────────────────────────
+
+def test_B2_3_QUERY_FAILURE_NOT_ZERO():
+    """A storage failure returns UNAVAILABLE, not an empty list (zero usage)."""
+    # Point to a non-existent directory to force a storage error
+    qs = UsageQueryService(db_path="/nonexistent/path/usage.db")
+    session = _session(user_id="user-failure-test")
+    result = qs.summaries_for_session(session=session)
+
+    assert isinstance(result, UsageQueryResult)
+    assert result.state == QUERY_STATE_UNAVAILABLE, (
+        "Storage failure must return UNAVAILABLE, not AVAILABLE with empty summaries"
+    )
+    assert result.reason == QUERY_UNAVAILABLE_REASON
+    # Summaries must be empty (not None) even on failure
+    assert len(result.summaries) == 0
+
+
+# ── B2_3_QUERY_ERROR_SECRET_SAFE ─────────────────────────────────────────────────────────────
+
+def test_B2_3_QUERY_ERROR_SECRET_SAFE():
+    """Query failure result must not expose exception text, DB paths, or SQL."""
+    qs = UsageQueryService(db_path="/nonexistent/path/super-secret.db")
+    session = _session(user_id="user-secret-test")
+    result = qs.summaries_for_session(session=session)
+
+    assert result.state == QUERY_STATE_UNAVAILABLE
+    # reason must be the opaque constant, not raw exception/path text
+    assert result.reason == QUERY_UNAVAILABLE_REASON
+    # The reason must not contain DB path, SQL fragments, or exception details
+    reason_str = str(result.reason) if result.reason else ""
+    for forbidden in ("super-secret", "/nonexistent", "sqlite3", "Traceback",
+                      "Error", "SELECT", "FROM", "WHERE"):
+        assert forbidden not in reason_str, (
+            f"reason must not expose internal details: {reason_str!r}"
+        )
 
 
 # ── B2_3_ENTITLEMENT_SEPARATE_FROM_USAGE ────────────────────────────────────────────────
@@ -372,14 +648,16 @@ def test_B2_3_QUERY_USER_ISOLATION():
                            idempotency_key="sq-b1")
 
         qs = UsageQueryService(db_path=db_path)
-        alice_summaries = qs.summaries_for_subject(subject_id="user-alice")
-        bob_summaries = qs.summaries_for_subject(subject_id="user-bob")
+        result_alice = qs.summaries_for_session(session=session_a)
+        result_bob = qs.summaries_for_session(session=session_b)
 
-        assert all(s.subject_id == "user-alice" for s in alice_summaries)
-        assert all(s.subject_id == "user-bob" for s in bob_summaries)
+        assert result_alice.state == QUERY_STATE_AVAILABLE
+        assert result_bob.state == QUERY_STATE_AVAILABLE
+        assert all(s.subject_id == "user-alice" for s in result_alice.summaries)
+        assert all(s.subject_id == "user-bob" for s in result_bob.summaries)
         # Alice's results don't contain Bob's events
-        alice_total = sum(s.total_quantity for s in alice_summaries)
-        bob_total = sum(s.total_quantity for s in bob_summaries)
+        alice_total = sum(s.total_quantity for s in result_alice.summaries)
+        bob_total = sum(s.total_quantity for s in result_bob.summaries)
         assert alice_total == 1
         assert bob_total == 1
     finally:
@@ -529,3 +807,74 @@ def test_usage_summary_fields():
     assert s.subject_id == "user-x"
     assert s.total_quantity == 5
     assert s.event_count == 3
+
+
+# ── UsageQueryResult contract ────────────────────────────────────────────────────────────────
+
+def test_usage_query_result_available():
+    r = UsageQueryResult(state=QUERY_STATE_AVAILABLE, summaries=[])
+    assert r.state == QUERY_STATE_AVAILABLE
+    assert r.summaries == ()
+    assert r.reason is None
+
+
+def test_usage_query_result_unavailable():
+    r = UsageQueryResult(
+        state=QUERY_STATE_UNAVAILABLE,
+        summaries=(),
+        reason=QUERY_UNAVAILABLE_REASON,
+    )
+    assert r.state == QUERY_STATE_UNAVAILABLE
+    assert r.reason == QUERY_UNAVAILABLE_REASON
+
+
+def test_usage_query_result_invalid_state():
+    with pytest.raises(ValueError, match="unknown query state"):
+        UsageQueryResult(state="UNKNOWN_STATE", summaries=())
+
+
+# ── SQLite concurrent duplicate safety ──────────────────────────────────────────────────────
+
+def test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite():
+    """SQLite: concurrent delivery of the same scoped key produces one event."""
+    import os
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        from app.usage.ledger import SQLiteUsageLedgerStore
+        store = SQLiteUsageLedgerStore(db_path=db_path)
+        key = "sqlite-concurrent-idem"
+        subject = "user-concurrent-sqlite"
+        results: list[UsageEvent] = []
+        errors: list[Exception] = []
+        barrier = threading.Barrier(5)
+
+        def worker():
+            try:
+                barrier.wait(timeout=5)
+                ev = _event(subject_id=subject, idempotency_key=key)
+                r = store.record(ev)
+                results.append(r)
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        assert not errors, f"Unexpected errors in SQLite concurrent test: {errors}"
+        # All threads returned an event
+        assert len(results) == 5
+        # All returned the same canonical event_id
+        event_ids = {r.event_id for r in results}
+        assert len(event_ids) == 1, (
+            f"Expected 1 canonical event_id, got {event_ids}")
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass

@@ -1,7 +1,9 @@
 """B2.3 Usage/Metering — append-only usage event ledger.
 
 Append-only: events are never updated or deleted.
-Idempotency: repeated delivery of the same idempotency_key records one event.
+Idempotency: repeated delivery of the same (subject_id, feature_key,
+idempotency_key) tuple records one event. Cross-user and cross-feature
+collisions on idempotency_key are safe: the UNIQUE constraint is scoped.
 Concurrent safety: SQLite UNIQUE constraint + WAL mode serialises duplicates.
 
 No financial math. No verification truth. No billing engine.
@@ -31,8 +33,10 @@ class UsageLedgerStore(Protocol):
         """Persist one event; return it (or the existing event if already recorded)."""
         ...
 
-    def get_by_idempotency_key(self, idempotency_key: str) -> UsageEvent | None:
-        """Return the event for this idempotency key, or None."""
+    def get_by_scoped_key(
+        self, subject_id: str, feature_key: str, idempotency_key: str
+    ) -> UsageEvent | None:
+        """Return the event for this (subject_id, feature_key, idempotency_key), or None."""
         ...
 
 
@@ -42,8 +46,11 @@ class SQLiteUsageLedgerStore:
     """SQLite-backed append-only usage ledger.
 
     The usage_events table is created lazily via _ensure_usage_schema().
-    The UNIQUE(idempotency_key) constraint serialises concurrent duplicates:
-    the loser of a race gets an IntegrityError and reads back the winner's row.
+    The UNIQUE(subject_id, feature_key, idempotency_key) constraint scopes
+    idempotency per subject and feature — cross-user and cross-feature key
+    collisions are independent and safe.
+    BEGIN IMMEDIATE + explicit IntegrityError handling serialises concurrent
+    duplicates without broad INSERT OR IGNORE suppression.
     """
 
     def __init__(self, db_path: str | None = None) -> None:
@@ -56,10 +63,12 @@ class SQLiteUsageLedgerStore:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
+            _maybe_migrate_usage_v0(conn)
             _ensure_usage_schema(conn)
             return conn
         from app.persistence.db import get_connection
         conn = get_connection()
+        _maybe_migrate_usage_v0(conn)
         _ensure_usage_schema(conn)
         return conn
 
@@ -67,48 +76,111 @@ class SQLiteUsageLedgerStore:
         import sqlite3
         conn = self._get_conn()
         try:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO usage_events (
-                    event_id, idempotency_key, subject_id, wallet_address,
-                    feature_key, quantity, unit,
-                    occurred_at, recorded_at, authority, metadata_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    event.event_id,
-                    event.idempotency_key,
-                    event.subject_id,
-                    event.wallet_address,
-                    event.feature_key,
-                    event.quantity,
-                    event.unit,
-                    event.occurred_at.isoformat(),
-                    event.recorded_at.isoformat(),
-                    event.authority,
-                    json.dumps(event.metadata),
-                ),
-            )
-            conn.commit()
-            # Return the canonical row (ours if inserted, existing if duplicate)
-            row = conn.execute(
-                "SELECT * FROM usage_events WHERE idempotency_key = ?",
-                (event.idempotency_key,),
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT * FROM usage_events"
+                " WHERE subject_id = ? AND feature_key = ? AND idempotency_key = ?",
+                (event.subject_id, event.feature_key, event.idempotency_key),
             ).fetchone()
+            if existing is not None:
+                conn.execute("ROLLBACK")
+                return _row_to_event(existing)
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO usage_events (
+                        event_id, idempotency_key, subject_id, wallet_address,
+                        feature_key, quantity, unit,
+                        occurred_at, recorded_at, authority, metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.event_id,
+                        event.idempotency_key,
+                        event.subject_id,
+                        event.wallet_address,
+                        event.feature_key,
+                        event.quantity,
+                        event.unit,
+                        event.occurred_at.isoformat(),
+                        event.recorded_at.isoformat(),
+                        event.authority,
+                        json.dumps(event.metadata),
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                # Another writer beat us; read back the canonical row.
+                conn.execute("ROLLBACK")
+                row = conn.execute(
+                    "SELECT * FROM usage_events"
+                    " WHERE subject_id = ? AND feature_key = ? AND idempotency_key = ?",
+                    (event.subject_id, event.feature_key, event.idempotency_key),
+                ).fetchone()
+                if row is not None:
+                    return _row_to_event(row)
+                # IntegrityError on a different constraint (e.g. UNIQUE event_id) — re-raise.
+                raise
+            row = conn.execute(
+                "SELECT * FROM usage_events"
+                " WHERE subject_id = ? AND feature_key = ? AND idempotency_key = ?",
+                (event.subject_id, event.feature_key, event.idempotency_key),
+            ).fetchone()
+            conn.execute("COMMIT")
+            return _row_to_event(row)
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
         finally:
             conn.close()
-        return _row_to_event(row)
 
-    def get_by_idempotency_key(self, idempotency_key: str) -> UsageEvent | None:
+    def get_by_scoped_key(
+        self, subject_id: str, feature_key: str, idempotency_key: str
+    ) -> UsageEvent | None:
         conn = self._get_conn()
         try:
             row = conn.execute(
-                "SELECT * FROM usage_events WHERE idempotency_key = ?",
-                (idempotency_key,),
+                "SELECT * FROM usage_events"
+                " WHERE subject_id = ? AND feature_key = ? AND idempotency_key = ?",
+                (subject_id, feature_key, idempotency_key),
             ).fetchone()
         finally:
             conn.close()
         return _row_to_event(row) if row is not None else None
+
+
+def _maybe_migrate_usage_v0(conn) -> None:
+    """Rename the old single-key-unique table if it exists.
+
+    The original schema had UNIQUE(idempotency_key) as a solo inline constraint.
+    If that table is detected, it is renamed to usage_events_v0_deprecated so
+    the new scoped-unique schema can be created cleanly.
+    """
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='usage_events'"
+    ).fetchone()
+    if row is None:
+        return
+    # Inspect indexes: look for a unique index covering only idempotency_key.
+    indexes = conn.execute(
+        "PRAGMA index_list(usage_events)"
+    ).fetchall()
+    for idx in indexes:
+        if not idx["unique"]:
+            continue
+        idx_info = conn.execute(
+            f"PRAGMA index_info({idx['name']})"
+        ).fetchall()
+        col_names = [c["name"] for c in idx_info]
+        if col_names == ["idempotency_key"]:
+            # Old solo-unique schema detected — rename and let _ensure_usage_schema
+            # create the new table.
+            conn.execute(
+                "ALTER TABLE usage_events RENAME TO usage_events_v0_deprecated"
+            )
+            return
 
 
 def _ensure_usage_schema(conn) -> None:
@@ -117,7 +189,7 @@ def _ensure_usage_schema(conn) -> None:
         CREATE TABLE IF NOT EXISTS usage_events (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             event_id          TEXT    NOT NULL UNIQUE,
-            idempotency_key   TEXT    NOT NULL UNIQUE,
+            idempotency_key   TEXT    NOT NULL,
             subject_id        TEXT    NOT NULL,
             wallet_address    TEXT,
             feature_key       TEXT    NOT NULL,
@@ -126,7 +198,8 @@ def _ensure_usage_schema(conn) -> None:
             occurred_at       TEXT    NOT NULL,
             recorded_at       TEXT    NOT NULL,
             authority         TEXT    NOT NULL DEFAULT 'B2_3_V1',
-            metadata_json     TEXT    NOT NULL DEFAULT '{}'
+            metadata_json     TEXT    NOT NULL DEFAULT '{}',
+            UNIQUE(subject_id, feature_key, idempotency_key)
         )
         """
     )
@@ -170,26 +243,35 @@ def _row_to_event(row) -> UsageEvent:
 # ── In-memory store (for testing) ──────────────────────────────────────────────────────────────
 
 class InMemoryUsageLedgerStore:
-    """Thread-safe in-memory usage ledger for deterministic tests."""
+    """Thread-safe in-memory usage ledger for deterministic tests.
+
+    Idempotency is scoped to (subject_id, feature_key, idempotency_key) —
+    matching the SQLite UNIQUE(subject_id, feature_key, idempotency_key)
+    constraint. Cross-user and cross-feature key collisions are safe.
+    """
 
     def __init__(self) -> None:
         import threading
         self._lock = threading.Lock()
-        self._by_idempotency: dict[str, UsageEvent] = {}
+        self._by_scoped_key: dict[tuple[str, str, str], UsageEvent] = {}
         self._events: list[UsageEvent] = []
 
     def record(self, event: UsageEvent) -> UsageEvent:
+        scoped_key = (event.subject_id, event.feature_key, event.idempotency_key)
         with self._lock:
-            existing = self._by_idempotency.get(event.idempotency_key)
+            existing = self._by_scoped_key.get(scoped_key)
             if existing is not None:
                 return existing
-            self._by_idempotency[event.idempotency_key] = event
+            self._by_scoped_key[scoped_key] = event
             self._events.append(event)
             return event
 
-    def get_by_idempotency_key(self, idempotency_key: str) -> UsageEvent | None:
+    def get_by_scoped_key(
+        self, subject_id: str, feature_key: str, idempotency_key: str
+    ) -> UsageEvent | None:
+        scoped_key = (subject_id, feature_key, idempotency_key)
         with self._lock:
-            return self._by_idempotency.get(idempotency_key)
+            return self._by_scoped_key.get(scoped_key)
 
     def all_events(self) -> list[UsageEvent]:
         with self._lock:
@@ -204,6 +286,8 @@ class UsageRecorder:
     Callers supply feature_key, quantity, unit, and optional metadata.
     subject_id is always derived from a verified session object — never
     accepted as a caller-supplied string.
+    wallet_address is resolved internally from the canonical wallet_auth
+    link — never accepted as a caller-supplied argument.
 
     Usage recording is always performed AFTER the B2.2 access decision.
     The outcome of usage recording must never affect financial math or
@@ -223,14 +307,25 @@ class UsageRecorder:
         idempotency_key: str | None = None,
         occurred_at: datetime | None = None,
         metadata: dict | None = None,
-        wallet_address: str | None = None,
     ) -> UsageEvent:
         """Record one usage event for the authenticated session.
 
         session must be a SessionData (or SessionData-compatible) object from
         app.auth.resolve_request_session — never a raw user_id string.
+        wallet_address is resolved from app.protocol.wallet_auth; callers
+        cannot supply it directly.
         """
         subject_id: str = session.user_id
+        # Resolve canonical wallet address from the authenticated session only.
+        # Fail open: if wallet_auth is unavailable, record without wallet identity.
+        wallet_address: str | None = None
+        try:
+            import app.protocol.wallet_auth as _wauth
+            link = _wauth.get_verified_wallet(subject_id)
+            wallet_address = link["wallet_address"] if link else None
+        except Exception:
+            wallet_address = None
+
         now = datetime.now(timezone.utc)
         event = UsageEvent(
             event_id=str(uuid.uuid4()),

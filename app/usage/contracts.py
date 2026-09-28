@@ -123,3 +123,31 @@ class UsageSummary:
             raise ValueError(f"unknown feature_key: {self.feature_key!r}")
         if self.total_quantity < 0 or self.event_count < 0:
             raise ValueError("totals must be non-negative")
+
+
+# ── Query result ──────────────────────────────────────────────────────────────────────────────
+# Distinguishes genuine zero usage (AVAILABLE, empty summaries) from a storage
+# failure (UNAVAILABLE). Never expose raw exception text, DB paths, or SQL.
+
+QUERY_STATE_AVAILABLE = "AVAILABLE"
+QUERY_STATE_UNAVAILABLE = "UNAVAILABLE"
+QUERY_UNAVAILABLE_REASON = "USAGE_QUERY_UNAVAILABLE"
+
+
+@dataclass(frozen=True)
+class UsageQueryResult:
+    """Structured result from UsageQueryService.
+
+    state=AVAILABLE  → storage reached; summaries may be empty (zero usage)
+    state=UNAVAILABLE → storage unreachable; reason is USAGE_QUERY_UNAVAILABLE
+    Raw exceptions, DB paths, and SQL text are never stored here.
+    """
+
+    state: str                     # AVAILABLE or UNAVAILABLE
+    summaries: tuple               # tuple[UsageSummary, ...]
+    reason: str | None = None      # USAGE_QUERY_UNAVAILABLE when UNAVAILABLE
+
+    def __post_init__(self) -> None:
+        if self.state not in (QUERY_STATE_AVAILABLE, QUERY_STATE_UNAVAILABLE):
+            raise ValueError(f"unknown query state: {self.state!r}")
+        object.__setattr__(self, "summaries", tuple(self.summaries))
