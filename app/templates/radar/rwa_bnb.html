@@ -6,7 +6,7 @@
   <title>FINCO Radar — BNB Tokenized Assets</title>
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
-  <link rel="stylesheet" href="/static/radar/rwa.css?v=b1-2">
+  <link rel="stylesheet" href="/static/radar/rwa.css?v=b1-3">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
 </head>
 <body class="radar rwa-page">
@@ -31,7 +31,7 @@
 
   <section class="panel rwa-boundary bnb-boundary">
     <strong>Authority boundary</strong>
-    <span>BNB deployment identity is chain 56 plus exact contract address when CoinGecko supplies one. Market prices, caps and volumes are CoinGecko coin-level observations, not BNB-only quantities or executable quotes. Robinhood economic binding: Unavailable without exact canonical Robinhood registry evidence. No underlying parity or premium is inferred.</span>
+    <span>BNB deployment identity is chain 56 plus exact contract address when CoinGecko supplies one. Market prices, caps and volumes are CoinGecko coin-level observations, not BNB-only quantities or executable quotes. Robinhood economic binding: Unavailable without exact canonical registry evidence. Reference premium requires a bound Robinhood basis and an approved independent token reference. Execution gap additionally requires an exact route quote. Missing evidence is never shown as zero.</span>
   </section>
 
   <section class="rwa-count-grid bnb-count-grid" aria-label="BNB observed-set summary">
@@ -69,7 +69,7 @@
     {% if dashboard.observations %}
     <div class="rwa-table-wrap panel bnb-table-wrap">
       <table class="rwa-table bnb-rwa-table">
-        <thead><tr><th>Asset / provider ID</th><th>BNB deployment</th><th>Asset-level price</th><th>Asset-level mcap</th><th>Asset-level 24h volume</th><th>24h</th><th>Freshness / source</th><th>Robinhood binding</th></tr></thead>
+        <thead><tr><th>Asset / provider ID</th><th>BNB deployment</th><th>Asset-level price</th><th>Asset-level mcap</th><th>Asset-level 24h volume</th><th>24h</th><th>Freshness / source</th><th>Robinhood binding</th><th>Reference premium</th><th>Execution gap</th></tr></thead>
         <tbody>
         {% for row in dashboard.observations %}
           <tr data-provider-id="{{ row.provider_id }}" data-state="{{ row.state }}">
@@ -89,6 +89,37 @@
                 <span class="state-unavailable">Unavailable</span>
                 <span class="mono rwa-time">{{ row.canonical_identity.state }} · {{ row.canonical_identity.reason }}</span>
               {% endif %}
+            </td>
+            <td data-label="Reference premium" class="bnb-intelligence-cell">
+              {% if row.intelligence.reference_premium.state == 'AVAILABLE' %}
+                <strong class="mono">{{ row.intelligence.reference_premium.value_bps }} bps</strong>
+              {% else %}
+                <span class="state-unavailable">Unavailable</span>
+              {% endif %}
+              <span class="mono rwa-time">{{ row.intelligence.reference_premium.state }} · {{ row.intelligence.reference_premium.reason or 'Current evidence' }}</span>
+              <details><summary>Price evidence</summary>
+                <span class="mono rwa-time">Robinhood basis: {{ row.intelligence.robinhood_basis.price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.robinhood_basis.state }} · {{ row.intelligence.robinhood_basis.source or row.intelligence.robinhood_basis.reason or 'Unavailable' }} · {{ row.intelligence.robinhood_basis.observed_at or 'Timestamp unavailable' }}</span>
+                <span class="mono rwa-time">Independent token reference: {{ row.intelligence.independent_token_reference.price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.independent_token_reference.state }} · {{ row.intelligence.independent_token_reference.source or row.intelligence.independent_token_reference.reason or 'Unavailable' }} · {{ row.intelligence.independent_token_reference.observed_at or 'Timestamp unavailable' }}</span>
+                <span class="mono rwa-time">Formula: {{ row.intelligence.reference_premium.formula or 'Unavailable' }}</span>
+                <span class="mono rwa-time">Evidence times: {{ row.intelligence.reference_premium.observed_at|join(', ') or 'Unavailable' }}</span>
+              </details>
+            </td>
+            <td data-label="Execution gap" class="bnb-intelligence-cell">
+              {% if row.intelligence.execution_gap.state == 'AVAILABLE' %}
+                <strong class="mono">{{ row.intelligence.execution_gap.effective_gap_bps }} bps</strong>
+                <span class="mono rwa-time">Execution impact {{ row.intelligence.execution_gap.execution_impact_bps }} bps</span>
+              {% else %}
+                <span class="state-unavailable">Unavailable</span>
+              {% endif %}
+              <span class="mono rwa-time">{{ row.intelligence.execution_gap.state }} · {{ row.intelligence.execution_gap.reason or 'Current evidence' }}</span>
+              <details><summary>Execution and history</summary>
+                <span class="mono rwa-time">Effective price: {{ row.intelligence.execution.effective_price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.execution.provider or row.intelligence.execution.reason or 'Unavailable' }}</span>
+                <span class="mono rwa-time">Notional: {{ row.intelligence.execution.requested_notional_usd or 'Unavailable' }} USD · route: {{ row.intelligence.execution.route or 'Unavailable' }} · {{ row.intelligence.execution.observed_at or 'Timestamp unavailable' }}</span>
+                <span class="mono rwa-time">Fee {{ row.intelligence.execution.fee_cost_usd or 'Unavailable' }} · gas {{ row.intelligence.execution.gas_cost_usd or 'Unavailable' }} (evidence only; inclusion unresolved)</span>
+                {% if row.intelligence_history %}
+                  {% for point in row.intelligence_history[:5] %}<span class="mono rwa-time">{{ point.observed_at }} · premium {{ point.reference_premium_bps }} bps ({{ point.state }}) · total gap {{ point.total_execution_gap_bps or 'Unavailable' }} ({{ point.execution_state }})</span>{% endfor %}
+                {% else %}<span class="mono rwa-time">History unavailable</span>{% endif %}
+              </details>
             </td>
           </tr>
         {% endfor %}

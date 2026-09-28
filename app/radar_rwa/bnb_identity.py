@@ -40,6 +40,15 @@ class BnbCrossChainIdentityService:
         self.max_registry_age_seconds = max_registry_age_seconds
         self._lock = Lock()
 
+    def selected_registry_snapshot(self) -> RegistrySnapshot | None:
+        """Return the immutable official snapshot retained by the last resolution.
+
+        B1.3 can consume the exact B1.2 evidence without a second registry fetch.
+        It still independently checks age and UID at the B1.0 calculation gate.
+        """
+        with self._lock:
+            return self._retained_snapshot
+
     def resolve_snapshot(
         self, snapshot: BnbRwaMarketSnapshot, *, as_of: datetime | None = None,
     ) -> dict[AssetKey, CrossChainIdentityBinding]:

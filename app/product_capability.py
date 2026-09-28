@@ -177,9 +177,13 @@ _bnb_rwa = ProductCapability(
     product_area="radar",
     status_note=(
         "Read-only BNB chain RWA market observations (B1.1) with canonical cross-chain identity "
-        "resolution (B1.2). CoinGecko observation authority. Robinhood registry-first identity "
+        "resolution (B1.2) and reference-premium, execution-gap, and exact-identity history "
+        "intelligence (B1.3). CoinGecko observation authority. Robinhood registry-first identity "
         "binding — current production observations may carry IDENTITY_UNAVAILABLE if the live "
-        "Robinhood registry contains zero chain-56 bindings. No premium/execution intelligence (B1.3 not live). "
+        "Robinhood registry contains zero chain-56 bindings. B1.3 calculation capability is "
+        "implemented and live; numeric premium and execution-gap output appear only when canonical "
+        "evidence prerequisites (approved independent token reference, exact execution quote) are "
+        "AVAILABLE — absence of evidence yields UNAVAILABLE, never zero. "
         "No trading, no custody, no wallet signing."
     ),
     limitations=(
@@ -187,9 +191,12 @@ _bnb_rwa = ProductCapability(
         "Canonical cross-chain identity (B1.2) is implemented; Robinhood registry-first binding "
         "is live but may produce IDENTITY_UNAVAILABLE if no chain-56 bindings exist in the "
         "current Robinhood registry — that is truthful, not a capability gap.",
+        "B1.3 reference premium requires an approved independent token reference source; no "
+        "approved production source may currently exist, so premium may be UNAVAILABLE.",
+        "B1.3 execution gap requires an exact execution quote; absence of a quote yields "
+        "UNAVAILABLE, never zero.",
         "RWA TVL aggregate is not claimed; observations are per-asset market data only.",
         "CoinGecko is the sole observation authority; data freshness depends on provider availability.",
-        "Premium/execution gap intelligence (B1.3) is not yet supported.",
     ),
 )
 
