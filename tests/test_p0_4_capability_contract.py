@@ -14,7 +14,7 @@ Acceptance markers (all must PASS for PR merge):
   CAPABILITY_KNOWN_LIMITATIONS_LIVE_VERTICAL_AGREEMENT
   CAPABILITY_API_ENDPOINT_AGREEMENT
   CAPABILITY_FUTURE_NOT_LIVE_STORAGE
-  CAPABILITY_B11_B12_BNB_RWA_CURRENT_STATE
+  CAPABILITY_B11_B12_B13_BNB_RWA_CURRENT_STATE
   CAPABILITY_FUTURE_NOT_LIVE_WALLET
   CAPABILITY_FUTURE_NOT_LIVE_TOKEN_ENTITLEMENT
   CAPABILITY_FUTURE_NOT_LIVE_ONCHAIN_ANCHORING
@@ -274,32 +274,62 @@ def test_storage_is_preview_not_live():
     assert not storage.api_available
 
 
-def test_b11_b12_bnb_rwa_current_state():
-    """CAPABILITY_B11_B12_BNB_RWA_CURRENT_STATE: B1.1 (observations) and B1.2
-    (canonical cross-chain identity) are both merged. bnb_rwa must be LIVE,
-    radar-area, read-only. IDENTITY_UNAVAILABLE is a valid production state when
-    Robinhood chain-56 bindings are absent — that is truthful, not a gap.
-    B1.3 premium/execution intelligence is not yet supported."""
+def test_b11_b12_b13_bnb_rwa_current_state():
+    """CAPABILITY_B11_B12_B13_BNB_RWA_CURRENT_STATE: B1.1 (market observations),
+    B1.2 (canonical cross-chain identity) and B1.3 (reference premium, execution
+    gap, and exact-identity history) are all merged. bnb_rwa must be LIVE,
+    radar-area, read-only.
+
+    Production data truth:
+    - IDENTITY_UNAVAILABLE is a valid production state when Robinhood chain-56
+      bindings are absent — that is truthful, not a capability gap.
+    - Premium may be UNAVAILABLE when no approved independent token reference
+      source exists — that is truthful, not a capability gap.
+    - Execution gap may be UNAVAILABLE when no exact execution quote exists —
+      that is truthful, not a capability gap.
+    - Capability LIVE does NOT require every row to have a numeric premium.
+    """
     bnb = capability_by_key("bnb_rwa")
-    assert bnb is not None, "bnb_rwa must be in PRODUCT_CAPABILITIES (B1.1 + B1.2 merged)"
+    assert bnb is not None, "bnb_rwa must be in PRODUCT_CAPABILITIES (B1.1+B1.2+B1.3 merged)"
     assert bnb.status == ProductStatus.LIVE
     assert bnb.product_area == "radar", "bnb_rwa must be a radar-area capability"
     assert not bnb.runnable, "Radar observations are read-only; not a model run"
     assert not bnb.cloneable
     assert not bnb.canonical_last_run
-    # B1.2 identity resolution is implemented — status_note must reflect current truth
+    # B1.2 identity resolution is current
     assert "B1.2" in bnb.status_note or "cross-chain identity" in bnb.status_note, (
         "bnb_rwa status_note must reference B1.2 canonical identity resolution"
     )
     assert "IDENTITY_UNAVAILABLE" in bnb.status_note, (
         "bnb_rwa status_note must acknowledge IDENTITY_UNAVAILABLE as a valid production state"
     )
-    # B1.3 premium/execution intelligence is not yet supported
-    assert "B1.3" in bnb.status_note or "premium" in bnb.status_note.lower(), (
-        "bnb_rwa status_note must note that B1.3 premium/execution is not live"
+    # B1.3 premium/execution/history capability is now live
+    assert "B1.3" in bnb.status_note, (
+        "bnb_rwa status_note must reference B1.3 premium/execution/history capability"
     )
+    assert "UNAVAILABLE" in bnb.status_note, (
+        "bnb_rwa status_note must acknowledge that premium/gap may be UNAVAILABLE in production"
+    )
+    # Absence of evidence must NOT downgrade the capability itself
+    assert "not live" not in bnb.status_note.lower(), (
+        "bnb_rwa status_note must not claim B1.3 is not live"
+    )
+    assert "not yet supported" not in bnb.status_note.lower(), (
+        "bnb_rwa status_note must not claim B1.3 is not yet supported"
+    )
+    # Trading/custody/wallet/signing remain unsupported
+    assert "no trading" in bnb.status_note.lower() or "no order" in bnb.status_note.lower() or "no custody" in bnb.status_note.lower(), (
+        "bnb_rwa status_note must confirm trading/custody remain unsupported"
+    )
+    # No second redundant B1.3 capability
     b13 = capability_by_key("bnb_premium") or capability_by_key("rwa_execution")
-    assert b13 is None or b13.status != ProductStatus.LIVE, "B1.3 premium/execution not live"
+    assert b13 is None, "No second redundant bnb_premium/rwa_execution capability should exist"
+    # Token entitlement remains unsupported
+    assert capability_by_key("finco_token") is None or capability_by_key("finco_token").status != ProductStatus.LIVE
+    # Onchain anchoring / Passport / Treasury Proof remain unsupported
+    for future_key in ("onchain_anchoring", "financial_passport", "treasury_proof"):
+        cap = capability_by_key(future_key)
+        assert cap is None or cap.status != ProductStatus.LIVE, f"{future_key} must not be LIVE"
 
 
 def test_wallet_not_live():
