@@ -1,9 +1,4 @@
-"""Typed output contract for the experimental Jev transient forecast.
-
-Jev is scored only on one self-contained future event: whether the canonical
-premium deviation compresses under OUTCOME_POLICY_V2. It never establishes FINCO
-authority or product policy.
-"""
+"""Typed output contract for the experimental Jev transient forecast."""
 from __future__ import annotations
 
 import re
@@ -15,6 +10,10 @@ from typing import Mapping
 
 INTERPRETATION_SCHEMA_VERSION = "RWA_REFLEX_INTERPRETATION_V2"
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{64}$")
+JEV_FAILURE_CATEGORIES = frozenset({
+    "TIMEOUT", "NETWORK", "HTTP_408", "HTTP_429", "HTTP_5XX", "AUTH",
+    "INVALID_REQUEST", "INVALID_RESPONSE", "RETRY_BUDGET_EXHAUSTED",
+})
 
 
 class InterpretationState(str, Enum):
@@ -45,6 +44,7 @@ class ReflexInterpretation:
     attempt_count: int | None = None
     usage: tuple[tuple[str, str], ...] = ()
     reason: str | None = None
+    failure_category: str | None = None
     schema_version: str = INTERPRETATION_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -61,6 +61,8 @@ class ReflexInterpretation:
             raise ValueError("attempt_count must be a positive integer")
         if any(not key.strip() for key, _ in self.usage):
             raise ValueError("usage metadata keys must be named")
+        if self.failure_category is not None and self.failure_category not in JEV_FAILURE_CATEGORIES:
+            raise ValueError("unsupported Jev failure category")
 
         if self.state is InterpretationState.AVAILABLE:
             if self.request_schema_version is None:
@@ -73,8 +75,8 @@ class ReflexInterpretation:
                 raise ValueError("available interpretation requires requested model")
             if self.resolved_model is None or not self.resolved_model.strip():
                 raise ValueError("available interpretation requires resolved model")
-            if self.reason is not None:
-                raise ValueError("available interpretation cannot carry unavailable reason")
+            if self.reason is not None or self.failure_category is not None:
+                raise ValueError("available interpretation cannot carry failure metadata")
         else:
             if self.likely_transient_probability is not None:
                 raise ValueError("non-available interpretation cannot carry forecast probability")
