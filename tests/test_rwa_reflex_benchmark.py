@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal
 
@@ -31,6 +32,21 @@ def _experiment():
         "structural_premium_bps": str(event.structural_premium_bps), "initial_deviation_bps": str(event.initial_deviation_bps),
         "policy_version": event.policy_version,
     }}
+
+
+def _available_experiment(*, event_id: str, resolved_model: str = "jev-1.13.0",
+                          request_schema: str = "RWA_REFLEX_JEV_REQUEST_V2"):
+    payload = deepcopy(_experiment())
+    payload["event"]["event_id"] = event_id
+    payload["interpretation"].update({
+        "state": "AVAILABLE",
+        "request_schema_version": request_schema,
+        "likely_transient_probability": "0.70",
+        "resolved_model": resolved_model,
+        "provider_request_id": f"req-{event_id}",
+        "reason": None,
+    })
+    return payload
 
 
 def test_empirical_baseline_returns_comparable_probability_with_information_parity():
@@ -71,6 +87,26 @@ def test_prediction_is_idempotent_but_second_prediction_for_same_event_is_reject
         with pytest.raises(ValueError, match="RWA_REFLEX_EVENT_DUPLICATE"):
             ledger.put_prediction(changed)
         assert ledger.read_prediction(digest)["ledger_schema_version"] == "RWA_REFLEX_LEDGER_V2"
+    finally:
+        ledger.close()
+
+
+def test_calibration_sample_stops_if_resolved_model_changes():
+    ledger = ReflexExperimentLedger()
+    try:
+        ledger.put_prediction(_available_experiment(event_id="event-a", resolved_model="jev-1.13.0"))
+        with pytest.raises(ValueError, match="RWA_REFLEX_MODEL_VERSION_CHANGED"):
+            ledger.put_prediction(_available_experiment(event_id="event-b", resolved_model="jev-1.14.0"))
+    finally:
+        ledger.close()
+
+
+def test_calibration_sample_stops_if_request_schema_changes():
+    ledger = ReflexExperimentLedger()
+    try:
+        ledger.put_prediction(_available_experiment(event_id="event-a"))
+        with pytest.raises(ValueError, match="RWA_REFLEX_REQUEST_SCHEMA_CHANGED"):
+            ledger.put_prediction(_available_experiment(event_id="event-b", request_schema="RWA_REFLEX_JEV_REQUEST_V3"))
     finally:
         ledger.close()
 
