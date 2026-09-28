@@ -53,8 +53,9 @@ jobs:
           tests/test_b2_1_verified_authority.py
           tests/test_b2_2_token_entitlement.py
 
-      - name: Full Linux pytest
-        run: pytest -q
-
+      # Full Linux pytest is intentionally owned by Public Safety and Model Smoke.
+      # Running it here duplicates the global suite and, because this workflow uses
+      # full git history for diff checks, also reactivates historical one-PR freeze
+      # gates against already-merged mainline changes.
       - name: Public repository safety scan
         run: python tools/public_safety_scan.py
