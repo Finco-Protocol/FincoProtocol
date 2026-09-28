@@ -170,6 +170,8 @@ async def protocol_docs_start_alias():
 async def model_methodology(request: Request):
     """FINCO model methodology — public, no auth required."""
     from app.auth import resolve_request_session
+    from app.model_methodology_registry import public_gaps
+    from app.product_capability import live_vertical_names
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
         request=request,
@@ -177,6 +179,8 @@ async def model_methodology(request: Request):
         context={
             "user": user,
             "proto_active_page": "docs",
+            "institutional_gaps": public_gaps(),
+            "live_vertical_names": live_vertical_names(),
         },
     )
 

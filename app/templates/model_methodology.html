@@ -200,7 +200,7 @@
         <span class="pmeth-badge">Unlevered Project IRR</span>
         <span class="pmeth-badge">Newton–Raphson XIRR</span>
         <span class="pmeth-badge">25% corporate tax</span>
-        <span class="pmeth-badge">Solar / Wind / Data Center</span>
+        <span class="pmeth-badge">{% for name in live_vertical_names %}{{ name }}{% if not loop.last %} / {% endif %}{% endfor %}</span>
       </div>
     </div>
   </header>
@@ -227,8 +227,10 @@
       <a href="#reference">Solar reference example</a>
       <a class="sub" href="#sources-uses">Sources &amp; uses</a>
       <a class="sub" href="#period-walkthrough">Period walkthrough</a>
+      <a href="#cash-waterfall">Cash waterfall</a>
       <a href="#working-last-run">Working vs Last Run</a>
       <a href="#run-identity">Run identity</a>
+      <a href="#institutional-gaps">Institutional gaps</a>
       <a href="#limitations">Limitations</a>
     </aside>
 
@@ -607,14 +609,38 @@ level_install = opening_debt / n_repayment_periods
         <h2>DSCR and LLCR.</h2>
 
         <div class="pmeth-formula">
-<span class="comment"># DSCR per period (finco_core/waterfall/waterfall_engine.py line 1022):</span>
-dscr = ebitda_minus_tax / senior_debt_service
+<span class="comment"># AUTHORITATIVE DSCR — clean engine (financial_engine/senior_debt/sculpting.py):</span>
+<span class="comment"># Used for debt sizing and KPI reporting (base_dscr in senior_debt schedules).</span>
+dscr = cfads / debt_service          <span class="comment"># cfads = ebitda + financing_income − cash_tax</span>
+dscr = None   <span class="comment"># when debt_service == 0 (no division — not inf)</span>
 
-<span class="comment"># LLCR at period t (finco_core/waterfall/waterfall_engine.py lines 202–213):</span>
-llcr_t = Σ[ fcf_s / (1 + rate)^(s−t+1)  for s in remaining_debt_life ] / debt_balance_t
+<span class="comment"># LLCR — post-sizing, informational (financial_engine/valuation/model.py):</span>
+llcr_t = Σ[ cfads_s / (1 + all_in_rate)^(s−t+1)  for s in remaining_debt_life ] / debt_balance_t
         </div>
 
-        <span class="pmeth-authority">finco_core/waterfall/waterfall_engine.py</span>
+        <span class="pmeth-authority">financial_engine/senior_debt/sculpting.py · financial_engine/valuation/model.py</span>
+
+        <div class="pmeth-callout" style="border-left-color:#f59e0b; background:#fffbeb;">
+          <strong>Institutional note — dual DSCR definitions.</strong>
+          Two DSCR definitions exist in the codebase:<br/>
+          <ol style="margin:8px 0 0 16px; padding:0;">
+            <li>
+              <strong>Authoritative (sizing + covenant reporting):</strong>
+              <code>cfads / debt_service</code> — numerator is CFADS
+              (= EBITDA + financing_income − cash_tax). Zero-DS periods: DSCR = None.
+              Source: <code>financial_engine/senior_debt/sculpting.py</code>.
+            </li>
+            <li>
+              <strong>Legacy utility (NOT used for sizing):</strong>
+              <code>ebitda / debt_service</code> — numerator is raw EBITDA.
+              Zero-DS periods: returns <code>inf</code>.
+              Source: <code>finco_core/debt/covenants.py::dscr()</code>.
+            </li>
+          </ol>
+          The two definitions differ whenever financing_income ≠ 0 or cash_tax ≠ 0.
+          The legacy utility is not called from the production debt sizing or waterfall path.
+          All KPI output uses the authoritative CFADS-based definition.
+        </div>
 
         <p>
           The lock-up DSCR gate is 1.10 for the Solar reference model: when
@@ -622,6 +648,7 @@ llcr_t = Σ[ fcf_s / (1 + rate)^(s−t+1)  for s in remaining_debt_life ] / debt
           are blocked. LLCR is defined in the model architecture but is not configured
           in the Solar reference run (production output:
           <code>min_llcr = None</code>, status: <code>C2_COVERAGE_CFADS_CASE_NOT_CONFIGURED</code>).
+          LLCR is <strong>informational only</strong> — it is not a debt sizing constraint.
         </p>
         <div class="pmeth-callout pmeth-callout--info">
           <strong>Sizing vs amortization — important distinction.</strong>
@@ -826,7 +853,8 @@ total_sponsor_xirr = xirr(−contributions + receipts, dates)
         <div class="pmeth-formula">
 <span class="comment"># finco_core/sponsor/xirr.py</span>
 
-<span class="comment"># 365-day year fraction (no leap-year adjustment):</span>
+<span class="comment"># Year fraction = actual calendar days since first cash-flow date / 365</span>
+<span class="comment"># ACT/365F-style (fixed 365 denominator), not ACT/ACT. Excel XIRR-compatible.</span>
 year_fractions = [(d − d₀).days / 365.0  for d in dates]
 
 <span class="comment"># NPV at rate r:</span>
@@ -1191,6 +1219,85 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
       <hr class="pmeth-divider" />
 
       <!-- ── Limitations ────────────────────────────────────────────────── -->
+      <!-- ── Cash Waterfall Priority Order ──────────────────────────────── -->
+      <section id="cash-waterfall">
+        <p class="pmeth-kicker">D4 — Cash waterfall</p>
+        <h2>Cash waterfall priority order (G2C covenant-gated).</h2>
+
+        <p>
+          The full G2C covenant-gated waterfall is implemented in
+          <code>financial_engine/shareholder_waterfall/model.py::run_project_shareholder_waterfall_model</code>.
+          Cash is applied in strict priority order each operating period:
+        </p>
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead><tr><th>#</th><th>Waterfall step</th><th>Formula</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td><strong>Senior debt service</strong></td><td>CFADS − (interest + principal) = post-senior cash</td><td>financial_engine/senior_debt/sculpting.py</td></tr>
+              <tr><td>2</td><td><strong>DSRA top-up / draw</strong></td><td>cash adjusted for DSRA movements → cash_after_dsra_keur</td><td>financial_engine/dsra/model.py::run_cash_dsra_model</td></tr>
+              <tr><td>3</td><td><strong>DSRF commitment fee</strong></td><td>da_inflow = reserve_adjusted_cash − dsrf_fee</td><td>financial_engine/financing/dsrf.py</td></tr>
+              <tr><td>4</td><td><strong>Distribution Account roll</strong></td><td>da_available = da_inflow + da_closing[t−1]</td><td>financial_engine/shareholder_waterfall/model.py</td></tr>
+              <tr><td>5</td><td><strong>Lock-up gate check</strong></td><td>Gate A: DSCR &lt; lockup_dscr (default 1.10) AND within senior maturity → block</td><td>distribution gate Component A</td></tr>
+              <tr><td>6</td><td><strong>SHL cash interest</strong></td><td>paid from released DA cash after gate</td><td>financial_engine/shl/</td></tr>
+              <tr><td>7</td><td><strong>SHL principal</strong></td><td>paid from DA cash after interest</td><td>financial_engine/shl/</td></tr>
+              <tr><td>8</td><td><strong>Legal equity distribution</strong></td><td>max(0, da_release − shl_interest − shl_principal)</td><td>financial_engine/shareholder_waterfall/model.py</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pmeth-callout pmeth-callout--info">
+          <strong>Distribution gate — five components (G2C).</strong>
+          Cash is locked to the Distribution Account (not released to SHL/equity) if ANY gate component fires:
+          <ul style="margin:6px 0 0 16px;">
+            <li><strong>A</strong>: DSCR &lt; lockup_dscr (default 1.10×) AND within senior maturity — DSCR lockup gate</li>
+            <li><strong>B</strong>: construction not complete — construction state gate</li>
+            <li><strong>C</strong>: Distribution Account balance &lt; 0 — DA negative gate</li>
+            <li><strong>D</strong>: DSRA underfunded (cash gap to target &gt; tolerance) — DSRA top-up gate</li>
+            <li><strong>E</strong>: J-DSRA underfunded — always False for single-tranche senior-only projects
+              (<code>j_dsra_closing_keur = 0</code> hardcoded; not modelled)</li>
+          </ul>
+          <strong>DSRF note:</strong> DSRF (letter-of-credit reserve facility) has a fee engine
+          but <em>no draw engine</em> (<code>DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE</code>).
+          Actual LoC draws are not modelled; gate Component D availability check is based on
+          DSRA cash balance only, not DSRF draw capacity.
+          <br><br>
+          BULLET SHL fail-closed: after an unpaid BULLET maturity, all subsequent equity distributions
+          are zeroed and IRR metrics carry <code>ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY</code>.
+        </div>
+        <span class="pmeth-authority">financial_engine/shareholder_waterfall/model.py</span>
+      </section>
+
+      <hr class="pmeth-divider" />
+
+      <!-- ── Institutional Gaps ─────────────────────────────────────────── -->
+      <section id="institutional-gaps">
+        <p class="pmeth-kicker">D7 — Statement reconciliation &amp; institutional gaps</p>
+        <h2>Explicit institutional gaps and modelling boundaries.</h2>
+
+        <p>
+          The following gaps are explicitly documented. They are truthful model boundaries,
+          not defects. A lender or project-finance analyst relying on FINCO outputs should
+          apply independent adjustments for each gap where material.
+        </p>
+
+        <div class="pmeth-table-wrap">
+          <table class="pmeth-table">
+            <thead><tr><th>Gap</th><th>Description</th><th>Implication</th></tr></thead>
+            <tbody>
+              {% for gap in institutional_gaps %}
+              <tr>
+                <td><strong>{{ gap.public_label }}</strong></td>
+                <td>{{ gap.description }}</td>
+                <td>{{ gap.implications }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <span class="pmeth-authority">app/model_methodology_registry.py · INSTITUTIONAL_GAPS (public_visible=True)</span>
+      </section>
+
+      <hr class="pmeth-divider" />
+
       <section id="limitations">
         <p class="pmeth-kicker">Scope and limitations</p>
         <h2>What this model does and does not cover.</h2>
@@ -1210,8 +1317,8 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           </li>
           <li>
             <strong>Tax:</strong> A single corporate-income-tax jurisdiction is modelled.
-            Transfer pricing, consolidated group tax, or country-specific thin-cap regimes
-            beyond ATAD are not implemented.
+            Transfer pricing, consolidated group tax, or country-specific interest limitation
+            regimes beyond the configured ATAD parameters are not implemented.
           </li>
           <li>
             <strong>Merchant price:</strong> The engine accepts a user-supplied merchant
@@ -1229,14 +1336,11 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           <li>
             <strong>Distributions waterfall:</strong> The full covenant-gated waterfall
             (DSCR lock-up, DSRA top-up, SHL sweep, equity distribution) is implemented
-            in <code>finco_core/waterfall/waterfall_engine.py</code> and is available
-            for project-level models. The generic reference models use a simplified
-            cash-sweep path.
+            in <code>financial_engine/shareholder_waterfall/model.py</code>.
           </li>
           <li>
-            <strong>LLCR:</strong> The Loan Life Coverage Ratio is defined in the model
-            architecture but is not computed in the Solar Reference production path.
-            Production output: <code>min_llcr = None</code>
+            <strong>LLCR:</strong> Informational only — not a debt sizing constraint.
+            Production output for Solar Reference: <code>min_llcr = None</code>
             (status: <code>C2_COVERAGE_CFADS_CASE_NOT_CONFIGURED</code>).
           </li>
           <li>
