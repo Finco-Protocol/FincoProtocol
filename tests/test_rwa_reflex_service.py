@@ -14,7 +14,7 @@ class Evaluator:
 def baseline_config():
     return EmpiricalTransientBaselineConfig(
         training_cutoff=NOW - timedelta(days=1), training_source="FROZEN_PREPERIOD_CANONICAL_EVENTS",
-        global_transient_count=12, global_total_count=20,
+        global_transient_count=12, global_total_count=20, training_sample_count=20,
         cell_counts={"OPEN|100_TO_199_BPS|25K_TO_99K_USD": (8, 10)},
     )
 
@@ -32,6 +32,7 @@ def test_enabled_without_transport_fails_closed():
         authority(), as_of=NOW, context=context())
     assert payload["interpretation"]["state"] == "UNAVAILABLE"
     assert payload["interpretation"]["reason"] == "JEV_TRANSPORT_NOT_CONFIGURED"
+    assert payload["interpretation"]["failure_category"] == "NETWORK"
     assert payload["baseline"]["state"] == "AVAILABLE"
 
 
@@ -47,4 +48,5 @@ def test_jev_and_baseline_share_same_information_set_but_canonical_state_is_unch
     assert payload["interpretation"]["likely_transient_probability"] == "0.72"
     assert payload["interpretation"]["resolved_model"] == "jev-1.13.0"
     assert payload["baseline"]["transient_probability"] == "0.7"
+    assert payload["baseline"]["provenance"]["outcome_policy_version"] == "RWA_REFLEX_OUTCOME_POLICY_V2"
     assert payload["baseline"]["information_parity"] == "RWA_REFLEX_JEV_BASELINE_INFORMATION_PARITY"
