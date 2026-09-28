@@ -141,7 +141,8 @@ def build_authority_snapshot(
             token = ReferenceLayer(token_state, uid, key, asset.token_name,
                                    token_reference.price_usd_per_token, token_reference.source,
                                    token_reference.observed_at,
-                                   "TOKEN_REFERENCE_STALE" if token_state is AuthorityState.STALE else None)
+                                   "TOKEN_REFERENCE_STALE" if token_state is AuthorityState.STALE else None,
+                                   token_reference.evidence)
         execution = _execution_layer(execution_quote, key, as_of, policy)
 
     premium_state = AuthorityState.UNAVAILABLE
