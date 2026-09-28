@@ -309,12 +309,45 @@ def get_verify_state(user_id: str, project_id: str) -> Tuple[str, dict]:
     return STATE_AVAILABLE, verify_out(verified)
 
 
+def _r_live_composite_state(
+    onchain_state: Any,
+    token_state: Any,
+    underlying_state: Any,
+    premium_state: Any,
+) -> str:
+    """Determine composite R-LIVE API state from all four current components.
+
+    AVAILABLE only when ALL components are AVAILABLE.
+    STALE if any component is STALE and none is UNAVAILABLE/IDENTITY_UNAVAILABLE.
+    UNAVAILABLE otherwise.
+
+    This enforces the PR #126 fail-closed contract: a partial current read
+    never surfaces as AVAILABLE.
+    """
+    from finco_radar.authority.contracts import AuthorityState
+
+    components = [onchain_state, token_state, underlying_state, premium_state]
+    if all(s is AuthorityState.AVAILABLE for s in components):
+        return STATE_AVAILABLE
+    for s in components:
+        if s is AuthorityState.UNAVAILABLE or s is AuthorityState.IDENTITY_UNAVAILABLE:
+            return STATE_UNAVAILABLE
+    return "STALE"
+
+
 def get_r_live(uid: str) -> Tuple[str, dict]:
     """Return (state, data) for R-LIVE exact AssetKey reference.
 
     /radar/r-live/{uid} — delegates to app.radar_rwa.r_live_service.
     GET performs zero history writes (persist_history=False).
     Validates UID against AAPL_KEY.canonical_id — no ticker/fuzzy identity.
+
+    State parity (Correction B):
+      AVAILABLE — all four current components (onchain, token, underlying, premium) are AVAILABLE.
+      STALE     — any component is STALE; none is UNAVAILABLE.
+      UNAVAILABLE — any component is UNAVAILABLE/IDENTITY_UNAVAILABLE, or no RPC, or invalid UID.
+
+    When state != AVAILABLE, current price/value fields are suppressed to None.
     """
     from finco_radar.authority.r_live_policy import AAPL_KEY
     if uid != AAPL_KEY.canonical_id:
@@ -333,12 +366,14 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
     from finco_radar.authority.contracts import AuthorityState
     authority = result.authority
     onchain = result.onchain
-
-    state = STATE_AVAILABLE if authority.token.state is AuthorityState.AVAILABLE else STATE_UNAVAILABLE
-
-    premium = authority.premium
     token = authority.token
     underlying = authority.underlying
+    premium = authority.premium
+
+    state = _r_live_composite_state(
+        onchain.state, token.state, underlying.state, premium.state,
+    )
+    is_current = (state == STATE_AVAILABLE)
 
     data = {
         "exact_asset_key": {
@@ -349,20 +384,23 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
         "economic_asset_uid": authority.economic_asset_uid or AAPL_KEY.canonical_id,
         "token_reference": {
             "state": token.state.value,
-            "price_usd_per_token": str(token.price_usd_per_token) if token.price_usd_per_token is not None else None,
+            "price_usd_per_token": str(token.price_usd_per_token) if (is_current and token.price_usd_per_token is not None) else None,
             "source": token.source,
             "observed_at": token.observed_at.isoformat() if token.observed_at else None,
+            "reason": token.reason,
         },
         "robinhood_basis": {
             "state": underlying.state.value,
-            "price_usd_per_token": str(underlying.price_usd_per_token) if underlying.price_usd_per_token is not None else None,
+            "price_usd_per_token": str(underlying.price_usd_per_token) if (is_current and underlying.price_usd_per_token is not None) else None,
             "source": underlying.source,
             "observed_at": underlying.observed_at.isoformat() if underlying.observed_at else None,
+            "reason": underlying.reason,
         },
         "b1_0_premium": {
             "state": premium.state.value,
-            "value_bps": str(premium.value_bps) if premium.value_bps is not None else None,
+            "value_bps": str(premium.value_bps) if (is_current and premium.value_bps is not None) else None,
             "formula": premium.formula,
+            "reason": premium.reason,
         },
         "observed_at": onchain.observed_at.isoformat() if onchain.observed_at else None,
     }

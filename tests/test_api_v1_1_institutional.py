@@ -824,3 +824,301 @@ def test_finco_pr125_correction_a_current_main_ready(client):
     # 5. Schema version correct
     assert r.json()["api_version"] == "v1.1"
     assert r.json()["schema_version"] == "institutional-v1.1.0"
+
+
+# ── CORRECTION B — R-LIVE STATE PARITY ────────────────────────────────────────
+#
+# Four markers:
+#   API_V1_1_RLIVE_AVAILABLE_REQUIRES_FULL_CURRENT_AUTHORITY
+#   API_V1_1_RLIVE_STALE_FAILS_CLOSED
+#   API_V1_1_RLIVE_UNAVAILABLE_FAILS_CLOSED
+#   API_V1_1_RLIVE_GET_ZERO_HISTORY_WRITES
+#
+# Tests mock collect_aapl_r_live to inject specific authority states without
+# requiring a live RPC endpoint or env vars.
+
+def _make_rlive_result(
+    onchain_state,
+    token_state,
+    underlying_state,
+    premium_state,
+):
+    """Build a minimal RLiveResult with the given per-layer states."""
+    from decimal import Decimal
+    from datetime import datetime, timezone
+    from finco_radar.authority.contracts import (
+        AuthorityState, AuthoritySnapshot, ReferenceLayer,
+        BasisPointQuantity, ExecutionLayer, ExecutionGap,
+    )
+    from finco_radar.authority.r_live_onchain import OnchainReferenceObservation
+    from app.radar_rwa.r_live_service import RLiveResult
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+
+    now = datetime.now(timezone.utc)
+    price = Decimal("150.25")
+
+    def _ref(state, with_price=True):
+        return ReferenceLayer(
+            state=state,
+            registry_asset_uid="test-uid" if state is AuthorityState.AVAILABLE else None,
+            asset_key=AAPL_KEY,
+            label="AAPL",
+            price_usd_per_token=price if (state is AuthorityState.AVAILABLE and with_price) else None,
+            source="TEST_SOURCE" if state is AuthorityState.AVAILABLE else None,
+            observed_at=now if state is AuthorityState.AVAILABLE else None,
+            reason=None if state is AuthorityState.AVAILABLE else state.value,
+        )
+
+    token = _ref(token_state)
+    underlying = _ref(underlying_state)
+    premium = BasisPointQuantity(
+        state=premium_state,
+        value_bps=Decimal("10") if premium_state is AuthorityState.AVAILABLE else None,
+        numerator_usd_per_token=price if premium_state is AuthorityState.AVAILABLE else None,
+        denominator_usd_per_token=price if premium_state is AuthorityState.AVAILABLE else None,
+        formula="(token - underlying) / underlying * 10000",
+        sources=("TEST",),
+        observed_at=(now,) if premium_state is AuthorityState.AVAILABLE else (),
+        reason=None if premium_state is AuthorityState.AVAILABLE else premium_state.value,
+    )
+    execution = ExecutionLayer(
+        state=AuthorityState.UNAVAILABLE,
+        asset_key=None, side=None, requested_notional_usd=None,
+        effective_price_usd_per_token=None, provider=None, route=None,
+        fee_cost_usd=None, gas_cost_usd=None, observed_at=None,
+        reason="NO_EXECUTION_QUOTE",
+    )
+    execution_gap = ExecutionGap(
+        state=AuthorityState.UNAVAILABLE,
+        reference_premium_bps=None, execution_impact_bps=None,
+        effective_gap_bps=None, fee_treatment="N/A",
+        reason="NO_EXECUTION_QUOTE",
+    )
+    authority = AuthoritySnapshot(
+        economic_asset_uid=AAPL_KEY.canonical_id,
+        canonical_token=AAPL_KEY,
+        registry_source="ROBINHOOD",
+        registry_observed_at=now,
+        underlying=underlying,
+        token=token,
+        premium=premium,
+        execution=execution,
+        execution_gap=execution_gap,
+    )
+    onchain = OnchainReferenceObservation(
+        state=onchain_state,
+        asset_key=AAPL_KEY,
+        registry_asset_uid="test-uid" if onchain_state is AuthorityState.AVAILABLE else None,
+        reason=None if onchain_state is AuthorityState.AVAILABLE else onchain_state.value,
+        price_usd_per_token=price if onchain_state is AuthorityState.AVAILABLE else None,
+        observed_at=now if onchain_state is AuthorityState.AVAILABLE else None,
+    )
+    return RLiveResult(onchain=onchain, authority=authority, history_digest=None)
+
+
+def test_api_v1_1_rlive_available_requires_full_current_authority():
+    """R-LIVE is AVAILABLE only when ALL four current components are AVAILABLE.
+
+    token=AVAILABLE, underlying=AVAILABLE, premium=AVAILABLE, onchain=AVAILABLE
+    → state AVAILABLE, current prices exposed.
+    Marker: API_V1_1_RLIVE_AVAILABLE_REQUIRES_FULL_CURRENT_AUTHORITY
+    """
+    from unittest.mock import patch
+    from finco_radar.authority.contracts import AuthorityState
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+    from main_api import app
+
+    result = _make_rlive_result(
+        AuthorityState.AVAILABLE, AuthorityState.AVAILABLE,
+        AuthorityState.AVAILABLE, AuthorityState.AVAILABLE,
+    )
+    with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=result), \
+         patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["state"] == "AVAILABLE", f"All AVAILABLE → state must be AVAILABLE; got {body['state']!r}"
+    data = body["data"]
+    assert data["token_reference"]["price_usd_per_token"] is not None, (
+        "AVAILABLE: token price must be exposed"
+    )
+    assert data["robinhood_basis"]["price_usd_per_token"] is not None, (
+        "AVAILABLE: Robinhood basis price must be exposed"
+    )
+    assert data["b1_0_premium"]["value_bps"] is not None, (
+        "AVAILABLE: premium value_bps must be exposed"
+    )
+
+
+def test_api_v1_1_rlive_stale_fails_closed():
+    """R-LIVE returns STALE (not AVAILABLE) when any component is STALE.
+
+    Three sub-cases: token STALE, underlying STALE, premium STALE.
+    Each must suppress current price values and carry state=STALE.
+    Marker: API_V1_1_RLIVE_STALE_FAILS_CLOSED
+    """
+    from unittest.mock import patch
+    from finco_radar.authority.contracts import AuthorityState
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+    from main_api import app
+
+    A = AuthorityState.AVAILABLE
+    S = AuthorityState.STALE
+
+    stale_cases = [
+        ("token_stale",      S, A, A, A),
+        ("underlying_stale", A, S, A, A),
+        ("premium_stale",    A, A, S, A),
+        ("onchain_stale",    A, A, A, S),
+    ]
+    for label, onchain_s, token_s, underlying_s, premium_s in stale_cases:
+        result = _make_rlive_result(onchain_s, token_s, underlying_s, premium_s)
+        with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=result), \
+             patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}")
+
+        assert r.status_code == 200, f"[{label}] expected 200; got {r.status_code}"
+        body = r.json()
+        assert body["state"] == "STALE", (
+            f"[{label}] any STALE component must yield state=STALE; got {body['state']!r}"
+        )
+        data = body["data"]
+        assert data["token_reference"]["price_usd_per_token"] is None, (
+            f"[{label}] STALE: token price must be suppressed"
+        )
+        assert data["robinhood_basis"]["price_usd_per_token"] is None, (
+            f"[{label}] STALE: Robinhood basis price must be suppressed"
+        )
+        assert data["b1_0_premium"]["value_bps"] is None, (
+            f"[{label}] STALE: premium value_bps must be suppressed"
+        )
+
+
+def test_api_v1_1_rlive_unavailable_fails_closed():
+    """R-LIVE returns UNAVAILABLE when any component is UNAVAILABLE.
+
+    Three sub-cases: token UNAVAILABLE, underlying UNAVAILABLE, premium UNAVAILABLE.
+    Each must suppress current price values and carry state=UNAVAILABLE.
+    Also verifies the already-merged cases: no RPC_URL → UNAVAILABLE,
+    and the IDENTITY_UNAVAILABLE escalation path.
+    Marker: API_V1_1_RLIVE_UNAVAILABLE_FAILS_CLOSED
+    """
+    from unittest.mock import patch
+    from finco_radar.authority.contracts import AuthorityState
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+    from main_api import app
+
+    A = AuthorityState.AVAILABLE
+    U = AuthorityState.UNAVAILABLE
+    IU = AuthorityState.IDENTITY_UNAVAILABLE
+
+    unavailable_cases = [
+        ("token_unavailable",           U,  A,  A,  A),
+        ("underlying_unavailable",      A,  U,  A,  A),
+        ("premium_unavailable",         A,  A,  U,  A),
+        ("onchain_unavailable",         A,  A,  A,  U),
+        ("token_identity_unavailable",  IU, A,  A,  A),
+    ]
+    for label, onchain_s, token_s, underlying_s, premium_s in unavailable_cases:
+        result = _make_rlive_result(onchain_s, token_s, underlying_s, premium_s)
+        with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=result), \
+             patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}")
+
+        assert r.status_code == 200, f"[{label}] expected 200; got {r.status_code}"
+        body = r.json()
+        assert body["state"] == "UNAVAILABLE", (
+            f"[{label}] UNAVAILABLE component must yield state=UNAVAILABLE; got {body['state']!r}"
+        )
+        data = body["data"]
+        assert data["token_reference"]["price_usd_per_token"] is None, (
+            f"[{label}] UNAVAILABLE: token price must be suppressed"
+        )
+        assert data["robinhood_basis"]["price_usd_per_token"] is None, (
+            f"[{label}] UNAVAILABLE: Robinhood basis price must be suppressed"
+        )
+        assert data["b1_0_premium"]["value_bps"] is None, (
+            f"[{label}] UNAVAILABLE: premium value_bps must be suppressed"
+        )
+
+
+def test_api_v1_1_rlive_get_zero_history_writes():
+    """R-LIVE GET always calls collect_aapl_r_live with persist_history=False.
+
+    Verifies the #126 read/write boundary: the GET endpoint never writes
+    to the B1.3 history ledger regardless of state.
+    Marker: API_V1_1_RLIVE_GET_ZERO_HISTORY_WRITES
+    """
+    from unittest.mock import patch, MagicMock
+    from finco_radar.authority.contracts import AuthorityState
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+    from main_api import app
+
+    result = _make_rlive_result(
+        AuthorityState.AVAILABLE, AuthorityState.AVAILABLE,
+        AuthorityState.AVAILABLE, AuthorityState.AVAILABLE,
+    )
+    mock_fn = MagicMock(return_value=result)
+    with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", mock_fn), \
+         patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+        client = TestClient(app, raise_server_exceptions=False)
+        client.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}")
+
+    mock_fn.assert_called_once()
+    call_kwargs = mock_fn.call_args
+    # persist_history must be False — either positional or keyword
+    if call_kwargs.kwargs:
+        assert call_kwargs.kwargs.get("persist_history") is False, (
+            f"persist_history must be False; got {call_kwargs.kwargs.get('persist_history')!r}"
+        )
+    # history kwarg must not be passed (no ledger injection on GET path)
+    assert "history" not in (call_kwargs.kwargs or {}), (
+        "GET endpoint must not inject a history store"
+    )
+
+
+# ── FINCO_PR125_RLIVE_STATE_PARITY_COMPLETE ───────────────────────────────────
+
+def test_finco_pr125_rlive_state_parity_complete():
+    """Final acceptance marker — R-LIVE State Parity (Correction B) verified.
+    Marker: FINCO_PR125_RLIVE_STATE_PARITY_COMPLETE
+    """
+    from unittest.mock import patch
+    from finco_radar.authority.contracts import AuthorityState
+    from finco_radar.authority.r_live_policy import AAPL_KEY
+    from main_api import app
+
+    A = AuthorityState.AVAILABLE
+    S = AuthorityState.STALE
+    U = AuthorityState.UNAVAILABLE
+
+    # 1. Full AVAILABLE → AVAILABLE, prices visible
+    r_avail = _make_rlive_result(A, A, A, A)
+    with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=r_avail), \
+         patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+        c = TestClient(app, raise_server_exceptions=False)
+        body = c.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}").json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["token_reference"]["price_usd_per_token"] is not None
+
+    # 2. Token STALE → STALE, prices suppressed
+    r_stale = _make_rlive_result(S, A, A, A)
+    with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=r_stale), \
+         patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+        c = TestClient(app, raise_server_exceptions=False)
+        body = c.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}").json()
+    assert body["state"] == "STALE"
+    assert body["data"]["token_reference"]["price_usd_per_token"] is None
+
+    # 3. Underlying UNAVAILABLE → UNAVAILABLE, prices suppressed
+    r_unavail = _make_rlive_result(A, A, U, A)
+    with patch("app.radar_rwa.r_live_service.collect_aapl_r_live", return_value=r_unavail), \
+         patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://test.example.invalid"}):
+        c = TestClient(app, raise_server_exceptions=False)
+        body = c.get(f"/api/v1.1/radar/r-live/{AAPL_KEY.canonical_id}").json()
+    assert body["state"] == "UNAVAILABLE"
+    assert body["data"]["robinhood_basis"]["price_usd_per_token"] is None
