@@ -14,7 +14,7 @@
 
 <main class="va-page">
   <div class="va-detail-header">
-    <a href="/verified" class="va-detail-header__back">← All Verified Assets</a>
+    <a href="/verified" class="va-detail-header__back">← All asset records</a>
 
     {% if record %}
     <p class="va-header__eyebrow">FINCO Protocol · Verified Assets V1</p>
@@ -52,6 +52,21 @@
     <div class="va-error__reason">{{ record.error.reason }}</div>
   </div>
   {% endif %}
+
+  <div class="va-section" aria-label="Verification trust chain">
+    <div class="va-section__title">NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION</div>
+    <div class="va-kv">
+      <span class="va-kv__key">Verification</span>
+      <span class="va-kv__val">{{ record.verification.status if record.verification else record.status.value }}</span>
+      <span class="va-kv__key">Missing authority</span>
+      <span class="va-kv__val">{{ record.verification.reason if record.verification and record.verification.reason else 'None' }}</span>
+      <span class="va-kv__key">Dossier access</span>
+      <span class="va-kv__val">{{ entitlement.state }}</span>
+    </div>
+    {% if entitlement.state == 'ACTIVE' %}
+    <a href="/verified/{{ asset_id }}/dossier.json">Full evidence dossier (JSON) →</a>
+    {% endif %}
+  </div>
 
   {# ── model section ── #}
   {% if record.model %}
@@ -126,13 +141,6 @@
       <div style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;margin-top:10px;">Outputs SHA-256</div>
       <div class="va-hash">{{ record.verify.outputs_sha256 or '—' }}</div>
     </div>
-    {% if record.certificate %}
-    <div style="margin-top:14px;">
-      <a href="/verify/run/{{ asset_id }}.json" style="font-size:12px;color:#6b7280;text-decoration:none;">
-        View full Run Certificate (JSON) →
-      </a>
-    </div>
-    {% endif %}
   </div>
   {% endif %}
 
@@ -143,19 +151,29 @@
       Radar — Market Observation
     </div>
     {% if record.market %}
-    {# Future: render tokenization premium when VERIFIED #}
     <div class="va-kv">
-      <span class="va-kv__key">Status</span>
-      <span class="va-kv__val">Available</span>
+      <span class="va-kv__key">Economic UID</span>
+      <span class="va-kv__val">{{ record.identity.economic_asset_uid }}</span>
+      <span class="va-kv__key">Deployment</span>
+      <span class="va-kv__val">{{ record.identity.chain_id }}:{{ record.identity.contract_address }}</span>
+      <span class="va-kv__key">Identity source</span>
+      <span class="va-kv__val">{{ record.identity.authority_source }}</span>
+      <span class="va-kv__key">Evidence</span>
+      <span class="va-kv__val">{{ record.evidence.source }} · {{ record.evidence.evidence_id }}</span>
+      <span class="va-kv__key">Market source</span>
+      <span class="va-kv__val">{{ record.market.provider }} ({{ record.market.scope }})</span>
+      <span class="va-kv__key">Observed at</span>
+      <span class="va-kv__val">{{ record.market.observed_at }}</span>
+      <span class="va-kv__key">Execution</span>
+      <span class="va-kv__val">UNAVAILABLE</span>
     </div>
     {% else %}
     <div class="va-market-absent">
       <div class="va-market-absent__title">No Tokenized-Market Identity Mapping</div>
       <p style="margin:0;">
-        No canonical model↔market identity binding exists for this asset in V1.
-        The Run Certificate is available above. Market observation requires a
-        canonical R10 model-radar bridge, which is not yet established for this
-        reference asset.
+        No source-proven model↔market identity binding exists for this reference
+        asset. A Run Certificate alone does not establish economic identity or
+        market availability.
       </p>
     </div>
     {% endif %}

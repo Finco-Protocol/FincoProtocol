@@ -28,6 +28,7 @@ Markers:
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -102,6 +103,10 @@ def build_verified_asset(
     asset_def: VerifiedAssetDefinition,
     project_record: "ProjectRecord",
     ws: "WorkspaceStateRecord",
+    *,
+    authority_bundle: "VerifiedAuthorityBundle | None" = None,
+    as_of: datetime | None = None,
+    verification_policy: "VerificationPolicy | None" = None,
 ) -> dict[str, Any]:
     """Assemble a FINCO_VERIFIED_ASSET_V1 record.
 
@@ -113,6 +118,9 @@ def build_verified_asset(
     from app.verify.run_certificate import (
         RunCertificateUnavailableError,
         build_run_certificate,
+    )
+    from app.verified.authority import (
+        VerifiedAuthorityBundle, VerificationPolicy, evaluate_authorities,
     )
 
     # Attempt certificate build — fail-closed on any error.
@@ -139,6 +147,11 @@ def build_verified_asset(
             "model": _model_section(ws),
             "verify": None,
             "market": None,
+            "market_observation": None,
+            "identity": None,
+            "evidence": None,
+            "verification": {"status": VerifiedAssetStatus.UNAVAILABLE.value,
+                             "reason": cert_error["code"]},
             "protocol": _protocol_section(asset_def),
             "error": cert_error,
         }
@@ -165,34 +178,46 @@ def build_verified_asset(
     # VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
     # VERIFIED_ASSET_VERIFIED_REQUIRES_FULL_RECONCILIATION
     # VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
+    if authority_bundle is not None and as_of is None:
+        raise ValueError("explicit as_of required for market freshness evaluation")
+    status_value, reason = evaluate_authorities(
+        asset_id=asset_def.asset_id,
+        project_code=project_record.project_code,
+        certificate=certificate,
+        bundle=authority_bundle,
+        as_of=as_of or ws.last_runtime_at,
+        policy=verification_policy or VerificationPolicy(),
+    )
+    status = VerifiedAssetStatus(status_value)
+    eligible = status is VerifiedAssetStatus.VERIFIED
     market_section = None
-    status = VerifiedAssetStatus.MODEL_ONLY
-
-    try:
-        from finco_radar.model_radar.bridge import discover_model_evidence
-        # asset_uid would be needed for a real market binding;
-        # in V1 no asset_uid → market identity mapping exists.
-        # We do not fabricate one.
-        discovered, gap = discover_model_evidence(None)
-        if discovered is not None:
-            # A market identity binding was discovered. This satisfies authority 3
-            # only. Authorities 4–6 (identity reconciliation, Radar reference
-            # evidence, P2 tokenization-premium) are still required for VERIFIED.
-            # Without them, fail closed to MODEL_ONLY — never emit VERIFIED from
-            # a binding alone. Do NOT fabricate tokenization premium, execution
-            # midpoint, BUY/SELL quotes, or market freshness values here.
-            #
-            # VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED
-            # VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED
-            status = VerifiedAssetStatus.MODEL_ONLY
-            market_section = None
-        else:
-            status = VerifiedAssetStatus.MODEL_ONLY
-            market_section = None
-    except Exception:
-        # Any import or discovery error → stay MODEL_ONLY.
-        status = VerifiedAssetStatus.MODEL_ONLY
-        market_section = None
+    evidence_section = None
+    identity_section = None
+    if eligible:
+        binding = authority_bundle.binding
+        observed = authority_bundle.market
+        market_section = {
+            "state": observed.state.value,
+            "provider": observed.source,
+            "provider_id": observed.provider_id,
+            "scope": observed.market_scope,
+            "observed_at": observed.observed_at.isoformat(),
+            "price_usd": str(observed.price_usd) if observed.price_usd is not None else None,
+            "execution": "UNAVAILABLE",
+        }
+        evidence_section = {
+            "evidence_id": binding.evidence_id,
+            "source": binding.source,
+            "observed_at": binding.observed_at.isoformat(),
+            "run_certificate_digest_sha256": binding.certificate_digest_sha256,
+        }
+        identity_section = {
+            "economic_asset_uid": binding.economic_asset_uid,
+            "chain_id": binding.deployment.chain_id,
+            "contract_address": binding.deployment.contract_address,
+            "authority_source": authority_bundle.identity.authority_source,
+            "observed_at": authority_bundle.identity.observed_at.isoformat(),
+        }
 
     return {
         "schema": VERIFIED_ASSET_SCHEMA,
@@ -205,6 +230,10 @@ def build_verified_asset(
         "model": _model_section(ws),
         "verify": _verify_section(certificate),
         "market": market_section,
+        "market_observation": market_section,
+        "identity": identity_section,
+        "evidence": evidence_section,
+        "verification": {"status": status.value, "reason": reason},
         "protocol": _protocol_section(asset_def),
         "error": None,
         # Embed full certificate for JSON consumers.
