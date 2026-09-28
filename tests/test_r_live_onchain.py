@@ -324,7 +324,8 @@ def _basis():
 
 def test_operational_collector_repeat_is_idempotent_across_retrieval_times():
     store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
-    def acquire(*, rpc_url, as_of, history):
+    def acquire(*, rpc_url, as_of, persist_history, history):
+        assert persist_history is True
         assert rpc_url == "https://example.invalid/FAKE_SECRET"
         return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
                               as_of=as_of, history=history)
@@ -358,7 +359,8 @@ def test_operational_collector_repeat_is_idempotent_across_retrieval_times():
 
 def test_operational_idempotency_across_ledger_connections(tmp_path):
     path = str(tmp_path / "existing_b13_history.db")
-    def acquire(*, rpc_url, as_of, history):
+    def acquire(*, rpc_url, as_of, persist_history, history):
+        assert persist_history is True
         return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
                               as_of=as_of, history=history)
     first_store = BnbIntelligenceHistoryStore(path, allowed_chain_id=4663)
@@ -383,7 +385,8 @@ def test_operational_idempotency_across_ledger_connections(tmp_path):
 ])
 def test_operational_collector_never_persists_non_available(rpc, expected):
     store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
-    def acquire(*, rpc_url, as_of, history):
+    def acquire(*, rpc_url, as_of, persist_history, history):
+        assert persist_history is True
         return compose_r_live(registry=registry(), underlying=_basis(), rpc=rpc,
                               as_of=as_of, history=history)
     try:
@@ -421,7 +424,8 @@ def test_operational_collector_rejects_wrong_exact_identity():
         "currentMultiplier": "1", "status": "ASSET_STATUS_ACTIVE",
     }]}, observed_at=datetime.fromtimestamp(BLOCK_TIME, timezone.utc))
     store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
-    def acquire(*, rpc_url, as_of, history):
+    def acquire(*, rpc_url, as_of, persist_history, history):
+        assert persist_history is True
         return compose_r_live(registry=wrong, underlying=_basis(), rpc=FakeRpc(),
                               as_of=as_of, history=history)
     try:
@@ -436,7 +440,8 @@ def test_operational_collector_rejects_wrong_exact_identity():
 
 
 def test_operational_collector_reports_history_failure_not_success():
-    def acquire(*, rpc_url, as_of, history):
+    def acquire(*, rpc_url, as_of, persist_history, history):
+        assert persist_history is True
         return compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
                               as_of=as_of, history=history)
     store = BnbIntelligenceHistoryStore(":memory:", allowed_chain_id=4663)
@@ -484,3 +489,83 @@ def test_radar_live_surface_age_history_and_fail_closed(monkeypatch):
     assert "field(\"values\").hidden = true" in script
     assert "textContent" in script and "innerHTML" not in script
     assert "BUY" not in template + script and "SELL" not in template + script
+
+
+def test_snapshot_get_and_browser_refresh_never_open_history_writer(monkeypatch):
+    import asyncio
+    from app.radar_rwa import r_live_service
+    from app.radar_ui import rwa_router
+
+    result = compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
+                            as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
+    class Adapter:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return None
+        def fetch_snapshot(self):
+            return registry()
+        def fetch_bound_reference(self, *_):
+            raise ValueError("test basis unavailable")
+    class Transport:
+        def __init__(self, _url):
+            pass
+        def close(self):
+            pass
+    def forbidden_writer(**_):
+        raise AssertionError("GET opened B1.3 history writer")
+    observed = []
+    original = r_live_service.collect_aapl_r_live
+    def acquire(**kwargs):
+        observed.append(kwargs)
+        return original(**kwargs)
+    monkeypatch.setattr(r_live_service, "RobinhoodAssetRegistryAdapter", Adapter)
+    monkeypatch.setattr(r_live_service, "JsonRpc", Transport)
+    monkeypatch.setattr(r_live_service, "BnbIntelligenceHistoryStore", forbidden_writer)
+    monkeypatch.setattr(r_live_service, "compose_r_live", lambda **kwargs: (
+        result if kwargs["history"] is None else forbidden_writer()))
+    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", acquire)
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example/FAKE_SECRET")
+
+    first = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
+    second = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
+    assert first["state"] == second["state"] == "AVAILABLE"
+    assert all(call["persist_history"] is False for call in observed)
+    assert len(observed) == 2
+    assert first["reference"]["priceUsdPerToken"]
+    assert first["robinhood_basis"]["price_usd_per_token"]
+    assert first["reference_premium"]["value_bps"]
+    assert first["observation_age_seconds"] >= 0
+    assert "FAKE_SECRET" not in str(first) + str(second)
+    script = __import__("pathlib").Path("static/radar/r_live.js").read_text(encoding="utf-8")
+    assert "window.setInterval(load, 60000)" in script
+    assert 'fetch("/radar/crypto/rwa/r-live/aapl/snapshot"' in script
+    assert "POST" not in script
+
+
+def test_read_acquisition_requires_explicit_writer_intent(monkeypatch):
+    from app.radar_rwa import r_live_service
+    class Adapter:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            return None
+        def fetch_snapshot(self):
+            return registry()
+        def fetch_bound_reference(self, *_):
+            raise ValueError("basis unavailable")
+    class Transport:
+        def __init__(self, _url):
+            pass
+        def close(self):
+            pass
+    def forbidden_writer(**_):
+        raise AssertionError("read acquisition opened history writer")
+    monkeypatch.setattr(r_live_service, "RobinhoodAssetRegistryAdapter", Adapter)
+    monkeypatch.setattr(r_live_service, "JsonRpc", Transport)
+    monkeypatch.setattr(r_live_service, "BnbIntelligenceHistoryStore", forbidden_writer)
+    monkeypatch.setattr(r_live_service, "compose_r_live", lambda **kwargs: kwargs["history"])
+    assert r_live_service.collect_aapl_r_live(rpc_url="https://example.invalid") is None
+    with pytest.raises(ValueError, match="HISTORY_REQUIRES_EXPLICIT_PERSISTENCE"):
+        r_live_service.collect_aapl_r_live(
+            rpc_url="https://example.invalid", history=object())

@@ -31,7 +31,8 @@ async def radar_r_live_aapl_snapshot():
     if not rpc_url:
         return {"state": "UNAVAILABLE", "reason": "RPC_NOT_CONFIGURED"}
     try:
-        result = await run_in_threadpool(lambda: collect_aapl_r_live(rpc_url=rpc_url))
+        result = await run_in_threadpool(lambda: collect_aapl_r_live(
+            rpc_url=rpc_url, persist_history=False))
     except Exception:
         return {"state": "UNAVAILABLE", "reason": "R_LIVE_EVIDENCE_UNAVAILABLE"}
     premium = result.authority.premium

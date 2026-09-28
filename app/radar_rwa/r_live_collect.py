@@ -30,7 +30,7 @@ def collect_once(
     try:
         if ledger is None:
             ledger = BnbIntelligenceHistoryStore(allowed_chain_id=4663)
-        result = acquire(rpc_url=url, as_of=as_of, history=ledger)
+        result = acquire(rpc_url=url, as_of=as_of, persist_history=True, history=ledger)
         premium = result.authority.premium
         if premium.state is not AuthorityState.AVAILABLE:
             state = "STALE" if (premium.state is AuthorityState.STALE
