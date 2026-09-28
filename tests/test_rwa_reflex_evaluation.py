@@ -7,15 +7,31 @@ from app.radar_rwa.reflex import ReflexOutcomePolicy, evaluate_recorded_outcome
 
 def prediction(jev="0.80", baseline="0.60"):
     return {
-        "event": {"session": "OPEN", "structural_premium_bps": "20", "initial_deviation_bps": "122"},
+        "event": {
+            "session": "OPEN",
+            "structural_premium_bps": "20",
+            "initial_deviation_bps": "122",
+            "session_close_at": "2026-09-28T16:00:00+00:00",
+        },
         "interpretation": {"likely_transient_probability": jev},
         "baseline": {"state": "AVAILABLE", "transient_probability": baseline},
     }
 
 
-def outcome(premium="70", horizon=3600, session="OPEN", authority_state="AVAILABLE"):
-    return {"reference_premium_bps": premium, "horizon_seconds": horizon,
-            "market_session": session, "authority_state": authority_state}
+def outcome(premium="70", horizon=3600, session="OPEN", authority_state="AVAILABLE",
+            canonical_state="AVAILABLE", canonical_reason=None):
+    return {
+        "canonical_finalization": True,
+        "outcome_policy_version": "RWA_REFLEX_OUTCOME_POLICY_V2",
+        "canonical_outcome_state": canonical_state,
+        "canonical_reason": canonical_reason,
+        "identity_conflict": False,
+        "observed_at": "2026-09-28T15:00:00+00:00",
+        "reference_premium_bps": premium,
+        "horizon_seconds": horizon,
+        "market_session": session,
+        "authority_state": authority_state,
+    }
 
 
 def test_v2_labels_transient_from_frozen_structural_deviation_and_scores_both_forecasts():
@@ -46,6 +62,14 @@ def test_ineligible_outcomes_are_typed_no_label(kwargs, reason):
     assert result["label"] == "NO_LABEL"
     assert result["label_reason"] == reason
     assert result["jev_brier"] is None
+
+
+def test_unfinalized_candidate_can_never_be_scored():
+    candidate = outcome()
+    candidate["canonical_finalization"] = False
+    result = evaluate_recorded_outcome(prediction(), candidate)
+    assert result["label"] == "NO_LABEL"
+    assert result["label_reason"] == "OUTCOME_NOT_CANONICALLY_FINALIZED"
 
 
 def test_probability_validation_and_clipping_are_versioned():
