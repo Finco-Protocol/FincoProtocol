@@ -114,6 +114,7 @@ def _authority_factory_map():
         "Generic Wind Reference": _pf.create_generic_wind_reference,
         "Generic Solar Reference": _pf.create_generic_solar_reference,
         "Generic Data Center Reference": _pf.create_generic_data_center_reference,
+        "Generic EV Charging Reference": _pf.create_generic_ev_charging_reference,
         "Solar": _pf.create_default_solar_project,
         "Wind": _pf.create_default_wind_project,
     }

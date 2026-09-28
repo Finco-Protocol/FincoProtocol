@@ -253,6 +253,7 @@ _CANONICAL_LAST_RUN_SOURCES = frozenset({
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 })
 
 # Maps template_source → project_type string consumed by run_project().
@@ -261,6 +262,7 @@ _TEMPLATE_SOURCE_TO_RUN_PROJECT_TYPE = {
     "generic_solar_reference": "Generic Solar Reference",
     "generic_wind_reference": "Generic Wind Reference",
     "generic_data_center_reference": "Generic Data Center Reference",
+    "generic_ev_charging_reference": "Generic EV Charging Reference",
 }
 
 
@@ -373,7 +375,7 @@ def _seed_reference_last_run(record, defn: dict, *, current_composite_hash: str)
     runtime_kpis = dict(payload["kpis"])
 
     now = datetime.now(timezone.utc)
-    now_iso = now.isoformat().replace(":", "").replace("-", "")
+    now_iso = now.strftime("%Y%m%dT%H%M%S%fZ")
     runtime_snapshot_id = f"canonical_last_run__{ts}__{now_iso}"
 
     ws = get_workspace_state(record.user_id, record.project_id)

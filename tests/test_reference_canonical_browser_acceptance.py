@@ -1,17 +1,19 @@
 """Browser acceptance for canonical reference last-run (pre-seeded KPIs).
 
-Verifies that Solar, Wind, and Data Center reference workbooks open showing
-CURRENT status and populated KPIs — not "NOT RUN" — because the startup
-canonical last-run seeding has already run.  Also verifies that a working
-copy created from a reference starts with an empty last-run state (NOT RUN),
-and that no horizontal overflow occurs at 390 px.
+Verifies that Solar, Wind, Data Center, and EV Charging reference workbooks
+open showing CURRENT status and populated KPIs — not "NOT RUN" — because the
+startup canonical last-run seeding has already run.  Also verifies that a
+working copy created from a reference starts with an empty last-run state
+(NOT RUN), and that no horizontal overflow occurs at 390 px.
 
 Acceptance markers (all must PASS):
   SOLAR_REFERENCE_PRERUN_BROWSER
   WIND_REFERENCE_PRERUN_BROWSER
   DATA_CENTER_REFERENCE_PRERUN_BROWSER
+  EV_CHARGING_REFERENCE_PRERUN_BROWSER
   REFERENCE_WORKING_COPY_BROWSER_SEPARATION
   REFERENCE_MOBILE_390_NO_OVERFLOW
+  EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW
 """
 from __future__ import annotations
 
@@ -218,6 +220,39 @@ def test_data_center_reference_prerun_browser(ref_app, browser):
 
 
 # ---------------------------------------------------------------------------
+# EV_CHARGING_REFERENCE_PRERUN_BROWSER
+# ---------------------------------------------------------------------------
+
+def test_ev_charging_reference_prerun_browser(ref_app, browser):
+    """EV_CHARGING_REFERENCE_PRERUN_BROWSER = PASS
+
+    The EV Charging Hub reference workbook must open showing CURRENT status
+    and populated KPIs at 1280px.
+    """
+    page = _page(browser, ref_app, user_id="ev-ref-browser-" + uuid.uuid4().hex[:6])
+    try:
+        pc = _find_reference_project_code(ref_app, "generic_ev_charging_reference")
+        page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
+        page.locator("#tab-overview").click()
+        page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
+
+        assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
+            "EV Charging reference must show CURRENT status after canonical seeding"
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            "EV Charging reference must NOT show NOT RUN after canonical seeding"
+
+        irr_tile = page.locator('[data-testid="kpi-project-irr"]')
+        assert irr_tile.count() >= 1
+        irr_text = irr_tile.inner_text()
+        assert irr_text.strip() not in ("—", "", "N/A"), \
+            f"EV Charging reference project_irr tile must show a value; got: {irr_text!r}"
+
+        _assert_no_horizontal_overflow(page)
+    finally:
+        page.close()
+
+
+# ---------------------------------------------------------------------------
 # REFERENCE_WORKING_COPY_BROWSER_SEPARATION
 # ---------------------------------------------------------------------------
 
@@ -255,29 +290,42 @@ def test_reference_working_copy_browser_separation(ref_app, browser):
 
 # ---------------------------------------------------------------------------
 # REFERENCE_MOBILE_390_NO_OVERFLOW
+# EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW
 # ---------------------------------------------------------------------------
 
-def test_reference_mobile_390_no_overflow(ref_app, browser):
+@pytest.mark.parametrize("template_source,label", [
+    ("generic_solar_reference", "solar"),
+    ("generic_wind_reference", "wind"),
+    ("generic_data_center_reference", "dc"),
+    ("generic_ev_charging_reference", "ev"),
+])
+def test_reference_mobile_390_no_overflow(ref_app, browser, template_source, label):
     """REFERENCE_MOBILE_390_NO_OVERFLOW = PASS
+    EV_CHARGING_REFERENCE_MOBILE_390_NO_OVERFLOW = PASS
 
-    At 390px viewport, the Solar reference workbook overview (with canonical
-    last-run showing CURRENT) must have no horizontal overflow.
+    At 390px viewport, each reference workbook overview (with canonical
+    last-run showing CURRENT) must have no horizontal overflow and no NOT RUN state.
     """
-    # Open at 1280px, wait for CURRENT, then resize to 390px and re-check.
-    page = _page(browser, ref_app, user_id="mobile-390-" + uuid.uuid4().hex[:6], width=1280)
+    page = _page(browser, ref_app, user_id=f"mobile-390-{label}-" + uuid.uuid4().hex[:6], width=1280)
     try:
-        pc = _find_reference_project_code(ref_app, "generic_solar_reference")
+        pc = _find_reference_project_code(ref_app, template_source)
         page.goto(ref_app["url"] + f"/v2/workbook?project={pc}")
         page.locator("#tab-overview").click()
         page.locator("#panel-overview").wait_for(state="visible", timeout=20_000)
-        # Confirm CURRENT before resizing
+        # Confirm CURRENT at desktop before resizing
         page.locator('[data-testid="overview-status-current"]').wait_for(
             state="attached", timeout=10_000
         )
-        # Resize to 390px and check no overflow
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            f"{template_source}: must not show NOT RUN at desktop"
+        # Resize to 390px and check CURRENT + no overflow
         page.set_viewport_size({"width": 390, "height": 844})
         page.locator("#tab-overview").click()
         page.locator("#panel-overview").wait_for(state="visible", timeout=10_000)
+        assert page.locator('[data-testid="overview-status-current"]').count() >= 1, \
+            f"{template_source}: must show CURRENT at 390px"
+        assert page.locator('[data-testid="overview-status-notrun"]').count() == 0, \
+            f"{template_source}: must not show NOT RUN at 390px"
         _assert_no_horizontal_overflow(page)
     finally:
         page.close()

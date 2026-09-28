@@ -146,7 +146,7 @@ def build_returns_projection(
         ) else "CLEAN",
         has_runtime=True,
         scenario_name=_last_run_scenario(ws),
-        ran_at=getattr(rr, "ran_at", "") or "",
+        ran_at=(getattr(rr, "ran_at", "") or "")[:19].replace("T", " "),
         metrics=metrics,
         sponsor_rows=tuple(dict(row) for row in sponsor_periods if isinstance(row, Mapping)),
         distribution_rows=tuple(

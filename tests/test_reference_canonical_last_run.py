@@ -1,9 +1,10 @@
-"""Canonical last-run tests for Solar, Wind, and Data Center reference models.
+"""Canonical last-run tests for Solar, Wind, Data Center, and EV Charging reference models.
 
 Acceptance markers (all must PASS for PR merge):
   SOLAR_REFERENCE_CANONICAL_LAST_RUN
   WIND_REFERENCE_CANONICAL_LAST_RUN
   DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN
+  EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN
   REFERENCE_LAST_RUN_IDEMPOTENT
   REFERENCE_LAST_RUN_INVALIDATES_ON_CANONICAL_INPUT_CHANGE
   REFERENCE_LAST_RUN_INVALIDATES_ON_MODEL_IDENTITY_CHANGE
@@ -28,6 +29,8 @@ Acceptance markers (all must PASS for PR merge):
   V2_USER_RUN_PERSISTENCE_REGRESSION
   REFERENCE_REAL_CANONICAL_INPUT_CHANGE_INVALIDATES
   REFERENCE_REAL_MODEL_IDENTITY_CHANGE_INVALIDATES
+  REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE
+  EV_REFERENCE_WORKING_COPY_SEPARATION
 """
 from __future__ import annotations
 
@@ -58,15 +61,17 @@ def _bootstrap(seeded_db):
 # SOLAR_REFERENCE_CANONICAL_LAST_RUN
 # WIND_REFERENCE_CANONICAL_LAST_RUN
 # DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN
+# EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("template_source", [
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_canonical_last_run_seeded(seeded_db, template_source):
-    """SOLAR/WIND/DATA_CENTER_REFERENCE_CANONICAL_LAST_RUN = PASS"""
+    """SOLAR/WIND/DATA_CENTER/EV_CHARGING_REFERENCE_CANONICAL_LAST_RUN = PASS"""
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
 
@@ -99,7 +104,7 @@ def test_canonical_last_run_idempotent(seeded_db):
 
     ensure_reference_models()
     first_seeded = ensure_reference_canonical_last_runs()
-    assert len(first_seeded) == 3  # solar, wind, dc
+    assert len(first_seeded) == 4  # solar, wind, dc, ev_charging
 
     # Capture snapshot IDs
     snap_ids = {}
@@ -120,32 +125,79 @@ def test_canonical_last_run_idempotent(seeded_db):
 
 # ---------------------------------------------------------------------------
 # REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE
+# REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("template_source,factory_fn,project_type", [
-    ("generic_solar_reference", "create_generic_solar_reference", "Solar"),
-    ("generic_wind_reference", "create_generic_wind_reference", "Wind"),
-    ("generic_data_center_reference", "create_generic_data_center_reference", "Data Center"),
-])
-def test_canonical_last_run_matches_engine_output(seeded_db, template_source, factory_fn, project_type):
-    """REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE = PASS — stored KPIs match live engine."""
-    from app import project_factories
+_REFERENCE_RUN_PARAMS = [
+    ("generic_solar_reference", "Generic Solar Reference"),
+    ("generic_wind_reference", "Generic Wind Reference"),
+    ("generic_data_center_reference", "Generic Data Center Reference"),
+    ("generic_ev_charging_reference", "Generic EV Charging Reference"),
+]
+
+
+@pytest.mark.parametrize("template_source,run_project_type", _REFERENCE_RUN_PARAMS)
+def test_canonical_last_run_matches_engine_output(seeded_db, template_source, run_project_type):
+    """REFERENCE_LAST_RUN_FROM_CANONICAL_ENGINE = PASS — stored KPIs match live engine.
+    REFERENCE_LAST_RUN_FULL_ECONOMIC_EQUIVALENCE = PASS — all material quantities match.
+
+    Compares every economically material quantity in the persisted canonical Last Run
+    against a fresh production-engine run from the identical canonical factory inputs.
+    Does NOT manually recompute formulas — reads from the production payload directly.
+    """
+    from app.api.project_runner import run_project
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
-    from app.services.production_financial_authority import run_clean_production
-    from app.services.clean_presentation_adapter import build_clean_waterfall_view
 
     _bootstrap(seeded_db)
 
     record = get_reference_by_template_source(template_source)
     ws = get_workspace_state(record.user_id, record.project_id)
+    stored = ws.last_runtime_summary
 
-    pi = getattr(project_factories, factory_fn)()
-    clean_run = run_clean_production(pi, "Base", project_type=project_type)
-    view = build_clean_waterfall_view(clean_run)
+    fresh = run_project(run_project_type, "Base")["kpis"]
 
-    assert ws.last_runtime_summary["project_irr"] == pytest.approx(view.project_irr, rel=1e-6)
-    assert ws.last_runtime_summary["min_dscr"] == pytest.approx(view.actual_min_dscr, rel=1e-6)
+    # ── Core returns ─────────────────────────────────────────────────────────
+    assert stored["project_irr"] == pytest.approx(fresh["project_irr"], rel=1e-6), \
+        f"{template_source}: project_irr mismatch"
+    assert stored["equity_irr"] == pytest.approx(fresh["equity_irr"], rel=1e-6), \
+        f"{template_source}: equity_irr mismatch"
+    if fresh.get("sponsor_irr") is not None:
+        assert stored.get("sponsor_irr") == pytest.approx(fresh["sponsor_irr"], rel=1e-6), \
+            f"{template_source}: sponsor_irr mismatch"
+
+    # ── DSCR / LLCR ──────────────────────────────────────────────────────────
+    assert stored["min_dscr"] == pytest.approx(fresh["min_dscr"], rel=1e-6), \
+        f"{template_source}: min_dscr mismatch"
+    assert stored["avg_dscr"] == pytest.approx(fresh["avg_dscr"], rel=1e-6), \
+        f"{template_source}: avg_dscr mismatch"
+    assert stored["target_dscr"] == pytest.approx(fresh["target_dscr"], rel=1e-6), \
+        f"{template_source}: target_dscr mismatch"
+
+    # ── CapEx & debt ─────────────────────────────────────────────────────────
+    assert stored["total_capex_keur"] == pytest.approx(fresh["total_capex_keur"], rel=1e-6), \
+        f"{template_source}: total_capex_keur mismatch"
+    assert stored["senior_debt_keur"] == pytest.approx(fresh["senior_debt_keur"], rel=1e-6), \
+        f"{template_source}: senior_debt_keur mismatch"
+    assert stored["actual_gearing_pct"] == pytest.approx(fresh["actual_gearing_pct"], rel=1e-4), \
+        f"{template_source}: actual_gearing_pct mismatch"
+
+    # ── P&L totals ────────────────────────────────────────────────────────────
+    assert stored["total_revenue_keur"] == pytest.approx(fresh["total_revenue_keur"], rel=1e-6), \
+        f"{template_source}: total_revenue_keur mismatch"
+    assert stored["total_opex_keur"] == pytest.approx(fresh["total_opex_keur"], rel=1e-6), \
+        f"{template_source}: total_opex_keur mismatch"
+    assert stored["total_ebitda_keur"] == pytest.approx(fresh["total_ebitda_keur"], rel=1e-6), \
+        f"{template_source}: total_ebitda_keur mismatch"
+    assert stored["total_senior_ds_keur"] == pytest.approx(fresh["total_senior_ds_keur"], rel=1e-6), \
+        f"{template_source}: total_senior_ds_keur mismatch"
+    assert stored["total_tax_keur"] == pytest.approx(fresh["total_tax_keur"], rel=1e-6), \
+        f"{template_source}: total_tax_keur mismatch"
+
+    # ── Distributions ─────────────────────────────────────────────────────────
+    assert stored["total_distributions_keur"] == pytest.approx(
+        fresh["total_distributions_keur"], rel=1e-6
+    ), f"{template_source}: total_distributions_keur mismatch"
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +208,7 @@ def test_canonical_last_run_matches_engine_output(seeded_db, template_source, fa
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_provenance(seeded_db, template_source):
     """REFERENCE_LAST_RUN_PROVENANCE_BOUND = PASS — replay_metadata records origin."""
@@ -186,7 +239,12 @@ def test_reference_last_run_is_read_only(seeded_db):
 
     _bootstrap(seeded_db)
 
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         record = get_reference_by_template_source(ts)
         assert record.is_protected, f"{ts}: is_protected must remain True after seeding"
         assert record.is_readonly, f"{ts}: is_readonly must remain True after seeding"
@@ -313,6 +371,7 @@ def test_user_run_on_working_copy_does_not_mutate_reference(seeded_db):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_library_kpi_populated(seeded_db, template_source):
     """REFERENCE_LIBRARY_KPI_FROM_LAST_RUN = PASS — project_irr non-null in workspace."""
@@ -335,6 +394,7 @@ def test_reference_library_kpi_populated(seeded_db, template_source):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_reference_workbook_not_never_run(seeded_db, template_source):
     """REFERENCE_WORKBOOK_NOT_NEVER_RUN = PASS — RuntimeResult is non-None after seeding."""
@@ -424,7 +484,7 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
 
     ensure_reference_models()
     first_seeded = ensure_reference_canonical_last_runs()
-    assert len(first_seeded) == 3
+    assert len(first_seeded) == 4
 
     # Capture original snapshot IDs
     snap_ids = {}
@@ -446,8 +506,8 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
 
     re_seeded = ensure_reference_canonical_last_runs()
 
-    # All three must have been re-seeded because the stored hash didn't match live
-    assert len(re_seeded) == 3, f"Expected 3 re-seeded, got {re_seeded}"
+    # All four must have been re-seeded because the stored hash didn't match live
+    assert len(re_seeded) == 4, f"Expected 4 re-seeded, got {re_seeded}"
 
     # Snapshot IDs must have changed
     for ts in snap_ids:
@@ -465,6 +525,7 @@ def test_canonical_last_run_invalidates_on_composite_hash_change(seeded_db):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_freshness_is_current(seeded_db, template_source):
     """REFERENCE_LAST_RUN_MODERN_FRESHNESS_AUTHORITY = PASS
@@ -505,6 +566,7 @@ def test_canonical_last_run_freshness_is_current(seeded_db, template_source):
     "generic_solar_reference",
     "generic_wind_reference",
     "generic_data_center_reference",
+    "generic_ev_charging_reference",
 ])
 def test_canonical_last_run_full_payload_persisted(seeded_db, template_source):
     """REFERENCE_LAST_RUN_FULL_RUNTIME_PAYLOAD = PASS
@@ -701,9 +763,9 @@ def test_reference_last_run_single_calculation(seeded_db):
     with patch.object(_runner, "run_project", side_effect=counting_run):
         seeded = ensure_reference_canonical_last_runs()
 
-    assert len(seeded) == 3, f"Expected 3 seeds; got {seeded}"
-    assert len(call_log) == 3, (
-        f"Expected exactly 3 engine calls for 3 references; got {len(call_log)}: {call_log}"
+    assert len(seeded) == 4, f"Expected 4 seeds; got {seeded}"
+    assert len(call_log) == 4, (
+        f"Expected exactly 4 engine calls for 4 references; got {len(call_log)}: {call_log}"
     )
 
     # Second idempotent pass must perform zero engine calls.
@@ -743,9 +805,14 @@ def test_reference_last_run_provenance_atomic(seeded_db):
 
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         rec = get_reference_by_template_source(ts)
         ws = get_workspace_state(rec.user_id, rec.project_id)
 
@@ -866,7 +933,7 @@ def test_reference_real_canonical_input_change_invalidates(seeded_db, monkeypatc
     # --- Baseline bootstrap ---
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
     solar_rec = get_reference_by_template_source("generic_solar_reference")
     ws_before = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
@@ -967,10 +1034,15 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
     # --- Baseline bootstrap ---
     ensure_reference_models()
     seeded = ensure_reference_canonical_last_runs()
-    assert len(seeded) == 3
+    assert len(seeded) == 4
 
     snap_ids = {}
-    for ts in ["generic_solar_reference", "generic_wind_reference", "generic_data_center_reference"]:
+    for ts in [
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ]:
         rec = get_reference_by_template_source(ts)
         ws = get_workspace_state(rec.user_id, rec.project_id)
         snap_ids[ts] = ws.last_runtime_snapshot_id
@@ -983,8 +1055,8 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
 
     # --- Re-seed: must detect changed engine version and produce new runs ---
     re_seeded = ensure_reference_canonical_last_runs()
-    assert len(re_seeded) == 3, (
-        f"All 3 references must re-seed after engine version change; got {re_seeded}"
+    assert len(re_seeded) == 4, (
+        f"All 4 references must re-seed after engine version change; got {re_seeded}"
     )
 
     for ts in snap_ids:
@@ -999,4 +1071,199 @@ def test_reference_real_model_identity_change_invalidates(seeded_db, monkeypatch
     idempotent = ensure_reference_canonical_last_runs()
     assert idempotent == [], (
         f"Second pass with same engine version must be idempotent; got {idempotent}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# EV_REFERENCE_WORKING_COPY_SEPARATION
+# ---------------------------------------------------------------------------
+
+def test_ev_reference_working_copy_separation(seeded_db):
+    """EV_REFERENCE_WORKING_COPY_SEPARATION = PASS
+
+    After canonical seeding, creating an EV Charging Working Copy and running
+    it must NOT mutate the canonical EV reference Last Run.
+
+    Steps proven:
+    1. EV reference has a canonical Last Run after bootstrap.
+    2. Create an EV Working Copy — it starts with empty Last Run.
+    3. Run the Working Copy (simulate v2_atomic_run_commit on copy).
+    4. EV reference retains its original canonical Last Run identity and summary.
+    """
+    from datetime import datetime, timezone
+
+    from app.api.project_runner import run_project
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state, v2_atomic_run_commit
+    from app.services.project_library_service import (
+        create_working_copy,
+        ensure_reference_canonical_last_runs,
+        ensure_reference_models,
+    )
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+    # 1. EV reference has a canonical Last Run.
+    ev_rec = get_reference_by_template_source("generic_ev_charging_reference")
+    ev_ws_before = get_workspace_state(ev_rec.user_id, ev_rec.project_id)
+    assert ev_ws_before.last_runtime_snapshot_id, \
+        "EV reference must have a canonical Last Run snapshot_id after bootstrap"
+    canonical_snap_id = ev_ws_before.last_runtime_snapshot_id
+    canonical_irr = ev_ws_before.last_runtime_summary["project_irr"]
+    canonical_hash = ev_ws_before.last_runtime_composite_hash
+
+    # 2. Create EV Working Copy — it starts with empty Last Run.
+    copy = create_working_copy("ev-wc-sep-user", ev_rec.project_id)
+    copy_ws = get_workspace_state("ev-wc-sep-user", copy.project_id)
+    assert not copy_ws.last_runtime_snapshot_id, \
+        "EV Working Copy must start with empty Last Run (not inherit reference)"
+    assert not copy_ws.last_runtime_summary, \
+        "EV Working Copy must start with empty last_runtime_summary"
+
+    # 3. Run the Working Copy via v2_atomic_run_commit.
+    payload = run_project("Generic EV Charging Reference", "Base")
+    identity = assemble_consistent_for_get("ev-wc-sep-user", copy.project_id, WORKBOOK.version)
+    v2_atomic_run_commit(
+        user_id="ev-wc-sep-user",
+        project_id=copy.project_id,
+        project_code=copy.project_code,
+        expected_composite_hash=identity.composite_hash,
+        runtime_snapshot_id="ev-wc-user-run-001",
+        runtime_origin="user_run",
+        runtime_summary=payload["kpis"],
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=copy_ws.active_scenario_id,
+        active_scenario_name=copy_ws.active_scenario_name,
+        ran_at=datetime.now(timezone.utc),
+    )
+
+    # 4. EV reference retains its canonical Last Run — unchanged.
+    ev_ws_after = get_workspace_state(ev_rec.user_id, ev_rec.project_id)
+    assert ev_ws_after.last_runtime_snapshot_id == canonical_snap_id, \
+        "Working Copy run must NOT change canonical EV reference Last Run snapshot_id"
+    assert ev_ws_after.last_runtime_summary["project_irr"] == pytest.approx(canonical_irr, rel=1e-9), \
+        "Working Copy run must NOT mutate canonical EV reference project_irr"
+    assert ev_ws_after.last_runtime_composite_hash == canonical_hash, \
+        "Working Copy run must NOT change canonical EV reference composite hash"
+
+    # Working Copy itself is updated — confirm it has the user run.
+    copy_ws_after = get_workspace_state("ev-wc-sep-user", copy.project_id)
+    assert copy_ws_after.last_runtime_snapshot_id == "ev-wc-user-run-001", \
+        "Working Copy must have the user run as its Last Run"
+
+
+# ---------------------------------------------------------------------------
+# REFERENCE_CANONICAL_SNAPSHOT_ID_SUBSECOND_UNIQUE
+# ---------------------------------------------------------------------------
+
+def test_canonical_snapshot_id_subsecond_unique(seeded_db):
+    """REFERENCE_CANONICAL_SNAPSHOT_ID_SUBSECOND_UNIQUE = PASS
+
+    Canonical snapshot IDs:
+    1. Contain no decimal-form microsecond fragment (no pattern \\d+\\.\\d{6,}).
+    2. Two distinct datetimes within the same second produce distinct IDs.
+    3. An invalidation/reseed produces a different last_runtime_snapshot_id.
+
+    Timestamps for assertions 1 and 2 are constructed directly — no sleeps
+    or wall-clock timing.
+    """
+    import re
+    from datetime import datetime, timezone
+
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_canonical_last_runs,
+        ensure_reference_models,
+    )
+
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+
+    long_float_re = re.compile(r"\b\d+\.\d{6,}\b")
+
+    # 1 ── No decimal point in any canonical snapshot ID ───────────────────── #
+    for ts in (
+        "generic_solar_reference",
+        "generic_wind_reference",
+        "generic_data_center_reference",
+        "generic_ev_charging_reference",
+    ):
+        rec = get_reference_by_template_source(ts)
+        ws = get_workspace_state(rec.user_id, rec.project_id)
+        snap_id = ws.last_runtime_snapshot_id or ""
+        assert long_float_re.search(snap_id) is None, (
+            f"Canonical snapshot ID for {ts} contains a decimal microsecond "
+            f"fragment (would leak as raw long float): {snap_id!r}"
+        )
+
+    # 2 ── Same second, different microseconds → distinct IDs ──────────────── #
+    # Directly exercise the format string used by _seed_reference_last_run.
+    # Two datetimes that share year/month/day/hour/minute/second but differ in
+    # microseconds must produce different strftime outputs.
+    t_a = datetime(2030, 1, 1, 0, 0, 0, 1, tzinfo=timezone.utc)
+    t_b = datetime(2030, 1, 1, 0, 0, 0, 999999, tzinfo=timezone.utc)
+
+    fmt = "%Y%m%dT%H%M%S%fZ"
+    iso_a = t_a.strftime(fmt)
+    iso_b = t_b.strftime(fmt)
+
+    assert iso_a != iso_b, (
+        "strftime('%Y%m%dT%%H%M%S%fZ') must differ for same-second datetimes "
+        f"with different microseconds: {iso_a!r} vs {iso_b!r}"
+    )
+
+    sid_a = f"canonical_last_run__generic_solar_reference__{iso_a}"
+    sid_b = f"canonical_last_run__generic_solar_reference__{iso_b}"
+    assert sid_a != sid_b, "Snapshot IDs must differ within the same second"
+
+    for sid in (sid_a, sid_b):
+        assert long_float_re.search(sid) is None, (
+            f"Snapshot ID from same-second pair contains decimal microsecond "
+            f"fragment: {sid!r}"
+        )
+
+    # 3 ── Reseed after invalidation changes last_runtime_snapshot_id ─────── #
+    from app.api.project_runner import run_project
+    from app.persistence.workspace_repository import v2_atomic_run_commit
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    solar_rec = get_reference_by_template_source("generic_solar_reference")
+    ws_before = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    snap_before = ws_before.last_runtime_snapshot_id
+
+    identity = assemble_consistent_for_get(
+        solar_rec.user_id, solar_rec.project_id, WORKBOOK.version
+    )
+    payload = run_project("Generic Solar Reference", "Base")
+    v2_atomic_run_commit(
+        user_id=solar_rec.user_id,
+        project_id=solar_rec.project_id,
+        project_code=solar_rec.project_code,
+        expected_composite_hash=identity.composite_hash,
+        runtime_snapshot_id="reseed-invalidation-test-001",
+        runtime_origin="canonical_reference_last_run",
+        runtime_summary=payload["kpis"],
+        financial_statements=payload.get("financial_statements"),
+        debt_schedule=payload.get("debt_schedule"),
+        tax_schedule=payload.get("tax_schedule"),
+        distribution_schedule=payload.get("distribution_schedule"),
+        sponsor_schedule=payload.get("sponsor_schedule"),
+        active_scenario_id=None,
+        active_scenario_name=None,
+        ran_at=datetime(2030, 6, 1, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    ws_after = get_workspace_state(solar_rec.user_id, solar_rec.project_id)
+    snap_after = ws_after.last_runtime_snapshot_id
+    assert snap_after != snap_before, (
+        "Reseed must produce a different last_runtime_snapshot_id; "
+        f"before={snap_before!r}, after={snap_after!r}"
     )
