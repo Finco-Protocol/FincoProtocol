@@ -35,6 +35,7 @@ Acceptance markers:
   P1_3_CORRUPTION_UNIT_MISMATCH
   LAST_RUN_VALIDATION_IMMUTABLE_AFTER_WORKING_COPY_EDIT
   P1_3_FROZEN_NAMESPACE
+  P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS
   FINCO_P1_3_INSTITUTIONAL_VALIDATION_PACK_COMPLETE
 """
 from __future__ import annotations
@@ -964,78 +965,212 @@ def test_p1_3_runner_consumes_typed_contract():
             )
 
 
+# ── P1.3 persisted-run helper ─────────────────────────────────────────────────
+
+
+def _build_persisted_run_for_p13(project_key: str = "generic_solar_reference") -> "tuple[object, object, str]":
+    """Create a user project with a real committed Last Run via v2_atomic_run_commit.
+
+    Returns (project_record, workspace_state_post_commit, composite_hash_at_run).
+
+    Full production journey — no manual SQL UPDATE:
+      1. New demo user + user_created project record
+      2. workspace_state + base case scenario
+      3. Composite hash via assemble_consistent_for_get
+      4. Run engine
+      5. v2_atomic_run_commit — sets any_run_committed, last_runtime_composite_hash,
+         last_runtime_identity_json and engine_version in a single EXCLUSIVE transaction
+    """
+    import datetime
+    from app.auth import new_demo_user_id
+    from app.persistence.projects_repository import create_project_record, get_project
+    from app.persistence.workspace_repository import (
+        save_workspace_state, get_workspace_state, v2_atomic_run_commit,
+    )
+    from app.persistence.scenarios_repository import get_or_create_base_case_scenario
+    from app.project_factories import create_generic_solar_reference
+    from app.api.project_runner import run_project
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    uid = new_demo_user_id()
+    pcode = "p13_" + uid[-8:]
+    pi = create_generic_solar_reference()
+
+    opex_y1 = sum(item.y1_amount_keur for item in pi.opex)
+    snap = {
+        "project_type": "Solar",
+        "template_source": "generic_solar_reference",
+        "project_origin": "user_created",
+        "project_name": pi.info.name,
+        "country_market": pi.info.country_iso,
+        "capacity_mw": str(pi.technical.capacity_mw),
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(pi.info.construction_months),
+        "horizon_years": str(pi.info.horizon_years),
+        "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+        "ppa_term_years": str(pi.revenue.ppa_term_years),
+        "p50_hours": str(pi.technical.operating_hours_p50),
+        "opex_y1_keur": str(opex_y1),
+        "total_capex_keur": str(pi.capex.total_capex),
+        "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "tenor_years": str(pi.financing.senior_tenor_years),
+        "target_dscr": str(pi.financing.target_dscr),
+    }
+
+    pr = create_project_record(
+        user_id=uid,
+        project_code=pcode,
+        project_name="P1.3 Test Solar",
+        project_type="Solar",
+        project_origin="user_created",
+        template_source="generic_solar_reference",
+        baseline_snapshot=snap,
+    )
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=snap,
+        saved_snapshot=snap,
+    )
+    base_sc = get_or_create_base_case_scenario(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        project_name="P1.3 Test Solar",
+        project_type="Solar",
+        source_project_template="generic_solar_reference",
+        base_input_set=snap,
+        governance_state={},
+    )
+
+    identity = assemble_consistent_for_get(
+        user_id=uid,
+        project_id=pr.project_id,
+        workbook_version=WORKBOOK.version,
+    )
+    composite_hash_at_run = identity.composite_hash
+
+    result = run_project("generic_solar_reference", "Base", project_inputs_override=pi)
+    kpis = result["kpis"]
+
+    snapshot_id = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ran_at = datetime.datetime.now(datetime.timezone.utc)
+    v2_atomic_run_commit(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        expected_composite_hash=composite_hash_at_run,
+        runtime_snapshot_id=snapshot_id,
+        runtime_origin="v2_run",
+        runtime_summary=kpis,
+        financial_statements=result.get("financial_statements"),
+        debt_schedule=result.get("debt_schedule"),
+        tax_schedule=result.get("tax_schedule"),
+        distribution_schedule=result.get("distribution_schedule"),
+        sponsor_schedule=result.get("sponsor_schedule"),
+        active_scenario_id=base_sc.scenario_id,
+        active_scenario_name="Base Case",
+        last_runtime_scenario_id=base_sc.scenario_id,
+        ran_at=ran_at,
+    )
+
+    ws = get_workspace_state(uid, pr.project_id)
+    assert ws is not None and ws.any_run_committed, (
+        "any_run_committed must be True after v2_atomic_run_commit"
+    )
+    assert ws.last_runtime_composite_hash == composite_hash_at_run, (
+        "last_runtime_composite_hash must match CAS token after commit"
+    )
+    pr2 = get_project(pr.project_id, uid)
+    return pr2, ws, composite_hash_at_run
+
+
 # ── P1_3_SAME_CANONICAL_RUN_RECONCILIATION ───────────────────────────────────
 
 def test_p1_3_same_canonical_run_reconciliation():
-    """P1_3_SAME_CANONICAL_RUN_RECONCILIATION — bundle is single source for KPIs and XLSX.
+    """P1_3_SAME_CANONICAL_RUN_RECONCILIATION — CANONICAL COMMITTED LAST RUN → SAME IDENTITY → SAME VALUES → SAME XLSX.
 
-    Proves ONE RUN → SAME IDENTITY → SAME VALUES EVERYWHERE:
-    - bundle.runtime_result.project_irr == XLSX Returns sheet Project IRR
-    - bundle.input_composite_hash == XLSX Run Identity input_composite_hash
-    - bundle.engine_version == XLSX Run Identity Engine version
-
-    Both surfaces come from the same _build_export_bundle() call.
+    Proves that the committed Last Run (not a fresh execution) is the authority:
+    - Reads persisted run identity from workspace_state (last_runtime_composite_hash,
+      last_runtime_identity, last_runtime_snapshot_id)
+    - Exports XLSX via the canonical last-run pathway
+    - Proves XLSX identity fields match the persisted DB values (not sentinel not_applicable)
+    - Proves KPIs in XLSX match the values committed to DB
     """
     import openpyxl
-    from app.export.institutional_workbook import (
-        _build_export_bundle,
-        export_institutional_workbook_from_bundle,
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
+
+    pr, ws, composite_hash_at_run = _build_persisted_run_for_p13()
+
+    # Identity from persisted committed run — must NOT be sentinel
+    persisted_hash = ws.last_runtime_composite_hash
+    persisted_identity = ws.last_runtime_identity or {}
+    persisted_snapshot_id = ws.last_runtime_snapshot_id
+
+    assert persisted_hash is not None and persisted_hash not in ("not_applicable", ""), (
+        f"Committed Last Run must have a real composite hash; got {persisted_hash!r}"
+    )
+    assert persisted_identity, (
+        "Committed Last Run must have a real last_runtime_identity dict"
+    )
+    assert "engine_version" in persisted_identity, (
+        "Committed Last Run identity must include engine_version"
+    )
+    assert "composite_hash" in persisted_identity, (
+        "Committed Last Run identity must include composite_hash"
     )
 
-    bundle = _build_export_bundle("generic_solar_reference")
-
-    # Runtime KPIs from bundle
-    runtime_irr = bundle.runtime_result.project_irr
-    runtime_equity_irr = bundle.runtime_result.equity_irr
-    runtime_hash = bundle.input_composite_hash
-    runtime_version = bundle.engine_version
-
-    # XLSX produced from the SAME bundle — guarantees same-run identity
-    wb_bytes = export_institutional_workbook_from_bundle(bundle)
-    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
-
-    # Returns sheet values must match runtime bundle values
-    xlsx_irr = None
-    xlsx_equity_irr = None
-    for row in wb["Returns"].iter_rows(values_only=True):
-        if row[0] == "Project IRR":
-            xlsx_irr = row[1]
-        elif row[0] == "Equity IRR":
-            xlsx_equity_irr = row[1]
-
-    assert xlsx_irr is not None, "Returns sheet must contain Project IRR"
-    assert math.isclose(float(xlsx_irr), runtime_irr, rel_tol=1e-3), (
-        f"Same-run violation: bundle project_irr {runtime_irr:.6f} != "
-        f"XLSX project_irr {float(xlsx_irr):.6f}"
+    # Export via canonical last-run authority
+    resp = build_canonical_last_run_institutional_workbook_export(
+        "generic_solar_reference",
+        safe_project="p13_test_solar",
+        project_record=pr,
+        user_id=pr.user_id,
     )
-
-    assert xlsx_equity_irr is not None, "Returns sheet must contain Equity IRR"
-    assert math.isclose(float(xlsx_equity_irr), runtime_equity_irr, rel_tol=1e-3), (
-        f"Same-run violation: bundle equity_irr {runtime_equity_irr:.6f} != "
-        f"XLSX equity_irr {float(xlsx_equity_irr):.6f}"
+    assert resp.status_code == 200, (
+        f"Canonical last-run export failed: {resp.error_content}"
     )
+    wb = openpyxl.load_workbook(BytesIO(resp.bytes_data))
 
-    # Run Identity sheet identity fields must match bundle
     ri_data = {}
     for row in wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
         if row[0] is not None and row[1] is not None:
             ri_data[str(row[0])] = row[1]
 
-    _SENTINEL = ("not_applicable", "n/a", "none", "")
-    if (runtime_hash is not None
-            and str(runtime_hash).lower() not in _SENTINEL):
-        assert "Input composite hash" in ri_data, "Run Identity must contain Input composite hash"
-        assert str(ri_data["Input composite hash"]) == str(runtime_hash), (
-            f"Same-run violation: bundle hash {runtime_hash!r} != "
-            f"XLSX hash {ri_data['Input composite hash']!r}"
-        )
+    # (e) prove applicable identity fields match
+    xlsx_hash = str(ri_data.get("Input composite hash", ""))
+    assert xlsx_hash == persisted_hash, (
+        f"SAME-RUN VIOLATION: XLSX hash {xlsx_hash!r} != persisted hash {persisted_hash!r}"
+    )
+    assert xlsx_hash not in ("not_applicable", ""), (
+        f"XLSX composite hash must be real, not sentinel: {xlsx_hash!r}"
+    )
 
-    if (runtime_version is not None
-            and str(runtime_version).lower() not in _SENTINEL):
-        assert "Engine version" in ri_data, "Run Identity must contain Engine version"
-        assert str(ri_data["Engine version"]) == str(runtime_version), (
-            f"Same-run violation: bundle engine_version {runtime_version!r} != "
-            f"XLSX engine_version {ri_data['Engine version']!r}"
+    xlsx_engine_version = str(ri_data.get("Engine version", ""))
+    persisted_engine_version = str(persisted_identity.get("engine_version", ""))
+    assert xlsx_engine_version == persisted_engine_version, (
+        f"SAME-RUN VIOLATION: XLSX engine_version {xlsx_engine_version!r} != "
+        f"persisted engine_version {persisted_engine_version!r}"
+    )
+    assert xlsx_engine_version not in ("NOT_AVAILABLE", "not_applicable", ""), (
+        f"XLSX engine_version must be real, not sentinel: {xlsx_engine_version!r}"
+    )
+
+    # Runtime KPIs persisted in DB must appear in XLSX Returns sheet
+    kpis = ws.last_runtime_summary or {}
+    runtime_irr = kpis.get("project_irr")
+    if runtime_irr is not None:
+        xlsx_irr = None
+        for row in wb["Returns"].iter_rows(values_only=True):
+            if row[0] == "Project IRR":
+                xlsx_irr = row[1]
+                break
+        assert xlsx_irr is not None, "Returns sheet must contain Project IRR"
+        assert math.isclose(float(xlsx_irr), float(runtime_irr), rel_tol=1e-3), (
+            f"SAME-RUN VIOLATION: persisted project_irr {runtime_irr} != "
+            f"XLSX project_irr {float(xlsx_irr):.6f}"
         )
 
 
@@ -1044,141 +1179,385 @@ def test_p1_3_same_canonical_run_reconciliation():
 def test_last_run_validation_immutable_after_working_copy_edit():
     """LAST_RUN_VALIDATION_IMMUTABLE_AFTER_WORKING_COPY_EDIT
 
-    A workbook exported from bundle A is not affected by subsequent runs with
-    different inputs. Proves snapshot immutability: once captured, the Last Run
-    validation state cannot be mutated by a Working Copy edit.
+    Invariant: WORKING COPY EDIT ≠ LAST RUN MUTATION.
+
+    Uses the SAME project throughout:
+      1. Create a user project with a committed Last Run (via v2_atomic_run_commit)
+      2. Record committed Last Run ID / composite hash / engine version / KPIs
+      3. Edit the Working Copy (change tariff in draft_snapshot) without re-running
+      4. Prove Working Copy actually differs (draft_snapshot changed)
+      5. Re-read workspace state from DB
+      6. Prove Last Run identity is UNCHANGED: same composite hash, same
+         engine version, same KPI values as at run-commit time
     """
-    import openpyxl
-    from app.export.institutional_workbook import (
-        _build_export_bundle,
-        export_institutional_workbook_from_bundle,
+    from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+    from app.persistence.projects_repository import create_project_record
+    from app.persistence.scenarios_repository import get_or_create_base_case_scenario
+    from app.persistence.workspace_repository import v2_atomic_run_commit
+    from app.project_factories import create_generic_solar_reference
+    from app.api.project_runner import run_project
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.auth import new_demo_user_id
+    import datetime
+
+    uid = new_demo_user_id()
+    pcode = "p13_imm_" + uid[-8:]
+    pi = create_generic_solar_reference()
+
+    opex_y1 = sum(item.y1_amount_keur for item in pi.opex)
+    snap = {
+        "project_type": "Solar",
+        "template_source": "generic_solar_reference",
+        "project_origin": "user_created",
+        "project_name": pi.info.name,
+        "country_market": pi.info.country_iso,
+        "capacity_mw": str(pi.technical.capacity_mw),
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(pi.info.construction_months),
+        "horizon_years": str(pi.info.horizon_years),
+        "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+        "ppa_term_years": str(pi.revenue.ppa_term_years),
+        "p50_hours": str(pi.technical.operating_hours_p50),
+        "opex_y1_keur": str(opex_y1),
+        "total_capex_keur": str(pi.capex.total_capex),
+        "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "tenor_years": str(pi.financing.senior_tenor_years),
+        "target_dscr": str(pi.financing.target_dscr),
+    }
+
+    pr = create_project_record(
+        user_id=uid,
+        project_code=pcode,
+        project_name="P1.3 Immutability Test",
+        project_type="Solar",
+        project_origin="user_created",
+        template_source="generic_solar_reference",
+        baseline_snapshot=snap,
+    )
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=snap,
+        saved_snapshot=snap,
+    )
+    base_sc = get_or_create_base_case_scenario(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        project_name="P1.3 Immutability Test",
+        project_type="Solar",
+        source_project_template="generic_solar_reference",
+        base_input_set=snap,
+        governance_state={},
     )
 
-    # Build bundle A (Solar reference)
-    bundle_a = _build_export_bundle("generic_solar_reference")
-    irr_a = bundle_a.runtime_result.project_irr
-    hash_a = bundle_a.input_composite_hash
-    wb_bytes_a = export_institutional_workbook_from_bundle(bundle_a)
-
-    # Simulate "Working Copy edit" — use a different vertical as a proxy for changed inputs
-    bundle_b = _build_export_bundle("generic_wind_reference")
-    irr_b = bundle_b.runtime_result.project_irr
-    hash_b = bundle_b.input_composite_hash
-
-    # Precondition: Solar and Wind are meaningfully different
-    assert not math.isclose(irr_a, irr_b, rel_tol=0.01), (
-        f"Test precondition: Solar IRR {irr_a:.4f} and Wind IRR {irr_b:.4f} must differ"
+    identity = assemble_consistent_for_get(
+        user_id=uid,
+        project_id=pr.project_id,
+        workbook_version=WORKBOOK.version,
     )
-    _SENTINEL = ("not_applicable", "n/a", "none", "")
-    if (hash_a is not None and hash_b is not None
-            and str(hash_a).lower() not in _SENTINEL
-            and str(hash_b).lower() not in _SENTINEL):
-        assert hash_a != hash_b, (
-            "Test precondition: Solar and Wind input hashes must differ"
-        )
+    composite_hash_at_run = identity.composite_hash
 
-    # Bundle A's exported workbook must still contain bundle A's values — not bundle B's
-    wb_a = openpyxl.load_workbook(BytesIO(wb_bytes_a))
-    xlsx_irr_a = None
-    for row in wb_a["Returns"].iter_rows(values_only=True):
-        if row[0] == "Project IRR":
-            xlsx_irr_a = row[1]
-            break
+    result = run_project("generic_solar_reference", "Base", project_inputs_override=pi)
+    kpis = result["kpis"]
+    irr_at_run = kpis["project_irr"]
 
-    assert xlsx_irr_a is not None, "Bundle A workbook must have Project IRR in Returns sheet"
-    assert math.isclose(float(xlsx_irr_a), irr_a, rel_tol=1e-3), (
-        f"IMMUTABILITY VIOLATION: bundle A workbook IRR {float(xlsx_irr_a):.6f} "
-        f"changed after Working Copy edit (expected {irr_a:.6f})"
+    snapshot_id = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ran_at = datetime.datetime.now(datetime.timezone.utc)
+    v2_atomic_run_commit(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        expected_composite_hash=composite_hash_at_run,
+        runtime_snapshot_id=snapshot_id,
+        runtime_origin="v2_run",
+        runtime_summary=kpis,
+        financial_statements=result.get("financial_statements"),
+        debt_schedule=result.get("debt_schedule"),
+        tax_schedule=result.get("tax_schedule"),
+        distribution_schedule=result.get("distribution_schedule"),
+        sponsor_schedule=result.get("sponsor_schedule"),
+        active_scenario_id=base_sc.scenario_id,
+        active_scenario_name="Base Case",
+        last_runtime_scenario_id=base_sc.scenario_id,
+        ran_at=ran_at,
     )
 
-    # Bundle B's IRR must NOT appear in bundle A's workbook
-    assert not math.isclose(float(xlsx_irr_a), irr_b, rel_tol=0.01), (
-        f"IMMUTABILITY VIOLATION: Working Copy edit contaminated Last Run "
-        f"(bundle A workbook now shows Wind IRR {irr_b:.4f})"
+    # (2) Record committed Last Run identity
+    ws_before = get_workspace_state(uid, pr.project_id)
+    assert ws_before.any_run_committed, "any_run_committed must be True after commit"
+    last_run_hash = ws_before.last_runtime_composite_hash
+    last_run_identity = ws_before.last_runtime_identity or {}
+    last_run_engine_version = last_run_identity.get("engine_version")
+    last_run_snapshot_id = ws_before.last_runtime_snapshot_id
+    last_run_kpis = ws_before.last_runtime_summary or {}
+
+    assert last_run_hash is not None and last_run_hash not in ("not_applicable", ""), (
+        f"Last Run composite hash must be real before Working Copy edit: {last_run_hash!r}"
+    )
+
+    # (3) Edit Working Copy — change tariff in draft_snapshot without running
+    changed_snap = dict(snap)
+    original_tariff = float(snap["tariff_eur_mwh"])
+    changed_snap["tariff_eur_mwh"] = str(original_tariff + 15.0)
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=changed_snap,
+        saved_snapshot=snap,
+        dirty=True,
+    )
+
+    # (4) Prove Working Copy actually differs from the committed state
+    ws_after_edit = get_workspace_state(uid, pr.project_id)
+    assert ws_after_edit.draft_snapshot.get("tariff_eur_mwh") == str(original_tariff + 15.0), (
+        "Working Copy edit must be reflected in draft_snapshot"
+    )
+    assert ws_after_edit.saved_snapshot.get("tariff_eur_mwh") == str(original_tariff), (
+        "saved_snapshot must still reflect the pre-edit committed state"
+    )
+
+    # (6) Re-read workspace state — prove Last Run identity UNCHANGED
+    ws_after = get_workspace_state(uid, pr.project_id)
+    assert ws_after.any_run_committed, "any_run_committed must remain True after Working Copy edit"
+
+    assert ws_after.last_runtime_composite_hash == last_run_hash, (
+        f"IMMUTABILITY VIOLATION: last_runtime_composite_hash changed after Working Copy edit\n"
+        f"  before: {last_run_hash!r}\n  after:  {ws_after.last_runtime_composite_hash!r}"
+    )
+
+    assert ws_after.last_runtime_snapshot_id == last_run_snapshot_id, (
+        f"IMMUTABILITY VIOLATION: last_runtime_snapshot_id changed after Working Copy edit\n"
+        f"  before: {last_run_snapshot_id!r}\n  after:  {ws_after.last_runtime_snapshot_id!r}"
+    )
+
+    after_identity = ws_after.last_runtime_identity or {}
+    assert after_identity.get("engine_version") == last_run_engine_version, (
+        f"IMMUTABILITY VIOLATION: engine_version in last_runtime_identity changed\n"
+        f"  before: {last_run_engine_version!r}\n  after:  {after_identity.get('engine_version')!r}"
+    )
+
+    # (7) Prove KPI values from committed run are unchanged
+    after_kpis = ws_after.last_runtime_summary or {}
+    assert math.isclose(float(after_kpis.get("project_irr", 0)), irr_at_run, rel_tol=1e-6), (
+        f"IMMUTABILITY VIOLATION: committed project_irr changed after Working Copy edit\n"
+        f"  at run: {irr_at_run}\n  after edit: {after_kpis.get('project_irr')}"
     )
 
 
 # ── P1_3_CORRUPTION_RUN_IDENTITY_MISMATCH ────────────────────────────────────
 
+def _build_persisted_run_for_p13_wind() -> "tuple[object, object, str]":
+    """Create a Wind user project with a real committed Last Run (same pattern as solar helper)."""
+    import datetime
+    from app.auth import new_demo_user_id
+    from app.persistence.projects_repository import create_project_record, get_project
+    from app.persistence.workspace_repository import (
+        save_workspace_state, get_workspace_state, v2_atomic_run_commit,
+    )
+    from app.persistence.scenarios_repository import get_or_create_base_case_scenario
+    from app.project_factories import create_generic_wind_reference
+    from app.api.project_runner import run_project
+    from app.workbook.registry import WORKBOOK
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+
+    uid = new_demo_user_id()
+    pcode = "p13w_" + uid[-8:]
+    pi = create_generic_wind_reference()
+
+    opex_y1 = sum(item.y1_amount_keur for item in pi.opex)
+    snap = {
+        "project_type": "Wind",
+        "template_source": "generic_wind_reference",
+        "project_origin": "user_created",
+        "project_name": pi.info.name,
+        "country_market": pi.info.country_iso,
+        "capacity_mw": str(pi.technical.capacity_mw),
+        "cod_date": str(pi.info.cod_date),
+        "construction_months": str(pi.info.construction_months),
+        "horizon_years": str(pi.info.horizon_years),
+        "tariff_eur_mwh": str(pi.revenue.ppa_base_tariff),
+        "ppa_term_years": str(pi.revenue.ppa_term_years),
+        "p50_hours": str(pi.technical.operating_hours_p50),
+        "opex_y1_keur": str(opex_y1),
+        "total_capex_keur": str(pi.capex.total_capex),
+        "interest_rate_pct": str(pi.financing.all_in_rate * 100),
+        "tenor_years": str(pi.financing.senior_tenor_years),
+        "target_dscr": str(pi.financing.target_dscr),
+    }
+
+    pr = create_project_record(
+        user_id=uid,
+        project_code=pcode,
+        project_name="P1.3 Corruption Test Wind",
+        project_type="Wind",
+        project_origin="user_created",
+        template_source="generic_wind_reference",
+        baseline_snapshot=snap,
+    )
+    save_workspace_state(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        draft_snapshot=snap,
+        saved_snapshot=snap,
+    )
+    base_sc = get_or_create_base_case_scenario(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        project_name="P1.3 Corruption Test Wind",
+        project_type="Wind",
+        source_project_template="generic_wind_reference",
+        base_input_set=snap,
+        governance_state={},
+    )
+
+    identity = assemble_consistent_for_get(
+        user_id=uid,
+        project_id=pr.project_id,
+        workbook_version=WORKBOOK.version,
+    )
+    composite_hash_at_run = identity.composite_hash
+
+    result = run_project("generic_wind_reference", "Base", project_inputs_override=pi)
+    kpis = result["kpis"]
+
+    snapshot_id = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ran_at = datetime.datetime.now(datetime.timezone.utc)
+    v2_atomic_run_commit(
+        user_id=uid,
+        project_id=pr.project_id,
+        project_code=pcode,
+        expected_composite_hash=composite_hash_at_run,
+        runtime_snapshot_id=snapshot_id,
+        runtime_origin="v2_run",
+        runtime_summary=kpis,
+        financial_statements=result.get("financial_statements"),
+        debt_schedule=result.get("debt_schedule"),
+        tax_schedule=result.get("tax_schedule"),
+        distribution_schedule=result.get("distribution_schedule"),
+        sponsor_schedule=result.get("sponsor_schedule"),
+        active_scenario_id=base_sc.scenario_id,
+        active_scenario_name="Base Case",
+        last_runtime_scenario_id=base_sc.scenario_id,
+        ran_at=ran_at,
+    )
+
+    ws = get_workspace_state(uid, pr.project_id)
+    pr2 = get_project(pr.project_id, uid)
+    return pr2, ws, composite_hash_at_run
+
+
 def test_p1_3_corruption_run_identity_mismatch():
     """P1_3_CORRUPTION_RUN_IDENTITY_MISMATCH — cross-run identity mismatch is detectable.
 
-    If someone swapped workbook content from one run with the Run Identity sheet
-    of another run, the input_composite_hash would expose the mismatch.
+    Uses two genuine committed run identities with real (non-sentinel) composite hashes.
+    Proves that Solar Run A identity cannot be confused with Wind Run B identity:
+    - Solar committed hash != Wind committed hash (real distinct values)
+    - Solar XLSX carries Solar committed hash (not Wind hash)
+    - Rejection of (Run A identity + Run B economics) is detectable
     """
-    from app.export.institutional_workbook import (
-        _build_export_bundle,
-        export_institutional_workbook_from_bundle,
-    )
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
     import openpyxl
 
-    bundle_solar = _build_export_bundle("generic_solar_reference")
-    bundle_wind = _build_export_bundle("generic_wind_reference")
+    pr_solar, ws_solar, solar_hash = _build_persisted_run_for_p13()
+    pr_wind, ws_wind, wind_hash = _build_persisted_run_for_p13_wind()
 
-    solar_hash = bundle_solar.input_composite_hash
-    wind_hash = bundle_wind.input_composite_hash
+    # Both committed hashes must be real (not sentinel)
+    assert solar_hash not in ("not_applicable", "", None), (
+        f"Solar committed hash must be real: {solar_hash!r}"
+    )
+    assert wind_hash not in ("not_applicable", "", None), (
+        f"Wind committed hash must be real: {wind_hash!r}"
+    )
 
-    _SENTINEL = ("not_applicable", "n/a", "none", "")
-    _real_hash = lambda h: h is not None and str(h).lower() not in _SENTINEL
-    # Two different verticals must have different input hashes (when real hashes available)
-    if _real_hash(solar_hash) and _real_hash(wind_hash):
-        assert solar_hash != wind_hash, (
-            f"PRECONDITION: Solar and Wind input_composite_hash must differ; "
-            f"got solar={solar_hash!r}, wind={wind_hash!r}"
-        )
+    # PRECONDITION: two distinct committed runs must have different hashes
+    assert solar_hash != wind_hash, (
+        f"PRECONDITION: Solar and Wind committed composite hashes must differ; "
+        f"solar={solar_hash!r}, wind={wind_hash!r}"
+    )
 
-    # Export solar workbook; verify its Run Identity carries solar's hash
-    solar_wb_bytes = export_institutional_workbook_from_bundle(bundle_solar)
-    solar_wb = openpyxl.load_workbook(BytesIO(solar_wb_bytes))
+    # Export Solar workbook via canonical last-run authority
+    resp = build_canonical_last_run_institutional_workbook_export(
+        "generic_solar_reference",
+        safe_project="p13_corruption_solar",
+        project_record=pr_solar,
+        user_id=pr_solar.user_id,
+    )
+    assert resp.status_code == 200, f"Solar export failed: {resp.error_content}"
+    solar_wb = openpyxl.load_workbook(BytesIO(resp.bytes_data))
+
     ri_data = {}
     for row in solar_wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
         if row[0] is not None and row[1] is not None:
             ri_data[str(row[0])] = row[1]
 
-    if _real_hash(solar_hash):
-        xlsx_hash = ri_data.get("Input composite hash")
-        assert xlsx_hash is not None, "Run Identity sheet must contain Input composite hash"
-        assert str(xlsx_hash) == str(solar_hash), (
-            f"Solar workbook identity mismatch: xlsx={xlsx_hash!r} != bundle={solar_hash!r}"
-        )
-
-        # Cross-run: Wind hash must NOT match Solar workbook hash (when real hashes)
-        if _real_hash(wind_hash):
-            assert str(xlsx_hash) != str(wind_hash), (
-                f"CORRUPTION NOT DETECTED: Solar workbook hash unexpectedly matches "
-                f"Wind hash {wind_hash!r}"
-            )
-
-    # Structural check: Solar IRR in solar workbook != Wind IRR in wind workbook
-    solar_irr = bundle_solar.runtime_result.project_irr
-    wind_irr = bundle_wind.runtime_result.project_irr
-    assert not math.isclose(solar_irr, wind_irr, rel_tol=0.01), (
-        f"CORRUPTION NOT DETECTABLE: Solar IRR {solar_irr:.4f} ≈ Wind IRR {wind_irr:.4f} "
-        f"— these must differ to make corruption tests meaningful"
+    # Solar XLSX must carry Solar's committed hash
+    xlsx_hash = str(ri_data.get("Input composite hash", ""))
+    assert xlsx_hash == solar_hash, (
+        f"Solar workbook carries wrong hash: xlsx={xlsx_hash!r} != committed={solar_hash!r}"
     )
+    assert xlsx_hash not in ("not_applicable", ""), (
+        f"Solar XLSX hash must be real, not sentinel: {xlsx_hash!r}"
+    )
+
+    # Cross-run detection: Wind hash must NOT match Solar workbook hash
+    assert xlsx_hash != wind_hash, (
+        f"CORRUPTION NOT DETECTED: Solar workbook hash equals Wind hash {wind_hash!r} "
+        f"— cross-run identity mismatch would be undetectable"
+    )
+
+    # Structural proof: Solar and Wind KPIs differ (corruption is meaningful)
+    solar_irr = (ws_solar.last_runtime_summary or {}).get("project_irr")
+    wind_irr = (ws_wind.last_runtime_summary or {}).get("project_irr")
+    if solar_irr is not None and wind_irr is not None:
+        assert not math.isclose(float(solar_irr), float(wind_irr), rel_tol=0.01), (
+            f"CORRUPTION NOT DETECTABLE: Solar IRR {solar_irr} ≈ Wind IRR {wind_irr} "
+            f"— KPIs must differ to make corruption tests meaningful"
+        )
 
 
 # ── P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED ─────────────────────────────────
 
 def test_p1_3_historical_engine_version_preserved():
-    """P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED — engine version is preserved in workbook.
+    """P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED — committed Last Run retains engine version bound at run time.
 
-    The Run Identity sheet must carry the exact engine_version from the bundle.
-    If the workbook is later read without re-running the engine, the version
-    can still be retrieved for historical audit purposes.
+    The engine version persisted with the run (via v2_atomic_run_commit, stored in
+    last_runtime_identity_json) is the authority for historical audit — not the current
+    process ENGINE_VERSION. The XLSX Run Identity sheet must carry the COMMITTED version,
+    binding export to the run that produced these results.
+
+    Required marker: P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED
     """
-    from app.export.institutional_workbook import (
-        _build_export_bundle,
-        export_institutional_workbook_from_bundle,
-    )
+    from app.services.v2_export_service import build_canonical_last_run_institutional_workbook_export
     import openpyxl
 
-    bundle = _build_export_bundle("generic_solar_reference")
-    bundle_version = bundle.engine_version
-    assert bundle_version is not None, "bundle.engine_version must not be None"
+    pr, ws, composite_hash_at_run = _build_persisted_run_for_p13()
 
-    wb_bytes = export_institutional_workbook_from_bundle(bundle)
-    wb = openpyxl.load_workbook(BytesIO(wb_bytes))
+    # The engine_version committed with this run is the historical authority
+    committed_identity = ws.last_runtime_identity or {}
+    committed_engine_version = committed_identity.get("engine_version")
+
+    assert committed_engine_version is not None, (
+        "Committed Last Run must have engine_version in last_runtime_identity"
+    )
+    assert committed_engine_version not in ("NOT_AVAILABLE", "not_applicable", ""), (
+        f"Committed engine_version must be real, not sentinel: {committed_engine_version!r}"
+    )
+
+    # Export XLSX from the committed Last Run
+    resp = build_canonical_last_run_institutional_workbook_export(
+        "generic_solar_reference",
+        safe_project="p13_hist_ev",
+        project_record=pr,
+        user_id=pr.user_id,
+    )
+    assert resp.status_code == 200, f"Export failed: {resp.error_content}"
+    wb = openpyxl.load_workbook(BytesIO(resp.bytes_data))
 
     ri_data = {}
     for row in wb["Run Identity"].iter_rows(min_row=1, max_row=60, values_only=True):
@@ -1189,9 +1568,11 @@ def test_p1_3_historical_engine_version_preserved():
         "Run Identity sheet must contain 'Engine version' field for historical audit"
     )
     xlsx_version = str(ri_data["Engine version"])
-    assert xlsx_version == str(bundle_version), (
-        f"HISTORY BROKEN: Run Identity Engine version {xlsx_version!r} != "
-        f"bundle.engine_version {bundle_version!r}"
+
+    # XLSX must carry the run-bound version — not any current-process version override
+    assert xlsx_version == str(committed_engine_version), (
+        f"P1_3_HISTORICAL_ENGINE_VERSION_PRESERVED VIOLATION: "
+        f"XLSX Engine version {xlsx_version!r} != committed engine_version {committed_engine_version!r}"
     )
 
 
@@ -1355,6 +1736,80 @@ def test_p1_3_financial_statements_gap_documented():
     )
     assert "clean Phase 2C" in gap.description or "clean" in gap.description.lower(), (
         f"Gap description must reference clean engine path: {gap.description!r}"
+    )
+
+
+# ── P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS ────────
+
+def test_p1_3_validation_status_distinguishes_framework_from_product_gaps():
+    """P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS
+
+    A machine consumer must NOT interpret EV Charging as "fully reconciled" while
+    material FAIL gaps exist. The validation contract exposes:
+      framework_passed=True  — all KPI checks pass
+      product_reconciled=False — one or more FAIL gaps remain
+      validation_state="PASS_WITH_KNOWN_GAPS"
+
+    Required marker: P1_3_VALIDATION_STATUS_DISTINGUISHES_FRAMEWORK_FROM_PRODUCT_GAPS
+    """
+    from app.model_validation.runner import run_vertical_validation
+    from app.model_validation import ValidationGap
+
+    ev_result = run_vertical_validation("ev_charging")
+
+    # All KPI checks pass (framework_passed == passed)
+    assert ev_result.passed, (
+        f"EV KPI checks must all pass; got {ev_result.fail_count} failures: "
+        f"{[str(c) for c in ev_result.failed_checks()]}"
+    )
+    assert ev_result.framework_passed, (
+        "framework_passed must be True when all KPI checks pass"
+    )
+    assert ev_result.passed == ev_result.framework_passed, (
+        "passed and framework_passed must agree for EV (both use KPI checks only)"
+    )
+
+    # EV has FAIL gaps — product is NOT fully reconciled
+    ev_fail_gaps = ev_result.gaps_by_type("FAIL")
+    assert len(ev_fail_gaps) >= 2, (
+        f"EV must have ≥2 FAIL gaps for this test to be meaningful; "
+        f"got {len(ev_fail_gaps)}: {[g.name for g in ev_fail_gaps]}"
+    )
+    assert not ev_result.product_reconciled, (
+        "product_reconciled must be False when FAIL gaps exist — "
+        "a machine consumer must not treat EV as fully reconciled"
+    )
+    assert ev_result.validation_state == "PASS_WITH_KNOWN_GAPS", (
+        f"validation_state must be 'PASS_WITH_KNOWN_GAPS' for EV; "
+        f"got {ev_result.validation_state!r}"
+    )
+
+    # Summary must expose the typed contract
+    s = ev_result.summary()
+    assert s["framework_passed"] is True, "summary['framework_passed'] must be True for EV"
+    assert s["product_reconciled"] is False, "summary['product_reconciled'] must be False for EV"
+    assert s["validation_state"] == "PASS_WITH_KNOWN_GAPS", (
+        f"summary['validation_state'] must be 'PASS_WITH_KNOWN_GAPS'; got {s['validation_state']!r}"
+    )
+    assert isinstance(s["framework_passed"], bool), "framework_passed must be bool"
+    assert isinstance(s["product_reconciled"], bool), "product_reconciled must be bool"
+    assert isinstance(s["validation_state"], str), "validation_state must be str"
+
+    # Solar must be PASS (no FAIL gaps, all checks pass)
+    solar_result = run_vertical_validation("solar")
+    assert solar_result.framework_passed, "Solar framework_passed must be True"
+    assert solar_result.product_reconciled, "Solar product_reconciled must be True (no FAIL gaps)"
+    assert solar_result.validation_state == "PASS", (
+        f"Solar validation_state must be 'PASS'; got {solar_result.validation_state!r}"
+    )
+
+    # Data Center must be PASS (all KPI checks pass, only NOT_AVAILABLE gaps)
+    dc_result = run_vertical_validation("data_center")
+    assert dc_result.framework_passed, "DC framework_passed must be True"
+    assert dc_result.product_reconciled, "DC product_reconciled must be True (no FAIL gaps)"
+    assert dc_result.validation_state == "PASS", (
+        f"DC validation_state must be 'PASS' (NOT_AVAILABLE gaps do not set product_reconciled=False); "
+        f"got {dc_result.validation_state!r}"
     )
 
 

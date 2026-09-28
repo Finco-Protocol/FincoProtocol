@@ -132,6 +132,22 @@ class ValidationResult:
         return all(c.passed for c in self.checks)
 
     @property
+    def framework_passed(self) -> bool:
+        return all(c.passed for c in self.checks)
+
+    @property
+    def product_reconciled(self) -> bool:
+        return self.framework_passed and not any(g.gap_type == "FAIL" for g in self.gaps)
+
+    @property
+    def validation_state(self) -> str:
+        if not self.framework_passed:
+            return "FAIL"
+        if any(g.gap_type == "FAIL" for g in self.gaps):
+            return "PASS_WITH_KNOWN_GAPS"
+        return "PASS"
+
+    @property
     def pass_count(self) -> int:
         return sum(1 for c in self.checks if c.passed)
 
@@ -150,6 +166,9 @@ class ValidationResult:
             "vertical": self.vertical,
             "project_type": self.project_type,
             "passed": self.passed,
+            "framework_passed": self.framework_passed,
+            "product_reconciled": self.product_reconciled,
+            "validation_state": self.validation_state,
             "pass_count": self.pass_count,
             "fail_count": self.fail_count,
             "failed_names": [c.name for c in self.failed_checks()],
