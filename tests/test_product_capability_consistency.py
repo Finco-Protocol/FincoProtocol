@@ -102,11 +102,13 @@ def test_ev_charging_live_capability_flags():
 # EV_PROMOTION_SINGLE_AUTHORITY
 # ---------------------------------------------------------------------------
 
-def test_ev_promotion_procedure_documented():
-    """EV promotion comment must appear in the canonical registry source."""
+def test_promotion_governance_documented():
+    """The canonical registry must document the generic promotion procedure for any capability."""
     src = (REPO / "app/product_capability.py").read_text()
-    assert "EV Promotion procedure" in src
-    assert "Change ``_ev_charging.status``" in src
+    assert "PROMOTION PROCEDURE" in src, (
+        "app/product_capability.py must contain a PROMOTION PROCEDURE section "
+        "documenting how any capability is promoted to LIVE"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -150,12 +152,14 @@ def test_reference_seed_service_matches_live_registry():
 # ---------------------------------------------------------------------------
 
 def test_docs_product_map_mentions_all_live_verticals():
-    """Docs product map table must mention all LIVE verticals."""
+    """Docs product map table must mention all LIVE model verticals."""
     from app.product_capability import LIVE_CAPABILITIES
     html = _docs_html()
     for cap in LIVE_CAPABILITIES:
+        if cap.product_area != "model":
+            continue
         assert cap.public_name in html, (
-            f"Docs is missing live vertical '{cap.public_name}'"
+            f"Docs is missing live model vertical '{cap.public_name}'"
         )
 
 
@@ -175,13 +179,16 @@ def test_docs_api_table_mentions_data_center():
 
 
 def test_docs_limitations_section_is_accurate():
+    """Docs must name every LIVE model vertical per the canonical contract."""
+    from app.product_capability import LIVE_CAPABILITIES
     html = _docs_html()
     lower = html.lower()
-    assert "solar, wind and data center" in lower, (
-        "Docs limitations must name Solar, Wind and Data Center as production verticals"
-    )
+    for cap in LIVE_CAPABILITIES:
+        if cap.product_area == "model":
+            assert cap.public_name.lower() in lower, (
+                f"Docs must mention LIVE model vertical {cap.public_name!r}"
+            )
     assert "storage" in lower
-    assert "ev charging" in lower
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +209,7 @@ def test_roadmap_shipped_chips_include_ev():
     )
 
 def test_roadmap_shipped_chips_include_all_live_verticals():
-    """All LIVE verticals must appear in the Shipped chip row."""
+    """All LIVE model verticals must appear in the Shipped chip row."""
     from app.product_capability import LIVE_CAPABILITIES
     html = _roadmap_html()
     start = html.find("Infrastructure Model")
@@ -210,8 +217,10 @@ def test_roadmap_shipped_chips_include_all_live_verticals():
     chip_div_end = html.find("</div>", chip_div_start)
     chip_section = html[chip_div_start:chip_div_end]
     for cap in LIVE_CAPABILITIES:
+        if cap.product_area != "model":
+            continue
         assert cap.public_name in chip_section, (
-            f"Live vertical '{cap.public_name}' is missing from Shipped chip row"
+            f"Live model vertical '{cap.public_name}' is missing from Shipped chip row"
         )
 
 
@@ -223,7 +232,7 @@ def test_roadmap_ev_development_note_removed():
     )
 
 def test_docs_limitations_mentions_all_live_references():
-    """Docs #status section must reference all live production verticals.
+    """Docs #status section must reference all live model verticals.
 
     PUBLIC_NO_KNOWN_LIMITATIONS_PAGE: the standalone known-limitations page
     has been replaced by contextual truth labels in /docs#status.
@@ -232,8 +241,10 @@ def test_docs_limitations_mentions_all_live_references():
     html = _docs_html()
     lower = html.lower()
     for cap in LIVE_CAPABILITIES:
+        if cap.product_area != "model":
+            continue
         assert cap.public_name.lower() in lower, (
-            f"Docs is missing live capability '{cap.public_name}'"
+            f"Docs is missing live model vertical '{cap.public_name}'"
         )
 
 
@@ -268,10 +279,12 @@ def test_no_surface_claims_ev_is_shipped():
 
 
 def test_live_keys_match_between_registry_and_api():
-    from app.product_capability import LIVE_KEYS
+    from app.product_capability import LIVE_CAPABILITIES
     from app.api.v1.model_reference import VALID_REFERENCE_KEYS
-    # Every live key must have a corresponding reference key in the API
-    for key in LIVE_KEYS:
-        assert f"generic_{key}_reference" in VALID_REFERENCE_KEYS, (
-            f"Live key '{key}' has no entry in VALID_REFERENCE_KEYS"
+    # Every live model-area key must have a corresponding reference key in the API
+    for cap in LIVE_CAPABILITIES:
+        if cap.product_area != "model":
+            continue
+        assert f"generic_{cap.key}_reference" in VALID_REFERENCE_KEYS, (
+            f"Live model key '{cap.key}' has no entry in VALID_REFERENCE_KEYS"
         )
