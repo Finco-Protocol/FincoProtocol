@@ -154,6 +154,7 @@ def _invalid(fingerprint: str, config: JevReflexConfig, reason: str) -> ReflexIn
     return ReflexInterpretation(
         state=InterpretationState.INVALID_RESPONSE,
         input_fingerprint=fingerprint,
+        request_schema_version=JEV_REQUEST_SCHEMA_VERSION,
         provider=config.provider,
         requested_model=config.model,
         reason=reason,
@@ -192,6 +193,7 @@ def _parse_response(
     return ReflexInterpretation(
         state=InterpretationState.AVAILABLE,
         input_fingerprint=fingerprint,
+        request_schema_version=JEV_REQUEST_SCHEMA_VERSION,
         likely_transient_probability=_probability(answer.get("noul"), "transient probability"),
         provider=config.provider,
         requested_model=config.model,
@@ -222,6 +224,7 @@ def interpret_reflex_with_jev(
         return ReflexInterpretation(
             state=InterpretationState.UNAVAILABLE,
             input_fingerprint=fingerprint,
+            request_schema_version=JEV_REQUEST_SCHEMA_VERSION,
             provider=config.provider,
             requested_model=config.model,
             reason="REFLEX_STATE_NOT_AVAILABLE",
@@ -233,6 +236,7 @@ def interpret_reflex_with_jev(
         return ReflexInterpretation(
             state=InterpretationState.UNAVAILABLE,
             input_fingerprint=fingerprint,
+            request_schema_version=JEV_REQUEST_SCHEMA_VERSION,
             provider=config.provider,
             requested_model=config.model,
             reason="JEV_TRANSPORT_UNAVAILABLE",
