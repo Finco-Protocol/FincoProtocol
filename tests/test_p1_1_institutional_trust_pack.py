@@ -27,6 +27,9 @@ Correction A additions:
   R: TRUST_PACK_G2C_FIVE_COMPONENT_GATE
   S: TRUST_PACK_SUPPORTED_TODAY_SYNC
 
+Final Sync additions:
+  T: TRUST_PACK_XIRR_ACT_365F_CONVENTION
+
 Final composite: FINCO_P1_1_TRUST_PACK_FAIL_CLOSED_COMPLETE
 """
 from __future__ import annotations
@@ -564,6 +567,57 @@ def test_s_supported_today_sync():
     )
 
 
+# ── T: XIRR ACT/365F convention (Final Sync — Correction B) ─────────────────
+
+def test_t_xirr_act_365f_convention():
+    """TRUST_PACK_XIRR_ACT_365F_CONVENTION: xirr_year_fraction registry entry correctly
+    documents ACT/365F-style (actual days / 365) convention, not misleading 'NOT actual/365'."""
+    from app.model_methodology_registry import metric_by_key
+
+    m = metric_by_key("xirr_year_fraction")
+    assert m is not None
+
+    # Formula must match source: (date - date[0]).days / 365.0
+    assert "365" in m.formula and ".days" in m.formula.replace(" ", ""), (
+        f"xirr_year_fraction formula must reflect (days).days / 365.0, got {m.formula!r}"
+    )
+
+    notes_lower = m.notes.lower()
+
+    # Must describe actual-days / fixed-365 nature
+    assert "actual" in notes_lower and "365" in notes_lower, (
+        "xirr_year_fraction notes must describe actual calendar days / 365"
+    )
+
+    # Must reference ACT/365F-style
+    assert "act/365f" in notes_lower or "act/365" in notes_lower, (
+        "xirr_year_fraction notes must use ACT/365F-style terminology"
+    )
+
+    # Must NOT say "NOT actual/365" (that was the misleading statement)
+    assert "not actual/365" not in notes_lower, (
+        "xirr_year_fraction notes must not contain 'NOT actual/365' — "
+        "the convention IS actual-days / 365, ACT/365F-style"
+    )
+
+    # Source code alignment: xirr.py must use .days / 365
+    xirr_src = (REPO / "finco_core/sponsor/xirr.py").read_text()
+    assert ".days / 365" in xirr_src or ".days/365" in xirr_src, (
+        "finco_core/sponsor/xirr.py must compute year_fractions as .days / 365"
+    )
+
+    # Template XIRR section must not contain the old misleading comment
+    html = (REPO / "app/templates/model_methodology.html").read_text()
+    assert "365-day year fraction (no leap-year adjustment)" not in html, (
+        "Template must not use old '365-day year fraction (no leap-year adjustment)' — "
+        "use ACT/365F-style terminology instead"
+    )
+    # Template should reflect ACT/365F
+    assert "ACT/365F" in html or "act/365f" in html.lower(), (
+        "Template XIRR section must document ACT/365F-style convention"
+    )
+
+
 # ── Final composite marker ────────────────────────────────────────────────────
 
 def test_finco_p1_1_trust_pack_fail_closed_complete():
@@ -651,3 +705,14 @@ def test_finco_p1_1_trust_pack_fail_closed_complete():
     assert "EV Charging" in html
     for name in live_vertical_names():
         assert name in html, f"LIVE vertical {name!r} missing from methodology template"
+
+    # T: XIRR ACT/365F convention
+    xirr_m = metric_by_key("xirr_year_fraction")
+    assert xirr_m is not None
+    notes_lower = xirr_m.notes.lower()
+    assert "act/365f" in notes_lower or "act/365" in notes_lower, (
+        "xirr_year_fraction notes must describe ACT/365F-style convention"
+    )
+    assert "not actual/365" not in notes_lower, (
+        "xirr_year_fraction notes must not say 'NOT actual/365' (misleading)"
+    )

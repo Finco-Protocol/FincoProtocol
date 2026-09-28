@@ -853,7 +853,8 @@ total_sponsor_xirr = xirr(−contributions + receipts, dates)
         <div class="pmeth-formula">
 <span class="comment"># finco_core/sponsor/xirr.py</span>
 
-<span class="comment"># 365-day year fraction (no leap-year adjustment):</span>
+<span class="comment"># Year fraction = actual calendar days since first cash-flow date / 365</span>
+<span class="comment"># ACT/365F-style (fixed 365 denominator), not ACT/ACT. Excel XIRR-compatible.</span>
 year_fractions = [(d − d₀).days / 365.0  for d in dates]
 
 <span class="comment"># NPV at rate r:</span>

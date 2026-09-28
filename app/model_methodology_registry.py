@@ -322,8 +322,9 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         period_timing="date-aware (not period-averaged)",
         period_frequency="DATED_IRREGULAR",
         notes=(
-            "365-day year, Excel-compatible. "
-            "NOT actual/365 or actual/actual — fixed 365. "
+            "Year fraction = actual calendar days since first cash-flow date / 365. "
+            "Fixed 365 denominator (ACT/365F-style), not ACT/ACT. "
+            "Excel XIRR-compatible convention. "
             "Institutional gap: periodic annualisation would yield a different result for "
             "very short or very long first periods."
         ),
