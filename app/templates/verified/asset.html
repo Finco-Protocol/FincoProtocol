@@ -61,7 +61,11 @@
       <span class="va-kv__key">Missing authority</span>
       <span class="va-kv__val">{{ record.verification.reason if record.verification and record.verification.reason else 'None' }}</span>
       <span class="va-kv__key">Dossier access</span>
-      <span class="va-kv__val">{{ entitlement.state }}</span>
+      <span class="va-kv__val">
+        {% if entitlement.source == 'ADMIN_OVERRIDE' %}Administrative override: {{ entitlement.state }}
+        {% elif entitlement.state == 'TOKEN_CONFIGURATION_UNAVAILABLE' %}Token entitlement not configured
+        {% else %}$FINCO access: {{ entitlement.state }}{% endif %}
+      </span>
     </div>
     {% if entitlement.state == 'ACTIVE' %}
     <a href="/verified/{{ asset_id }}/dossier.json">Full evidence dossier (JSON) →</a>

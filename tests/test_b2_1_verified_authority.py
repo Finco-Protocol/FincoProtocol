@@ -310,7 +310,7 @@ def test_api_artifact_entitlement_and_public_truth(monkeypatch):
     public_before = client.get("/verified/fixture_asset.json")
     assert public_before.status_code == 200
     assert public_before.json()["verification"]["status"] == "VERIFIED"
-    assert public_before.json()["entitlement"]["state"] == "INACTIVE"
+    assert public_before.json()["entitlement"]["state"] == "TOKEN_CONFIGURATION_UNAVAILABLE"
     assert "certificate" not in public_before.json()
     public_text = public_before.text
     for privileged in ("fixture-evidence-1", UID, KEY.contract_address,
@@ -366,7 +366,7 @@ def test_verified_html_truth_and_entitlement_surface(monkeypatch):
     assert detail.status_code == 200
     assert "MODEL_MARKET_BINDING_UNAVAILABLE" in detail.text
     assert "Dossier access" in detail.text
-    assert "INACTIVE" in detail.text
+    assert "Token entitlement not configured" in detail.text
     assert "Full evidence dossier" not in detail.text
     index = client.get("/verified")
     assert index.status_code == 200

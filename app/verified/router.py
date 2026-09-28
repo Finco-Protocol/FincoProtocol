@@ -147,7 +147,7 @@ async def verified_asset_json(asset_id: str, request: Request):
         return JSONResponse({"error": "not_found"}, status_code=404)
 
     record = result["record"]
-    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement
+    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement_for_request
     # Explicit projection: future dossier fields cannot leak by default.
     status = record.get("status")
     verification = record.get("verification") or {
@@ -172,7 +172,7 @@ async def verified_asset_json(asset_id: str, request: Request):
         "identity": {"state": "AVAILABLE" if record.get("identity") else "UNAVAILABLE"},
         "market_observation": {"state": market.get("state", "UNAVAILABLE"),
                                "observed_at": market.get("observed_at")},
-        "entitlement": entitlement_public_view(resolve_verified_entitlement(user)),
+        "entitlement": entitlement_public_view(await resolve_verified_entitlement_for_request(user)),
     }
 
     return JSONResponse(output)
@@ -183,13 +183,13 @@ async def verified_asset_dossier(asset_id: str, request: Request):
     """Full run/evidence dossier; access does not affect verification truth."""
     from app.auth import resolve_request_session
     from app.verified.entitlement import (
-        EntitlementState, entitlement_public_view, resolve_verified_entitlement,
+        EntitlementState, entitlement_public_view, resolve_verified_entitlement_for_request,
     )
 
     user = resolve_request_session(request)
     if user is None:
         return JSONResponse({"error": "authentication_required"}, status_code=401)
-    entitlement = resolve_verified_entitlement(user)
+    entitlement = await resolve_verified_entitlement_for_request(user)
     if entitlement.state is not EntitlementState.ACTIVE:
         return JSONResponse({"error": "entitlement_required"}, status_code=403)
     result = await run_in_threadpool(_load_verified_asset, asset_id)
@@ -212,8 +212,8 @@ async def verified_asset_detail(asset_id: str, request: Request):
         return RedirectResponse(url="/login", status_code=302)
 
     result = await run_in_threadpool(_load_verified_asset, asset_id)
-    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement
-    entitlement = entitlement_public_view(resolve_verified_entitlement(user))
+    from app.verified.entitlement import entitlement_public_view, resolve_verified_entitlement_for_request
+    entitlement = entitlement_public_view(await resolve_verified_entitlement_for_request(user))
 
     if not result["found"]:
         return _templates.TemplateResponse(
