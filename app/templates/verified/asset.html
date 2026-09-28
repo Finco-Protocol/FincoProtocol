@@ -152,6 +152,15 @@
     </div>
     {% if record.market %}
     <div class="va-kv">
+      <span class="va-kv__key">Identity</span>
+      <span class="va-kv__val">AVAILABLE</span>
+      <span class="va-kv__key">Market observation</span>
+      <span class="va-kv__val">{{ record.market.state }}</span>
+      <span class="va-kv__key">Observed at</span>
+      <span class="va-kv__val">{{ record.market.observed_at }}</span>
+      <span class="va-kv__key">Execution</span>
+      <span class="va-kv__val">UNAVAILABLE</span>
+      {% if entitlement.state == 'ACTIVE' %}
       <span class="va-kv__key">Economic UID</span>
       <span class="va-kv__val">{{ record.identity.economic_asset_uid }}</span>
       <span class="va-kv__key">Deployment</span>
@@ -162,10 +171,11 @@
       <span class="va-kv__val">{{ record.evidence.source }} · {{ record.evidence.evidence_id }}</span>
       <span class="va-kv__key">Market source</span>
       <span class="va-kv__val">{{ record.market.provider }} ({{ record.market.scope }})</span>
-      <span class="va-kv__key">Observed at</span>
-      <span class="va-kv__val">{{ record.market.observed_at }}</span>
-      <span class="va-kv__key">Execution</span>
-      <span class="va-kv__val">UNAVAILABLE</span>
+      <span class="va-kv__key">Independent token reference</span>
+      <span class="va-kv__val">{{ record.canonical_authority.independent_token_reference.source }}</span>
+      <span class="va-kv__key">Canonical premium</span>
+      <span class="va-kv__val">{{ record.canonical_authority.premium.state }}</span>
+      {% endif %}
     </div>
     {% else %}
     <div class="va-market-absent">

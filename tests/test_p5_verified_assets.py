@@ -529,9 +529,7 @@ class TestVerifiedFailClosedGuard:
         import app.verified.composer as mod
         source = inspect.getsource(mod)
         # All six required authorities must be named.
-        assert "canonical P2 tokenization-premium" in source or \
-               "compute_tokenization_premium" in source or \
-               "P2 tokenization" in source
+        assert "AuthoritySnapshot.premium" in source
         assert "Run Certificate" in source or "build_run_certificate" in source
         assert "VERIFIED_ASSET_BINDING_ALONE_NOT_VERIFIED" in source
         assert "VERIFIED_ASSET_PREMIUM_REQUIRED_FOR_VERIFIED" in source

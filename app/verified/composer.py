@@ -9,8 +9,8 @@ duplicates any calculation formula.
 Composition authority chain:
   1. model section   ← WorkspaceStateRecord (persisted Last Run fields)
   2. verify section  ← build_run_certificate() — FINCO_RUN_CERTIFICATE_V1
-  3. market section  ← discover_model_evidence() + compute_tokenization_premium()
-                       (absent in V1: MODEL_BINDING_UNAVAILABLE for all assets)
+  3. market section  ← exact run binding + canonical Radar identity/authority
+                       (absent in production: MODEL_BINDING_UNAVAILABLE)
   4. protocol section ← UTILITY_REGISTRY
 
 Fail-closed:
@@ -18,7 +18,7 @@ Fail-closed:
   - Legacy lineage  → UNAVAILABLE
   - Missing composite_hash / snapshot_id / timestamp → UNAVAILABLE
   - Market binding unavailable → MODEL_ONLY (truthful, not an error)
-  - discover_model_evidence returns gap → MODEL_ONLY
+  - no approved run-bound market attestation → MODEL_ONLY
 
 Markers:
   FINCO_P5_COMPOSED_NOT_CALCULATED
@@ -156,21 +156,20 @@ def build_verified_asset(
             "error": cert_error,
         }
 
-    # Attempt market binding discovery.
-    # discover_model_evidence returns MODEL_BINDING_UNAVAILABLE for all assets
-    # in V1 — this is truthful, not an error.
+    # Production has no approved model-market binding for either reference
+    # asset. This is truthful MODEL_ONLY, not an error or a market identity.
     # FINCO_P5_NO_FABRICATED_MARKET_IDENTITY
     #
     # VERIFIED STATE GATE — all six authorities required, fail-closed:
     #   1. valid committed FINCO Last Run          (certificate above)
     #   2. valid P3 Run Certificate                (certificate above)
     #   3. canonical model ↔ market economic identity reconciliation
-    #   4. no identity conflict/mismatch (ComplementIdentityStatus.MATCHED)
-    #   5. canonical Radar reference evidence
-    #   6. canonical P2 tokenization-premium observation (compute_tokenization_premium)
+    #   4. no identity conflict/mismatch (exact Robinhood AssetKey)
+    #   5. canonical Radar underlying and independent token references
+    #   6. canonical B1.0/B1.3 AuthoritySnapshot.premium AVAILABLE
     #
     # A bare market-identity binding satisfies ONLY authority 3 (partial).
-    # Authorities 4–6 require full Radar evidence + P2 premium computation,
+    # Authorities 4–6 require full Radar evidence and bound canonical premium,
     # which is not yet available for any V1 asset.
     # A discovered binding alone MUST NOT produce VERIFIED.
     # Until all six authorities are available: fail closed to MODEL_ONLY.
@@ -193,6 +192,7 @@ def build_verified_asset(
     market_section = None
     evidence_section = None
     identity_section = None
+    canonical_authority_section = None
     if eligible:
         binding = authority_bundle.binding
         observed = authority_bundle.market
@@ -218,6 +218,29 @@ def build_verified_asset(
             "authority_source": authority_bundle.identity.authority_source,
             "observed_at": authority_bundle.identity.observed_at.isoformat(),
         }
+        radar = authority_bundle.radar
+        canonical_authority_section = {
+            "registry_source": radar.registry_source,
+            "registry_observed_at": radar.registry_observed_at.isoformat(),
+            "underlying_reference": {
+                "state": radar.underlying.state.value,
+                "source": radar.underlying.source,
+                "observed_at": radar.underlying.observed_at.isoformat(),
+                "price_usd_per_token": str(radar.underlying.price_usd_per_token),
+            },
+            "independent_token_reference": {
+                "state": radar.token.state.value,
+                "source": radar.token.source,
+                "observed_at": radar.token.observed_at.isoformat(),
+                "price_usd_per_token": str(radar.token.price_usd_per_token),
+            },
+            "premium": {
+                "state": radar.premium.state.value,
+                "value_bps": str(radar.premium.value_bps),
+                "sources": list(radar.premium.sources),
+                "observed_at": [stamp.isoformat() for stamp in radar.premium.observed_at],
+            },
+        }
 
     return {
         "schema": VERIFIED_ASSET_SCHEMA,
@@ -233,9 +256,10 @@ def build_verified_asset(
         "market_observation": market_section,
         "identity": identity_section,
         "evidence": evidence_section,
+        "canonical_authority": canonical_authority_section,
         "verification": {"status": status.value, "reason": reason},
         "protocol": _protocol_section(asset_def),
         "error": None,
-        # Embed full certificate for JSON consumers.
+        # Full certificate is returned only by the entitled dossier route.
         "certificate": certificate,
     }

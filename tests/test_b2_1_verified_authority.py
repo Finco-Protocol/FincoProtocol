@@ -73,9 +73,13 @@ def _bundle():
     )
     gap = ExecutionGap(AuthorityState.UNAVAILABLE, None, None, None,
                        "UNAVAILABLE", "NO_EXECUTION_QUOTE")
-    radar = AuthoritySnapshot(UID, KEY, "ROBINHOOD_STOCK_TOKEN_ASSETS_API:LIVE",
+    radar = AuthoritySnapshot(UID, KEY, "ROBINHOOD_STOCK_TOKEN_ASSETS_API",
                               NOW, underlying, token, premium_quantity, execution, gap)
-    p2 = TokenizationPremiumObservation(
+    return VerifiedAuthorityBundle(binding, identity, market, radar)
+
+
+def _foreign_p2():
+    return TokenizationPremiumObservation(
         status=TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK,
         underlying_raw_bid_usd_per_share=Decimal("9"),
         underlying_raw_ask_usd_per_share=Decimal("11"),
@@ -88,10 +92,9 @@ def _bundle():
         tokenization_premium_bps=Decimal("2000"),
         buy_execution_premium_bps=Decimal("2000"),
         sell_execution_premium_bps=Decimal("2000"),
-        reference_observed_at=NOW, buy_quote_observed_at=NOW,
+        reference_observed_at=NOW - timedelta(days=2), buy_quote_observed_at=NOW,
         sell_quote_observed_at=NOW,
     )
-    return VerifiedAuthorityBundle(binding, identity, market, radar, p2)
 
 
 def _result(bundle, *, as_of=NOW, policy=POLICY, certificate=CERT):
@@ -174,6 +177,8 @@ def test_coingecko_only_or_unapproved_source_cannot_establish_identity():
     assert _result(no_registry)[0] == "MODEL_ONLY"
     unapproved = replace(bundle, binding=replace(bundle.binding, source="CoinGecko"))
     assert _result(unapproved)[0] == "MODEL_ONLY"
+    untrusted_market = replace(bundle, market=replace(bundle.market, source="UNATTESTED"))
+    assert _result(untrusted_market)[0] == "MODEL_ONLY"
 
 
 def test_stale_or_missing_market_observation_is_never_verified():
@@ -183,15 +188,52 @@ def test_stale_or_missing_market_observation_is_never_verified():
     assert _result(missing) == ("MODEL_ONLY", "MARKET_OBSERVATION_UNAVAILABLE")
 
 
-def test_reference_and_premium_required_independently_of_execution():
+def test_explicit_stale_authority_states_are_preserved():
+    """B2_1_IDENTITY_STALE / MARKET_STALE / UNDERLYING_REFERENCE_STALE / TOKEN_REFERENCE_STALE."""
+    bundle = _bundle()
+    stale_identity = CrossChainIdentityBinding(
+        AuthorityState.STALE, KEY, None, (), None, NOW, "ROBINHOOD_REGISTRY_STALE",
+    )
+    assert _result(replace(bundle, identity=stale_identity)) == (
+        "STALE", "CANONICAL_IDENTITY_STALE")
+    assert _result(replace(bundle, market=replace(bundle.market, state=AuthorityState.STALE))) == (
+        "STALE", "MARKET_OBSERVATION_STALE")
+    stale_underlying = replace(bundle.radar, underlying=replace(
+        bundle.radar.underlying, state=AuthorityState.STALE))
+    assert _result(replace(bundle, radar=stale_underlying)) == (
+        "STALE", "UNDERLYING_REFERENCE_STALE")
+    stale_token = replace(bundle.radar, token=replace(
+        bundle.radar.token, state=AuthorityState.STALE))
+    assert _result(replace(bundle, radar=stale_token)) == (
+        "STALE", "TOKEN_REFERENCE_STALE")
+    stale_premium = replace(bundle.radar, premium=replace(
+        bundle.radar.premium, state=AuthorityState.STALE))
+    assert _result(replace(bundle, radar=stale_premium)) == (
+        "STALE", "CANONICAL_PREMIUM_STALE")
+
+
+def test_reference_and_canonical_premium_required_independently_of_execution():
     bundle = _bundle()
     missing_ref = replace(bundle, radar=replace(bundle.radar, token=replace(
         bundle.radar.token, state=AuthorityState.UNAVAILABLE)))
     assert _result(missing_ref)[0] == "MODEL_ONLY"
-    missing_p2 = replace(bundle, premium=replace(
-        bundle.premium, status=TokenizationPremiumStatus.TOKEN_MARKET_REFERENCE_UNAVAILABLE))
-    assert _result(missing_p2)[0] == "MODEL_ONLY"
+    missing_premium = replace(bundle, radar=replace(bundle.radar, premium=replace(
+        bundle.radar.premium, state=AuthorityState.UNAVAILABLE)))
+    assert _result(missing_premium)[0] == "MODEL_ONLY"
     assert _result(bundle)[0] == "VERIFIED"  # execution layer may remain unavailable
+
+
+def test_foreign_p2_premium_cannot_verify():
+    """B2_1_FOREIGN_P2_PREMIUM_CANNOT_VERIFY."""
+    bundle = _bundle()
+    foreign_p2 = _foreign_p2()
+    assert foreign_p2.status is TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK
+    missing_canonical = replace(bundle, radar=replace(bundle.radar, premium=replace(
+        bundle.radar.premium, state=AuthorityState.UNAVAILABLE)))
+    assert _result(missing_canonical)[0] != "VERIFIED"
+    with pytest.raises(TypeError):
+        VerifiedAuthorityBundle(bundle.binding, bundle.identity, bundle.market,
+                                missing_canonical.radar, foreign_p2)
 
 
 def test_missing_last_run_is_unavailable_in_canonical_composer():
@@ -227,6 +269,7 @@ def test_entitlement_isolation_and_production_registry_has_no_binding():
 
 
 def test_api_artifact_entitlement_and_public_truth(monkeypatch):
+    """B2_1_ENTITLEMENT_ARTIFACT_ISOLATION."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     import app.auth as auth
@@ -241,9 +284,17 @@ def test_api_artifact_entitlement_and_public_truth(monkeypatch):
             "schema": "FINCO_VERIFIED_ASSET_V1", "asset_id": asset_id,
             "status": "VERIFIED", "verification": {"status": "VERIFIED", "reason": None},
             "model": {"headline_outputs": {"project_irr": 0.1}},
-            "evidence": {"evidence_id": "fixture-evidence-1"},
-            "identity": {"economic_asset_uid": UID},
-            "market_observation": {"provider": "CoinGecko"},
+            "evidence": {"evidence_id": "fixture-evidence-1",
+                         "source": "TEST_ATTESTATION", "observed_at": NOW.isoformat()},
+            "identity": {"economic_asset_uid": UID, "chain_id": 56,
+                         "contract_address": KEY.contract_address,
+                         "authority_source": "ROBINHOOD_STOCK_TOKEN_ASSETS_API:LIVE"},
+            "market_observation": {"state": "AVAILABLE", "provider": "CoinGecko",
+                                   "provider_id": "fixture-provider-id",
+                                   "observed_at": NOW.isoformat()},
+            "canonical_authority": {"underlying_reference": {"source": "TEST_REFERENCE"},
+                                    "independent_token_reference": {"source": "TEST_TOKEN_REFERENCE"},
+                                    "premium": {"state": "AVAILABLE", "value_bps": "2000"}},
             "certificate": CERT,
         },
     })
@@ -261,6 +312,11 @@ def test_api_artifact_entitlement_and_public_truth(monkeypatch):
     assert public_before.json()["verification"]["status"] == "VERIFIED"
     assert public_before.json()["entitlement"]["state"] == "INACTIVE"
     assert "certificate" not in public_before.json()
+    public_text = public_before.text
+    for privileged in ("fixture-evidence-1", UID, KEY.contract_address,
+                       "TEST_REFERENCE", "TEST_TOKEN_REFERENCE", "value_bps",
+                       "fixture-provider-id", "canonical_authority"):
+        assert privileged not in public_text
     assert client.get("/verified/fixture_asset/dossier.json").status_code == 403
     allowed.add("staff")
     public_after = client.get("/verified/fixture_asset.json")
@@ -272,6 +328,9 @@ def test_api_artifact_entitlement_and_public_truth(monkeypatch):
     dossier = client.get("/verified/fixture_asset/dossier.json")
     assert dossier.status_code == 200
     assert dossier.json()["certificate"] == CERT
+    assert dossier.json()["identity"]["economic_asset_uid"] == UID
+    assert dossier.json()["evidence"]["evidence_id"] == "fixture-evidence-1"
+    assert dossier.json()["canonical_authority"]["premium"]["value_bps"] == "2000"
 
 
 def test_verified_html_truth_and_entitlement_surface(monkeypatch):

@@ -8,14 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.radar_rwa.bnb_contracts import BnbRwaMarketObservation
+from app.radar_rwa.bnb_contracts import BnbRwaMarketObservation, GLOBAL_MARKET_SCOPE
 from finco_radar.assets.contracts import AssetKey, normalize_asset_uid
 from finco_radar.authority.contracts import AuthoritySnapshot, AuthorityState
 from finco_radar.authority.cross_chain import CrossChainIdentityBinding
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
-from finco_radar.tokenization_premium.contracts import (
-    TokenizationPremiumObservation, TokenizationPremiumStatus,
-)
 
 
 @dataclass(frozen=True)
@@ -47,7 +44,6 @@ class VerifiedAuthorityBundle:
     identity: CrossChainIdentityBinding
     market: BnbRwaMarketObservation
     radar: AuthoritySnapshot
-    premium: TokenizationPremiumObservation
 
 
 @dataclass(frozen=True)
@@ -74,8 +70,8 @@ def evaluate_authorities(
         return "MODEL_ONLY", "MODEL_MARKET_BINDING_UNAVAILABLE"
     if as_of.tzinfo is None or as_of.utcoffset() is None:
         raise ValueError("aware evaluation time required")
-    binding, identity, market, radar, premium = (
-        bundle.binding, bundle.identity, bundle.market, bundle.radar, bundle.premium,
+    binding, identity, market, radar = (
+        bundle.binding, bundle.identity, bundle.market, bundle.radar,
     )
     if binding.source not in policy.approved_binding_sources:
         return "MODEL_ONLY", "BINDING_SOURCE_NOT_APPROVED"
@@ -83,6 +79,8 @@ def evaluate_authorities(
             or binding.certificate_digest_sha256 != certificate.get("certificate_digest_sha256")
             or binding.composite_hash != certificate.get("identity", {}).get("composite_hash")):
         return "IDENTITY_MISMATCH", "MODEL_RUN_BINDING_MISMATCH"
+    if identity.state is AuthorityState.STALE:
+        return "STALE", "CANONICAL_IDENTITY_STALE"
     if identity.state is not AuthorityState.AVAILABLE:
         return "MODEL_ONLY", identity.reason or "ECONOMIC_IDENTITY_UNAVAILABLE"
     if not (identity.authority_source or "").startswith(RobinhoodAssetRegistryAdapter.source_name + ":"):
@@ -93,6 +91,10 @@ def evaluate_authorities(
         return "IDENTITY_MISMATCH", "ECONOMIC_IDENTITY_OR_DEPLOYMENT_MISMATCH"
     if market.asset_key != binding.deployment:
         return "IDENTITY_MISMATCH", "MARKET_DEPLOYMENT_MISMATCH"
+    if market.source != "CoinGecko" or market.market_scope != GLOBAL_MARKET_SCOPE:
+        return "MODEL_ONLY", "MARKET_PROVIDER_AUTHORITY_UNAVAILABLE"
+    if market.state is AuthorityState.STALE:
+        return "STALE", "MARKET_OBSERVATION_STALE"
     if (market.state is not AuthorityState.AVAILABLE or market.observed_at is None
             or market.price_usd is None or not market.price_usd.is_finite()
             or market.price_usd <= 0):
@@ -100,19 +102,35 @@ def evaluate_authorities(
     if (radar.economic_asset_uid != binding.economic_asset_uid
             or radar.canonical_token != binding.deployment):
         return "IDENTITY_MISMATCH", "RADAR_IDENTITY_MISMATCH"
+    if (radar.underlying.registry_asset_uid != binding.economic_asset_uid
+            or radar.token.registry_asset_uid != binding.economic_asset_uid
+            or radar.underlying.asset_key != binding.deployment
+            or radar.token.asset_key != binding.deployment):
+        return "IDENTITY_MISMATCH", "RADAR_REFERENCE_IDENTITY_MISMATCH"
+    for name, layer in (("UNDERLYING_REFERENCE", radar.underlying),
+                        ("TOKEN_REFERENCE", radar.token),
+                        ("CANONICAL_PREMIUM", radar.premium)):
+        if layer.state is AuthorityState.STALE:
+            return "STALE", f"{name}_STALE"
     if (radar.underlying.state is not AuthorityState.AVAILABLE
             or radar.token.state is not AuthorityState.AVAILABLE
             or radar.premium.state is not AuthorityState.AVAILABLE
-            or premium.status is not TokenizationPremiumStatus.TOKENIZATION_PREMIUM_OK):
+            or radar.underlying.source is None or radar.token.source is None
+            or radar.underlying.price_usd_per_token is None
+            or radar.token.price_usd_per_token is None
+            or radar.premium.value_bps is None
+            or radar.premium.sources != (radar.underlying.source, radar.token.source)
+            or radar.premium.observed_at != (radar.underlying.observed_at, radar.token.observed_at)):
         return "MODEL_ONLY", "RADAR_REFERENCE_OR_PREMIUM_UNAVAILABLE"
-    if radar.underlying.asset_key != binding.deployment or radar.token.asset_key != binding.deployment:
-        return "IDENTITY_MISMATCH", "RADAR_REFERENCE_DEPLOYMENT_MISMATCH"
+    if radar.registry_source != RobinhoodAssetRegistryAdapter.source_name:
+        return "MODEL_ONLY", "RADAR_REGISTRY_SOURCE_UNAVAILABLE"
     for name, observed, maximum in (
         ("EVIDENCE", binding.observed_at, policy.max_evidence_age_seconds),
         ("IDENTITY", identity.observed_at, policy.max_identity_age_seconds),
         ("MARKET", market.observed_at, policy.max_market_age_seconds),
         ("UNDERLYING_REFERENCE", radar.underlying.observed_at, policy.max_reference_age_seconds),
         ("TOKEN_REFERENCE", radar.token.observed_at, policy.max_reference_age_seconds),
+        ("RADAR_REGISTRY", radar.registry_observed_at, policy.max_identity_age_seconds),
     ):
         if observed is None or not 0 <= (as_of - observed).total_seconds() <= maximum:
             return "STALE", f"{name}_STALE"
