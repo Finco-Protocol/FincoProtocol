@@ -12,15 +12,34 @@ import httpx
 
 
 TYPESAFE_SYSTEMONE_URL = "https://api.typesafe.ai/v1/systemone"
-_NON_RETRYABLE_STATUS_CODES = frozenset({400, 401, 403, 404, 422})
+_FAILURE_CATEGORIES = frozenset({
+    "TIMEOUT", "NETWORK", "HTTP_408", "HTTP_429", "HTTP_5XX", "AUTH",
+    "INVALID_REQUEST", "INVALID_RESPONSE", "RETRY_BUDGET_EXHAUSTED",
+})
 
 
 class TypeSafeJevTransportError(RuntimeError):
-    """Sanitized failure. Credentials, provider bodies and underlying exceptions are excluded."""
+    """Sanitized failure containing only closed telemetry fields."""
+
+    def __init__(
+        self,
+        failure_category: str,
+        *,
+        attempt_count: int | None = None,
+        latency_ms: Decimal | None = None,
+    ) -> None:
+        if failure_category not in _FAILURE_CATEGORIES:
+            failure_category = "NETWORK"
+        self.failure_category = failure_category
+        self.attempt_count = attempt_count
+        self.latency_ms = latency_ms
+        super().__init__(failure_category)
 
 
 class _TransientNetworkError(RuntimeError):
-    pass
+    def __init__(self, category: str) -> None:
+        self.category = category
+        super().__init__(category)
 
 
 class _HttpResponse(Protocol):
@@ -53,6 +72,20 @@ def _retryable_status(status: int) -> bool:
     return status in (408, 429) or 500 <= status <= 599
 
 
+def _status_category(status: int) -> str:
+    if status in (401, 403):
+        return "AUTH"
+    if status in (400, 404, 422):
+        return "INVALID_REQUEST"
+    if status == 408:
+        return "HTTP_408"
+    if status == 429:
+        return "HTTP_429"
+    if 500 <= status <= 599:
+        return "HTTP_5XX"
+    return "NETWORK"
+
+
 def _retry_after_seconds(response: _HttpResponse) -> float | None:
     raw = getattr(response, "headers", {}).get("Retry-After")
     if not raw:
@@ -70,7 +103,6 @@ def _retry_after_seconds(response: _HttpResponse) -> float | None:
 
 
 def _contains_secret(value: object, secret: str) -> bool:
-    """Structural exact-secret scan before any provider response can leave transport."""
     if isinstance(value, str):
         return secret in value
     if isinstance(value, Mapping):
@@ -109,19 +141,25 @@ class TypeSafeJevHttpTransport:
             if self._client is not None:
                 return self._client.post(TYPESAFE_SYSTEMONE_URL, headers=headers, json=request, timeout=self._config.timeout_seconds)
             return httpx.post(TYPESAFE_SYSTEMONE_URL, headers=headers, json=request, timeout=self._config.timeout_seconds)
-        except (httpx.TimeoutException, httpx.NetworkError, OSError):
-            raise _TransientNetworkError("TYPESAFE_TRANSIENT_NETWORK") from None
+        except httpx.TimeoutException:
+            raise _TransientNetworkError("TIMEOUT") from None
+        except (httpx.NetworkError, OSError):
+            raise _TransientNetworkError("NETWORK") from None
         except httpx.HTTPError:
-            raise TypeSafeJevTransportError("TYPESAFE_NETWORK_ERROR") from None
+            raise _TransientNetworkError("NETWORK") from None
         except Exception:
-            raise TypeSafeJevTransportError("TYPESAFE_CLIENT_ERROR") from None
+            raise _TransientNetworkError("NETWORK") from None
+
+    def _failure(self, category: str, started: float, attempt_count: int) -> TypeSafeJevTransportError:
+        elapsed = Decimal(str(max(0.0, (self._clock() - started) * 1000))).quantize(Decimal("0.001"))
+        return TypeSafeJevTransportError(category, attempt_count=attempt_count, latency_ms=elapsed)
 
     def evaluate(self, request: Mapping[str, object]) -> Mapping[str, object]:
         if not isinstance(request, Mapping):
             raise TypeError("request must be a mapping")
         started = self._clock()
         max_attempts = self._config.max_retries + 1
-        last_retryable = False
+        last_category = "NETWORK"
 
         for attempt_index in range(max_attempts):
             attempt_count = attempt_index + 1
@@ -133,39 +171,32 @@ class TypeSafeJevHttpTransport:
                     try:
                         raw = response.json()
                     except Exception:
-                        raise TypeSafeJevTransportError("TYPESAFE_RESPONSE_JSON_INVALID") from None
+                        raise self._failure("INVALID_RESPONSE", started, attempt_count) from None
                     if not isinstance(raw, Mapping):
-                        raise TypeSafeJevTransportError("TYPESAFE_RESPONSE_SHAPE_INVALID")
+                        raise self._failure("INVALID_RESPONSE", started, attempt_count)
                     if _contains_secret(raw, self._api_key):
-                        raise TypeSafeJevTransportError("TYPESAFE_SECRET_ECHO_REJECTED")
+                        raise self._failure("INVALID_RESPONSE", started, attempt_count)
                     payload = dict(raw)
                     payload["_transport_meta"] = {
                         "latency_ms": str(Decimal(str((self._clock() - started) * 1000)).quantize(Decimal("0.001"))),
                         "attempt_count": attempt_count,
                     }
                     return payload
-                if status in _NON_RETRYABLE_STATUS_CODES:
-                    code = {
-                        400: "TYPESAFE_BAD_REQUEST", 401: "TYPESAFE_UNAUTHORIZED",
-                        403: "TYPESAFE_FORBIDDEN", 404: "TYPESAFE_NOT_FOUND",
-                        422: "TYPESAFE_REQUEST_INVALID",
-                    }[status]
-                    raise TypeSafeJevTransportError(code)
-                last_retryable = _retryable_status(status)
-                if not last_retryable:
-                    raise TypeSafeJevTransportError(f"TYPESAFE_HTTP_{status}")
-            except _TransientNetworkError:
-                last_retryable = True
+                last_category = _status_category(status)
+                if not _retryable_status(status):
+                    raise self._failure(last_category, started, attempt_count)
+            except _TransientNetworkError as exc:
+                last_category = exc.category
 
-            if not last_retryable or attempt_index >= self._config.max_retries:
-                raise TypeSafeJevTransportError("TYPESAFE_RETRY_EXHAUSTED") from None
+            if attempt_index >= self._config.max_retries:
+                raise self._failure(last_category, started, attempt_count) from None
             exponential = self._config.initial_backoff_seconds * (2 ** attempt_index)
             provider_delay = _retry_after_seconds(response) if response is not None else None
             delay = max(exponential, provider_delay or 0.0)
             elapsed = self._clock() - started
             if elapsed + delay > self._config.max_total_seconds:
-                raise TypeSafeJevTransportError("TYPESAFE_RETRY_BUDGET_EXHAUSTED") from None
+                raise self._failure("RETRY_BUDGET_EXHAUSTED", started, attempt_count) from None
             if delay:
                 self._sleep(delay)
 
-        raise TypeSafeJevTransportError("TYPESAFE_RETRY_EXHAUSTED")
+        raise self._failure("RETRY_BUDGET_EXHAUSTED", started, max_attempts)
