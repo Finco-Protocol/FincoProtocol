@@ -25,7 +25,7 @@ FINCO Model is the deterministic modelling surface for real-world infrastructure
 The current modelling verticals are:
 
 - Solar and Wind — mature production modelling workflows;
-- Data Center — implemented and vertically validated modelling workflow (A3.1);
+- Data Center — implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check;
 - EV Charging — implemented modelling workflow (A3.2, canonical reference and working-copy runtime supported);
 - Storage — limited/reference scope (reference viewable; working-copy runtime not released).
 
@@ -87,7 +87,7 @@ Planned infrastructure verticals include:
 - **Telecom infrastructure** — towers, networks, and connectivity assets;
 - **Industrial infrastructure** — long-life industrial and process facilities.
 
-These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
+These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check; EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
 See [docs/RWA_INFRASTRUCTURE.md](docs/RWA_INFRASTRUCTURE.md) for the RWA infrastructure thesis, current engine capabilities, and planned module expansion.
 
@@ -261,7 +261,7 @@ FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-L
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete); Storage remains limited/reference scope (reference viewable; working-copy runtime not released); further asset-class modules are roadmap items until implemented and validated;
+- Solar and Wind are mature production modelling workflows; Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check; EV Charging is an implemented modelling workflow (A3.2 complete); Storage remains limited/reference scope (reference viewable; working-copy runtime not released); further asset-class modules are roadmap items until implemented and validated;
 - FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
 - Radar and Protocol verification remain architecturally separate from the RWA infrastructure modelling engine;
 - a deterministic evidence digest is not proof that external market data is true and is not an on-chain notarization by itself;
@@ -281,7 +281,7 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 Sanitized corporate codebase under active development and prepared for controlled public release.
 
-**Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented and vertically validated modelling workflow (A3.1 complete). EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
+**Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check. EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
 **Radar / R-LIVE:** R-LIVE V2 is live — registry-driven 13-asset reviewed surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) on Robinhood Chain with 300-second freshness gate, source-component freshness clocks, USDG/USD Chainlink conversion, collection-time history, 1h/24h ranges, STALE last-available UX, and 6 public read-only API routes. Global Radar lands on R-LIVE. Wide admission scan environment-blocked (SCAN_COMPLETE = NO); 13 assets are source-proven.
 

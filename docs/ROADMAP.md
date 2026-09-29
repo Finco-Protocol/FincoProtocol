@@ -17,7 +17,7 @@ Current production modelling verticals:
 
 - **Solar** — mature production modelling workflow
 - **Wind** — mature production modelling workflow
-- **Data Center** — implemented and vertically validated modelling workflow (A3.1)
+- **Data Center** — implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check
 - **EV Charging** — implemented modelling workflow (A3.2, P0.3 canonical reference)
 - **Storage** — PREVIEW (reference viewable; working-copy runtime not released)
 
