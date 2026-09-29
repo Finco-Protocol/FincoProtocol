@@ -100,7 +100,7 @@ def test_m7_global_rpc_failure_is_systemic_and_sanitized(monkeypatch, tmp_path):
     db, response, exit_code = _run(
         monkeypatch, tmp_path,
         [{"state": "AVAILABLE", "reason": None, "history_digest": "unused"}],
-        rpc_error=RuntimeError("https://user:secret@example.invalid private error"),
+        rpc_error=RuntimeError("opaque-credential-fragment private-rpc-host.invalid upstream failure"),
     )
     health = read_collector_health_readonly(path=str(db))
     assert exit_code == 1
@@ -108,7 +108,8 @@ def test_m7_global_rpc_failure_is_systemic_and_sanitized(monkeypatch, tmp_path):
     assert health.health_state == UNHEALTHY
     assert health.systemic_failure_reason == "RPC_UNAVAILABLE"
     payload = str(health.public_dict()) + str(response)
-    assert "secret" not in payload and "example.invalid" not in payload
+    assert "opaque-credential-fragment" not in payload
+    assert "private-rpc-host.invalid" not in payload
 
 
 def test_m7_history_persistence_failure_is_systemic(monkeypatch, tmp_path):
