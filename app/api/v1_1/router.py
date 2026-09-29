@@ -194,16 +194,30 @@ def get_run_certificate(project_id: str, request: Request):
         return _unauthorized()
 
     from app.persistence.projects_repository import get_project
-    project = get_project(project_id, user_id)
+    try:
+        project = get_project(project_id, user_id)
+    except Exception:
+        return JSONResponse(status_code=503, content=ApiErrorEnvelope(
+            error="CERTIFICATE_INTERNAL_ERROR", detail="Run certificate could not be produced."
+        ).model_dump())
     if project is None:
-        return _not_found(project_id)
+        return JSONResponse(status_code=404, content=ApiErrorEnvelope(
+            error="PROJECT_NOT_FOUND", detail="Project not found."
+        ).model_dump())
 
     from app.api.v1_1 import institutional as _inst
-    pr, ws = _inst._load_workspace(user_id, project_id)
+    try:
+        pr, ws = _inst._load_workspace(user_id, project_id)
+    except Exception:
+        return JSONResponse(status_code=503, content=ApiErrorEnvelope(
+            error="CERTIFICATE_INTERNAL_ERROR", detail="Run certificate could not be produced."
+        ).model_dump())
     if pr is None:
-        return _not_found(project_id)
+        return JSONResponse(status_code=404, content=ApiErrorEnvelope(
+            error="PROJECT_NOT_FOUND", detail="Project not found."
+        ).model_dump())
 
-    if getattr(ws, "user_id", None) != user_id and user_id != "1":
+    if ws is not None and getattr(ws, "user_id", None) != user_id:
         return JSONResponse(
             status_code=403,
             content=ApiErrorEnvelope(
@@ -232,7 +246,7 @@ def get_run_certificate(project_id: str, request: Request):
             status_code=400,
             content=ApiErrorEnvelope(
                 error=exc.REASON,
-                detail=str(exc),
+                detail="A complete committed Last Run identity is required.",
             ).model_dump(),
         )
     except Exception:

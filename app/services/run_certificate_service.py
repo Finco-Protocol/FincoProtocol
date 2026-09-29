@@ -34,10 +34,8 @@ import base64
 import hashlib
 import json
 import os
-from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
-
-from app.data_center_authority import replace  # noqa: F401 (re-export symmetry)
 
 CERTIFICATE_SCHEMA_VERSION = "finco-run-certificate-v1"
 SIGNATURE_ALGORITHM = "Ed25519"
@@ -55,9 +53,11 @@ class SigningKeyUnavailable(RuntimeError):
 
 
 class CertificateBuildUnavailable(RuntimeError):
-    """Raised when a project has no committed Last Run to certify."""
+    """Raised when a committed Last Run lacks required run-bound identity."""
 
-    REASON = "COMMITTED_LAST_RUN_REQUIRED"
+    def __init__(self, reason: str) -> None:
+        self.REASON = reason
+        super().__init__(reason)
 
 
 def _canonical_json_bytes(payload: dict) -> bytes:
@@ -115,59 +115,73 @@ def key_id_for_public_key(public_key_der: bytes) -> str:
     return hashlib.sha256(public_key_der).hexdigest()[:16]
 
 
-def build_certificate_payload(ws) -> dict:
+def build_certificate_payload(ws, *, issued_at: datetime | None = None) -> dict:
     """Build the unsigned canonical certificate payload from committed
     Last Run state only.
 
     ``ws`` is a WorkspaceStateRecord.  A committed Last Run is REQUIRED
-    (``any_run_committed`` + ``last_runtime_snapshot_id``); otherwise
+    with complete run-bound identity; otherwise
     ``CertificateBuildUnavailable`` is raised.  No engine rerun; no
     Working Copy values enter the payload.
     """
-    if not getattr(ws, "any_run_committed", False) or not getattr(
-        ws, "last_runtime_snapshot_id", None
-    ):
-        raise CertificateBuildUnavailable(
-            f"{CertificateBuildUnavailable.REASON}: project "
-            f"{getattr(ws, 'project_id', '?')!r} has no committed Last Run."
-        )
+    if not getattr(ws, "any_run_committed", False):
+        raise CertificateBuildUnavailable("COMMITTED_LAST_RUN_REQUIRED")
 
-    identity = getattr(ws, "last_runtime_identity", None) or {}
-    if not isinstance(identity, dict):
-        identity = {}
+    identity = getattr(ws, "last_runtime_identity", None)
+    run_at = getattr(ws, "last_runtime_at", None)
+    required_text = (
+        getattr(ws, "project_id", None),
+        getattr(ws, "project_code", None),
+        getattr(ws, "last_runtime_snapshot_id", None),
+        getattr(ws, "last_runtime_composite_hash", None),
+        getattr(ws, "last_runtime_origin", None),
+    )
+    if (not all(isinstance(v, str) and v.strip() for v in required_text)
+            or not isinstance(run_at, datetime)
+            or run_at.tzinfo is None or run_at.utcoffset() is None
+            or not isinstance(identity, dict)
+            or not all(isinstance(identity.get(k), str) and identity[k].strip()
+                       and identity[k] != "NOT_AVAILABLE"
+                       for k in ("engine_version", "workbook_version", "composite_hash"))
+            or identity["composite_hash"] != ws.last_runtime_composite_hash):
+        raise CertificateBuildUnavailable("LAST_RUN_IDENTITY_INCOMPLETE")
+
+    issued = issued_at or datetime.now(timezone.utc)
+    if issued.tzinfo is None or issued.utcoffset() is None:
+        raise CertificateBuildUnavailable("ISSUED_AT_TIMEZONE_REQUIRED")
     summary = getattr(ws, "last_runtime_summary", None) or {}
     if not isinstance(summary, dict):
         summary = {}
 
-    run_at = getattr(ws, "last_runtime_at", None)
-    run_at_iso = run_at.isoformat() if run_at else None
+    run_at_iso = run_at.isoformat()
+    run_snapshot = getattr(ws, "last_runtime_snapshot", None) or {}
+    if not isinstance(run_snapshot, dict):
+        run_snapshot = {}
 
     payload: dict[str, Any] = {
         "certificate_schema_version": CERTIFICATE_SCHEMA_VERSION,
+        "issuer": ISSUER,
+        "issued_at": issued.isoformat(),
         "project_id": ws.project_id,
         "project_code": ws.project_code,
-        "project_type": identity.get("project_type"),
-        "template_source": identity.get("template_source"),
+        "project_type": run_snapshot.get("project_type") or identity.get("project_type"),
+        "template_source": run_snapshot.get("template_source") or identity.get("template_source"),
         "snapshot_id": ws.last_runtime_snapshot_id,
         "composite_hash": ws.last_runtime_composite_hash,
         "run_at": run_at_iso,
-        "workbook_version": identity.get("workbook_version"),
+        "workbook_version": identity["workbook_version"],
         "engine_version": identity.get("engine_version"),
         "git_sha": identity.get("git_sha"),
         "git_branch": identity.get("git_branch"),
         "active_scenario_id": ws.last_runtime_scenario_id,
+        "active_scenario": {
+            "id": ws.last_runtime_scenario_id,
+            "name": identity.get("scenario_name"),
+        },
         "run_origin": ws.last_runtime_origin,
         "kpi_digest": hashlib.sha256(
             _canonical_json_bytes(summary)
         ).hexdigest(),
-        # Explicit non-claims: the certificate carries the observed Verify
-        # state as a separate authority reference — it NEVER converts it to
-        # VERIFIED (app.verify semantics untouched).
-        "observed_authorities": {
-            "finco_verify_state": identity.get("finco_verify_state"),
-            "note": "Observed authority state only. This certificate attests "
-                    "to provenance/integrity, never economic truth.",
-        },
     }
     return payload
 
@@ -202,20 +216,20 @@ def _unb64(text: str) -> bytes:
     return base64.b64decode(text, validate=True)
 
 
-def issue_run_certificate(ws) -> dict:
+def issue_run_certificate(ws, *, issued_at: datetime | None = None) -> dict:
     """Issue a signed Run Certificate for a committed Last Run.
 
     Returns the full certificate dict (payload + key id + signature).  The
     private key never leaves this function and is never serialized into the
     certificate.  Fail-closed when no signing key is configured.
     """
+    payload = build_certificate_payload(ws, issued_at=issued_at)
     seed, public_key_der = _signing_key_pair()
-    payload = build_certificate_payload(ws)
     payload["signature_algorithm"] = SIGNATURE_ALGORITHM
     payload["key_id"] = key_id_for_public_key(public_key_der)
     digest_input = {
         k: v for k, v in payload.items()
-        if k not in ("payload_digest", "signature", "signature_algorithm", "key_id")
+        if k not in ("payload_digest", "signature")
     }
     payload["payload_digest"] = hashlib.sha256(
         _canonical_json_bytes(digest_input)
@@ -248,12 +262,21 @@ def verify_run_certificate(
     # Rebuild the signed payload: everything except the signature field.
     unsigned = {k: v for k, v in cert.items() if k != "signature"}
 
-    # Integrity check: the payload digest was computed over the payload
-    # WITHOUT the digest/signature fields (signature_algorithm + key_id were
-    # present, payload_digest + signature were not).
+    if cert.get("certificate_schema_version") != CERTIFICATE_SCHEMA_VERSION:
+        return False, "SCHEMA_INVALID"
+    if cert.get("signature_algorithm") != SIGNATURE_ALGORITHM:
+        return False, "ALGORITHM_INVALID"
+    try:
+        issued = datetime.fromisoformat(cert["issued_at"])
+        if issued.tzinfo is None or issued.utcoffset() is None:
+            return False, "ISSUED_AT_INVALID"
+    except (KeyError, TypeError, ValueError):
+        return False, "ISSUED_AT_INVALID"
+
+    # Integrity check covers every signed identity field, including key id.
     digest_input = {
         k: v for k, v in unsigned.items()
-        if k not in ("payload_digest", "signature", "signature_algorithm", "key_id")
+        if k not in ("payload_digest", "signature")
     }
     digest = hashlib.sha256(_canonical_json_bytes(digest_input)).hexdigest()
     if digest != stored_digest:

@@ -13,11 +13,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import uuid
+from dataclasses import replace
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
-from app import ev_charging_economics  # noqa: F401 (canonical EV authority context)
 from app.services import run_certificate_service as rcs
 
 # Deterministic test signing key (base64 of 32 bytes) — fixture only.
@@ -26,6 +26,9 @@ TEST_SEED = bytes(range(32))
 TEST_PUBLIC_DER = rcs.public_key_der_from_seed(TEST_SEED)
 TEST_KEY_ID = rcs.key_id_for_public_key(TEST_PUBLIC_DER)
 WRONG_PUBLIC_DER = rcs.public_key_der_from_seed(bytes(range(32, 64)))
+RUN_AT = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
+ISSUED_AT = datetime(2026, 9, 29, 12, 5, tzinfo=timezone.utc)
+COMPOSITE_HASH = "a" * 64
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +57,8 @@ def ev_project(tmp_path, monkeypatch):
         "git_branch": "trust/signed-run-certificate-v1",
         "project_type": "EV Charging",
         "template_source": "generic_ev_charging_reference",
-        "finco_verify_state": "NOT_VERIFIED",
+        "workbook_version": "v2.0.0",
+        "composite_hash": COMPOSITE_HASH,
     }
     save_workspace_state(
         user_id="cert-user", project_id=record.project_id,
@@ -65,6 +69,7 @@ def ev_project(tmp_path, monkeypatch):
         last_runtime_snapshot_id="cert-snap-0001",
         last_runtime_origin="saved_state",
         last_runtime_scenario_id=None,
+        last_runtime_at=RUN_AT,
         dirty=False,
         governance_state=ws.governance_state,
         replay_metadata=ws.replay_metadata,
@@ -76,9 +81,9 @@ def ev_project(tmp_path, monkeypatch):
     conn = get_connection()
     conn.execute(
         "UPDATE workspace_states SET any_run_committed=1, "
-        "last_runtime_identity_json=? "
+        "last_runtime_identity_json=?, last_runtime_composite_hash=? "
         "WHERE workspace_id=? AND user_id=?",
-        (json.dumps(identity), ws.workspace_id, "cert-user"),
+        (json.dumps(identity), COMPOSITE_HASH, ws.workspace_id, "cert-user"),
     )
     conn.commit()
     conn.close()
@@ -111,6 +116,8 @@ def test_signed_run_binds_canonical_last_run(ev_project):
     ws = ev_project["ws"]
     cert = rcs.issue_run_certificate(ws)
     assert cert["certificate_schema_version"] == "finco-run-certificate-v1"
+    assert cert["issuer"] == rcs.ISSUER
+    assert datetime.fromisoformat(cert["issued_at"]).utcoffset() is not None
     assert cert["project_id"] == ev_project["record"].project_id
     assert cert["snapshot_id"] == "cert-snap-0001"
     assert cert["composite_hash"] == ws.last_runtime_composite_hash
@@ -119,6 +126,8 @@ def test_signed_run_binds_canonical_last_run(ev_project):
     assert cert["key_id"] == TEST_KEY_ID
     assert cert["payload_digest"]
     assert cert["signature"]
+    assert cert["workbook_version"] == "v2.0.0"
+    assert cert["engine_version"] == "finco-engine-test"
     # no Working Copy draft values in the payload
     canonical = json.dumps(cert, sort_keys=True)
     assert "draft_snapshot" not in canonical
@@ -127,7 +136,7 @@ def test_signed_run_binds_canonical_last_run(ev_project):
 # ── SIGNED_RUN_DIRTY_WC_DOES_NOT_CHANGE_RUN ─────────────────────────────────
 
 def test_signed_run_dirty_wc_does_not_change_run(ev_project):
-    cert1 = rcs.issue_run_certificate(ev_project["ws"])
+    cert1 = rcs.issue_run_certificate(ev_project["ws"], issued_at=ISSUED_AT)
     # dirty the Working Copy (draft ≠ last run) — certificate unchanged
     from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
     dirty = dict(ev_project["ws"].draft_snapshot)
@@ -141,10 +150,8 @@ def test_signed_run_dirty_wc_does_not_change_run(ev_project):
     )
     ws2 = get_workspace_state("cert-user", ev_project["record"].project_id)
     assert ws2.dirty is True
-    cert2 = rcs.issue_run_certificate(ws2)
-    cert1_core = {k: v for k, v in cert1.items() if k != "issued_at"}
-    cert2_core = {k: v for k, v in cert2.items() if k != "issued_at"}
-    assert cert1_core == cert2_core, "dirty WC must not alter the certificate"
+    cert2 = rcs.issue_run_certificate(ws2, issued_at=ISSUED_AT)
+    assert cert1 == cert2, "dirty WC must not alter an identically issued certificate"
 
 
 # ── SIGNED_RUN_NO_ENGINE_RERUN ──────────────────────────────────────────────
@@ -178,6 +185,66 @@ def test_signed_run_signature_verifies(ev_project):
     cert = rcs.issue_run_certificate(ev_project["ws"])
     valid, reason = rcs.verify_run_certificate(cert, TEST_PUBLIC_DER)
     assert valid, reason
+
+
+def test_signed_run_explicit_issuer_and_issuance_time(ev_project):
+    ws = ev_project["ws"]
+    first = rcs.issue_run_certificate(ws, issued_at=ISSUED_AT)
+    again = rcs.issue_run_certificate(ws, issued_at=ISSUED_AT)
+    later = rcs.issue_run_certificate(ws, issued_at=ISSUED_AT + timedelta(seconds=1))
+    assert first == again  # identical canonical bytes + key
+    assert first != later  # a distinct issuance event has distinct identity
+    assert first["issuer"] == rcs.ISSUER
+    assert first["issued_at"] == ISSUED_AT.isoformat()
+    assert rcs.verify_run_certificate(first, TEST_PUBLIC_DER) == (True, "VALID")
+    with pytest.raises(rcs.CertificateBuildUnavailable) as exc:
+        rcs.issue_run_certificate(ws, issued_at=datetime(2026, 9, 29))
+    assert exc.value.REASON == "ISSUED_AT_TIMEZONE_REQUIRED"
+
+
+def test_signed_run_incomplete_identity_fails_closed(ev_project):
+    ws = ev_project["ws"]
+    incomplete = (
+        replace(ws, last_runtime_snapshot_id=None),
+        replace(ws, last_runtime_at=None),
+        replace(ws, last_runtime_identity=None),
+        replace(ws, last_runtime_identity={"engine_version": "test"}),
+        replace(ws, last_runtime_identity={**ws.last_runtime_identity,
+                                           "engine_version": "NOT_AVAILABLE"}),
+        replace(ws, last_runtime_identity={**ws.last_runtime_identity,
+                                           "workbook_version": None}),
+        replace(ws, last_runtime_identity={**ws.last_runtime_identity,
+                                           "composite_hash": "b" * 64}),
+    )
+    for candidate in incomplete:
+        with pytest.raises(rcs.CertificateBuildUnavailable) as exc:
+            rcs.issue_run_certificate(candidate, issued_at=ISSUED_AT)
+        assert exc.value.REASON == "LAST_RUN_IDENTITY_INCOMPLETE"
+
+
+def test_signed_run_null_composite_hash_rejected(ev_project):
+    ws = replace(ev_project["ws"], last_runtime_composite_hash=None)
+    with pytest.raises(rcs.CertificateBuildUnavailable) as exc:
+        rcs.issue_run_certificate(ws)
+    assert exc.value.REASON == "LAST_RUN_IDENTITY_INCOMPLETE"
+
+
+def test_signed_run_no_synthetic_verify_state(ev_project):
+    ws = replace(ev_project["ws"], last_runtime_identity={
+        **ev_project["ws"].last_runtime_identity,
+        "finco_verify_state": "VERIFIED",
+    })
+    cert = rcs.issue_run_certificate(ws, issued_at=ISSUED_AT)
+    assert "finco_verify_state" not in json.dumps(cert)
+    assert "observed_authorities" not in cert
+
+
+def test_signed_run_no_unrelated_vertical_imports():
+    from pathlib import Path
+    service = (Path(__file__).resolve().parents[1]
+               / "app/services/run_certificate_service.py").read_text()
+    assert "app.data_center_authority" not in service
+    assert "app.ev_charging_economics" not in service
 
 
 # ── SIGNED_RUN_PAYLOAD_TAMPER_FAILS ─────────────────────────────────────────
@@ -245,11 +312,8 @@ def test_signed_run_private_key_never_exposed(ev_project):
 
 def test_signed_run_not_finco_verify(ev_project):
     cert = rcs.issue_run_certificate(ev_project["ws"])
-    observed = cert.get("observed_authorities", {})
-    assert observed.get("finco_verify_state") == "NOT_VERIFIED"
-    assert "never" in observed.get("note", "").lower()
-    # the certificate carries no VERIFIED claim
-    assert "VERIFIED" != cert.get("observed_authorities", {}).get("finco_verify_state")
+    assert "observed_authorities" not in cert
+    assert "finco_verify_state" not in json.dumps(cert)
     # app.verify semantics untouched: PRODUCTION_VERIFIED_ASSET_COUNT absent
     from pathlib import Path
     cap_src = (Path(__file__).resolve().parents[1]
@@ -299,14 +363,18 @@ def test_signed_run_user_isolation(ev_project, tmp_path, monkeypatch):
         last_runtime_summary={"project_irr": 0.147},
         last_runtime_snapshot_id="iso-snap-0001",
         last_runtime_origin="saved_state",
+        last_runtime_at=RUN_AT,
         dirty=False, governance_state=ws_own.governance_state,
         replay_metadata=ws_own.replay_metadata,
     )
     conn = get_connection()
     conn.execute(
-        "UPDATE workspace_states SET any_run_committed=1, last_runtime_identity_json=? "
+        "UPDATE workspace_states SET any_run_committed=1, last_runtime_identity_json=?, "
+        "last_runtime_composite_hash=? "
         "WHERE workspace_id=? AND user_id=?",
-        (_json.dumps({"engine_version": "t"}), ws_own.workspace_id, "cert-user"),
+        (_json.dumps({"engine_version": "t", "workbook_version": "v2.0.0",
+                      "composite_hash": COMPOSITE_HASH}), COMPOSITE_HASH,
+         ws_own.workspace_id, "cert-user"),
     )
     conn.commit(); conn.close()
     # another user's EV working copy in the same DB
@@ -360,3 +428,18 @@ def test_signed_run_endpoint_missing_key_typed_unavailable(ev_project, monkeypat
     body = resp.json()
     assert body["error"] == "SIGNING_KEY_UNAVAILABLE"
     assert "Traceback" not in resp.text
+
+
+def test_signed_run_raw_exception_never_exposed(ev_project, monkeypatch):
+    project_id = ev_project["record"].project_id
+    secret = "C:/private/secret.sqlite FINCO_RUN_CERT_SIGNING_KEY=secret"
+    def broken(_ws):
+        raise RuntimeError(f"{project_id} {secret}")
+    monkeypatch.setattr(rcs, "issue_run_certificate", broken)
+    response = _get_certificate(_client(), project_id)
+    assert response.status_code == 503
+    for forbidden in (project_id, secret, "RuntimeError", "Traceback", "secret.sqlite"):
+        assert forbidden not in response.text
+    unknown = _get_certificate(_client(), "private-project-id")
+    assert unknown.status_code == 404
+    assert "private-project-id" not in unknown.text

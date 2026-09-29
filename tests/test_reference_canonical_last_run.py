@@ -828,6 +828,9 @@ def test_reference_last_run_provenance_atomic(seeded_db):
         # The last_runtime_composite_hash must also be present (same transaction).
         assert ws.last_runtime_composite_hash, \
             f"{ts}: last_runtime_composite_hash must be set atomically"
+        assert ws.last_runtime_identity["workbook_version"] == WORKBOOK.version, \
+            f"{ts}: workbook version must be bound at run commit"
+        assert ws.last_runtime_identity["composite_hash"] == ws.last_runtime_composite_hash
 
 
 def test_v2_user_run_persistence_regression(seeded_db):
