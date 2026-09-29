@@ -1489,6 +1489,33 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "field_error": "",
         "library_url": "/library",
     }
+    # Model Trust Pack V1: read-only composition of existing canonical read
+    # services (API v1.1 institutional builders).  No engine execution, no
+    # state mutation; fails closed to explicit UNAVAILABLE sections.
+    from app.ui.trust_pack import build_trust_pack
+    try:
+        context["trust_pack"] = build_trust_pack(
+            workspace_owner,
+            project_record.project_id,
+            project_code=project_record.project_code,
+            any_run_committed=bool(ws.any_run_committed),
+        )
+    except Exception:  # fail closed — an evidence surface must never 500
+        from app.api.v1_1.institutional import STATE_UNAVAILABLE as _TUP
+        context["trust_pack"] = {
+            "overall_state": _TUP,
+            "last_run": {"state": _TUP, "working_copy_changed_since_run": False},
+            "kpis": {"state": _TUP, "rows": [], "lineage": {}},
+            "validation": {
+                "state": "DEFERRED",
+                "load_url": f"/v2/workbook/trust/validation?project={project_record.project_code}",
+                "gaps": [],
+                "gap_count": 0,
+            },
+            "verify": {"state": _TUP, "verify_url": f"/verify/run/{project_record.project_code}"},
+            "export": {"state": _TUP},
+            "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
+        }
     context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     context.update(_build_opex_vm_ctx(project_record, pis))
     # Build projection bundle once; pass it to all four output sheet builders.
@@ -2560,6 +2587,48 @@ async def v2_workbook_export(
         )
 
     return _make_streaming_response(export)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Model Trust Pack V1 — on-demand MODEL VALIDATION evidence fragment.
+# Deliberately a user-triggered load (explicit click in the Trust Pack panel):
+# vertical validation executes the reference production model inside
+# app.model_validation, so it must never run during workbook page rendering.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/workbook/trust/validation")
+async def v2_trust_validation_fragment(request: Request, project: str):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state as _gws
+    from app.ui.trust_pack import build_validation_fragment
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(
+            content="<div class=\"v2-trust-note\">Project not found.</div>",
+            status_code=404,
+        )
+    ws = _gws(workspace_owner, project_record.project_id)
+    if ws is None or not ws.any_run_committed:
+        return HTMLResponse(content=(
+            "<div class=\"v2-trust-note\" data-testid=\"trust-pack-validation-unavailable\">"
+            "<span class=\"v2-trust-chip v2-trust-chip--unavailable\">UNAVAILABLE</span> "
+            "No committed Last Run — validation evidence is unavailable.</div>"
+        ))
+    try:
+        section = build_validation_fragment(workspace_owner, project_record.project_id)
+    except Exception:
+        section = {"state": "UNAVAILABLE"}
+    return _templates.TemplateResponse(
+        request=request,
+        name="partials/_trust_validation_body.html",
+        context={"trust_validation": section},
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

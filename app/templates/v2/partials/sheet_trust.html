@@ -1,0 +1,236 @@
+{# ── Model Trust Pack V1 (sheet_trust.html) ────────────────────────────
+   Read-only, evidence-first composition of existing canonical authorities:
+   Last Run identity · Core KPIs · MODEL VALIDATION · FINCO VERIFY ·
+   Institutional export · Methodology.
+
+   Authority: app/ui/trust_pack.py composes app.api.v1_1 read services.
+   No calculations, no new truth authorities, no engine execution.
+
+   Context: trust_pack dict (sections with explicit AVAILABLE/UNAVAILABLE
+   state), project_code, project_editable, ws.
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+<style>
+  .v2-trust-section { border: 1px solid var(--border, #e3e6ea); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  .v2-trust-title { font-weight: 650; font-size: 0.95rem; letter-spacing: 0.02em; }
+  .v2-trust-title small { font-weight: 400; color: #5b6470; margin-left: 8px; }
+  .v2-trust-grid { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 4px 16px; margin-top: 8px; }
+  .v2-trust-k { color: #5b6470; font-size: 0.85rem; }
+  .v2-trust-v { font-size: 0.88rem; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .v2-trust-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; }
+  .v2-trust-chip--available { background: #e8f1ec; color: #1e6b45; }
+  .v2-trust-chip--unavailable { background: #eef0f3; color: #5b6470; border: 1px dashed #c3c9d1; }
+  .v2-trust-chip--dirty { background: #fdf3e2; color: #8a5a00; }
+  .v2-trust-note { font-size: 0.78rem; color: #5b6470; margin-top: 8px; }
+  .v2-trust-kpis { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  .v2-trust-kpis th { text-align: left; font-size: 0.75rem; color: #5b6470; font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--border, #e3e6ea); }
+  .v2-trust-kpis td { padding: 5px 8px; font-size: 0.88rem; font-variant-numeric: tabular-nums; border-bottom: 1px solid #f0f2f4; }
+  .v2-trust-separator { font-size: 0.78rem; color: #5b6470; margin: 10px 0; border-top: 1px dashed var(--border, #e3e6ea); padding-top: 8px; }
+</style>
+
+<div id="v2-sheet-trust" data-sheet="trust" data-testid="trust-pack">
+  <div class="v2-trust-section" data-testid="trust-pack-header">
+    <div class="v2-trust-title">Model Trust Pack
+      <small>NUMBER → LINEAGE → EVIDENCE · read-only</small>
+    </div>
+    {% if trust_pack.overall_state != 'AVAILABLE' %}
+      <div class="v2-trust-note" data-testid="trust-pack-not-run">
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+        No committed Last Run for this project yet. Run the model from the
+        Overview tab; the Trust Pack is populated from the canonical Last Run only.
+      </div>
+    {% endif %}
+    {% if trust_pack.last_run.working_copy_changed_since_run %}
+      <div class="v2-trust-note" data-testid="trust-pack-dirty-banner">
+        <span class="v2-trust-chip v2-trust-chip--dirty">WORKING COPY CHANGED SINCE RUN</span>
+        Draft inputs have changed. The Last Run shown below remains the
+        canonical evidence for the numbers on this page; re-run to refresh it.
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── A. Last Run ──────────────────────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-last-run">
+    <div class="v2-trust-title">A. Last Run
+      <small>committed run state</small>
+      {% if trust_pack.last_run.state == 'AVAILABLE' %}
+        <span class="v2-trust-chip v2-trust-chip--available">AVAILABLE</span>
+      {% else %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+    {% if trust_pack.last_run.state == 'AVAILABLE' %}
+      <div class="v2-trust-grid">
+        <span class="v2-trust-k">Snapshot ID</span>
+        <span class="v2-trust-v" data-testid="trust-pack-snapshot-id">{{ trust_pack.last_run.snapshot_id or '—' }}</span>
+        <span class="v2-trust-k">Composite hash</span>
+        <span class="v2-trust-v" title="{{ trust_pack.last_run.composite_hash }}" data-testid="trust-pack-composite-hash">{{ trust_pack.last_run.composite_hash_short or '—' }}</span>
+        <span class="v2-trust-k">Run at</span>
+        <span class="v2-trust-v" data-testid="trust-pack-run-at" title="{{ trust_pack.last_run.run_at }}">{{ trust_pack.last_run.run_at_display or '—' }}</span>
+        <span class="v2-trust-k">Active scenario (run)</span>
+        <span class="v2-trust-v">{{ trust_pack.last_run.scenario_id or '—' }}</span>
+        <span class="v2-trust-k">Run origin</span>
+        <span class="v2-trust-v">{{ trust_pack.last_run.run_origin or '—' }}</span>
+        {% if trust_pack.last_run.engine_version %}
+          <span class="v2-trust-k">Engine</span>
+          <span class="v2-trust-v">{{ trust_pack.last_run.engine_version }}{% if trust_pack.last_run.git_sha %} · {{ trust_pack.last_run.git_sha }}{% if trust_pack.last_run.git_branch %} ({{ trust_pack.last_run.git_branch }}){% endif %}{% endif %}</span>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── B. Core KPIs ─────────────────────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-kpis">
+    <div class="v2-trust-title">B. Core KPIs
+      <small>canonical Last Run only</small>
+      {% if trust_pack.kpis.state == 'AVAILABLE' %}
+        <span class="v2-trust-chip v2-trust-chip--available">AVAILABLE</span>
+      {% else %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+    {% if trust_pack.kpis.state == 'AVAILABLE' %}
+      <table class="v2-trust-kpis" data-testid="trust-pack-kpi-table">
+        <thead><tr><th>Metric</th><th>Value</th><th>State</th></tr></thead>
+        <tbody>
+          {% for row in trust_pack.kpis.rows %}
+            <tr data-kpi-key="{{ row.key }}">
+              <td>{{ row.label }}</td>
+              <td>{% if row.state == 'AVAILABLE' %}{{ row.display or row.value }}{% else %}—{% endif %}</td>
+              <td>{% if row.state == 'AVAILABLE' %}
+                    <span class="v2-trust-chip v2-trust-chip--available">AVAILABLE</span>
+                  {% else %}
+                    <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+                  {% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="v2-trust-note">Lineage: canonical Last Run
+        <span>{{ trust_pack.kpis.lineage.snapshot_id or '—' }}</span> ·
+        <span>{{ trust_pack.kpis.lineage.run_at_display or '—' }}</span> ·
+        composite <span>{{ trust_pack.kpis.lineage.composite_hash_short or '—' }}</span>.
+        Authority: {{ trust_pack.kpis.authority }}.</div>
+    {% endif %}
+  </div>
+
+  {# ── C. MODEL VALIDATION ──────────────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-validation">
+    <div class="v2-trust-title">MODEL VALIDATION
+      <small>reconciliation status and evidence</small>
+      <span class="v2-trust-chip v2-trust-chip--unavailable">ON-DEMAND</span>
+    </div>
+    {% if trust_pack.validation.state == 'DEFERRED' %}
+      <div class="v2-trust-note" data-testid="trust-pack-validation-deferred">
+        Vertical validation executes a read-only reconciliation against the
+        canonical reference model — it is loaded only on explicit request so
+        that opening this page never runs the model.
+        <button type="button" class="btn btn-ghost"
+                hx-get="{{ trust_pack.validation.load_url }}"
+                hx-target="#v2-trust-validation-body" hx-swap="innerHTML"
+                data-testid="trust-pack-validation-load">Load validation evidence</button>
+      </div>
+      <div id="v2-trust-validation-body"></div>
+    {% else %}
+      <div class="v2-trust-note">No vertical validation evidence is available for this
+        project. This is an intentional unavailable state, not an error.</div>
+    {% endif %}
+  </div>
+
+  <div class="v2-trust-separator" data-testid="trust-pack-authority-separator">
+    MODEL VALIDATION and FINCO VERIFY are separate authorities.
+    Validation status never implies Verified status.
+  </div>
+
+  {# ── D. FINCO VERIFY ──────────────────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-verify">
+    <div class="v2-trust-title">FINCO VERIFY
+      <small>separate authority — source-proven bindings only</small>
+      {% if trust_pack.verify.state == 'AVAILABLE' %}
+        <span class="v2-trust-chip {{ 'v2-trust-chip--available' if trust_pack.verify.css_class == 'verified' else 'v2-trust-chip--unavailable' }}">{{ trust_pack.verify.label or trust_pack.verify.status }}</span>
+      {% else %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable" data-testid="trust-pack-verify-unavailable">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+    {% if trust_pack.verify.state == 'AVAILABLE' %}
+      <div class="v2-trust-grid">
+        <span class="v2-trust-k">Status</span>
+        <span class="v2-trust-v">{{ trust_pack.verify.label or trust_pack.verify.status }}</span>
+        {% if trust_pack.verify.description %}
+          <span class="v2-trust-k">Meaning</span>
+          <span class="v2-trust-v">{{ trust_pack.verify.description }}</span>
+        {% endif %}
+        {% if trust_pack.verify.asset_id %}
+          <span class="v2-trust-k">Asset</span>
+          <span class="v2-trust-v">{{ trust_pack.verify.asset_id }}</span>
+        {% endif %}
+      </div>
+      <div class="v2-trust-note">Authority: {{ trust_pack.verify.authority }}.
+        <a href="{{ trust_pack.verify.verify_url }}">View Run Certificate</a></div>
+    {% else %}
+      <div class="v2-trust-note" data-testid="trust-pack-verify-unavailable-note">
+        Not verified: no source-proven Verify binding exists for this project.
+        <a href="{{ trust_pack.verify.verify_url }}">Run Certificate surface</a></div>
+    {% endif %}
+  </div>
+
+  {# ── E. Institutional Export ──────────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-export">
+    <div class="v2-trust-title">E. Institutional Export
+      <small>canonical Last Run XLSX</small>
+      {% if trust_pack.export.state == 'AVAILABLE' %}
+        <span class="v2-trust-chip v2-trust-chip--available">AVAILABLE</span>
+      {% else %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+    {% if trust_pack.export.state == 'AVAILABLE' %}
+      <form method="post" action="/v2/workbook/export" class="v2-trust-export-form"
+            data-testid="trust-pack-export-form">
+        <input type="hidden" name="project" value="{{ project_code }}">
+        <button type="submit" class="btn btn-ghost"
+                data-testid="trust-pack-export-btn">Download institutional XLSX</button>
+      </form>
+      <div class="v2-trust-grid" style="margin-top:8px;">
+        <span class="v2-trust-k">Suggested filename</span>
+        <span class="v2-trust-v">{{ trust_pack.export.suggested_filename or '—' }}</span>
+        <span class="v2-trust-k">Export authority</span>
+        <span class="v2-trust-v">{{ trust_pack.export.export_authority or '—' }}</span>
+        {% if trust_pack.export.export_generated_at %}
+          <span class="v2-trust-k">Last export generated</span>
+          <span class="v2-trust-v">{{ trust_pack.export.export_generated_at }}</span>
+        {% endif %}
+      </div>
+      {% if trust_pack.export.note %}<div class="v2-trust-note">{{ trust_pack.export.note }}</div>{% endif %}
+    {% else %}
+      <div class="v2-trust-note">The institutional export becomes available after the
+        first committed run of this project.</div>
+    {% endif %}
+  </div>
+
+  {# ── F. Methodology / Conventions ─────────────────────────────────── #}
+  <div class="v2-trust-section" data-testid="trust-pack-methodology">
+    <div class="v2-trust-title">F. Methodology / Conventions
+      <small>existing product conventions</small>
+    </div>
+    <div class="v2-trust-note" style="margin-top:4px;">
+      Full methodology: <a href="{{ trust_pack.methodology.page_url }}">Model Methodology</a>.
+      Working Copy vs Last Run: the numbers on this page come from the committed
+      Last Run; draft Working Copy edits do not change them until a new run is committed.
+    </div>
+    <table class="v2-trust-kpis">
+      <thead><tr><th>Convention</th><th>Period timing</th><th>Sign convention</th></tr></thead>
+      <tbody>
+        {% for row in trust_pack.methodology.rows %}
+          <tr data-meth-key="{{ row.key }}">
+            <td>{{ row.label }}</td>
+            <td>{{ row.period_timing or '—' }}</td>
+            <td>{{ row.sign_convention or '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="v2-trust-note">Authority: {{ trust_pack.methodology.authority }}.</div>
+  </div>
+</div>
