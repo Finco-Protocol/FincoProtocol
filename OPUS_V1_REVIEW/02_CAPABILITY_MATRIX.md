@@ -46,6 +46,13 @@ the Model vertical list.
 | R-LIVE multi-asset collector (PR #139) | LIVE | `app/radar_rwa/r_live_collect.py`; no-arg = full approved registry batch (`collect_all_approved`); `--asset-key` = single diagnostic; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` |
 | R-LIVE operational collector package (PR #127, updated PR #139) | LIVE | External systemd operational package; staging config contract; `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` required; staging/production ledgers must be separate |
 
+**R-LIVE code status vs operational status:**
+- Code/product surface: SHIPPED (implemented, tested, in repository)
+- Operational current-data activation: REQUIRES DEPLOYMENT CONFIGURATION — NOT PROVEN BY REPO
+  (`ROBINHOOD_RPC_URL` + active VPS collector + `RADAR_BNB_INTELLIGENCE_DB_PATH` must be configured)
+- "LIVE" in this table means the capability is implemented and exposed in the codebase.
+  It does NOT mean "staging/production RPC and collector are currently proven active."
+
 **R-LIVE V2 public API routes (exact):**
 - `GET /api/v1.1/radar/r-live/assets` — list approved identities (no auth required)
 - `GET /api/v1.1/radar/r-live/{canonical_id}` — current reference for exact identity
@@ -108,7 +115,14 @@ runtime or cloning not released.
   `RADAR_BNB_INTELLIGENCE_DB_PATH` (shared durable B1.3 ledger). Web and collector must
   use the identical ledger path. Staging and production must be different files.
   Repository-ready does not prove VPS collector activation.
-- No-arg collector batch: STALE/UNAVAILABLE per-asset market states are not process failures.
-  Per-asset acquisition exceptions are captured and surfaced as UNAVAILABLE; remaining assets
-  are always attempted. Process failures (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE,
-  HISTORY_STORE_UNAVAILABLE) abort the batch with exit 1 before any per-asset work.
+- No-arg collector batch: STALE/UNAVAILABLE/AVAILABLE per-asset are canonical market states,
+  not process failures. Exit 0 when the batch ran with no process-level error (mixed market
+  states are expected).
+- Pre-batch process failures (no per-asset work): RPC_NOT_CONFIGURED, RPC_UNAVAILABLE
+  (chain preflight fails), HISTORY_STORE_UNAVAILABLE (ledger init fails),
+  APPROVED_REGISTRY_UNAVAILABLE → exit 1, results empty.
+- Per-asset acquisition exception: asset recorded as UNAVAILABLE; remaining approved assets
+  still attempted; after full batch: process_error = R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE,
+  exit 1. Exceptions never abort the remaining batch.
+- Post/in-batch persistence failure: HISTORY_PERSISTENCE_UNAVAILABLE per-asset or ledger
+  close exception → HISTORY_STORE_UNAVAILABLE after batch, exit 1.

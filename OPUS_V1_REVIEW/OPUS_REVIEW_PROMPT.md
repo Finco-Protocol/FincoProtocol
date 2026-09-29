@@ -160,8 +160,13 @@ For each: verify from code, not from documentation claims.
   (exit 0 for mixed market states)?
 - Does a per-asset acquisition exception leave that asset as UNAVAILABLE while continuing
   the batch over remaining assets?
-- Do process failures (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE)
-  correctly abort before per-asset work and exit 1?
+- Do pre-batch process failures (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE
+  from ledger init, APPROVED_REGISTRY_UNAVAILABLE) correctly exit 1 with no per-asset work?
+- Does a per-asset acquisition exception leave that asset as UNAVAILABLE, continue the batch
+  for all remaining assets, and produce `R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE` after the
+  full batch (exit 1)?
+- Does a post/in-batch persistence failure (HISTORY_PERSISTENCE_UNAVAILABLE per-asset or ledger
+  close exception) produce `HISTORY_STORE_UNAVAILABLE` after batch work (exit 1)?
 - Does `_safe_reason` ensure no raw exception text or credential appears in JSON output?
 - Is `ROBINHOOD_RPC_URL` the sole source for both the web current-read path and the
   collector? Is it never committed to Git or emitted in collector output?
@@ -352,11 +357,17 @@ implemented. Identify specifically which current capability it builds on.
     or ROBINHOOD_RPC_URL is not configured — not that no history exists.
 
 20. **Multi-asset collector batch semantics** — confirm that `collect_all_approved`
-    in `app/radar_rwa/r_live_collect.py` iterates every key in
-    `APPROVED_BY_CANONICAL_ID`; uses one shared ledger; closes the ledger exactly
-    once; treats STALE/UNAVAILABLE market states as non-process-failures (exit 0
-    for mixed states); and captures per-asset exceptions without aborting the
-    remaining batch assets.
+    in `app/radar_rwa/r_live_collect.py`:
+    (a) Pre-batch: RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE
+        (ledger init), APPROVED_REGISTRY_UNAVAILABLE each abort before any per-asset
+        work and exit 1.
+    (b) Per-asset: acquisition exceptions are caught per-asset; that asset becomes
+        UNAVAILABLE; remaining assets are always attempted; after the full batch
+        `R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE` is set and exit 1 is returned.
+    (c) Post/in-batch: HISTORY_PERSISTENCE_UNAVAILABLE per-asset or ledger close
+        exception produces HISTORY_STORE_UNAVAILABLE after batch work, exit 1.
+    (d) STALE/UNAVAILABLE/AVAILABLE market states (no exception) are not process
+        failures; exit 0 for mixed market states with no process-level error.
 
 21. **Collector credential safety** — confirm that `_safe_reason` in
     `app/radar_rwa/r_live_collect.py` filters all typed output to
@@ -367,7 +378,8 @@ implemented. Identify specifically which current capability it builds on.
 
 ## What NOT to Review
 
-- `domain/` — internal domain models, not a V1 authority surface.
+- `domain/**` — not a standalone authority surface, but inspect any domain model
+  that materially participates in a reviewed calculation or authority path.
 - Jev / Reflex (issue #119) — experimental shadow, explicitly not V1 scope.
 
 ---
@@ -408,3 +420,82 @@ If no findings in a dimension: `NO FINDINGS — invariants hold as described.`
 - Report your findings ordered by severity (BLOCKER first).
 - Complete ALL review dimensions. Do not skip financial model correctness.
 - Complete the Crypto / RWA Product Assessment (Dimension M) in full.
+- Complete the three required final sections A, B, and C below in full.
+  Do not abbreviate or skip any question in any section.
+
+---
+
+## A. Enterprise Product Assessment
+
+Answer each question explicitly. Do not skip.
+
+1. **Strongest enterprise capability** — which single V1 capability is most
+   credible to an institutional buyer today, and why?
+2. **Weakest enterprise capability** — which single V1 capability would most
+   likely cause an institutional buyer to pause or reject deployment, and why?
+3. **Financial model risk** — is the financial engine (IRR/XIRR/DSCR/debt/SHL/
+   CAPEX/OPEX/distributions) ready for institutional reliance? State the
+   highest-risk formula or output path you found.
+4. **Security / tenancy risk** — does the session and authentication model
+   adequately isolate tenant data? State the highest-risk isolation gap you found.
+5. **Operational risk** — which V1 operational dependency (key management,
+   RPC config, ledger path, environment variable) carries the highest deployment
+   risk? What happens if it is misconfigured in production?
+6. **Support level** — for each of: (a) local/self-hosted, (b) controlled pilot,
+   (c) multi-tenant SaaS — state whether the current codebase supports it and
+   what the primary gap is.
+7. **Enterprise launch blockers** — list up to three specific blockers (not
+   covered elsewhere) that would prevent a controlled institutional launch.
+
+---
+
+## B. Crypto / RWA Product Assessment
+
+Answer each question explicitly. Do not skip.
+
+1. **Strongest crypto-native component** — which V1 crypto or RWA component
+   (R-LIVE, B2.1 Verify, B2.2 Token Entitlement, B2.3 Metering, cross-chain
+   identity) is most technically sound, and why?
+2. **Weakest crypto-native component** — which component has the most significant
+   gap relative to its stated purpose, and why?
+3. **$FINCO token justification** — does the current codebase support a credible
+   on-chain utility argument for $FINCO? What is currently missing?
+4. **Missing token utility** — which token utility function is most notably absent
+   from the V1 codebase that would be expected for a credible protocol launch?
+5. **Missing RWA capability** — what RWA capability gap (not already listed in
+   Known Limitations) would most weaken the protocol's RWA thesis?
+6. **R-LIVE thesis strength** — does R-LIVE V2 strengthen or weaken the on-chain
+   RWA intelligence thesis? State your specific reasoning from the code.
+7. **Next feature** — if you could add one feature to V1 to most strengthen the
+   crypto/RWA thesis, what would it be?
+8. **Thesis verdict** — is the FINCO V1 codebase backed by a credible on-chain
+   RWA narrative, or is the crypto layer primarily a narrative wrapper? State
+   your specific evidence either way.
+
+---
+
+## C. Final Launch Blocker Table
+
+Produce a single table. One row per area. Do not omit any area.
+
+| AREA | CURRENT STATE | BLOCKER? | REQUIRED ACTION |
+|------|--------------|----------|-----------------|
+| Financial model (IRR/XIRR/DSCR/debt/SHL/CAPEX/OPEX/distributions) | | | |
+| Last Run / XLSX export | | | |
+| Trust Pack UX V1 | | | |
+| FINCO VERIFY (B2.1) | | | |
+| Signed Run Certificate V1 | | | |
+| R-LIVE V2 (code surface) | | | |
+| R-LIVE operational (collector + RPC + ledger config) | | | |
+| Radar / BNB market intelligence | | | |
+| API v1 / v1.1 | | | |
+| MCP V1 | | | |
+| Auth / tenant isolation | | | |
+| Token entitlement (B2.2) | | | |
+| Usage / metering (B2.3) | | | |
+| Deployment / operations (key management, env config) | | | |
+| Docs / product truth | | | |
+| Crypto / token thesis | | | |
+
+BLOCKER values: **YES** (must fix before any institutional exposure) /
+**CONDITIONAL** (blocker under stated condition) / **NO** (not a blocker).

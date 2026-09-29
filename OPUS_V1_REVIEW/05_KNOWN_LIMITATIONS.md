@@ -113,10 +113,18 @@ treat any undisclosed deviation from these as a potential finding.
 - Web process and collector must be configured with the identical
   `RADAR_BNB_INTELLIGENCE_DB_PATH`. Staging and production must be different files;
   a shared path between environments silently cross-contaminates history.
-- STALE or UNAVAILABLE per-asset market states from the batch collector are not process
-  failures; exit 0 means the batch ran. Per-asset acquisition exceptions are captured
-  and recorded as UNAVAILABLE; remaining assets are always attempted. Process failures
-  (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE) abort the batch.
+- Canonical market states (AVAILABLE, STALE, UNAVAILABLE from authority) are not process
+  failures. Exit 0 means the batch ran without process-level error; mixed market states
+  are expected and healthy.
+- Pre-batch process failures (abort before any per-asset work): `RPC_NOT_CONFIGURED`,
+  `RPC_UNAVAILABLE` (chain preflight fails), `HISTORY_STORE_UNAVAILABLE` (ledger
+  initialization fails), `APPROVED_REGISTRY_UNAVAILABLE`.
+- Per-asset acquisition exception: that asset is recorded as UNAVAILABLE; remaining
+  approved assets are still attempted; after the complete batch:
+  `process_error = R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE`, exit 1. Exceptions do not
+  abort the remaining batch.
+- Post/in-batch persistence failure: `HISTORY_PERSISTENCE_UNAVAILABLE` per-asset, or
+  ledger close exception → `HISTORY_STORE_UNAVAILABLE` after batch, exit 1.
 - Repository-ready deployment assets do not prove that a production VPS collector
   is currently active. Do not claim production collection is active without
   actual deployment evidence.

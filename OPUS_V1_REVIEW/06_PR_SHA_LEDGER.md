@@ -45,7 +45,7 @@ Frozen namespaces: ZERO DIFF.
 |---|---|---|---|
 | #137 | R-LIVE V2 product shell — registry-driven 8-asset surface, canonical history parity, public API wiring, UX shell | `9adf751cf3cb9fd087f99b433843cf8bdd9a7807` | MERGED |
 
-Evidence: 504 R-LIVE shell tests, 238 public-routes tests, 459 history-contract tests; 4/4 CI SUCCESS.
+Evidence: 27 R-LIVE shell tests, 25 public-routes tests, 20 history-contract tests (verified via `pytest --collect-only -q` at SHA `226fe8d4`); 4/4 CI SUCCESS.
 Changed files (28): `app/api/v1_1/r_live_public_router.py`, `app/radar_ui/r_live_router.py`,
 `app/radar_ui/router.py`, templates, tests.
 Frozen namespaces: ZERO DIFF.

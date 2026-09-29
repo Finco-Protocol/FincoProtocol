@@ -153,10 +153,12 @@ surface that the MCP server exposes.
 
 | Test File | Count | What it tests |
 |---|---|---|
-| `tests/test_radar_r14_rlive_shell.py` | 504 | R-LIVE V2 product shell: registry-driven rows, identity enforcement, no-write contract, approved/unapproved routing |
-| `tests/test_radar_r14_rlive_public_routes.py` | 238 | R-LIVE public API routes: assets list, exact-identity detail, unapproved fails closed, no history write |
-| `tests/test_radar_r14_rlive_history_contract.py` | 459 | R-LIVE history contract: read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity |
-| `tests/test_radar_robinhood_multi_asset.py` | — | Multi-asset Robinhood authority and freshness gate |
+| `tests/test_radar_r14_rlive_shell.py` | 27 | R-LIVE V2 product shell: registry-driven rows, identity enforcement, no-write contract, approved/unapproved routing |
+| `tests/test_radar_r14_rlive_public_routes.py` | 25 | R-LIVE public API routes: assets list, exact-identity detail, unapproved fails closed, no history write |
+| `tests/test_radar_r14_rlive_history_contract.py` | 20 | R-LIVE history contract: read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity |
+| `tests/test_radar_robinhood_multi_asset.py` | 87 | Multi-asset Robinhood authority and freshness gate |
+
+Counts verified via `pytest --collect-only -q` at main SHA `226fe8d4`.
 
 Key invariants tested:
 - Unapproved identity → `ASSET_NOT_IN_REGISTRY` (never fabricated response)
@@ -169,8 +171,10 @@ Key invariants tested:
 
 | Test File | Count | What it tests |
 |---|---|---|
-| `tests/test_r_live_collector_batch.py` | 241 | Batch orchestration, per-asset independence, process/market state distinction, credential redaction, RPC preflight |
-| `tests/test_r_live_collector_ops.py` | 40 | Collector operational semantics, single-asset diagnostic path, unapproved key rejection |
+| `tests/test_r_live_collector_batch.py` | 12 | Batch orchestration, per-asset independence, process/market state distinction, credential redaction, RPC preflight |
+| `tests/test_r_live_collector_ops.py` | 7 | Collector operational semantics: sole-writer contract, 5-minute cadence, OS lock, shared history, staging isolation |
+
+Counts verified via `pytest --collect-only -q` at main SHA `226fe8d4`.
 
 Key invariants tested:
 - `test_no_arg_main_uses_batch_and_prints_safe_json` — no-arg `main([])` calls `collect_all_approved`
