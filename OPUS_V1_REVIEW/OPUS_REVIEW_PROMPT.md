@@ -24,14 +24,20 @@ This is the post-PR#140 main. PR #140 merged at this SHA from accepted feature h
 PR #140 full-suite evidence: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
 
 **DOCS PR HEAD:**
-This review package was prepared in a docs PR. The docs PR head SHA is
-recorded in `REVIEW_SNAPSHOT.json`. The product code at `0082e5bd` is
-the authoritative product base.
+Resolve live from GitHub before beginning the review. The tracked
+`REVIEW_SNAPSHOT.json` intentionally leaves `docs_pr_head_sha` null —
+embedding a commit's own SHA in a file inside that same commit is circular
+and unsafe. The product code at `0082e5bd` is the authoritative product base.
 
 **FINAL CLEAN-ROOM REVIEW TARGET:**
-After the docs PR is reviewed and merged, verify the exact new live main SHA
-and confirm it matches `REVIEW_SNAPSHOT.json` before beginning the review.
-If in doubt, inspect the repository's HEAD at the time of your review.
+After this docs PR merges, resolve the exact new live main SHA directly from
+GitHub. The tracked `REVIEW_SNAPSHOT.json` intentionally leaves
+`final_live_main_sha` null for the same reason. Do not attempt to confirm
+the final SHA against any tracked field in `REVIEW_SNAPSHOT.json`.
+
+The repository ZIP supplied to the reviewer must include an externally
+generated root `REVIEW_SNAPSHOT.json` containing the exact final main SHA,
+produced after the docs PR merge and before ZIP assembly.
 
 Clone and review at the exact SHA confirmed above.
 
@@ -154,8 +160,11 @@ source-proven. It means the universe may grow when environment permits wider sca
 - Does the R-LIVE authority correctly reject all unapproved identities?
   (`APPROVED_RLIVE_ASSETS` in `finco_radar/authority/r_live_policy.py`)
 - Is there any ticker/symbol/fuzzy/LLM identity path? There must not be.
-- Verify the approved canonical_id list (13 assets) against `docs/radar/r_live_v2_admission.md`
+- Verify the approved canonical_id list (13 assets, post-PR#140) against
+  `docs/r_live_v2_admission_2026_09_29.md` (the final post-PR#140 admission evidence)
   and the deployed registry in `finco_radar/authority/r_live_policy.py`.
+  Note: `docs/radar/r_live_v2_admission.md` (if present) documents earlier PR #136
+  history only and is NOT the final evidence for DELL, SNAP, INTC, MSFT, or META.
 - Are ORCL and PLTR still correctly excluded?
 
 **Freshness (multiple independent clocks — post-PR#140):**
@@ -187,7 +196,9 @@ source-proven. It means the universe may grow when environment permits wider sca
 **Landing batch (PR #140):**
 - Does the landing page use 2 total API requests (1 current batch + 1 ranges batch) rather than
   one per-asset pair (which would be 13×2 = 26 requests)?
-- Verify in `app/radar_ui/r_live_router.py` and the corresponding landing template.
+- Verify in `app/radar_ui/r_live_router.py`, the corresponding landing template,
+  and `static/radar/r_live_table.js` — the client-side JS determines actual browser
+  request fan-out and must be verified independently of the server router.
 
 **Read/write boundary:**
 - Do read paths (`app/radar_rwa/r_live_service.py`) perform zero history writes?
