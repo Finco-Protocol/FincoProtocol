@@ -1,6 +1,6 @@
 """FINCO API v1.1 — Public R-LIVE read-only surface.
 
-Public reference endpoints only. No project list, no exports, no XLSX,
+Six unauthenticated endpoints only. No project list, no exports, no XLSX,
 no validation, no run-certificate, no institutional project APIs.
 
 Mounted in main_web.py under /api/v1.1 (alongside the existing /api/v1 surface).
@@ -8,7 +8,8 @@ Mounted in main_web.py under /api/v1.1 (alongside the existing /api/v1 surface).
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import threading
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -16,7 +17,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.api.v1_1.schemas import InstitutionalEnvelope
 
 router = APIRouter()
-_CURRENT_WORKERS = 2  # Bounded; no global cache or unbounded public RPC fan-out.
+
+# Process-wide gate: at most this many concurrent batch acquisitions.
+# Each acquisition uses _CURRENT_WORKERS=2 RPC workers internally.
+# Prevents unbounded upstream fan-out under simultaneous /current requests.
+_MAX_CONCURRENT_ACQUISITIONS = 2
+_ACQUISITION_GATE = threading.BoundedSemaphore(_MAX_CONCURRENT_ACQUISITIONS)
 
 
 @router.get("/radar/r-live/assets")
@@ -41,45 +47,97 @@ def list_r_live_assets():
 
 @router.get("/radar/r-live/current")
 def stream_r_live_current():
-    """Stream each exact-policy current result as it completes; never write history."""
-    from app.api.v1_1 import institutional as _svc
-    from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
-    policies = tuple(APPROVED_RLIVE_ASSETS.values())
+    """Stream all approved R-LIVE assets as NDJSON; one line per asset as it completes.
 
-    def rows():
-        with ThreadPoolExecutor(max_workers=_CURRENT_WORKERS) as executor:
-            futures = {executor.submit(_svc.get_r_live, p.asset_key.canonical_id): p
-                       for p in policies}
-            for future in as_completed(futures):
-                policy = futures[future]
-                try:
-                    state, data = future.result()
-                except Exception:
-                    state, data = "UNAVAILABLE", {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
-                yield json.dumps({"canonical_id": policy.asset_key.canonical_id,
-                                  "display_symbol": policy.symbol,
-                                  "state": state, "data": data},
-                                 separators=(",", ":")) + "\n"
+    ONE registry fetch and ONE shared RPC transport per request.
+    Process-wide acquisition gate prevents unbounded concurrent upstream work.
+    Zero history writes. Unauthenticated reference surface.
 
-    return StreamingResponse(rows(), media_type="application/x-ndjson",
-                             headers={"Cache-Control": "no-store"})
+    Response: application/x-ndjson
+    Each line: {"canonical_id": "...", "display_symbol": "...", "state": "...", "data": {...}}
+    On RPC not configured: single JSON object {"state": "UNAVAILABLE", "reason": "..."}
+    On gate full: all-UNAVAILABLE stream with reason ACQUISITION_GATE_FULL.
+    """
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+
+    rpc_url = os.getenv("ROBINHOOD_RPC_URL")
+    if not rpc_url:
+        return JSONResponse(
+            status_code=200,
+            content=InstitutionalEnvelope(
+                state="UNAVAILABLE",
+                data={"reason": "RPC_NOT_CONFIGURED"},
+            ).model_dump(),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def _stream():
+        from app.radar_rwa.r_live_service import collect_r_live_batch
+        from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _ids
+        from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
+
+        acquired = _ACQUISITION_GATE.acquire(blocking=False)
+        if not acquired:
+            # Gate full: emit UNAVAILABLE for all assets rather than queueing
+            for policy in APPROVED_RLIVE_ASSETS.values():
+                row = {
+                    "canonical_id": policy.asset_key.canonical_id,
+                    "display_symbol": policy.symbol,
+                    "state": "UNAVAILABLE",
+                    "data": {"reason": "ACQUISITION_GATE_FULL"},
+                }
+                yield json.dumps(row, separators=(",", ":")) + "\n"
+            return
+
+        try:
+            for canonical_id, state, data in collect_r_live_batch(rpc_url=rpc_url):
+                policy = _ids.get(canonical_id)
+                row = {
+                    "canonical_id": canonical_id,
+                    "display_symbol": policy.symbol if policy else None,
+                    "state": state,
+                    "data": data,
+                }
+                yield json.dumps(row, separators=(",", ":")) + "\n"
+        except Exception:
+            row = {"state": "UNAVAILABLE", "reason": "BATCH_ACQUISITION_FAILED"}
+            yield json.dumps(row, separators=(",", ":")) + "\n"
+        finally:
+            _ACQUISITION_GATE.release()
+
+    return StreamingResponse(
+        _stream(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/radar/r-live/history/ranges")
 def get_all_r_live_ranges():
-    """One read-only landing summary response for all exact approved identities."""
+    """One read-only landing summary response for all exact approved identities.
+
+    Delegates to canonical read_r_live_ranges → read_r_live_range_summary_readonly.
+    Uses collected_at clock. Zero writes. Unauthenticated reference surface.
+
+    Response: {"state": "AVAILABLE", "data": {"history_kind": "HISTORICAL", "assets": {...}}}
+    """
     from app.radar_rwa.r_live_service import read_r_live_ranges
     from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
-    ranges = {}
+    ranges: dict = {}
     for policy in APPROVED_RLIVE_ASSETS.values():
         key = policy.asset_key.canonical_id
         try:
             ranges[key] = read_r_live_ranges(key)
         except Exception:
             ranges[key] = {"reason": "HISTORY_UNAVAILABLE"}
-    return JSONResponse(status_code=200, content=InstitutionalEnvelope(
-        state="AVAILABLE", data={"history_kind": "HISTORICAL", "assets": ranges}).model_dump(),
-        headers={"Cache-Control": "no-store"})
+    return JSONResponse(
+        status_code=200,
+        content=InstitutionalEnvelope(
+            state="AVAILABLE",
+            data={"history_kind": "HISTORICAL", "assets": ranges},
+        ).model_dump(),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/radar/r-live/{uid}/history")
@@ -119,18 +177,38 @@ def get_r_live_history(uid: str, limit: int = 30):
 
 @router.get("/radar/r-live/{uid}/history/ranges")
 def get_r_live_ranges(uid: str):
-    """Read-only complete 1h/24h B1.3 premium summaries by collection clock."""
+    """Read-only complete 1h/24h B1.3 premium summaries by collection clock.
+
+    Delegates to canonical read_r_live_ranges → read_r_live_range_summary_readonly.
+    Uses collected_at; digest-invalid history fails closed. Zero writes.
+    UID must be exact canonical_id — no ticker/fuzzy lookup.
+    """
     from app.radar_rwa.r_live_service import read_r_live_ranges
     try:
         ranges = read_r_live_ranges(uid)
     except ValueError:
-        return JSONResponse(status_code=200, content=InstitutionalEnvelope(
-            state="UNAVAILABLE", data={"reason": "ASSET_UID_INVALID"}).model_dump())
+        return JSONResponse(
+            status_code=200,
+            content=InstitutionalEnvelope(
+                state="UNAVAILABLE",
+                data={"reason": "ASSET_UID_INVALID"},
+            ).model_dump(),
+        )
     except Exception:
-        return JSONResponse(status_code=200, content=InstitutionalEnvelope(
-            state="UNAVAILABLE", data={"reason": "HISTORY_UNAVAILABLE"}).model_dump())
-    return JSONResponse(status_code=200, content=InstitutionalEnvelope(
-        state="AVAILABLE", data={"history_kind": "HISTORICAL", **ranges}).model_dump())
+        return JSONResponse(
+            status_code=200,
+            content=InstitutionalEnvelope(
+                state="UNAVAILABLE",
+                data={"reason": "HISTORY_UNAVAILABLE"},
+            ).model_dump(),
+        )
+    return JSONResponse(
+        status_code=200,
+        content=InstitutionalEnvelope(
+            state="AVAILABLE",
+            data={"history_kind": "HISTORICAL", **ranges},
+        ).model_dump(),
+    )
 
 
 @router.get("/radar/r-live/{uid}")

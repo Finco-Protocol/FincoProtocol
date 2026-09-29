@@ -21,27 +21,32 @@ def client() -> TestClient:
 
 
 def test_batch_current_stream_uses_every_exact_policy_and_preserves_stale(monkeypatch):
-    from app.api.v1_1 import institutional
+    # /current now delegates to collect_r_live_batch (one registry + one shared RPC client).
+    # Patch at that layer; the behavioral contract (all policies, STALE preserved) is unchanged.
+    from app.radar_rwa import r_live_service
     policies = tuple(APPROVED_RLIVE_ASSETS.values())
-    calls = []
     states = {policies[0].asset_key.canonical_id: "AVAILABLE",
               policies[1].asset_key.canonical_id: "STALE"}
 
-    def current(key):
-        calls.append(key)
-        state = states.get(key, "UNAVAILABLE")
-        return state, {"reason": "POOL_ACTIVITY_STALE" if state == "STALE" else None,
-                       "b1_0_premium": {"value_bps": "12" if state == "AVAILABLE" else None}}
+    def batch(*, rpc_url, **kwargs):
+        for policy in policies:
+            cid = policy.asset_key.canonical_id
+            state = states.get(cid, "UNAVAILABLE")
+            data = {
+                "reason": "POOL_ACTIVITY_STALE" if state == "STALE" else None,
+                "b1_0_premium": {"value_bps": "12" if state == "AVAILABLE" else None},
+            }
+            yield cid, state, data
 
-    monkeypatch.setattr(institutional, "get_r_live", current)
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example.com/")
+    monkeypatch.setattr(r_live_service, "collect_r_live_batch", batch)
     with client() as api:
         response = api.get("/api/v1.1/radar/r-live/current")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     items = [json.loads(line) for line in response.text.splitlines()]
     assert len(items) == len(policies)
-    assert set(calls) == {p.asset_key.canonical_id for p in policies}
-    assert {row["canonical_id"] for row in items} == set(calls)
+    assert {row["canonical_id"] for row in items} == {p.asset_key.canonical_id for p in policies}
     stale = next(row for row in items if row["state"] == "STALE")
     assert stale["data"]["b1_0_premium"]["value_bps"] is None
     assert stale["data"]["reason"] == "POOL_ACTIVITY_STALE"
