@@ -34,6 +34,53 @@ def _flat(rel_path: str) -> str:
     return re.sub(r"\s+", " ", _read(rel_path))
 
 
+def _ensure_base_history(base_sha: str) -> None:
+    """Make sure the base commit and its ancestry are reachable locally.
+
+    CI pull_request checkouts may be shallow: the base object can be fetched,
+    but the ancestry chain is not present, which makes
+    ``git merge-base --is-ancestor`` return 1 even when the branch contains
+    main.  Deepen the exact base so the governance assertion runs on real
+    history.  Raises RuntimeError with a distinct message when history is
+    genuinely unavailable, so 'history unavailable' is never confused with
+    'branch actually behind main'.
+    """
+    shallow = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=REPO,
+        capture_output=True, text=True,
+    )
+    if shallow.stdout.strip() != "true":
+        return  # full clone: ancestry is already decidable
+    check = subprocess.run(
+        ["git", "cat-file", "-e", f"{base_sha}^{{commit}}"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if check.returncode == 0:
+        ancestors = subprocess.run(
+            ["git", "rev-list", "--max-parents=1", "-n", "1", base_sha],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        if ancestors.returncode == 0 and ancestors.stdout.strip():
+            # Base object with its parent link present; deepen a little more
+            # so is-ancestor walking is possible, best effort.
+            subprocess.run(
+                ["git", "fetch", "--deepen=200", "origin"],
+                cwd=REPO, capture_output=True, text=True,
+            )
+            return
+    fetched = subprocess.run(
+        ["git", "fetch", "--depth=500", "origin", base_sha],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if fetched.returncode != 0:
+        raise RuntimeError(
+            "HISTORY_UNAVAILABLE: cannot fetch the PR base ancestry; the "
+            "governance containment assertion cannot run in this checkout "
+            "(configure fetch-depth: 0). This is a history-availability "
+            "failure, NOT evidence that the branch is behind main."
+        )
+
+
 def _main_sha() -> str | None:
     """Resolve the main tip in this checkout, or None when unavailable.
 
@@ -368,6 +415,7 @@ class TestBehaviorUnchanged:
         sha = _main_sha()
         if sha is None:
             pytest.skip("no main ref available in this checkout")
+        _ensure_base_history(sha)
         out = subprocess.run(
             ["git", "diff", "--name-only", f"{sha}..HEAD", "--", frozen_path],
             cwd=REPO, capture_output=True, text=True, check=True,
@@ -379,14 +427,7 @@ class TestBehaviorUnchanged:
         sha = _main_sha()
         if sha is None:
             pytest.skip("no main ref available in this checkout")
-        shallow = subprocess.run(
-            ["git", "rev-parse", "--is-shallow-repository"], cwd=REPO,
-            capture_output=True, text=True,
-        )
-        if shallow.stdout.strip() == "true":
-            # Shallow CI merge-ref checkouts cannot walk ancestry reliably;
-            # the containment assertion would produce false negatives.
-            pytest.skip("shallow checkout: ancestry containment not decidable")
+        _ensure_base_history(sha)
         probe = subprocess.run(
             ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
             cwd=REPO, capture_output=True, text=True,
@@ -400,6 +441,7 @@ class TestBehaviorUnchanged:
         sha = _main_sha()
         if sha is None:
             pytest.skip("no main ref available in this checkout")
+        _ensure_base_history(sha)
         out = subprocess.run(
             ["git", "diff", f"{sha}..HEAD", "--", "app/model_validation/"],
             cwd=REPO, capture_output=True, text=True, check=True,
