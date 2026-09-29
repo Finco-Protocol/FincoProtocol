@@ -60,20 +60,29 @@ at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run
 
 - **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical
   identity, premium/execution gap, exact-identity history
-- **R-LIVE V2** (PR #136 / #137) — registry-driven 8-asset on-chain reference
-  surface: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD. 300-second freshness
-  gate. USDG/USD Chainlink conversion. Public API. UX shell. `/radar` → `/radar/r-live`.
-  Exact canonical identity only; no ticker/fuzzy lookup.
+- **R-LIVE V2** (PR #136 / #137) — registry-driven on-chain reference surface.
+  300-second freshness gate. USDG/USD Chainlink conversion. Public API. UX shell.
+  `/radar` → `/radar/r-live`. Exact canonical identity only; no ticker/fuzzy lookup.
 - **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
   collects all approved registry assets serially. STALE/UNAVAILABLE market states
   are not process failures. Staging config contract: `ROBINHOOD_RPC_URL` +
   `RADAR_BNB_INTELLIGENCE_DB_PATH`; staging/production ledgers must be separate files.
+- **R-LIVE V2 freshness/history/13-asset expansion** (PR #140, merged 2026-09-29) —
+  13 source-proven approved assets: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD,
+  DELL, SNAP, INTC, MSFT, META. Source-component freshness clocks (market activity age,
+  oracle age, block age, `effective_evidence_at`, `collected_at`). `collected_at` ≠
+  `effective_evidence_at`. 1h/24h ranges: collection-timestamp-selected, HISTORICAL,
+  >=2 points, no interpolation. STALE last-available UX (explicit HISTORICAL label;
+  STALE badge stays STALE). Landing batch: 2 requests total (not 16). 6 public R-LIVE
+  API routes (up from 3). SCAN_COMPLETE = NO (environment-blocked; no standards
+  weakened; 13 admitted = source-proven).
+  Full suite at exact head: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
 
 ### API / MCP
 
 - **API v1.1** (PR #125) — thin read-only institutional surface over canonical authorities
 - **MCP V1** (PR #129) — read-only institutional agent interface (9 tools; signed session identity)
-- **R-LIVE public API** (PR #137) — 3 unauthenticated read-only routes
+- **R-LIVE public API** (PR #137 / #140) — 6 unauthenticated read-only routes
 
 ### Token / Access / Metering
 
@@ -86,33 +95,37 @@ at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run
 
 - V1 Product Truth Freeze (PR #130)
 - Opus Handoff Pack V1 (PR #131)
-- Post-PR137 Product Truth Refresh (this PR)
+- Post-PR137 Product Truth Refresh (PR #138, earlier)
+- Post-PR140 Final Docs / Review Package Refresh (PR #138, this revision)
 
 ---
 
-## CURRENT / OPERATIONALIZATION
+## CURRENT / OPERATIONAL
 
-These capabilities are implemented but require operational configuration for
-production data to flow:
+These capabilities are implemented and code-complete. The following operational
+activities are underway or required before full production deployment:
 
-- **R-LIVE production collector** — requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH`
-  (identical path for web and collector; staging/production separate); systemd collector
-  activated on a VPS to accumulate live history
-- **Signed Run Certificate** — requires `FINCO_RUN_CERT_SIGNING_KEY` in
-  deployment configuration
+- **R-LIVE canonical history accumulation** — collector active; accumulating 13-asset
+  canonical history on production VPS; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH`
+  (identical path for web and collector; staging/production separate)
+- **R-LIVE wide admission scan** — blocked by review environment egress policy
+  (HTTP 403 on api.robinhood.com and rpc.mainnet.chain.robinhood.com);
+  SCAN_COMPLETE = NO; additional asset admission possible when environment permits
+- **Staging performance observation** — observe real staging R-LIVE performance
+  with 13-asset surface; validate 1h/24h range accumulation
+- **Signed Run Certificate** — requires `FINCO_RUN_CERT_SIGNING_KEY` in deployment configuration
 - **MCP V1** — requires `FINCO_SESSION_TOKEN` deployment configuration;
   server-session isolation review for multi-user shared deployments
-- **B2.3 metering coverage** — MCP tool-call hook wiring not confirmed for
-  all production traffic paths
-- **Final documentation / product truth** — this PR
-- **Final release integrity audit** — pending
+- **B2.3 metering coverage** — MCP tool-call hook wiring not confirmed for all production paths
+- **Final docs / review package** — this PR (PR #138 post-PR140 revision)
+- **Final Release Integrity Audit** — pending
 
 ---
 
 ## NEXT
 
 - **Clean-room Opus review** — independent security and authority review from
-  this docs PR snapshot
+  this docs PR snapshot (post-PR#140 product truth)
 - **Corrections from independent review** — apply findings
 
 ### Expand the model

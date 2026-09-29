@@ -177,26 +177,53 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 15. R-LIVE V2 — Approved Pool ≠ Current Availability
+## 15. R-LIVE V2 — Approved Pool ≠ Current Availability; SCAN_COMPLETE = NO
 
-- R-LIVE V2 reviewed and approved 8 assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
-  AVGO, NFLX, AMD) based on an on-chain authority review at block 75507992
-  (2026-09-29 08:19 UTC).
+- R-LIVE V2 reviewed and approved 13 assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
+  AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) based on on-chain authority
+  reviews at blocks 75507992 (initial 8 assets, PR #136, 2026-09-29) and
+  75763398 (5 additional assets: DELL, SNAP, INTC, MSFT, META, PR #140, 2026-09-29).
+- MSFT and META were REJECTED at PR #136 (insufficient Swap activity at that time)
+  and ADMITTED at PR #140 following a new source-proven review. ORCL and PLTR
+  remain excluded.
+- **SCAN_COMPLETE = NO**: the review environment's egress policy blocked
+  api.robinhood.com and rpc.mainnet.chain.robinhood.com (HTTP 403), preventing
+  a registry-wide exhaustive scan of all candidates. This does not weaken the 13
+  admitted assets — each has individually source-proven admission evidence. It means
+  additional assets may be admissible once the scan environment permits wider access.
+  No authority standards were weakened to compensate for the blocked scan.
 - Pool approval at review time does not guarantee that a current observation
   is AVAILABLE at any later time.
 - Runtime re-validates freshness: the last qualifying Swap must be within 300
   seconds at the pinned head. No Swap in that window returns STALE.
 - USDG is never assumed to equal USD 1; the Chainlink USDG/USD proxy is
   re-read at each acquisition.
-- REJECTED assets (MSFT, META, ORCL, PLTR) are excluded from the registry.
-  They cannot be queried via the public API. Their exclusion is permanent until
-  a new review is conducted.
+- REJECTED assets (ORCL, PLTR) are excluded from the registry. They cannot be
+  queried via the public API. Their exclusion is permanent until a new review.
 - The R-LIVE public API is unauthenticated (reference surface). This is
   intentional: it is read-only and does not expose any user or project data.
 
 ---
 
-## 16. B2.3 Concurrent Idempotency — Correctness Fixed, Scale Not Guaranteed
+## 16. R-LIVE V2 — Collection-Time History and Range Semantics (PR #140)
+
+- 1h/24h ranges are selected by `collected_at` (FINCO collection timestamp), not by
+  on-chain observation time (`effective_evidence_at`). This is intentional: ranges
+  reflect the collection cadence, not on-chain block time.
+- A range window requires >=2 collected points to produce a summary. Fewer points returns
+  an appropriate empty or insufficient-data response. There is no price interpolation.
+- `collected_at` and `effective_evidence_at` are structurally separate fields. Do not
+  assume they are equal.
+- STALE last-available UX shows the last canonical AVAILABLE value with an explicit
+  HISTORICAL label when the current reading is STALE. This value is not a current
+  observation. The STALE badge is never promoted to AVAILABLE when a historical fallback
+  is displayed.
+- Landing page batch: the R-LIVE landing uses 2 total API requests (1 current + 1 ranges),
+  not one request per asset. Landing batch optimization is code-proven.
+
+---
+
+## 17. B2.3 Concurrent Idempotency — Correctness Fixed, Scale Not Guaranteed
 
 - PR #135 fixed a SQLite lock-error on concurrent duplicate delivery
   (`(subject_id, feature_key, idempotency_key)` constraint).
@@ -208,7 +235,7 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 17. $FINCO Token Not Yet Launched
+## 18. $FINCO Token Not Yet Launched
 
 - The protocol access and service-entitlement layer is implemented.
 - The $FINCO token is not yet launched. Token economics, access thresholds,

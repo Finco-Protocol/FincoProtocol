@@ -8,12 +8,16 @@ https://github.com/Finco-Protocol/FincoProtocol
 ## Live Main SHA (at handoff)
 
 ```
-226fe8d4ee15bfe60e441550f386e8985ae0c2f9
+0082e5bd27ffe166c1d80a177fae49670ed848f2
 ```
 
-Merge commit: **R-LIVE V2 multi-asset collector and staging config contract** (PR #139, merged 2026-09-29)
+Merge commit: **R-LIVE V2 freshness/history/13-asset expansion** (PR #140, merged 2026-09-29)
 
-Product base includes PR #137 (R-LIVE V2 product shell) + PR #139 (multi-asset collector).
+Product base includes PR #136–#140 (R-LIVE V2 multi-asset authority, product shell, multi-asset
+collector, freshness/history/13-asset expansion).
+
+Previous main before PR #140: `226fe8d4ee15bfe60e441550f386e8985ae0c2f9` (PR #139 merge).
+PR #140 full-suite evidence: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
 
 This package describes the implemented repository state at this SHA.
 It is not a marketing document. Limitations are disclosed in `05_KNOWN_LIMITATIONS.md`.
@@ -91,6 +95,9 @@ All authority tests in the suite are expected to run; no file-level exclusion re
 | `dependency-audit` | dependency vulnerability audit |
 | `protocol-ui-browser` | browser/UI acceptance |
 
+PR #140 CI result: **6/6 SUCCESS** at exact head `dd5bd09f6c1af303aa1b0d695828d8394f989de0`.
+Full suite: 4703 passed, 38 skipped, 0 failed.
+
 ## Where to Find Key Capabilities
 
 | Capability | Location |
@@ -101,7 +108,7 @@ All authority tests in the suite are expected to run; no file-level exclusion re
 | **MCP V1 server** | `app/mcp/v1/server.py`, entry: `main_mcp.py` |
 | **FINCO Radar** | `finco_radar/`, `app/radar_rwa/`, `app/radar_crypto/` |
 | **R-LIVE V2 authority** | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
-| **R-LIVE V2 public API** | `app/api/v1_1/r_live_public_router.py` (3 unauthenticated read-only routes) |
+| **R-LIVE V2 public API** | `app/api/v1_1/r_live_public_router.py` (6 unauthenticated read-only routes) |
 | **R-LIVE V2 UX shell** | `app/radar_ui/r_live_router.py`, templates `radar/r_live_landing.html`, `radar/r_live_detail.html` |
 | **R-LIVE multi-asset collector (PR #139)** | `app/radar_rwa/r_live_collect.py` — no-arg = `collect_all_approved()` over full registry; `--asset-key` for single diagnostic |
 | **FINCO VERIFY (B2.1)** | `app/verified/authority.py` |

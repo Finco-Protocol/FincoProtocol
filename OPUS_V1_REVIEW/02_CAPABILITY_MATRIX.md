@@ -39,8 +39,8 @@ the Model vertical list.
 | Radar B1.1 — BNB RWA market intelligence | LIVE | `finco_radar/`, `app/radar_rwa/` |
 | Radar B1.2 — Cross-chain canonical identity | LIVE | `finco_radar/authority/cross_chain.py` |
 | Radar B1.3 — BNB premium, execution gap, exact-identity history | LIVE | `finco_radar/` |
-| R-LIVE V2 — 8-asset registry (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD) | LIVE | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
-| R-LIVE V2 public API (3 read-only routes) | LIVE | `app/api/v1_1/r_live_public_router.py`; unauthenticated; exact canonical_id only |
+| R-LIVE V2 — 13-asset registry (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) — SCAN_COMPLETE=NO (environment-blocked, no standards weakened) | LIVE | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
+| R-LIVE V2 public API (6 read-only routes) | LIVE | `app/api/v1_1/r_live_public_router.py`; unauthenticated; exact canonical_id only |
 | R-LIVE V2 UX shell — landing table + per-asset detail | LIVE | `app/radar_ui/r_live_router.py`; `/radar/r-live`, `/radar/r-live/{canonical_id}` |
 | R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer; read paths write zero history |
 | R-LIVE multi-asset collector (PR #139) | LIVE | `app/radar_rwa/r_live_collect.py`; no-arg = full approved registry batch (`collect_all_approved`); `--asset-key` = single diagnostic; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` |
@@ -53,10 +53,20 @@ the Model vertical list.
 - "LIVE" in this table means the capability is implemented and exposed in the codebase.
   It does NOT mean "staging/production RPC and collector are currently proven active."
 
-**R-LIVE V2 public API routes (exact):**
+**R-LIVE V2 public API routes (exact, 6 total):**
 - `GET /api/v1.1/radar/r-live/assets` — list approved identities (no auth required)
-- `GET /api/v1.1/radar/r-live/{canonical_id}` — current reference for exact identity
+- `GET /api/v1.1/radar/r-live/current` — stream current results for all approved identities (NDJSON; no history writes)
+- `GET /api/v1.1/radar/r-live/history/ranges` — landing summary: all approved 1h/24h ranges (read-only)
+- `GET /api/v1.1/radar/r-live/{canonical_id}` — current reference for exact identity (no history writes)
 - `GET /api/v1.1/radar/r-live/{canonical_id}/history` — historical evidence (read-only, zero writes)
+- `GET /api/v1.1/radar/r-live/{canonical_id}/history/ranges` — 1h/24h ranges for exact identity (read-only)
+
+**Post-PR#140 R-LIVE freshness architecture:**
+- Five independent freshness signals: market/pool activity age (300s TWAP gate), oracle age (Chainlink USDG/USD), block age, effective evidence timestamp (`effective_evidence_at`), FINCO collection timestamp (`collected_at`)
+- `collected_at` ≠ `effective_evidence_at`; range selection uses `collected_at`
+- 1h/24h ranges: HISTORICAL, collection-timestamp-selected, >=2 points required, no interpolation
+- STALE last-available UX: last canonical value shown with explicit HISTORICAL label; STALE badge remains STALE
+- Landing batch: 2 requests total (1 current + 1 ranges), not one per asset
 
 **R-LIVE identity semantics:** UID is the `canonical_id` from `APPROVED_RLIVE_ASSETS`
 (e.g. `4663:0xaf3d76f...`). No ticker/symbol/fuzzy lookup. Unapproved identity

@@ -1,10 +1,41 @@
 # FINCO V1 — PR / SHA Ledger
 
 All entries verified from `git log origin/main` at final live main SHA
-`226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
+`0082e5bd27ffe166c1d80a177fae49670ed848f2`.
 
 Merge SHAs are the SHA on `main` after merge. Entries are newest-first within
 each stream.
+
+---
+
+## R-LIVE V2 Freshness / History / 13-Asset Expansion (PR #140)
+
+| PR | Capability | Accepted Feature HEAD | Merge SHA | State |
+|---|---|---|---|---|
+| #140 | R-LIVE V2: freshness/history semantics, 13-asset universe, source-component clocks, collected_at/evidence_at separation, 1h/24h ranges, STALE last-available UX, landing batch, candidate review | `dd5bd09f6c1af303aa1b0d695828d8394f989de0` | `0082e5bd27ffe166c1d80a177fae49670ed848f2` | MERGED |
+
+Evidence: 4703 passed, 38 skipped, 0 failed (full Linux CI at PR #140 exact head); 6/6 workflows SUCCESS.
+
+Key capabilities shipped:
+- Expanded R-LIVE universe: 13 source-proven approved assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
+  AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META)
+- SCAN_COMPLETE = NO (review environment egress policy blocked api.robinhood.com and
+  rpc.mainnet.chain.robinhood.com; no authority standards weakened)
+- Freshness distinction: market/pool activity age, oracle age, block age, effective
+  evidence timestamp, FINCO collection timestamp (collected_at) — all structurally separate
+- collected_at (FINCO collection timestamp) ≠ effective_evidence_at (on-chain observation time)
+- 1h/24h range semantics: historical, collection-timestamp-selected, >=2 points, no interpolation
+- STALE last-available UX: last canonical value shown with explicit HISTORICAL badge; badge stays STALE
+- Landing batch: 1 current request + 1 range request (not 16)
+- 6 public R-LIVE API routes (up from 3)
+- New test files: test_r_live_onchain.py (22), test_r_live_v2_multi_asset.py (11),
+  test_r_live_freshness_ranges.py (8), test_r_live_landing_batch.py (3),
+  test_r_live_candidate_review.py (3)
+
+Changed files: finco_radar/authority/r_live_policy.py, app/api/v1_1/r_live_public_router.py,
+app/radar_rwa/r_live_service.py, docs/, tests/ (new R-LIVE test files), README.md.
+Frozen namespaces: ZERO DIFF on financial_engine, finco_core, app, static, main_web.py,
+.github/workflows (runtime code).
 
 ---
 
@@ -58,8 +89,10 @@ Frozen namespaces: ZERO DIFF.
 |---|---|---|---|
 | #136 | R-LIVE V2 multi-asset authority — reviewed admission (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD); freshness gate | `29afcf4f34b0407b716a55ba8b18edb572372d09` | MERGED |
 
-Approved assets (8): AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD.
-Rejected assets (4): MSFT (1 Swap), META (0 Swaps), ORCL (no USDG pool), PLTR (1 Swap).
+Approved assets at PR #136 (8): AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD.
+Rejected at PR #136 (4): MSFT (1 Swap at review time), META (0 Swaps at review time),
+ORCL (no USDG pool), PLTR (1 Swap at review time).
+Note: MSFT and META were subsequently re-reviewed and ADMITTED in PR #140. ORCL and PLTR remain excluded.
 300-second freshness gate enforced. STALE/UNAVAILABLE suppress numeric output.
 
 ---
@@ -247,6 +280,6 @@ implementation is in `app/services/run_certificate_service.py` (PR #132).
 - PRs merged as direct commits to main appear as regular commit SHAs.
 - Inspect with:
   ```bash
-  git log 226fe8d4ee15bfe60e441550f386e8985ae0c2f9 --oneline
-  git log 226fe8d4ee15bfe60e441550f386e8985ae0c2f9 --oneline --merges
+  git log 0082e5bd27ffe166c1d80a177fae49670ed848f2 --oneline
+  git log 0082e5bd27ffe166c1d80a177fae49670ed848f2 --oneline --merges
   ```

@@ -105,7 +105,7 @@ reviewed pool of tokenized equities on Robinhood Chain (chain 4663).
 
 The current reviewed approved display universe is:
 
-AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD
+AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META
 
 Each approved identity is exact: a specific canonical AssetKey / economic_asset_uid
 / Uniswap V3 pool deployment reviewed from the official Robinhood asset registry and
@@ -121,12 +121,15 @@ numeric output and are structurally distinct from empty/zero.
 R-LIVE does not create FINCO VERIFIED status. R-LIVE data does not flow into the
 financial engine.
 
-The public R-LIVE API surface:
+The public R-LIVE API surface (6 unauthenticated read-only routes):
 
 ```
-GET /api/v1.1/radar/r-live/assets                   — list approved identities
-GET /api/v1.1/radar/r-live/{canonical_id}            — current reference (exact identity only)
-GET /api/v1.1/radar/r-live/{canonical_id}/history    — historical evidence (read-only)
+GET /api/v1.1/radar/r-live/assets                        — list approved identities
+GET /api/v1.1/radar/r-live/current                       — stream current results for all approved (NDJSON)
+GET /api/v1.1/radar/r-live/history/ranges                — landing summary: all approved 1h/24h ranges
+GET /api/v1.1/radar/r-live/{canonical_id}                — current reference (exact identity only)
+GET /api/v1.1/radar/r-live/{canonical_id}/history        — historical evidence (read-only)
+GET /api/v1.1/radar/r-live/{canonical_id}/history/ranges — 1h/24h ranges by collection clock
 ```
 
 The R-LIVE collector (`python -m app.radar_rwa.r_live_collect`, no-arg) collects all
@@ -227,7 +230,7 @@ python tools/build_public_validation_corpus.py \
   --output artifacts/finco-public-validation-corpus.json
 ```
 
-FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-LIVE V2 is live with a reviewed 8-asset surface. Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, Verified Assets V1, API v1.1, and MCP V1 are implemented. The $FINCO token is not yet launched. Blockchain anchoring remains future work.
+FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-LIVE V2 is live with a reviewed 13-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META). Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, Verified Assets V1, API v1.1, and MCP V1 are implemented. The $FINCO token is not yet launched. Blockchain anchoring remains future work.
 
 ## Safety boundaries
 
@@ -255,7 +258,7 @@ Sanitized corporate codebase under active development and prepared for controlle
 
 **Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented and vertically validated modelling workflow (A3.1 complete). EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
-**Radar / R-LIVE:** R-LIVE V2 is live — registry-driven 8-asset reviewed surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD) on Robinhood Chain with 300-second freshness gate, USDG/USD Chainlink conversion, and public read-only API. Global Radar lands on R-LIVE.
+**Radar / R-LIVE:** R-LIVE V2 is live — registry-driven 13-asset reviewed surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) on Robinhood Chain with 300-second freshness gate, source-component freshness clocks, USDG/USD Chainlink conversion, collection-time history, 1h/24h ranges, STALE last-available UX, and 6 public read-only API routes. Global Radar lands on R-LIVE. Wide admission scan environment-blocked (SCAN_COMPLETE = NO); 13 assets are source-proven.
 
 **Protocol:** Signed Run Certificate V1 (Ed25519) is live. Model Trust Pack UX V1 (7-section read-only evidence surface) is live. Verified Assets V1 (currently MODEL_ONLY) are active. API v1.1 institutional surface and MCP V1 read-only agent interface are live.
 

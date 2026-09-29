@@ -2,7 +2,10 @@
 
 All test files are in `tests/`. Run with `pytest tests/<file> -v`.
 
-Verified counts are accurate at main SHA `226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
+Verified counts are accurate at main SHA `0082e5bd27ffe166c1d80a177fae49670ed848f2` (post-PR#140).
+
+**PR #140 full suite evidence (attributed to PR #140 exact-head CI, not a new #138 run):**
+4703 passed, 38 skipped, 0 failed (full Linux CI); 6/6 workflows SUCCESS.
 
 The `eth_account` CI failure in `tests/test_b2_2_token_entitlement.py` was fixed.
 All test files listed here run without infrastructure exclusion.
@@ -160,6 +163,34 @@ surface that the MCP server exposes.
 
 Counts verified via `pytest --collect-only -q` at main SHA `226fe8d4`.
 
+## R-LIVE V2 Freshness / History / 13-Asset Expansion (PR #140)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_r_live_onchain.py` | 22 | R-LIVE on-chain authority: exact identity, freshness gate, TWAP, USDG/USD oracle, STALE/UNAVAILABLE semantics |
+| `tests/test_r_live_v2_multi_asset.py` | 11 | 13-asset universe: all 13 canonical identities present and unique, registry integrity, no fabricated responses |
+| `tests/test_radar_r14_rlive_history_contract.py` | 20 | R-LIVE history contract (post-PR#140): read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity — verified via `pytest --collect-only -q` |
+| `tests/test_r_live_freshness_ranges.py` | 8 | 1h/24h range semantics: collection-timestamp-selected, >=2 points required, no interpolation, HISTORICAL kind |
+| `tests/test_r_live_landing_batch.py` | 3 | Landing batch architecture: 1 current + 1 range request, not 16 individual requests |
+| `tests/test_r_live_candidate_review.py` | 3 | Candidate review contract: source-proven admission only, SCAN_COMPLETE=NO documented |
+
+Counts at `0082e5bd` from source-level function count (test_r_live_onchain, test_r_live_v2_multi_asset,
+test_r_live_freshness_ranges, test_r_live_landing_batch, test_r_live_candidate_review) and
+`pytest --collect-only -q` (test_radar_r14_rlive_history_contract: 20). The five new PR#140 test
+files require `fastapi` and `httpx` to be installed in the review environment. All counts attributed
+to PR #140 exact-head CI (4703 passed, 38 skipped, 0 failed) — not a new #138 run.
+
+Key invariants tested (PR #140):
+- `test_r_live_onchain.py`: freshness gate enforced; STALE when no Swap in 300s window;
+  USDG/USD from Chainlink; exact canonical_id required; no ticker/fuzzy lookup
+- `test_r_live_v2_multi_asset.py`: all 13 assets (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO,
+  NFLX, AMD, DELL, SNAP, INTC, MSFT, META) in approved registry; each with distinct canonical_id
+- `test_r_live_freshness_ranges.py`: 1h/24h ranges are HISTORICAL, collection-timestamp-selected;
+  >=2 points required; no price interpolation
+- `test_r_live_landing_batch.py`: landing page uses 2 total API requests (1 current + 1 ranges),
+  not one per asset
+- `test_r_live_candidate_review.py`: SCAN_COMPLETE=NO documented; only source-proven assets admitted
+
 Key invariants tested:
 - Unapproved identity → `ASSET_NOT_IN_REGISTRY` (never fabricated response)
 - Read paths → zero history writes (`persist_history=False`)
@@ -223,7 +254,7 @@ pytest tests/test_b2_1_verified_authority.py \
        -v --tb=short
 ```
 
-Handoff SHA: `226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
+Product base SHA: `0082e5bd27ffe166c1d80a177fae49670ed848f2` (post-PR#140).
 
 ## Full Suite Command
 

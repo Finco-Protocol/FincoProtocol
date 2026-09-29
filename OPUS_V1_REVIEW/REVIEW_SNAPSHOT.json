@@ -1,14 +1,29 @@
 {
   "repository": "Finco-Protocol/FincoProtocol",
-  "product_base_sha": "226fe8d4ee15bfe60e441550f386e8985ae0c2f9",
-  "product_base_description": "Merge pull request #139 — R-LIVE V2 multi-asset collector and staging config contract",
+  "product_base_sha": "0082e5bd27ffe166c1d80a177fae49670ed848f2",
+  "product_base_description": "Merge pull request #140 from Finco-Protocol/codex/r-live-v2-freshness-history — R-LIVE V2 freshness/history/13-asset expansion",
   "docs_pr_number": 138,
   "docs_pr_head_sha": null,
   "final_live_main_sha": null,
-  "review_package_version": "post-pr139-v1",
+  "review_package_version": "post-pr140-v1",
   "generated_at_utc": "2026-09-29T00:00:00Z",
   "required_live_verification": true,
   "note": "docs_pr_head_sha and final_live_main_sha are intentionally null. A Git-tracked file cannot contain the SHA of the commit containing it — this is structurally circular. These values MUST be resolved externally from GitHub at review/snapshot time. For the reviewer ZIP, generate an out-of-repo REVIEW_SNAPSHOT.json after checkout at the confirmed final SHA.",
+  "merge_ledger": [
+    {
+      "pr": 140,
+      "title": "R-LIVE V2 freshness/history/13-asset expansion",
+      "accepted_head": "dd5bd09f6c1af303aa1b0d695828d8394f989de0",
+      "merge_sha": "0082e5bd27ffe166c1d80a177fae49670ed848f2",
+      "previous_main": "226fe8d4ee15bfe60e441550f386e8985ae0c2f9",
+      "merge_type": "normal two-parent merge",
+      "full_linux": "4703 passed, 38 skipped, 0 failed",
+      "workflows": "6/6 SUCCESS",
+      "final_approved_rlive_count": 13,
+      "wide_scan_complete": false,
+      "wide_scan_blocked_reason": "review environment egress policy blocked api.robinhood.com and rpc.mainnet.chain.robinhood.com (HTTP 403)"
+    }
+  ],
   "supported_today": {
     "model_verticals": {
       "Solar": "LIVE",
@@ -36,16 +51,27 @@
       "B2.3 Usage Metering": "LIVE"
     }
   },
-  "key_capabilities_post_pr139": [
-    "R-LIVE V2 registry-driven 8-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD)",
-    "R-LIVE public API: GET /api/v1.1/radar/r-live/assets, /r-live/{uid}, /r-live/{uid}/history",
+  "key_capabilities_post_pr140": [
+    "R-LIVE V2 registry-driven 13-asset surface: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META",
+    "R-LIVE public API (6 read-only routes): GET /api/v1.1/radar/r-live/assets, /r-live/current, /r-live/history/ranges, /r-live/{uid}, /r-live/{uid}/history, /r-live/{uid}/history/ranges",
     "R-LIVE UX shell: /radar/r-live landing, /radar/r-live/{canonical_id} detail",
     "/radar redirects to /radar/r-live (R-LIVE is default Radar domain)",
+    "Freshness distinction: market/pool activity age (300s TWAP gate), oracle age (Chainlink USDG/USD), block age, effective evidence timestamp, FINCO collection timestamp (collected_at)",
+    "collected_at (FINCO collection timestamp) is structurally separate from effective_evidence_at (on-chain observation time)",
+    "1h/24h range semantics: historical, collection-timestamp-selected, >= 2 points required, no interpolation",
+    "STALE last-available UX: explicitly HISTORICAL, badge remains STALE, last canonical value shown for UX continuity",
+    "Landing batch architecture: 1 current request + 1 range request, not 16 individual requests",
+    "SCAN_COMPLETE = NO: wide admission scan environment-blocked (egress policy blocked api.robinhood.com and rpc.mainnet.chain.robinhood.com); no authority standards weakened",
     "300-second TWAP freshness gate; STALE != UNAVAILABLE != empty",
     "B2.3 concurrent duplicate delivery fix (PR #135): lock-safe, exactly one event",
-    "R-LIVE multi-asset collector (PR #139): no-arg collects all approved assets; serial iteration; STALE/UNAVAILABLE per-asset are canonical market states, not process failures",
-    "Staging collector config contract (PR #139): ROBINHOOD_RPC_URL + RADAR_BNB_INTELLIGENCE_DB_PATH; staging/production ledgers must be separate"
+    "R-LIVE multi-asset collector: no-arg collects all 13 approved assets serially; STALE/UNAVAILABLE per-asset are canonical market states, not process failures",
+    "Staging collector config contract: ROBINHOOD_RPC_URL + RADAR_BNB_INTELLIGENCE_DB_PATH; staging/production ledgers must be separate"
   ],
+  "scan_status": {
+    "SCAN_COMPLETE": false,
+    "blocked_reason": "review environment egress policy blocked api.robinhood.com and rpc.mainnet.chain.robinhood.com (HTTP 403)",
+    "authority_note": "No authority standards weakened. Assets admitted based on source-proven evidence only. 13 admitted = those whose admission evidence was acquirable in the review environment."
+  },
   "operational_config_requirements": {
     "ROBINHOOD_RPC_URL": "Required for both web current-read and the collector. Never committed to Git. Missing → RPC_NOT_CONFIGURED.",
     "RADAR_BNB_INTELLIGENCE_DB_PATH": "Shared durable B1.3 history ledger. Web and collector must use the identical path. Staging and production must be different files.",

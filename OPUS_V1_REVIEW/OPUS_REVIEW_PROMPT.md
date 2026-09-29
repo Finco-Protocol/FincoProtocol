@@ -17,11 +17,15 @@ is to independently verify or challenge them.
 Repository: `Finco-Protocol/FincoProtocol`
 
 **REVIEW PACKAGE PREPARED AGAINST PRODUCT BASE:**
-`226fe8d4ee15bfe60e441550f386e8985ae0c2f9`
+`0082e5bd27ffe166c1d80a177fae49670ed848f2`
+
+This is the post-PR#140 main. PR #140 merged at this SHA from accepted feature head
+`dd5bd09f6c1af303aa1b0d695828d8394f989de0`. Previous main was `226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
+PR #140 full-suite evidence: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
 
 **DOCS PR HEAD:**
 This review package was prepared in a docs PR. The docs PR head SHA is
-recorded in `REVIEW_SNAPSHOT.json`. The product code at `226fe8d4` is
+recorded in `REVIEW_SNAPSHOT.json`. The product code at `0082e5bd` is
 the authoritative product base.
 
 **FINAL CLEAN-ROOM REVIEW TARGET:**
@@ -135,20 +139,73 @@ For each: verify from code, not from documentation claims.
 
 ### F. R-LIVE V2 Identity / Pools / Freshness / Premium / History
 
+**Post-PR#140 R-LIVE architecture — verify all of the following independently:**
+
+**Universe (PR #140): 13 source-proven approved assets**
+AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META.
+Note: MSFT and META were REJECTED at PR #136 (insufficient Swap activity at that time) and
+ADMITTED at PR #140 (source-proven at wider review). ORCL and PLTR remain excluded.
+SCAN_COMPLETE = NO: the review environment's egress policy blocked api.robinhood.com and
+rpc.mainnet.chain.robinhood.com (HTTP 403), preventing a registry-wide exhaustive scan.
+This does not weaken the 13 admitted assets — their admission evidence was acquired and is
+source-proven. It means the universe may grow when environment permits wider scanning.
+
+**Identity and registry:**
 - Does the R-LIVE authority correctly reject all unapproved identities?
   (`APPROVED_RLIVE_ASSETS` in `finco_radar/authority/r_live_policy.py`)
 - Is there any ticker/symbol/fuzzy/LLM identity path? There must not be.
-- Is the 300-second TWAP freshness gate enforced? What happens if no Swap
-  occurred in the window?
-- Is USDG/USD conversion computed from the canonical Chainlink oracle? Is
-  USDG ever assumed to equal USD 1?
+- Verify the approved canonical_id list (13 assets) against `docs/radar/r_live_v2_admission.md`
+  and the deployed registry in `finco_radar/authority/r_live_policy.py`.
+- Are ORCL and PLTR still correctly excluded?
+
+**Freshness (multiple independent clocks — post-PR#140):**
+- Is the 300-second TWAP freshness gate enforced? What happens if no Swap occurred in the window?
+- Is USDG/USD conversion computed from the canonical Chainlink oracle? Is USDG ever assumed = USD 1?
 - Are STALE and UNAVAILABLE structurally distinct from empty/zero?
+- Does the codebase distinguish at least the following independent freshness signals:
+  (a) market/pool activity age (time since last qualifying on-chain Swap),
+  (b) oracle age (Chainlink USDG/USD feed staleness),
+  (c) block age (age of the pinned observation block),
+  (d) effective evidence timestamp (on-chain time of the observation, `effective_evidence_at`),
+  (e) FINCO collection timestamp (`collected_at`, time the collector persisted the result)?
+- Are `collected_at` and `effective_evidence_at` structurally separate fields? Verify that
+  `collected_at` is never substituted for `effective_evidence_at` in any output.
+
+**1h/24h ranges (PR #140):**
+- Do 1h/24h range windows use `collected_at` (FINCO collection timestamp) as the selection clock,
+  not `effective_evidence_at` or `observed_at`?
+- Are ranges explicitly HISTORICAL (not live/streaming)?
+- Do ranges require >=2 data points? What is returned for <2 points?
+- Is there any price interpolation within ranges? There must not be.
+
+**STALE last-available UX (PR #140):**
+- When the most recent observation is STALE, does the UX show the last canonical available value
+  with an explicit HISTORICAL label?
+- Does the STALE badge remain STALE (never green) when showing a last-available value?
+- Is the displayed value clearly labeled as HISTORICAL and explicitly not a current reading?
+
+**Landing batch (PR #140):**
+- Does the landing page use 2 total API requests (1 current batch + 1 ranges batch) rather than
+  one per-asset pair (which would be 13×2 = 26 requests)?
+- Verify in `app/radar_ui/r_live_router.py` and the corresponding landing template.
+
+**Read/write boundary:**
 - Do read paths (`app/radar_rwa/r_live_service.py`) perform zero history writes?
 - Is the collector the sole approved history writer?
-- Are the 8 approved assets correctly identified? Verify the approved pool
-  list against `docs/radar/r_live_v2_admission.md` and the deployed registry.
-- Are the 4 rejected assets (MSFT, META, ORCL, PLTR) correctly excluded?
 - Does any surface imply an R-LIVE observation is a tradeable or executable price?
+
+**Public API routes (6 routes — verify all):**
+```
+GET /api/v1.1/radar/r-live/assets                   — list approved identities
+GET /api/v1.1/radar/r-live/current                  — stream current results for all approved (NDJSON)
+GET /api/v1.1/radar/r-live/history/ranges            — landing summary: all approved 1h/24h ranges
+GET /api/v1.1/radar/r-live/{uid}                    — current reference (exact identity only)
+GET /api/v1.1/radar/r-live/{uid}/history             — historical evidence (read-only)
+GET /api/v1.1/radar/r-live/{uid}/history/ranges      — 1h/24h ranges for exact identity
+```
+- Are all 6 routes unauthenticated and read-only?
+- Does any route write history? (`persist_history=False` must be enforced on all read routes.)
+- Are all routes exact-canonical_id-only — no ticker/fuzzy lookup?
 
 **Multi-asset collector (PR #139) — verify independently:**
 - Does `python -m app.radar_rwa.r_live_collect` (no-arg) call `collect_all_approved()`
@@ -189,11 +246,14 @@ For each: verify from code, not from documentation claims.
 
 ### H. API
 
-- Are the 3 R-LIVE public API routes (`GET /api/v1.1/radar/r-live/assets`,
-  `GET /api/v1.1/radar/r-live/{uid}`, `GET /api/v1.1/radar/r-live/{uid}/history`)
-  correctly unauthenticated and read-only?
+- Are all 6 R-LIVE public API routes (assets, current, history/ranges [all],
+  /{uid}, /{uid}/history, /{uid}/history/ranges) correctly unauthenticated and read-only?
 - Does any R-LIVE API route write history? (`persist_history=False` must be
-  enforced.)
+  enforced on all read routes.)
+- Does the `/radar/r-live/current` streaming route (NDJSON) correctly fan out only to
+  approved exact identities and never write to history?
+- Does the `/radar/r-live/history/ranges` all-assets landing route correctly read
+  from the shared ledger without writing?
 - Does the institutional API v1.1 expose any project data through the R-LIVE
   routes?
 - Are all API v1 and v1.1 endpoints correctly access-controlled?
@@ -373,6 +433,67 @@ implemented. Identify specifically which current capability it builds on.
     `app/radar_rwa/r_live_collect.py` filters all typed output to
     `[A-Z][A-Z0-9_]{0,95}`, ensuring no raw exception text, RPC URL, or other
     credential appears in JSON stdout captured by journald.
+
+22. **collected_at vs effective_evidence_at separation (PR #140)** — confirm that
+    `collected_at` (FINCO collection timestamp) and `effective_evidence_at` (on-chain
+    observation time) are structurally distinct fields in the history schema.
+    `collected_at` must never be substituted for `effective_evidence_at` or vice versa.
+    The 1h/24h range selection clock must use `collected_at`, not `effective_evidence_at`.
+
+23. **1h/24h range semantics (PR #140)** — confirm that:
+    (a) ranges are selected by `collected_at` (collection timestamp), not by on-chain time;
+    (b) ranges require >=2 collected points; fewer returns an appropriate empty/unavailable
+        response, never interpolated values;
+    (c) no price interpolation exists anywhere in the ranges computation;
+    (d) ranges always carry `history_kind: "HISTORICAL"` in the API response.
+
+24. **STALE last-available UX (PR #140)** — confirm that when the current reading is STALE,
+    any last-known canonical available value shown:
+    (a) carries an explicit HISTORICAL label in the UI and API response;
+    (b) never appears as a current reading;
+    (c) the STALE freshness badge is never promoted to AVAILABLE or green when a
+        historical fallback value is displayed.
+
+25. **Landing batch optimization (PR #140)** — confirm that the R-LIVE landing page
+    (`app/radar_ui/r_live_router.py` or the landing template) issues at most 2 API
+    requests: one to `/radar/r-live/current` (or current batch) and one to
+    `/radar/r-live/history/ranges` (all-assets ranges summary). It must NOT issue
+    one request per asset (which would be 26+ requests for 13 assets).
+
+26. **SCAN_COMPLETE = NO (PR #140)** — confirm that:
+    (a) the repository's admission documentation correctly notes that the wide
+        registry scan was environment-blocked (egress to api.robinhood.com and
+        rpc.mainnet.chain.robinhood.com blocked at HTTP 403);
+    (b) no authority standards were weakened to compensate for the blocked scan;
+    (c) the 13 admitted assets have individually source-proven admission evidence;
+    (d) assets not yet scanned (due to environment block) are correctly excluded,
+        not assumed admitted.
+
+27. **13-asset universe completeness (PR #140)** — confirm that all 13 canonical
+    identities in `APPROVED_RLIVE_ASSETS` (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO,
+    NFLX, AMD, DELL, SNAP, INTC, MSFT, META) have individually distinct `canonical_id`
+    and `economic_asset_uid` values. No two assets may share a pool address.
+    ORCL and PLTR must remain excluded.
+
+28. **MSFT and META re-admission (PR #140)** — these were REJECTED in PR #136 (MSFT: 1 Swap;
+    META: 0 Swaps at review time) and ADMITTED in PR #140 following a new source-proven
+    review. Confirm that their PR #140 admission evidence satisfies the same admission
+    standards as all other approved assets (pair authority, fee, decimals, 300s observe,
+    liquidity, cardinality, bounded Swap, USDG/USD oracle check).
+
+29. **Freshness clock independence (PR #140)** — confirm that the five freshness signals
+    (market activity age, oracle age, block age, effective_evidence_at, collected_at)
+    cannot be conflated in any API response or UX state calculation. Specifically:
+    (a) STALE is triggered by market activity age (no Swap in 300s window), not by
+        collection age or oracle age alone;
+    (b) a stale Chainlink oracle produces a separate error, not a STALE market state;
+    (c) `collected_at` is always >= `effective_evidence_at` (collection happens after
+        observation); verify no code path inverts this.
+
+30. **No numerical score** — this review must not produce an overall numerical score,
+    grade, or pass/fail verdict for FINCO V1 as a whole. Each finding must be graded
+    individually by severity. A Final Launch Blocker Table (Section C) is required
+    as the structured summary — not a single verdict.
 
 ---
 
