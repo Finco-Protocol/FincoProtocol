@@ -23,7 +23,8 @@ set -euo pipefail
 SERVICE_NAME="finco-web"
 BACKUP_FILE="${1:-}"
 
-# Load FINCO_DB_PATH from .env
+# Load FINCO_DB_PATH from .env for restore path handling and for the manual
+# service fallback. The canonical systemd path loads the same file directly.
 ENV_FILE="/opt/finco_protocol/.env"
 if [[ -f "$ENV_FILE" ]]; then
     export $(grep -v '^#' "$ENV_FILE" | xargs)
@@ -62,8 +63,8 @@ fi
 # ── Stop service ─────────────────────────────────────────────────────────────
 echo "Stopping $SERVICE_NAME..."
 systemctl stop "$SERVICE_NAME" || {
-    echo "WARNING: Could not stop $SERVICE_NAME via systemctl. Trying pkill..." >&2
-    pkill -f "gunicorn.*main_web" || true
+    echo "WARNING: Could not stop $SERVICE_NAME via systemctl. Trying process fallback..." >&2
+    pkill -f "python.*-m uvicorn main_web:app" || true
     sleep 2
 }
 
@@ -106,9 +107,9 @@ chmod 750 "$DB_DIR"
 # ── Restart service ──────────────────────────────────────────────────────────
 echo "Restarting $SERVICE_NAME..."
 systemctl start "$SERVICE_NAME" || {
-    echo "WARNING: systemctl start failed, trying manual restart..." >&2
+    echo "WARNING: systemctl start failed, trying canonical production launcher..." >&2
     cd /opt/finco_protocol
-    /opt/finco_protocol/.venv/bin/gunicorn main_web:app --workers 2 --bind 127.0.0.1:8000 &
+    /bin/bash /opt/finco_protocol/deploy/scripts/run_web.sh &
     sleep 3
 }
 

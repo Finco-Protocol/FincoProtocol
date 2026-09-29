@@ -2,9 +2,28 @@ name: Production ASGI Boot Smoke
 
 on:
   push:
-    branches:
-      - fix/opus-h6-production-asgi-service
+    branches: [main]
+    paths:
+      - "deploy/systemd/finco-web.service"
+      - "deploy/scripts/run_web.sh"
+      - "deploy/scripts/restore.sh"
+      - "deploy/scripts/start_prod.sh"
+      - "deploy/env.example"
+      - "deploy/staging.env.example"
+      - "requirements.txt"
+      - "constraints.txt"
+      - ".github/workflows/production_boot_smoke.yml"
   pull_request:
+    paths:
+      - "deploy/systemd/finco-web.service"
+      - "deploy/scripts/run_web.sh"
+      - "deploy/scripts/restore.sh"
+      - "deploy/scripts/start_prod.sh"
+      - "deploy/env.example"
+      - "deploy/staging.env.example"
+      - "requirements.txt"
+      - "constraints.txt"
+      - ".github/workflows/production_boot_smoke.yml"
 
 permissions:
   contents: read
@@ -14,11 +33,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
+      # Synthetic CI-only values. No deployment secrets are used by this workflow.
       FINCO_SECRET_KEY: ci_h6_non_placeholder_secret_key_0123456789abcdef0123456789abcdef
       FINCO_ADMIN_USER: ci-admin
       FINCO_ADMIN_PASSWORD: ci-h6-password
       FINCO_COOKIE_SECURE: "false"
       FINCO_DB_PATH: /tmp/finco-h6.db
+      FINCO_WEB_HOST: 127.0.0.1
+      FINCO_WEB_PORT: "8765"
+      FINCO_WEB_WORKERS: "1"
+      FINCO_WEB_GRACEFUL_SHUTDOWN_SECONDS: "15"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -32,45 +56,99 @@ jobs:
             requirements.txt
             constraints.txt
 
-      - name: Install repository dependencies plus reproduction-only Gunicorn
+      - name: Build clean production-equivalent virtual environment
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -c constraints.txt
-          # H-6 pre-fix reproduction only: the service declares Gunicorn but the
-          # repository does not. Install it here so this step reaches the ASGI/WSGI
-          # mismatch instead of stopping at "command not found".
-          pip install gunicorn
-          python -m pip check
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt -c constraints.txt
+          .venv/bin/python -m pip check
+          .venv/bin/python -c 'import uvicorn; print("uvicorn", uvicorn.__version__)'
 
-      - name: Reproduce current production service command
+      - name: Validate production command wiring
         shell: bash
         run: |
           set -euo pipefail
-          LOG=/tmp/finco-h6-gunicorn.log
-          gunicorn main_web:app \
-            --workers 1 \
-            --bind 127.0.0.1:8765 \
-            --timeout 30 \
-            --access-logfile - \
-            --error-logfile - \
-            --capture-output >"$LOG" 2>&1 &
-          PID=$!
-          trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; cat "$LOG" || true' EXIT
+          bash -n deploy/scripts/run_web.sh
+          bash -n deploy/scripts/start_prod.sh
+          bash -n deploy/scripts/restore.sh
+          bash -n deploy/scripts/healthcheck.sh
+          grep -Fq 'ExecStart=/bin/bash /opt/finco_protocol/deploy/scripts/run_web.sh' deploy/systemd/finco-web.service
+          if grep -R --line-number -E 'gunicorn[[:space:]]+main_web:app' deploy/systemd deploy/scripts; then
+            echo "ERROR: stale broken Gunicorn/FastAPI production invocation remains" >&2
+            exit 1
+          fi
 
-          for _ in $(seq 1 20); do
+      - name: Mandatory configuration fails closed without leaking values
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          env -u FINCO_SECRET_KEY -u FINCO_ADMIN_USER -u FINCO_ADMIN_PASSWORD \
+            /bin/bash deploy/scripts/run_web.sh >/tmp/finco-h6-missing.stdout 2>/tmp/finco-h6-missing.stderr
+          RC=$?
+          set -e
+          test "$RC" -eq 78
+          grep -Fq 'FINCO_SECRET_KEY' /tmp/finco-h6-missing.stderr
+          if grep -Fq "$FINCO_SECRET_KEY" /tmp/finco-h6-missing.stderr; then
+            echo "ERROR: configuration value leaked to stderr" >&2
+            exit 1
+          fi
+
+      - name: Start declared production command and require live HTTP 200
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=/tmp/finco-h6-uvicorn.log
+          BODY=/tmp/finco-h6-health-body
+
+          /bin/bash deploy/scripts/run_web.sh >"$LOG" 2>&1 &
+          PID=$!
+
+          cleanup() {
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          STATUS=000
+          for _ in $(seq 1 30); do
             if ! kill -0 "$PID" 2>/dev/null; then
-              echo "production process exited before health request" >&2
+              echo "ERROR: production process exited during startup" >&2
+              cat "$LOG" >&2 || true
               exit 1
             fi
-            STATUS=$(curl -sS -o /tmp/finco-h6-health-body -w '%{http_code}' http://127.0.0.1:8765/public-health || true)
+            STATUS=$(curl --max-time 1 -sS -o "$BODY" -w '%{http_code}' http://127.0.0.1:8765/public-health || true)
+            if [[ "$STATUS" == "200" ]]; then
+              break
+            fi
             if [[ "$STATUS" != "000" ]]; then
-              echo "public-health status=$STATUS"
-              test "$STATUS" = "200"
-              kill -0 "$PID"
-              exit 0
+              echo "ERROR: /public-health returned HTTP $STATUS" >&2
+              cat "$BODY" >&2 || true
+              cat "$LOG" >&2 || true
+              exit 1
             fi
             sleep 1
           done
 
-          echo "bounded startup period expired without a response" >&2
+          test "$STATUS" = "200"
+          grep -Fq '"status":"ok"' "$BODY"
+          kill -0 "$PID"
+          sleep 1
+          kill -0 "$PID"
+          echo "PRODUCTION_BOOT_HEALTH_HTTP_200=PASS"
+          echo "PRODUCTION_PROCESS_ALIVE_AFTER_HEALTH=PASS"
+
+          kill "$PID"
+          for _ in $(seq 1 40); do
+            if ! kill -0 "$PID" 2>/dev/null; then
+              wait "$PID" 2>/dev/null || true
+              trap - EXIT
+              echo "PRODUCTION_PROCESS_CLEAN_TERMINATION=PASS"
+              exit 0
+            fi
+            sleep 0.25
+          done
+
+          echo "ERROR: production process did not terminate after SIGTERM" >&2
+          kill -9 "$PID" 2>/dev/null || true
           exit 1
