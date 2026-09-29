@@ -180,7 +180,7 @@ def test_C_selection_uses_uid_not_ticker(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([], uid=nvda_uid, address=_NVDA_ADDR))
-        page = c.get(f"/radar?asset_uid={nvda_uid}").text
+        page = c.get(f"/radar/stocks?asset_uid={nvda_uid}").text
     finally:
         composition.set_registry_factory(None)
 
@@ -611,7 +611,7 @@ def test_S_read_only_boundary_no_wallet_controls(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -643,7 +643,7 @@ def test_T_reviewed_sizes_preserved(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -666,7 +666,7 @@ def test_U_directional_gap_controls_preserved(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -714,7 +714,7 @@ def test_universe_unavailable_refresh_disabled(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1124,7 +1124,7 @@ def test_item8_full_page_single_asset_header(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1155,7 +1155,7 @@ def test_item8_oob_only_in_htmx_partial(make_client):
             headers={"HX-Request": "true"},
         ).text
         # Full-page GET: must NOT have hx-swap-oob on the asset header
-        full_page = c.get("/radar").text
+        full_page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1423,12 +1423,12 @@ def test_b03_get_form_present_with_select_submit(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
     assert 'method="get"' in page or "method='get'" in page
-    assert 'action="/radar"' in page or "action='/radar'" in page
+    assert 'action="/radar/stocks"' in page or "action='/radar/stocks'" in page
     assert 'name="asset_uid"' in page
     assert "Select" in page or "Load Asset" in page
 
@@ -1443,7 +1443,7 @@ def test_b03_post_form_has_hidden_asset_uid(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1476,7 +1476,7 @@ def test_b03_get_asset_uid_selects_nvda(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar?asset_uid=NVDA").text
+        page = c.get("/radar/stocks?asset_uid=NVDA").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1506,7 +1506,7 @@ def test_b03_post_form_separate_from_get_form(make_client):
     composition.set_registry_factory(factory)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1514,8 +1514,8 @@ def test_b03_post_form_separate_from_get_form(make_client):
     assert 'method="post"' in page
     assert 'hx-post="/radar/refresh"' in page
     assert 'hx-target="#radar-panels"' in page
-    # GET form must exist with action=/radar
-    assert 'action="/radar"' in page
+    # GET form must exist with action=/radar/stocks
+    assert 'action="/radar/stocks"' in page
 
 
 # ---------------------------------------------------------------------------
@@ -1560,7 +1560,7 @@ def test_b04_snapshot_uid_not_in_universe_no_fallback(make_client):
         snapshot = service.acquire(req)
         snapshot_id = snapshot.snapshot_id
         # Now GET /radar?snapshot_id=X with asset_uid=AAPL as the query param
-        page = c.get(f"/radar?snapshot_id={snapshot_id}&asset_uid=AAPL").text
+        page = c.get(f"/radar/stocks?snapshot_id={snapshot_id}&asset_uid=AAPL").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1605,7 +1605,7 @@ def test_b04_snapshot_uid_not_in_universe_asset_uid_param_ignored(make_client):
             ))
         snapshot = service.acquire(req)
         c = make_client(service)
-        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}&asset_uid=AAPL").text
+        page = c.get(f"/radar/stocks?snapshot_id={snapshot.snapshot_id}&asset_uid=AAPL").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1644,7 +1644,7 @@ def test_b04_snapshot_identity_note_rendered_visibly(make_client):
             ))
         snapshot = service.acquire(req)
         c = make_client(service)
-        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}").text
+        page = c.get(f"/radar/stocks?snapshot_id={snapshot.snapshot_id}").text
     finally:
         composition.set_registry_factory(None)
 
@@ -1683,7 +1683,7 @@ def test_b04_full_page_single_asset_header_with_nvda_snapshot(make_client):
             ))
         snapshot = service.acquire(req)
         c = make_client(service)
-        page = c.get(f"/radar?snapshot_id={snapshot.snapshot_id}").text
+        page = c.get(f"/radar/stocks?snapshot_id={snapshot.snapshot_id}").text
     finally:
         composition.set_registry_factory(None)
 
