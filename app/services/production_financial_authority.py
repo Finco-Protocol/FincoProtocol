@@ -236,6 +236,7 @@ def run_clean_production(
     scenario: str = "Base",
     *,
     project_type: str = "",
+    financing_policy=None,
 ) -> CleanProductionRun:
     """Execute the ONE clean production financial calculation.
 
@@ -265,13 +266,25 @@ def run_clean_production(
         mgr = ScenarioManager((project_type or "").lower())
         effective_inputs = mgr.apply_overrides(project_inputs, scenario)
 
+    from financial_engine.financing.generic_product_policy import (
+        DEFAULT_GENERIC_FINANCING_POLICY,
+        run_with_generic_financing_policy,
+    )
     from financial_engine.shareholder_waterfall import (
         run_project_shareholder_waterfall_model,
     )
 
+    policy = DEFAULT_GENERIC_FINANCING_POLICY if financing_policy is None else financing_policy
     try:
-        g2c = run_project_shareholder_waterfall_model(
-            effective_inputs, source_id="pr8_clean_production_authority"
+        # H-1: apply the project's declared construction financing (IDC, commitment
+        # and structuring fees) and DSRA policy. One production calculation; the
+        # policy owns the initial-DSRA fixed point around the single engine entry.
+        g2c, effective_inputs, policy_evidence = run_with_generic_financing_policy(
+            effective_inputs,
+            lambda applied: run_project_shareholder_waterfall_model(
+                applied, source_id="pr8_clean_production_authority"
+            ),
+            policy,
         )
     except CleanProductionRunUnavailable:
         raise
@@ -288,6 +301,10 @@ def run_clean_production(
         ),
         "scenario": scenario,
         "calculation_count": 1,
+        "financing_policy_authority": policy_evidence.authority,
+        "construction_financing_applied": policy_evidence.construction_financing_applied,
+        "cash_dsra_applied": policy_evidence.cash_dsra_applied,
+        "initial_dsra_funding_keur": policy_evidence.initial_dsra_funding_keur,
     }
     construction = getattr(g2c.financing_result, "construction_financing", None)
     if construction is not None:
