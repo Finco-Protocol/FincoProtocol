@@ -229,6 +229,27 @@ def test_signed_run_null_composite_hash_rejected(ev_project):
     assert exc.value.REASON == "LAST_RUN_IDENTITY_INCOMPLETE"
 
 
+def test_signed_run_real_atomic_reference_commit(tmp_path):
+    """A production-style atomic run, not just a handcrafted fixture, is signable."""
+    from app.persistence import db as db_mod
+    from app.persistence.projects_repository import get_reference_by_template_source
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import (
+        ensure_reference_models, ensure_reference_canonical_last_runs,
+    )
+
+    db_mod.DB_PATH = str(tmp_path / "real-run.db")
+    ensure_reference_models()
+    ensure_reference_canonical_last_runs()
+    record = get_reference_by_template_source("generic_wind_reference")
+    ws = get_workspace_state(record.user_id, record.project_id)
+    cert = rcs.issue_run_certificate(ws, issued_at=ISSUED_AT)
+    assert cert["composite_hash"] == ws.last_runtime_composite_hash
+    assert cert["workbook_version"] == ws.last_runtime_identity["workbook_version"]
+    assert cert["engine_version"] == ws.last_runtime_identity["engine_version"]
+    assert rcs.verify_run_certificate(cert, TEST_PUBLIC_DER) == (True, "VALID")
+
+
 def test_signed_run_no_synthetic_verify_state(ev_project):
     ws = replace(ev_project["ws"], last_runtime_identity={
         **ev_project["ws"].last_runtime_identity,
