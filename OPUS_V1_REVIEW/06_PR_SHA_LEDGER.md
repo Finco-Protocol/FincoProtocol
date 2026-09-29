@@ -1,10 +1,119 @@
 # FINCO V1 — PR / SHA Ledger
 
 All entries verified from `git log origin/main` at final live main SHA
-`8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+`0082e5bd27ffe166c1d80a177fae49670ed848f2`.
 
 Merge SHAs are the SHA on `main` after merge. Entries are newest-first within
 each stream.
+
+---
+
+## R-LIVE V2 Freshness / History / 13-Asset Expansion (PR #140)
+
+| PR | Capability | Accepted Feature HEAD | Merge SHA | State |
+|---|---|---|---|---|
+| #140 | R-LIVE V2: freshness/history semantics, 13-asset universe, source-component clocks, collected_at/evidence_at separation, 1h/24h ranges, STALE last-available UX, landing batch, candidate review | `dd5bd09f6c1af303aa1b0d695828d8394f989de0` | `0082e5bd27ffe166c1d80a177fae49670ed848f2` | MERGED |
+
+Evidence: 4703 passed, 38 skipped, 0 failed (full Linux CI at PR #140 exact head); 6/6 workflows SUCCESS.
+
+Key capabilities shipped:
+- Expanded R-LIVE universe: 13 source-proven approved assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
+  AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META)
+- SCAN_COMPLETE = NO (review environment egress policy blocked api.robinhood.com and
+  rpc.mainnet.chain.robinhood.com; no authority standards weakened)
+- Freshness distinction: market/pool activity age, oracle age, block age, effective
+  evidence timestamp, FINCO collection timestamp (collected_at) — all structurally separate
+- collected_at (FINCO collection timestamp) ≠ effective_evidence_at (on-chain observation time)
+- 1h/24h range semantics: historical, collection-timestamp-selected, >=2 points, no interpolation
+- STALE last-available UX: last canonical value shown with explicit HISTORICAL badge; badge stays STALE
+- Landing batch: 1 current request + 1 range request (not 16)
+- 6 public R-LIVE API routes (up from 3)
+- New test files: test_r_live_onchain.py (22), test_r_live_v2_multi_asset.py (11),
+  test_r_live_freshness_ranges.py (8), test_r_live_landing_batch.py (3),
+  test_r_live_candidate_review.py (3)
+
+Changed files: finco_radar/authority/r_live_policy.py, app/api/v1_1/r_live_public_router.py,
+app/radar_rwa/r_live_service.py, docs/, tests/ (new R-LIVE test files), README.md.
+Frozen namespaces: ZERO DIFF on financial_engine, finco_core, app, static, main_web.py,
+.github/workflows (runtime code).
+
+---
+
+## R-LIVE V2 Multi-Asset Collector (PR #139)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #139 | R-LIVE V2: multi-asset collector and staging config contract | `226fe8d4ee15bfe60e441550f386e8985ae0c2f9` | MERGED |
+
+No-arg invocation: `python -m app.radar_rwa.r_live_collect` iterates every key in
+`APPROVED_BY_CANONICAL_ID` serially via `collect_all_approved()`. `--asset-key`
+restricts a diagnostic run to one exact approved key.
+
+Key behavioral guarantees (from `tests/test_r_live_collector_batch.py`):
+- Serial iteration; one shared ledger; ledger always closed
+- STALE/UNAVAILABLE per-asset market states are NOT process failures; exit 0 on mixed results
+- Per-asset exception: asset recorded as UNAVAILABLE; remaining assets still attempted; exit 1
+- Process failures (exit 1): `RPC_NOT_CONFIGURED`, `RPC_UNAVAILABLE`, `HISTORY_STORE_UNAVAILABLE`,
+  `APPROVED_REGISTRY_UNAVAILABLE`, `COLLECTOR_RESULT_INVALID`, `R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE`
+- RPC chain-id preflight (`eth_chainId` must return `4663`) gates all per-asset work
+- Credentials never emitted in JSON output (`_safe_reason` sanitizes to typed uppercase identifiers)
+
+Operational variables:
+- `ROBINHOOD_RPC_URL` — required for both web current-read and the collector; never committed to Git
+- `RADAR_BNB_INTELLIGENCE_DB_PATH` — shared durable B1.3 history ledger; web and collector must use
+  the identical path; staging and production ledgers must be different files
+
+Changed files (14): `app/radar_rwa/r_live_collect.py`, `.env.example`, `deploy/env.example`,
+`deploy/r_live_collector_v1/README.md`, systemd unit files, staging env + collector units,
+`tests/test_r_live_collector_batch.py`, `tests/test_r_live_collector_ops.py`.
+Frozen namespaces: ZERO DIFF.
+
+---
+
+## R-LIVE V2 Product Shell (PR #137)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #137 | R-LIVE V2 product shell — registry-driven 8-asset surface, canonical history parity, public API wiring, UX shell | `9adf751cf3cb9fd087f99b433843cf8bdd9a7807` | MERGED |
+
+Evidence: 27 R-LIVE shell tests, 25 public-routes tests, 20 history-contract tests (verified via `pytest --collect-only -q` at SHA `226fe8d4`); 4/4 CI SUCCESS.
+Changed files (28): `app/api/v1_1/r_live_public_router.py`, `app/radar_ui/r_live_router.py`,
+`app/radar_ui/router.py`, templates, tests.
+Frozen namespaces: ZERO DIFF.
+
+---
+
+## R-LIVE V2 Multi-Asset Authority (PR #136)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #136 | R-LIVE V2 multi-asset authority — reviewed admission (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD); freshness gate | `29afcf4f34b0407b716a55ba8b18edb572372d09` | MERGED |
+
+Approved assets at PR #136 (8): AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD.
+Rejected at PR #136 (4): MSFT (1 Swap at review time), META (0 Swaps at review time),
+ORCL (no USDG pool), PLTR (1 Swap at review time).
+Note: MSFT and META were subsequently re-reviewed and ADMITTED in PR #140. ORCL and PLTR remain excluded.
+300-second freshness gate enforced. STALE/UNAVAILABLE suppress numeric output.
+
+---
+
+## B2.3 Concurrent Idempotency Fix (PR #135)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #135 | fix(usage): B2.3 SQLite concurrent idempotency — lock-safe duplicate delivery | `d71336680e6f7efdbb220501297c7b078b21dd0c` | MERGED |
+
+Corrects: concurrent duplicate delivery no longer raises lock error to caller.
+Invariant: `(subject_id, feature_key, idempotency_key)` unique constraint enforced
+with no caller-visible error on duplicate. Exactly one event persisted.
+
+---
+
+## Opus Handoff Pack V1 (PR #131)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #131 | docs: FINCO V1 Opus clean-room handoff pack — final rebuild on main 8cd58ad | `1e86d61` | MERGED |
 
 ---
 
@@ -171,6 +280,6 @@ implementation is in `app/services/run_certificate_service.py` (PR #132).
 - PRs merged as direct commits to main appear as regular commit SHAs.
 - Inspect with:
   ```bash
-  git log 8cd58ad8 --oneline
-  git log 8cd58ad8 --oneline --merges
+  git log 0082e5bd27ffe166c1d80a177fae49670ed848f2 --oneline
+  git log 0082e5bd27ffe166c1d80a177fae49670ed848f2 --oneline --merges
   ```

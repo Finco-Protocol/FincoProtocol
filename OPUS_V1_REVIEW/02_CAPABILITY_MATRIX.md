@@ -39,9 +39,46 @@ the Model vertical list.
 | Radar B1.1 — BNB RWA market intelligence | LIVE | `finco_radar/`, `app/radar_rwa/` |
 | Radar B1.2 — Cross-chain canonical identity | LIVE | `finco_radar/authority/cross_chain.py` |
 | Radar B1.3 — BNB premium, execution gap, exact-identity history | LIVE | `finco_radar/` |
-| R-LIVE — AAPL on-chain reference (Robinhood chain 4663) | LIVE | `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
-| R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer |
-| R-LIVE operational collector package (PR #127) | LIVE | External systemd operational package; requires deployment configuration |
+| R-LIVE V2 — 13-asset registry (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) — SCAN_COMPLETE=NO (environment-blocked, no standards weakened) | LIVE | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
+| R-LIVE V2 public API (6 read-only routes) | LIVE | `app/api/v1_1/r_live_public_router.py`; unauthenticated; exact canonical_id only |
+| R-LIVE V2 UX shell — landing table + per-asset detail | LIVE | `app/radar_ui/r_live_router.py`; `/radar/r-live`, `/radar/r-live/{canonical_id}` |
+| R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer; read paths write zero history |
+| R-LIVE multi-asset collector (PR #139) | LIVE | `app/radar_rwa/r_live_collect.py`; no-arg = full approved registry batch (`collect_all_approved`); `--asset-key` = single diagnostic; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` |
+| R-LIVE operational collector package (PR #127, updated PR #139) | LIVE | External systemd operational package; staging config contract; `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` required; staging/production ledgers must be separate |
+
+**R-LIVE code status vs operational status:**
+- Code/product surface: SHIPPED (implemented, tested, in repository)
+- Operational current-data activation: REQUIRES DEPLOYMENT CONFIGURATION — NOT PROVEN BY REPO
+  (`ROBINHOOD_RPC_URL` + active VPS collector + `RADAR_BNB_INTELLIGENCE_DB_PATH` must be configured)
+- "LIVE" in this table means the capability is implemented and exposed in the codebase.
+  It does NOT mean "staging/production RPC and collector are currently proven active."
+
+**R-LIVE V2 public API routes (exact, 6 total):**
+- `GET /api/v1.1/radar/r-live/assets` — list approved identities (no auth required)
+- `GET /api/v1.1/radar/r-live/current` — stream current results for all approved identities (NDJSON; no history writes)
+- `GET /api/v1.1/radar/r-live/history/ranges` — landing summary: all approved 1h/24h ranges (read-only)
+- `GET /api/v1.1/radar/r-live/{canonical_id}` — current reference for exact identity (no history writes)
+- `GET /api/v1.1/radar/r-live/{canonical_id}/history` — historical evidence (read-only, zero writes)
+- `GET /api/v1.1/radar/r-live/{canonical_id}/history/ranges` — 1h/24h ranges for exact identity (read-only)
+
+**Post-PR#140 R-LIVE freshness architecture:**
+- Five independent freshness signals: market/pool activity age (300s TWAP gate), oracle age (Chainlink USDG/USD), block age, effective evidence timestamp (`effective_evidence_at`), FINCO collection timestamp (`collected_at`)
+- `collected_at` ≠ `effective_evidence_at`; range selection uses `collected_at`
+- 1h/24h ranges: HISTORICAL, collection-timestamp-selected, >=2 points required, no interpolation
+- STALE last-available UX: last canonical value shown with explicit HISTORICAL label; STALE badge remains STALE
+- Landing batch: 2 requests total (1 current + 1 ranges), not one per asset
+
+**R-LIVE identity semantics:** UID is the `canonical_id` from `APPROVED_RLIVE_ASSETS`
+(e.g. `4663:0xaf3d76f...`). No ticker/symbol/fuzzy lookup. Unapproved identity
+returns `UNAVAILABLE` / `ASSET_NOT_IN_REGISTRY`.
+
+**R-LIVE critical invariants:**
+- 300-second TWAP freshness gate; no Swap in window → STALE
+- USDG/USD conversion from canonical Chainlink oracle (never assumed 1:1)
+- STALE and UNAVAILABLE suppress current numeric observations
+- Read paths perform zero history writes; collector is sole writer
+- Reference is indicative and non-executable; does NOT create FINCO VERIFIED status
+- Approved pool at review time ≠ guarantee of current AVAILABLE observation
 
 ## Distribution
 
@@ -84,5 +121,18 @@ runtime or cloning not released.
   operator supplying source-attested on-chain evidence.
 - Signed Run Certificate V1 requires `FINCO_RUN_CERT_SIGNING_KEY` deployment
   configuration. Without it, issuance fails closed.
-- R-LIVE collector operational package exists but requires deployment configuration.
+- R-LIVE collector requires both `ROBINHOOD_RPC_URL` (private, never committed) and
+  `RADAR_BNB_INTELLIGENCE_DB_PATH` (shared durable B1.3 ledger). Web and collector must
+  use the identical ledger path. Staging and production must be different files.
   Repository-ready does not prove VPS collector activation.
+- No-arg collector batch: STALE/UNAVAILABLE/AVAILABLE per-asset are canonical market states,
+  not process failures. Exit 0 when the batch ran with no process-level error (mixed market
+  states are expected).
+- Pre-batch process failures (no per-asset work): RPC_NOT_CONFIGURED, RPC_UNAVAILABLE
+  (chain preflight fails), HISTORY_STORE_UNAVAILABLE (ledger init fails),
+  APPROVED_REGISTRY_UNAVAILABLE → exit 1, results empty.
+- Per-asset acquisition exception: asset recorded as UNAVAILABLE; remaining approved assets
+  still attempted; after full batch: process_error = R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE,
+  exit 1. Exceptions never abort the remaining batch.
+- Post/in-batch persistence failure: HISTORY_PERSISTENCE_UNAVAILABLE per-asset or ledger
+  close exception → HISTORY_STORE_UNAVAILABLE after batch, exit 1.

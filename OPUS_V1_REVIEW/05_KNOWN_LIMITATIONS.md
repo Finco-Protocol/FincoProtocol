@@ -94,12 +94,37 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 9. R-LIVE Collector — Deployment and Activation
+## 9. R-LIVE Collector and Operational Configuration
 
-- The R-LIVE collector timer is implemented (`PR #127`) with an external systemd
-  operational package.
-- Collection requires configured external API keys (`app/radar_rwa/r_live_collect.py`).
-- Without valid API keys, R-LIVE collection fails gracefully (no crash, no live snapshots).
+- The R-LIVE collector (PR #127, updated PR #139) is an external systemd
+  operational package. The no-arg command `python -m app.radar_rwa.r_live_collect`
+  iterates every key in `APPROVED_BY_CANONICAL_ID` serially (`collect_all_approved`).
+  `--asset-key` restricts a diagnostic run to one exact approved AssetKey.
+- Collection requires `ROBINHOOD_RPC_URL` (Robinhood Chain 4663 HTTPS RPC, private,
+  never committed to Git) and `RADAR_BNB_INTELLIGENCE_DB_PATH` (durable B1.3 history
+  ledger shared between the web service and collector). Missing `ROBINHOOD_RPC_URL`
+  produces `RPC_NOT_CONFIGURED` and exits 1 before any per-asset work.
+- The web current-read path (`GET /api/v1.1/radar/r-live/{uid}`) also requires
+  `ROBINHOOD_RPC_URL` at request time; it never reads or writes the history ledger.
+  Current observation and history are architecturally separate surfaces.
+- The web history read path (`GET /api/v1.1/radar/r-live/{uid}/history`) reads from
+  the shared B1.3 ledger (`RADAR_BNB_INTELLIGENCE_DB_PATH`); it never writes. The
+  collector is the sole history writer.
+- Web process and collector must be configured with the identical
+  `RADAR_BNB_INTELLIGENCE_DB_PATH`. Staging and production must be different files;
+  a shared path between environments silently cross-contaminates history.
+- Canonical market states (AVAILABLE, STALE, UNAVAILABLE from authority) are not process
+  failures. Exit 0 means the batch ran without process-level error; mixed market states
+  are expected and healthy.
+- Pre-batch process failures (abort before any per-asset work): `RPC_NOT_CONFIGURED`,
+  `RPC_UNAVAILABLE` (chain preflight fails), `HISTORY_STORE_UNAVAILABLE` (ledger
+  initialization fails), `APPROVED_REGISTRY_UNAVAILABLE`.
+- Per-asset acquisition exception: that asset is recorded as UNAVAILABLE; remaining
+  approved assets are still attempted; after the complete batch:
+  `process_error = R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE`, exit 1. Exceptions do not
+  abort the remaining batch.
+- Post/in-batch persistence failure: `HISTORY_PERSISTENCE_UNAVAILABLE` per-asset, or
+  ledger close exception → `HISTORY_STORE_UNAVAILABLE` after batch, exit 1.
 - Repository-ready deployment assets do not prove that a production VPS collector
   is currently active. Do not claim production collection is active without
   actual deployment evidence.
@@ -152,7 +177,65 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 15. $FINCO Token Not Yet Launched
+## 15. R-LIVE V2 — Approved Pool ≠ Current Availability; SCAN_COMPLETE = NO
+
+- R-LIVE V2 reviewed and approved 13 assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
+  AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) based on on-chain authority
+  reviews at blocks 75507992 (initial 8 assets, PR #136, 2026-09-29) and
+  75763398 (5 additional assets: DELL, SNAP, INTC, MSFT, META, PR #140, 2026-09-29).
+- MSFT and META were REJECTED at PR #136 (insufficient Swap activity at that time)
+  and ADMITTED at PR #140 following a new source-proven review. ORCL and PLTR
+  remain excluded.
+- **SCAN_COMPLETE = NO**: the review environment's egress policy blocked
+  api.robinhood.com and rpc.mainnet.chain.robinhood.com (HTTP 403), preventing
+  a registry-wide exhaustive scan of all candidates. This does not weaken the 13
+  admitted assets — each has individually source-proven admission evidence. It means
+  additional assets may be admissible once the scan environment permits wider access.
+  No authority standards were weakened to compensate for the blocked scan.
+- Pool approval at review time does not guarantee that a current observation
+  is AVAILABLE at any later time.
+- Runtime re-validates freshness: the last qualifying Swap must be within 300
+  seconds at the pinned head. No Swap in that window returns STALE.
+- USDG is never assumed to equal USD 1; the Chainlink USDG/USD proxy is
+  re-read at each acquisition.
+- REJECTED assets (ORCL, PLTR) are excluded from the registry. They cannot be
+  queried via the public API. Their exclusion is permanent until a new review.
+- The R-LIVE public API is unauthenticated (reference surface). This is
+  intentional: it is read-only and does not expose any user or project data.
+
+---
+
+## 16. R-LIVE V2 — Collection-Time History and Range Semantics (PR #140)
+
+- 1h/24h ranges are selected by `collected_at` (FINCO collection timestamp), not by
+  on-chain observation time (`effective_evidence_at`). This is intentional: ranges
+  reflect the collection cadence, not on-chain block time.
+- A range window requires >=2 collected points to produce a summary. Fewer points returns
+  an appropriate empty or insufficient-data response. There is no price interpolation.
+- `collected_at` and `effective_evidence_at` are structurally separate fields. Do not
+  assume they are equal.
+- STALE last-available UX shows the last canonical AVAILABLE value with an explicit
+  HISTORICAL label when the current reading is STALE. This value is not a current
+  observation. The STALE badge is never promoted to AVAILABLE when a historical fallback
+  is displayed.
+- Landing page batch: the R-LIVE landing uses 2 total API requests (1 current + 1 ranges),
+  not one request per asset. Landing batch optimization is code-proven.
+
+---
+
+## 17. B2.3 Concurrent Idempotency — Correctness Fixed, Scale Not Guaranteed
+
+- PR #135 fixed a SQLite lock-error on concurrent duplicate delivery
+  (`(subject_id, feature_key, idempotency_key)` constraint).
+- The fix ensures: no lock error to caller; successful canonical response;
+  exactly one persisted usage event under concurrent duplicate delivery.
+- This correctness fix does not claim unlimited production-scale concurrency.
+  High-throughput production deployments should evaluate SQLite concurrency
+  limits independently.
+
+---
+
+## 18. $FINCO Token Not Yet Launched
 
 - The protocol access and service-entitlement layer is implemented.
 - The $FINCO token is not yet launched. Token economics, access thresholds,

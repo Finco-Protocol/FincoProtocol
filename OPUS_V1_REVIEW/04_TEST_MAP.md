@@ -2,11 +2,13 @@
 
 All test files are in `tests/`. Run with `pytest tests/<file> -v`.
 
-Verified counts are accurate at main SHA `8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+Verified counts are accurate at main SHA `0082e5bd27ffe166c1d80a177fae49670ed848f2` (post-PR#140).
 
-Note: `tests/test_b2_2_token_entitlement.py` has a pre-existing
-`ModuleNotFoundError: No module named 'eth_account'` failure in CI.
-Exclude with `--ignore=tests/test_b2_2_token_entitlement.py` for the full suite.
+**PR #140 full suite evidence (attributed to PR #140 exact-head CI, not a new #138 run):**
+4703 passed, 38 skipped, 0 failed (full Linux CI); 6/6 workflows SUCCESS.
+
+The `eth_account` CI failure in `tests/test_b2_2_token_entitlement.py` was fixed.
+All test files listed here run without infrastructure exclusion.
 
 ---
 
@@ -104,7 +106,7 @@ Key markers in `test_model_trust_pack_ux.py`:
 
 | Test File | What it tests |
 |---|---|
-| `tests/test_b2_2_token_entitlement.py` | FINCO token entitlement, fail-closed gate (pre-existing `eth_account` CI failure; exclude in CI) |
+| `tests/test_b2_2_token_entitlement.py` | FINCO token entitlement, fail-closed gate |
 | `tests/test_p4_token_utility.py` | P4 holder entitlement rail |
 | `tests/test_protocol_verification.py` | Protocol verification corpus |
 
@@ -124,7 +126,7 @@ Key markers:
 - `test_B2_3_WALLET_NOT_CALLER_CONTROLLED` — wallet not in public API
 - `test_B2_3_QUERY_FAILURE_NOT_ZERO` — UNAVAILABLE ≠ empty
 - `test_B2_3_QUERY_ERROR_SECRET_SAFE` — no raw exception/SQL exposed
-- `test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite` — concurrent idempotency under SQLite
+- `test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite` — concurrent idempotency under SQLite (PR #135 fix)
 
 ---
 
@@ -150,11 +152,80 @@ surface that the MCP server exposes.
 
 ---
 
-## R-LIVE / Radar
+## R-LIVE V2 (PR #136 / #137)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_radar_r14_rlive_shell.py` | 27 | R-LIVE V2 product shell: registry-driven rows, identity enforcement, no-write contract, approved/unapproved routing |
+| `tests/test_radar_r14_rlive_public_routes.py` | 25 | R-LIVE public API routes: assets list, exact-identity detail, unapproved fails closed, no history write |
+| `tests/test_radar_r14_rlive_history_contract.py` | 20 | R-LIVE history contract: read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity |
+| `tests/test_radar_robinhood_multi_asset.py` | 87 | Multi-asset Robinhood authority and freshness gate |
+
+Counts verified via `pytest --collect-only -q` at main SHA `226fe8d4`.
+
+## R-LIVE V2 Freshness / History / 13-Asset Expansion (PR #140)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_r_live_onchain.py` | 22 | R-LIVE on-chain authority: exact identity, freshness gate, TWAP, USDG/USD oracle, STALE/UNAVAILABLE semantics |
+| `tests/test_r_live_v2_multi_asset.py` | 11 | 13-asset universe: all 13 canonical identities present and unique, registry integrity, no fabricated responses |
+| `tests/test_radar_r14_rlive_history_contract.py` | 20 | R-LIVE history contract (post-PR#140): read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity — verified via `pytest --collect-only -q` |
+| `tests/test_r_live_freshness_ranges.py` | 8 | 1h/24h range semantics: collection-timestamp-selected, >=2 points required, no interpolation, HISTORICAL kind |
+| `tests/test_r_live_landing_batch.py` | 3 | Landing batch architecture: 1 current + 1 range request, not 16 individual requests |
+| `tests/test_r_live_candidate_review.py` | 3 | Candidate review contract: source-proven admission only, SCAN_COMPLETE=NO documented |
+
+Counts at `0082e5bd` from source-level function count (test_r_live_onchain, test_r_live_v2_multi_asset,
+test_r_live_freshness_ranges, test_r_live_landing_batch, test_r_live_candidate_review) and
+`pytest --collect-only -q` (test_radar_r14_rlive_history_contract: 20). The five new PR#140 test
+files require `fastapi` and `httpx` to be installed in the review environment. All counts attributed
+to PR #140 exact-head CI (4703 passed, 38 skipped, 0 failed) — not a new #138 run.
+
+Key invariants tested (PR #140):
+- `test_r_live_onchain.py`: freshness gate enforced; STALE when no Swap in 300s window;
+  USDG/USD from Chainlink; exact canonical_id required; no ticker/fuzzy lookup
+- `test_r_live_v2_multi_asset.py`: all 13 assets (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO,
+  NFLX, AMD, DELL, SNAP, INTC, MSFT, META) in approved registry; each with distinct canonical_id
+- `test_r_live_freshness_ranges.py`: 1h/24h ranges are HISTORICAL, collection-timestamp-selected;
+  >=2 points required; no price interpolation
+- `test_r_live_landing_batch.py`: landing page uses 2 total API requests (1 current + 1 ranges),
+  not one per asset
+- `test_r_live_candidate_review.py`: SCAN_COMPLETE=NO documented; only source-proven assets admitted
+
+Key invariants tested:
+- Unapproved identity → `ASSET_NOT_IN_REGISTRY` (never fabricated response)
+- Read paths → zero history writes (`persist_history=False`)
+- STALE / UNAVAILABLE structurally distinct from empty/zero
+- 300-second freshness gate: no current numeric if no recent Swap
+- Public API is unauthenticated; no project list, no exports
+
+## R-LIVE Multi-Asset Collector (PR #139)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_r_live_collector_batch.py` | 12 | Batch orchestration, per-asset independence, process/market state distinction, credential redaction, RPC preflight |
+| `tests/test_r_live_collector_ops.py` | 7 | Collector operational semantics: sole-writer contract, 5-minute cadence, OS lock, shared history, staging isolation |
+
+Counts verified via `pytest --collect-only -q` at main SHA `226fe8d4`.
+
+Key invariants tested:
+- `test_no_arg_main_uses_batch_and_prints_safe_json` — no-arg `main([])` calls `collect_all_approved`
+- `test_no_arg_batch_uses_complete_registry_and_one_serial_ledger` — full registry, single shared ledger
+- `test_batch_registry_count_is_derived_and_not_hardcoded` — count derived from policy, not literal
+- `test_explicit_exact_key_collects_only_one_and_unapproved_fails_closed` — `--asset-key` diagnostic; unapproved → `ASSETKEY_NOT_APPROVED`
+- `test_batch_config_and_ledger_failures_are_nonzero_and_redacted` — `RPC_NOT_CONFIGURED`, `HISTORY_STORE_UNAVAILABLE`
+- `test_configured_but_unreachable_rpc_is_process_failure_without_secret` — `RPC_UNAVAILABLE`; no credential in output
+- `test_individual_exception_does_not_abort_batch_or_leak_secret` — exception → UNAVAILABLE for that asset; batch continues; no raw exception in output
+- `test_every_acquisition_exception_attempts_every_asset_and_exits_nonzero` — all assets attempted regardless of exceptions
+- `test_one_canonical_nonavailable_state_is_healthy_batch` — STALE/UNAVAILABLE market state ≠ process failure; exit 0
+- `test_history_persistence_failure_is_process_failure` — AVAILABLE result with no digest → `HISTORY_STORE_UNAVAILABLE`
+
+---
+
+## R-LIVE V1 / Radar BNB
 
 | Test File | What it tests |
 |---|---|
-| `tests/test_r_live_onchain.py` | R-LIVE on-chain authority |
+| `tests/test_r_live_onchain.py` | R-LIVE on-chain authority (AAPL V1) |
 | `tests/test_radar_b1_authority.py` | Radar B1 authority baseline |
 | `tests/test_radar_b1_2_cross_chain_identity.py` | Cross-chain canonical identity |
 | `tests/test_radar_b1_3_intelligence.py` | BNB premium, execution, history |
@@ -168,6 +239,7 @@ surface that the MCP server exposes.
 
 ```bash
 pytest tests/test_b2_1_verified_authority.py \
+       tests/test_b2_2_token_entitlement.py \
        tests/test_b2_3_usage_metering.py \
        tests/test_p3_run_certificate_v1.py \
        tests/test_p1_1_institutional_trust_pack.py \
@@ -176,16 +248,16 @@ pytest tests/test_b2_1_verified_authority.py \
        tests/test_p0_4_capability_contract.py \
        tests/test_product_capability_consistency.py \
        tests/test_model_trust_pack_ux.py \
+       tests/test_radar_r14_rlive_shell.py \
+       tests/test_radar_r14_rlive_public_routes.py \
+       tests/test_radar_r14_rlive_history_contract.py \
        -v --tb=short
 ```
 
-Expected: all pass on `8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+Product base SHA: `0082e5bd27ffe166c1d80a177fae49670ed848f2` (post-PR#140).
 
 ## Full Suite Command
 
 ```bash
-pytest tests/ --ignore=tests/test_b2_2_token_entitlement.py -q
+pytest tests/ -q
 ```
-
-Pre-existing failure excluded: `test_b2_2_token_entitlement.py` —
-`ModuleNotFoundError: No module named 'eth_account'` (unrelated to V1 authority streams).

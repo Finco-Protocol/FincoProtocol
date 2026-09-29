@@ -8,10 +8,16 @@ https://github.com/Finco-Protocol/FincoProtocol
 ## Live Main SHA (at handoff)
 
 ```
-8cd58ad8f50108bbe9931751a4ef8d5b3feef797
+0082e5bd27ffe166c1d80a177fae49670ed848f2
 ```
 
-Merge commit: **Model Trust Pack V1 — canonical evidence surface in V2 workbook** (PR #133, merged 2026-09-29)
+Merge commit: **R-LIVE V2 freshness/history/13-asset expansion** (PR #140, merged 2026-09-29)
+
+Product base includes PR #136–#140 (R-LIVE V2 multi-asset authority, product shell, multi-asset
+collector, freshness/history/13-asset expansion).
+
+Previous main before PR #140: `226fe8d4ee15bfe60e441550f386e8985ae0c2f9` (PR #139 merge).
+PR #140 full-suite evidence: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
 
 This package describes the implemented repository state at this SHA.
 It is not a marketing document. Limitations are disclosed in `05_KNOWN_LIMITATIONS.md`.
@@ -60,6 +66,7 @@ pytest tests/
 
 # Quick authority smoke — key authority files only, fast
 pytest tests/test_b2_1_verified_authority.py \
+       tests/test_b2_2_token_entitlement.py \
        tests/test_b2_3_usage_metering.py \
        tests/test_p3_run_certificate_v1.py \
        tests/test_p1_1_institutional_trust_pack.py \
@@ -68,12 +75,16 @@ pytest tests/test_b2_1_verified_authority.py \
        tests/test_p0_4_capability_contract.py \
        tests/test_product_capability_consistency.py \
        tests/test_model_trust_pack_ux.py \
+       tests/test_radar_r14_rlive_shell.py \
+       tests/test_radar_r14_rlive_public_routes.py \
+       tests/test_radar_r14_rlive_history_contract.py \
+       tests/test_r_live_collector_batch.py \
+       tests/test_r_live_collector_ops.py \
        -v --tb=short
 ```
 
-Note: `tests/test_b2_2_token_entitlement.py` has a pre-existing
-`ModuleNotFoundError: No module named 'eth_account'` CI failure unrelated to
-the V1 authority streams. Exclude it with `--ignore=tests/test_b2_2_token_entitlement.py`.
+The `tests/test_b2_2_token_entitlement.py` eth_account CI failure was resolved.
+All authority tests in the suite are expected to run; no file-level exclusion required.
 
 ## CI Checks (4 required on every PR and main push)
 
@@ -84,6 +95,9 @@ the V1 authority streams. Exclude it with `--ignore=tests/test_b2_2_token_entitl
 | `dependency-audit` | dependency vulnerability audit |
 | `protocol-ui-browser` | browser/UI acceptance |
 
+PR #140 CI result: **6/6 SUCCESS** at exact head `dd5bd09f6c1af303aa1b0d695828d8394f989de0`.
+Full suite: 4703 passed, 38 skipped, 0 failed.
+
 ## Where to Find Key Capabilities
 
 | Capability | Location |
@@ -93,7 +107,10 @@ the V1 authority streams. Exclude it with `--ignore=tests/test_b2_2_token_entitl
 | **API v1.1 (institutional)** | `app/api/v1_1/` |
 | **MCP V1 server** | `app/mcp/v1/server.py`, entry: `main_mcp.py` |
 | **FINCO Radar** | `finco_radar/`, `app/radar_rwa/`, `app/radar_crypto/` |
-| **R-LIVE** | `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
+| **R-LIVE V2 authority** | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
+| **R-LIVE V2 public API** | `app/api/v1_1/r_live_public_router.py` (6 unauthenticated read-only routes) |
+| **R-LIVE V2 UX shell** | `app/radar_ui/r_live_router.py`, templates `radar/r_live_landing.html`, `radar/r_live_detail.html` |
+| **R-LIVE multi-asset collector (PR #139)** | `app/radar_rwa/r_live_collect.py` — no-arg = `collect_all_approved()` over full registry; `--asset-key` for single diagnostic |
 | **FINCO VERIFY (B2.1)** | `app/verified/authority.py` |
 | **Signed Run Certificate V1** | `app/services/run_certificate_service.py`, docs: `docs/SIGNED_RUN_CERTIFICATE_V1.md` |
 | **Model Trust Pack UX V1** | `app/ui/trust_pack.py`, template: `app/templates/v2/partials/sheet_trust.html` |
