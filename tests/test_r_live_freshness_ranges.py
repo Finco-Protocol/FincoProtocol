@@ -99,3 +99,41 @@ def test_readonly_summary_does_not_create_missing_database(tmp_path):
     assert not db.exists()
     assert result["range_1h"]["state"] == "UNAVAILABLE"
     assert result["last_available"] is None
+
+
+def test_legacy_last_available_uses_source_retrieval_time_only(tmp_path):
+    db = tmp_path / "legacy.db"
+    legacy = point(None, "25", 1)
+    legacy.pop("collected_at")
+    source_time = NOW - timedelta(minutes=8)
+    legacy["independent_token_reference"]["evidence"]["retrievedAt"] = source_time.isoformat()
+    ledger(db, [legacy])
+    summary = read_r_live_range_summary_readonly(AAPL_UID, AAPL_KEY, as_of=NOW, path=str(db))
+    assert summary["last_available"]["collected_at"] == source_time.isoformat()
+    assert summary["last_available"]["effective_evidence_at"] == EVIDENCE_AT.isoformat()
+    assert summary["range_1h"]["observation_count"] == 0  # Legacy range policy unchanged.
+    assert summary["range_24h"]["observation_count"] == 0
+
+
+def test_legacy_last_available_does_not_invent_missing_collection_time(tmp_path):
+    db = tmp_path / "legacy.db"
+    legacy = point(None, "25", 1)
+    legacy.pop("collected_at")
+    ledger(db, [legacy])
+    summary = read_r_live_range_summary_readonly(AAPL_UID, AAPL_KEY, as_of=NOW, path=str(db))
+    assert summary["last_available"]["collected_at"] is None
+
+
+def test_latest_legacy_point_is_ordered_by_source_retrieval_not_oldest_evidence(tmp_path):
+    db = tmp_path / "legacy.db"
+    older = point(None, "10", 1)
+    newer = point(None, "20", 2)
+    for item, minutes in ((older, 15), (newer, 5)):
+        item.pop("collected_at")
+        item["independent_token_reference"]["evidence"]["retrievedAt"] = (
+            NOW - timedelta(minutes=minutes)).isoformat()
+    ledger(db, [newer, older])
+    summary = read_r_live_range_summary_readonly(AAPL_UID, AAPL_KEY, as_of=NOW, path=str(db))
+    assert summary["last_available"]["premium_bps"] == "20"
+    assert summary["last_available"]["collected_at"] == (
+        NOW - timedelta(minutes=5)).isoformat()

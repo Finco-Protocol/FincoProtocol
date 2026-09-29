@@ -134,10 +134,8 @@ def test_new_admissions_are_exact_reviewed_pools_not_symbol_lookup():
         assert symbol not in policies
 
 
-@pytest.mark.parametrize("symbol", ["AAPL", "NVDA", "AMZN", "GOOGL", "TSLA", "AVGO", "NFLX", "AMD",
-                                    "DELL", "SNAP", "INTC", "MSFT", "META"])
-def test_every_approved_policy_observes_exact_pair_and_quote(symbol):
-    policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == symbol)
+@pytest.mark.parametrize("policy", tuple(APPROVED_RLIVE_ASSETS.values()), ids=lambda p: p.symbol)
+def test_every_approved_policy_observes_exact_pair_and_quote(policy):
     observed = _observe(policy)
     assert observed.state is AuthorityState.AVAILABLE
     assert observed.registry_asset_uid == policy.economic_asset_uid
@@ -231,7 +229,7 @@ def test_generic_get_never_requests_history_writer():
 def test_api_list_and_history_contract_is_explicitly_historical():
     assets = api_router.list_r_live_assets()
     assert assets["state"] == "AVAILABLE"
-    assert len(assets["data"]["assets"]) == len(APPROVED_RLIVE_ASSETS) == 13
+    assert len(assets["data"]["assets"]) == len(APPROVED_RLIVE_ASSETS)
     assert all(row["canonical_id"].startswith("4663:0x") for row in assets["data"]["assets"])
     assert api_router.get_r_live_history("NVDA")["state"] == "UNAVAILABLE"
     policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")

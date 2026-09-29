@@ -76,7 +76,9 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
             "SELECT digest, payload FROM bnb_intelligence_history "
             "WHERE economic_asset_uid = ? AND asset_key = ? "
             "AND json_extract(payload, '$.state') = 'AVAILABLE' "
-            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), observed_at) DESC LIMIT 1",
+            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), "
+            "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
+            "observed_at) DESC LIMIT 1",
             (identity, key.canonical_id),
         ).fetchone()
     last_available = None
@@ -87,11 +89,17 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
         point = json.loads(latest_payload)
         basis = point.get("robinhood_basis") or {}
         reference = point.get("independent_token_reference") or {}
+        legacy_evidence = reference.get("evidence")
+        legacy_collection_time = (_source_collection_time(legacy_evidence)
+                                  if isinstance(legacy_evidence, dict) else None)
         if (basis.get("price_usd_per_token") is not None
                 and reference.get("priceUsdPerToken") is not None
                 and point.get("reference_premium_bps") is not None):
             last_available = {
-                "collected_at": point.get("collected_at"),
+                # Legacy B1.3 rows predate collected_at but retain the
+                # source-proven acquisition timestamp inside token evidence.
+                # Never substitute observed_at or the current read time.
+                "collected_at": point.get("collected_at") or legacy_collection_time,
                 "effective_evidence_at": point.get("observed_at"),
                 "basis_price_usd_per_token": basis["price_usd_per_token"],
                 "token_price_usd_per_token": reference["priceUsdPerToken"],
