@@ -2411,9 +2411,9 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     os.getenv("FINCO_VISUAL_CAPTURE") != "1",
     reason="workstream browser evidence capture is enabled in CI",
 )
-def test_reference_driven_correction_a_22_capture_journey(
+def test_reference_driven_correction_a_23_capture_journey(
         live_url, live_url_radar_visual, browser):
-    """Produce the dedicated 22-capture Correction A acceptance inventory."""
+    """Produce the dedicated 23-capture Correction A acceptance inventory."""
     from app.radar_ui import router as _radar_router
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -2617,4 +2617,4 @@ def test_reference_driven_correction_a_22_capture_journey(
         _radar_router.set_market_read_service(previous_market_service)
 
     captures = sorted(out.glob("*.png"))
-    assert len(captures) == 22, [path.name for path in captures]
+    assert len(captures) == 23, [path.name for path in captures]

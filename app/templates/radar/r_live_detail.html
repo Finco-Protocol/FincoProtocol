@@ -247,12 +247,22 @@
   }
 
   fetch(SNAP_URL)
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) {
+        var badge = document.getElementById("detail-status-badge");
+        if (badge) { badge.setAttribute("data-transport-error", "HTTP_" + r.status); }
+        throw new Error("TRANSPORT_ERROR_" + r.status);
+      }
+      return r.json();
+    })
     .then(populate)
     .catch(function() { set_badge("UNAVAILABLE"); });
 
   fetch(HIST_URL)
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok) { throw new Error("TRANSPORT_ERROR_" + r.status); }
+      return r.json();
+    })
     .then(function(env) {
       var points = (env && env.data && Array.isArray(env.data.points)) ? env.data.points : [];
       build_history_table(points);

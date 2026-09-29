@@ -117,8 +117,14 @@
     var hist_url = "/api/v1.1/radar/r-live/" + encodeURIComponent(canonical_id) + "/history?limit=100";
 
     Promise.all([
-      fetch(snap_url).then(function(r) { return r.json(); }),
-      fetch(hist_url).then(function(r) { return r.json(); }).catch(function() { return null; })
+      fetch(snap_url).then(function(r) {
+        if (!r.ok) { throw new Error("TRANSPORT_ERROR_" + r.status); }
+        return r.json();
+      }),
+      fetch(hist_url).then(function(r) {
+        if (!r.ok) { return null; }
+        return r.json();
+      }).catch(function() { return null; })
     ]).then(function(results) {
       var snap_env = results[0];
       var hist_env = results[1];
@@ -130,8 +136,11 @@
       var hist_points = (hist_env && hist_env.data && Array.isArray(hist_env.data.points))
         ? hist_env.data.points : [];
       populate_row(row_el, snap_data, hist_points);
-    }).catch(function() {
+    }).catch(function(err) {
       set_badge(row_el, "UNAVAILABLE");
+      if (err && err.message && err.message.indexOf("TRANSPORT_ERROR_") === 0) {
+        row_el.setAttribute("data-transport-error", err.message);
+      }
     });
   }
 
