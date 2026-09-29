@@ -500,10 +500,14 @@ class TestTrustPackBrowserAcceptance:
             _run_via_workbook(client, cookies, record)
 
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(
-                    executable_path="/opt/pw-browsers/chromium",
-                    args=["--no-sandbox"],
-                )
+                # CI provides a pinned chromium at /opt/pw-browsers/chromium;
+                # local dev falls back to the default playwright install.
+                import os as _os
+
+                _launch_kwargs = {"args": ["--no-sandbox"]}
+                if _os.path.exists("/opt/pw-browsers/chromium"):
+                    _launch_kwargs["executable_path"] = "/opt/pw-browsers/chromium"
+                browser = pw.chromium.launch(**_launch_kwargs)
                 page = browser.new_page(viewport={"width": 1280, "height": 1000})
                 page.context.add_cookies([{
                     "name": COOKIE_NAME,
