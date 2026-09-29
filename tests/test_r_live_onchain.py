@@ -192,6 +192,13 @@ def test_stale_invalid_round_and_missing_code():
     assert observe(rpc).state is AuthorityState.UNAVAILABLE
 
 
+def test_23_hour_quote_remains_available_under_reviewed_heartbeat():
+    observation = observe(FakeRpc(feed_updated=BLOCK_TIME - 23 * 3600))
+    assert observation.state is AuthorityState.AVAILABLE
+    assert observation.evidence["effectiveObservedAt"] == observation.evidence["quoteUpdatedAt"]
+    assert observation.evidence["poolActivityAgeSeconds"] <= 300
+
+
 def test_insufficient_history_invalid_round_and_rpc_error():
     rpc = FakeRpc()
     rpc.overrides[(AAPL_POOL.pool_address, "0x3850c7bd")] = "0x" + "".join(
@@ -353,6 +360,8 @@ def test_operational_collector_repeat_is_idempotent_across_retrieval_times():
         assert point["independent_token_reference"]["evidence"]["quoteRoundId"] == "7"
         assert point["independent_token_reference"]["evidence"]["twapWindowSeconds"] == 300
         assert point["independent_token_reference"]["evidence"]["retrievedAt"]
+        assert point["collected_at"] == datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc).isoformat()
+        assert point["observed_at"] != point["collected_at"]
         assert point["independent_token_reference"]["evidence"]["policyVersion"]
         assert point["independent_token_reference"]["evidence"]["poolAuthorityVersion"]
         assert point["independent_token_reference"]["evidence"]["quoteAuthorityVersion"]

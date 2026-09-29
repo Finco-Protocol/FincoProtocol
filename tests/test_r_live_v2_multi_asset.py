@@ -93,19 +93,49 @@ def _observe(policy, *, tick=0, uid=None, activity_age_seconds=0, activity_unava
 def test_reviewed_universe_is_immutable_and_exact():
     assert {p.symbol for p in APPROVED_RLIVE_ASSETS.values()} == {
         "AAPL", "NVDA", "AMZN", "GOOGL", "TSLA", "AVGO", "NFLX", "AMD",
+        "DELL", "SNAP", "INTC", "MSFT", "META",
     }
     assert APPROVED_RLIVE_ASSETS[AAPL_KEY].pool == AAPL_POOL
     assert len(APPROVED_BY_CANONICAL_ID) == len(APPROVED_RLIVE_ASSETS)
     assert "NVDA" not in APPROVED_BY_CANONICAL_ID
     with pytest.raises(TypeError):
         APPROVED_RLIVE_ASSETS[AAPL_KEY] = None
-    for symbol in ("MSFT", "META", "PLTR", "ORCL"):
+    for symbol in ("PLTR", "ORCL", "SNOW", "COST"):
         assert symbol not in {p.symbol for p in APPROVED_RLIVE_ASSETS.values()}
 
 
-@pytest.mark.parametrize("symbol", ["AAPL", "NVDA", "AMZN", "GOOGL", "TSLA", "AVGO", "NFLX", "AMD"])
-def test_every_approved_policy_observes_exact_pair_and_quote(symbol):
-    policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == symbol)
+def test_new_admissions_are_exact_reviewed_pools_not_symbol_lookup():
+    reviewed = {
+        "DELL": ("0x941ae714ec6d8130c7b75d67160ca08f1e7d11dd",
+                 "0xc30c89cb7815a1488b7998d15eec73961707fc5a", 10000),
+        "SNAP": ("0xf6589f11bc40b669e584073f428b05562f568733",
+                 "0x0ebd4650c9e641e9745b5a508a2d46935dfe753e", 3000),
+        "INTC": ("0xc72b96e0e48ecd4dc75e1e45396e26300bc39681",
+                 "0x2e5a92f5013a64661a49312111be2e8abd33f56a", 3000),
+        "MSFT": ("0xe93237c50d904957cf27e7b1133b510c669c2e74",
+                 "0xeb60bcd1d920ad6e102690ccfc6fb488899e1510", 3000),
+        "META": ("0xc0d6457c16cc70d6790dd43521c899c87ce02f35",
+                 "0x107a7cb40d8665360ba10e59471af06150a50922", 3000),
+    }
+    policies = {p.symbol: p for p in APPROVED_RLIVE_ASSETS.values()}
+    for symbol, (token, pool, fee) in reviewed.items():
+        policy = policies[symbol]
+        assert policy.asset_key == AssetKey(4663, token)
+        assert policy.pool.pool_address == pool
+        assert policy.pool.fee == fee
+        assert policy.pool.factory_address == AAPL_POOL.factory_address
+        assert policy.pool.quote_token_address == AAPL_POOL.quote_token_address
+        assert policy.pool.quote_feed_address == AAPL_POOL.quote_feed_address
+        assert policy.pool.token_decimals == 18
+        assert policy.pool.quote_decimals == 6
+        assert policy.pool.feed_decimals == 8
+        assert policy.asset_key.canonical_id in APPROVED_BY_CANONICAL_ID
+    for symbol in ("PLTR", "ORCL", "SNOW", "COST"):
+        assert symbol not in policies
+
+
+@pytest.mark.parametrize("policy", tuple(APPROVED_RLIVE_ASSETS.values()), ids=lambda p: p.symbol)
+def test_every_approved_policy_observes_exact_pair_and_quote(policy):
     observed = _observe(policy)
     assert observed.state is AuthorityState.AVAILABLE
     assert observed.registry_asset_uid == policy.economic_asset_uid
@@ -199,7 +229,7 @@ def test_generic_get_never_requests_history_writer():
 def test_api_list_and_history_contract_is_explicitly_historical():
     assets = api_router.list_r_live_assets()
     assert assets["state"] == "AVAILABLE"
-    assert len(assets["data"]["assets"]) == 8
+    assert len(assets["data"]["assets"]) == len(APPROVED_RLIVE_ASSETS)
     assert all(row["canonical_id"].startswith("4663:0x") for row in assets["data"]["assets"])
     assert api_router.get_r_live_history("NVDA")["state"] == "UNAVAILABLE"
     policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")

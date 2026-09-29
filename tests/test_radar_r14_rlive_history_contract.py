@@ -227,12 +227,11 @@ class TestFmtRangeCanonicalField:
     """RLIVE_UI_1H_RANGE_CANONICAL_HISTORY / RLIVE_UI_24H_RANGE_CANONICAL_HISTORY"""
 
     def test_r_live_table_js_reads_reference_premium_bps(self):
-        """r_live_table.js fmt_range() must read reference_premium_bps."""
+        """Server reads canonical premium; landing consumes bounded summaries."""
+        history = (REPO / "app/radar_rwa/bnb_history.py").read_text()
         js = (REPO / "static/radar/r_live_table.js").read_text()
-        assert "reference_premium_bps" in js, (
-            "RLIVE_UI_1H_RANGE_CANONICAL_HISTORY: "
-            "r_live_table.js fmt_range must read reference_premium_bps (canonical field)"
-        )
+        assert 'point["reference_premium_bps"]' in history
+        assert 'summary.low_bps' in js and 'summary.high_bps' in js
 
     def test_r_live_table_js_does_not_read_flat_premium_bps_in_fmt_range(self):
         """fmt_range must not read p.premium_bps (old wrong field)."""
@@ -253,7 +252,7 @@ class TestFmtRangeCanonicalField:
         """RLIVE_UI_INSUFFICIENT_HISTORY_DASH: < 2 valid points → null/dash."""
         js = (REPO / "static/radar/r_live_table.js").read_text()
         # fmt_range must have the < 2 guard
-        assert "vals.length < 2" in js, (
+        assert "summary.observation_count < 2" in js, (
             "RLIVE_UI_INSUFFICIENT_HISTORY_DASH: "
             "fmt_range must return null (dash) when fewer than 2 valid observations"
         )
@@ -361,13 +360,11 @@ class TestMissingNeverZero:
         )
 
     def test_landing_js_missing_premium_suppressed(self):
-        """RLIVE_UI_HISTORY_MISSING_NEVER_ZERO: fmt_range skips null reference_premium_bps."""
+        """RLIVE_UI_HISTORY_MISSING_NEVER_ZERO: range summary skips missing premiums."""
         js = (REPO / "static/radar/r_live_table.js").read_text()
-        # null-check for reference_premium_bps must exist
-        assert "reference_premium_bps == null" in js, (
-            "RLIVE_UI_HISTORY_MISSING_NEVER_ZERO: "
-            "r_live_table.js must skip points with null reference_premium_bps"
-        )
+        history = (REPO / "app/radar_rwa/bnb_history.py").read_text()
+        assert 'Decimal(point["reference_premium_bps"])' in history
+        assert 'summary.low_bps' in js and 'summary.high_bps' in js
 
 
 # ── Current state never replaced by history ───────────────────────────────────

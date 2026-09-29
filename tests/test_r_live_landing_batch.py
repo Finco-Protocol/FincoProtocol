@@ -1,0 +1,87 @@
+"""One-request progressive current surface with exact policy identities."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.v1_1.r_live_public_router import router
+from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def client() -> TestClient:
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1.1")
+    return TestClient(app)
+
+
+def test_batch_current_stream_uses_every_exact_policy_and_preserves_stale(monkeypatch):
+    from app.api.v1_1 import institutional
+    policies = tuple(APPROVED_RLIVE_ASSETS.values())
+    calls = []
+    states = {policies[0].asset_key.canonical_id: "AVAILABLE",
+              policies[1].asset_key.canonical_id: "STALE"}
+
+    def current(key):
+        calls.append(key)
+        state = states.get(key, "UNAVAILABLE")
+        return state, {"reason": "POOL_ACTIVITY_STALE" if state == "STALE" else None,
+                       "b1_0_premium": {"value_bps": "12" if state == "AVAILABLE" else None}}
+
+    monkeypatch.setattr(institutional, "get_r_live", current)
+    with client() as api:
+        response = api.get("/api/v1.1/radar/r-live/current")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    items = [json.loads(line) for line in response.text.splitlines()]
+    assert len(items) == len(policies)
+    assert set(calls) == {p.asset_key.canonical_id for p in policies}
+    assert {row["canonical_id"] for row in items} == set(calls)
+    stale = next(row for row in items if row["state"] == "STALE")
+    assert stale["data"]["b1_0_premium"]["value_bps"] is None
+    assert stale["data"]["reason"] == "POOL_ACTIVITY_STALE"
+
+
+def test_batch_ranges_are_read_only_registry_driven(monkeypatch):
+    from app.radar_rwa import r_live_service
+    calls = []
+
+    def ranges(key):
+        calls.append(key)
+        return {"range_1h": {"state": "UNAVAILABLE", "observation_count": 1},
+                "range_24h": {"state": "UNAVAILABLE", "observation_count": 1},
+                "last_available": None}
+
+    monkeypatch.setattr(r_live_service, "read_r_live_ranges", ranges)
+    with client() as api:
+        response = api.get("/api/v1.1/radar/r-live/history/ranges")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["history_kind"] == "HISTORICAL"
+    assert set(calls) == {p.asset_key.canonical_id for p in APPROVED_RLIVE_ASSETS.values()}
+    assert set(data["assets"]) == set(calls)
+
+
+def test_landing_has_two_fetches_independent_of_registry_size():
+    js = (ROOT / "static/radar/r_live_table.js").read_text(encoding="utf-8")
+    assert js.count("fetch(") == 2
+    assert 'fetch("/api/v1.1/radar/r-live/current"' in js
+    assert 'fetch("/api/v1.1/radar/r-live/history/ranges"' in js
+    assert "history?limit=100" not in js
+    assert "data-canonical-id" in js
+    assert "HISTORICAL · Last available" in js
+    assert 'snap_state === "STALE"' in js
+    assert 'snap_state === "AVAILABLE"' in js
+    assert 'set_badge(row_el, snap_state)' in js
+    assert 'snap_state === "STALE" && last' in js
+    assert 'snap_state === "UNAVAILABLE" && last' not in js
+    assert 'snap_data.b1_0_premium' in js
+    assert 'Math.abs(parseFloat(premium_a.value_bps))' in js
+    sorting = js.split('function sort_rows()', 1)[1].split('fetch("/api/v1.1/radar/r-live/history/ranges"', 1)[0]
+    assert 'last.premium_bps' not in sorting
+    assert 'rlive-badge--loading' in (ROOT / "app/templates/radar/r_live_landing.html").read_text(encoding="utf-8")
