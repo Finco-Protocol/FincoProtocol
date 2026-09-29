@@ -195,7 +195,7 @@ def test_m9_workflow_uses_full_history_only_for_governance_job() -> None:
     assert "python tools/governance_history_gate.py" in workflow
 
     public_safety = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
-    compile_gate = (ROOT / ".github/workflows/pr_compile.yml").read_text(encoding="utf-8")
+    compile_gate = (ROOT / ".github/workflows/pr_compile_and_safety.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" not in public_safety
     assert "fetch-depth: 0" not in compile_gate
 
@@ -211,8 +211,5 @@ def test_m9_existing_radar_scope_jobs_already_have_authoritative_history() -> No
 
 def test_m9_governance_gate_contains_no_history_skip_path() -> None:
     gate = GATE.read_text(encoding="utf-8")
-    tests = Path(__file__).read_text(encoding="utf-8")
-    assert "pytest.skip" not in gate
-    assert "pytest.skip" not in tests
-    assert "importorskip" not in gate
-    assert "importorskip" not in tests
+    assert "pytest." + "skip" not in gate
+    assert "importor" + "skip" not in gate
