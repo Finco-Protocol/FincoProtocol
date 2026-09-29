@@ -2,7 +2,7 @@
   "repository": "Finco-Protocol/FincoProtocol",
   "product_base_sha": "226fe8d4ee15bfe60e441550f386e8985ae0c2f9",
   "product_base_description": "Merge pull request #139 — R-LIVE V2 multi-asset collector and staging config contract",
-  "docs_pr_head_sha": "CONFIRM AFTER FINAL PUSH",
+  "docs_pr_head_sha": "95f01d3faf351d1701433e51e2d77b2ab9dbbdc3",
   "docs_pr_number": 138,
   "final_live_main_sha": null,
   "review_package_version": "post-pr139-v1",
