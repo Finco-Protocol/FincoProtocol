@@ -59,7 +59,7 @@ Getting started:
 
 ## Known Limitations
 
-For full validation status and known limitations, see /known-limitations.
+For full validation status and known limitations, see /docs.
 
 ---
 
