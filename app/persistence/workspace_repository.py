@@ -591,6 +591,7 @@ def v2_atomic_run_commit(
         # export can reproduce the exact effective inputs without re-reading
         # mutable live tables (CAPEX/OPEX rows, scenario record).
         _identity_payload = {
+            "workbook_version": WORKBOOK.version,
             "capex_rows": [
                 {
                     "sub_line_id": r.sub_line_id,
