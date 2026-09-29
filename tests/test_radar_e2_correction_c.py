@@ -425,7 +425,7 @@ class TestC02FeaturedSelectedReadCounts:
         aapl_uid = next(
             a.economic_asset_uid for a in universe if a.token_symbol == "AAPL"
         )
-        resp = client.get(f"/radar?asset_uid={aapl_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={aapl_uid}")
         assert resp.status_code == 200
         assert mock_many.call_count == 1
         assert mock_single.call_count == 0
@@ -466,7 +466,7 @@ class TestC03NonFeaturedSelectedReadCounts:
         )
         assert xyz_uid == "rh-equity-xyz-099"
 
-        resp = client.get(f"/radar?asset_uid={xyz_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={xyz_uid}")
         assert resp.status_code == 200
         assert mock_many.call_count == 1
         assert mock_single.call_count == 1
@@ -484,7 +484,7 @@ class TestC04FeaturedSelectedEquityDetails:
             a.economic_asset_uid for a in universe if a.token_symbol == "AAPL"
         )
 
-        resp = client.get(f"/radar?asset_uid={aapl_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={aapl_uid}")
         assert resp.status_code == 200
         html = resp.text
 
@@ -506,7 +506,7 @@ class TestC04FeaturedSelectedEquityDetails:
             a.economic_asset_uid for a in universe if a.token_symbol == "NVDA"
         )
 
-        resp = client.get(f"/radar?asset_uid={nvda_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={nvda_uid}")
         assert resp.status_code == 200
         section = _extract_section(resp.text, "equity-details")
         assert section and len(section.strip()) > 10
@@ -524,7 +524,7 @@ class TestC05NonFeaturedSelectedEquityDetails:
         """Non-featured XYZ → #equity-details contains XYZ Corp; featured detail absent."""
         client, _, universe, _, _, _ = client_11asset
 
-        resp = client.get("/radar?asset_uid=rh-equity-xyz-099")
+        resp = client.get("/radar/stocks?asset_uid=rh-equity-xyz-099")
         assert resp.status_code == 200
         html = resp.text
 
