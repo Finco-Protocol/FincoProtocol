@@ -48,16 +48,16 @@
 
   function fmt_range(points, hours) {
     // Compute the bps range over the last `hours` from history points.
-    // points: [{premium_bps: "..."|null, observed_at: "..."}]
-    // Returns "lo / hi bps" string or null if insufficient data.
+    // Canonical field: reference_premium_bps (not premium_bps).
+    // Returns "lo / hi bps" string or null if < 2 valid observations in window.
     var cutoff = Date.now() - hours * 3600 * 1000;
     var vals = [];
     for (var i = 0; i < points.length; i++) {
       var p = points[i];
-      if (p.premium_bps == null) continue;
+      if (p.reference_premium_bps == null) continue;
       var t = p.observed_at ? new Date(p.observed_at).getTime() : 0;
       if (t < cutoff) continue;
-      var v = parseFloat(p.premium_bps);
+      var v = parseFloat(p.reference_premium_bps);
       if (!isNaN(v)) vals.push(v);
     }
     if (vals.length < 2) return null;

@@ -217,11 +217,19 @@
     var tbody = document.createElement("tbody");
     points.slice(0, 20).forEach(function(pt) {
       var tr = document.createElement("tr");
+      // Canonical B1.3 history schema: nested objects, camelCase token reference.
+      var basis_val = (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
+        ? ("$" + parseFloat(pt.robinhood_basis.price_usd_per_token).toFixed(4)) : "—";
+      var ref_val = (pt.independent_token_reference && pt.independent_token_reference.priceUsdPerToken != null)
+        ? ("$" + parseFloat(pt.independent_token_reference.priceUsdPerToken).toFixed(4)) : "—";
+      var prem_raw = pt.reference_premium_bps;
+      var prem_val = (prem_raw != null)
+        ? ((parseFloat(prem_raw) >= 0 ? "+" : "") + parseFloat(prem_raw).toFixed(1) + " bps") : "—";
       var cells = [
         pt.observed_at || "—",
-        pt.robinhood_basis_price != null ? ("$" + parseFloat(pt.robinhood_basis_price).toFixed(4)) : "—",
-        pt.token_reference_price != null ? ("$" + parseFloat(pt.token_reference_price).toFixed(4)) : "—",
-        pt.premium_bps != null ? ((parseFloat(pt.premium_bps) >= 0 ? "+" : "") + parseFloat(pt.premium_bps).toFixed(1) + " bps") : "—",
+        basis_val,
+        ref_val,
+        prem_val,
         pt.state || "—"
       ];
       cells.forEach(function(val) {
