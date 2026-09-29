@@ -158,15 +158,15 @@ class TestSelectedAssetTerminalCTA:
         composition.set_registry_factory(None)
 
     def test_selected_asset_panel_shows_cta(self):
-        """GET /radar?asset_uid=<NVDA_UID> renders the Company Terminal CTA."""
-        page = self._client.get(f"/radar?asset_uid={_NVDA_UID}").text
+        """GET /radar/stocks?asset_uid=<NVDA_UID> renders the Company Terminal CTA."""
+        page = self._client.get(f"/radar/stocks?asset_uid={_NVDA_UID}").text
         assert "Open Company Terminal" in page, (
             "Selected Asset panel must show 'Open Company Terminal →' when a canonical asset is loaded"
         )
 
     def test_cta_url_contains_canonical_uid(self):
         """The CTA href uses the canonical economic_asset_uid, not the ticker."""
-        page = self._client.get(f"/radar?asset_uid={_NVDA_UID}").text
+        page = self._client.get(f"/radar/stocks?asset_uid={_NVDA_UID}").text
         expected_href = f"/radar/equity/{_NVDA_UID}"
         assert expected_href in page, (
             f"CTA href must be '/radar/equity/{_NVDA_UID}'; page snippet: "
@@ -175,7 +175,7 @@ class TestSelectedAssetTerminalCTA:
 
     def test_cta_url_does_not_contain_ticker(self):
         """The CTA href must not route via ticker symbol only."""
-        page = self._client.get(f"/radar?asset_uid={_NVDA_UID}").text
+        page = self._client.get(f"/radar/stocks?asset_uid={_NVDA_UID}").text
         # The terminal link should not be /radar/equity/NVDA
         assert "/radar/equity/NVDA" not in page, (
             "Ticker-only terminal routing detected; must use canonical UID"
@@ -183,7 +183,7 @@ class TestSelectedAssetTerminalCTA:
 
     def test_selected_asset_identity_fields_present(self):
         """Selected Asset panel shows canonical identity fields."""
-        page = self._client.get(f"/radar?asset_uid={_NVDA_UID}").text
+        page = self._client.get(f"/radar/stocks?asset_uid={_NVDA_UID}").text
         assert "NVDA" in page
         assert "NVIDIA Corporation" in page
         assert str(_CHAIN_ID) in page
@@ -279,7 +279,7 @@ class TestNoTickerFallback:
                 "app.radar_ui.equity_enrichment.enrich_many_selected_assets",
                 return_value=[],
             ):
-                page = client.get(f"/radar?asset_uid={_NVDA_UID}").text
+                page = client.get(f"/radar/stocks?asset_uid={_NVDA_UID}").text
         # data-economic-asset-uid must be set to the UID, not the ticker
         assert f'data-economic-asset-uid="{_NVDA_UID}"' in page, (
             "CTA must carry data-economic-asset-uid with the canonical UID"
