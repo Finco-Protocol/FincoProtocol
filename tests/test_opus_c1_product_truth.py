@@ -379,6 +379,14 @@ class TestBehaviorUnchanged:
         sha = _main_sha()
         if sha is None:
             pytest.skip("no main ref available in this checkout")
+        shallow = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"], cwd=REPO,
+            capture_output=True, text=True,
+        )
+        if shallow.stdout.strip() == "true":
+            # Shallow CI merge-ref checkouts cannot walk ancestry reliably;
+            # the containment assertion would produce false negatives.
+            pytest.skip("shallow checkout: ancestry containment not decidable")
         probe = subprocess.run(
             ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
             cwd=REPO, capture_output=True, text=True,
