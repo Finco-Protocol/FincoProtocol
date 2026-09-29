@@ -231,6 +231,32 @@ class CleanProductionRun:
     financial_statements_result: object | None = None
 
 
+_POLICY_RUN_CACHE: "dict[str, tuple]" = {}
+_POLICY_RUN_CACHE_MAX = 16
+
+
+def _memoised_policy_run(effective_inputs, policy, compute):
+    """Deterministic in-process memo of the policy-wrapped engine run.
+
+    The engine is a pure function of (inputs, policy); the H-1 fixed points make one run
+    cost several engine evaluations, so identical repeat runs (same process) reuse the
+    result. Keyed by a digest of the full input/policy representation; bounded.
+    """
+    import hashlib
+
+    key = hashlib.sha256(
+        (repr(effective_inputs) + "|" + repr(policy)).encode("utf-8")
+    ).hexdigest()
+    hit = _POLICY_RUN_CACHE.get(key)
+    if hit is not None:
+        return hit
+    value = compute()
+    if len(_POLICY_RUN_CACHE) >= _POLICY_RUN_CACHE_MAX:
+        _POLICY_RUN_CACHE.pop(next(iter(_POLICY_RUN_CACHE)))
+    _POLICY_RUN_CACHE[key] = value
+    return value
+
+
 def run_clean_production(
     project_inputs,
     scenario: str = "Base",
@@ -279,12 +305,16 @@ def run_clean_production(
         # H-1: apply the project's declared construction financing (IDC, commitment
         # and structuring fees) and DSRA policy. One production calculation; the
         # policy owns the initial-DSRA fixed point around the single engine entry.
-        g2c, effective_inputs, policy_evidence = run_with_generic_financing_policy(
+        g2c, effective_inputs, policy_evidence = _memoised_policy_run(
             effective_inputs,
-            lambda applied: run_project_shareholder_waterfall_model(
-                applied, source_id="pr8_clean_production_authority"
-            ),
             policy,
+            lambda: run_with_generic_financing_policy(
+                effective_inputs,
+                lambda applied: run_project_shareholder_waterfall_model(
+                    applied, source_id="pr8_clean_production_authority"
+                ),
+                policy,
+            ),
         )
     except CleanProductionRunUnavailable:
         raise
