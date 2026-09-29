@@ -102,7 +102,8 @@ The purpose is to analyze how a tokenized or crypto asset actually trades while 
 
 The Protocol layer implements off-chain verification and composition. Current capabilities include:
 
-- **Run Certificates** — deterministic, content-addressed evidence envelopes for FINCO Model outputs. Each calculation snapshot receives a SHA-256 content address; CI independently rebuilds the corpus twice and requires byte-identical output.
+- **Signed Run Certificate V1** — Ed25519-signed cryptographic provenance and integrity certificate for a committed Last Run. Issued from the immutable persisted Last Run only; never re-runs the engine; never accepts Working Copy state. Certificate is not FINCO Verify, not economic truth, and not model correctness. Requires a configured `FINCO_RUN_CERT_SIGNING_KEY`. See `docs/SIGNED_RUN_CERTIFICATE_V1.md`.
+- **Model Trust Pack UX V1** — read-only evidence surface in the V2 workbook composing seven canonical sections: Last Run identity, Core KPIs, MODEL VALIDATION (deferred/user-action), FINCO VERIFY, Institutional Export, Methodology, and Signed Run Certificate (deferred/user-action). Trust Pack rendering does not run the model and does not silently issue a certificate. MODEL VALIDATION ≠ FINCO VERIFY; Signed Run Certificate ≠ FINCO VERIFY.
 - **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar evidence and protocol metadata into a single verifiable asset record. V1 assets currently render as MODEL_ONLY because no canonical model↔market identity mapping is yet established.
 
 The verification layer validates already-produced evidence rather than replacing either calculation engine. A sanitized public corpus covers generic Solar, generic Wind, and synthetic Radar liquidity evidence.
@@ -176,7 +177,7 @@ python tools/build_public_validation_corpus.py \
   --output artifacts/finco-public-validation-corpus.json
 ```
 
-FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is under active staged development. The verification layer, Run Certificates, and Verified Assets V1 are implemented off-chain. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Blockchain anchoring remains future work.
+FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is under active staged development. The verification layer, Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, and Verified Assets V1 are implemented off-chain. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Blockchain anchoring remains future work.
 
 ## Safety boundaries
 
@@ -200,4 +201,4 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released). Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
+Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released). Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
