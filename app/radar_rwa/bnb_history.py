@@ -10,7 +10,8 @@ import hashlib
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from threading import RLock
 
@@ -21,6 +22,108 @@ from finco_radar.authority.r_live_onchain import OnchainReferenceObservation
 
 
 DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[1] / "data" / "radar_bnb_intelligence.db")
+MAX_RLIVE_RANGE_POINTS = 5000
+
+
+def _source_collection_time(evidence: dict) -> str | None:
+    """Use only the on-chain acquisition clock, never a synthetic read time."""
+    raw = evidence.get("retrievedAt")
+    if not isinstance(raw, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        return None
+    return timestamp.astimezone(timezone.utc).isoformat()
+
+
+def _range_result(values: list[Decimal]) -> dict:
+    return {"state": "AVAILABLE" if len(values) >= 2 else "UNAVAILABLE",
+            "low_bps": str(min(values)) if len(values) >= 2 else None,
+            "high_bps": str(max(values)) if len(values) >= 2 else None,
+            "observation_count": len(values)}
+
+
+def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
+                                       as_of: datetime | None = None,
+                                       path: str | None = None) -> dict:
+    """Complete bounded 24h B1.3 summary without opening a history writer."""
+    if key.chain_id != 4663:
+        raise ValueError("exact Robinhood key required")
+    identity = normalize_asset_uid(uid)
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("range clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
+             "last_available": None}
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:" or not Path(location).is_file():
+        return empty
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    with sqlite3.connect(Path(location).resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.collected_at') >= ? "
+            "AND json_extract(payload, '$.collected_at') <= ? "
+            "ORDER BY json_extract(payload, '$.collected_at') DESC LIMIT ?",
+            (identity, key.canonical_id, cutoff, now.isoformat(), MAX_RLIVE_RANGE_POINTS + 1),
+        ).fetchall()
+        latest = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), observed_at) DESC LIMIT 1",
+            (identity, key.canonical_id),
+        ).fetchone()
+    last_available = None
+    if latest is not None:
+        latest_digest, latest_payload = latest
+        if hashlib.sha256(latest_payload.encode("utf-8")).hexdigest() != latest_digest:
+            raise ValueError("history digest does not reconstruct")
+        point = json.loads(latest_payload)
+        basis = point.get("robinhood_basis") or {}
+        reference = point.get("independent_token_reference") or {}
+        if (basis.get("price_usd_per_token") is not None
+                and reference.get("priceUsdPerToken") is not None
+                and point.get("reference_premium_bps") is not None):
+            last_available = {
+                "collected_at": point.get("collected_at"),
+                "effective_evidence_at": point.get("observed_at"),
+                "basis_price_usd_per_token": basis["price_usd_per_token"],
+                "token_price_usd_per_token": reference["priceUsdPerToken"],
+                "premium_bps": point["reference_premium_bps"],
+            }
+    if len(rows) > MAX_RLIVE_RANGE_POINTS:
+        return {"range_1h": _range_result([]), "range_24h": _range_result([]),
+                "last_available": last_available, "reason": "HISTORY_WINDOW_CAP_EXCEEDED"}
+    one_hour = []
+    one_day = []
+    hour_cutoff = now - timedelta(hours=1)
+    for digest, payload in rows:
+        if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
+            raise ValueError("history digest does not reconstruct")
+        point = json.loads(payload)
+        if point.get("state") != "AVAILABLE":
+            continue
+        try:
+            collected = datetime.fromisoformat(point["collected_at"])
+            value = Decimal(point["reference_premium_bps"])
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            continue
+        if collected.tzinfo is None or collected.utcoffset() is None:
+            continue
+        collected = collected.astimezone(timezone.utc)
+        if not value.is_finite() or collected > now or collected < now - timedelta(hours=24):
+            continue
+        one_day.append(value)
+        if collected >= hour_cutoff:
+            one_hour.append(value)
+    return {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
+            "last_available": last_available}
 
 
 def read_r_live_points_readonly(uid: str, key: AssetKey, *, limit: int = 30,
@@ -97,6 +200,7 @@ def make_r_live_history_point(snapshot: AuthoritySnapshot,
         "identity_source": snapshot.registry_source,
         "identity_observed_at": snapshot.registry_observed_at.isoformat() if snapshot.registry_observed_at else None,
         "observed_at": observation.observed_at.isoformat(),
+        "collected_at": _source_collection_time(dict(observation.evidence)),
         "state": snapshot.premium.state.value,
         "robinhood_basis": {
             "price_usd_per_token": str(snapshot.underlying.price_usd_per_token),
@@ -118,6 +222,7 @@ def _canonical(point: dict) -> str:
 def _r_live_source_identity(point: dict) -> str:
     """Retrieval time is not a new source observation of the same evidence."""
     stable = json.loads(_canonical(point))
+    stable.pop("collected_at", None)
     stable["independent_token_reference"]["evidence"].pop("retrievedAt", None)
     return _canonical(stable)
 
@@ -146,6 +251,10 @@ class BnbIntelligenceHistoryStore:
             );
             CREATE INDEX IF NOT EXISTS idx_bnb_intelligence_identity_time
                 ON bnb_intelligence_history(economic_asset_uid, asset_key, observed_at);
+            CREATE INDEX IF NOT EXISTS idx_bnb_r_live_identity_collection_time
+                ON bnb_intelligence_history(
+                    economic_asset_uid, asset_key,
+                    json_extract(payload, '$.collected_at'));
         """)
         self._lock = RLock()
 

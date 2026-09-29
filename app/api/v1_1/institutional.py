@@ -23,6 +23,7 @@ Contract guarantees (Correction A):
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
 
 
@@ -342,6 +343,41 @@ def _r_live_composite_state(
     return "STALE"
 
 
+def _r_live_freshness(evidence: Any) -> dict:
+    """Presentation-only ages from canonical on-chain evidence timestamps."""
+    fields = evidence if isinstance(evidence, dict) else dict(evidence or {})
+
+    def parsed(name: str) -> datetime | None:
+        raw = fields.get(name)
+        if not isinstance(raw, str):
+            return None
+        try:
+            value = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return value.astimezone(timezone.utc) if value.tzinfo and value.utcoffset() is not None else None
+
+    retrieved = parsed("retrievedAt")
+
+    def age(name: str) -> int | None:
+        source = parsed(name)
+        if source is None or retrieved is None:
+            return None
+        seconds = (retrieved - source).total_seconds()
+        return int(seconds) if seconds >= 0 else None
+
+    return {
+        "market_activity_age_seconds": age("lastPoolActivityAt"),
+        "quote_feed_age_seconds": age("quoteUpdatedAt"),
+        "block_age_seconds": age("blockTimestamp"),
+        "last_pool_activity_at": fields.get("lastPoolActivityAt"),
+        "quote_updated_at": fields.get("quoteUpdatedAt"),
+        "block_timestamp": fields.get("blockTimestamp"),
+        "effective_evidence_at": fields.get("effectiveObservedAt"),
+        "retrieved_at": fields.get("retrievedAt"),
+    }
+
+
 def get_r_live(uid: str) -> Tuple[str, dict]:
     """Return (state, data) for R-LIVE exact AssetKey reference.
 
@@ -414,5 +450,6 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
             "reason": premium.reason,
         },
         "observed_at": onchain.observed_at.isoformat() if onchain.observed_at else None,
+        "freshness": _r_live_freshness(onchain.evidence),
     }
     return state, data

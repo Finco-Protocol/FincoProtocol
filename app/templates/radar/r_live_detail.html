@@ -49,10 +49,14 @@
       <dd id="detail-basis-price" class="mono" data-field="basis_price">—</dd>
       <dt>Premium / Discount</dt>
       <dd id="detail-premium" class="mono" data-field="premium_bps">—</dd>
-      <dt>Observed At</dt>
-      <dd id="detail-observed-at" data-field="observed_at">—</dd>
-      <dt>Freshness</dt>
-      <dd id="detail-freshness" data-field="freshness">—</dd>
+      <dt>Collected</dt>
+      <dd id="detail-collected-at" data-field="collected_at">—</dd>
+      <dt>Market activity</dt>
+      <dd id="detail-market-activity" data-field="market_activity">—</dd>
+      <dt>Oracle (USDG/USD)</dt>
+      <dd id="detail-oracle" data-field="oracle">—</dd>
+      <dt>Effective evidence</dt>
+      <dd id="detail-effective-evidence" data-field="effective_evidence_at">—</dd>
     </dl>
     <p class="muted small" style="margin-top:10px">
       Reference observation only — not a tradeable or executable price.
@@ -180,13 +184,15 @@
     set_text("detail-basis-price", basis_txt);
     set_text("detail-premium", prem_txt);
 
-    if (data.observed_at) {
-      var age_s = Math.round((Date.now() - new Date(data.observed_at).getTime()) / 1000);
-      set_text("detail-observed-at", data.observed_at);
-      set_text("detail-freshness", fmt_age(age_s));
-    } else {
-      set_text("detail-observed-at", is_current ? null : state);
-    }
+    var fresh = data.freshness || {};
+    set_text("detail-collected-at", fresh.retrieved_at);
+    set_text("detail-market-activity", fresh.last_pool_activity_at &&
+      fresh.market_activity_age_seconds != null
+      ? fresh.last_pool_activity_at + " · " + fmt_age(fresh.market_activity_age_seconds) : null);
+    set_text("detail-oracle", fresh.quote_updated_at &&
+      fresh.quote_feed_age_seconds != null
+      ? fresh.quote_updated_at + " · " + fmt_age(fresh.quote_feed_age_seconds) : null);
+    set_text("detail-effective-evidence", fresh.effective_evidence_at);
   }
 
   function build_history_table(points) {
@@ -205,7 +211,7 @@
     table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
     var thead = document.createElement("thead");
     var hrow = document.createElement("tr");
-    var headers = ["Observed", "Basis (USD)", "Token Ref (USD)", "Premium/Discount", "State"];
+    var headers = ["Collected", "Effective evidence", "Basis (USD)", "Token Ref (USD)", "Premium/Discount", "State"];
     headers.forEach(function(h) {
       var th = document.createElement("th");
       th.style.cssText = "text-align:left;padding:6px 10px;color:var(--radar-muted,#8d98a5)";
@@ -226,6 +232,7 @@
       var prem_val = (prem_raw != null)
         ? ((parseFloat(prem_raw) >= 0 ? "+" : "") + parseFloat(prem_raw).toFixed(1) + " bps") : "—";
       var cells = [
+        pt.collected_at || "—",
         pt.observed_at || "—",
         basis_val,
         ref_val,

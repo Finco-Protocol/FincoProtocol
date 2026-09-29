@@ -113,6 +113,15 @@ _APPROVED = (
     _reviewed("AVGO", "0x000000000000000000000000000000001bbb45628de84cb2917abd26680c7ab9", "0x156e175dd063a8ce274c50654ef40e0032b3fbcf", "0x5b7c404f1d7d77f9f3885ab13d7764f8a173028c", 3000),
     _reviewed("NFLX", "0x00000000000000000000000000000000500f14b2a92f44d6998e0e2b9cc9387e", "0xe0444ef8bf4ed74f74fd73686e2ddf4c1c5591e8", "0x59895c0302f41aeaa129d2fa2442cec01e7ef45e", 3000),
     _reviewed("AMD", "0x0000000000000000000000000000000086aeaac3c7d9422c90f6fd41aff0eaf7", "0x86923f96303d656e4aa86d9d42d1e57ad2023fdc", "0x48d284a2a4d3dc1b3da08231fe44317e7e7aa51f", 3000),
+    # Review block 75763398, 2026-09-29. Exact registry deployments and
+    # factory-returned pools passed pair/fee/decimals, 300s observe, liquidity,
+    # cardinality, recent bounded Swap and USDG/USD quote checks. Admission
+    # evidence (including rejected candidates) is retained in docs.
+    _reviewed("DELL", "0x0000000000000000000000000000000014eaef73a2c44d62b7952cfd0a44ff51", "0x941ae714ec6d8130c7b75d67160ca08f1e7d11dd", "0xc30c89cb7815a1488b7998d15eec73961707fc5a", 10000),
+    _reviewed("SNAP", "0x000000000000000000000000000000002993bb34578a4b92b8addda0fc4d697b", "0xf6589f11bc40b669e584073f428b05562f568733", "0x0ebd4650c9e641e9745b5a508a2d46935dfe753e", 3000),
+    _reviewed("INTC", "0x000000000000000000000000000000002eb75a2c20d7423881b4f812c27d0abe", "0xc72b96e0e48ecd4dc75e1e45396e26300bc39681", "0x2e5a92f5013a64661a49312111be2e8abd33f56a", 3000),
+    _reviewed("MSFT", "0x00000000000000000000000000000000307bb0113ca54f93adf80f4ff2bf681a", "0xe93237c50d904957cf27e7b1133b510c669c2e74", "0xeb60bcd1d920ad6e102690ccfc6fb488899e1510", 3000),
+    _reviewed("META", "0x00000000000000000000000000000000343e7beca03644bcba2e50b8236784f5", "0xc0d6457c16cc70d6790dd43521c899c87ce02f35", "0x107a7cb40d8665360ba10e59471af06150a50922", 3000),
 )
 APPROVED_RLIVE_ASSETS = MappingProxyType({policy.asset_key: policy for policy in _APPROVED})
 APPROVED_BY_CANONICAL_ID = MappingProxyType({policy.asset_key.canonical_id: policy for policy in _APPROVED})

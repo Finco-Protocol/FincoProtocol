@@ -22,7 +22,8 @@ from finco_radar.assets.contracts import AssetKey
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.gap.engine import build_bound_reference_price
 
-from .bnb_history import BnbIntelligenceHistoryStore, make_r_live_history_point, read_r_live_points_readonly
+from .bnb_history import (BnbIntelligenceHistoryStore, make_r_live_history_point,
+                          read_r_live_points_readonly, read_r_live_range_summary_readonly)
 
 
 R_LIVE_AUTHORITY_POLICY = AuthorityPolicy(
@@ -122,3 +123,12 @@ def read_r_live_history(canonical_asset_id: str, *, limit: int = 30,
     if history is None:
         return read_r_live_points_readonly(policy.economic_asset_uid, policy.asset_key, limit=limit)
     return history.read(policy.economic_asset_uid, policy.asset_key, limit=limit)
+
+
+def read_r_live_ranges(canonical_asset_id: str, *, as_of: datetime | None = None) -> dict:
+    """Read-only complete 1h/24h ranges for one exact approved AssetKey."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_asset_id)
+    if policy is None:
+        raise ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")
+    return read_r_live_range_summary_readonly(
+        policy.economic_asset_uid, policy.asset_key, as_of=as_of)
