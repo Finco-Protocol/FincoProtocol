@@ -29,7 +29,7 @@ the Model vertical list.
 | EV Institutional Reconciliation (P1.4) | LIVE | EV-specific reconciliation closure |
 | Institutional Trust Pack (P1.1) | LIVE | Methodology HTML, DSCR, XIRR ACT/365F docs |
 | FINCO VERIFY / Verified Assets (B2.1) | LIVE | `app/verified/authority.py`; explicit market binding required |
-| Signed Run Certificate V1 | LIVE | `app/services/run_certificate_service.py`; Ed25519; requires `FINCO_RUN_CERT_SIGNING_KEY` |
+| Signed Run Certificate V1 | LIVE | `app/services/run_certificate_service.py`; Ed25519; implemented in code — issuance is available only when `FINCO_RUN_CERT_SIGNING_KEY` is correctly configured and fails closed without it. Status LIVE here means implemented, not that any host's key configuration is demonstrated; public key distribution, a public verifier and blockchain anchoring are not implemented |
 | Model Trust Pack UX V1 | LIVE | `app/ui/trust_pack.py`; 7-section read-only evidence surface in V2 workbook; PR #133 |
 
 ## Radar

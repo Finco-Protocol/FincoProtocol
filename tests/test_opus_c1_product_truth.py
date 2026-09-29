@@ -29,6 +29,11 @@ def _read(rel_path: str) -> str:
     return (REPO / rel_path).read_text(encoding="utf-8")
 
 
+def _flat(rel_path: str) -> str:
+    """File text with all whitespace runs collapsed (docs are hard-wrapped)."""
+    return re.sub(r"\s+", " ", _read(rel_path))
+
+
 def _main_sha() -> str:
     return subprocess.run(
         ["git", "rev-parse", "origin/main"], cwd=REPO,
@@ -82,6 +87,8 @@ class TestReferenceRegressionCheckNaming:
         assert "REFERENCE REGRESSION CHECK" in page.text
         # The generic misleading label is gone from the user-facing surface.
         assert "MODEL VALIDATION" not in page.text
+        assert "Load validation evidence" not in page.text
+        assert "Load regression evidence" in page.text
         # The scope statement is explicit and user-visible.
         assert "independently validate your project's Last Run" in page.text
         assert "regression protection" in page.text
@@ -148,9 +155,30 @@ class TestPublishedTruthCorrections:
         assert "Total Sponsor XIRR" in readme
 
     def test_readme_financing_costs_qualification(self):
-        readme = _read("README.md")
-        assert "not yet fully wired through" in readme
-        assert "IDC, lender commitment/structuring fees, and DSRA" in readme
+        readme = _flat("README.md")
+        # Ambiguous "not yet fully wired" wording is gone.
+        assert "not yet fully wired" not in readme
+        assert "the generic product run path currently does **not** apply" in readme
+        for item in ("construction-period IDC", "the lender commitment fee",
+                     "the structuring/arrangement fee", "DSRA funding/sizing"):
+            assert item in readme, item
+        # The claim is grounded in the actual defaults, and states exclusion.
+        assert "`construction_financing=None`" in readme
+        assert "`dsra_support_mode=NONE`" in readme
+        assert "a normal product run excludes these costs and reserves" in readme
+        # Engine-level capability is mentioned separately, not as applied.
+        assert "not applied by a normal product run today" in readme
+
+    def test_product_templates_really_do_not_apply_h1_items(self):
+        """Ground the README claim in code: shipped templates leave both disabled."""
+        from app import project_factories as pf
+
+        for name in dir(pf):
+            if not name.startswith("create_") or not ("reference" in name or "default" in name):
+                continue
+            fin = getattr(pf, name)().financing
+            assert getattr(fin, "construction_financing", None) is None, name
+            assert str(getattr(fin, "dsra_support_mode")).endswith("NONE"), name
 
     def test_roadmap_run_integrity_checks_planned_not_shipped(self):
         roadmap = _read("docs/ROADMAP.md")
@@ -193,6 +221,109 @@ class TestPublishedTruthCorrections:
         assert "PRODUCTION_VERIFIED_ASSET_COUNT must not increase" in inst
 
 
+# ── 2b. Architecture wording, Signed Run operational claims, visible labels ──
+
+def _validate_section() -> str:
+    arch = _flat("OPUS_V1_REVIEW/01_ARCHITECTURE.md")
+    start = arch.index("## 3. VALIDATE")
+    return arch[start:arch.index("## 4. VERIFY", start)]
+
+
+class TestArchitectureAndOperationalWording:
+    def test_architecture_never_says_check_runs_on_users_last_run(self):
+        section = _validate_section()
+        assert "Structural and tolerance checks run against" not in section
+        # Any sentence that mentions the committed Last Run must negate it.
+        for sent in re.split(r"(?<=[.])\s+", section):
+            if "committed Last Run" in sent:
+                assert re.search(r"\bnot\b|\bNOT\b|\bnever\b", sent), sent
+        assert "checks run against the committed Last Run" not in _flat(
+            "OPUS_V1_REVIEW/01_ARCHITECTURE.md")
+
+    def test_architecture_states_canonical_reference_and_pinned_values(self):
+        section = _validate_section()
+        assert "executes against the canonical reference model" in section
+        assert "not against the user's project data" in section
+        assert "pinned expected reference values and tolerances" in section
+        assert "does **not** validate the user's committed Last Run" in section
+        assert ("does **not** establish accounting, debt, cash-flow or financing "
+                "integrity of that Last Run") in section
+
+    def test_architecture_uses_no_generic_model_validation_label(self):
+        assert "MODEL VALIDATION" not in _flat("OPUS_V1_REVIEW/01_ARCHITECTURE.md")
+
+    def test_no_operational_signed_run_live_claim(self):
+        # Sentence/line scan; the capability matrix status column is the tested
+        # capability vocabulary and is checked separately below.
+        files = ["README.md", "docs/ROADMAP.md"] + sorted(
+            str(p.relative_to(REPO)) for p in (REPO / "OPUS_V1_REVIEW").glob("*.md")
+            if p.name != "02_CAPABILITY_MATRIX.md")
+        offenders = []
+        for rel in files:
+            for line in _read(rel).splitlines():
+                for sent in re.split(r"(?<=[.;])\s+", line):
+                    if re.search(r"signed run", sent, re.I) and re.search(
+                            r"(?<!R-)\blive\b", sent, re.I):
+                        offenders.append((rel, sent[:160]))
+        assert offenders == []
+
+    def test_readme_signed_run_precise_wording(self):
+        readme = _flat("README.md")
+        assert ("Signed Run Certificate V1** — implemented. Ed25519 issuance is available "
+                "when `FINCO_RUN_CERT_SIGNING_KEY` is correctly configured") in readme
+        assert "fails closed without the key" in readme
+        assert "relying party possesses and pins the trusted public key" in readme
+        assert "public verifier are not yet complete" in readme
+        assert "blockchain anchoring is not implemented" in readme
+        assert "Implemented is not the same as configured on a host" in readme
+        assert "Not FINCO Verify. Not economic truth." in readme
+
+    def test_capability_matrix_signed_run_row_is_not_an_operational_claim(self):
+        matrix = _flat("OPUS_V1_REVIEW/02_CAPABILITY_MATRIX.md")
+        row = matrix[matrix.index("| Signed Run Certificate V1 |"):]
+        row = row[:row.index("| Model Trust Pack UX V1 |")]
+        assert "not that any host's key configuration is demonstrated" in row
+        assert "fails closed without it" in row
+        assert "public verifier" in row
+
+
+class TestVisibleLabelsAndMachineCompatibility:
+    _TEMPLATES = (
+        "app/templates/v2/partials/sheet_trust.html",
+        "app/templates/v2/partials/_trust_validation_body.html",
+    )
+
+    @staticmethod
+    def _visible(src: str) -> str:
+        return re.sub(r"\{#.*?#\}", "", src, flags=re.S)  # drop Jinja comments
+
+    def test_generic_validation_labels_removed_from_visible_copy(self):
+        for rel in self._TEMPLATES:
+            visible = self._visible(_read(rel))
+            for old in ("Load validation evidence", "Validation state",
+                        "MODEL VALIDATION", "vertical validation evidence"):
+                assert old not in visible, (rel, old)
+
+    def test_new_regression_labels_present(self):
+        assert "Load regression evidence" in _read(self._TEMPLATES[0])
+        body = _read(self._TEMPLATES[1])
+        assert "Regression state" in body
+        assert "reference regression evidence" in body
+
+    def test_machine_contracts_unchanged(self):
+        # Route, authority key, fragment URL and test ids are compatibility surfaces.
+        assert '@router.get("/projects/{project_id}/validation")' in _read(
+            "app/api/v1_1/router.py")
+        assert '"authority": "MODEL_VALIDATION"' in _read("app/api/v1_1/schemas.py")
+        assert "/v2/workbook/trust/validation?project=" in _read("app/ui/trust_pack.py")
+        sheet = _read(self._TEMPLATES[0])
+        assert 'data-testid="trust-pack-validation-load"' in sheet
+        assert 'data-testid="trust-pack-validation"' in sheet
+        body = _read(self._TEMPLATES[1])
+        assert 'data-testid="trust-pack-validation-state"' in body
+        assert "trust_validation.validation_state" in body
+
+
 # ── 3. Behavior unchanged ────────────────────────────────────────────────────
 
 class TestBehaviorUnchanged:
@@ -213,6 +344,16 @@ class TestBehaviorUnchanged:
             cwd=REPO, capture_output=True, text=True, check=True,
         )
         assert out.stdout.strip() == "", out.stdout
+
+    def test_branch_contains_current_origin_main(self):
+        """Frozen-namespace diffs are only meaningful against the current main."""
+        probe = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", _main_sha(), "HEAD"],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        assert probe.returncode == 0, (
+            "branch is behind origin/main; sync main before trusting the "
+            "frozen-namespace zero-diff checks")
 
     def test_validation_runner_behavior_untouched(self):
         # The runner module source is identical to main (no algorithm change).
