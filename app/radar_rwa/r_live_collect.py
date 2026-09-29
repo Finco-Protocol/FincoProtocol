@@ -18,6 +18,7 @@ from finco_radar.authority.contracts import AuthorityState
 from .bnb_history import BnbIntelligenceHistoryStore
 from .r_live_service import RLiveResult, collect_aapl_r_live, collect_r_live
 from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
+from finco_radar.authority.r_live_onchain import JsonRpc
 
 
 def _safe_reason(value: object) -> str | None:
@@ -27,10 +28,22 @@ def _safe_reason(value: object) -> str | None:
     return value if isinstance(value, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else "R_LIVE_COLLECTION_UNAVAILABLE"
 
 
+def _check_rpc_health(url: str) -> None:
+    """Process-only transport/chain preflight; never supplies price evidence."""
+    rpc = JsonRpc(url)
+    try:
+        chain_id = rpc.call("eth_chainId", [])
+        if not isinstance(chain_id, str) or int(chain_id, 16) != 4663:
+            raise ValueError("RPC_CHAIN_UNAVAILABLE")
+    finally:
+        rpc.close()
+
+
 def collect_once(
     *, rpc_url: str | None = None, as_of: datetime | None = None,
     history: BnbIntelligenceHistoryStore | None = None,
     acquire: Callable[..., RLiveResult] = collect_aapl_r_live,
+    process_errors: list[str] | None = None,
 ) -> dict:
     """Return a credential-free status; only AVAILABLE evidence may be stored."""
     url = rpc_url if rpc_url is not None else os.getenv("ROBINHOOD_RPC_URL")
@@ -58,6 +71,8 @@ def collect_once(
                 "observed_at": result.onchain.observed_at.isoformat(),
                 "retrieved_at": (as_of or datetime.now(timezone.utc)).isoformat()}
     except Exception:
+        if process_errors is not None:
+            process_errors.append("R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE")
         return {"state": "UNAVAILABLE", "reason": "R_LIVE_COLLECTION_UNAVAILABLE",
                 "history_digest": None}
     finally:
@@ -69,6 +84,7 @@ def collect_all_approved(
     *, rpc_url: str | None = None, as_of: datetime | None = None,
     acquire: Callable[..., RLiveResult] = collect_r_live,
     history_factory: Callable[..., BnbIntelligenceHistoryStore] = BnbIntelligenceHistoryStore,
+    rpc_healthcheck: Callable[[str], None] = _check_rpc_health,
 ) -> tuple[dict, int]:
     """Serial batch over the canonical registry; market states do not abort it.
 
@@ -92,6 +108,11 @@ def collect_all_approved(
         response["process_error"] = "RPC_NOT_CONFIGURED"
         return response, 1
     try:
+        rpc_healthcheck(url)
+    except Exception:
+        response["process_error"] = "RPC_UNAVAILABLE"
+        return response, 1
+    try:
         ledger = history_factory(allowed_chain_id=4663)
         if ledger is None:
             raise ValueError("history store missing")
@@ -100,13 +121,15 @@ def collect_all_approved(
         return response, 1
     persistence_failed = False
     invalid_result = False
+    process_errors: list[str] = []
     try:
         for key in keys:
             status = collect_once(
                 rpc_url=url, as_of=as_of, history=ledger,
                 acquire=partial(acquire, canonical_asset_id=key),
+                process_errors=process_errors,
             )
-            state = status["state"]
+            state = status.get("state") if isinstance(status, dict) else None
             if state not in ("AVAILABLE", "STALE", "UNAVAILABLE"):
                 invalid_result = True
                 break
@@ -127,6 +150,9 @@ def collect_all_approved(
         return response, 1
     if invalid_result:
         response["process_error"] = "COLLECTOR_RESULT_INVALID"
+        return response, 1
+    if process_errors:
+        response["process_error"] = "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
         return response, 1
     return response, 0
 

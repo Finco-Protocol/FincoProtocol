@@ -58,6 +58,7 @@ def test_no_arg_batch_uses_complete_registry_and_one_serial_ledger(monkeypatch):
     status, exit_code = collector.collect_all_approved(
         rpc_url="https://rpc.invalid/PRIVATE_TOKEN", acquire=acquire,
         history_factory=lambda **kwargs: ledger,
+        rpc_healthcheck=lambda _: None,
     )
     assert exit_code == 0  # mixed market states are not a process failure
     assert status["mode"] == "all_approved"
@@ -78,6 +79,7 @@ def test_batch_registry_count_is_derived_and_not_hardcoded(monkeypatch):
     ledger = Ledger(allowed_chain_id=4663)
     status, code = collector.collect_all_approved(
         rpc_url="https://rpc.invalid", history_factory=lambda **_: ledger,
+        rpc_healthcheck=lambda _: None,
         acquire=lambda *, canonical_asset_id, history, **_: _result(
             canonical_asset_id, AuthorityState.STALE, reason="POOL_ACTIVITY_STALE"),
     )
@@ -117,9 +119,42 @@ def test_batch_config_and_ledger_failures_are_nonzero_and_redacted(monkeypatch):
     def broken(**_):
         raise RuntimeError("https://rpc.invalid/PRIVATE_TOKEN")
     status, code = collector.collect_all_approved(
-        rpc_url="https://rpc.invalid/PRIVATE_TOKEN", history_factory=broken)
+        rpc_url="https://rpc.invalid/PRIVATE_TOKEN", history_factory=broken,
+        rpc_healthcheck=lambda _: None)
     assert code == 1 and status["process_error"] == "HISTORY_STORE_UNAVAILABLE"
     assert "PRIVATE_TOKEN" not in json.dumps(status)
+
+
+def test_configured_but_unreachable_rpc_is_process_failure_without_secret():
+    def unreachable(url):
+        raise RuntimeError(f"transport failed for {url}")
+
+    status, code = collector.collect_all_approved(
+        rpc_url="https://rpc.invalid/PRIVATE_TOKEN", rpc_healthcheck=unreachable)
+    assert code == 1
+    assert status["process_error"] == "RPC_UNAVAILABLE"
+    assert status["results"] == []
+    assert "PRIVATE_TOKEN" not in json.dumps(status)
+
+
+def test_rpc_preflight_checks_exact_chain_and_closes_transport(monkeypatch):
+    calls = []
+
+    class FakeRpc:
+        def __init__(self, url):
+            calls.append(("open", url))
+
+        def call(self, method, params):
+            calls.append((method, params))
+            return hex(4663)
+
+        def close(self):
+            calls.append(("close",))
+
+    monkeypatch.setattr(collector, "JsonRpc", FakeRpc)
+    collector._check_rpc_health("https://rpc.invalid/PRIVATE_TOKEN")
+    assert calls == [("open", "https://rpc.invalid/PRIVATE_TOKEN"),
+                     ("eth_chainId", []), ("close",)]
 
 
 def test_individual_exception_does_not_abort_batch_or_leak_secret():
@@ -133,11 +168,63 @@ def test_individual_exception_does_not_abort_batch_or_leak_secret():
                        reason="POOL_ACTIVITY_STALE")
     status, code = collector.collect_all_approved(
         rpc_url="https://rpc.invalid/PRIVATE_TOKEN", acquire=acquire,
-        history_factory=lambda **_: ledger)
-    assert code == 0
-    assert len(calls) == len(APPROVED_BY_CANONICAL_ID)
+        history_factory=lambda **_: ledger, rpc_healthcheck=lambda _: None)
+    assert code == 1
+    assert calls == list(APPROVED_BY_CANONICAL_ID)
     assert status["summary"]["unavailable"] == 1
+    assert status["summary"]["stale"] == len(calls) - 1
+    assert status["results"][0]["state"] == "UNAVAILABLE"
+    assert status["results"][0]["reason"] == "R_LIVE_COLLECTION_UNAVAILABLE"
+    assert status["process_error"] == "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
     assert "PRIVATE_TOKEN" not in json.dumps(status)
+    assert ledger.closed == 1
+
+
+def test_every_acquisition_exception_attempts_every_asset_and_exits_nonzero():
+    ledger = Ledger(allowed_chain_id=4663)
+    calls = []
+
+    def acquire(*, canonical_asset_id, **_):
+        calls.append(canonical_asset_id)
+        raise RuntimeError("https://rpc.invalid/PRIVATE_TOKEN raw exception")
+
+    status, code = collector.collect_all_approved(
+        rpc_url="https://rpc.invalid/PRIVATE_TOKEN", acquire=acquire,
+        history_factory=lambda **_: ledger, rpc_healthcheck=lambda _: None)
+    assert code == 1
+    assert calls == list(APPROVED_BY_CANONICAL_ID)
+    assert status["summary"] == {"available": 0, "stale": 0,
+                                 "unavailable": len(calls)}
+    assert status["process_error"] == "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
+    assert all(row["reason"] == "R_LIVE_COLLECTION_UNAVAILABLE"
+               for row in status["results"])
+    assert "PRIVATE_TOKEN" not in json.dumps(status)
+    assert "raw exception" not in json.dumps(status)
+    assert ledger.closed == 1
+
+
+@pytest.mark.parametrize("market_state,reason", [
+    (AuthorityState.STALE, "POOL_ACTIVITY_STALE"),
+    (AuthorityState.UNAVAILABLE, "RPC_OR_SOURCE_EVIDENCE_UNAVAILABLE"),
+])
+def test_one_canonical_nonavailable_state_is_healthy_batch(market_state, reason):
+    ledger = Ledger(allowed_chain_id=4663)
+    calls = []
+
+    def acquire(*, canonical_asset_id, **_):
+        calls.append(canonical_asset_id)
+        state = market_state if len(calls) == 1 else AuthorityState.AVAILABLE
+        return _result(canonical_asset_id, state,
+                       reason=reason if len(calls) == 1 else None,
+                       history=ledger)
+
+    status, code = collector.collect_all_approved(
+        rpc_url="https://rpc.invalid", acquire=acquire,
+        history_factory=lambda **_: ledger, rpc_healthcheck=lambda _: None)
+    assert code == 0
+    assert calls == list(APPROVED_BY_CANONICAL_ID)
+    assert "process_error" not in status
+    assert status["summary"][market_state.value.lower()] == 1
     assert ledger.closed == 1
 
 
@@ -149,6 +236,6 @@ def test_history_persistence_failure_is_process_failure():
         return result
     status, code = collector.collect_all_approved(
         rpc_url="https://rpc.invalid", acquire=acquire,
-        history_factory=lambda **_: ledger)
+        history_factory=lambda **_: ledger, rpc_healthcheck=lambda _: None)
     assert code == 1 and status["process_error"] == "HISTORY_STORE_UNAVAILABLE"
     assert ledger.closed == 1

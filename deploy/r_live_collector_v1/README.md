@@ -77,10 +77,13 @@ SQLite B1.3 evidence digest/idempotency remains the authority for retries.
 
 The collector writes one credential-free JSON batch status line to stdout,
 captured by journald. Batch exit **0** means the approved registry was fully
-attempted with a usable shared ledger; individual markets may legitimately be
-AVAILABLE, STALE or UNAVAILABLE. Exit **1** means a process/configuration
-defect such as missing or invalid RPC configuration, failed history
-initialization, or history persistence failure. In explicit one-asset
+attempted without an operational/runtime failure; individual canonical markets
+may legitimately be AVAILABLE, STALE or UNAVAILABLE. Exit **1** means a
+process/configuration defect, including missing RPC configuration, a failed
+read-only Robinhood Chain 4663 RPC preflight, an acquisition exception, registry
+failure, or history initialization, persistence or close failure. An exception
+does not stop attempts for the remaining approved assets; the JSON reports a
+typed `process_error` without exception text or credentials. In explicit one-asset
 diagnostic mode, exit **0** still requires
 AVAILABLE and exit **1** reports a typed non-available result. No
 STALE/UNAVAILABLE numeric premium is appended. `flock` exit **75** means overlapping execution was

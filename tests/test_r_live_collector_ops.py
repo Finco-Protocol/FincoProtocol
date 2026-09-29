@@ -48,7 +48,8 @@ def test_os_lock_nonoverlap_and_failure_semantics():
     readme = (OPS / "README.md").read_text(encoding="utf-8")
     assert "exit **75**" in readme
     assert "Batch exit **0**" in readme and "Exit **1**" in readme
-    assert "missing or" in readme and "history persistence" in readme
+    assert "acquisition exception" in readme and "history initialization" in readme
+    assert "persistence or close failure" in readme
 
 
 def test_durable_shared_history_and_secret_safe_configuration():
