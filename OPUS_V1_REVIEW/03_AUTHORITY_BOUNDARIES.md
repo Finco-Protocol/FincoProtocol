@@ -4,13 +4,21 @@
 
 **Module:** `app/auth.py`
 
-- All user sessions are signed JWTs (`itsdangerous`).
+- All user sessions use **signed cookies** via `itsdangerous.URLSafeTimedSerializer`.
+  This is NOT JWT. The implementation is stateless signed cookies with a
+  server-configured `FINCO_SECRET_KEY`.
 - `session.user_id` is the sole source of subject identity for B2.2 and B2.3.
 - No public method in B2.2 (`app/verified/token_entitlement.py`) or B2.3
   (`app/usage/query.py`, `app/usage/ledger.py`) accepts a caller-supplied
   `subject_id` or `user_id` string.
 - Demo sessions are structurally separate (`DEMO_COOKIE_NAME`); they do not
   share identity with authenticated sessions.
+
+**MCP V1:** Uses a server-configured `FINCO_SESSION_TOKEN` decoded through the
+same signed session authority (`app.auth`). No caller-supplied identity is accepted.
+Current deployment model uses server-configured signed session identity — it is
+not reviewed as a shared arbitrary multi-user hosted transport. This is a
+deployment/isolation boundary, not a security defect in the codebase.
 
 **Invariant:** `subject_id = session.user_id` — this derivation cannot be
 overridden by any caller.
@@ -48,16 +56,23 @@ on-chain evidence.
 **Module:** `app/verified/token_entitlement.py` (B2.2)
 
 - If FINCO token verification fails, access is denied. There is no hidden fallback
-  that grants access on exception.
-- Fail-closed: `app/auth.py` rate-limiting, `app/protocol/access_decision.py`.
+  that grants access on exception. Fail-closed.
 
 **Module:** `app/usage/ledger.py` (B2.3)
 
 - Wallet address resolution (`app.protocol.wallet_auth.get_verified_wallet`) is
   fail-open: if unavailable, the event is recorded without wallet identity.
-  Wallet resolution failure does NOT prevent recording the usage event.
-- The fail-open direction is documented and intentional: usage recording must
-  not fail because wallet auth is unavailable.
+  This is intentional — usage recording must not fail because wallet auth is
+  temporarily unavailable.
+
+**Module:** `app/services/run_certificate_service.py` (Signed Run Certificate)
+
+- Incomplete Last Run identity fails closed with `LAST_RUN_IDENTITY_INCOMPLETE`.
+- Legacy runs without persisted workbook_version fail closed — they must be rerun
+  before a certificate can be issued. The current workbook version is never
+  substituted at issuance.
+- Absent `FINCO_RUN_CERT_SIGNING_KEY`: `SigningKeyUnavailable` is raised; no
+  fallback production key exists.
 
 ## 5. Working Copy != Last Run
 
@@ -67,24 +82,28 @@ on-chain evidence.
 - The Last Run is the most recently committed calculation snapshot.
 - They can differ. A model edit after the last run produces a Working Copy that
   diverges from the Last Run.
-- The Run Certificate (`app/verify/run_certificate.py`) is issued from the
-  Last Run only — never from the Working Copy.
+- The Signed Run Certificate (`app/services/run_certificate_service.py`) is issued
+  from the Last Run only — never from the Working Copy.
 
-**Invariant:** `RUN_CERTIFICATE_FROM_PERSISTED_LAST_RUN_ONLY` — the certificate
-never re-runs the engine.
+**Invariant:** Certificate issued from persisted Last Run only — never re-runs
+the engine, never accepts Working Copy state.
 
-## 6. Validation != Verify
+## 6. MODEL VALIDATION != FINCO VERIFY
 
-**Module:** `app/model_validation/` (Validation), `app/verify/` (Verify)
+**Module:** `app/model_validation/` (Validation), `app/verified/` (Verify)
 
 - **Validation** checks model structure and numeric tolerances against the
-  committed Last Run outputs.
-- **Verification** issues a Run Certificate binding the immutable run record
-  (composite hash, engine version, digests).
+  committed Last Run outputs. P1.3 vertical reconciliation.
+- **Verification** establishes a source-attested market binding. Requires
+  explicit on-chain evidence with confirmed `evidence_id`.
 - A "Validated" project has passed structural checks. It has not been verified
   against a real-world asset.
 - Neither Validation nor Verification asserts that the model inputs reflect
   economic reality.
+- The Model Trust Pack UX V1 presents both sections separately, with explicit
+  labeling that they are distinct authorities.
+
+**Invariant:** `MODEL_VALIDATION ≠ FINCO_VERIFY`
 
 ## 7. Reference != Executable Price
 
@@ -92,9 +111,8 @@ never re-runs the engine.
 
 - Radar provides reference market intelligence (prices, liquidity, identity evidence).
 - Radar data does not flow into the financial engine.
-- A reference price from Radar is not an executable quote; it is observational.
-- `finco_radar/quotes/normalization.py` normalizes observable data; it does not
-  price trades.
+- A reference price from R-LIVE or Radar is not an executable quote; it is observational.
+- R-LIVE 300-second TWAP with USDG/USD Chainlink adjustment is a reference, not a trade price.
 
 ## 8. Token != Math / Truth
 
@@ -107,16 +125,20 @@ never re-runs the engine.
 
 **Invariant:** `$FINCO NEVER TOUCHES THE MATH. $FINCO NEVER DETERMINES WHETHER EVIDENCE IS TRUE.`
 
-## 9. Signing != Truth
+## 9. Signing != Verify, Signing != Truth
 
-**Module:** `app/verify/run_certificate.py`
+**Module:** `app/services/run_certificate_service.py`
 
-- A Run Certificate proves WHAT was computed (inputs, engine version, outputs)
-  and WHEN (run timestamp).
-- It does NOT prove that the assumptions were correct.
-- It does NOT prove that the outputs match any real-world asset performance.
-- In V1, signing is SHA-256 hash-based (composite hash); no asymmetric key
-  signing is included in V1.
+- A Signed Run Certificate proves provenance and integrity: WHAT was computed
+  (composite hash, engine version, workbook version, KPIs) and WHEN (issued_at).
+- **SIGNED RUN ≠ FINCO VERIFY** — completely separate systems.
+  The certificate carries no synthetic FINCO Verify observation.
+- **SIGNED RUN ≠ economic truth** — does not prove that model assumptions were correct.
+- **SIGNED RUN ≠ model correctness** — does not validate model structure.
+- **SIGNED RUN ≠ executable market price.**
+- Ed25519 asymmetric signing (PR #132) provides cryptographic integrity and
+  provenance IF AND ONLY IF the verifier independently trusted/pinned the public key.
+  A self-supplied key or key identifier alone does not establish the issuer's identity.
 
 ## 10. Frozen Namespaces
 
@@ -127,7 +149,8 @@ financial_engine/**    — deterministic financial math
 finco_core/**          — numeric primitives
 app/verified/**        — verification truth
 finco_radar/**         — radar authority
-app/api/v1_1/**        — (for the API v1.1 stream PRs)
+app/model_validation/**— validation authority
+app/api/v1_1/**        — (for API v1.1 stream PRs)
 app/mcp/**             — MCP implementation
 ```
 

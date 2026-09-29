@@ -7,7 +7,7 @@ treat any undisclosed deviation from these as a potential finding.
 
 ## 1. Jev / Reflex — Experimental, Not V1
 
-- Issue #119 (Jev / Reflex) is experimental.
+- Issue #119 (Jev / Reflex) is experimental / shadow.
 - It is explicitly NOT part of FINCO V1 authority.
 - Its existence in the repository does not constitute a supported V1 capability.
 - Do not assess Jev / Reflex as part of the V1 scope.
@@ -34,6 +34,8 @@ treat any undisclosed deviation from these as a potential finding.
 - A concrete production binding requires: an operator supplying source-attested
   on-chain evidence with a confirmed `evidence_id`. This is an operational step,
   not a code step.
+- Current MODEL_ONLY records must not be described as VERIFIED.
+- Validation PASS is not evidence of VERIFIED status.
 - Reference: `app/verified/authority.py`, `tests/test_b2_1_verified_authority.py`.
 
 ---
@@ -47,38 +49,73 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 5. Cryptographic Signing — Hash-Based Only in V1
+## 5. Signed Run Certificate — Production Signing Key Required
 
-- Run Certificates use composite SHA-256 hash binding in V1.
-- Asymmetric key signing (e.g., Ed25519 or secp256k1) is not implemented in V1.
-- The Run Certificate proves computational integrity (what was run, engine version,
-  digests) but does not carry a cryptographic signature that can be verified by
-  a third party without access to the FINCO system.
+- Signed Run Certificate V1 uses Ed25519 asymmetric signing (`app/services/run_certificate_service.py`).
+- Issuance requires `FINCO_RUN_CERT_SIGNING_KEY` (base64-encoded, 32-byte Ed25519
+  seed) in deployment configuration. There is no fallback production key.
+- Without a configured signing key, issuance raises `SigningKeyUnavailable` and
+  fails closed.
+- Meaningful issuer trust requires that the verifier independently trusted and
+  pinned the public key. A self-supplied key or key identifier alone does not
+  establish the issuer's identity.
 
 ---
 
-## 6. MCP V1 — Read-Only Interface Only
+## 6. Legacy Runs — Workbook Version Required for Signed Run
+
+- Legacy Last Runs without a persisted `workbook_version` cannot be signed.
+- Issuance fails closed with `LAST_RUN_IDENTITY_INCOMPLETE` for such runs.
+- The current workbook version is never substituted at issuance.
+- Affected projects must perform a new calculation run before a Signed Run
+  Certificate can be issued.
+
+---
+
+## 7. MCP V1 — Server-Session Deployment Boundary
 
 - The FINCO MCP V1 server is read-only.
-- It surfaces model references, run metadata, and Radar snapshots.
-- It does not execute model runs, modify projects, or write any state.
-- MCP tool-call usage metering (`FEATURE_MCP_TOOL_CALL`) is defined as a
-  hook interface in V1 — it is not wired to live MCP traffic in V1.
+- Current deployment model uses a server-configured `FINCO_SESSION_TOKEN` decoded
+  through the existing signed session authority.
+- MCP V1 is not yet reviewed as a shared arbitrary multi-user hosted transport.
+  Its current deployment boundary is single-session, server-configured identity.
+- This is a deployment/isolation boundary, not a security defect in the codebase.
 
 ---
 
-## 7. R-LIVE Collector — Timer-Based, External Dependency
+## 8. B2.3 Usage Metering — Hook Coverage
 
-- R-LIVE snapshot collection requires configured external API keys
-  (see `app/radar_rwa/r_live_collect.py`).
-- Without valid API keys, R-LIVE collection fails gracefully (no crash,
-  but no live snapshots).
-- The collector timer is implemented (`PR #127`) but requires operational
-  configuration to produce live data.
+- B2.3 Usage Metering records usage events in an append-only ledger.
+- MCP tool-call (`FEATURE_MCP_TOOL_CALL`) and Trust Pack interaction metering
+  hooks may exist in the codebase but are not necessarily wired into all
+  production traffic paths.
+- Do not claim complete production metering coverage unless source proves it.
+- `TOKEN_CONFIGURATION_UNAVAILABLE` remains truthful where applicable.
 
 ---
 
-## 8. Radar Data Sources — External Dependencies
+## 9. R-LIVE Collector — Deployment and Activation
+
+- The R-LIVE collector timer is implemented (`PR #127`) with an external systemd
+  operational package.
+- Collection requires configured external API keys (`app/radar_rwa/r_live_collect.py`).
+- Without valid API keys, R-LIVE collection fails gracefully (no crash, no live snapshots).
+- Repository-ready deployment assets do not prove that a production VPS collector
+  is currently active. Do not claim production collection is active without
+  actual deployment evidence.
+
+---
+
+## 10. Reference Prices — Not Executable Prices
+
+- R-LIVE provides reference market intelligence: on-chain TWAP with Chainlink
+  adjustment.
+- A reference price is not an executable quote. It is observational.
+- Radar data does not flow into the financial engine.
+
+---
+
+## 11. Radar Data Sources — External Dependencies
 
 - Radar modules depend on external APIs: CoinGecko, Hyperliquid, FRED,
   DeFiLlama, BNB chain RPC.
@@ -89,7 +126,7 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 9. XLSX Export — Requires Committed Last Run
+## 12. XLSX Export — Requires Committed Last Run
 
 - Institutional XLSX export is only available for projects with a committed
   Last Run.
@@ -98,7 +135,7 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 10. Demo Sessions — Not Entitled
+## 13. Demo Sessions — Not Entitled
 
 - Demo sessions (`DEMO_COOKIE_NAME`) do not carry FINCO token entitlement.
 - They have read access to public reference models but not to Verified dossiers
@@ -106,9 +143,19 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 11. No Fiat / Token Price in Usage Metering
+## 14. No Fiat / Token Price in Usage Metering
 
 - B2.3 Usage Metering records usage events.
 - There is no billing engine, no fiat price per event, and no token price
   per event in V1.
 - Usage data is observability only.
+
+---
+
+## 15. $FINCO Token Not Yet Launched
+
+- The protocol access and service-entitlement layer is implemented.
+- The $FINCO token is not yet launched. Token economics, access thresholds,
+  network deployment, and smart-contract design are not final.
+- Token utility does not imply that a token contract, token sale, staking system,
+  or token-gated production service is currently live.
