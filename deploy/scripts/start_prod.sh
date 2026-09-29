@@ -11,40 +11,44 @@ echo "=== FINCO Model Production Start ==="
 echo "Project root: $PROJECT_ROOT"
 
 # Check virtual environment
-if [[ ! -d "$PROJECT_ROOT/.venv" ]]; then
-    echo "ERROR: .venv not found at $PROJECT_ROOT/.venv"
+if [[ ! -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+    echo "ERROR: production Python not found at $PROJECT_ROOT/.venv/bin/python" >&2
     exit 1
 fi
 
-# Check environment file
+# systemd loads this file through EnvironmentFile; run_web.sh validates the
+# mandatory variable names after loading. This helper never prints secret values.
 if [[ ! -f "$PROJECT_ROOT/.env" ]]; then
-    echo "ERROR: .env not found at $PROJECT_ROOT/.env"
-    echo "Copy deploy/env.example to .env and configure it."
+    echo "ERROR: .env not found at $PROJECT_ROOT/.env" >&2
+    echo "Copy deploy/env.example to .env and configure it." >&2
     exit 1
 fi
 
-# Check required env vars
-required_vars=("FINCO_SECRET_KEY" "FINCO_ADMIN_USER" "FINCO_ADMIN_PASSWORD")
-for var in "${required_vars[@]}"; do
-    if [[ -z "${!var}" ]]; then
-        echo "ERROR: $var is not set in .env"
-        exit 1
-    fi
-done
-
-# Validate secret key is not the placeholder
-if [[ "$FINCO_SECRET_KEY" == "changeme"* ]]; then
-    echo "ERROR: FINCO_SECRET_KEY is still the placeholder value."
-    echo "Generate a real key with: python3 -c \"import secrets; print(secrets.token_hex(64))\""
+if [[ ! -f "$PROJECT_ROOT/deploy/scripts/run_web.sh" ]]; then
+    echo "ERROR: canonical production launcher is missing" >&2
     exit 1
 fi
 
-echo "Environment validated."
-
-# Start the service via systemd
 echo "Starting finco-web service..."
 sudo systemctl start finco-web
 
-echo "=== FINCO Model started ==="
-echo "Service status:"
+# Bounded startup/health wait. The service must remain active while the public
+# health endpoint becomes available.
+for _ in $(seq 1 20); do
+    if ! sudo systemctl is-active --quiet finco-web; then
+        echo "ERROR: finco-web exited during startup" >&2
+        sudo systemctl status finco-web --no-pager -l || true
+        exit 1
+    fi
+
+    if /bin/bash "$PROJECT_ROOT/deploy/scripts/healthcheck.sh" >/dev/null 2>&1; then
+        echo "=== FINCO Model started ==="
+        sudo systemctl status finco-web --no-pager -l || true
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "ERROR: finco-web did not pass /public-health within the bounded startup period" >&2
 sudo systemctl status finco-web --no-pager -l || true
+exit 1
