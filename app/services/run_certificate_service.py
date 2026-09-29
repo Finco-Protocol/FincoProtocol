@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Optional, Tuple
@@ -61,19 +60,9 @@ class CertificateBuildUnavailable(RuntimeError):
 
 
 def _canonical_json_bytes(payload: dict) -> bytes:
-    """Deterministic JSON serialization for signing/digest.
-
-    - sorted keys (stable order)
-    - compact separators (no whitespace variance)
-    - ensure_ascii=False (UTF-8 native)
-    - floats repr-stable via stdlib json (same payload → same bytes)
-    """
-    return json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
+    """Reuse FINCO's canonical UTF-8 JSON authority for signing/digest."""
+    from finco_protocol.verification.envelope import canonical_json_bytes
+    return canonical_json_bytes(payload)
 
 
 def _signing_key_pair() -> Tuple[bytes, bytes]:
@@ -278,11 +267,17 @@ def verify_run_certificate(
         k: v for k, v in unsigned.items()
         if k not in ("payload_digest", "signature")
     }
-    digest = hashlib.sha256(_canonical_json_bytes(digest_input)).hexdigest()
+    try:
+        digest = hashlib.sha256(_canonical_json_bytes(digest_input)).hexdigest()
+    except (TypeError, ValueError):
+        return False, "PAYLOAD_INVALID"
     if digest != stored_digest:
         return False, "PAYLOAD_TAMPERED"
 
-    signing_bytes = _canonical_json_bytes(unsigned)
+    try:
+        signing_bytes = _canonical_json_bytes(unsigned)
+    except (TypeError, ValueError):
+        return False, "PAYLOAD_INVALID"
     try:
         signature = _unb64(signature_b64)
     except Exception:

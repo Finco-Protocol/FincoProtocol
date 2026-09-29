@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 from dataclasses import replace
 from datetime import datetime, timezone, timedelta
 
@@ -177,6 +178,8 @@ def test_signed_run_canonical_serialization():
     assert b1 == b2
     assert b1 == json.dumps(p2, sort_keys=True, separators=(",", ":"),
                             ensure_ascii=False).encode("utf-8")
+    with pytest.raises(ValueError):
+        rcs._canonical_json_bytes({"invalid": math.nan})
 
 
 # ── SIGNED_RUN_SIGNATURE_VERIFIES ───────────────────────────────────────────
@@ -276,6 +279,9 @@ def test_signed_run_payload_tamper_fails(ev_project):
     tampered["project_id"] = "other-project"
     valid, reason = rcs.verify_run_certificate(tampered, TEST_PUBLIC_DER)
     assert not valid and reason == "PAYLOAD_TAMPERED"
+    invalid = dict(cert, project_irr=math.nan)
+    valid, reason = rcs.verify_run_certificate(invalid, TEST_PUBLIC_DER)
+    assert not valid and reason == "PAYLOAD_INVALID"
 
 
 # ── SIGNED_RUN_SIGNATURE_TAMPER_FAILS ───────────────────────────────────────
