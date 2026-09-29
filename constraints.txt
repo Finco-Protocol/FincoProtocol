@@ -18,6 +18,7 @@
 #   bcrypt 4.x is Rust-based with cp312 wheels — use 4.2.0+.
 
 eth-account==0.13.7
+mcp==2.2.0
 bcrypt==4.2.0
 fastapi==0.136.1
 httpx==0.28.1

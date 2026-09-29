@@ -196,13 +196,25 @@ Different for each vertical:
 
 This separation is what allows a renewable-first engine to expand into broader RWA infrastructure without rebuilding the entire financial architecture for each new asset class.
 
-## Planned infrastructure verticals
+## Implemented and planned infrastructure verticals
 
-### Renewable energy — current first module
+### Renewable energy — Solar and Wind (LIVE)
 
-**Solar and wind** are the first production verticals.
+**Solar and Wind** are the first production verticals.
 
 Core drivers include capacity, production, availability, pricing, operating costs, financing, tax, reserves, and distributions.
+
+### Digital infrastructure — Data Center (LIVE)
+
+**Data Center** is implemented and vertically validated (A3.1). The reference model uses a generic 20 MW IT-load configuration. Working-copy runtime and canonical last run are supported.
+
+Core drivers include installed capacity, contracted capacity, utilization, power usage, power cost, pricing, and expansion CAPEX.
+
+### EV Charging infrastructure (LIVE)
+
+**EV Charging** is implemented (A3.2). The canonical reference and working-copy runtime are both supported.
+
+Core drivers include charging points, sessions, utilization, energy pricing, payment/network fees, operating costs, financing, tax, reserves, and distributions.
 
 ### Transport infrastructure — planned
 
@@ -277,23 +289,15 @@ Potential vertical drivers include:
 - operating costs,
 - long-term infrastructure debt.
 
-### Digital infrastructure — planned
+### Broader digital infrastructure — planned
 
-Examples:
+Data Center is already implemented (see above). Broader digital infrastructure beyond large-scale data centres remains a planned expansion area.
 
-- data centers,
-- capacity infrastructure,
-- related digital facilities.
+Examples of future capacity assets:
 
-Potential vertical drivers include:
-
-- installed capacity,
-- contracted capacity,
-- utilization,
-- power usage,
-- power cost,
-- pricing,
-- expansion CAPEX.
+- hyperscaler and colocation facilities at scale,
+- edge compute and smaller-footprint digital capacity,
+- related digital infrastructure assets.
 
 ### Additional future candidates
 
@@ -335,9 +339,9 @@ Together, the long-term objective is an analytical stack that connects **real as
 
 Current implementation should be described conservatively:
 
-- renewable infrastructure modelling is the first Model vertical;
-- Solar and Wind are the initial supported asset modules;
-- future infrastructure verticals remain roadmap targets;
+- Solar and Wind (renewables), Data Center (A3.1), and EV Charging (A3.2) are the currently supported LIVE asset modules;
+- Storage is available as a reference model (viewable) but working-copy runtime is not released (PREVIEW);
+- further infrastructure verticals (transport, real estate, hospitality, water, broader digital, logistics, telecom, industrial) remain roadmap targets;
 - Protocol verification is currently off-chain;
 - no live blockchain anchoring is claimed;
 - no token contract, staking system, custody system, or tokenized infrastructure issuance platform is claimed by this document;

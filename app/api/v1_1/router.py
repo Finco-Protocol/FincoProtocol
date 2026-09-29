@@ -178,6 +178,89 @@ def get_run_identity(project_id: str, request: Request):
     return _envelope(state, data, project_id=project_id)
 
 
+# ── GET /api/v1.1/projects/{project_id}/run-certificate ──────────────────────
+
+@router.get("/projects/{project_id}/run-certificate")
+def get_run_certificate(project_id: str, request: Request):
+    """Signed Run Certificate for the canonical committed Last Run.
+
+    Authority separation: attests to provenance/integrity only — never a
+    FINCO Verify claim.  No engine rerun; dirty Working Copy state does not
+    alter the certified Last Run.  Fail-closed when no signing key is
+    configured (SIGNING_KEY_UNAVAILABLE, 503).
+    """
+    user_id = _resolve_user(request)
+    if not user_id:
+        return _unauthorized()
+
+    from app.persistence.projects_repository import get_project
+    try:
+        project = get_project(project_id, user_id)
+    except Exception:
+        return JSONResponse(status_code=503, content=ApiErrorEnvelope(
+            error="CERTIFICATE_INTERNAL_ERROR", detail="Run certificate could not be produced."
+        ).model_dump())
+    if project is None:
+        return JSONResponse(status_code=404, content=ApiErrorEnvelope(
+            error="PROJECT_NOT_FOUND", detail="Project not found."
+        ).model_dump())
+
+    from app.api.v1_1 import institutional as _inst
+    try:
+        pr, ws = _inst._load_workspace(user_id, project_id)
+    except Exception:
+        return JSONResponse(status_code=503, content=ApiErrorEnvelope(
+            error="CERTIFICATE_INTERNAL_ERROR", detail="Run certificate could not be produced."
+        ).model_dump())
+    if pr is None:
+        return JSONResponse(status_code=404, content=ApiErrorEnvelope(
+            error="PROJECT_NOT_FOUND", detail="Project not found."
+        ).model_dump())
+
+    if ws is not None and getattr(ws, "user_id", None) != user_id:
+        return JSONResponse(
+            status_code=403,
+            content=ApiErrorEnvelope(
+                error="FORBIDDEN",
+                detail="This project belongs to another user.",
+            ).model_dump(),
+        )
+
+    from app.services.run_certificate_service import (
+        CertificateBuildUnavailable,
+        SigningKeyUnavailable,
+        issue_run_certificate,
+    )
+    try:
+        certificate = issue_run_certificate(ws)
+    except SigningKeyUnavailable as exc:
+        return JSONResponse(
+            status_code=503,
+            content=ApiErrorEnvelope(
+                error=exc.REASON,
+                detail="Run certificate signing is not configured on this deployment.",
+            ).model_dump(),
+        )
+    except CertificateBuildUnavailable as exc:
+        return JSONResponse(
+            status_code=400,
+            content=ApiErrorEnvelope(
+                error=exc.REASON,
+                detail="A complete committed Last Run identity is required.",
+            ).model_dump(),
+        )
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content=ApiErrorEnvelope(
+                error="CERTIFICATE_INTERNAL_ERROR",
+                detail="Run certificate could not be produced.",
+            ).model_dump(),
+        )
+
+    return _envelope("AVAILABLE", certificate, project_id=project_id)
+
+
 # ── GET /api/v1.1/projects/{project_id}/kpis ─────────────────────────────────
 
 @router.get("/projects/{project_id}/kpis")
