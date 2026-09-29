@@ -319,6 +319,13 @@ from app.api.v1.router import router as _api_v1_router
 import app.api.v1.run_limiter as _run_limiter  # noqa: F401 — initialises semaphore
 app.include_router(_api_v1_router, prefix="/api/v1")
 
+# -- FINCO Public R-LIVE API v1.1 (narrow, unauthenticated reference surface) --
+# Only three endpoints: /radar/r-live/assets, /radar/r-live/{uid},
+# /radar/r-live/{uid}/history.  No project list, exports, XLSX, validation,
+# run-certificate, or any other institutional project APIs are exposed here.
+from app.api.v1_1.r_live_public_router import router as _rlive_public_router
+app.include_router(_rlive_public_router, prefix="/api/v1.1")
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""

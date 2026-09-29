@@ -390,8 +390,13 @@ class TestModelJourney:
         assert radar_link is not None, "Radar link missing from Workbook navigation"
         radar_link.click()
         page.wait_for_load_state("domcontentloaded")
-        # Chrome cleanup pass removed READ-ONLY; Radar now shows Coming soon.
-        assert "coming soon" in page.inner_text("body").lower()
+        # /radar redirects to /radar/r-live (R-LIVE is the default domain).
+        assert page.query_selector("[data-testid='rlive-table']") is not None, (
+            "R-LIVE table missing after navigating to /radar"
+        )
+        assert page.query_selector("[data-testid='nav-rlive']") is not None, (
+            "R-LIVE domain nav link missing"
+        )
 
         # 5. Verify is internal evidence, not a Radar product-navigation item.
         assert page.query_selector(".proto-nav a[href='/verify']") is None
@@ -411,39 +416,39 @@ class TestModelJourney:
 
 class TestRadar:
     def test_radar_execution_coming_soon_and_nav_desktop(self, live_url, browser):
+        # /radar → R-LIVE (default domain). Execution Coming soon is on Stocks.
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         page_text = page.inner_text("body")
-        # Chrome cleanup pass removed READ-ONLY branding; execution is Coming soon.
         assert "coming soon" in page_text.lower(), (
-            "Execution Coming soon label missing on Radar"
+            "Execution Coming soon label missing on Radar Stocks"
         )
         assert "READ-ONLY" not in page_text, (
             "READ-ONLY branding must not appear in Radar chrome"
         )
         nav = page.query_selector(".proto-nav")
-        assert nav is not None, "Protocol nav missing on /radar"
+        assert nav is not None, "Protocol nav missing on /radar/stocks"
 
     def test_radar_no_transaction_controls(self, live_url, browser):
         """Enumerate allowed Radar interactions using method-aware form safety contract.
 
-        Safe Radar forms (method, action):
-          (GET,  "/radar")         — asset selection / navigation only
+        Safe Radar forms (method, action) on the Stocks surface:
+          (GET,  "/radar/stocks")  — asset selection / navigation only
           (POST, "/radar/refresh") — read-only quote acquisition
           (POST, "/logout")        — authentication logout
 
         Any other (method, action) combination is forbidden.
         """
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         # Method-aware form safety contract: enumerate (method, action) pairs.
         # HTML default method is GET when the attribute is absent.
         _ALLOWED_FORMS = {
-            ("get",  "/radar"),          # asset selection — GET navigation only
+            ("get",  "/radar/stocks"),   # asset selection — GET navigation only
             ("post", "/radar/refresh"),  # read-only quote acquisition
             ("post", "/logout"),         # authentication logout
         }
@@ -513,83 +518,83 @@ class TestRadar:
 class TestRadarFormContract:
     """Assert the exact Correction B form safety contract for the Radar surface.
 
-    GET /radar   — asset selection; non-transactional navigation form.
+    GET /radar/stocks — asset selection; non-transactional navigation form.
     POST /radar/refresh — read-only quote acquisition; carries canonical UID.
     """
 
     def test_asset_selector_is_get_form(self, live_url, browser):
-        """GET /radar form must use method=GET and action=/radar."""
+        """GET /radar/stocks form must use method=GET and action=/radar."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
         get_radar_forms = [
             f for f in forms
-            if (f.get_attribute("action") or "") == "/radar"
+            if (f.get_attribute("action") or "") == "/radar/stocks"
             and (f.get_attribute("method") or "get").lower() == "get"
         ]
         assert len(get_radar_forms) == 1, (
-            f"Expected exactly 1 GET /radar form; found {len(get_radar_forms)}"
+            f"Expected exactly 1 GET /radar/stocks form; found {len(get_radar_forms)}"
         )
 
     def test_asset_selector_contains_select_asset_uid(self, live_url, browser):
-        """GET /radar form must contain select[name='asset_uid']."""
+        """GET /radar/stocks form must contain select[name='asset_uid']."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
         get_form = next(
             (f for f in forms
-             if (f.get_attribute("action") or "") == "/radar"
+             if (f.get_attribute("action") or "") == "/radar/stocks"
              and (f.get_attribute("method") or "get").lower() == "get"),
             None,
         )
-        assert get_form is not None, "GET /radar form not found"
+        assert get_form is not None, "GET /radar/stocks form not found"
         sel = get_form.query_selector("select[name='asset_uid']")
-        assert sel is not None, "select[name='asset_uid'] missing from GET /radar form"
+        assert sel is not None, "select[name='asset_uid'] missing from GET /radar/stocks form"
 
     def test_asset_selector_has_no_hx_post(self, live_url, browser):
-        """GET /radar form must NOT carry hx-post (navigation only, not HTMX quote)."""
+        """GET /radar/stocks form must NOT carry hx-post (navigation only, not HTMX quote)."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
         get_form = next(
             (f for f in forms
-             if (f.get_attribute("action") or "") == "/radar"
+             if (f.get_attribute("action") or "") == "/radar/stocks"
              and (f.get_attribute("method") or "get").lower() == "get"),
             None,
         )
-        assert get_form is not None, "GET /radar form not found"
+        assert get_form is not None, "GET /radar/stocks form not found"
         hx_post = get_form.get_attribute("hx-post")
         assert hx_post is None, (
-            f"GET /radar form must not have hx-post; found: {hx_post!r}"
+            f"GET /radar/stocks form must not have hx-post; found: {hx_post!r}"
         )
 
     def test_asset_selector_no_transaction_fields(self, live_url, browser):
-        """GET /radar form must not contain BUY/SELL authority or wallet/signing controls."""
+        """GET /radar/stocks form must not contain BUY/SELL authority or wallet/signing controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
         get_form = next(
             (f for f in forms
-             if (f.get_attribute("action") or "") == "/radar"
+             if (f.get_attribute("action") or "") == "/radar/stocks"
              and (f.get_attribute("method") or "get").lower() == "get"),
             None,
         )
-        assert get_form is not None, "GET /radar form not found"
+        assert get_form is not None, "GET /radar/stocks form not found"
 
         # No BUY/SELL authority fields
         direction_inputs = get_form.query_selector_all(
             "input[name='direction'], input[value='BUY'], input[value='SELL']"
         )
         assert len(direction_inputs) == 0, (
-            f"GET /radar form contains BUY/SELL authority fields: {len(direction_inputs)}"
+            f"GET /radar/stocks form contains BUY/SELL authority fields: {len(direction_inputs)}"
         )
 
         # No transaction/wallet/signing control names
@@ -599,13 +604,13 @@ class TestRadarFormContract:
             name = (el.get_attribute("name") or "").lower()
             for forbidden in _FORBIDDEN_NAMES:
                 assert forbidden not in name, (
-                    f"GET /radar form contains forbidden field name {name!r}"
+                    f"GET /radar/stocks form contains forbidden field name {name!r}"
                 )
 
     def test_quote_form_is_post_with_htmx(self, live_url, browser):
         """POST /radar/refresh form must use method=POST and hx-post=/radar/refresh."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
@@ -625,7 +630,7 @@ class TestRadarFormContract:
     def test_quote_form_has_hidden_asset_uid(self, live_url, browser):
         """POST /radar/refresh form must carry hidden input[name='asset_uid']."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
@@ -646,7 +651,7 @@ class TestRadarFormContract:
     def test_quote_form_has_direction_controls(self, live_url, browser):
         """POST /radar/refresh form must contain BUY/SELL direction radios."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
@@ -666,7 +671,7 @@ class TestRadarFormContract:
     def test_quote_form_no_wallet_signing_controls(self, live_url, browser):
         """POST /radar/refresh form must not contain wallet/signing/submission controls."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
@@ -691,23 +696,23 @@ class TestRadarFormContract:
     def test_forbidden_post_radar_action(self, live_url, browser):
         """Demonstrate that POST /radar is not permitted on the Radar surface."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
         forbidden = [
             f for f in forms
-            if (f.get_attribute("action") or "") == "/radar"
+            if (f.get_attribute("action") or "") == "/radar/stocks"
             and (f.get_attribute("method") or "get").lower() == "post"
         ]
         assert len(forbidden) == 0, (
-            "Found POST /radar form — only GET is permitted for asset selection"
+            "Found POST /radar/stocks form — only GET is permitted for asset selection"
         )
 
     def test_forbidden_get_refresh_action(self, live_url, browser):
         """Demonstrate that GET /radar/refresh is not permitted."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url}/radar")
+        page.goto(f"{live_url}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
 
         forms = page.query_selector_all("form")
@@ -1225,20 +1230,20 @@ class TestE3CompanyTerminal:
         # DB-level proof is asserted inside _build_e3_browser_db() at fixture build time.
 
     def test_b01_radar_loads_featured_equities(self, live_url_e3, browser):
-        """B1: /radar loads and Featured Equities section is visible."""
+        """B1: /radar/stocks loads and Featured Equities section is visible."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e3}/radar")
+        page.goto(f"{live_url_e3}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
         assert "FEATURED EQUITIES" in body_text.upper(), (
-            "Featured Equities section not found on /radar"
+            "Featured Equities section not found on /radar/stocks"
         )
         page.close()
 
     def test_b02_featured_board_shows_nvda_details_link(self, live_url_e3, browser):
         """B2: Featured Equities board shows NVDA Details → link."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e3}/radar")
+        page.goto(f"{live_url_e3}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
         nvda_link = page.query_selector('a.board-details-cta[data-symbol="NVDA"]')
         assert nvda_link is not None, (
@@ -1249,7 +1254,7 @@ class TestE3CompanyTerminal:
     def test_b03_nvda_details_navigates_to_terminal(self, live_url_e3, browser):
         """B3: Clicking NVDA Details → navigates to NVDA terminal URL."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e3}/radar")
+        page.goto(f"{live_url_e3}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
         nvda_link = page.query_selector('a.board-details-cta[data-symbol="NVDA"]')
         assert nvda_link is not None, "NVDA Details → link not found before click"
@@ -1414,18 +1419,18 @@ class TestE3CompanyTerminal:
         page.close()
 
     def test_b12_back_to_radar_navigation(self, live_url_e3, browser):
-        """B12: Clicking ← Radar link (not go_back) returns to /radar URL."""
+        """B12: Clicking ← Stocks link (not go_back) returns to /radar/stocks URL."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.goto(f"{live_url_e3}/radar/equity/rh-equity-nvda-001")
         page.wait_for_load_state("domcontentloaded")
-        back_link = page.query_selector('a[href="/radar"]')
+        back_link = page.query_selector('a[href="/radar/stocks"]')
         assert back_link is not None, (
-            "← Radar back link (a[href='/radar']) not found on terminal"
+            "← Stocks back link (a[href='/radar/stocks']) not found on terminal"
         )
         back_link.click()
         page.wait_for_load_state("domcontentloaded")
-        assert page.url.rstrip("/").endswith("/radar"), (
-            f"← Radar link did not navigate to /radar; got: {page.url}"
+        assert "/radar/stocks" in page.url, (
+            f"← Stocks link did not navigate to /radar/stocks; got: {page.url}"
         )
         page.close()
 
@@ -1713,13 +1718,13 @@ class TestE4ExecutionSimulator:
     # ── B1 ──────────────────────────────────────────────────────────────────
 
     def test_b01_radar_loads_featured_equities(self, live_url_e4, browser):
-        """B1: /radar loads and Featured Equities section is visible."""
+        """B1: /radar/stocks loads and Featured Equities section is visible."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e4}/radar")
+        page.goto(f"{live_url_e4}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
         body_text = page.inner_text("body")
         assert "FEATURED EQUITIES" in body_text.upper(), (
-            "Featured Equities section not found on /radar"
+            "Featured Equities section not found on /radar/stocks"
         )
         page.close()
 
@@ -1729,7 +1734,7 @@ class TestE4ExecutionSimulator:
             self, live_url_e4, browser):
         """B2: Clicking NVDA Details → navigates to exact UID Company Terminal URL."""
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(f"{live_url_e4}/radar")
+        page.goto(f"{live_url_e4}/radar/stocks")
         page.wait_for_load_state("domcontentloaded")
         nvda_link = page.query_selector('a.board-details-cta[data-symbol="NVDA"]')
         assert nvda_link is not None, "NVDA Details → link not found on featured board"
@@ -2344,13 +2349,19 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     _radar_router.set_market_read_service(_FixedMarketService())
     try:
         radar = browser.new_page(viewport={"width": 1280, "height": 900})
-        radar.goto(f"{live_url_radar_visual}/radar")
+        # R-LIVE surface: /radar → /radar/r-live (default domain)
+        radar.goto(f"{live_url_radar_visual}/radar/r-live")
+        radar.wait_for_load_state("domcontentloaded")
+        radar.locator("[data-testid='rlive-table']").wait_for(timeout=5000)
+        radar.screenshot(path=str(out / "09-radar-rlive.png"), full_page=True, animations="disabled")
+        # Stocks surface: /radar/stocks (Featured Equities + board)
+        radar.goto(f"{live_url_radar_visual}/radar/stocks")
         radar.wait_for_load_state("domcontentloaded")
         # Wait for board market prices to populate before screenshot.
         radar.locator(
             '#featured-board [data-market-price]:not(:text("—"))'
         ).first.wait_for(timeout=10000)
-        radar.screenshot(path=str(out / "09-radar-board.png"), full_page=True, animations="disabled")
+        radar.screenshot(path=str(out / "09b-radar-stocks-board.png"), full_page=True, animations="disabled")
         radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
         radar.wait_for_load_state("domcontentloaded")
         for tab, name in (("overview", "10-company-overview"), ("financials", "11-company-financials"),
@@ -2380,9 +2391,14 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
                 assert '2026-01-01' in observed_text, f"Market observed: {observed_text!r}"
             radar.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled")
         radar.set_viewport_size({"width": 390, "height": 844})
-        radar.goto(f"{live_url_radar_visual}/radar")
-        _assert_no_overflow(radar, "/radar", 390)
-        radar.screenshot(path=str(out / "14-radar-390.png"), full_page=True, animations="disabled")
+        # R-LIVE at 390px
+        radar.goto(f"{live_url_radar_visual}/radar/r-live")
+        _assert_no_overflow(radar, "/radar/r-live", 390)
+        radar.screenshot(path=str(out / "14-radar-rlive-390.png"), full_page=True, animations="disabled")
+        # Stocks at 390px
+        radar.goto(f"{live_url_radar_visual}/radar/stocks")
+        _assert_no_overflow(radar, "/radar/stocks", 390)
+        radar.screenshot(path=str(out / "14b-radar-stocks-390.png"), full_page=True, animations="disabled")
         radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}")
         _assert_no_overflow(radar, "/radar/equity", 390)
         radar.screenshot(path=str(out / "14a-company-390.png"), full_page=True, animations="disabled")
@@ -2395,9 +2411,9 @@ def test_saas_visual_capture(live_url, live_url_radar_visual, browser):
     os.getenv("FINCO_VISUAL_CAPTURE") != "1",
     reason="workstream browser evidence capture is enabled in CI",
 )
-def test_reference_driven_correction_a_22_capture_journey(
+def test_reference_driven_correction_a_23_capture_journey(
         live_url, live_url_radar_visual, browser):
-    """Produce the dedicated 22-capture Correction A acceptance inventory."""
+    """Produce the dedicated 23-capture Correction A acceptance inventory."""
     from app.radar_ui import router as _radar_router
     from app.services.reference_seed_service import create_reference_seeded_project
 
@@ -2550,17 +2566,24 @@ def test_reference_driven_correction_a_22_capture_journey(
                     path=str(out / f"{name}.png"), animations="disabled",
                 )
 
-        radar.goto(f"{live_url_radar_visual}/radar")
+        # R-LIVE surface (default domain at /radar → /radar/r-live)
+        radar.goto(f"{live_url_radar_visual}/radar/r-live")
+        radar.wait_for_load_state("domcontentloaded")
+        radar.locator("[data-testid='rlive-table']").wait_for(timeout=5000)
+        radar_shot("14-radar-rlive-table")
+
+        # Stocks surface (/radar/stocks — Featured Equities + board)
+        radar.goto(f"{live_url_radar_visual}/radar/stocks")
         radar.wait_for_load_state("domcontentloaded")
         radar.locator('#featured-board [data-market-price]:not(:text("—"))').wait_for(timeout=10000)
-        radar_shot("14-radar-featured-board", radar.locator("#featured-board"))
+        radar_shot("14b-radar-stocks-featured-board", radar.locator("#featured-board"))
 
-        radar.goto(f"{live_url_radar_visual}/radar?asset_uid=rh-equity-jpm-002")
+        radar.goto(f"{live_url_radar_visual}/radar/stocks?asset_uid=rh-equity-jpm-002")
         radar.wait_for_load_state("domcontentloaded")
         assert "JPM" in radar.locator('[data-panel="configured-target"]').inner_text()
         radar_shot("15-non-featured-canonical-asset")
 
-        radar.goto(f"{live_url_radar_visual}/radar")
+        radar.goto(f"{live_url_radar_visual}/radar/stocks")
         cta = radar.locator("#featured-board .board-details-cta").first
         assert "Open Company Terminal" in cta.inner_text()
         radar_shot("16-open-company-terminal-cta", cta)
@@ -2585,12 +2608,13 @@ def test_reference_driven_correction_a_22_capture_journey(
         radar.goto(f"{live_url_radar_visual}/radar/equity/{_NVDA_VISUAL_UID}?tab=evidence")
         radar_shot("21-evidence")
         radar.set_viewport_size({"width": 390, "height": 844})
-        radar.goto(f"{live_url_radar_visual}/radar")
-        _assert_no_overflow(radar, "/radar", 390)
-        radar_shot("22-radar-390")
+        # R-LIVE 390px
+        radar.goto(f"{live_url_radar_visual}/radar/r-live")
+        _assert_no_overflow(radar, "/radar/r-live", 390)
+        radar_shot("22-radar-rlive-390")
         radar.close()
     finally:
         _radar_router.set_market_read_service(previous_market_service)
 
     captures = sorted(out.glob("*.png"))
-    assert len(captures) == 22, [path.name for path in captures]
+    assert len(captures) == 23, [path.name for path in captures]

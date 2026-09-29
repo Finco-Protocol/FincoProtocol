@@ -918,7 +918,7 @@ def test_a05_get_radar_featured_board_zero_acquire_calls():
          patch.object(radar_router, "_get_featured_symbols",
                       return_value=("NVDA", "JPM")):
         client = TestClient(main_web.app, raise_server_exceptions=False)
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
     assert resp.status_code == 200
     svc.acquire.assert_not_called()
 

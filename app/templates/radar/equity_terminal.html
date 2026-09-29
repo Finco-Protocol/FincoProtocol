@@ -38,7 +38,7 @@
   {% elif tv.state == "ASSET_UNIVERSE_UNAVAILABLE" %}
   <p class="muted small">The Robinhood asset universe is currently unavailable. Try again shortly.</p>
   {% endif %}
-  <p style="margin-top:16px;"><a href="/radar" class="muted small">← Back to Radar</a></p>
+  <p style="margin-top:16px;"><a href="/radar/stocks" class="muted small">← Back to Stocks</a></p>
 </section>
 
 {% elif tv %}
@@ -46,7 +46,7 @@
 {# ── Company Terminal header ──────────────────────────────────────────────── #}
 <section class="terminal-header" data-market-terminal-uid="{{ tv.economic_asset_uid }}">
   <div class="terminal-header__nav">
-    <a href="/radar" class="terminal-header__back">← Radar</a>
+    <a href="/radar/stocks" class="terminal-header__back">← Stocks</a>
   </div>
 
   <div class="terminal-header__title-row">
@@ -624,7 +624,7 @@
 <section class="panel panel-error" data-panel="equity-terminal-error">
   <h1 style="font-size:18px;margin:0 0 12px;font-weight:600;">Company Terminal</h1>
   <p class="state-unavailable">UNAVAILABLE</p>
-  <p style="margin-top:16px;"><a href="/radar" class="muted small">← Back to Radar</a></p>
+  <p style="margin-top:16px;"><a href="/radar/stocks" class="muted small">← Back to Stocks</a></p>
 </section>
 {% endif %}
 

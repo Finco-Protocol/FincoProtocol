@@ -95,7 +95,7 @@ def real_client():
 
 def test_integration_01_radar_route_on_real_app(real_client):
     client, _ = real_client
-    response = client.get("/radar")
+    response = client.get("/radar/stocks")
     assert response.status_code == 200
     assert "RADAR" in response.text.upper()
     # READ-ONLY branding removed from product chrome (chrome cleanup pass).
@@ -105,7 +105,7 @@ def test_integration_01_radar_route_on_real_app(real_client):
 
 def test_integration_02_real_csp_self_only_scripts(real_client):
     client, _ = real_client
-    response = client.get("/radar")
+    response = client.get("/radar/stocks")
     csp = response.headers.get("content-security-policy")
     assert csp, "real middleware must attach the CSP header"
     assert "script-src 'self'" in csp
@@ -114,7 +114,7 @@ def test_integration_02_real_csp_self_only_scripts(real_client):
 
 def test_integration_03_htmx_self_hosted_no_cdn(real_client):
     client, _ = real_client
-    page = client.get("/radar").text
+    page = client.get("/radar/stocks").text
     assert "unpkg.com" not in page
     assert "/static/radar/vendor/htmx.min.js" in page
     asset = client.get("/static/radar/vendor/htmx.min.js")
@@ -124,7 +124,7 @@ def test_integration_03_htmx_self_hosted_no_cdn(real_client):
 
 def test_integration_04_refresh_form_has_post_fallback_semantics(real_client):
     client, _ = real_client
-    page = client.get("/radar").text
+    page = client.get("/radar/stocks").text
     assert 'action="/radar/refresh"' in page
     assert 'method="post"' in page
     assert 'hx-post="/radar/refresh"' in page

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — R-LIVE {{ row.symbol }}</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar">
+
+{% with proto_active_page="radar" %}
+{% include "partials/_protocol_nav.html" %}
+{% endwith %}
+{% include "radar/domain_nav.html" %}
+
+<main class="radar-main" style="padding:24px;max-width:880px">
+
+  <nav style="margin-bottom:20px;font-size:13px">
+    <a href="/radar/r-live" style="color:var(--radar-muted,#8d98a5);text-decoration:none">← R-LIVE</a>
+  </nav>
+
+  <header style="margin-bottom:28px">
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h1 style="font-size:22px;font-weight:700;color:var(--radar-text,#f3f6f8);margin:0">
+        {{ row.symbol }}
+      </h1>
+      {% if row.approved %}
+      <span class="rlive-badge rlive-badge--loading"
+            id="detail-status-badge"
+            data-testid="detail-status-badge">…</span>
+      {% else %}
+      <span class="rlive-badge rlive-badge--unavailable"
+            data-testid="detail-status-badge">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if row.approved %}
+  <section style="margin-bottom:28px">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Live Reference
+    </h2>
+    <dl class="kv" id="detail-live-block">
+      <dt>Independent Token Ref.</dt>
+      <dd id="detail-ref-price" class="mono" data-field="reference_price">—</dd>
+      <dt>Economic Basis</dt>
+      <dd id="detail-basis-price" class="mono" data-field="basis_price">—</dd>
+      <dt>Premium / Discount</dt>
+      <dd id="detail-premium" class="mono" data-field="premium_bps">—</dd>
+      <dt>Observed At</dt>
+      <dd id="detail-observed-at" data-field="observed_at">—</dd>
+      <dt>Freshness</dt>
+      <dd id="detail-freshness" data-field="freshness">—</dd>
+    </dl>
+    <p class="muted small" style="margin-top:10px">
+      Reference observation only — not a tradeable or executable price.
+      Numeric values are suppressed when STALE or UNAVAILABLE.
+    </p>
+  </section>
+  {% else %}
+  <section style="margin-bottom:28px">
+    <div style="padding:16px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid var(--radar-border,#252b33)">
+      <p style="margin:0;color:var(--radar-muted,#8d98a5);font-size:13px">
+        R-LIVE reference data for <strong style="color:var(--radar-text,#f3f6f8)">{{ row.symbol }}</strong>
+        is not yet available. This asset is not in the current approved registry.
+      </p>
+    </div>
+  </section>
+  {% endif %}
+
+  <section style="margin-bottom:28px">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Identity &amp; Deployment
+    </h2>
+    <dl class="kv">
+      <dt>Symbol</dt><dd class="mono">{{ row.symbol }}</dd>
+      <dt>Canonical ID</dt><dd class="mono" style="font-size:11px;word-break:break-all">{{ row.canonical_id }}</dd>
+      <dt>Registry Status</dt>
+      <dd>{% if row.approved %}Approved{% else %}Not approved{% endif %}</dd>
+    </dl>
+  </section>
+
+  {% if methodology %}
+  <section style="margin-bottom:28px">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Methodology &amp; Evidence Disclosure
+    </h2>
+    <p style="font-size:13px;color:var(--radar-muted,#8d98a5);line-height:1.6;max-width:640px">
+      {{ methodology }}
+    </p>
+  </section>
+  {% endif %}
+
+  {% if row.approved %}
+  <section>
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      History
+    </h2>
+    <div id="detail-history-block">
+      <p class="muted small">Loading history…</p>
+    </div>
+  </section>
+  {% endif %}
+
+</main>
+
+<style>
+.rlive-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rlive-badge--loading { background: rgba(255,255,255,.07); color: var(--radar-muted,#8d98a5); }
+.rlive-badge--available { background: rgba(34,197,94,.13); color: #22c55e; }
+.rlive-badge--stale { background: rgba(234,179,8,.13); color: #eab308; }
+.rlive-badge--unavailable { background: rgba(255,255,255,.06); color: var(--radar-muted,#8d98a5); }
+</style>
+
+{% if row.approved %}
+<script>
+(function() {
+  // Read-only: fetches snapshot and history. Never writes R-LIVE history.
+  // No raw innerHTML for API response data — uses textContent/createElement.
+  var CANONICAL_ID = {{ row.canonical_id | tojson }};
+  var BASE = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
+  var SNAP_URL = BASE;
+  var HIST_URL = BASE + "/history?limit=30";
+
+  function fmt_age(secs) {
+    if (secs == null) return "—";
+    if (secs < 60) return secs + "s ago";
+    if (secs < 3600) return Math.floor(secs / 60) + "m ago";
+    return Math.floor(secs / 3600) + "h ago";
+  }
+
+  function fmt_usd(s) {
+    if (s == null) return null;
+    var n = parseFloat(s);
+    return isNaN(n) ? null : "$" + n.toFixed(4);
+  }
+
+  function set_badge(state) {
+    var badge = document.getElementById("detail-status-badge");
+    if (!badge) return;
+    badge.className = "rlive-badge rlive-badge--" + state.toLowerCase();
+    badge.textContent = state;
+  }
+
+  function set_text(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = (val != null) ? val : "—";
+  }
+
+  function populate(env) {
+    var state = (env.state || "UNAVAILABLE").toUpperCase();
+    var data = env.data || {};
+    set_badge(state);
+
+    var is_current = (state === "AVAILABLE");
+
+    var ref_txt = null, basis_txt = null, prem_txt = null;
+    if (is_current) {
+      var tr = data.token_reference;
+      if (tr) ref_txt = fmt_usd(tr.price_usd_per_token);
+      var rb = data.robinhood_basis;
+      if (rb) basis_txt = fmt_usd(rb.price_usd_per_token);
+      var pr = data.b1_0_premium;
+      if (pr && pr.value_bps != null) {
+        var bps = parseFloat(pr.value_bps);
+        prem_txt = !isNaN(bps) ? ((bps >= 0 ? "+" : "") + bps.toFixed(1) + " bps") : null;
+      }
+    }
+    set_text("detail-ref-price", ref_txt);
+    set_text("detail-basis-price", basis_txt);
+    set_text("detail-premium", prem_txt);
+
+    if (data.observed_at) {
+      var age_s = Math.round((Date.now() - new Date(data.observed_at).getTime()) / 1000);
+      set_text("detail-observed-at", data.observed_at);
+      set_text("detail-freshness", fmt_age(age_s));
+    } else {
+      set_text("detail-observed-at", is_current ? null : state);
+    }
+  }
+
+  function build_history_table(points) {
+    // Safe DOM construction — no raw innerHTML for history data.
+    var block = document.getElementById("detail-history-block");
+    if (!block) return;
+    if (!points || !points.length) {
+      block.textContent = "";
+      var msg = document.createElement("p");
+      msg.className = "muted small";
+      msg.textContent = "No history available.";
+      block.appendChild(msg);
+      return;
+    }
+    var table = document.createElement("table");
+    table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+    var thead = document.createElement("thead");
+    var hrow = document.createElement("tr");
+    var headers = ["Observed", "Basis (USD)", "Token Ref (USD)", "Premium/Discount", "State"];
+    headers.forEach(function(h) {
+      var th = document.createElement("th");
+      th.style.cssText = "text-align:left;padding:6px 10px;color:var(--radar-muted,#8d98a5)";
+      th.textContent = h;
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    points.slice(0, 20).forEach(function(pt) {
+      var tr = document.createElement("tr");
+      // Canonical B1.3 history schema: nested objects, camelCase token reference.
+      var basis_val = (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
+        ? ("$" + parseFloat(pt.robinhood_basis.price_usd_per_token).toFixed(4)) : "—";
+      var ref_val = (pt.independent_token_reference && pt.independent_token_reference.priceUsdPerToken != null)
+        ? ("$" + parseFloat(pt.independent_token_reference.priceUsdPerToken).toFixed(4)) : "—";
+      var prem_raw = pt.reference_premium_bps;
+      var prem_val = (prem_raw != null)
+        ? ((parseFloat(prem_raw) >= 0 ? "+" : "") + parseFloat(prem_raw).toFixed(1) + " bps") : "—";
+      var cells = [
+        pt.observed_at || "—",
+        basis_val,
+        ref_val,
+        prem_val,
+        pt.state || "—"
+      ];
+      cells.forEach(function(val) {
+        var td = document.createElement("td");
+        td.className = "mono";
+        td.style.cssText = "padding:6px 10px";
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    block.textContent = "";
+    block.appendChild(table);
+  }
+
+  fetch(SNAP_URL)
+    .then(function(r) {
+      if (!r.ok) {
+        var badge = document.getElementById("detail-status-badge");
+        if (badge) { badge.setAttribute("data-transport-error", "HTTP_" + r.status); }
+        throw new Error("TRANSPORT_ERROR_" + r.status);
+      }
+      return r.json();
+    })
+    .then(populate)
+    .catch(function() { set_badge("UNAVAILABLE"); });
+
+  fetch(HIST_URL)
+    .then(function(r) {
+      if (!r.ok) { throw new Error("TRANSPORT_ERROR_" + r.status); }
+      return r.json();
+    })
+    .then(function(env) {
+      var points = (env && env.data && Array.isArray(env.data.points)) ? env.data.points : [];
+      build_history_table(points);
+    })
+    .catch(function() {
+      var b = document.getElementById("detail-history-block");
+      if (b) { b.textContent = ""; var p = document.createElement("p"); p.className = "muted small"; p.textContent = "History unavailable."; b.appendChild(p); }
+    });
+})();
+</script>
+{% endif %}
+
+</body>
+</html>

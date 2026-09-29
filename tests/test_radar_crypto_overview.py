@@ -234,9 +234,10 @@ def test_crypto_route_failure_does_not_leak_exception_message():
     assert "No substitute market values are displayed" in response.text
 
 
-def test_shared_domain_navigation_has_three_live_domains():
+def test_shared_domain_navigation_has_four_live_domains():
     template = Path("app/templates/radar/domain_nav.html").read_text(encoding="utf-8")
-    assert 'href="/radar"' in template
+    assert 'href="/radar/r-live"' in template
+    assert 'href="/radar/stocks"' in template
     assert 'href="/radar/crypto"' in template
     assert 'href="/radar/economy"' in template
     assert 'aria-disabled="true"' not in template

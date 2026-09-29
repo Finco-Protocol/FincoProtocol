@@ -89,7 +89,7 @@ def test_unavailable_macro_row_shows_neutral_text_and_never_fabricates_value():
 
 def test_domain_navigation_exposes_stocks_crypto_and_economy():
     template = Path("app/templates/radar/domain_nav.html").read_text(encoding="utf-8")
-    assert 'href="/radar"' in template
+    assert 'href="/radar/stocks"' in template
     assert 'href="/radar/crypto"' in template
     assert 'href="/radar/economy"' in template
     assert 'aria-disabled="true"' not in template

@@ -86,6 +86,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: reference-driven-correction-a-22-captures
+          name: reference-driven-correction-a-23-captures
           path: artifacts/reference-driven-correction-a/*.png
           if-no-files-found: error

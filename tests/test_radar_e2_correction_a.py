@@ -355,7 +355,7 @@ class TestR1SnapshotIdentityPrecedence:
         snapshot_id = ids[0]
 
         # Then GET /radar?snapshot_id=AAPL_snap&asset_uid=NVDA
-        resp_get = client.get(f"/radar?snapshot_id={snapshot_id}&asset_uid=NVDA")
+        resp_get = client.get(f"/radar/stocks?snapshot_id={snapshot_id}&asset_uid=NVDA")
         assert resp_get.status_code == 200
         html = resp_get.text
 
@@ -381,7 +381,7 @@ class TestR1SnapshotIdentityPrecedence:
             pytest.skip("No snapshot in response")
         snapshot_id = ids[0]
 
-        resp_get = client.get(f"/radar?snapshot_id={snapshot_id}&asset_uid=NVDA")
+        resp_get = client.get(f"/radar/stocks?snapshot_id={snapshot_id}&asset_uid=NVDA")
         html = resp_get.text
         # NVDA Corp fundamentals should not be the selected detail
         assert "NVIDIA Corporation" not in html or "Apple" in html
@@ -490,31 +490,31 @@ class TestR4BrowserSmoke:
 
     def test_get_nvda_renders_nvda_selected(self, real_client_with_equity):
         client, _, _ = real_client_with_equity
-        resp = client.get("/radar?asset_uid=NVDA")
+        resp = client.get("/radar/stocks?asset_uid=NVDA")
         assert resp.status_code == 200
         html = resp.text
         assert "NVDA" in html
 
     def test_get_nvda_shows_equity_details_anchor(self, real_client_with_equity):
         client, _, _ = real_client_with_equity
-        resp = client.get("/radar?asset_uid=NVDA")
+        resp = client.get("/radar/stocks?asset_uid=NVDA")
         assert 'id="equity-details"' in resp.text
 
     def test_get_nvda_shows_details_cta(self, real_client_with_equity):
         client, _, _ = real_client_with_equity
-        resp = client.get("/radar?asset_uid=NVDA")
+        resp = client.get("/radar/stocks?asset_uid=NVDA")
         assert "Details →" in resp.text or "details_url" in resp.text
 
     def test_get_radar_shows_featured_board(self, real_client_with_equity):
         client, _, _ = real_client_with_equity
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         assert resp.status_code == 200
         assert "Featured Equities" in resp.text
 
     def test_get_radar_no_15_acquisitions(self, real_client_with_equity):
         client, calls, _ = real_client_with_equity
         before = len(calls)
-        client.get("/radar")
+        client.get("/radar/stocks")
         after = len(calls)
         assert after == before, (
             f"GET /radar triggered {after - before} acquisitions; expected 0"
@@ -892,7 +892,7 @@ class TestZeroMarketFanout:
     def test_get_radar_zero_acquisitions(self, real_client_with_equity):
         client, calls, _ = real_client_with_equity
         before = len(calls)
-        client.get("/radar")
+        client.get("/radar/stocks")
         assert len(calls) == before
 
     def test_featured_board_zero_acquisitions_even_with_equity_db(
@@ -900,7 +900,7 @@ class TestZeroMarketFanout:
         client, calls, _ = real_client_with_equity
         before = len(calls)
         # Board loads fundamentals but triggers ZERO market acquisitions
-        client.get("/radar?asset_uid=AAPL")
+        client.get("/radar/stocks?asset_uid=AAPL")
         assert len(calls) == before
 
 
@@ -932,6 +932,6 @@ class TestScoringBoundary:
 
     def test_get_radar_html_no_finco_score(self, real_client_with_equity):
         client, _, _ = real_client_with_equity
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         assert "FINCO SCORE" not in resp.text.upper()
         assert "STRONG BUY" not in resp.text.upper()

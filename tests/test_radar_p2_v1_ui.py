@@ -116,7 +116,7 @@ def _snapshot_ids(html: str) -> list:
 
 def test_ui_01_radar_page_renders(make_client):
     c = make_client(_build_service([]))
-    response = c.get("/radar")
+    response = c.get("/radar/stocks")
     assert response.status_code == 200
     assert "FINCO" in response.text and "RADAR" in response.text.upper()
     # READ-ONLY branding was removed from product chrome (chrome cleanup pass).
@@ -144,7 +144,7 @@ def test_ui_02_canonical_asset_identity_visible(make_client):
     composition.set_registry_factory(fake_registry)
     try:
         c = make_client(_build_service([]))
-        page = c.get("/radar").text
+        page = c.get("/radar/stocks").text
     finally:
         composition.set_registry_factory(None)
     assert "AAPL" in page
@@ -153,13 +153,13 @@ def test_ui_02_canonical_asset_identity_visible(make_client):
 
 
 def test_ui_03_buy_sell_controls_exist(make_client):
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     assert 'name="direction"' in page
     assert 'value="BUY"' in page and 'value="SELL"' in page
 
 
 def test_ui_04_only_reviewed_sizes_supported(make_client):
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     assert 'value="100"' in page and 'value="1000"' in page
     assert 'type="number"' not in page  # no arbitrary size input
     with pytest.raises(RuntimeContractError):
@@ -379,7 +379,7 @@ def test_ui_18_provider_config_never_reaches_html(make_client):
 
 
 def test_ui_19_no_wallet_signing_or_trade_submission_exists(make_client):
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     lowered = page.lower()
     for banned in ("connect wallet", "private key", "sign transaction",
                    "swap tokens", "token swap", "approve", "custody",
@@ -455,7 +455,7 @@ from types import SimpleNamespace
 
 
 def test_ca2_01_before_refresh_no_snapshot_authority_claimed(make_client):
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     assert "Selected asset" in page
     assert 'data-panel="identity"' not in page
     assert "acq-snap:" not in page
@@ -801,7 +801,7 @@ def test_correction_a_notional_100_rendered_without_k_suffix(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     # Controls page must show $100 not $100k
-    page = c.get("/radar").text
+    page = c.get("/radar/stocks").text
     assert "$100" in page
     assert "$100k" not in page
     # Post-refresh panels must also show $100 not $100k
@@ -816,7 +816,7 @@ def test_correction_a_notional_1000_rendered_as_1000_with_comma(make_client):
     calls: list = []
     c = make_client(_build_service(calls))
     # Controls page must show $1,000 not $1000k / $1,000k
-    page = c.get("/radar").text
+    page = c.get("/radar/stocks").text
     assert "$1,000" in page
     assert "$1000k" not in page
     assert "$1,000k" not in page
@@ -845,7 +845,7 @@ def test_correction_c_no_unsupported_liquidity_claim_in_idle_state(make_client):
     future Liquidity badge, nav item or properly-implemented R3 surface
     elsewhere on the Radar page does not falsely fail this regression.
     """
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     # Extract just the panel-idle element
     start = page.find('class="panel panel-idle"')
     assert start != -1, ".panel-idle element not found in Radar page"
@@ -867,7 +867,7 @@ def test_correction_c_no_unsupported_liquidity_claim_in_idle_state(make_client):
 
 def test_correction_f_read_only_boundary_intact(make_client):
     """Execution simulation Coming soon; no wallet connect / sign / submit controls."""
-    page = make_client(_build_service([])).get("/radar").text
+    page = make_client(_build_service([])).get("/radar/stocks").text
     # READ-ONLY branding removed from product chrome (chrome cleanup pass).
     # The execution panel must be present as Coming soon and remain disabled.
     assert "Coming soon" in page or "coming soon" in page.lower(), (

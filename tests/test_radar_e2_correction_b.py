@@ -445,7 +445,7 @@ class TestB01B02UnifiedRead:
             a.economic_asset_uid for a in universe if a.token_symbol == "AAPL"
         )
 
-        resp = client.get(f"/radar?asset_uid={aapl_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={aapl_uid}")
         assert resp.status_code == 200
         # AAPL must actually be selected
         assert "AAPL" in resp.text
@@ -463,7 +463,7 @@ class TestB01B02UnifiedRead:
         mock_single.reset_mock()
         mock_many.reset_mock()
 
-        resp = client.get(f"/radar?asset_uid={xyz_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={xyz_uid}")
         assert resp.status_code == 200
         assert mock_many.call_count == 1, (
             f"Expected exactly one batch read; got {mock_many.call_count}"
@@ -566,7 +566,7 @@ class TestB04B05ScopedIdentityProof:
         snapshot_id = snap_ids[0]
 
         # GET with AAPL snapshot but NVDA asset_uid — AAPL identity is authoritative
-        resp = client.get(f"/radar?snapshot_id={snapshot_id}&asset_uid={nvda_uid}")
+        resp = client.get(f"/radar/stocks?snapshot_id={snapshot_id}&asset_uid={nvda_uid}")
         assert resp.status_code == 200
         html = resp.text
 
@@ -592,7 +592,7 @@ class TestB04B05ScopedIdentityProof:
         client, _, universe, _, _, _ = client_11asset
         nvda_uid = next(a for a in universe if a.token_symbol == "NVDA").economic_asset_uid
 
-        resp = client.get(f"/radar?asset_uid={nvda_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={nvda_uid}")
         assert resp.status_code == 200
         html = resp.text
 
@@ -613,7 +613,7 @@ class TestB04B05ScopedIdentityProof:
         """Selected-asset panel (outside equity-details) shows NVDA symbol."""
         client, _, universe, _, _, _ = client_11asset
         nvda_uid = next(a for a in universe if a.token_symbol == "NVDA").economic_asset_uid
-        resp = client.get(f"/radar?asset_uid={nvda_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={nvda_uid}")
         assert resp.status_code == 200
         assert "NVDA" in resp.text
 
@@ -625,7 +625,7 @@ class TestB06FeaturedBoardOrder:
 
     def test_b06_ten_rows_in_configured_order(self, client_11asset):
         client, _, universe, _, _, _ = client_11asset
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         assert resp.status_code == 200
         html = resp.text
 
@@ -658,7 +658,7 @@ class TestB07DetailsLinks:
 
     def test_b07_all_rows_have_details_cta(self, client_11asset):
         client, _, _, _, _, _ = client_11asset
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         html = resp.text
 
         # Count "Details →" occurrences — should match number of featured rows
@@ -669,7 +669,7 @@ class TestB07DetailsLinks:
 
     def test_b07_details_links_point_to_equity_details_anchor(self, client_11asset):
         client, _, _, _, _, _ = client_11asset
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         html = resp.text
 
         # E3: all details links now point to /radar/equity/{uid} (not #equity-details)
@@ -714,7 +714,7 @@ class TestB08UidDistinctFromTokenSymbol:
         nvda_asset = next(a for a in universe if a.token_symbol == "NVDA")
         uid = nvda_asset.economic_asset_uid  # "rh-equity-nvda-002"
 
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         html = resp.text
 
         # Find the Details → link containing the NVDA UID
@@ -731,7 +731,7 @@ class TestB08UidDistinctFromTokenSymbol:
         """The UID string (e.g. 'rh-equity-nvda-002') must not appear in the
         symbol column of the board table."""
         client, _, universe, _, _, _ = client_11asset
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         html = resp.text
 
         # Extract featured board section (before #equity-details)
@@ -763,7 +763,7 @@ class TestB09MissingSymbolSkipped:
         with patch.dict("os.environ", {
             "RADAR_FEATURED_EQUITY_SYMBOLS": "AAPL,NVDA,FAKESYM999"
         }):
-            resp = client.get("/radar")
+            resp = client.get("/radar/stocks")
         assert resp.status_code == 200
         assert 'data-market-symbol="FAKESYM999"' in resp.text
         assert 'data-market-uid="" data-market-symbol="FAKESYM999"' in resp.text
@@ -796,7 +796,7 @@ class TestB10NonFeaturedDropdown:
     def test_b10_xyz_in_dropdown(self, client_11asset):
         """XYZ (non-featured) appears in the asset selector dropdown."""
         client, _, _, _, _, _ = client_11asset
-        resp = client.get("/radar")
+        resp = client.get("/radar/stocks")
         assert "XYZ" in resp.text
 
     def test_b10_xyz_selectable_get(self, client_11asset):
@@ -812,7 +812,7 @@ class TestB10NonFeaturedDropdown:
         xyz = next(a for a in universe if a.token_symbol == "XYZ")
         assert xyz.economic_asset_uid == "rh-equity-xyz-099"
 
-        resp = client.get(f"/radar?asset_uid={xyz.economic_asset_uid}")
+        resp = client.get(f"/radar/stocks?asset_uid={xyz.economic_asset_uid}")
         assert resp.status_code == 200
         html = resp.text
 
@@ -890,7 +890,7 @@ class TestB11B12BoardFailureIdentity:
                 )
                 for _ in pairs
             )
-            resp = client.get("/radar")
+            resp = client.get("/radar/stocks")
         assert resp.status_code == 200
         html = resp.text
         # Featured symbols must still appear (state shown)

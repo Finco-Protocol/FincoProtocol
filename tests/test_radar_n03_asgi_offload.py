@@ -108,7 +108,7 @@ async def test_n03_refresh_offload_keeps_event_loop_responsive(
             "/radar/refresh",
             data={"asset_uid": "AAPL", "direction": "BUY", "size": "100"},
             headers={"HX-Request": "true"}))
-        heartbeat_task = asyncio.create_task(client.get("/radar"))
+        heartbeat_task = asyncio.create_task(client.get("/radar/stocks"))
         heartbeat = await heartbeat_task
         heartbeat_latency = time.monotonic() - t0
         refresh = await refresh_task
