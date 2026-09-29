@@ -317,9 +317,9 @@ def _error_panels(request, error: str) -> HTMLResponse:
     )
 
 
-@router.get("/radar", response_class=HTMLResponse)
-async def radar_home(request: Request, snapshot_id: str = "",
-                     asset_uid: str = ""):
+@router.get("/radar/stocks", response_class=HTMLResponse)
+async def radar_stocks(request: Request, snapshot_id: str = "",
+                       asset_uid: str = ""):
     universe, universe_error = await run_in_threadpool(_fetch_universe_safe)
 
     # When a snapshot is requested its identity is authoritative for selection.
@@ -381,6 +381,7 @@ async def radar_home(request: Request, snapshot_id: str = "",
             "user": user,
             "equity_view": equity_view,
             "featured_board": featured_board,
+            "radar_domain": "stocks",
         },
     )
 
@@ -460,6 +461,7 @@ async def radar_refresh(request: Request, direction: str = Form("BUY"),
             "user": user,
             "equity_view": equity_view,
             "featured_board": featured_board,
+            "radar_domain": "stocks",
         },
     )
 

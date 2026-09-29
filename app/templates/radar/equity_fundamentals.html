@@ -114,21 +114,9 @@
   {% endif %}
   {% endif %}
 
-  {# ── source / lineage teaser ────────────────────────────────────────── #}
+  {# ── source attribution (lineage preserved server-side) ─────────────── #}
   {% if ev.lineage and ev.lineage.available %}
-  {% set lin = ev.lineage %}
-  <h3 class="terminal-section-heading">Source</h3>
-  <dl class="kv">
-    {% if lin.provider %}<dt>Provider</dt><dd>{{ lin.provider }}</dd>{% endif %}
-    {% if lin.source_contract %}<dt>Contract</dt>
-      <dd class="mono small" style="word-break:break-all;">{{ lin.source_contract }}</dd>{% endif %}
-    {% if lin.period_end %}<dt>Period end</dt><dd>{{ lin.period_end }}</dd>{% endif %}
-    {% if lin.filing_date %}<dt>Filing date</dt><dd>{{ lin.filing_date }}</dd>{% endif %}
-    {% if lin.fetched_at %}<dt>Fetched</dt><dd>{{ lin.fetched_at }}</dd>{% endif %}
-    {% if lin.normalized_at %}<dt>Normalised</dt><dd>{{ lin.normalized_at }}</dd>{% endif %}
-    {% if lin.payload_hash %}<dt>Payload hash</dt>
-      <dd class="mono small" style="word-break:break-all;">{{ lin.payload_hash[:24] }}…</dd>{% endif %}
-  </dl>
+  <p class="muted small">Source-derived fundamentals.</p>
   {% endif %}
 
   {% else %}
