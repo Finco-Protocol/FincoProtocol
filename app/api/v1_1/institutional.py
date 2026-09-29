@@ -340,7 +340,7 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     /radar/r-live/{uid} — delegates to app.radar_rwa.r_live_service.
     GET performs zero history writes (persist_history=False).
-    Validates UID against AAPL_KEY.canonical_id — no ticker/fuzzy identity.
+    Validates the exact reviewed canonical AssetKey — no ticker/fuzzy identity.
 
     State parity (Correction B):
       AVAILABLE — all four current components (onchain, token, underlying, premium) are AVAILABLE.
@@ -349,8 +349,9 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     When state != AVAILABLE, current price/value fields are suppressed to None.
     """
-    from finco_radar.authority.r_live_policy import AAPL_KEY
-    if uid != AAPL_KEY.canonical_id:
+    from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
+    policy = APPROVED_BY_CANONICAL_ID.get(uid)
+    if policy is None:
         return STATE_UNAVAILABLE, {"reason": "ASSET_UID_INVALID"}
 
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
@@ -358,8 +359,11 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
         return STATE_UNAVAILABLE, {"reason": "RPC_NOT_CONFIGURED"}
 
     try:
-        from app.radar_rwa.r_live_service import collect_aapl_r_live
-        result = collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)
+        from app.radar_rwa.r_live_service import collect_aapl_r_live, collect_r_live
+        if policy.asset_key == AAPL_KEY:
+            result = collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)
+        else:
+            result = collect_r_live(canonical_asset_id=uid, rpc_url=rpc_url, persist_history=False)
     except Exception:
         return STATE_UNAVAILABLE, {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
 
@@ -377,11 +381,11 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     data = {
         "exact_asset_key": {
-            "canonical_id": AAPL_KEY.canonical_id,
-            "chain_id": AAPL_KEY.chain_id,
-            "contract_address": AAPL_KEY.contract_address,
+            "canonical_id": policy.asset_key.canonical_id,
+            "chain_id": policy.asset_key.chain_id,
+            "contract_address": policy.asset_key.contract_address,
         },
-        "economic_asset_uid": authority.economic_asset_uid or AAPL_KEY.canonical_id,
+        "economic_asset_uid": authority.economic_asset_uid or policy.economic_asset_uid,
         "token_reference": {
             "state": token.state.value,
             "price_usd_per_token": str(token.price_usd_per_token) if (is_current and token.price_usd_per_token is not None) else None,

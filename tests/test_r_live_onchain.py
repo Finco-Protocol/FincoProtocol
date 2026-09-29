@@ -11,7 +11,7 @@ from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.authority.contracts import AuthorityState
 from finco_radar.authority.r_live_onchain import JsonRpc, RpcUnavailable, observe_onchain_reference
-from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, TWAP_WINDOW_SECONDS
+from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, AAPL_UID, TWAP_WINDOW_SECONDS
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.tokenization_premium.engine import premium_bps
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
@@ -19,7 +19,7 @@ from app.radar_rwa.r_live_service import compose_r_live
 from app.radar_rwa.r_live_collect import collect_once
 
 
-UID = "0x" + "ab" * 32
+UID = AAPL_UID
 BLOCK_TIME = 1_800_000_000
 BLOCK_HASH = "0x" + "ab" * 32
 

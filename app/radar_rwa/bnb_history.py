@@ -23,6 +23,33 @@ from finco_radar.authority.r_live_onchain import OnchainReferenceObservation
 DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[1] / "data" / "radar_bnb_intelligence.db")
 
 
+def read_r_live_points_readonly(uid: str, key: AssetKey, *, limit: int = 30,
+                                path: str | None = None) -> list[dict]:
+    """Read an existing B1.3 ledger without creating files, schema or a writer."""
+    if key.chain_id != 4663 or not 1 <= limit <= 100:
+        raise ValueError("exact Robinhood key and bounded limit required")
+    identity = normalize_asset_uid(uid)
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:":
+        return []
+    db_path = Path(location)
+    if not db_path.is_file():
+        return []
+    with sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "ORDER BY observed_at DESC, digest DESC LIMIT ?",
+            (identity, key.canonical_id, limit),
+        ).fetchall()
+    points = []
+    for digest, payload in rows:
+        if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
+            raise ValueError("history digest does not reconstruct")
+        points.append(json.loads(payload))
+    return points
+
+
 def make_history_point(binding: CrossChainIdentityBinding, intelligence: dict, observed_at: str) -> dict | None:
     """Only an available premium earns a numeric history point."""
     if binding.economic_asset_uid is None or binding.external_asset_key is None:
