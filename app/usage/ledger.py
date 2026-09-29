@@ -5,6 +5,9 @@ Idempotency: repeated delivery of the same (subject_id, feature_key,
 idempotency_key) tuple records one event. Cross-user and cross-feature
 collisions on idempotency_key are safe: the UNIQUE constraint is scoped.
 Concurrent safety: SQLite UNIQUE constraint + WAL mode serialises duplicates.
+SQLITE_LOCKED (intra-process same-db contention) is handled by _acquire_immediate()
+with bounded retry + jitter; SQLITE_BUSY is handled by the db-level busy_timeout.
+Non-lock OperationalErrors are never swallowed.
 
 No financial math. No verification truth. No billing engine.
 """
@@ -66,6 +69,10 @@ class SQLiteUsageLedgerStore:
             return
         with self._schema_lock:
             if not self._schema_ready:
+                # WAL mode is a DB-level write needing an exclusive lock; serialised
+                # here so concurrent threads don't race on it.  Connections that skip
+                # this block inherit WAL automatically once the DB is in WAL mode.
+                conn.execute("PRAGMA journal_mode=WAL")
                 _maybe_migrate_usage_v0(conn)
                 _ensure_usage_schema(conn)
                 self._schema_ready = True
@@ -75,8 +82,9 @@ class SQLiteUsageLedgerStore:
             import sqlite3
             conn = sqlite3.connect(self._db_path, timeout=30.0, isolation_level=None)
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
+            # busy_timeout is per-connection; no DB lock needed.
             conn.execute("PRAGMA busy_timeout=30000")
+            # journal_mode=WAL is serialised inside _ensure_schema.
             self._ensure_schema(conn)
             return conn
         from app.persistence.db import get_connection
@@ -88,7 +96,7 @@ class SQLiteUsageLedgerStore:
         import sqlite3
         conn = self._get_conn()
         try:
-            conn.execute("BEGIN IMMEDIATE")
+            _acquire_immediate(conn)
             existing = conn.execute(
                 "SELECT * FROM usage_events"
                 " WHERE subject_id = ? AND feature_key = ? AND idempotency_key = ?",
@@ -161,6 +169,36 @@ class SQLiteUsageLedgerStore:
         finally:
             conn.close()
         return _row_to_event(row) if row is not None else None
+
+
+def _acquire_immediate(conn, max_retries: int = 8) -> None:
+    """Issue BEGIN IMMEDIATE with bounded retry for intra-process SQLITE_LOCKED.
+
+    SQLite returns SQLITE_LOCKED (not SQLITE_BUSY) when multiple connections
+    within the same Python process compete for the write lock. Neither
+    PRAGMA busy_timeout nor sqlite3.connect(timeout=...) retries on SQLITE_LOCKED;
+    only SQLITE_BUSY is handled at the SQLite level. This function retries at the
+    Python level with exponential backoff + jitter.
+
+    Non-lock OperationalErrors are re-raised immediately without retry.
+    """
+    import sqlite3
+    import time
+    import random
+
+    for attempt in range(max_retries):
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise  # unrelated error — never swallowed
+            if attempt == max_retries - 1:
+                raise  # exhausted retries
+            # Exponential backoff with jitter: 10–50 ms base, doubles each attempt,
+            # capped at 500 ms.  Jitter prevents thundering herd.
+            delay = min(0.5, (0.01 + random.uniform(0, 0.04)) * (2 ** attempt))
+            time.sleep(delay)
 
 
 def _maybe_migrate_usage_v0(conn) -> None:

@@ -21,6 +21,11 @@ B2_3_WALLET_CANONICAL_LINK_ONLY              = PASS
 B2_3_QUERY_FAILURE_NOT_ZERO                  = PASS
 B2_3_QUERY_ERROR_SECRET_SAFE                 = PASS
 
+B2_3_SQLITE_CONCURRENT_DUPLICATE_NO_LOCK_ERROR = PASS
+B2_3_SQLITE_CONCURRENT_DUPLICATE_ONE_ROW       = PASS
+B2_3_SQLITE_CONCURRENT_REPEAT_STABLE           = PASS
+B2_3_SQLITE_UNRELATED_DB_ERROR_NOT_SWALLOWED   = PASS
+
 No financial math. No verification truth. No billing engine.
 """
 from __future__ import annotations
@@ -847,9 +852,42 @@ def test_usage_query_result_invalid_state():
 
 # ── SQLite concurrent duplicate safety ──────────────────────────────────────────────────────
 
+def _run_concurrent_sqlite_round(db_path: str, n_workers: int = 5) -> tuple[list, list]:
+    """Helper: run one round of concurrent duplicate writes; return (results, errors)."""
+    from app.usage.ledger import SQLiteUsageLedgerStore
+    store = SQLiteUsageLedgerStore(db_path=db_path)
+    key = f"sqlite-concurrent-idem-{uuid.uuid4()}"
+    subject = "user-concurrent-sqlite"
+    results: list[UsageEvent] = []
+    errors: list[Exception] = []
+    barrier = threading.Barrier(n_workers)
+
+    def worker():
+        try:
+            barrier.wait(timeout=5)
+            ev = _event(subject_id=subject, idempotency_key=key)
+            r = store.record(ev)
+            results.append(r)
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(n_workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    return results, errors
+
+
 def test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite():
-    """SQLite: concurrent delivery of the same scoped key produces one event."""
+    """SQLite: concurrent delivery of the same scoped key produces one event.
+
+    Markers verified:
+      B2_3_SQLITE_CONCURRENT_DUPLICATE_NO_LOCK_ERROR — no OperationalError from 5 writers
+      B2_3_SQLITE_CONCURRENT_DUPLICATE_ONE_ROW       — exactly 1 DB row after 5 writes
+    """
     import os
+    import sqlite3
     import tempfile
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
@@ -876,17 +914,116 @@ def test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite():
         for t in threads:
             t.start()
         for t in threads:
-            t.join(timeout=15)
+            t.join(timeout=30)
 
-        assert not errors, f"Unexpected errors in SQLite concurrent test: {errors}"
+        # B2_3_SQLITE_CONCURRENT_DUPLICATE_NO_LOCK_ERROR
+        assert not errors, (
+            f"B2_3_SQLITE_CONCURRENT_DUPLICATE_NO_LOCK_ERROR FAIL — "
+            f"unexpected errors in SQLite concurrent test: {errors}")
         # All threads returned an event
         assert len(results) == 5
         # All returned the same canonical event_id
         event_ids = {r.event_id for r in results}
         assert len(event_ids) == 1, (
             f"Expected 1 canonical event_id, got {event_ids}")
+
+        # B2_3_SQLITE_CONCURRENT_DUPLICATE_ONE_ROW — verify exactly 1 row in the DB
+        conn = sqlite3.connect(db_path)
+        try:
+            row_count = conn.execute(
+                "SELECT COUNT(*) FROM usage_events"
+                " WHERE subject_id = ? AND idempotency_key = ?",
+                (subject, key),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert row_count == 1, (
+            f"B2_3_SQLITE_CONCURRENT_DUPLICATE_ONE_ROW FAIL — "
+            f"expected 1 DB row, got {row_count}")
     finally:
         try:
             os.unlink(db_path)
         except OSError:
             pass
+
+
+def test_B2_3_SQLITE_CONCURRENT_REPEAT_STABLE():
+    """SQLite: 20 repeated rounds of concurrent duplicate writes all produce exactly 1 row.
+
+    Marker: B2_3_SQLITE_CONCURRENT_REPEAT_STABLE
+    Each round uses a fresh idempotency key and 5 concurrent writers.
+    All rounds must complete without errors and with 1 canonical event each.
+    """
+    import os
+    import sqlite3
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        n_rounds = 20
+        for round_idx in range(n_rounds):
+            results, errors = _run_concurrent_sqlite_round(db_path, n_workers=5)
+            assert not errors, (
+                f"B2_3_SQLITE_CONCURRENT_REPEAT_STABLE FAIL round {round_idx}: "
+                f"errors={errors}")
+            assert len(results) == 5, (
+                f"B2_3_SQLITE_CONCURRENT_REPEAT_STABLE FAIL round {round_idx}: "
+                f"expected 5 results, got {len(results)}")
+            event_ids = {r.event_id for r in results}
+            assert len(event_ids) == 1, (
+                f"B2_3_SQLITE_CONCURRENT_REPEAT_STABLE FAIL round {round_idx}: "
+                f"expected 1 canonical event_id, got {event_ids}")
+
+        # Final: verify total row count equals number of rounds (one per unique key)
+        conn = sqlite3.connect(db_path)
+        try:
+            total_rows = conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert total_rows == n_rounds, (
+            f"B2_3_SQLITE_CONCURRENT_REPEAT_STABLE FAIL: "
+            f"expected {n_rounds} total rows, got {total_rows}")
+    finally:
+        try:
+            os.unlink(db_path)
+        except OSError:
+            pass
+
+
+def test_B2_3_SQLITE_UNRELATED_DB_ERROR_NOT_SWALLOWED():
+    """Non-lock OperationalErrors from _acquire_immediate are re-raised without retry.
+
+    Marker: B2_3_SQLITE_UNRELATED_DB_ERROR_NOT_SWALLOWED
+    The retry loop in _acquire_immediate must only catch errors whose message
+    contains 'locked'.  Any other OperationalError must propagate immediately.
+    """
+    import sqlite3
+    from app.usage.ledger import _acquire_immediate
+
+    class _FakeConn:
+        """Fake connection that raises a non-lock OperationalError on BEGIN IMMEDIATE."""
+        def __init__(self, msg: str):
+            self._msg = msg
+            self.calls = 0
+
+        def execute(self, sql: str):
+            if "BEGIN" in sql.upper():
+                self.calls += 1
+                raise sqlite3.OperationalError(self._msg)
+
+    # A non-lock error must be re-raised immediately (calls == 1, no retry)
+    conn = _FakeConn("disk I/O error")
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        _acquire_immediate(conn, max_retries=8)
+    assert conn.calls == 1, (
+        f"B2_3_SQLITE_UNRELATED_DB_ERROR_NOT_SWALLOWED FAIL: "
+        f"non-lock error should not be retried, but execute was called {conn.calls} times")
+
+    # A second non-lock variant
+    conn2 = _FakeConn("no such table: usage_events")
+    with pytest.raises(sqlite3.OperationalError, match="no such table"):
+        _acquire_immediate(conn2, max_retries=8)
+    assert conn2.calls == 1, (
+        f"B2_3_SQLITE_UNRELATED_DB_ERROR_NOT_SWALLOWED FAIL: "
+        f"non-lock error should not be retried (calls={conn2.calls})")
