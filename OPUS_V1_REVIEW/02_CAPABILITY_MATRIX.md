@@ -25,7 +25,7 @@ the Model vertical list.
 |---|---|---|
 | Canonical Last Run (COMMIT) | LIVE | `app/persistence/runs_repository.py` |
 | Institutional XLSX Export (P1.2) | LIVE | `app/export/institutional_workbook.py`; requires committed Last Run |
-| MODEL VALIDATION (P1.3) | LIVE | `app/model_validation/`; P1.3 reference reconciliation |
+| Reference Regression Check (P1.3) | LIVE | `app/model_validation/`; re-runs canonical reference-model KPIs against pinned expected values (regression protection). Does NOT independently validate a user's Last Run (H-4A). Machine authority key: `MODEL_VALIDATION` |
 | EV Institutional Reconciliation (P1.4) | LIVE | EV-specific reconciliation closure |
 | Institutional Trust Pack (P1.1) | LIVE | Methodology HTML, DSCR, XIRR ACT/365F docs |
 | FINCO VERIFY / Verified Assets (B2.1) | LIVE | `app/verified/authority.py`; explicit market binding required |

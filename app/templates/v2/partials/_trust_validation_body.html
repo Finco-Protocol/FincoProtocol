@@ -1,6 +1,15 @@
-{# MODEL VALIDATION evidence fragment — loaded on explicit user request only.
+{# Reference Regression Check evidence fragment — loaded on explicit user
+   request only.  H-4A: re-runs canonical reference models against pinned
+   expected values; regression protection, NOT independent validation of a
+   user's Last Run.
    Context: trust_validation (section dict from app.ui.trust_pack.build_validation_fragment). #}
 {% if trust_validation.state == 'AVAILABLE' %}
+  <div class="v2-trust-note" data-testid="trust-pack-validation-scope">
+    Scope: re-runs canonical reference models against pinned expected values
+    (regression protection for the reference library). It does
+    <strong>not</strong> independently validate your project's Last Run and
+    does not establish accounting, debt or cash integrity.
+  </div>
   <div class="v2-trust-grid">
     <span class="v2-trust-k">Validation state</span>
     <span class="v2-trust-v" data-testid="trust-pack-validation-state">{{ trust_validation.validation_state or '—' }}</span>

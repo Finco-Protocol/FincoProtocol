@@ -54,7 +54,7 @@ the committed calculation.
 
 **Canonical module:** `app/model_validation/runner.py`, `app/model_validation/contracts.py`
 
-**Purpose:** MODEL VALIDATION — reference-model / reconciliation evidence.
+**Purpose:** Reference Regression Check — pinned reference-model regression evidence (H-4A: re-runs canonical reference-model KPIs against pinned expected values; regression protection, NOT independent validation of a user's Last Run).
 Structural and tolerance checks run against the committed Last Run outputs.
 
 **What it proves:**
@@ -62,7 +62,7 @@ Structural and tolerance checks run against the committed Last Run outputs.
 - Validation status is stored and surfaced per-project.
 
 **What it does NOT prove:**
-- **MODEL VALIDATION ≠ FINCO VERIFY.** Validation checks model structure; it does
+- **Reference Regression Check ≠ FINCO VERIFY.** The regression check re-runs canonical reference models against pinned expected values; it does
   not establish a market identity or run binding.
 - A Validated project has not been verified against a real-world asset.
 
@@ -89,7 +89,7 @@ triggered at page render time.
 **What it does NOT prove:**
 - VERIFY does not assert that the model IRR equals the asset's market return.
 - The binding does not claim mathematical equivalence between model and market.
-- **FINCO VERIFY ≠ MODEL VALIDATION** (separate systems, separate authorities).
+- **FINCO VERIFY ≠ Reference Regression Check** (separate systems, separate authorities).
 - **FINCO VERIFY ≠ Signed Run Certificate** (separate systems, separate authorities).
 
 ---
@@ -167,7 +167,7 @@ canonical authorities.
 **API v1.1 endpoints (read-only):**
 - `/projects/{id}/run-identity` — committed Last Run identity
 - `/projects/{id}/kpis` — canonical KPIs from Last Run
-- `/projects/{id}/validation` — MODEL VALIDATION evidence
+- `/projects/{id}/validation` — Reference Regression Check evidence (machine authority key `MODEL_VALIDATION`)
 - `/projects/{id}/verify` — FINCO VERIFY state
 - `/projects/{id}/export` — institutional export metadata
 - `/projects/{id}/run-certificate` — Signed Run Certificate V1 (explicit action)
@@ -231,7 +231,7 @@ user action. Never runs the model and never silently issues a certificate.
 ## Critical Invariants
 
 ```
-MODEL VALIDATION ≠ FINCO VERIFY
+Reference Regression Check ≠ FINCO VERIFY
 SIGNED RUN ≠ FINCO VERIFY
 SIGNED RUN ≠ economic truth
 SIGNED RUN ≠ model correctness

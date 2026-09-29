@@ -52,6 +52,9 @@ treat any undisclosed deviation from these as a potential finding.
 ## 5. Signed Run Certificate — Production Signing Key Required
 
 - Signed Run Certificate V1 uses Ed25519 asymmetric signing (`app/services/run_certificate_service.py`).
+- Public FINCO trust-key distribution and a public verifier are NOT yet
+  complete: signature verification works only for a relying party that
+  independently holds and pins the trusted public key.
 - Issuance requires `FINCO_RUN_CERT_SIGNING_KEY` (base64-encoded, 32-byte Ed25519
   seed) in deployment configuration. There is no fallback production key.
 - Without a configured signing key, issuance raises `SigningKeyUnavailable` and
@@ -82,6 +85,15 @@ treat any undisclosed deviation from these as a potential finding.
 - This is a deployment/isolation boundary, not a security defect in the codebase.
 
 ---
+
+## 7b. DSCR Sculpting — Convergence Under Review (H-2)
+
+- The DSCR-sculpted senior sizing can leave residual distress conditions in
+  some synthetic reference configurations (finding H-2, under review).
+- Do NOT claim unconditional institutional-grade DSCR sculpting convergence
+  while H-2 is open.
+- A Reference Regression Check (P1.3) PASS does not clear H-2 and is not
+  evidence of model soundness.
 
 ## 8. B2.3 Usage Metering — Hook Coverage
 

@@ -5,7 +5,9 @@ existing canonical read services into one user-facing evidence surface:
 
   - Last Run identity          → app.api.v1_1.institutional.get_run_identity
   - Core KPIs                  → app.api.v1_1.institutional.get_kpis
-  - MODEL VALIDATION           → app.api.v1_1.institutional.get_institutional_validation
+  - Reference Regression Check → app.api.v1_1.institutional.get_institutional_validation
+    (H-4A: re-runs canonical reference models against pinned expected values;
+    regression protection — NOT independent validation of a user's Last Run)
   - FINCO VERIFY               → app.api.v1_1.institutional.get_verify_state
   - Institutional export       → app.api.v1_1.institutional.get_export_metadata
   - Methodology / conventions  → app.model_methodology_registry (existing text)
@@ -145,7 +147,7 @@ def _validation_section(state: str, evidence: dict[str, Any]) -> dict[str, Any]:
         "fail_count": evidence.get("fail_count"),
         "gaps": gaps[:5],
         "gap_count": len(gaps),
-        "authority": "MODEL_VALIDATION — P1.3 vertical validation (app.model_validation)",
+        "authority": "REFERENCE REGRESSION CHECK — P1.3 pinned-reference reconciliation (app.model_validation)",
     }
 
 
@@ -278,7 +280,7 @@ def build_certificate_fragment(user_id: str, project_id: str) -> dict[str, Any]:
 
 
 def build_validation_fragment(user_id: str, project_id: str) -> dict[str, Any]:
-    """Build the on-demand MODEL VALIDATION evidence fragment.
+    """Build the on-demand Reference Regression Check evidence fragment.
 
     Called ONLY from the explicit user-triggered load endpoint (never during
     page rendering): delegates to the v1.1 validation authority, which runs
@@ -312,7 +314,7 @@ def build_trust_pack(
     if kpi_state != STATE_AVAILABLE:
         kpis = {}
 
-    # ── C. MODEL VALIDATION ─────────────────────────────────────────────
+    # ── C. Reference Regression Check (H-4A terminology) ────────────────
     # Correction: vertical validation executes the reference production model
     # inside app.model_validation, so it must NEVER run during Trust Pack
     # rendering (render is side-effect-free).  The section renders as an
@@ -328,7 +330,7 @@ def build_trust_pack(
             if _can_defer_validation
             else None
         ),
-        "authority": "MODEL_VALIDATION — P1.3 vertical validation (app.model_validation)",
+        "authority": "REFERENCE REGRESSION CHECK — P1.3 pinned-reference reconciliation (app.model_validation)",
     }
 
     # ── D. FINCO VERIFY (separate authority — never implied by validation) ──

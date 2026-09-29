@@ -14,6 +14,8 @@ Contract guarantees (Correction A):
   - AVAILABLE = committed run exists. UNAVAILABLE = no committed run.
   - STALE is NOT a valid state. WC divergence exposed via working_copy_changed_since_run.
   - /validation != /verify (separate authorities).
+  - /validation is a Reference Regression Check (pinned reference-model KPIs),
+    not independent validation of a user's Last Run (H-4A).
   - Verify fails closed when no source-proven binding exists.
   - R-LIVE GET performs zero history writes.
   - No raw exception text in API responses.
@@ -241,10 +243,15 @@ def get_export_bytes(user_id: str, project_id: str) -> Tuple[int, Any]:
 
 
 def get_institutional_validation(user_id: str, project_id: str) -> Tuple[str, dict]:
-    """Return (state, evidence) from P1 model validation for this project's vertical.
+    """Return (state, evidence) from the P1.3 Reference Regression Check.
 
     /validation — delegates to app.model_validation.runner.
-    Vertical validation runs against the canonical reference; WC state is irrelevant.
+    H-4A terminology: this capability re-runs canonical reference-model KPIs
+    against pinned expected values (regression protection for the reference
+    library). It runs against the canonical reference, NOT the user's Last
+    Run — it does not independently validate the user's model or establish
+    accounting/debt/cash integrity of the Last Run. WC state is irrelevant.
+    The machine authority key stays ``MODEL_VALIDATION`` for API stability.
     """
     pr, ws = _load_workspace(user_id, project_id)
     if pr is None:
