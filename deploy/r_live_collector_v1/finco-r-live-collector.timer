@@ -1,5 +1,5 @@
 [Unit]
-Description=Collect FINCO R-LIVE AAPL premium every five minutes
+Description=Collect FINCO R-LIVE approved-asset premiums every five minutes
 Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/r_live_collector_v1/README.md
 
 [Timer]

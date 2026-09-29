@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect FINCO staging R-LIVE approved-asset premiums every five minutes
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/r_live_collector_v1/staging/README.md
+
+[Timer]
+Unit=finco-staging-r-live-collector.service
+OnCalendar=*-*-* *:00/5:00
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+
+[Install]
+WantedBy=timers.target
