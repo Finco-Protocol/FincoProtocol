@@ -9,7 +9,7 @@ permissions:
 jobs:
   authoritative-history:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout exact pull-request head with full ancestry
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -43,3 +43,15 @@ jobs:
             --repo-root .
       - name: M-9 deterministic governance fixtures
         run: python -m pytest -q tests/test_opus_m9_governance_history.py
+      - name: H-7 M-7 and R-LIVE focused acceptance
+        run: |
+          python -m pytest -q \
+            tests/test_opus_h7_public_acquisition.py \
+            tests/test_r_live_current_batch.py \
+            tests/test_radar_r14_rlive_public_routes.py \
+            tests/test_opus_m7_collector_health.py \
+            tests/test_r_live_collector_batch.py \
+            tests/test_r_live_collector_ops.py \
+            tests/test_r_live_landing_batch.py \
+            tests/test_radar_r14_rlive_history_contract.py
+          echo "OPUS_H7_M7_RLIVE_FOCUSED_ACCEPTANCE=PASS"
