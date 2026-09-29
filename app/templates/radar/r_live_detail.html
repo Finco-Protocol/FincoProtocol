@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FINCO Radar — R-LIVE {{ row.asset_uid }}</title>
+  <title>FINCO Radar — R-LIVE {{ row.symbol }}</title>
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
@@ -24,9 +24,8 @@
   <header style="margin-bottom:28px">
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
       <h1 style="font-size:22px;font-weight:700;color:var(--radar-text,#f3f6f8);margin:0">
-        {{ row.asset_uid }}
+        {{ row.symbol }}
       </h1>
-      <span style="font-size:15px;color:var(--radar-muted,#8d98a5)">{{ row.label }}</span>
       {% if row.approved %}
       <span class="rlive-badge rlive-badge--loading"
             id="detail-status-badge"
@@ -64,7 +63,7 @@
   <section style="margin-bottom:28px">
     <div style="padding:16px;background:rgba(255,255,255,.04);border-radius:8px;border:1px solid var(--radar-border,#252b33)">
       <p style="margin:0;color:var(--radar-muted,#8d98a5);font-size:13px">
-        R-LIVE reference data for <strong style="color:var(--radar-text,#f3f6f8)">{{ row.asset_uid }}</strong>
+        R-LIVE reference data for <strong style="color:var(--radar-text,#f3f6f8)">{{ row.symbol }}</strong>
         is not yet available. This asset is not in the current approved registry.
       </p>
     </div>
@@ -76,8 +75,8 @@
       Identity &amp; Deployment
     </h2>
     <dl class="kv">
-      <dt>Asset ID</dt><dd class="mono">{{ row.asset_uid }}</dd>
-      <dt>Economic Basis</dt><dd>{{ row.economic_basis }}</dd>
+      <dt>Symbol</dt><dd class="mono">{{ row.symbol }}</dd>
+      <dt>Canonical ID</dt><dd class="mono" style="font-size:11px;word-break:break-all">{{ row.canonical_id }}</dd>
       <dt>Registry Status</dt>
       <dd>{% if row.approved %}Approved{% else %}Not approved{% endif %}</dd>
     </dl>
@@ -126,16 +125,24 @@
 {% if row.approved %}
 <script>
 (function() {
-  // Read-only: fetches snapshot data and populates detail fields.
-  // Never writes R-LIVE history.
-  var SNAP_URL = "/radar/crypto/rwa/r-live/aapl/snapshot";
-  var HIST_URL = "/radar/crypto/rwa/r-live/aapl/history";
+  // Read-only: fetches snapshot and history. Never writes R-LIVE history.
+  // No raw innerHTML for API response data — uses textContent/createElement.
+  var CANONICAL_ID = {{ row.canonical_id | tojson }};
+  var BASE = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
+  var SNAP_URL = BASE;
+  var HIST_URL = BASE + "/history?limit=30";
 
   function fmt_age(secs) {
     if (secs == null) return "—";
     if (secs < 60) return secs + "s ago";
     if (secs < 3600) return Math.floor(secs / 60) + "m ago";
     return Math.floor(secs / 3600) + "h ago";
+  }
+
+  function fmt_usd(s) {
+    if (s == null) return null;
+    var n = parseFloat(s);
+    return isNaN(n) ? null : "$" + n.toFixed(4);
   }
 
   function set_badge(state) {
@@ -145,59 +152,90 @@
     badge.textContent = state;
   }
 
-  function populate(data) {
-    var state = (data.state || "UNAVAILABLE").toUpperCase();
-    set_badge(state);
-    // Only show numeric values when AVAILABLE — missing != 0.
-    if (state !== "AVAILABLE") {
-      document.getElementById("detail-ref-price").textContent = "—";
-      document.getElementById("detail-basis-price").textContent = "—";
-      document.getElementById("detail-premium").textContent = "—";
-      document.getElementById("detail-observed-at").textContent = state;
-      document.getElementById("detail-freshness").textContent = "—";
-      return;
-    }
-    var ref = data.reference;
-    if (ref && ref.price_usd_per_token != null) {
-      document.getElementById("detail-ref-price").textContent =
-        "$" + parseFloat(ref.price_usd_per_token).toFixed(4);
-    }
-    var basis = data.robinhood_basis;
-    if (basis && basis.price_usd_per_token != null) {
-      document.getElementById("detail-basis-price").textContent =
-        "$" + parseFloat(basis.price_usd_per_token).toFixed(4);
-    }
-    var prem = data.reference_premium;
-    if (prem && prem.value_bps != null) {
-      var bps = parseFloat(prem.value_bps);
-      document.getElementById("detail-premium").textContent =
-        (bps >= 0 ? "+" : "") + bps.toFixed(1) + " bps";
-    }
-    if (data.observed_at) {
-      document.getElementById("detail-observed-at").textContent = data.observed_at;
-    }
-    document.getElementById("detail-freshness").textContent =
-      fmt_age(data.observation_age_seconds);
+  function set_text(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = (val != null) ? val : "—";
   }
 
-  function load_history(data) {
+  function populate(env) {
+    var state = (env.state || "UNAVAILABLE").toUpperCase();
+    var data = env.data || {};
+    set_badge(state);
+
+    var is_current = (state === "AVAILABLE");
+
+    var ref_txt = null, basis_txt = null, prem_txt = null;
+    if (is_current) {
+      var tr = data.token_reference;
+      if (tr) ref_txt = fmt_usd(tr.price_usd_per_token);
+      var rb = data.robinhood_basis;
+      if (rb) basis_txt = fmt_usd(rb.price_usd_per_token);
+      var pr = data.b1_0_premium;
+      if (pr && pr.value_bps != null) {
+        var bps = parseFloat(pr.value_bps);
+        prem_txt = !isNaN(bps) ? ((bps >= 0 ? "+" : "") + bps.toFixed(1) + " bps") : null;
+      }
+    }
+    set_text("detail-ref-price", ref_txt);
+    set_text("detail-basis-price", basis_txt);
+    set_text("detail-premium", prem_txt);
+
+    if (data.observed_at) {
+      var age_s = Math.round((Date.now() - new Date(data.observed_at).getTime()) / 1000);
+      set_text("detail-observed-at", data.observed_at);
+      set_text("detail-freshness", fmt_age(age_s));
+    } else {
+      set_text("detail-observed-at", is_current ? null : state);
+    }
+  }
+
+  function build_history_table(points) {
+    // Safe DOM construction — no raw innerHTML for history data.
     var block = document.getElementById("detail-history-block");
     if (!block) return;
-    if (!data || !data.length) {
-      block.innerHTML = '<p class="muted small">No history available.</p>';
+    if (!points || !points.length) {
+      block.textContent = "";
+      var msg = document.createElement("p");
+      msg.className = "muted small";
+      msg.textContent = "No history available.";
+      block.appendChild(msg);
       return;
     }
-    var rows = data.slice(0, 10).map(function(h) {
-      return "<tr><td class='mono' style='padding:6px 10px'>" +
-        (h.observed_at || "—") + "</td><td class='mono' style='padding:6px 10px;text-align:right'>" +
-        (h.price_usd_per_token != null ? "$" + parseFloat(h.price_usd_per_token).toFixed(4) : "—") +
-        "</td></tr>";
-    }).join("");
-    block.innerHTML =
-      "<table style='width:100%;border-collapse:collapse;font-size:12px'>" +
-      "<thead><tr><th style='text-align:left;padding:6px 10px;color:var(--radar-muted,#8d98a5)'>Observed</th>" +
-      "<th style='text-align:right;padding:6px 10px;color:var(--radar-muted,#8d98a5)'>Reference</th></tr></thead>" +
-      "<tbody>" + rows + "</tbody></table>";
+    var table = document.createElement("table");
+    table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+    var thead = document.createElement("thead");
+    var hrow = document.createElement("tr");
+    var headers = ["Observed", "Basis (USD)", "Token Ref (USD)", "Premium/Discount", "State"];
+    headers.forEach(function(h) {
+      var th = document.createElement("th");
+      th.style.cssText = "text-align:left;padding:6px 10px;color:var(--radar-muted,#8d98a5)";
+      th.textContent = h;
+      hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    points.slice(0, 20).forEach(function(pt) {
+      var tr = document.createElement("tr");
+      var cells = [
+        pt.observed_at || "—",
+        pt.robinhood_basis_price != null ? ("$" + parseFloat(pt.robinhood_basis_price).toFixed(4)) : "—",
+        pt.token_reference_price != null ? ("$" + parseFloat(pt.token_reference_price).toFixed(4)) : "—",
+        pt.premium_bps != null ? ((parseFloat(pt.premium_bps) >= 0 ? "+" : "") + parseFloat(pt.premium_bps).toFixed(1) + " bps") : "—",
+        pt.state || "—"
+      ];
+      cells.forEach(function(val) {
+        var td = document.createElement("td");
+        td.className = "mono";
+        td.style.cssText = "padding:6px 10px";
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    block.textContent = "";
+    block.appendChild(table);
   }
 
   fetch(SNAP_URL)
@@ -207,10 +245,13 @@
 
   fetch(HIST_URL)
     .then(function(r) { return r.json(); })
-    .then(load_history)
+    .then(function(env) {
+      var points = (env && env.data && Array.isArray(env.data.points)) ? env.data.points : [];
+      build_history_table(points);
+    })
     .catch(function() {
       var b = document.getElementById("detail-history-block");
-      if (b) b.innerHTML = '<p class="muted small">History unavailable.</p>';
+      if (b) { b.textContent = ""; var p = document.createElement("p"); p.className = "muted small"; p.textContent = "History unavailable."; b.appendChild(p); }
     });
 })();
 </script>

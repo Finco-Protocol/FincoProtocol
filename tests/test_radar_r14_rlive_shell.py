@@ -127,22 +127,30 @@ class TestRLiveLanding:
         resp = client.get("/radar/r-live")
         assert resp.status_code == 200
         assert "rlive-row" in resp.text
-        # AAPL row has data-asset-uid='AAPL'
-        assert 'data-asset-uid="AAPL"' in resp.text, (
-            "AAPL row (data-asset-uid='AAPL') not found in R-LIVE landing table"
+        # AAPL row is identified by its testid (symbol-based) and canonical_id attribute.
+        assert 'data-testid="rlive-row-aapl"' in resp.text, (
+            "AAPL row (data-testid='rlive-row-aapl') not found in R-LIVE landing table"
         )
 
     def test_rlive_landing_unavailable_rows_no_numeric_values(self):
-        """Non-approved rows show UNAVAILABLE, no fabricated numeric values."""
+        """All registry rows are approved — no pre-filled numeric values in HTML."""
         pytest.importorskip("uvicorn")
         import main_web
         from fastapi.testclient import TestClient
         client = TestClient(main_web.app, follow_redirects=True)
         resp = client.get("/radar/r-live")
         assert resp.status_code == 200
-        # UNAVAILABLE badge must be present for non-approved rows.
-        assert "UNAVAILABLE" in resp.text, (
-            "UNAVAILABLE badge not found in R-LIVE landing for non-approved rows"
+        # All 8 registry assets are approved; numeric values are JS-populated only.
+        # Template must use loading placeholder "—", not hardcoded numeric values.
+        assert "rlive-loading" in resp.text, (
+            "Loading placeholder (rlive-loading) not found — numeric values must come from JS"
+        )
+        # No pre-filled dollar amounts in the server-rendered HTML.
+        import re
+        prefilled = re.findall(r'\$\d+\.\d{4}', resp.text)
+        assert not prefilled, (
+            f"Server-rendered HTML contains pre-filled numeric values {prefilled} — "
+            "numeric values must come from JS only"
         )
 
     def test_rlive_landing_missing_not_zero(self):
@@ -208,12 +216,19 @@ class TestRLiveDetail:
         )
 
     def test_rlive_detail_aapl_methodology_present(self):
-        """AAPL detail page contains methodology disclosure."""
+        """AAPL detail page contains methodology disclosure (accessed via canonical_id)."""
         pytest.importorskip("uvicorn")
         import main_web
+        from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
         from fastapi.testclient import TestClient
+        # Resolve AAPL canonical_id from the approved registry — identity authority.
+        aapl_policy = next(
+            (p for p in APPROVED_BY_CANONICAL_ID.values() if p.symbol == "AAPL"), None
+        )
+        assert aapl_policy is not None, "AAPL not found in APPROVED_BY_CANONICAL_ID"
+        canonical_id = aapl_policy.asset_key.canonical_id
         client = TestClient(main_web.app, follow_redirects=True)
-        resp = client.get("/radar/r-live/aapl")
+        resp = client.get(f"/radar/r-live/{canonical_id}")
         assert resp.status_code == 200
         assert "Methodology" in resp.text, (
             "Methodology section not found in AAPL R-LIVE detail page"
@@ -226,9 +241,16 @@ class TestRLiveDetail:
         """Detail page must not present reference as executable/tradeable price."""
         pytest.importorskip("uvicorn")
         import main_web
+        from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
         from fastapi.testclient import TestClient
+        # Resolve AAPL canonical_id from the approved registry — identity authority.
+        aapl_policy = next(
+            (p for p in APPROVED_BY_CANONICAL_ID.values() if p.symbol == "AAPL"), None
+        )
+        assert aapl_policy is not None, "AAPL not found in APPROVED_BY_CANONICAL_ID"
+        canonical_id = aapl_policy.asset_key.canonical_id
         client = TestClient(main_web.app, follow_redirects=True)
-        resp = client.get("/radar/r-live/aapl")
+        resp = client.get(f"/radar/r-live/{canonical_id}")
         assert resp.status_code == 200
         # Must not claim it's a tradeable/executable price.
         text = resp.text.lower()
@@ -450,26 +472,33 @@ class TestMissingNotZeroInShell:
     """J: UNAVAILABLE/STALE rows must not show numeric values."""
 
     def test_shell_rows_unavailable_no_numeric(self):
-        """r_live_router._SHELL_ROWS non-approved entries have no numeric fields."""
-        from app.radar_ui.r_live_router import _SHELL_ROWS
-        for row in _SHELL_ROWS:
-            if not row.get("approved"):
-                # Must not have any numeric value fields.
-                for k in ("price", "premium", "change", "bps", "reference_price"):
-                    assert k not in row, (
-                        f"Non-approved shell row {row['asset_uid']} has numeric field {k!r} — "
-                        "missing != 0, unavailable rows must not have fabricated numeric values"
-                    )
+        """_approved_rows() returns registry rows — no pre-filled numeric values."""
+        from app.radar_ui.r_live_router import _approved_rows
+        rows = _approved_rows()
+        assert rows, "_approved_rows() must return at least one row"
+        for row in rows:
+            # All rows from the canonical registry are approved.
+            assert row.get("approved") is True, (
+                f"Row {row.get('symbol')} must have approved=True from registry"
+            )
+            # No numeric value fields must be pre-filled — JS populates these.
+            for k in ("price", "premium", "change", "bps", "reference_price", "basis_price"):
+                assert k not in row, (
+                    f"Registry row {row.get('symbol')} has numeric field {k!r} — "
+                    "missing != 0, numeric values must not be fabricated server-side"
+                )
 
     def test_aapl_approved_row_no_prefilled_prices(self):
-        """AAPL row in _SHELL_ROWS has no prefilled price values (JS-populated only)."""
-        from app.radar_ui.r_live_router import _SHELL_ROWS
-        aapl = next((r for r in _SHELL_ROWS if r["asset_uid"] == "AAPL"), None)
-        assert aapl is not None, "AAPL not in _SHELL_ROWS"
-        assert aapl.get("approved") is True, "AAPL must be approved=True in _SHELL_ROWS"
+        """AAPL row from _approved_rows() has no prefilled price values (JS-populated only)."""
+        from app.radar_ui.r_live_router import _approved_rows
+        rows = _approved_rows()
+        aapl = next((r for r in rows if r.get("symbol") == "AAPL"), None)
+        assert aapl is not None, "AAPL not returned by _approved_rows()"
+        assert aapl.get("approved") is True, "AAPL must be approved=True in _approved_rows()"
+        assert aapl.get("canonical_id"), "AAPL must have a canonical_id in _approved_rows()"
         # Must not prefill numeric values — they come from JS only.
         for k in ("price_usd", "premium_bps", "reference_price", "basis_price"):
             assert k not in aapl, (
-                f"AAPL shell row has prefilled numeric field {k!r} — "
+                f"AAPL row has prefilled numeric field {k!r} — "
                 "numeric values must come from JS, not be baked into the route"
             )
