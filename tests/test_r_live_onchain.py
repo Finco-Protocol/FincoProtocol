@@ -10,8 +10,8 @@ import pytest
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.authority.contracts import AuthorityState
-from finco_radar.authority.r_live_onchain import JsonRpc, RpcUnavailable, observe_onchain_reference
-from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, TWAP_WINDOW_SECONDS
+from finco_radar.authority.r_live_onchain import JsonRpc, RpcUnavailable, SWAP_TOPIC0, observe_onchain_reference
+from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, AAPL_UID, TWAP_WINDOW_SECONDS
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.tokenization_premium.engine import premium_bps
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
@@ -19,7 +19,7 @@ from app.radar_rwa.r_live_service import compose_r_live
 from app.radar_rwa.r_live_collect import collect_once
 
 
-UID = "0x" + "ab" * 32
+UID = AAPL_UID
 BLOCK_TIME = 1_800_000_000
 BLOCK_HASH = "0x" + "ab" * 32
 
@@ -57,6 +57,12 @@ class FakeRpc:
                                                   "timestamp": hex(BLOCK_TIME)})
         if method == "eth_getCode":
             return self.overrides.get(("code", params[0]), "0x6001")
+        if method == "eth_getLogs":
+            return self.overrides.get("logs", [{
+                "address": AAPL_POOL.pool_address, "topics": [SWAP_TOPIC0, "0x" + word(1), "0x" + word(2)],
+                "blockNumber": "0x123", "blockHash": BLOCK_HASH, "logIndex": "0x0",
+                "data": "0x" + "".join(map(word, [1, 2, 2 ** 96, 1_000_000, 0])),
+            }])
         assert method == "eth_call"
         to, data = params[0]["to"], params[0]["data"]
         if (to, data) in self.overrides:
@@ -219,7 +225,7 @@ def test_every_contract_read_uses_one_block_and_reorg_fails_closed():
         def call(self, method, params):
             if method == "eth_getBlockByNumber":
                 self.block_reads += 1
-                if self.block_reads == 2:
+                if self.block_reads == 3:
                     return {"number": "0x123", "hash": "0x" + "cd" * 32,
                             "timestamp": hex(BLOCK_TIME)}
             return super().call(method, params)

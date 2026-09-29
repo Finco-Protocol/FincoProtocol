@@ -318,7 +318,8 @@ def _r_live_composite_state(
     """Determine composite R-LIVE API state from all four current components.
 
     AVAILABLE only when ALL components are AVAILABLE.
-    STALE if any component is STALE and none is UNAVAILABLE/IDENTITY_UNAVAILABLE.
+    STALE if evidence is stale but otherwise bound; a stale on-chain reference
+    also makes its downstream token/premium placeholders unavailable.
     UNAVAILABLE otherwise.
 
     This enforces the PR #126 fail-closed contract: a partial current read
@@ -329,6 +330,12 @@ def _r_live_composite_state(
     components = [onchain_state, token_state, underlying_state, premium_state]
     if all(s is AuthorityState.AVAILABLE for s in components):
         return STATE_AVAILABLE
+    # A STALE on-chain reference has no numeric IndependentTokenReference by
+    # design. B1.0 consequently marks token/premium UNAVAILABLE; these are
+    # downstream placeholders, not independent evidence that the pool is absent.
+    if (onchain_state is AuthorityState.STALE
+            and underlying_state not in (AuthorityState.UNAVAILABLE, AuthorityState.IDENTITY_UNAVAILABLE)):
+        return "STALE"
     for s in components:
         if s is AuthorityState.UNAVAILABLE or s is AuthorityState.IDENTITY_UNAVAILABLE:
             return STATE_UNAVAILABLE
@@ -340,7 +347,7 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     /radar/r-live/{uid} — delegates to app.radar_rwa.r_live_service.
     GET performs zero history writes (persist_history=False).
-    Validates UID against AAPL_KEY.canonical_id — no ticker/fuzzy identity.
+    Validates the exact reviewed canonical AssetKey — no ticker/fuzzy identity.
 
     State parity (Correction B):
       AVAILABLE — all four current components (onchain, token, underlying, premium) are AVAILABLE.
@@ -349,8 +356,9 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     When state != AVAILABLE, current price/value fields are suppressed to None.
     """
-    from finco_radar.authority.r_live_policy import AAPL_KEY
-    if uid != AAPL_KEY.canonical_id:
+    from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
+    policy = APPROVED_BY_CANONICAL_ID.get(uid)
+    if policy is None:
         return STATE_UNAVAILABLE, {"reason": "ASSET_UID_INVALID"}
 
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
@@ -358,8 +366,11 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
         return STATE_UNAVAILABLE, {"reason": "RPC_NOT_CONFIGURED"}
 
     try:
-        from app.radar_rwa.r_live_service import collect_aapl_r_live
-        result = collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)
+        from app.radar_rwa.r_live_service import collect_aapl_r_live, collect_r_live
+        if policy.asset_key == AAPL_KEY:
+            result = collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)
+        else:
+            result = collect_r_live(canonical_asset_id=uid, rpc_url=rpc_url, persist_history=False)
     except Exception:
         return STATE_UNAVAILABLE, {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
 
@@ -377,11 +388,11 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
 
     data = {
         "exact_asset_key": {
-            "canonical_id": AAPL_KEY.canonical_id,
-            "chain_id": AAPL_KEY.chain_id,
-            "contract_address": AAPL_KEY.contract_address,
+            "canonical_id": policy.asset_key.canonical_id,
+            "chain_id": policy.asset_key.chain_id,
+            "contract_address": policy.asset_key.contract_address,
         },
-        "economic_asset_uid": authority.economic_asset_uid or AAPL_KEY.canonical_id,
+        "economic_asset_uid": authority.economic_asset_uid or policy.economic_asset_uid,
         "token_reference": {
             "state": token.state.value,
             "price_usd_per_token": str(token.price_usd_per_token) if (is_current and token.price_usd_per_token is not None) else None,

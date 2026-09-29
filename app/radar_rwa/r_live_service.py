@@ -15,11 +15,14 @@ from finco_radar.authority.engine import build_authority_snapshot
 from finco_radar.authority.r_live_onchain import (
     JsonRpc, OnchainReferenceObservation, Rpc, observe_onchain_reference,
 )
-from finco_radar.authority.r_live_policy import AAPL_KEY, MAX_QUOTE_AGE_SECONDS, MAX_REGISTRY_AGE_SECONDS
+from finco_radar.authority.r_live_policy import (
+    AAPL_KEY, APPROVED_BY_CANONICAL_ID, MAX_QUOTE_AGE_SECONDS, MAX_REGISTRY_AGE_SECONDS,
+)
+from finco_radar.assets.contracts import AssetKey
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.gap.engine import build_bound_reference_price
 
-from .bnb_history import BnbIntelligenceHistoryStore, make_r_live_history_point
+from .bnb_history import BnbIntelligenceHistoryStore, make_r_live_history_point, read_r_live_points_readonly
 
 
 R_LIVE_AUTHORITY_POLICY = AuthorityPolicy(
@@ -41,14 +44,15 @@ class RLiveResult:
 def compose_r_live(
     *, registry: RegistrySnapshot | None, underlying: BoundReferencePrice | None,
     rpc: Rpc, as_of: datetime | None = None, history: BnbIntelligenceHistoryStore | None = None,
+    key: AssetKey = AAPL_KEY,
 ) -> RLiveResult:
     """Pure B1.0 integration; optional append to the existing B1.3 ledger."""
     observation = observe_onchain_reference(
-        registry=registry, key=AAPL_KEY, rpc=rpc, retrieved_at=as_of,
+        registry=registry, key=key, rpc=rpc, retrieved_at=as_of,
     )
     clock = as_of or datetime.now(timezone.utc)
     snapshot = build_authority_snapshot(
-        registry=registry, key=AAPL_KEY, underlying_reference=underlying,
+        registry=registry, key=key, underlying_reference=underlying,
         token_reference=observation.to_independent_reference(),
         execution_quote=None, as_of=clock, policy=R_LIVE_AUTHORITY_POLICY,
     )
@@ -62,19 +66,23 @@ def compose_r_live(
     return RLiveResult(observation, snapshot, digest)
 
 
-def collect_aapl_r_live(*, rpc_url: str, as_of: datetime | None = None,
-                        persist_history: bool = False,
-                        history: BnbIntelligenceHistoryStore | None = None) -> RLiveResult:
-    """Acquire read-only by default; only an explicit collector path may write."""
+def collect_r_live(*, canonical_asset_id: str, rpc_url: str, as_of: datetime | None = None,
+                   persist_history: bool = False,
+                   history: BnbIntelligenceHistoryStore | None = None) -> RLiveResult:
+    """Acquire an approved exact identity; persistence is opt-in for jobs only."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_asset_id)
+    if policy is None:
+        raise ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")
+    key = policy.asset_key
     if history is not None and not persist_history:
         raise ValueError("HISTORY_REQUIRES_EXPLICIT_PERSISTENCE")
     with RobinhoodAssetRegistryAdapter() as adapter:
         registry = adapter.fetch_snapshot()
-        asset = registry.get_by_key(AAPL_KEY)
+        asset = registry.get_by_key(key)
         underlying = None
-        if asset is not None:
+        if asset is not None and asset.asset_uid == policy.economic_asset_uid:
             try:
-                binding, row = adapter.fetch_bound_reference(registry, AAPL_KEY)
+                binding, row = adapter.fetch_bound_reference(registry, key)
                 underlying = build_bound_reference_price(asset, binding, row)
             except Exception:
                 underlying = None  # independent reference survives unavailable basis
@@ -88,8 +96,29 @@ def collect_aapl_r_live(*, rpc_url: str, as_of: datetime | None = None,
             ledger = None
     try:
         return compose_r_live(registry=registry, underlying=underlying, rpc=rpc,
-                              as_of=as_of, history=ledger)
+                              as_of=as_of, history=ledger, key=key)
     finally:
         rpc.close()
         if owned_history and ledger is not None:
             ledger.close()
+
+
+def collect_aapl_r_live(*, rpc_url: str, as_of: datetime | None = None,
+                        persist_history: bool = False,
+                        history: BnbIntelligenceHistoryStore | None = None) -> RLiveResult:
+    """V1-compatible AAPL collector, including its explicit writer boundary."""
+    return collect_r_live(canonical_asset_id=AAPL_KEY.canonical_id, rpc_url=rpc_url,
+                          as_of=as_of, persist_history=persist_history, history=history)
+
+
+def read_r_live_history(canonical_asset_id: str, *, limit: int = 30,
+                        history: BnbIntelligenceHistoryStore | None = None) -> list[dict]:
+    """Read B1.3 evidence for the reviewed UID/key pair, never by symbol."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_asset_id)
+    if policy is None:
+        raise ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")
+    if not 1 <= limit <= 100:
+        raise ValueError("R_LIVE_HISTORY_LIMIT_INVALID")
+    if history is None:
+        return read_r_live_points_readonly(policy.economic_asset_uid, policy.asset_key, limit=limit)
+    return history.read(policy.economic_asset_uid, policy.asset_key, limit=limit)

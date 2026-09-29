@@ -11,6 +11,7 @@ liquidity. Runtime never discovers a replacement.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from finco_radar.assets.contracts import AssetKey
 
@@ -42,6 +43,34 @@ class PoolAuthority:
     version: str = POOL_AUTHORITY_VERSION
 
 
+@dataclass(frozen=True)
+class RLiveAssetPolicy:
+    """Reviewed identity and reference authority, never selected by ticker at runtime."""
+
+    symbol: str  # display only
+    economic_asset_uid: str
+    pool: PoolAuthority
+    reference_venue: str = "UNISWAP_V3_ROBINHOOD_CHAIN"
+    provenance: tuple[tuple[str, str], ...] = (
+        ("robinhood_registry", "https://api.robinhood.com/rhj/assets"),
+        ("factory_chain_id", "4663"),
+        ("reviewed_at_utc", "2026-09-29"),
+    )
+    authority_version: str = "R_LIVE_MULTI_ASSET_REFERENCE_V2"
+    twap_window_seconds: int = TWAP_WINDOW_SECONDS
+    max_block_age_seconds: int = MAX_BLOCK_AGE_SECONDS
+    max_registry_age_seconds: int = MAX_REGISTRY_AGE_SECONDS
+    max_quote_age_seconds: int = MAX_QUOTE_AGE_SECONDS
+    # A token market is current only if a Swap occurred within its 300s TWAP
+    # window. A fresh chain block alone is not a fresh token market.
+    max_pool_activity_age_seconds: int = TWAP_WINDOW_SECONDS
+    pool_activity_lookback_blocks: int = 5000
+
+    @property
+    def asset_key(self) -> AssetKey:
+        return self.pool.asset_key
+
+
 AAPL_KEY = AssetKey(SUPPORTED_CHAIN_ID, "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9")
 AAPL_POOL = PoolAuthority(
     asset_key=AAPL_KEY,
@@ -55,4 +84,37 @@ AAPL_POOL = PoolAuthority(
     feed_decimals=8,
 )
 
-APPROVED_POOLS = {AAPL_KEY: AAPL_POOL}
+AAPL_UID = "0x00000000000000000000000000000000c2425be3658540dd8e2424cbf3c5c649"
+_FACTORY = AAPL_POOL.factory_address
+_USDG = AAPL_POOL.quote_token_address
+_FEED = AAPL_POOL.quote_feed_address
+
+
+def _reviewed(symbol: str, uid: str, token: str, pool: str, fee: int) -> RLiveAssetPolicy:
+    key = AssetKey(SUPPORTED_CHAIN_ID, token)
+    return RLiveAssetPolicy(symbol, uid, PoolAuthority(
+        asset_key=key, pool_address=pool, factory_address=_FACTORY,
+        quote_token_address=_USDG, quote_feed_address=_FEED, fee=fee,
+        token_decimals=18, quote_decimals=6, feed_decimals=8,
+        version=f"R_LIVE_{symbol}_USDG_V3_POOL_V2",
+    ))
+
+
+# Reviewed 2026-09-29 against the official Robinhood asset registry and chain
+# 4663 factory/pool contracts. AAPL retains its exact V1 authority/version.
+_APPROVED = (
+    RLiveAssetPolicy("AAPL", AAPL_UID, AAPL_POOL, authority_version=POLICY_VERSION,
+                     provenance=(("robinhood_registry", "https://api.robinhood.com/rhj/assets"),
+                                 ("factory_chain_id", "4663"), ("reviewed_at_utc", "2026-09-28"))),
+    _reviewed("NVDA", "0x00000000000000000000000000000000915f477416294f5099a5e0e09f327ce5", "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec", "0xd4eb21209c4d6093f80b5b84f5c45cc093ea14a3", 500),
+    _reviewed("AMZN", "0x000000000000000000000000000000004f508d5e2a7042299694d85c2f362ad2", "0x12f190a9f9d7d37a250758b26824b97ce941bf54", "0x8ac92da74ab5f3b1d024dc1943ad7e15dc4179ef", 3000),
+    _reviewed("GOOGL", "0x0000000000000000000000000000000053b69e2076884cc9ae2ada9bc7095df3", "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3", "0x34d0dc122cf9a8eb296fc5e0d3a233625d7d19b7", 500),
+    _reviewed("TSLA", "0x00000000000000000000000000000000cfece3244ea34bb29414dd9488b32d9f", "0x322f0929c4625ed5bad873c95208d54e1c003b2d", "0xf4acdaeeb7022862a763c9b1b885e11191c889e3", 3000),
+    _reviewed("AVGO", "0x000000000000000000000000000000001bbb45628de84cb2917abd26680c7ab9", "0x156e175dd063a8ce274c50654ef40e0032b3fbcf", "0x5b7c404f1d7d77f9f3885ab13d7764f8a173028c", 3000),
+    _reviewed("NFLX", "0x00000000000000000000000000000000500f14b2a92f44d6998e0e2b9cc9387e", "0xe0444ef8bf4ed74f74fd73686e2ddf4c1c5591e8", "0x59895c0302f41aeaa129d2fa2442cec01e7ef45e", 3000),
+    _reviewed("AMD", "0x0000000000000000000000000000000086aeaac3c7d9422c90f6fd41aff0eaf7", "0x86923f96303d656e4aa86d9d42d1e57ad2023fdc", "0x48d284a2a4d3dc1b3da08231fe44317e7e7aa51f", 3000),
+)
+APPROVED_RLIVE_ASSETS = MappingProxyType({policy.asset_key: policy for policy in _APPROVED})
+APPROVED_BY_CANONICAL_ID = MappingProxyType({policy.asset_key.canonical_id: policy for policy in _APPROVED})
+# Compatibility alias for V1 callers; immutable and still exact-key indexed.
+APPROVED_POOLS = MappingProxyType({key: policy.pool for key, policy in APPROVED_RLIVE_ASSETS.items()})

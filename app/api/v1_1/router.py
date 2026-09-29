@@ -373,6 +373,33 @@ def get_verify(project_id: str, request: Request):
 
 # ── GET /api/v1.1/radar/r-live/{uid} ─────────────────────────────────────────
 
+@router.get("/radar/r-live/assets")
+def list_r_live_assets():
+    """List reviewed identities, not a symbol-based runtime selector."""
+    from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
+    assets = [
+        {"canonical_id": p.asset_key.canonical_id,
+         "economic_asset_uid": p.economic_asset_uid,
+         "display_symbol": p.symbol,
+         "authority_version": p.authority_version,
+         "source": "Direct On-Chain"}
+        for p in APPROVED_RLIVE_ASSETS.values()
+    ]
+    return InstitutionalEnvelope(state="AVAILABLE", data={"assets": assets}).model_dump()
+
+
+@router.get("/radar/r-live/{uid}/history")
+def get_r_live_history(uid: str, limit: int = 30):
+    """Read explicitly historical B1.3 evidence for an exact approved identity."""
+    from app.radar_rwa.r_live_service import read_r_live_history
+    try:
+        points = read_r_live_history(uid, limit=limit)
+    except ValueError:
+        return InstitutionalEnvelope(state="UNAVAILABLE", data={"reason": "ASSET_OR_LIMIT_INVALID"}).model_dump()
+    except Exception:
+        return InstitutionalEnvelope(state="UNAVAILABLE", data={"reason": "HISTORY_UNAVAILABLE"}).model_dump()
+    return InstitutionalEnvelope(state="AVAILABLE", data={"history_kind": "HISTORICAL", "points": points}).model_dump()
+
 @router.get("/radar/r-live/{uid}")
 def get_r_live(uid: str):
     """Return R-LIVE exact AssetKey reference data.
