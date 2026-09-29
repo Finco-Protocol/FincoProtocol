@@ -2,11 +2,10 @@
 
 All test files are in `tests/`. Run with `pytest tests/<file> -v`.
 
-Verified counts are accurate at main SHA `8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+Verified counts are accurate at main SHA `9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
 
-Note: `tests/test_b2_2_token_entitlement.py` has a pre-existing
-`ModuleNotFoundError: No module named 'eth_account'` failure in CI.
-Exclude with `--ignore=tests/test_b2_2_token_entitlement.py` for the full suite.
+The `eth_account` CI failure in `tests/test_b2_2_token_entitlement.py` was fixed.
+All test files listed here run without infrastructure exclusion.
 
 ---
 
@@ -104,7 +103,7 @@ Key markers in `test_model_trust_pack_ux.py`:
 
 | Test File | What it tests |
 |---|---|
-| `tests/test_b2_2_token_entitlement.py` | FINCO token entitlement, fail-closed gate (pre-existing `eth_account` CI failure; exclude in CI) |
+| `tests/test_b2_2_token_entitlement.py` | FINCO token entitlement, fail-closed gate |
 | `tests/test_p4_token_utility.py` | P4 holder entitlement rail |
 | `tests/test_protocol_verification.py` | Protocol verification corpus |
 
@@ -124,7 +123,7 @@ Key markers:
 - `test_B2_3_WALLET_NOT_CALLER_CONTROLLED` — wallet not in public API
 - `test_B2_3_QUERY_FAILURE_NOT_ZERO` — UNAVAILABLE ≠ empty
 - `test_B2_3_QUERY_ERROR_SECRET_SAFE` — no raw exception/SQL exposed
-- `test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite` — concurrent idempotency under SQLite
+- `test_B2_3_CONCURRENT_DUPLICATE_SAFE_sqlite` — concurrent idempotency under SQLite (PR #135 fix)
 
 ---
 
@@ -150,11 +149,27 @@ surface that the MCP server exposes.
 
 ---
 
-## R-LIVE / Radar
+## R-LIVE V2 (PR #136 / #137)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_radar_r14_rlive_shell.py` | 504 | R-LIVE V2 product shell: registry-driven rows, identity enforcement, no-write contract, approved/unapproved routing |
+| `tests/test_radar_r14_rlive_public_routes.py` | 238 | R-LIVE public API routes: assets list, exact-identity detail, unapproved fails closed, no history write |
+| `tests/test_radar_r14_rlive_history_contract.py` | 459 | R-LIVE history contract: read-only, STALE/UNAVAILABLE distinct from empty, canonical schema parity |
+| `tests/test_radar_robinhood_multi_asset.py` | — | Multi-asset Robinhood authority and freshness gate |
+
+Key invariants tested:
+- Unapproved identity → `ASSET_NOT_IN_REGISTRY` (never fabricated response)
+- Read paths → zero history writes (`persist_history=False`)
+- STALE / UNAVAILABLE structurally distinct from empty/zero
+- 300-second freshness gate: no current numeric if no recent Swap
+- Public API is unauthenticated; no project list, no exports
+
+## R-LIVE V1 / Radar BNB
 
 | Test File | What it tests |
 |---|---|
-| `tests/test_r_live_onchain.py` | R-LIVE on-chain authority |
+| `tests/test_r_live_onchain.py` | R-LIVE on-chain authority (AAPL V1) |
 | `tests/test_radar_b1_authority.py` | Radar B1 authority baseline |
 | `tests/test_radar_b1_2_cross_chain_identity.py` | Cross-chain canonical identity |
 | `tests/test_radar_b1_3_intelligence.py` | BNB premium, execution, history |
@@ -168,6 +183,7 @@ surface that the MCP server exposes.
 
 ```bash
 pytest tests/test_b2_1_verified_authority.py \
+       tests/test_b2_2_token_entitlement.py \
        tests/test_b2_3_usage_metering.py \
        tests/test_p3_run_certificate_v1.py \
        tests/test_p1_1_institutional_trust_pack.py \
@@ -176,16 +192,16 @@ pytest tests/test_b2_1_verified_authority.py \
        tests/test_p0_4_capability_contract.py \
        tests/test_product_capability_consistency.py \
        tests/test_model_trust_pack_ux.py \
+       tests/test_radar_r14_rlive_shell.py \
+       tests/test_radar_r14_rlive_public_routes.py \
+       tests/test_radar_r14_rlive_history_contract.py \
        -v --tb=short
 ```
 
-Expected: all pass on `8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+Handoff SHA: `9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
 
 ## Full Suite Command
 
 ```bash
-pytest tests/ --ignore=tests/test_b2_2_token_entitlement.py -q
+pytest tests/ -q
 ```
-
-Pre-existing failure excluded: `test_b2_2_token_entitlement.py` —
-`ModuleNotFoundError: No module named 'eth_account'` (unrelated to V1 authority streams).

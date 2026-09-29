@@ -1,4 +1,4 @@
-# FINCO V1 — Independent Opus Review Prompt
+# FINCO V1 — Independent Clean-Room Review Prompt
 
 You are performing a clean-room independent review of FINCO V1.
 You have no prior context from the development history.
@@ -15,18 +15,33 @@ is to independently verify or challenge them.
 ## Entry Point
 
 Repository: `Finco-Protocol/FincoProtocol`
-**Main SHA at handoff: `8cd58ad8f50108bbe9931751a4ef8d5b3feef797`**
 
-Clone and review at this exact SHA.
+**REVIEW PACKAGE PREPARED AGAINST PRODUCT BASE:**
+`9adf751cf3cb9fd087f99b433843cf8bdd9a7807`
+
+**DOCS PR HEAD:**
+This review package was prepared in a docs PR. The docs PR head SHA is
+recorded in `REVIEW_SNAPSHOT.json`. The product code at `9adf751` is
+the authoritative product base.
+
+**FINAL CLEAN-ROOM REVIEW TARGET:**
+After the docs PR is reviewed and merged, verify the exact new live main SHA
+and confirm it matches `REVIEW_SNAPSHOT.json` before beginning the review.
+If in doubt, inspect the repository's HEAD at the time of your review.
+
+Clone and review at the exact SHA confirmed above.
 
 ---
 
 ## What You Are Reviewing
 
 FINCO V1 — an off-chain deterministic project-finance modelling and verification
-platform. The product narrative is:
+platform with crypto/tokenized-asset intelligence, a signed run certificate,
+a read-only institutional API, and a read-only MCP agent interface.
 
-> **Model + Radar + Verify + Signed Run + API/MCP + $FINCO**
+The product narrative is:
+
+> **Model + Radar/R-LIVE + Verify + Signed Run + API/MCP + $FINCO**
 
 Your job is to determine whether this narrative is internally coherent, whether
 each component does what it claims, and whether any component contaminates
@@ -36,131 +51,248 @@ another in a way that breaks authority boundaries or makes a misleading claim.
 
 ## Review Dimensions
 
-### A. Enterprise SaaS Readiness
+### A. Financial Model Correctness
 
-- Is the codebase structured for multi-tenant use, or is it single-tenant/pilot stage?
-- Are sessions, identity, and data isolation sufficient for multiple institutional users?
-- Are there missing controls (rate limiting, audit logging, access revocation)?
-- What is missing before a controlled institutional pilot launch?
+This dimension IS in scope. Verify:
 
-### B. Financial-Model / Authority Integrity
+- **IRR / XIRR** — are equity return calculations correct? Which convention
+  (ACT/365F vs ACT/ACT)? Is the compounding consistent with the period convention?
+- **Project returns vs equity returns** — are they correctly separated?
+- **DSCR** — numerator and denominator definition; period coverage vs annual;
+  is there a sculpting / DSRA interaction?
+- **Senior debt sizing** — amortisation schedule; balloon vs full amortisation;
+  interest calculations (e.g. straight-line, annuity, bullet).
+- **Shareholder loans (SHL)** — treatment of interest (PIK vs cash); interaction
+  with equity returns.
+- **Sponsor equity** — timing; how committed equity tranche interacts with SHL.
+- **Corporate tax** — deferred tax, loss carryforward; timing of tax payment
+  relative to profit period.
+- **CAPEX and construction schedule** — timing of drawdowns; IDC / capitalised
+  interest treatment.
+- **OPEX and revenue timing** — beginning vs end of period; partial-period
+  conventions on first/last years.
+- **Cash waterfall** — order of priority; DSRA funding; distribution lock-up
+  triggers.
+- **Distributions** — how distributions reach equity holders; restrictions;
+  cumulative tests.
+- **Financial statements** — P&L, balance sheet, cash flow: do they reconcile?
+  Opening/closing balance consistency?
+- **DSCR minimum / cash sweep** — any interaction with the base debt schedule.
+- **Period conventions** — are all metrics computed on consistent periods?
+  Are partial periods handled consistently?
+- **Vertical isolation** — do Solar, Wind, Data Center, EV Charging, and
+  Storage share a common financial core? Are vertical-specific operating
+  assumptions isolated from the shared engine?
 
-- Does the CALCULATE layer (`financial_engine/`, `finco_core/`) stay frozen and
-  side-effect-free? No network calls, no state mutation, no secret exposure?
+For each: verify from code, not from documentation claims.
+
+### B. Last Run / Working Copy / Export Authority
+
 - Is the Working Copy / Last Run separation correctly enforced everywhere?
-  Can any surface return Working Copy values labeled as Last Run?
+  Can any surface return Working Copy values labeled as Last Run outputs?
 - Is `PRODUCTION_VERIFIED_ASSET_COUNT` accurate? Are any MODEL_ONLY records
   presented as VERIFIED?
+- Does institutional XLSX export read persisted outputs and never re-run the
+  financial engine?
+- Can the Trust Pack UX surface return Working Copy values in any section?
+- Does `app/services/run_certificate_service.py` fail closed for incomplete
+  Last Run identity? Does it ever substitute current values?
 
-### C. RWA / Crypto Product Coherence
+### C. Model Trust Pack
 
-- Is the product narrative (Model + Radar + Verify + Signed Run) internally
-  coherent?
-- Does Radar data flow into the financial engine in any code path?
-- Is R-LIVE correctly separated from execution price? Does any surface imply
-  a reference observation is tradeable?
-- Is the BNB Tokenized Assets / Radar capability correctly kept separate from
-  the Model verticals?
+- Does `app/ui/trust_pack.py:build_trust_pack()` correctly distinguish its
+  7 sections (A: Last Run Identity, B: Core KPIs, C: MODEL VALIDATION [DEFERRED],
+  D: FINCO VERIFY, E: Institutional Export, F: Methodology, G: Signed Run
+  Certificate [DEFERRED])?
+- Does it correctly present MODEL VALIDATION ≠ FINCO VERIFY?
+- Does it correctly present Signed Run Certificate ≠ FINCO VERIFY?
+- Are DEFERRED sections (C, G) correctly guarded — no actionable load URL
+  without a committed Last Run?
+- Does the CSS presentation correctly restrict green/verified status to
+  VERIFIED only?
+- Does the Trust Pack rendering ever issue a certificate or run the model
+  at page render time?
 
-### D. Security / Identity / Provenance Architecture
+### D. FINCO Verify
 
-- Can any API endpoint in `app/api/v1_1/`, `app/api/v1/`, or `main_web.py`
-  be called to obtain another user's usage data, Verified dossier, or run
-  certificate?
-- Can a caller supply `subject_id`, `wallet_address`, or bypass session identity
-  in B2.2 or B2.3?
-- Does B2.2 (`app/verified/token_entitlement.py`) have any fallback that grants
+- Can any code path in `app/model_validation/` create or update a VERIFIED
+  record in `app/verified/`?
+- Can any code path convert a validation PASS into VERIFIED status?
+- Does `app/verified/token_entitlement.py` have any fallback that grants
   access when the token check fails?
-- Does the Signed Run Certificate ever call the financial engine or accept
-  Working Copy inputs? (`app/services/run_certificate_service.py`)
-- Does the Trust Pack rendering (`app/ui/trust_pack.py`) ever issue a certificate
-  or run the model at page render time?
-- Is the Ed25519 signing in the Signed Run Certificate correctly implemented?
-  Can a caller with no configured key obtain a certificate?
+- Does B2.2 accept a caller-supplied `subject_id` or bypass session identity?
+- What is the exact production `PRODUCTION_VERIFIED_ASSET_COUNT`?
 
-### E. API + MCP Agent Readiness
+### E. Signed Run Certificate
 
-- Are the 9 MCP tools (`finco_supported_today`, `finco_projects`, `finco_last_run`,
-  `finco_run_identity`, `finco_kpis`, `finco_validation`, `finco_verify`,
-  `finco_r_live`, `finco_export_metadata`) truly read-only?
+- Is the Ed25519 signing in `app/services/run_certificate_service.py`
+  correctly implemented?
+- Does it ever call the financial engine or accept Working Copy inputs?
+- Can a caller obtain a certificate without a configured `FINCO_RUN_CERT_SIGNING_KEY`?
+- Does issuing a Signed Run Certificate create or update any record in
+  `app/verified/`?
+- Is the private key ever logged, returned in responses, or exposed?
+
+### F. R-LIVE V2 Identity / Pools / Freshness / Premium / History
+
+- Does the R-LIVE authority correctly reject all unapproved identities?
+  (`APPROVED_RLIVE_ASSETS` in `finco_radar/authority/r_live_policy.py`)
+- Is there any ticker/symbol/fuzzy/LLM identity path? There must not be.
+- Is the 300-second TWAP freshness gate enforced? What happens if no Swap
+  occurred in the window?
+- Is USDG/USD conversion computed from the canonical Chainlink oracle? Is
+  USDG ever assumed to equal USD 1?
+- Are STALE and UNAVAILABLE structurally distinct from empty/zero?
+- Do read paths (`app/radar_rwa/r_live_service.py`) perform zero history writes?
+- Is the collector the sole approved history writer?
+- Are the 8 approved assets correctly identified? Verify the approved pool
+  list against `docs/radar/r_live_v2_admission.md` and the deployed registry.
+- Are the 4 rejected assets (MSFT, META, ORCL, PLTR) correctly excluded?
+- Does any surface imply an R-LIVE observation is a tradeable or executable price?
+
+### G. Radar UX / R-LIVE / Stocks / Crypto / Economy
+
+- Does `/radar` redirect to `/radar/r-live`? Is R-LIVE the default Radar domain?
+- Does `/radar/stocks` still serve the Stocks surface correctly?
+- Do the 4 Radar navigation domains (R-LIVE, Stocks, Crypto, Economy) all
+  correctly route and render?
+- Does `app/radar_ui/r_live_router.py` fabricate any numeric values server-side?
+- Is the per-asset detail shell loaded from the canonical API only (client-side)?
+- Is any Radar reference observation presented without an adequate disclosure
+  that it is not executable?
+
+### H. API
+
+- Are the 3 R-LIVE public API routes (`GET /api/v1.1/radar/r-live/assets`,
+  `GET /api/v1.1/radar/r-live/{uid}`, `GET /api/v1.1/radar/r-live/{uid}/history`)
+  correctly unauthenticated and read-only?
+- Does any R-LIVE API route write history? (`persist_history=False` must be
+  enforced.)
+- Does the institutional API v1.1 expose any project data through the R-LIVE
+  routes?
+- Are all API v1 and v1.1 endpoints correctly access-controlled?
+- Can any API endpoint return another user's usage data, Verified dossier,
+  or run certificate?
+
+### I. MCP
+
+- Are all 9 MCP tools (`finco_supported_today`, `finco_projects`,
+  `finco_last_run`, `finco_run_identity`, `finco_kpis`, `finco_validation`,
+  `finco_verify`, `finco_r_live`, `finco_export_metadata`) truly read-only?
 - Does any MCP tool perform state mutation, trigger model runs, or expose
   internal exceptions?
 - Is MCP session identity correctly derived from `FINCO_SESSION_TOKEN` and not
   from caller-supplied arguments?
-- Are the MCP tool responses stable (versioned, typed) or fragile?
+- Is the server-session deployment boundary correctly disclosed?
 
-### F. UX / Institutional Usability
+### J. Authentication / Multi-tenancy / Security
 
-- Does the Model Trust Pack UX V1 (`app/ui/trust_pack.py`,
-  `app/templates/v2/partials/sheet_trust.html`) correctly distinguish its
-  7 sections (A–G)?
-- Does it correctly present MODEL VALIDATION ≠ FINCO VERIFY?
-- Does it correctly present Signed Run Certificate ≠ FINCO VERIFY?
-- Are DEFERRED sections (C: Validation, G: Certificate) correctly guarded —
-  no actionable load URL without a committed Last Run?
-- Does the CSS presentation correctly restrict green status to VERIFIED only?
+- Are sessions correctly implemented as signed cookies via
+  `itsdangerous.URLSafeTimedSerializer`? No JWT claimed?
+- Is `session.user_id` the sole source of subject identity in B2.2 and B2.3?
+- Can a caller supply `subject_id`, `wallet_address`, or bypass session
+  identity in B2.2 or B2.3?
+- Is B2.3 idempotency correctly scoped by `(subject_id, feature_key, idempotency_key)`?
+  Does concurrent duplicate delivery fail gracefully post-PR #135?
+- Are demo sessions structurally separate from authenticated sessions?
+- Is there adequate multi-tenant data isolation for a controlled institutional pilot?
 
-### G. Public-Launch Blockers
+### K. Deployment / Operational Readiness
 
-- What would prevent a controlled institutional public launch today?
-- Identify any capability described as LIVE that is not reliably deployable.
-- Identify any authority boundary that is asserted in docs but not enforced in code.
-- Identify any known limitation in `05_KNOWN_LIMITATIONS.md` that is understated.
+- What is the gap between "IMPLEMENTED" and "OPERATIONALLY CONFIGURED" for
+  each claimed LIVE capability?
+- Specifically: R-LIVE requires `ROBINHOOD_RPC_URL` + running collector;
+  Signed Run Certificate requires `FINCO_RUN_CERT_SIGNING_KEY`; MCP requires
+  `FINCO_SESSION_TOKEN`. Are all deployment requirements disclosed?
+- Is there any claimed LIVE capability that is not reliably deployable given
+  the documented limitations?
+- Persistent storage: are DB paths, SQLite file locations, and migration
+  requirements clearly defined?
 
-### H. Product Narrative Coherence
+### L. Product Capability Truth
 
-Does the narrative **Model + Radar + Verify + Signed Run + API/MCP + $FINCO**
-hold together without token contaminating math/truth?
+- Run `pytest tests/test_p0_4_capability_contract.py tests/test_product_capability_consistency.py -v`
+  and verify all pass.
+- Is every claimed LIVE capability in `02_CAPABILITY_MATRIX.md` accurately
+  described?
+- Is Storage correctly described as PREVIEW only?
+- Is BNB Tokenized Assets correctly kept as Radar-only (not a Model vertical)?
 
-Specifically verify:
-- `$FINCO NEVER TOUCHES THE MATH` — no token balance/entitlement affects any
-  financial calculation.
-- `$FINCO NEVER DETERMINES WHETHER EVIDENCE IS TRUE` — no token state affects
-  Verify outcomes.
-- `SIGNED RUN ≠ FINCO VERIFY` — no code path converts a signed certificate into
-  a VERIFIED status.
-- `MODEL VALIDATION ≠ FINCO VERIFY` — no code path converts a validation pass
-  into VERIFIED.
-- `MARKET REFERENCE ≠ EXECUTABLE PRICE` — no Radar reference leaks into engine
-  inputs.
+### M. Full Crypto / RWA Product Assessment
+
+This is a required standalone assessment. Evaluate:
+
+**M.1 Product coherence**
+
+Given the combined product: Model + Radar/R-LIVE + Verify + Signed Run +
+API/MCP + $FINCO — does this form:
+
+a. A coherent crypto-native RWA product?
+b. A hybrid institutional/crypto product?
+c. A conventional SaaS with a token attached?
+
+Explain your reasoning with specific evidence from the codebase.
+
+**M.2 Token necessity analysis**
+
+Evaluate each component:
+
+1. What currently genuinely requires $FINCO holding/entitlement to function?
+2. What requires only standard auth/payment that could be any currency/token?
+3. What disappears entirely if the token is removed?
+4. Is the token necessary, optional, or primarily narrative?
+5. What minimum real crypto-native functionality would make the token necessity
+   defensible? Propose it concretely.
+
+**M.3 Strongest next crypto-native feature**
+
+Propose ONE strongest next feature that:
+- reuses the current architecture (Model + R-LIVE + Verify + Signed Run);
+- gives visible user value;
+- strengthens the RWA thesis;
+- avoids a financial-engine rewrite;
+- does not contaminate Verify, math, or evidence authority;
+- is bounded enough to implement in a single focused PR stream.
+
+Do not tell us what conclusion to reach. Do not propose features already
+implemented. Identify specifically which current capability it builds on.
 
 ---
 
-## Specific Historical Problem Areas — Verify These
+## Specific Historical Problem Areas — Verify These Independently
 
-1. **Working Copy vs Last Run** — confirm that no API endpoint or export surface
+1. **Working Copy vs Last Run** — confirm no API endpoint or export surface
    returns Working Copy values labeled as Last Run outputs.
 
-2. **Export-time rerun** — confirm that institutional XLSX export reads persisted
+2. **Export-time rerun** — confirm institutional XLSX export reads persisted
    outputs and never re-runs the financial engine.
 
-3. **Last Run identity completeness** — confirm that `app/services/run_certificate_service.py`
+3. **Last Run identity completeness** — confirm `app/services/run_certificate_service.py`
    fails closed for incomplete identity and refuses to substitute current values.
 
-4. **Validation vs Verify** — confirm that no code path in `app/model_validation/`
+4. **Validation vs Verify** — confirm no code path in `app/model_validation/`
    sets a VERIFIED status or updates `app/verified/`.
 
-5. **Verify fail-closed behavior** — confirm that `app/verified/token_entitlement.py`
+5. **Verify fail-closed behavior** — confirm `app/verified/token_entitlement.py`
    has no access-granting fallback on exception.
 
-6. **Market identity authority** — confirm that `finco_radar/authority/cross_chain.py`
+6. **Market identity authority** — confirm `finco_radar/authority/cross_chain.py`
    requires source-attested evidence and cannot be satisfied by name/symbol alone.
 
-7. **Independent reference provenance** — confirm that R-LIVE reference prices
-   never flow into `financial_engine/` as inputs.
+7. **Independent reference provenance** — confirm R-LIVE reference prices never
+   flow into `financial_engine/` as inputs.
 
-8. **Reference vs executable price** — confirm that no R-LIVE observation is
+8. **Reference vs executable price** — confirm no R-LIVE observation is
    presented as a tradeable or executable price in any API response.
 
-9. **R-LIVE writer/read boundary** — confirm that read paths in
-   `app/radar_rwa/r_live_service.py` perform zero history writes. External
-   collector is sole history writer.
+9. **R-LIVE writer/read boundary** — confirm read paths in
+   `app/radar_rwa/r_live_service.py` perform zero history writes.
 
-10. **Signed Run vs Verify separation** — confirm that issuing a Signed Run
+10. **Signed Run vs Verify separation** — confirm issuing a Signed Run
     Certificate does not create or update any record in `app/verified/`.
 
-11. **Token/access vs truth/math separation** — confirm that B2.2 entitlement
-    decisions and B2.3 usage recording have no effect on any financial calculation
+11. **Token/access vs truth/math separation** — confirm B2.2 entitlement
+    and B2.3 usage recording have no effect on any financial calculation
     or verification outcome.
 
 12. **Missing != zero** — confirm `app/usage/query.py` and `finco_radar/gap/`
@@ -172,17 +304,26 @@ Specifically verify:
 
 14. **Trust Pack render guard** — confirm `app/ui/trust_pack.py:build_trust_pack()`
     never calls `issue_run_certificate()`. Certificate issuance must only occur
-    via `build_certificate_fragment()` from an explicit user-triggered endpoint.
+    via an explicit user-triggered endpoint.
+
+15. **R-LIVE V2 freshness gate** — confirm that no numeric R-LIVE output is
+    returned when the last Swap is older than 300 seconds (STALE state). Verify
+    that STALE ≠ UNAVAILABLE ≠ empty.
+
+16. **R-LIVE V2 no history write** — confirm `GET /api/v1.1/radar/r-live/{uid}/history`
+    passes `persist_history=False` and makes no write to the history store.
+
+17. **R-LIVE V2 identity enforcement** — confirm that an unapproved `uid` on any
+    R-LIVE public API route returns a typed error, never a fabricated response.
+
+18. **B2.3 concurrent fix** — confirm that PR #135 correctly handles concurrent
+    duplicate delivery: no lock error to caller, exactly one event persisted.
 
 ---
 
 ## What NOT to Review
 
 - `domain/` — internal domain models, not a V1 authority surface.
-- `tests/test_b2_2_token_entitlement.py` — has a pre-existing `eth_account`
-  module missing error in CI (infrastructure issue, not in scope).
-- Financial model arithmetic correctness (IRR, DSCR values) — not in scope for
-  this authority review.
 - Jev / Reflex (issue #119) — experimental shadow, explicitly not V1 scope.
 
 ---
@@ -221,3 +362,5 @@ If no findings in a dimension: `NO FINDINGS — invariants hold as described.`
 - If a LIVE capability in `02_CAPABILITY_MATRIX.md` is not reliably deployable
   given documented limitations, flag it.
 - Report your findings ordered by severity (BLOCKER first).
+- Complete ALL review dimensions. Do not skip financial model correctness.
+- Complete the Crypto / RWA Product Assessment (Dimension M) in full.

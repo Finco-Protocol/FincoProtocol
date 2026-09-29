@@ -94,12 +94,14 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 9. R-LIVE Collector — Deployment and Activation
+## 9. R-LIVE Collector and Operational Configuration
 
 - The R-LIVE collector timer is implemented (`PR #127`) with an external systemd
   operational package.
-- Collection requires configured external API keys (`app/radar_rwa/r_live_collect.py`).
-- Without valid API keys, R-LIVE collection fails gracefully (no crash, no live snapshots).
+- Collection requires `ROBINHOOD_RPC_URL` and configured external API keys
+  (`app/radar_rwa/r_live_collect.py`).
+- Without valid RPC URL and API keys, R-LIVE collection fails gracefully (no crash,
+  no live snapshots). The R-LIVE public API returns `UNAVAILABLE` if no history exists.
 - Repository-ready deployment assets do not prove that a production VPS collector
   is currently active. Do not claim production collection is active without
   actual deployment evidence.
@@ -152,7 +154,38 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 15. $FINCO Token Not Yet Launched
+## 15. R-LIVE V2 — Approved Pool ≠ Current Availability
+
+- R-LIVE V2 reviewed and approved 8 assets (AAPL, NVDA, AMZN, GOOGL, TSLA,
+  AVGO, NFLX, AMD) based on an on-chain authority review at block 75507992
+  (2026-09-29 08:19 UTC).
+- Pool approval at review time does not guarantee that a current observation
+  is AVAILABLE at any later time.
+- Runtime re-validates freshness: the last qualifying Swap must be within 300
+  seconds at the pinned head. No Swap in that window returns STALE.
+- USDG is never assumed to equal USD 1; the Chainlink USDG/USD proxy is
+  re-read at each acquisition.
+- REJECTED assets (MSFT, META, ORCL, PLTR) are excluded from the registry.
+  They cannot be queried via the public API. Their exclusion is permanent until
+  a new review is conducted.
+- The R-LIVE public API is unauthenticated (reference surface). This is
+  intentional: it is read-only and does not expose any user or project data.
+
+---
+
+## 16. B2.3 Concurrent Idempotency — Correctness Fixed, Scale Not Guaranteed
+
+- PR #135 fixed a SQLite lock-error on concurrent duplicate delivery
+  (`(subject_id, feature_key, idempotency_key)` constraint).
+- The fix ensures: no lock error to caller; successful canonical response;
+  exactly one persisted usage event under concurrent duplicate delivery.
+- This correctness fix does not claim unlimited production-scale concurrency.
+  High-throughput production deployments should evaluate SQLite concurrency
+  limits independently.
+
+---
+
+## 17. $FINCO Token Not Yet Launched
 
 - The protocol access and service-entitlement layer is implemented.
 - The $FINCO token is not yet launched. Token economics, access thresholds,

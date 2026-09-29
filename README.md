@@ -98,14 +98,60 @@ Radar is architecturally separate from the infrastructure modelling engine. Its 
 
 The purpose is to analyze how a tokenized or crypto asset actually trades while FINCO Model analyzes the economics of the underlying real-world infrastructure asset.
 
+### FINCO Radar — R-LIVE
+
+R-LIVE is a first-class Radar domain providing on-chain reference prices for a
+reviewed pool of tokenized equities on Robinhood Chain (chain 4663).
+
+The current reviewed approved display universe is:
+
+AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD
+
+Each approved identity is exact: a specific canonical AssetKey / economic_asset_uid
+/ Uniswap V3 pool deployment reviewed from the official Robinhood asset registry and
+confirmed via on-chain observation. There is no ticker-based or fuzzy lookup; runtime
+has no pool discovery or fallback.
+
+R-LIVE derives a 300-second on-chain TWAP with USDG/USD conversion via the canonical
+Chainlink oracle. USDG is never assumed to equal USD 1. If no Swap occurred in the
+300-second window, the observation is STALE. STALE and UNAVAILABLE suppress current
+numeric output and are structurally distinct from empty/zero.
+
+**R-LIVE is a reference observation — it is not a tradeable or executable price.**
+R-LIVE does not create FINCO VERIFIED status. R-LIVE data does not flow into the
+financial engine.
+
+The public R-LIVE API surface:
+
+```
+GET /api/v1.1/radar/r-live/assets                   — list approved identities
+GET /api/v1.1/radar/r-live/{canonical_id}            — current reference (exact identity only)
+GET /api/v1.1/radar/r-live/{canonical_id}/history    — historical evidence (read-only)
+```
+
+Global Radar navigation lands on R-LIVE (`/radar` → `/radar/r-live`). Stocks remains at
+`/radar/stocks`. Crypto and Economy are separate Radar domains.
+
 ### FINCO Protocol layer — verification now, on-chain later
 
 The Protocol layer implements off-chain verification and composition. Current capabilities include:
 
-- **Run Certificates** — deterministic, content-addressed evidence envelopes for FINCO Model outputs. Each calculation snapshot receives a SHA-256 content address; CI independently rebuilds the corpus twice and requires byte-identical output.
-- **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar evidence and protocol metadata into a single verifiable asset record. V1 assets currently render as MODEL_ONLY because no canonical model↔market identity mapping is yet established.
+- **Signed Run Certificate V1** — Ed25519 asymmetric signed evidence of what was computed.
+  Issued from a committed Last Run only. Requires `FINCO_RUN_CERT_SIGNING_KEY` deployment
+  configuration; fails closed without it (`SIGNING_KEY_UNAVAILABLE`). Third-party verifiable
+  with the FINCO public key. **Not FINCO Verify. Not economic truth.**
+- **Model Trust Pack UX V1** — a seven-section read-only evidence surface in the V2 workbook
+  (A: Last Run Identity, B: Core KPIs, C: MODEL VALIDATION, D: FINCO VERIFY, E: Institutional
+  Export, F: Methodology, G: Signed Run Certificate). Zero engine calls at render. Zero DB writes.
+  Explicitly separates the three authority layers: MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run.
+- **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar
+  evidence and protocol metadata into a single verifiable asset record. V1 assets currently
+  render as MODEL_ONLY because no canonical model↔market identity mapping is yet established
+  in production.
 
-The verification layer validates already-produced evidence rather than replacing either calculation engine. A sanitized public corpus covers generic Solar, generic Wind, and synthetic Radar liquidity evidence.
+The verification layer validates already-produced evidence rather than replacing either
+calculation engine. A sanitized public corpus covers generic Solar, generic Wind, and
+synthetic Radar liquidity evidence.
 
 No blockchain anchoring or smart-contract deployment is claimed by the current verification implementation.
 
@@ -176,7 +222,7 @@ python tools/build_public_validation_corpus.py \
   --output artifacts/finco-public-validation-corpus.json
 ```
 
-FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar is under active staged development. The verification layer, Run Certificates, and Verified Assets V1 are implemented off-chain. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Blockchain anchoring remains future work.
+FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-LIVE V2 is live with a reviewed 8-asset surface. Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, Verified Assets V1, API v1.1, and MCP V1 are implemented. The $FINCO token is not yet launched. Blockchain anchoring remains future work.
 
 ## Safety boundaries
 
@@ -200,4 +246,12 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 ## Status
 
-Sanitized corporate codebase under active development and prepared for controlled public release. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released). Run Certificates, Verified Assets V1 (currently MODEL_ONLY), synthetic reference validation, dependency security, staged Radar intelligence through execution simulation, and deterministic off-chain Protocol verification are active. The protocol access and service-entitlement layer is implemented; the $FINCO token is not yet launched. Public deployment, final public-readiness controls, live token launch, and blockchain anchoring remain roadmap functionality.
+Sanitized corporate codebase under active development and prepared for controlled public release.
+
+**Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented and vertically validated modelling workflow (A3.1 complete). EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
+
+**Radar / R-LIVE:** R-LIVE V2 is live — registry-driven 8-asset reviewed surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD) on Robinhood Chain with 300-second freshness gate, USDG/USD Chainlink conversion, and public read-only API. Global Radar lands on R-LIVE.
+
+**Protocol:** Signed Run Certificate V1 (Ed25519) is live. Model Trust Pack UX V1 (7-section read-only evidence surface) is live. Verified Assets V1 (currently MODEL_ONLY) are active. API v1.1 institutional surface and MCP V1 read-only agent interface are live.
+
+**Token / Access:** B2.2 token entitlement and B2.3 usage metering are implemented. The $FINCO token is not yet launched. Public deployment, live token launch, and blockchain anchoring remain roadmap functionality.

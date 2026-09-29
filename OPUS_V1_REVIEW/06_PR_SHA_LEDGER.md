@@ -1,10 +1,55 @@
 # FINCO V1 — PR / SHA Ledger
 
 All entries verified from `git log origin/main` at final live main SHA
-`8cd58ad8f50108bbe9931751a4ef8d5b3feef797`.
+`9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
 
 Merge SHAs are the SHA on `main` after merge. Entries are newest-first within
 each stream.
+
+---
+
+## R-LIVE V2 Product Shell (PR #137)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #137 | R-LIVE V2 product shell — registry-driven 8-asset surface, canonical history parity, public API wiring, UX shell | `9adf751cf3cb9fd087f99b433843cf8bdd9a7807` | MERGED |
+
+Evidence: 504 R-LIVE shell tests, 238 public-routes tests, 459 history-contract tests; 4/4 CI SUCCESS.
+Changed files (28): `app/api/v1_1/r_live_public_router.py`, `app/radar_ui/r_live_router.py`,
+`app/radar_ui/router.py`, templates, tests.
+Frozen namespaces: ZERO DIFF.
+
+---
+
+## R-LIVE V2 Multi-Asset Authority (PR #136)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #136 | R-LIVE V2 multi-asset authority — reviewed admission (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD); freshness gate | `29afcf4b6046eb2f93ede30b2bab50f36b6cd697` | MERGED |
+
+Approved assets (8): AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD.
+Rejected assets (4): MSFT (1 Swap), META (0 Swaps), ORCL (no USDG pool), PLTR (1 Swap).
+300-second freshness gate enforced. STALE/UNAVAILABLE suppress numeric output.
+
+---
+
+## B2.3 Concurrent Idempotency Fix (PR #135)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #135 | fix(usage): B2.3 SQLite concurrent idempotency — lock-safe duplicate delivery | `d713366fd5d3b4f9af6b54da8ccd5ecd7abc5c2b` | MERGED |
+
+Corrects: concurrent duplicate delivery no longer raises lock error to caller.
+Invariant: `(subject_id, feature_key, idempotency_key)` unique constraint enforced
+with no caller-visible error on duplicate. Exactly one event persisted.
+
+---
+
+## Opus Handoff Pack V1 (PR #131)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #131 | docs: FINCO V1 Opus clean-room handoff pack — final rebuild on main 8cd58ad | `1e86d61` | MERGED |
 
 ---
 
@@ -171,6 +216,6 @@ implementation is in `app/services/run_certificate_service.py` (PR #132).
 - PRs merged as direct commits to main appear as regular commit SHAs.
 - Inspect with:
   ```bash
-  git log 8cd58ad8 --oneline
-  git log 8cd58ad8 --oneline --merges
+  git log 9adf751 --oneline
+  git log 9adf751 --oneline --merges
   ```

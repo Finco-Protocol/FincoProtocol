@@ -39,9 +39,28 @@ the Model vertical list.
 | Radar B1.1 — BNB RWA market intelligence | LIVE | `finco_radar/`, `app/radar_rwa/` |
 | Radar B1.2 — Cross-chain canonical identity | LIVE | `finco_radar/authority/cross_chain.py` |
 | Radar B1.3 — BNB premium, execution gap, exact-identity history | LIVE | `finco_radar/` |
-| R-LIVE — AAPL on-chain reference (Robinhood chain 4663) | LIVE | `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
-| R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer |
-| R-LIVE operational collector package (PR #127) | LIVE | External systemd operational package; requires deployment configuration |
+| R-LIVE V2 — 8-asset registry (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD) | LIVE | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
+| R-LIVE V2 public API (3 read-only routes) | LIVE | `app/api/v1_1/r_live_public_router.py`; unauthenticated; exact canonical_id only |
+| R-LIVE V2 UX shell — landing table + per-asset detail | LIVE | `app/radar_ui/r_live_router.py`; `/radar/r-live`, `/radar/r-live/{canonical_id}` |
+| R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer; read paths write zero history |
+| R-LIVE operational collector package (PR #127) | LIVE | External systemd operational package; requires ROBINHOOD_RPC_URL and deployment configuration |
+
+**R-LIVE V2 public API routes (exact):**
+- `GET /api/v1.1/radar/r-live/assets` — list approved identities (no auth required)
+- `GET /api/v1.1/radar/r-live/{canonical_id}` — current reference for exact identity
+- `GET /api/v1.1/radar/r-live/{canonical_id}/history` — historical evidence (read-only, zero writes)
+
+**R-LIVE identity semantics:** UID is the `canonical_id` from `APPROVED_RLIVE_ASSETS`
+(e.g. `4663:0xaf3d76f...`). No ticker/symbol/fuzzy lookup. Unapproved identity
+returns `UNAVAILABLE` / `ASSET_NOT_IN_REGISTRY`.
+
+**R-LIVE critical invariants:**
+- 300-second TWAP freshness gate; no Swap in window → STALE
+- USDG/USD conversion from canonical Chainlink oracle (never assumed 1:1)
+- STALE and UNAVAILABLE suppress current numeric observations
+- Read paths perform zero history writes; collector is sole writer
+- Reference is indicative and non-executable; does NOT create FINCO VERIFIED status
+- Approved pool at review time ≠ guarantee of current AVAILABLE observation
 
 ## Distribution
 

@@ -1,0 +1,69 @@
+{
+  "repository": "Finco-Protocol/FincoProtocol",
+  "product_base_sha": "9adf751cf3cb9fd087f99b433843cf8bdd9a7807",
+  "product_base_description": "Merge pull request #137 — R-LIVE V2 product shell (registry-driven, canonical history parity, public API wiring)",
+  "docs_pr_head_sha": null,
+  "docs_pr_number": null,
+  "final_live_main_sha": null,
+  "review_package_version": "post-pr137-v1",
+  "generated_at_utc": "2026-09-29T00:00:00Z",
+  "required_live_verification": true,
+  "note": "docs_pr_head_sha and docs_pr_number will be filled after the docs PR is created. final_live_main_sha must be confirmed after docs PR merge before sending to clean-room reviewer.",
+  "supported_today": {
+    "model_verticals": {
+      "Solar": "LIVE",
+      "Wind": "LIVE",
+      "Data Center": "LIVE",
+      "EV Charging": "LIVE",
+      "Storage": "PREVIEW"
+    },
+    "radar": {
+      "R-LIVE V2": "LIVE",
+      "BNB RWA B1.1": "LIVE",
+      "BNB Cross-Chain Identity B1.2": "LIVE",
+      "BNB Premium/History B1.3": "LIVE"
+    },
+    "distribution": {
+      "API v1": "LIVE",
+      "API v1.1": "LIVE",
+      "MCP V1": "LIVE"
+    },
+    "protocol": {
+      "Signed Run Certificate V1 (Ed25519)": "LIVE",
+      "Model Trust Pack UX V1": "LIVE",
+      "FINCO VERIFY B2.1": "LIVE",
+      "B2.2 Token Entitlement": "LIVE",
+      "B2.3 Usage Metering": "LIVE"
+    }
+  },
+  "key_capabilities_post_pr137": [
+    "R-LIVE V2 registry-driven 8-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD)",
+    "R-LIVE public API: GET /api/v1.1/radar/r-live/assets, /r-live/{uid}, /r-live/{uid}/history",
+    "R-LIVE UX shell: /radar/r-live landing, /radar/r-live/{canonical_id} detail",
+    "/radar redirects to /radar/r-live (R-LIVE is default Radar domain)",
+    "300-second TWAP freshness gate; STALE != UNAVAILABLE != empty",
+    "B2.3 concurrent duplicate delivery fix (PR #135): lock-safe, exactly one event"
+  ],
+  "reviewer_zip_instructions": {
+    "target_sha": "CONFIRM AFTER DOCS PR MERGE",
+    "expected_filename": "FincoProtocol_FINAL_<SHORT_FINAL_MAIN_SHA>.zip",
+    "exclude": [
+      ".git/",
+      ".venv/",
+      "venv/",
+      "__pycache__/",
+      ".pytest_cache/",
+      "node_modules/",
+      "*.db",
+      "*.sqlite",
+      ".env",
+      ".env.*",
+      "secrets",
+      "credentials",
+      "artifacts/",
+      "htmlcov/"
+    ],
+    "include": "source, tests, docs, OPUS_V1_REVIEW, README.md",
+    "root_metadata_file": "REVIEW_SNAPSHOT.json"
+  }
+}

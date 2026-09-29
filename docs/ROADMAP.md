@@ -1,10 +1,15 @@
 # FINCO Protocol Roadmap
 
-FINCO is being developed as deterministic infrastructure for **RWA modelling, market intelligence, and verification**.
+FINCO is being developed as deterministic infrastructure for **RWA modelling,
+market intelligence, and verification**.
 
-The modelling strategy is vertical: begin with a deeply modelled infrastructure category, preserve a common financial / verification core, then add asset-specific operating modules without duplicating the underlying engine.
+The modelling strategy is vertical: begin with a deeply modelled infrastructure
+category, preserve a common financial / verification core, then add asset-specific
+operating modules without duplicating the underlying engine.
 
-## Now
+---
+
+## SHIPPED
 
 ### FINCO Model — RWA infrastructure modelling
 
@@ -14,10 +19,9 @@ Current production modelling verticals:
 - **Wind** — mature production modelling workflow
 - **Data Center** — implemented and vertically validated modelling workflow (A3.1)
 - **EV Charging** — implemented modelling workflow (A3.2, P0.3 canonical reference)
+- **Storage** — PREVIEW (reference viewable; working-copy runtime not released)
 
-Storage is available as a reference model (viewable) but its working-copy runtime is not yet released.
-
-Current shared engine capabilities include:
+Shared engine capabilities shipped:
 
 - physical and operating assumptions,
 - production and revenue structures,
@@ -33,25 +37,87 @@ Current shared engine capabilities include:
 - project / equity / sponsor returns,
 - scenarios, sensitivities, reporting, and controlled exports.
 
-### FINCO Radar
+Institutional output capabilities:
 
-Crypto and tokenized-asset intelligence covering staged asset identity, execution quotes, GAP analysis, liquidity, evidence, terminal surfaces, and execution simulation.
+- Canonical Last Run (committed, immutable snapshot)
+- Institutional XLSX Export (P1.2) — reads committed Last Run only
+- MODEL VALIDATION (P1.3) — reference reconciliation and tolerance checks
+- EV Institutional Reconciliation (P1.4)
+- Institutional Trust Pack (P1.1) — methodology HTML, DSCR, XIRR ACT/365F
 
-### FINCO Protocol
+### Signed Run Certificate V1 (PR #132)
 
-Deterministic off-chain evidence verification with content-addressed outputs and a future path to cryptographic / on-chain anchoring.
+Ed25519 asymmetric signed certificate issued from committed Last Run only.
+Requires `FINCO_RUN_CERT_SIGNING_KEY`. Fails closed without it. Third-party
+verifiable. Proves computational integrity — not economic truth.
 
-## Next
+### Model Trust Pack UX V1 (PR #133)
 
-### Expand the renewable module
+Seven-section read-only evidence surface in the V2 workbook. Zero engine calls
+at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run.
+
+### Radar / R-LIVE
+
+- **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical
+  identity, premium/execution gap, exact-identity history
+- **R-LIVE V2** (PR #136 / #137) — registry-driven 8-asset on-chain reference
+  surface: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD. 300-second freshness
+  gate. USDG/USD Chainlink conversion. Public API. UX shell. `/radar` → `/radar/r-live`.
+  Exact canonical identity only; no ticker/fuzzy lookup.
+
+### API / MCP
+
+- **API v1.1** (PR #125) — thin read-only institutional surface over canonical authorities
+- **MCP V1** (PR #129) — read-only institutional agent interface (9 tools; signed session identity)
+- **R-LIVE public API** (PR #137) — 3 unauthenticated read-only routes
+
+### Token / Access / Metering
+
+- **B2.1 FINCO Verify** — fail-closed Verified provenance gate and dossier entitlement
+- **B2.2 Token Entitlement** — fail-closed FINCO token entitlement for Verified dossiers
+- **B2.3 Usage Metering** (PR #128, #135) — append-only off-chain ledger; subject-scoped
+  idempotency; concurrent duplicate fix (PR #135)
+
+### Documentation / Release Integrity
+
+- V1 Product Truth Freeze (PR #130)
+- Opus Handoff Pack V1 (PR #131)
+- Post-PR137 Product Truth Refresh (this PR)
+
+---
+
+## CURRENT / OPERATIONALIZATION
+
+These capabilities are implemented but require operational configuration for
+production data to flow:
+
+- **R-LIVE production collector** — requires `ROBINHOOD_RPC_URL` + systemd
+  collector activated on a VPS to accumulate live history
+- **Signed Run Certificate** — requires `FINCO_RUN_CERT_SIGNING_KEY` in
+  deployment configuration
+- **MCP V1** — requires `FINCO_SESSION_TOKEN` deployment configuration;
+  server-session isolation review for multi-user shared deployments
+- **B2.3 metering coverage** — MCP tool-call hook wiring not confirmed for
+  all production traffic paths
+- **Final documentation / product truth** — this PR
+- **Final release integrity audit** — pending
+
+---
+
+## NEXT
+
+- **Clean-room Opus review** — independent security and authority review from
+  this docs PR snapshot
+- **Corrections from independent review** — apply findings
+
+### Expand the model
 
 - richer merchant and contracted revenue structures,
 - additional storage / hybrid-asset logic,
 - portfolio-level renewable analysis,
-- broader scenario and sensitivity tooling,
-- asset-level verification surfaces designed for RWA use cases.
+- broader scenario and sensitivity tooling.
 
-### Add the first non-renewable RWA infrastructure modules
+### Add first non-renewable RWA infrastructure modules
 
 Priority candidates:
 
@@ -60,9 +126,8 @@ Priority candidates:
 - **Hospitality** — hotels and operating real-estate assets;
 - **Water infrastructure** — desalination, water treatment, wastewater.
 
-Note: Data Center and EV Charging are already implemented and live — they are no longer roadmap items.
-
-These modules should reuse the common financing, tax, cash-flow, financial-statement, return, and verification layers while adding vertical-specific operating assumptions.
+These modules reuse the common financing, tax, cash-flow, financial-statement,
+return, and verification layers while adding vertical-specific operating assumptions.
 
 ### Market and verification layers
 
@@ -73,7 +138,9 @@ These modules should reuse the common financing, tax, cash-flow, financial-state
 - model integrity / audit diagnostics,
 - portfolio intelligence.
 
-## Later
+---
+
+## LATER
 
 Additional infrastructure verticals may include:
 
@@ -93,6 +160,15 @@ Longer-term platform capabilities include:
 - global relative-value analysis,
 - autonomous model-maintenance agents.
 
+---
+
+## EXPERIMENTAL
+
+- **Jev / Reflex** (issue #119) — experimental shadow; explicitly NOT V1 scope;
+  not merged to main; not a supported capability.
+
+---
+
 ## Research
 
 - cryptographic proof-of-model and proof-of-valuation,
@@ -101,4 +177,5 @@ Longer-term platform capabilities include:
 - counterfactual market simulation,
 - autonomous capital-allocation research.
 
-Research items and future infrastructure verticals are exploratory roadmap targets and are not delivery commitments until separately implemented and validated.
+Research items and future infrastructure verticals are exploratory roadmap targets
+and are not delivery commitments until separately implemented and validated.
