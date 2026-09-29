@@ -9,15 +9,16 @@ existing canonical read services into one user-facing evidence surface:
   - FINCO VERIFY               → app.api.v1_1.institutional.get_verify_state
   - Institutional export       → app.api.v1_1.institutional.get_export_metadata
   - Methodology / conventions  → app.model_methodology_registry (existing text)
+  - Signed Run Certificate     → app.services.run_certificate_service (separate authority)
 
 Fail-closed: every section carries an explicit state (AVAILABLE / UNAVAILABLE).
 UNAVAILABLE is a first-class, intentionally-styled outcome — never an error and
 never a fake green check.  The model is never executed from Trust Pack
 rendering, and nothing here mutates state.
 
-A future "Run Certificate" row/action (Signed Run Certificate V1, separate
-stream) can be added as one more section entry in ``build_trust_pack`` — the
-section structure deliberately does not pre-announce or fake it.
+Authority separation: the Signed Run Certificate is a SEPARATE authority from
+FINCO VERIFY.  Certificate availability NEVER implies VERIFIED status and NEVER
+increases PRODUCTION_VERIFIED_ASSET_COUNT.
 """
 from __future__ import annotations
 
@@ -29,6 +30,12 @@ from app.api.v1_1.institutional import (
     STATE_UNAVAILABLE,
 )
 from app.verified.contracts import STATUS_DISPLAY
+from app.services.run_certificate_service import (
+    CertificateBuildUnavailable,
+    SigningKeyUnavailable,
+    issue_run_certificate,
+)
+from app.persistence.workspace_repository import get_workspace_state as _get_workspace_state
 
 # Core KPI rows in institutional display order.  (key in v1.1 kpis payload,
 # human label, formatter kind)
@@ -204,6 +211,72 @@ def _methodology_section(vertical_hint: str | None = None) -> dict[str, Any]:
     }
 
 
+_CERTIFICATE_AUTHORITY = (
+    "FINCO Signed Run Certificate V1 — app.services.run_certificate_service"
+)
+
+
+def build_certificate_fragment(user_id: str, project_id: str) -> dict[str, Any]:
+    """Build the on-demand Signed Run Certificate evidence fragment.
+
+    Called ONLY from the explicit user-triggered load endpoint — NEVER during
+    page rendering.  Signing never happens automatically on page load.
+
+    AUTHORITY SEPARATION: certificate proves provenance/integrity only.
+    It is NOT FINCO VERIFY and NEVER implies VERIFIED status.
+    TRUST_PACK_RENDER_DOES_NOT_SIGN
+    """
+    ws = _get_workspace_state(user_id, project_id)
+    if ws is None or not ws.any_run_committed:
+        return {
+            "state": STATE_UNAVAILABLE,
+            "reason": "COMMITTED_LAST_RUN_REQUIRED",
+            "not_verify": True,
+            "authority": _CERTIFICATE_AUTHORITY,
+        }
+    try:
+        cert = issue_run_certificate(ws)
+        return {
+            "state": STATE_AVAILABLE,
+            "schema_version": cert.get("certificate_schema_version"),
+            "issuer": cert.get("issuer"),
+            "issued_at": _fmt_datetime(cert.get("issued_at")),
+            "snapshot_id": cert.get("snapshot_id"),
+            "composite_hash": cert.get("composite_hash"),
+            "composite_hash_short": _short_hash(cert.get("composite_hash")),
+            "workbook_version": cert.get("workbook_version"),
+            "engine_version": cert.get("engine_version"),
+            "active_scenario_id": cert.get("active_scenario_id"),
+            "run_origin": cert.get("run_origin"),
+            "key_id": cert.get("key_id"),
+            "payload_digest": cert.get("payload_digest"),
+            "signature_algorithm": cert.get("signature_algorithm"),
+            "not_verify": True,
+            "authority": _CERTIFICATE_AUTHORITY,
+        }
+    except SigningKeyUnavailable as _exc:
+        return {
+            "state": STATE_UNAVAILABLE,
+            "reason": _exc.REASON,
+            "not_verify": True,
+            "authority": _CERTIFICATE_AUTHORITY,
+        }
+    except CertificateBuildUnavailable as _exc:
+        return {
+            "state": STATE_UNAVAILABLE,
+            "reason": _exc.REASON,
+            "not_verify": True,
+            "authority": _CERTIFICATE_AUTHORITY,
+        }
+    except Exception:
+        return {
+            "state": STATE_UNAVAILABLE,
+            "reason": "CERTIFICATE_UNAVAILABLE",
+            "not_verify": True,
+            "authority": _CERTIFICATE_AUTHORITY,
+        }
+
+
 def build_validation_fragment(user_id: str, project_id: str) -> dict[str, Any]:
     """Build the on-demand MODEL VALIDATION evidence fragment.
 
@@ -266,6 +339,20 @@ def build_trust_pack(
     # ── E. Institutional export metadata (action = existing V2 export) ──
     exp_state, export_meta = _v11.get_export_metadata(user_id, project_id)
 
+    # ── G. Signed Run Certificate (separate authority, DEFERRED — never signed
+    #        at render time, explicit user action required)
+    _can_defer_certificate = id_state == STATE_AVAILABLE and any_run_committed
+    certificate: dict[str, Any] = {
+        "state": "DEFERRED" if _can_defer_certificate else STATE_UNAVAILABLE,
+        "load_url": (
+            f"/v2/workbook/trust/certificate?project={project_code}"
+            if _can_defer_certificate
+            else None
+        ),
+        "not_verify": True,
+        "authority": _CERTIFICATE_AUTHORITY,
+    }
+
     overall = (
         STATE_AVAILABLE
         if (id_state == STATE_AVAILABLE and any_run_committed)
@@ -295,7 +382,8 @@ def build_trust_pack(
         "verify": verify_section,
         "export": _export_section(exp_state, export_meta),
         "methodology": _methodology_section(),
+        "certificate": certificate,
     }
 
 
-__all__ = ["build_trust_pack"]
+__all__ = ["build_trust_pack", "build_certificate_fragment", "build_validation_fragment"]

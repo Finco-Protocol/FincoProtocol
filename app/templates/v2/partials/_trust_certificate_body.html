@@ -1,0 +1,49 @@
+{# Signed Run Certificate evidence fragment — loaded on explicit user request only.
+   Context: trust_certificate (section dict from app.ui.trust_pack.build_certificate_fragment).
+   TRUST_PACK_RENDER_DOES_NOT_SIGN — signing never happens during page render. #}
+{% if trust_certificate.state == 'AVAILABLE' %}
+  <div class="v2-trust-grid" data-testid="trust-pack-certificate-body">
+    <span class="v2-trust-k">Schema</span>
+    <span class="v2-trust-v">{{ trust_certificate.schema_version or '—' }}</span>
+    <span class="v2-trust-k">Issuer</span>
+    <span class="v2-trust-v">{{ trust_certificate.issuer or '—' }}</span>
+    <span class="v2-trust-k">Issued at</span>
+    <span class="v2-trust-v">{{ trust_certificate.issued_at or '—' }}</span>
+    <span class="v2-trust-k">Snapshot ID</span>
+    <span class="v2-trust-v">{{ trust_certificate.snapshot_id or '—' }}</span>
+    <span class="v2-trust-k">Composite hash</span>
+    <span class="v2-trust-v" title="{{ trust_certificate.composite_hash }}">{{ trust_certificate.composite_hash_short or '—' }}</span>
+    <span class="v2-trust-k">Workbook version</span>
+    <span class="v2-trust-v">{{ trust_certificate.workbook_version or '—' }}</span>
+    {% if trust_certificate.engine_version %}
+      <span class="v2-trust-k">Engine version</span>
+      <span class="v2-trust-v">{{ trust_certificate.engine_version }}</span>
+    {% endif %}
+    {% if trust_certificate.active_scenario_id %}
+      <span class="v2-trust-k">Active scenario</span>
+      <span class="v2-trust-v">{{ trust_certificate.active_scenario_id }}</span>
+    {% endif %}
+    {% if trust_certificate.run_origin %}
+      <span class="v2-trust-k">Run origin</span>
+      <span class="v2-trust-v">{{ trust_certificate.run_origin }}</span>
+    {% endif %}
+    <span class="v2-trust-k">Signature algorithm</span>
+    <span class="v2-trust-v">{{ trust_certificate.signature_algorithm or '—' }}</span>
+    <span class="v2-trust-k">Key ID</span>
+    <span class="v2-trust-v">{{ trust_certificate.key_id or '—' }}</span>
+    <span class="v2-trust-k">Payload digest</span>
+    <span class="v2-trust-v">{{ trust_certificate.payload_digest or '—' }}</span>
+  </div>
+  <div class="v2-trust-note">Authority: {{ trust_certificate.authority }}.</div>
+{% else %}
+  <div class="v2-trust-note" data-testid="trust-pack-certificate-fragment-unavailable">
+    <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+    {% if trust_certificate.reason == 'SIGNING_KEY_UNAVAILABLE' %}
+      Signing key not configured in this environment. Contact your administrator.
+    {% elif trust_certificate.reason %}
+      Certificate unavailable: {{ trust_certificate.reason }}.
+    {% else %}
+      Certificate could not be issued. Re-run the model and try again.
+    {% endif %}
+  </div>
+{% endif %}

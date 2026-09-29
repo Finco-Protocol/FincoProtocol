@@ -432,6 +432,185 @@ class TestTrustPackVerifyPresentation:
         # it must not carry the green verified class when state is UNAVAILABLE.
         assert 'data-verify-css-class="va-status--verified"' not in page.text
 
+    def test_trust_pack_partial_not_fully_verified(self, seeded_db):
+        """TRUST_PACK_PARTIAL_NOT_FULLY_VERIFIED
+
+        VERIFIED_MARKET_PARTIAL must produce va-status--partial (amber),
+        never va-status--verified (green).
+        """
+        from app.api.v1_1 import institutional as _v11
+        from app.ui.trust_pack import build_trust_pack
+        from app.verified.contracts import VerifiedAssetStatus
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-partial-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        with mock.patch.object(
+            _v11,
+            "get_verify_state",
+            return_value=(
+                "AVAILABLE",
+                {"status": VerifiedAssetStatus.VERIFIED_MARKET_PARTIAL, "asset_id": "test-asset"},
+            ),
+        ):
+            tp = build_trust_pack(
+                "tp-partial-user",
+                record.project_id,
+                project_code=record.project_code,
+                any_run_committed=True,
+            )
+
+        assert tp["verify"]["state"] == "AVAILABLE"
+        assert tp["verify"]["css_class"] == "va-status--partial"
+        assert tp["verify"]["css_class"] != "va-status--verified"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Signed Run Certificate — separate authority from FINCO VERIFY (Correction A2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTrustPackSignedRunCertificate:
+    def test_trust_pack_certificate_separate_from_verify(self, seeded_db):
+        """TRUST_PACK_CERTIFICATE_SEPARATE_FROM_VERIFY
+
+        The certificate section and the FINCO VERIFY section are distinct keys
+        in the Trust Pack dict and distinct sections in the rendered page.
+        Certificate state is independent of verify state.
+        """
+        from app.ui.trust_pack import build_trust_pack
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-cert-sep-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        tp = build_trust_pack(
+            "tp-cert-sep-user", record.project_id,
+            project_code=record.project_code, any_run_committed=True,
+        )
+        # Both sections exist as independent keys.
+        assert "certificate" in tp
+        assert "verify" in tp
+        # They are structurally separate authorities.
+        assert tp["certificate"]["not_verify"] is True
+        assert "not_verify" not in tp["verify"]
+        # Certificate is DEFERRED (not signed at render time).
+        assert tp["certificate"]["state"] == "DEFERRED"
+        assert tp["certificate"]["load_url"] is not None
+
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200
+        assert 'data-testid="trust-pack-certificate"' in page.text
+        assert 'data-testid="trust-pack-verify"' in page.text
+        assert 'data-testid="trust-pack-certificate-not-verify"' in page.text
+
+    def test_trust_pack_signing_never_implies_verified(self, seeded_db):
+        """TRUST_PACK_SIGNING_NEVER_IMPLIES_VERIFIED
+
+        Even when build_certificate_fragment succeeds (mocked to return a cert),
+        the Trust Pack verify section must never show va-status--verified.
+        Certificate AVAILABLE does not imply VERIFIED.
+        """
+        from app.api.v1_1 import institutional as _v11
+        from app.ui.trust_pack import build_certificate_fragment, build_trust_pack
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-cert-noverify-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        with mock.patch.object(
+            _v11,
+            "get_verify_state",
+            return_value=("AVAILABLE", {"status": "MODEL_ONLY", "asset_id": None}),
+        ):
+            tp = build_trust_pack(
+                "tp-cert-noverify-user", record.project_id,
+                project_code=record.project_code, any_run_committed=True,
+            )
+
+        # Trust Pack itself never signs — certificate is DEFERRED.
+        assert tp["certificate"]["state"] == "DEFERRED"
+        # Verify status is MODEL_ONLY — certificate cannot promote it.
+        assert tp["verify"]["css_class"] != "va-status--verified"
+        assert tp["verify"]["css_class"] == "va-status--model-only"
+
+    def test_trust_pack_certificate_reuses_signed_run_authority(self, seeded_db):
+        """TRUST_PACK_CERTIFICATE_REUSES_SIGNED_RUN_AUTHORITY
+
+        build_certificate_fragment delegates to app.services.run_certificate_service.
+        The authority string confirms this, and fail-closed behaviour (no signing
+        key configured) returns UNAVAILABLE with the typed reason.
+        """
+        from app.ui.trust_pack import build_certificate_fragment
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-cert-auth-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        frag = build_certificate_fragment("tp-cert-auth-user", record.project_id)
+        # The authority string names the canonical Signed Run Certificate service.
+        assert "run_certificate_service" in frag["authority"]
+        # Fail-closed: without a signing key, cert is UNAVAILABLE (not an error).
+        assert frag["state"] == "UNAVAILABLE"
+        assert frag["reason"] == "SIGNING_KEY_UNAVAILABLE"
+
+    def test_trust_pack_certificate_unavailable_fails_closed(self, seeded_db):
+        """TRUST_PACK_CERTIFICATE_UNAVAILABLE_FAILS_CLOSED
+
+        When no committed run exists, the certificate section is UNAVAILABLE
+        (not DEFERRED, not an error state with raw exception text).
+        The rendered page shows the intentional UNAVAILABLE chip.
+        """
+        from app.ui.trust_pack import build_trust_pack
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-cert-fc-user", "generic_solar_reference", 64.0
+        )
+        # No run committed.
+        tp = build_trust_pack(
+            "tp-cert-fc-user", record.project_id,
+            project_code=record.project_code, any_run_committed=False,
+        )
+        assert tp["certificate"]["state"] == "UNAVAILABLE"
+        assert tp["certificate"]["load_url"] is None
+
+        page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
+        assert page.status_code == 200
+        assert 'data-testid="trust-pack-certificate-unavailable"' in page.text
+        # No sign button when unavailable.
+        assert 'data-testid="trust-pack-certificate-load"' not in page.text
+
+    def test_trust_pack_render_does_not_sign(self, seeded_db):
+        """TRUST_PACK_RENDER_DOES_NOT_SIGN
+
+        Rendering the Trust Pack (page load) must NOT call issue_run_certificate.
+        Signing only happens when the user explicitly loads the certificate fragment.
+        """
+        from app.ui import trust_pack as tp_module
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-cert-nosign-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        sign_calls: list = []
+
+        def _no_sign(*args, **kwargs):
+            sign_calls.append((args, kwargs))
+            raise AssertionError("issue_run_certificate must not be called at render time")
+
+        with mock.patch.object(tp_module, "issue_run_certificate", side_effect=_no_sign):
+            page = client.get(
+                f"/v2/workbook?project={record.project_code}", cookies=cookies
+            )
+        assert page.status_code == 200
+        assert sign_calls == [], "issue_run_certificate was called during page render"
+        assert 'data-testid="trust-pack-certificate"' in page.text
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # No new financial math
@@ -504,7 +683,7 @@ class TestTrustPackBrowserAcceptance:
                 # local dev falls back to the default playwright install.
                 import os as _os
 
-                _launch_kwargs = {"args": ["--no-sandbox"]}
+                _launch_kwargs: dict = {"args": ["--no-sandbox"]}
                 if _os.path.exists("/opt/pw-browsers/chromium"):
                     _launch_kwargs["executable_path"] = "/opt/pw-browsers/chromium"
                 browser = pw.chromium.launch(**_launch_kwargs)
@@ -531,6 +710,7 @@ class TestTrustPackBrowserAcceptance:
                     "trust-pack-verify",
                     "trust-pack-export-form",
                     "trust-pack-methodology",
+                    "trust-pack-certificate",
                 ):
                     assert panel.locator(f'[data-testid="{marker}"]').count() == 1, marker
 
@@ -538,11 +718,20 @@ class TestTrustPackBrowserAcceptance:
                 assert "MODEL VALIDATION" in body
                 assert "FINCO VERIFY" in body
                 assert "never implies" in body
+                assert "NOT FINCO VERIFY" in body
 
                 overflow = page.evaluate(
                     "document.documentElement.scrollWidth - document.documentElement.clientWidth"
                 )
-                assert overflow <= 1, f"horizontal overflow {overflow}px"
+                assert overflow <= 1, f"horizontal overflow {overflow}px — desktop"
+
+                # Narrow/mobile viewport check.
+                page.set_viewport_size({"width": 390, "height": 844})
+                overflow_narrow = page.evaluate(
+                    "document.documentElement.scrollWidth - document.documentElement.clientWidth"
+                )
+                assert overflow_narrow <= 1, f"horizontal overflow {overflow_narrow}px — narrow"
+
                 browser.close()
         finally:
             server.should_exit = True

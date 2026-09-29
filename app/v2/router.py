@@ -2597,6 +2597,32 @@ async def v2_workbook_export(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+@router.get("/workbook/trust/certificate")
+async def v2_trust_certificate_fragment(request: Request, project: str):
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth required"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.ui.trust_pack import build_certificate_fragment
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(
+            content="<div class=\"v2-trust-note\">Project not found.</div>",
+            status_code=404,
+        )
+    try:
+        section = build_certificate_fragment(workspace_owner, project_record.project_id)
+    except Exception:
+        section = {"state": "UNAVAILABLE", "reason": "CERTIFICATE_UNAVAILABLE", "not_verify": True}
+    return _templates.TemplateResponse(
+        request=request,
+        name="partials/_trust_certificate_body.html",
+        context={"trust_certificate": section},
+    )
+
+
 @router.get("/workbook/trust/validation")
 async def v2_trust_validation_fragment(request: Request, project: str):
     user = _get_current_user(request)
