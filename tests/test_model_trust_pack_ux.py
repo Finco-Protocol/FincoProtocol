@@ -315,6 +315,123 @@ class TestTrustPackLabelsAndFailClosed:
         assert tp["verify"]["state"] == "UNAVAILABLE"
         assert tp["export"]["state"] == "UNAVAILABLE"
 
+    def test_trust_pack_global_failure_no_actionable_deferred_state(self, seeded_db):
+        """TRUST_PACK_GLOBAL_FAILURE_NO_ACTIONABLE_DEFERRED_STATE
+
+        When overall state is UNAVAILABLE (no committed Last Run),
+        MODEL VALIDATION must not remain DEFERRED with an actionable
+        load URL — it must be UNAVAILABLE too.
+        """
+        from app.ui.trust_pack import build_trust_pack
+
+        tp = build_trust_pack(
+            "tp-ghost3-user", "nonexistent-project-id",
+            project_code="nonexistent", any_run_committed=False,
+        )
+        assert tp["overall_state"] == "UNAVAILABLE"
+        # Validation must not be DEFERRED when no Last Run exists.
+        assert tp["validation"]["state"] != "DEFERRED", (
+            "MODEL VALIDATION must not be DEFERRED with an actionable load URL "
+            "when the overall Trust Pack state is UNAVAILABLE"
+        )
+        assert tp["validation"]["state"] == "UNAVAILABLE"
+        # No actionable load URL should be present.
+        assert tp["validation"].get("load_url") is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Verify presentation — canonical va-status--* CSS classes
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTrustPackVerifyPresentation:
+    def test_trust_pack_verified_style_only_for_verified(self, seeded_db):
+        """TRUST_PACK_VERIFIED_STYLE_ONLY_FOR_VERIFIED
+
+        When FINCO VERIFY status is VERIFIED, build_trust_pack returns
+        css_class 'va-status--verified'.  No other status may produce
+        that class.
+        """
+        from app.api.v1_1 import institutional as _v11
+        from app.ui.trust_pack import build_trust_pack
+        from app.verified.contracts import VerifiedAssetStatus
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-vss-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        with mock.patch.object(
+            _v11,
+            "get_verify_state",
+            return_value=(
+                "AVAILABLE",
+                {"status": VerifiedAssetStatus.VERIFIED, "asset_id": "test-asset"},
+            ),
+        ):
+            tp = build_trust_pack(
+                "tp-vss-user",
+                record.project_id,
+                project_code=record.project_code,
+                any_run_committed=True,
+            )
+
+        assert tp["verify"]["state"] == "AVAILABLE"
+        assert tp["verify"]["css_class"] == "va-status--verified"
+
+    def test_trust_pack_model_only_not_green(self, seeded_db):
+        """TRUST_PACK_MODEL_ONLY_NOT_GREEN
+
+        MODEL_ONLY verify status must produce 'va-status--model-only',
+        never 'va-status--verified' (green).
+        """
+        from app.api.v1_1 import institutional as _v11
+        from app.ui.trust_pack import build_trust_pack
+        from app.verified.contracts import VerifiedAssetStatus
+
+        client, cookies, record = _make_client_and_copy(
+            "tp-mon-user", "generic_solar_reference", 64.0
+        )
+        _run_via_workbook(client, cookies, record)
+
+        with mock.patch.object(
+            _v11,
+            "get_verify_state",
+            return_value=(
+                "AVAILABLE",
+                {"status": VerifiedAssetStatus.MODEL_ONLY, "asset_id": None},
+            ),
+        ):
+            tp = build_trust_pack(
+                "tp-mon-user",
+                record.project_id,
+                project_code=record.project_code,
+                any_run_committed=True,
+            )
+
+        assert tp["verify"]["state"] == "AVAILABLE"
+        assert tp["verify"]["css_class"] == "va-status--model-only"
+        assert tp["verify"]["css_class"] != "va-status--verified"
+
+    def test_trust_pack_unavailable_not_green(self, seeded_db):
+        """TRUST_PACK_UNAVAILABLE_NOT_GREEN
+
+        When verify state is UNAVAILABLE, the rendered page must not
+        show the green va-status--verified chip.
+        """
+        client, cookies, record = _make_client_and_copy(
+            "tp-ung-user", "generic_solar_reference", 64.0
+        )
+        # No run committed → verify is UNAVAILABLE.
+        page = client.get(
+            f"/v2/workbook?project={record.project_code}", cookies=cookies
+        )
+        assert page.status_code == 200
+        # The fallback unavailable chip is shown, not an available-state chip.
+        assert 'data-testid="trust-pack-verify-unavailable"' in page.text
+        # The data-verify-css-class attribute is only rendered on AVAILABLE chips;
+        # it must not carry the green verified class when state is UNAVAILABLE.
+        assert 'data-verify-css-class="va-status--verified"' not in page.text
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # No new financial math
@@ -383,7 +500,10 @@ class TestTrustPackBrowserAcceptance:
             _run_via_workbook(client, cookies, record)
 
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(args=["--no-sandbox"])
+                browser = pw.chromium.launch(
+                    executable_path="/opt/pw-browsers/chromium",
+                    args=["--no-sandbox"],
+                )
                 page = browser.new_page(viewport={"width": 1280, "height": 1000})
                 page.context.add_cookies([{
                     "name": COOKIE_NAME,

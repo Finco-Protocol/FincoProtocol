@@ -245,9 +245,16 @@ def build_trust_pack(
     # rendering (render is side-effect-free).  The section renders as an
     # explicit on-demand load: the user clicks to fetch the evidence from the
     # same v1.1 authority (see /v2/workbook/trust/validation fragment).
+    # Fail-closed: DEFERRED is only valid when there is a committed Last Run.
+    # Without one, validation is UNAVAILABLE (no actionable load state).
+    _can_defer_validation = id_state == STATE_AVAILABLE and any_run_committed
     validation: dict[str, Any] = {
-        "state": "DEFERRED",
-        "load_url": f"/v2/workbook/trust/validation?project={project_code}",
+        "state": "DEFERRED" if _can_defer_validation else STATE_UNAVAILABLE,
+        "load_url": (
+            f"/v2/workbook/trust/validation?project={project_code}"
+            if _can_defer_validation
+            else None
+        ),
         "authority": "MODEL_VALIDATION — P1.3 vertical validation (app.model_validation)",
     }
 
@@ -284,7 +291,7 @@ def build_trust_pack(
             ),
         },
         "kpis": _kpi_section(kpi_state, kpis, identity),
-        "validation": _validation_section("DEFERRED", validation),
+        "validation": _validation_section(validation["state"], validation),
         "verify": verify_section,
         "export": _export_section(exp_state, export_meta),
         "methodology": _methodology_section(),

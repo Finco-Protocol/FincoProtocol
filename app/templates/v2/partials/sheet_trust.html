@@ -21,6 +21,14 @@
   .v2-trust-chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.04em; }
   .v2-trust-chip--available { background: #e8f1ec; color: #1e6b45; }
   .v2-trust-chip--unavailable { background: #eef0f3; color: #5b6470; border: 1px dashed #c3c9d1; }
+  /* Canonical verified-asset status chips (app.verified.contracts.STATUS_DISPLAY).
+     Only VERIFIED gets green; all other statuses are intentionally muted. */
+  .va-status--verified { background: #e8f1ec; color: #1e6b45; }
+  .va-status--partial { background: #fdf3e2; color: #8a5a00; }
+  .va-status--model-only, .va-status--market-only { background: #eef0f3; color: #5b6470; border: 1px dashed #c3c9d1; }
+  .va-status--stale { background: #fdf3e2; color: #8a5a00; }
+  .va-status--unavailable { background: #eef0f3; color: #5b6470; border: 1px dashed #c3c9d1; }
+  .va-status--mismatch { background: #fde8e8; color: #8a0000; }
   .v2-trust-chip--dirty { background: #fdf3e2; color: #8a5a00; }
   .v2-trust-note { font-size: 0.78rem; color: #5b6470; margin-top: 8px; }
   .v2-trust-kpis { width: 100%; border-collapse: collapse; margin-top: 8px; }
@@ -148,7 +156,7 @@
     <div class="v2-trust-title">FINCO VERIFY
       <small>separate authority — source-proven bindings only</small>
       {% if trust_pack.verify.state == 'AVAILABLE' %}
-        <span class="v2-trust-chip {{ 'v2-trust-chip--available' if trust_pack.verify.css_class == 'verified' else 'v2-trust-chip--unavailable' }}">{{ trust_pack.verify.label or trust_pack.verify.status }}</span>
+        <span class="v2-trust-chip {{ trust_pack.verify.css_class or 'va-status--unavailable' }}" data-verify-css-class="{{ trust_pack.verify.css_class }}">{{ trust_pack.verify.label or trust_pack.verify.status }}</span>
       {% else %}
         <span class="v2-trust-chip v2-trust-chip--unavailable" data-testid="trust-pack-verify-unavailable">UNAVAILABLE</span>
       {% endif %}
