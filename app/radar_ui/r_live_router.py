@@ -61,6 +61,7 @@ async def radar_r_live_landing(request: Request):
             "radar_domain": "rlive",
             "rows": _approved_rows(),
             "user": user,
+            "asset_version": getattr(request.app.state, "asset_version", "dev"),
         },
     )
 
@@ -101,5 +102,6 @@ async def radar_r_live_detail(request: Request, canonical_id_slug: str):
             "row": row,
             "methodology": methodology,
             "user": user,
+            "asset_version": getattr(request.app.state, "asset_version", "dev"),
         },
     )

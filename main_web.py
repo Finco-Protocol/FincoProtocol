@@ -165,6 +165,11 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# Canonical asset version exposed to every template engine (Correction A):
+# radar_ui owns an independent Jinja2Templates instance, so it cannot read
+# main_web.templates.env.globals; routers read it from request.app.state.
+app.state.asset_version = ASSET_VERSION
+
 # -- Model run concurrency limiter (P6.6) -------------------------------------
 # Bounds concurrent model runs to prevent resource exhaustion.
 #
