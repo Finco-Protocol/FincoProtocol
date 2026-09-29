@@ -44,11 +44,12 @@ def test_os_lock_nonoverlap_and_failure_semantics():
         "/usr/bin/flock -n -E 75 /var/lib/finco/radar/r-live-collector.lock ")
     assert service["StateDirectory"] == "finco/radar"
     assert service["Restart"] == "no"
-    assert service["TimeoutStartSec"] == "240"
+    assert service["TimeoutStartSec"] == "540"
     readme = (OPS / "README.md").read_text(encoding="utf-8")
     assert "exit **75**" in readme
-    assert "Exit **0**" in readme and "exit **1**" in readme
-    assert "missing or" in readme and "history persistence" in readme
+    assert "Batch exit **0**" in readme and "Exit **1**" in readme
+    assert "acquisition exception" in readme and "history initialization" in readme
+    assert "persistence or close failure" in readme
 
 
 def test_durable_shared_history_and_secret_safe_configuration():
@@ -80,3 +81,36 @@ def test_install_update_remove_and_health_instructions_present():
         "systemctl disable --now finco-r-live-collector.timer",
     ):
         assert instruction in readme
+
+
+def test_staging_collector_is_isolated_and_all_approved():
+    staging = OPS / "staging"
+    config = ConfigParser(interpolation=None)
+    assert config.read(staging / "finco-staging-r-live-collector.service", encoding="utf-8")
+    service = config["Service"]
+    timer = ConfigParser(interpolation=None)
+    assert timer.read(staging / "finco-staging-r-live-collector.timer", encoding="utf-8")
+    start = service["ExecStart"]
+    assert service["WorkingDirectory"] == "/opt/finco_staging"
+    assert service["EnvironmentFile"] == "/opt/finco_staging/.env.r-live-collector"
+    assert "python -m app.radar_rwa.r_live_collect" in start
+    assert "--asset-key" not in start
+    assert "/opt/finco_protocol" not in start and "/var/lib/finco/" not in start
+    assert service["ReadWritePaths"] == "/opt/finco_staging/storage"
+    assert not config.has_section("Install")
+    assert timer["Timer"]["Unit"] == "finco-staging-r-live-collector.service"
+    assert timer["Timer"]["OnCalendar"] == "*-*-* *:00/5:00"
+    env = (staging / "r-live-collector.staging.env.example").read_text(encoding="utf-8")
+    assert "ROBINHOOD_RPC_URL=\n" in env
+    assert "RADAR_BNB_INTELLIGENCE_DB_PATH=/opt/finco_staging/storage/radar_bnb_intelligence.db" in env
+    assert "0600" in env
+
+
+def test_web_and_collector_staging_templates_share_history_contract():
+    root = OPS.parents[1]
+    web = (root / "deploy" / "staging.env.example").read_text(encoding="utf-8")
+    collector = (OPS / "staging" / "r-live-collector.staging.env.example").read_text(encoding="utf-8")
+    path = "RADAR_BNB_INTELLIGENCE_DB_PATH=/opt/finco_staging/storage/radar_bnb_intelligence.db"
+    assert path in web and path in collector
+    assert "ROBINHOOD_RPC_URL=\n" in web and "ROBINHOOD_RPC_URL=\n" in collector
+    assert "same" in web.lower() and "same" in collector.lower()

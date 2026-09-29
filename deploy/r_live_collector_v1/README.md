@@ -1,11 +1,18 @@
-# R-LIVE collector operations V1 (prepared, not deployed)
+# R-LIVE V2 multi-asset collector operations (prepared, not deployed)
 
 This is an external scheduler for the already-merged, one-shot command
 `python -m app.radar_rwa.r_live_collect`. It does not change AssetKey, the
-reviewed AAPL/USDG V3 pool, 300-second TWAP, Chainlink USDG/USD, B1.0 premium,
+reviewed per-asset USDG V3 pools, 300-second TWAP, Chainlink USDG/USD, B1.0 premium,
 or the existing B1.3 append-only ledger. No web-process loop, wallet, trade,
 or signing service is added. **Do not install or enable this timer as part of
 the PR.** Deployment requires separate approval and a verified target host.
+
+With no `--asset-key`, the command serially collects every policy in the
+canonical `APPROVED_BY_CANONICAL_ID` registry, using one B1.3 store. Each
+approved identity gets an independent AVAILABLE/STALE/UNAVAILABLE result;
+one unavailable market does not suppress the others. An explicit
+`--asset-key 4663:<exact approved contract>` restricts a manual diagnostic
+to one asset. Symbols are display metadata, never a CLI identity selector.
 
 ## Host prerequisites and configuration
 
@@ -38,7 +45,9 @@ The default is a wall-clock five-minute grid (`*:00/5:00`) with
 `AccuracySec=1s` and zero randomized delay. The 300-second TWAP remains a
 price-authority window, **not** a collection-cadence override. `Persistent=true`
 causes one catch-up activation after timer downtime, not a replay of every
-missed interval. The service is one-shot and has a 240-second start timeout;
+missed interval. The service is one-shot and has a 540-second start timeout
+for bounded serial acquisition of the reviewed registry; a slow run may skip
+the next five-minute tick rather than overlap;
 `Restart=no` leaves a failed run visible and the next timer tick attempts again.
 
 Five-minute sampling has effectively **zero margin** for #119's experimental
@@ -66,11 +75,18 @@ collector run. Lock contention exits **75** and writes no history. Do not
 launch the Python module directly from a second scheduler outside this lock.
 SQLite B1.3 evidence digest/idempotency remains the authority for retries.
 
-The collector writes one credential-free JSON status line to stdout, captured
-by journald. Exit **0** means AVAILABLE premium evidence was durably appended
-or deduplicated; exit **1** means a typed STALE/UNAVAILABLE result, missing or
-failed RPC, or unavailable history persistence. No STALE/UNAVAILABLE numeric
-premium is appended. `flock` exit **75** means overlapping execution was
+The collector writes one credential-free JSON batch status line to stdout,
+captured by journald. Batch exit **0** means the approved registry was fully
+attempted without an operational/runtime failure; individual canonical markets
+may legitimately be AVAILABLE, STALE or UNAVAILABLE. Exit **1** means a
+process/configuration defect, including missing RPC configuration, a failed
+read-only Robinhood Chain 4663 RPC preflight, an acquisition exception, registry
+failure, or history initialization, persistence or close failure. An exception
+does not stop attempts for the remaining approved assets; the JSON reports a
+typed `process_error` without exception text or credentials. In explicit one-asset
+diagnostic mode, exit **0** still requires
+AVAILABLE and exit **1** reports a typed non-available result. No
+STALE/UNAVAILABLE numeric premium is appended. `flock` exit **75** means overlapping execution was
 rejected; systemd timeout/failure uses its own nonzero status. `Restart=no`
 avoids immediate retry storms; alert on repeated failed units or a missing
 recent AVAILABLE point. Do not enable shell tracing, log the environment file,
@@ -97,6 +113,10 @@ does not depend on this unit and remains available if collection fails.
    `sudo systemctl enable --now finco-r-live-collector.timer`. Inspect
    `systemctl list-timers finco-r-live-collector.timer --all` and
    `systemctl status finco-r-live-collector.timer --no-pager`.
+
+The separate staging-ready unit/env templates and host preflight are in
+[`staging/README.md`](staging/README.md); do not install these production-path
+units on staging.
 
 For an update, keep the same DB and private environment file, replace reviewed
 unit files, run `systemd-analyze verify`, `systemctl daemon-reload`, then

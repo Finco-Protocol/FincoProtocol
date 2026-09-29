@@ -1,5 +1,5 @@
 [Unit]
-Description=FINCO R-LIVE one-shot AAPL premium collection
+Description=FINCO R-LIVE one-shot all-approved-asset premium collection
 Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/r_live_collector_v1/README.md
 Wants=network-online.target
 After=network-online.target
@@ -15,7 +15,7 @@ StateDirectory=finco/radar
 StateDirectoryMode=0750
 UMask=0077
 ExecStart=/usr/bin/flock -n -E 75 /var/lib/finco/radar/r-live-collector.lock /opt/finco_protocol/.venv/bin/python -m app.radar_rwa.r_live_collect
-TimeoutStartSec=240
+TimeoutStartSec=540
 Restart=no
 StandardOutput=journal
 StandardError=journal
