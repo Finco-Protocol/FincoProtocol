@@ -23,7 +23,8 @@ from finco_radar.assets.contracts import AssetKey
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.gap.engine import build_bound_reference_price
 
-from .bnb_history import BnbIntelligenceHistoryStore, make_r_live_history_point, read_r_live_points_readonly
+from .bnb_history import (BnbIntelligenceHistoryStore, make_r_live_history_point,
+                          read_r_live_points_readonly, read_r_live_range_summary_readonly)
 
 
 R_LIVE_AUTHORITY_POLICY = AuthorityPolicy(
@@ -189,8 +190,56 @@ def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, d
             "reason": premium.reason,
         },
         "observed_at": onchain.observed_at.isoformat() if onchain.observed_at else None,
+        "freshness": _format_freshness(onchain.evidence),
     }
     return state, data
+
+
+def _format_freshness(evidence) -> dict:
+    """Presentation-only ages from canonical on-chain evidence timestamps.
+
+    Mirrors institutional._r_live_freshness; Market/Oracle ages are distinct.
+    """
+    fields = evidence if isinstance(evidence, dict) else dict(evidence or {})
+
+    def parsed(name: str) -> datetime | None:
+        raw = fields.get(name)
+        if not isinstance(raw, str):
+            return None
+        try:
+            value = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        return value.astimezone(timezone.utc) if (value.tzinfo and value.utcoffset() is not None) else None
+
+    retrieved = parsed("retrievedAt")
+
+    def age(name: str) -> int | None:
+        source = parsed(name)
+        if source is None or retrieved is None:
+            return None
+        seconds = (retrieved - source).total_seconds()
+        return int(seconds) if seconds >= 0 else None
+
+    return {
+        "market_activity_age_seconds": age("lastPoolActivityAt"),
+        "quote_feed_age_seconds": age("quoteUpdatedAt"),
+        "block_age_seconds": age("blockTimestamp"),
+        "last_pool_activity_at": fields.get("lastPoolActivityAt"),
+        "quote_updated_at": fields.get("quoteUpdatedAt"),
+        "block_timestamp": fields.get("blockTimestamp"),
+        "effective_evidence_at": fields.get("effectiveObservedAt"),
+        "retrieved_at": fields.get("retrievedAt"),
+    }
+
+
+def read_r_live_ranges(canonical_asset_id: str, *, as_of: datetime | None = None) -> dict:
+    """Read-only complete 1h/24h ranges for one exact approved AssetKey."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_asset_id)
+    if policy is None:
+        raise ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")
+    return read_r_live_range_summary_readonly(
+        policy.economic_asset_uid, policy.asset_key, as_of=as_of)
 
 
 def collect_r_live_batch(

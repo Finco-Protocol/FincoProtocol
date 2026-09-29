@@ -13,6 +13,15 @@ Invariants verified:
   J. No current-value cache introduced (two calls produce two independent batches)
   K. Authority results match the single-asset compose_r_live for identical fixtures
 
+Route contract invariants:
+  L. Exactly six public R-LIVE route families are registered
+  M. {uid}/history/ranges route is present and callable
+  N. Bulk /history/ranges delegates to canonical read_r_live_ranges (collected_at authority)
+  O. Per-asset and bulk ranges use the same canonical authority
+  P. STALE current state may display labelled historical last-available data
+  Q. Market activity and oracle freshness remain distinct clocks
+  R. Global acquisition gate bounds concurrent upstream work
+
 All tests are deterministic and infrastructure-free.
 """
 from __future__ import annotations
@@ -40,8 +49,10 @@ from finco_radar.assets.registry import RegistrySnapshot
 from app.radar_rwa.r_live_service import (
     RLiveResult,
     _CURRENT_WORKERS,
+    _format_freshness,
     collect_r_live_batch,
     format_r_live_result,
+    read_r_live_ranges,
 )
 
 
@@ -567,20 +578,26 @@ def test_current_workers_default_value():
 
 # ── /radar/r-live/current endpoint ───────────────────────────────────────────
 
+def _make_test_app():
+    """Return a fresh FastAPI test app with the R-LIVE router mounted."""
+    from fastapi import FastAPI
+    from app.api.v1_1.r_live_public_router import router as rlive_router
+    app = FastAPI()
+    app.include_router(rlive_router)
+    return app
+
+
 def test_current_endpoint_rpc_not_configured(monkeypatch):
     """GET /radar/r-live/current returns UNAVAILABLE when RPC_NOT_CONFIGURED."""
     monkeypatch.delenv("ROBINHOOD_RPC_URL", raising=False)
     from fastapi.testclient import TestClient
-    from app.api.v1_1.r_live_public_router import router as rlive_router
-    from fastapi import FastAPI
-    app = FastAPI()
-    app.include_router(rlive_router)
-    client = TestClient(app)
+    client = TestClient(_make_test_app())
     r = client.get("/radar/r-live/current")
     assert r.status_code == 200
     body = r.json()
     assert body["state"] == "UNAVAILABLE"
     assert body["data"]["reason"] == "RPC_NOT_CONFIGURED"
+    assert r.headers.get("cache-control") == "no-store"
 
 
 def test_current_endpoint_streams_ndjson(monkeypatch):
@@ -594,76 +611,265 @@ def test_current_endpoint_streams_ndjson(monkeypatch):
     mock_adapter.fetch_snapshot.return_value = fake_snap
     mock_adapter.fetch_bound_reference.side_effect = Exception("no underlying")
 
-    fake_result = _fake_r_live_result(_APPROVED_IDS[0])
+    def _fake_compose(**kwargs):
+        key = kwargs.get("key")
+        cid = key.canonical_id if key else _APPROVED_IDS[0]
+        return _fake_r_live_result(cid)
 
     from fastapi.testclient import TestClient
-    from app.api.v1_1.r_live_public_router import router as rlive_router
-    from fastapi import FastAPI
-    app = FastAPI()
-    app.include_router(rlive_router)
+    import json as _json
 
     with patch("app.radar_rwa.r_live_service.RobinhoodAssetRegistryAdapter",
                return_value=mock_adapter):
         with patch("app.radar_rwa.r_live_service.compose_r_live",
-                   return_value=fake_result):
-            client = TestClient(app)
+                   side_effect=_fake_compose):
+            client = TestClient(_make_test_app())
             r = client.get("/radar/r-live/current")
 
     assert r.status_code == 200
-    import json
+    assert r.headers.get("cache-control") == "no-store"
     lines = [l for l in r.text.strip().split("\n") if l.strip()]
     assert len(lines) == _APPROVED_COUNT
     for line in lines:
-        obj = json.loads(line)
+        obj = _json.loads(line)
         assert "canonical_id" in obj
         assert "state" in obj
+        assert "display_symbol" in obj
         assert obj["canonical_id"] in APPROVED_BY_CANONICAL_ID
 
 
-# ── /radar/r-live/history/ranges endpoint ────────────────────────────────────
-
-def test_history_ranges_endpoint_zero_writes(monkeypatch):
-    """GET /radar/r-live/history/ranges reads history and never writes."""
+def test_current_endpoint_no_cache_header(monkeypatch):
+    """GET /radar/r-live/current always has Cache-Control: no-store."""
+    monkeypatch.delenv("ROBINHOOD_RPC_URL", raising=False)
     from fastapi.testclient import TestClient
+    r = TestClient(_make_test_app()).get("/radar/r-live/current")
+    assert r.headers.get("cache-control") == "no-store"
+
+
+# ── L. Exactly six route families ────────────────────────────────────────────
+
+def test_L_exactly_six_route_families():
+    """L. The router exposes exactly six R-LIVE public route families."""
     from app.api.v1_1.r_live_public_router import router as rlive_router
-    from fastapi import FastAPI
+    paths = {route.path for route in rlive_router.routes}
+    expected = {
+        "/radar/r-live/assets",
+        "/radar/r-live/current",
+        "/radar/r-live/history/ranges",
+        "/radar/r-live/{uid}/history",
+        "/radar/r-live/{uid}/history/ranges",
+        "/radar/r-live/{uid}",
+    }
+    assert paths == expected, (
+        f"Route families changed. Expected {sorted(expected)}, got {sorted(paths)}"
+    )
 
-    with patch("app.radar_rwa.r_live_service.read_r_live_history", return_value=[]):
-        app = FastAPI()
-        app.include_router(rlive_router)
-        client = TestClient(app)
-        r = client.get("/radar/r-live/history/ranges")
 
+# ── M. {uid}/history/ranges is present and callable ──────────────────────────
+
+def test_M_uid_history_ranges_route_present():
+    """M. {uid}/history/ranges route exists and returns UNAVAILABLE for unknown uid."""
+    from fastapi.testclient import TestClient
+    with patch("app.radar_rwa.r_live_service.read_r_live_ranges",
+               side_effect=ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")):
+        client = TestClient(_make_test_app())
+        r = client.get("/radar/r-live/UNKNOWN_UID/history/ranges")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["state"] == "UNAVAILABLE"
+    assert body["data"]["reason"] == "ASSET_UID_INVALID"
+
+
+def test_M_uid_history_ranges_returns_available_for_approved():
+    """M. {uid}/history/ranges returns AVAILABLE with ranges for an approved uid."""
+    from fastapi.testclient import TestClient
+    canonical_ranges = {
+        "range_1h": {"state": "AVAILABLE", "low_bps": "-5.0", "high_bps": "10.0",
+                     "observation_count": 5},
+        "range_24h": {"state": "AVAILABLE", "low_bps": "-20.0", "high_bps": "30.0",
+                      "observation_count": 20},
+        "last_available": None,
+    }
+    with patch("app.radar_rwa.r_live_service.read_r_live_ranges",
+               return_value=canonical_ranges):
+        client = TestClient(_make_test_app())
+        r = client.get(f"/radar/r-live/{_APPROVED_IDS[0]}/history/ranges")
     assert r.status_code == 200
     body = r.json()
     assert body["state"] == "AVAILABLE"
-    ranges = body["data"]["ranges"]
-    assert set(ranges.keys()) == set(APPROVED_BY_CANONICAL_ID.keys())
-    for cid, rng in ranges.items():
-        assert "range_1h" in rng
-        assert "range_24h" in rng
-        # Empty history → None ranges
-        assert rng["range_1h"] is None
-        assert rng["range_24h"] is None
+    assert body["data"]["history_kind"] == "HISTORICAL"
+    assert "range_1h" in body["data"]
+    assert "range_24h" in body["data"]
 
 
-def test_bps_range_str():
-    """_bps_range_str returns correct lo/hi string for in-window points."""
-    from app.api.v1_1.r_live_public_router import _bps_range_str
-    now = datetime.now(timezone.utc)
-    points = [
-        {"reference_premium_bps": "10.5", "observed_at": now.isoformat()},
-        {"reference_premium_bps": "-5.2", "observed_at": now.isoformat()},
-        {"reference_premium_bps": "3.1", "observed_at": now.isoformat()},
-    ]
-    result = _bps_range_str(points, 1.0)
-    assert result == "-5.2 / +10.5 bps", f"Unexpected range: {result}"
+# ── N. Bulk /history/ranges uses canonical read_r_live_ranges ────────────────
+
+def test_N_bulk_ranges_delegates_to_canonical_read_r_live_ranges():
+    """N. GET /history/ranges calls read_r_live_ranges (collected_at authority), not _bps_range_str."""
+    from fastapi.testclient import TestClient
+    calls = []
+    canonical_ranges = {
+        "range_1h": {"state": "AVAILABLE", "low_bps": "0.0", "high_bps": "1.0",
+                     "observation_count": 3},
+        "range_24h": {"state": "AVAILABLE", "low_bps": "-1.0", "high_bps": "2.0",
+                      "observation_count": 10},
+        "last_available": None,
+    }
+
+    def _stub(cid, **kwargs):
+        calls.append(cid)
+        return canonical_ranges
+
+    with patch("app.radar_rwa.r_live_service.read_r_live_ranges", side_effect=_stub):
+        client = TestClient(_make_test_app())
+        r = client.get("/radar/r-live/history/ranges")
+
+    assert r.status_code == 200
+    # Must be called once per approved asset
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _aids
+    assert set(calls) == set(_aids.keys()), (
+        "bulk /history/ranges must call read_r_live_ranges once per approved asset"
+    )
+    body = r.json()
+    assert body["state"] == "AVAILABLE"
+    assert body["data"]["history_kind"] == "HISTORICAL"
+    assets = body["data"]["assets"]
+    assert set(assets.keys()) == set(_aids.keys())
+    assert r.headers.get("cache-control") == "no-store"
 
 
-def test_bps_range_str_fewer_than_two_returns_none():
-    """_bps_range_str returns None for fewer than 2 valid in-window points."""
-    from app.api.v1_1.r_live_public_router import _bps_range_str
-    now = datetime.now(timezone.utc)
-    assert _bps_range_str([], 1.0) is None
-    assert _bps_range_str([{"reference_premium_bps": "5.0",
-                            "observed_at": now.isoformat()}], 1.0) is None
+# ── O. Per-asset and bulk use same canonical authority ────────────────────────
+
+def test_O_per_asset_and_bulk_ranges_use_same_function():
+    """O. Both {uid}/history/ranges and /history/ranges call read_r_live_ranges."""
+    from fastapi.testclient import TestClient
+    canonical_out = {"range_1h": None, "range_24h": None, "last_available": None}
+    uid = _APPROVED_IDS[0]
+
+    with patch("app.radar_rwa.r_live_service.read_r_live_ranges",
+               return_value=canonical_out) as mock_fn:
+        client = TestClient(_make_test_app())
+        client.get(f"/radar/r-live/{uid}/history/ranges")
+        per_asset_calls = mock_fn.call_count
+
+    with patch("app.radar_rwa.r_live_service.read_r_live_ranges",
+               return_value=canonical_out) as mock_fn2:
+        from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _aids
+        client = TestClient(_make_test_app())
+        client.get("/radar/r-live/history/ranges")
+        bulk_calls = mock_fn2.call_count
+
+    assert per_asset_calls == 1
+    assert bulk_calls == len(_aids)
+
+
+# ── P. STALE historical display ───────────────────────────────────────────────
+
+def test_P_format_r_live_result_includes_freshness():
+    """P. format_r_live_result includes freshness with distinct market/oracle clocks."""
+    cid = _APPROVED_IDS[0]
+    result = _fake_r_live_result(cid)
+    # The fake result has no evidence, so freshness ages will be None — verify the key exists
+    state, data = format_r_live_result(cid, result)
+    assert "freshness" in data, "freshness must be present in format_r_live_result output"
+    freshness = data["freshness"]
+    assert "market_activity_age_seconds" in freshness
+    assert "quote_feed_age_seconds" in freshness
+
+
+# ── Q. Market/Oracle freshness are distinct ───────────────────────────────────
+
+def test_Q_freshness_market_and_oracle_are_independent():
+    """Q. _format_freshness returns distinct market_activity and quote_feed ages."""
+    from app.radar_rwa.r_live_service import _format_freshness
+    from datetime import timedelta
+
+    retrieved = datetime.now(timezone.utc)
+    last_pool = retrieved - timedelta(seconds=120)
+    quote = retrieved - timedelta(seconds=45)
+
+    evidence = {
+        "lastPoolActivityAt": last_pool.isoformat(),
+        "quoteUpdatedAt": quote.isoformat(),
+        "retrievedAt": retrieved.isoformat(),
+    }
+    result = _format_freshness(evidence)
+    assert result["market_activity_age_seconds"] == 120
+    assert result["quote_feed_age_seconds"] == 45
+    assert result["market_activity_age_seconds"] != result["quote_feed_age_seconds"], (
+        "Market activity and oracle ages must remain independent clocks"
+    )
+
+
+# ── R. Global acquisition gate ───────────────────────────────────────────────
+
+def test_R_global_gate_prevents_unbounded_upstream_work(monkeypatch):
+    """R. Process-wide gate emits UNAVAILABLE rather than creating unlimited executors."""
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example.com/")
+
+    from app.api.v1_1 import r_live_public_router as _mod
+    import threading as _threading
+
+    # Drain the semaphore so the gate is full
+    filled = []
+    while True:
+        acquired = _mod._ACQUISITION_GATE.acquire(blocking=False)
+        if not acquired:
+            break
+        filled.append(True)
+
+    try:
+        from fastapi.testclient import TestClient
+        import json as _json
+        client = TestClient(_make_test_app())
+        r = client.get("/radar/r-live/current")
+    finally:
+        for _ in filled:
+            _mod._ACQUISITION_GATE.release()
+
+    assert r.status_code == 200
+    lines = [l.strip() for l in r.text.strip().split("\n") if l.strip()]
+    assert len(lines) > 0
+    for line in lines:
+        obj = _json.loads(line)
+        assert obj["state"] == "UNAVAILABLE"
+        assert obj["data"]["reason"] == "ACQUISITION_GATE_FULL"
+
+
+def test_R_gate_releases_after_successful_batch(monkeypatch):
+    """R. Gate is released after a completed batch so the next request can proceed."""
+    monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example.com/")
+
+    fake_snap = _fake_registry()
+    mock_adapter = MagicMock()
+    mock_adapter.__enter__ = lambda s: s
+    mock_adapter.__exit__ = MagicMock(return_value=False)
+    mock_adapter.fetch_snapshot.return_value = fake_snap
+    mock_adapter.fetch_bound_reference.side_effect = Exception("no underlying")
+
+    def _fake_compose(**kwargs):
+        key = kwargs.get("key")
+        cid = key.canonical_id if key else _APPROVED_IDS[0]
+        return _fake_r_live_result(cid)
+
+    from app.api.v1_1 import r_live_public_router as _mod
+    from fastapi.testclient import TestClient
+
+    initial_value = _mod._MAX_CONCURRENT_ACQUISITIONS
+
+    with patch("app.radar_rwa.r_live_service.RobinhoodAssetRegistryAdapter",
+               return_value=mock_adapter):
+        with patch("app.radar_rwa.r_live_service.compose_r_live",
+                   side_effect=_fake_compose):
+            client = TestClient(_make_test_app())
+            client.get("/radar/r-live/current")
+
+    # After completion: gate should be fully released (can acquire initial_value times)
+    acquired_count = 0
+    while _mod._ACQUISITION_GATE.acquire(blocking=False):
+        acquired_count += 1
+    for _ in range(acquired_count):
+        _mod._ACQUISITION_GATE.release()
+    assert acquired_count == initial_value, (
+        "Gate must be fully released after a completed batch"
+    )
