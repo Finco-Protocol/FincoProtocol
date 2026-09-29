@@ -478,6 +478,11 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
 
     _sources_uses = build_sources_and_uses(clean_run.g2c_result.financing_result)
     payload["sources_uses"] = {k: round(v, 6) for k, v in _asdict(_sources_uses).items()}
+    # H-4b: full-precision evidence recorded with the committed Last Run so integrity can
+    # be checked later without re-running the model.
+    from app.run_integrity import build_run_integrity_evidence
+
+    payload["integrity_evidence"] = build_run_integrity_evidence(clean_run)
     payload["kpis"]["total_project_uses_keur"] = payload["sources_uses"]["total_uses_keur"]
 
     # Phase B4: machine-readable clean production-authority lineage.

@@ -147,6 +147,11 @@ def export_metadata_out(ws: Any, project_record: Any) -> Dict[str, Any]:
     }
 
 
+def integrity_out(report: Any, ws: Any) -> Dict[str, Any]:
+    """Serialise a RunIntegrityReport (H-4b) bound to the committed Last Run identity."""
+    return {**report.to_dict(), "run_identity": run_identity_out(ws)}
+
+
 def validation_out(vr: Any) -> Dict[str, Any]:
     """Serialise ValidationResult to API evidence dict (for /validation endpoint)."""
     return {

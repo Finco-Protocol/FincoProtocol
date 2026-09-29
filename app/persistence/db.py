@@ -298,6 +298,8 @@ def _init_schema(conn):
     _ensure_column(conn, "workspace_states", "last_tax_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "last_distribution_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "last_sponsor_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
+    # H-4b: full-precision Run Integrity evidence recorded with the committed Last Run.
+    _ensure_column(conn, "workspace_states", "last_integrity_evidence_json", "TEXT NOT NULL DEFAULT '{}'")
     # Workbook V2 PR 7: SHA-256 of draft ProjectInputSet for atomic CAS edits.
     _ensure_column(conn, "workspace_states", "draft_content_hash", "TEXT")
     # R9/N03-CorrA: distinguish "never run" (0) from "Base run" (1, last_runtime_scenario_id=NULL)

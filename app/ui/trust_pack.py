@@ -279,6 +279,20 @@ def build_certificate_fragment(user_id: str, project_id: str) -> dict[str, Any]:
         }
 
 
+def _integrity_section(state: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    """Run Integrity Checks section: typed per-check results, never a market or asset claim."""
+    return {
+        "state": state,
+        "overall": evidence.get("overall"),
+        "counts": evidence.get("counts") or {},
+        "checks": list(evidence.get("checks") or []),
+        "authority": "RUN_INTEGRITY_CHECKS",
+        "scope": evidence.get("scope") or (
+            "Internal consistency of the committed Last Run only; not FINCO Verify, not the "
+            "Reference Regression Check, not a Signed Run."),
+    }
+
+
 def build_validation_fragment(user_id: str, project_id: str) -> dict[str, Any]:
     """Build the on-demand MODEL VALIDATION evidence fragment.
 
@@ -341,6 +355,13 @@ def build_trust_pack(
     # ── E. Institutional export metadata (action = existing V2 export) ──
     exp_state, export_meta = _v11.get_export_metadata(user_id, project_id)
 
+    # ── Run Integrity Checks (H-4b): internal consistency of the committed Last Run.
+    # Read-only recomputation over evidence recorded at commit; never runs the model.
+    # Separate authority from the Reference Regression Check and FINCO VERIFY.
+    integ_state, integrity = _v11.get_run_integrity_checks(user_id, project_id)
+    integrity_section = _integrity_section(
+        integ_state, integrity if integ_state == STATE_AVAILABLE else {})
+
     # ── G. Signed Run Certificate (separate authority, DEFERRED — never signed
     #        at render time, explicit user action required)
     _can_defer_certificate = id_state == STATE_AVAILABLE and any_run_committed
@@ -383,6 +404,7 @@ def build_trust_pack(
         "validation": _validation_section(validation["state"], validation),
         "verify": verify_section,
         "export": _export_section(exp_state, export_meta),
+        "integrity": integrity_section,
         "methodology": _methodology_section(),
         "certificate": certificate,
     }

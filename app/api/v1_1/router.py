@@ -329,6 +329,28 @@ def get_export(project_id: str, request: Request):
     )
 
 
+# ── GET /api/v1.1/projects/{project_id}/integrity ────────────────────────────
+
+@router.get("/projects/{project_id}/integrity")
+def get_integrity(project_id: str, request: Request):
+    """Return Run Integrity Checks for the committed Last Run (read-only).
+
+    Checks internal consistency from evidence recorded at commit. No engine call, no
+    Working Copy or Last Run mutation, no Signed Run, no Verify or Radar involvement.
+    Separate authority from /validation (Reference Regression Check).
+    """
+    user_id = _resolve_user(request)
+    if not user_id:
+        return _unauthorized()
+
+    from app.persistence.projects_repository import get_project
+    if get_project(project_id, user_id) is None:
+        return _not_found(project_id)
+
+    state, evidence = _svc.get_run_integrity_checks(user_id, project_id)
+    return _envelope(state, {}, project_id=project_id, evidence=evidence)
+
+
 # ── GET /api/v1.1/projects/{project_id}/validation ───────────────────────────
 
 @router.get("/projects/{project_id}/validation")
