@@ -14,7 +14,8 @@ from datetime import datetime, timezone
 import httpx
 
 from finco_radar.authority.r_live_onchain import (
-    JsonRpc, SWAP_TOPIC0, _abi_string, _observe_calldata, _tick_cumulatives, _words,
+    JsonRpc, RpcUnavailable, SWAP_TOPIC0, _abi_string, _observe_calldata,
+    _tick_cumulatives, _words,
 )
 from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS, AAPL_POOL
 
@@ -22,7 +23,7 @@ from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS, AAPL_POOL
 REGISTRY_URL = "https://api.robinhood.com/rhj/assets"
 PUBLIC_RPC = "https://rpc.mainnet.chain.robinhood.com"
 FEE_TIERS = (100, 500, 3000, 10000)
-BATCH_SIZE = 8  # Small public-RPC batches, never runtime discovery.
+BATCH_SIZE = 4  # Conservative public-RPC batches; never runtime discovery.
 
 
 def _batch(client: httpx.Client, calls: list[tuple[str, list]]) -> list:
@@ -44,7 +45,7 @@ def _batch(client: httpx.Client, calls: list[tuple[str, list]]) -> list:
             except (httpx.TransportError, ValueError):
                 if attempt == 2:
                     raise ValueError("PUBLIC_RPC_BATCH_UNAVAILABLE") from None
-            time.sleep(1 + attempt)
+            time.sleep(2 ** attempt)
         if not isinstance(payload, list) or len(payload) != len(part):
             raise ValueError("PUBLIC_RPC_BATCH_INCOMPLETE")
         by_id = {row.get("id"): row for row in payload if isinstance(row, dict)}
@@ -142,6 +143,22 @@ def _pool_review(rpc: JsonRpc, token: str, pool: str, fee: int,
     return result
 
 
+_RPC_TRANSPORT_REASONS = {"RPC_TRANSPORT_UNAVAILABLE", "RPC_RESPONSE_UNAVAILABLE",
+                           "PUBLIC_RPC_BATCH_UNAVAILABLE", "PUBLIC_RPC_BATCH_INCOMPLETE",
+                           "PUBLIC_RPC_BATCH_INVALID", "PUBLIC_RPC_HTTP_429",
+                           "PUBLIC_RPC_HTTP_502", "PUBLIC_RPC_HTTP_503", "PUBLIC_RPC_HTTP_504"}
+
+
+def _is_rpc_transport_error(exc: Exception) -> bool:
+    if isinstance(exc, RpcUnavailable):
+        return True
+    if isinstance(exc, ValueError):
+        s = str(exc)
+        if s in _RPC_TRANSPORT_REASONS or s.startswith("PUBLIC_RPC_HTTP_"):
+            return True
+    return False
+
+
 def main() -> int:
     approved = {policy.asset_key.contract_address for policy in APPROVED_RLIVE_ASSETS.values()}
     with httpx.Client(timeout=45) as client:
@@ -172,66 +189,86 @@ def main() -> int:
             if quote_decimals != 6:
                 raise ValueError("QUOTE_TOKEN_DECIMALS_INVALID")
 
-            # Stage A1: factory getPool for every exact registry deployment at
-            # all reviewed fee tiers. Batches reduce HTTP round trips without
-            # increasing per-call authority or using runtime pool discovery.
-            factory_queries = []
-            for symbol, uid, token in candidates:
-                for fee in FEE_TIERS:
-                    data = ("0x1698ee82" + token[2:].zfill(64)
-                            + AAPL_POOL.quote_token_address[2:].zfill(64) + f"{fee:064x}")
-                    factory_queries.append(("eth_call", [{"to": AAPL_POOL.factory_address,
-                                                           "data": data}, block]))
-            factory_results = _batch(client, factory_queries)
-            candidate_pools = []
+            # Stage A1: per-candidate factory getPool for all reviewed fee tiers.
+            # Each candidate uses exactly one batch of 4 (one call per fee tier).
+            # A transport failure marks the candidate REVIEW_INCOMPLETE_RPC, not rejected.
+            candidate_pools: list[tuple[int, str, str, str, int]] = []
             no_pool = 0
-            for index, (_, uid, token) in enumerate(candidates):
-                found = False
-                for tier, fee in enumerate(FEE_TIERS):
-                    pool = _address(factory_results[index * len(FEE_TIERS) + tier])
-                    if pool != "0x" + "0" * 40:
-                        candidate_pools.append((index, uid, token, pool, fee))
-                        found = True
-                if not found:
-                    no_pool += 1
+            rpc_incomplete_a1: list[tuple[str, str, str]] = []
+            for index, (symbol, uid, token) in enumerate(candidates):
+                queries = [
+                    ("eth_call", [{"to": AAPL_POOL.factory_address,
+                                   "data": ("0x1698ee82" + token[2:].zfill(64)
+                                            + AAPL_POOL.quote_token_address[2:].zfill(64)
+                                            + f"{fee:064x}")}, block])
+                    for fee in FEE_TIERS
+                ]
+                try:
+                    results = _batch(client, queries)  # exactly 4 calls = 1 batch
+                    found = False
+                    for fee, res in zip(FEE_TIERS, results):
+                        pool = _address(res)
+                        if pool != "0x" + "0" * 40:
+                            candidate_pools.append((index, uid, token, pool, fee))
+                            found = True
+                    if not found:
+                        no_pool += 1
+                except Exception as exc:
+                    if _is_rpc_transport_error(exc):
+                        rpc_incomplete_a1.append((symbol, uid, token))
+                    else:
+                        no_pool += 1  # e.g. CHAIN_RESPONSE_INVALID → count as no usable result
 
-            # Stage A2: cheap source/provenance/shape checks. Only pools that
-            # pass are permitted into Stage B's observe and Swap-log calls.
-            cheap_reasons = Counter()
-            plausible = []
-            metadata_queries = []
+            # Stage A2: per-candidate cheap source/provenance/shape checks.
+            # 8 metadata queries per pool, split into 2 batches of 4.
+            cheap_reasons: Counter[str] = Counter()
+            plausible: list[tuple[int, str, str, str, int]] = []
+            rpc_incomplete_a2: list[tuple[int, str, str, str, int]] = []
             for index, uid, token, pool, fee in candidate_pools:
-                metadata_queries.append(("eth_getCode", [pool, block]))
+                queries = [("eth_getCode", [pool, block])]
                 for target, data in ((pool, "0xc45a0155"), (pool, "0x0dfe1681"),
                                      (pool, "0xd21220a7"), (pool, "0xddca3f43"),
                                      (token, "0x313ce567"), (pool, "0x1a686502"),
                                      (pool, "0x3850c7bd")):
-                    metadata_queries.append(("eth_call", [{"to": target, "data": data}, block]))
-            metadata_results = _batch(client, metadata_queries)
-            for position, (index, uid, token, pool, fee) in enumerate(candidate_pools):
-                values = metadata_results[position * 8:(position + 1) * 8]
-                reason = None
-                if values[0] in (None, "0x"):
-                    reason = "POOL_CODE_MISSING"
-                elif _address(values[1]) != AAPL_POOL.factory_address:
-                    reason = "POOL_FACTORY_MISMATCH"
-                elif {_address(values[2]), _address(values[3])} != {token, AAPL_POOL.quote_token_address}:
-                    reason = "POOL_PAIR_MISMATCH"
-                elif _words(values[4], 1)[0] != fee:
-                    reason = "POOL_FEE_MISMATCH"
-                else:
-                    token_decimals = _words(values[5], 1)[0]
-                    liquidity = _words(values[6], 1)[0]
-                    cardinality = _words(values[7], 7)[3]
-                    if token_decimals != 18 or liquidity <= 0 or cardinality < 2:
-                        reason = "POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT"
-                if reason:
-                    cheap_reasons[reason] += 1
-                else:
-                    plausible.append((index, uid, token, pool, fee))
+                    queries.append(("eth_call", [{"to": target, "data": data}, block]))
+                try:
+                    values = _batch(client, queries)  # 8 calls, 2 batches of 4
+                    reason = None
+                    if values[0] in (None, "0x"):
+                        reason = "POOL_CODE_MISSING"
+                    elif _address(values[1]) != AAPL_POOL.factory_address:
+                        reason = "POOL_FACTORY_MISMATCH"
+                    elif {_address(values[2]), _address(values[3])} != {token, AAPL_POOL.quote_token_address}:
+                        reason = "POOL_PAIR_MISMATCH"
+                    elif _words(values[4], 1)[0] != fee:
+                        reason = "POOL_FEE_MISMATCH"
+                    else:
+                        token_decimals = _words(values[5], 1)[0]
+                        liquidity = _words(values[6], 1)[0]
+                        cardinality = _words(values[7], 7)[3]
+                        if token_decimals != 18 or liquidity <= 0 or cardinality < 2:
+                            reason = "POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT"
+                    if reason:
+                        cheap_reasons[reason] += 1
+                    else:
+                        plausible.append((index, uid, token, pool, fee))
+                except Exception as exc:
+                    if _is_rpc_transport_error(exc):
+                        rpc_incomplete_a2.append((index, uid, token, pool, fee))
+                    else:
+                        cheap_reasons["CHAIN_RESPONSE_INVALID"] += 1
+
+            # Collect all A1/A2 RPC-incomplete candidates
+            rpc_incomplete_count = len(rpc_incomplete_a1) + len(rpc_incomplete_a2)
+            rpc_incomplete_symbols = (
+                [s for s, _, _ in rpc_incomplete_a1]
+                + [candidates[i][0] for i, _, _, _, _ in rpc_incomplete_a2]
+            )
 
             # Stage B: complete exact-pool TWAP, bounded Swap and quote review.
-            reviews = {}
+            # Transport failures → REVIEW_INCOMPLETE_RPC (not REJECTED).
+            reviews: dict[int, dict] = {}
+            stage_b_rpc_incomplete = 0
             for index, uid, token, pool, fee in plausible:
                 symbol = candidates[index][0]
                 entry = reviews.setdefault(index, {"symbol": symbol, "economic_asset_uid": uid,
@@ -250,12 +287,34 @@ def main() -> int:
                         review["reason"] = "SWAP_ACTIVITY_INSUFFICIENT"
                     entry["pools"].append(review)
                 except Exception as exc:
-                    safe = str(exc) if isinstance(exc, ValueError) else "CHAIN_EVIDENCE_INVALID"
-                    if safe not in {"SWAP_LOGS_UNAVAILABLE", "SWAP_LOG_INVALID",
-                                    "SWAP_BLOCK_PROVENANCE_INVALID", "CHAIN_RESPONSE_INVALID"}:
-                        safe = "CHAIN_EVIDENCE_INVALID"
-                    entry["pools"].append({"pool": pool, "fee": fee,
-                                           "admission": "REJECTED", "reason": safe})
+                    if _is_rpc_transport_error(exc):
+                        stage_b_rpc_incomplete += 1
+                        rpc_incomplete_count += 1
+                        rpc_incomplete_symbols.append(symbol)
+                        entry["pools"].append({"pool": pool, "fee": fee,
+                                               "admission": "REVIEW_INCOMPLETE_RPC",
+                                               "reason": "RPC_TRANSPORT_FAILURE"})
+                        # Do not mark entry as REJECTED; it remains at its current state.
+                        # If this is the only pool attempt, entry stays REJECTED with
+                        # reason NO_QUALIFYING_REVIEWED_POOL (which is technically correct
+                        # as a placeholder), but admission is overridden if all pools were
+                        # RPC-incomplete.
+                        if all(p.get("admission") == "REVIEW_INCOMPLETE_RPC"
+                               for p in entry["pools"]):
+                            entry["admission"] = "REVIEW_INCOMPLETE_RPC"
+                            entry["reason"] = "RPC_TRANSPORT_FAILURE"
+                    else:
+                        safe = str(exc) if isinstance(exc, ValueError) else "CHAIN_EVIDENCE_INVALID"
+                        if safe not in {"SWAP_LOGS_UNAVAILABLE", "SWAP_LOG_INVALID",
+                                        "SWAP_BLOCK_PROVENANCE_INVALID", "CHAIN_RESPONSE_INVALID",
+                                        "POOL_CODE_MISSING", "POOL_FACTORY_MISMATCH",
+                                        "POOL_PAIR_MISMATCH", "POOL_FEE_MISMATCH",
+                                        "POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT"}:
+                            safe = "CHAIN_EVIDENCE_INVALID"
+                        entry["pools"].append({"pool": pool, "fee": fee,
+                                               "admission": "REJECTED", "reason": safe})
+
+            total_rpc_incomplete = rpc_incomplete_count + stage_b_rpc_incomplete
             print(json.dumps({"registry": REGISTRY_URL, "chain_id": 4663,
                               "reviewed_block": block_number, "reviewed_block_hash": head["hash"],
                               "reviewed_block_at": datetime.fromtimestamp(block_time, timezone.utc).isoformat(),
@@ -263,10 +322,12 @@ def main() -> int:
                               "eligible_registry_count": len(eligible),
                               "authoritative_candidate_count": len(candidates),
                               "factory_pool_count": len(candidate_pools),
+                              "no_pool_candidate_count": no_pool,
                               "cheap_prefilter_passed": len(plausible),
                               "cheap_prefilter_rejections": dict(cheap_reasons),
-                              "no_pool_candidate_count": no_pool,
                               "full_pool_reviews": len(plausible),
+                              "rpc_incomplete_count": rpc_incomplete_count,
+                              "rpc_incomplete_symbols": rpc_incomplete_symbols,
                               "quote_feed_valid": quote_valid,
                               "full_review_candidates": list(reviews.values())},
                              separators=(",", ":")))

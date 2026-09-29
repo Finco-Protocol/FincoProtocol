@@ -46,5 +46,5 @@ def test_readonly_batch_is_bounded_and_validates_all_responses():
                                          for c in reversed(calls)])
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        assert _batch(client, [("eth_chainId", [])] * 25) == ["0x123"] * 25
-    assert sizes == [8, 8, 8, 1]
+        assert _batch(client, [("eth_chainId", [])] * 9) == ["0x123"] * 9
+    assert sizes == [4, 4, 1]
