@@ -419,8 +419,15 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "total_distributions_keur": getattr(result, 'total_distribution_keur', None),
             # Returns
             "project_irr": result.project_irr,
+            # H-3: ``equity_irr`` keeps its meaning (pure share-capital return, method
+            # equity_only). The two explicit fields below name what each return is;
+            # ``sponsor_irr`` is retained for compatibility and equals total_sponsor_xirr.
             "equity_irr": result.equity_irr,
+            "share_capital_irr": result.equity_irr,
             "sponsor_irr": getattr(result, 'sponsor_irr', None),
+            "total_sponsor_xirr": clean_run.g2c_result.total_sponsor_xirr,
+            "share_capital_irr_status": _status_name(clean_run.g2c_result.pure_equity_xirr_status),
+            "total_sponsor_xirr_status": _status_name(clean_run.g2c_result.total_sponsor_xirr_status),
             "project_npv_keur": getattr(result, 'project_npv', None),
             "equity_npv_keur": getattr(result, 'equity_npv', None),
             # Debt service
@@ -603,6 +610,13 @@ def _serialize_financial_statements(fs) -> dict:
         "pf_cash_waterfall": {"periods": pf_periods},
         "source": "assemble_financial_statements(WaterfallResult)",
     }
+
+
+def _status_name(status) -> str | None:
+    """Stable string for an engine ReturnMetricStatus (None stays None, never 'OK' by default)."""
+    if status is None:
+        return None
+    return getattr(status, "value", None) or getattr(status, "name", None) or str(status)
 
 
 def _serialize_debt_schedule(result) -> dict:

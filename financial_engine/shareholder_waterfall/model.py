@@ -783,7 +783,10 @@ def run_project_shareholder_waterfall_model(
         # --- Construction periods ---
         for k in sorted(construction_periods_by_index.keys()):
             cp = construction_periods_by_index[k]
-            cf_date = _construction_period_date(financial_close, k)
+            # Typed (PR-9) construction funding carries canonical period dates: sponsor cash
+            # is dated at the start of the period in which the uses arise. The legacy
+            # monthly grid carries none, so it keeps financial_close + (k - 1) months.
+            cf_date = getattr(cp, "period_start", None) or _construction_period_date(financial_close, k)
 
             share_cap = cp.share_capital_draw_keur
             share_prem = cp.share_premium_draw_keur

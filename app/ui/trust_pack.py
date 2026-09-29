@@ -41,8 +41,10 @@ from app.persistence.workspace_repository import get_workspace_state as _get_wor
 # human label, formatter kind)
 _CORE_KPI_ROWS: tuple[tuple[str, str, str], ...] = (
     ("project_irr", "Project IRR", "pct"),
-    ("equity_irr", "Equity IRR", "pct"),
-    ("total_sponsor_xirr", "Total Sponsor XIRR", "pct"),
+    # H-3: total sponsor return (equity + shareholder loan) is the sponsor headline;
+    # ``equity_irr`` keeps its machine key and meaning but is labelled as what it is.
+    ("total_sponsor_xirr", "Total Sponsor XIRR (equity + SHL)", "pct"),
+    ("equity_irr", "Share-capital IRR (equity only)", "pct"),
     ("senior_debt_keur", "Senior Debt", "keur"),
     ("min_dscr", "Min DSCR", "x"),
 )

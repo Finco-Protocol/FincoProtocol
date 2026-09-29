@@ -153,7 +153,7 @@ INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(12, "P&L", "runtime_bound", "runtime", True, "Offline assembled P&L using existing runtime result as source."),
     WorkbookSheetDefinition(13, "Cash Flow", "runtime_bound", "runtime", True, "Offline PF cash waterfall using existing runtime result as source."),
     WorkbookSheetDefinition(14, "Balance Sheet", "runtime_bound", "runtime", True, "Offline balance sheet assembly from existing runtime result."),
-    WorkbookSheetDefinition(15, "Returns", "implemented", "runtime", True, "Project IRR, Equity IRR, Total Sponsor XIRR bound from runtime outputs. P1.2."),
+    WorkbookSheetDefinition(15, "Returns", "implemented", "runtime", True, "Project IRR, Share-capital IRR (equity only), Total Sponsor XIRR (equity + SHL) bound from runtime outputs. P1.2."),
     WorkbookSheetDefinition(16, "Run Identity", "implemented", "runtime + review", True, "Explicit run binding: run_id, project_id, engine version, input hash, export timestamp. P1.2."),
     WorkbookSheetDefinition(17, "Reconciliation", "implemented", "runtime", True, "Sources=Uses, CAPEX, Revenue, OPEX, Debt, Returns reconciliation checks. P1.2."),
     WorkbookSheetDefinition(18, "Audit", "runtime_bound", "review", True, "Runtime source notes, provenance, and audit boundary statements."),
@@ -188,7 +188,7 @@ MULTIPLE_FORMAT = "0.000x"
 RUNTIME_SUMMARY_LABELS = {
     "active_project": ("Active project", ""),
     "project_irr": ("Project IRR", RATIO_FORMAT),
-    "equity_irr": ("Equity IRR", RATIO_FORMAT),
+    "equity_irr": ("Share-capital IRR (equity only)", RATIO_FORMAT),
     "total_revenue_keur": ("Total revenue", K_EUR_FORMAT),
     "total_ebitda_keur": ("Total EBITDA", K_EUR_FORMAT),
     "total_opex_keur": ("Total OPEX", K_EUR_FORMAT),
@@ -976,7 +976,9 @@ def _write_returns_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     project_irr = getattr(rt, "project_irr", None)
     equity_irr = getattr(rt, "equity_irr", None)
-    sponsor_irr = getattr(rt, "sponsor_irr", None)
+    sponsor_irr = getattr(rt, "total_sponsor_xirr", None)
+    if sponsor_irr is None:  # Last Runs persisted before H-3 carry the same value as sponsor_irr
+        sponsor_irr = getattr(rt, "sponsor_irr", None)
 
     def _safe_float(v):
         if v is None:
@@ -999,17 +1001,21 @@ def _write_returns_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             RATIO_FORMAT,
         ),
         (
-            "Equity IRR",
+            "Share-capital IRR (equity only)",
             equity_irr_f,
             "runtime",
-            "Pure levered equity XIRR (post-SHL, post-tax). Source: runtime_result.equity_irr.",
+            "Return on pure share capital only (equity_only method): share-capital contributions "
+            "and equity distributions. EXCLUDES shareholder-loan flows; see Total Sponsor XIRR. "
+            "Source: runtime_result.equity_irr (machine key unchanged).",
             RATIO_FORMAT,
         ),
         (
             "Total Sponsor XIRR",
             sponsor_irr_f,
             "runtime",
-            "Sponsor XIRR inclusive of SHL cash service flows. Source: runtime_result.sponsor_irr.",
+            "Total sponsor return: share capital plus shareholder loan (contributions, equity "
+            "distributions, SHL cash interest and principal received), each counted once. "
+            "Source: runtime_result.total_sponsor_xirr (sponsor_irr for older Last Runs).",
             RATIO_FORMAT,
         ),
     ]
@@ -1152,7 +1158,9 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     runtime_opex = _safe_float(getattr(rt, "total_opex_keur", None))
     runtime_project_irr = _safe_float(getattr(rt, "project_irr", None))
     runtime_equity_irr = _safe_float(getattr(rt, "equity_irr", None))
-    runtime_sponsor_irr = _safe_float(getattr(rt, "sponsor_irr", None))
+    runtime_sponsor_irr = _safe_float(getattr(rt, "total_sponsor_xirr", None))
+    if runtime_sponsor_irr is None:
+        runtime_sponsor_irr = _safe_float(getattr(rt, "sponsor_irr", None))
     runtime_min_dscr = _safe_float(getattr(rt, "actual_min_dscr", None))
 
     # Build capex line-item sum from capex_items DataFrame
@@ -1213,10 +1221,10 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     # Returns: true read-back from the serialized Returns sheet cells, not self-comparisons.
     serialized_project_irr = _read_labeled_cell(sheet.parent, "Returns", "Project IRR")
-    serialized_equity_irr = _read_labeled_cell(sheet.parent, "Returns", "Equity IRR")
+    serialized_equity_irr = _read_labeled_cell(sheet.parent, "Returns", "Share-capital IRR (equity only)")
     serialized_sponsor_irr = _read_labeled_cell(sheet.parent, "Returns", "Total Sponsor XIRR")
     checks.append(_check("Returns sheet Project IRR vs runtime", serialized_project_irr, runtime_project_irr, _TOL_IRR, "ratio"))
-    checks.append(_check("Returns sheet Equity IRR vs runtime", serialized_equity_irr, runtime_equity_irr, _TOL_IRR, "ratio"))
+    checks.append(_check("Returns sheet Share-capital IRR vs runtime", serialized_equity_irr, runtime_equity_irr, _TOL_IRR, "ratio"))
     checks.append(_check("Returns sheet Total Sponsor XIRR vs runtime", serialized_sponsor_irr, runtime_sponsor_irr, _TOL_IRR, "ratio"))
 
     # Count pass/fail
@@ -1241,7 +1249,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Runtime Revenue (kEUR)", runtime_revenue, "runtime", "runtime_result.total_revenue_keur.", K_EUR_FORMAT),
         ("Runtime OPEX (kEUR)", runtime_opex, "runtime", "runtime_result.total_opex_keur.", K_EUR_FORMAT),
         ("Runtime Project IRR", runtime_project_irr, "runtime", "runtime_result.project_irr.", RATIO_FORMAT),
-        ("Runtime Equity IRR", runtime_equity_irr, "runtime", "runtime_result.equity_irr.", RATIO_FORMAT),
+        ("Runtime Share-capital IRR (equity only)", runtime_equity_irr, "runtime", "runtime_result.equity_irr.", RATIO_FORMAT),
         ("Runtime Total Sponsor XIRR", runtime_sponsor_irr, "runtime", "runtime_result.sponsor_irr.", RATIO_FORMAT),
         ("Runtime Min DSCR", runtime_min_dscr, "runtime", "runtime_result.actual_min_dscr.", MULTIPLE_FORMAT),
     ]
