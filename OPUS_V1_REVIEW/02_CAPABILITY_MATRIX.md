@@ -43,7 +43,8 @@ the Model vertical list.
 | R-LIVE V2 public API (3 read-only routes) | LIVE | `app/api/v1_1/r_live_public_router.py`; unauthenticated; exact canonical_id only |
 | R-LIVE V2 UX shell — landing table + per-asset detail | LIVE | `app/radar_ui/r_live_router.py`; `/radar/r-live`, `/radar/r-live/{canonical_id}` |
 | R-LIVE history store (B1.3) | LIVE | Durable B1.3 history; external collector is sole writer; read paths write zero history |
-| R-LIVE operational collector package (PR #127) | LIVE | External systemd operational package; requires ROBINHOOD_RPC_URL and deployment configuration |
+| R-LIVE multi-asset collector (PR #139) | LIVE | `app/radar_rwa/r_live_collect.py`; no-arg = full approved registry batch (`collect_all_approved`); `--asset-key` = single diagnostic; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` |
+| R-LIVE operational collector package (PR #127, updated PR #139) | LIVE | External systemd operational package; staging config contract; `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH` required; staging/production ledgers must be separate |
 
 **R-LIVE V2 public API routes (exact):**
 - `GET /api/v1.1/radar/r-live/assets` — list approved identities (no auth required)
@@ -103,5 +104,11 @@ runtime or cloning not released.
   operator supplying source-attested on-chain evidence.
 - Signed Run Certificate V1 requires `FINCO_RUN_CERT_SIGNING_KEY` deployment
   configuration. Without it, issuance fails closed.
-- R-LIVE collector operational package exists but requires deployment configuration.
+- R-LIVE collector requires both `ROBINHOOD_RPC_URL` (private, never committed) and
+  `RADAR_BNB_INTELLIGENCE_DB_PATH` (shared durable B1.3 ledger). Web and collector must
+  use the identical ledger path. Staging and production must be different files.
   Repository-ready does not prove VPS collector activation.
+- No-arg collector batch: STALE/UNAVAILABLE per-asset market states are not process failures.
+  Per-asset acquisition exceptions are captured and surfaced as UNAVAILABLE; remaining assets
+  are always attempted. Process failures (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE,
+  HISTORY_STORE_UNAVAILABLE) abort the batch with exit 1 before any per-asset work.

@@ -2,7 +2,7 @@
 
 All test files are in `tests/`. Run with `pytest tests/<file> -v`.
 
-Verified counts are accurate at main SHA `9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
+Verified counts are accurate at main SHA `226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
 
 The `eth_account` CI failure in `tests/test_b2_2_token_entitlement.py` was fixed.
 All test files listed here run without infrastructure exclusion.
@@ -165,6 +165,27 @@ Key invariants tested:
 - 300-second freshness gate: no current numeric if no recent Swap
 - Public API is unauthenticated; no project list, no exports
 
+## R-LIVE Multi-Asset Collector (PR #139)
+
+| Test File | Count | What it tests |
+|---|---|---|
+| `tests/test_r_live_collector_batch.py` | 241 | Batch orchestration, per-asset independence, process/market state distinction, credential redaction, RPC preflight |
+| `tests/test_r_live_collector_ops.py` | 40 | Collector operational semantics, single-asset diagnostic path, unapproved key rejection |
+
+Key invariants tested:
+- `test_no_arg_main_uses_batch_and_prints_safe_json` — no-arg `main([])` calls `collect_all_approved`
+- `test_no_arg_batch_uses_complete_registry_and_one_serial_ledger` — full registry, single shared ledger
+- `test_batch_registry_count_is_derived_and_not_hardcoded` — count derived from policy, not literal
+- `test_explicit_exact_key_collects_only_one_and_unapproved_fails_closed` — `--asset-key` diagnostic; unapproved → `ASSETKEY_NOT_APPROVED`
+- `test_batch_config_and_ledger_failures_are_nonzero_and_redacted` — `RPC_NOT_CONFIGURED`, `HISTORY_STORE_UNAVAILABLE`
+- `test_configured_but_unreachable_rpc_is_process_failure_without_secret` — `RPC_UNAVAILABLE`; no credential in output
+- `test_individual_exception_does_not_abort_batch_or_leak_secret` — exception → UNAVAILABLE for that asset; batch continues; no raw exception in output
+- `test_every_acquisition_exception_attempts_every_asset_and_exits_nonzero` — all assets attempted regardless of exceptions
+- `test_one_canonical_nonavailable_state_is_healthy_batch` — STALE/UNAVAILABLE market state ≠ process failure; exit 0
+- `test_history_persistence_failure_is_process_failure` — AVAILABLE result with no digest → `HISTORY_STORE_UNAVAILABLE`
+
+---
+
 ## R-LIVE V1 / Radar BNB
 
 | Test File | What it tests |
@@ -198,7 +219,7 @@ pytest tests/test_b2_1_verified_authority.py \
        -v --tb=short
 ```
 
-Handoff SHA: `9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
+Handoff SHA: `226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
 
 ## Full Suite Command
 

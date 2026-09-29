@@ -1,14 +1,13 @@
 {
   "repository": "Finco-Protocol/FincoProtocol",
-  "product_base_sha": "9adf751cf3cb9fd087f99b433843cf8bdd9a7807",
-  "product_base_description": "Merge pull request #137 — R-LIVE V2 product shell (registry-driven, canonical history parity, public API wiring)",
-  "docs_pr_head_sha": "3299f3066b6eb044f9df7d92a31dd22e3c5f2e26",
+  "product_base_sha": "226fe8d4ee15bfe60e441550f386e8985ae0c2f9",
+  "product_base_description": "Merge pull request #139 — R-LIVE V2 multi-asset collector and staging config contract",
+  "docs_pr_head_sha": "CONFIRM AFTER FINAL PUSH",
   "docs_pr_number": 138,
   "final_live_main_sha": null,
-  "review_package_version": "post-pr137-v1",
+  "review_package_version": "post-pr139-v1",
   "generated_at_utc": "2026-09-29T00:00:00Z",
-  "required_live_verification": true,
-  "note": "docs_pr_head_sha and docs_pr_number will be filled after the docs PR is created. final_live_main_sha must be confirmed after docs PR merge before sending to clean-room reviewer.",
+  "note": "docs_pr_head_sha must be updated to the final pushed HEAD SHA before sending to reviewer. final_live_main_sha must be confirmed after docs PR merge.",
   "supported_today": {
     "model_verticals": {
       "Solar": "LIVE",
@@ -36,14 +35,23 @@
       "B2.3 Usage Metering": "LIVE"
     }
   },
-  "key_capabilities_post_pr137": [
+  "key_capabilities_post_pr139": [
     "R-LIVE V2 registry-driven 8-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD)",
     "R-LIVE public API: GET /api/v1.1/radar/r-live/assets, /r-live/{uid}, /r-live/{uid}/history",
     "R-LIVE UX shell: /radar/r-live landing, /radar/r-live/{canonical_id} detail",
     "/radar redirects to /radar/r-live (R-LIVE is default Radar domain)",
     "300-second TWAP freshness gate; STALE != UNAVAILABLE != empty",
-    "B2.3 concurrent duplicate delivery fix (PR #135): lock-safe, exactly one event"
+    "B2.3 concurrent duplicate delivery fix (PR #135): lock-safe, exactly one event",
+    "R-LIVE multi-asset collector (PR #139): no-arg collects all approved assets; serial iteration; STALE/UNAVAILABLE per-asset are not process failures",
+    "Staging collector config contract (PR #139): ROBINHOOD_RPC_URL + RADAR_BNB_INTELLIGENCE_DB_PATH; staging/production ledgers must be separate"
   ],
+  "operational_config_requirements": {
+    "ROBINHOOD_RPC_URL": "Required for both web current-read and the collector. Never committed to Git. Missing → fails closed.",
+    "RADAR_BNB_INTELLIGENCE_DB_PATH": "Shared durable B1.3 history ledger. Web and collector must use the identical path. Staging and production must be different files.",
+    "FINCO_RUN_CERT_SIGNING_KEY": "Required for Signed Run Certificate issuance. Ed25519 seed, base64. Missing → SigningKeyUnavailable.",
+    "FINCO_SESSION_TOKEN": "Required for MCP V1. Server-configured signed session token.",
+    "FINCO_SECRET_KEY": "Required for signed session cookies."
+  },
   "reviewer_zip_instructions": {
     "target_sha": "CONFIRM AFTER DOCS PR MERGE",
     "expected_filename": "FincoProtocol_FINAL_<SHORT_FINAL_MAIN_SHA>.zip",

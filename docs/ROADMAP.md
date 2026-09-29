@@ -64,6 +64,10 @@ at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run
   surface: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD. 300-second freshness
   gate. USDG/USD Chainlink conversion. Public API. UX shell. `/radar` → `/radar/r-live`.
   Exact canonical identity only; no ticker/fuzzy lookup.
+- **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
+  collects all approved registry assets serially. STALE/UNAVAILABLE market states
+  are not process failures. Staging config contract: `ROBINHOOD_RPC_URL` +
+  `RADAR_BNB_INTELLIGENCE_DB_PATH`; staging/production ledgers must be separate files.
 
 ### API / MCP
 
@@ -91,8 +95,9 @@ at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run
 These capabilities are implemented but require operational configuration for
 production data to flow:
 
-- **R-LIVE production collector** — requires `ROBINHOOD_RPC_URL` + systemd
-  collector activated on a VPS to accumulate live history
+- **R-LIVE production collector** — requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH`
+  (identical path for web and collector; staging/production separate); systemd collector
+  activated on a VPS to accumulate live history
 - **Signed Run Certificate** — requires `FINCO_RUN_CERT_SIGNING_KEY` in
   deployment configuration
 - **MCP V1** — requires `FINCO_SESSION_TOKEN` deployment configuration;

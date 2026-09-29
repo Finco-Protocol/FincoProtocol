@@ -1,10 +1,41 @@
 # FINCO V1 — PR / SHA Ledger
 
 All entries verified from `git log origin/main` at final live main SHA
-`9adf751cf3cb9fd087f99b433843cf8bdd9a7807`.
+`226fe8d4ee15bfe60e441550f386e8985ae0c2f9`.
 
 Merge SHAs are the SHA on `main` after merge. Entries are newest-first within
 each stream.
+
+---
+
+## R-LIVE V2 Multi-Asset Collector (PR #139)
+
+| PR | Capability | Merge SHA | State |
+|---|---|---|---|
+| #139 | R-LIVE V2: multi-asset collector and staging config contract | `226fe8d4ee15bfe60e441550f386e8985ae0c2f9` | MERGED |
+
+No-arg invocation: `python -m app.radar_rwa.r_live_collect` iterates every key in
+`APPROVED_BY_CANONICAL_ID` serially via `collect_all_approved()`. `--asset-key`
+restricts a diagnostic run to one exact approved key.
+
+Key behavioral guarantees (from `tests/test_r_live_collector_batch.py`):
+- Serial iteration; one shared ledger; ledger always closed
+- STALE/UNAVAILABLE per-asset market states are NOT process failures; exit 0 on mixed results
+- Per-asset exception: asset recorded as UNAVAILABLE; remaining assets still attempted; exit 1
+- Process failures (exit 1): `RPC_NOT_CONFIGURED`, `RPC_UNAVAILABLE`, `HISTORY_STORE_UNAVAILABLE`,
+  `APPROVED_REGISTRY_UNAVAILABLE`, `COLLECTOR_RESULT_INVALID`, `R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE`
+- RPC chain-id preflight (`eth_chainId` must return `4663`) gates all per-asset work
+- Credentials never emitted in JSON output (`_safe_reason` sanitizes to typed uppercase identifiers)
+
+Operational variables:
+- `ROBINHOOD_RPC_URL` — required for both web current-read and the collector; never committed to Git
+- `RADAR_BNB_INTELLIGENCE_DB_PATH` — shared durable B1.3 history ledger; web and collector must use
+  the identical path; staging and production ledgers must be different files
+
+Changed files (14): `app/radar_rwa/r_live_collect.py`, `.env.example`, `deploy/env.example`,
+`deploy/r_live_collector_v1/README.md`, systemd unit files, staging env + collector units,
+`tests/test_r_live_collector_batch.py`, `tests/test_r_live_collector_ops.py`.
+Frozen namespaces: ZERO DIFF.
 
 ---
 
@@ -25,7 +56,7 @@ Frozen namespaces: ZERO DIFF.
 
 | PR | Capability | Merge SHA | State |
 |---|---|---|---|
-| #136 | R-LIVE V2 multi-asset authority — reviewed admission (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD); freshness gate | `29afcf4b6046eb2f93ede30b2bab50f36b6cd697` | MERGED |
+| #136 | R-LIVE V2 multi-asset authority — reviewed admission (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD); freshness gate | `29afcf4f34b0407b716a55ba8b18edb572372d09` | MERGED |
 
 Approved assets (8): AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD.
 Rejected assets (4): MSFT (1 Swap), META (0 Swaps), ORCL (no USDG pool), PLTR (1 Swap).
@@ -37,7 +68,7 @@ Rejected assets (4): MSFT (1 Swap), META (0 Swaps), ORCL (no USDG pool), PLTR (1
 
 | PR | Capability | Merge SHA | State |
 |---|---|---|---|
-| #135 | fix(usage): B2.3 SQLite concurrent idempotency — lock-safe duplicate delivery | `d713366fd5d3b4f9af6b54da8ccd5ecd7abc5c2b` | MERGED |
+| #135 | fix(usage): B2.3 SQLite concurrent idempotency — lock-safe duplicate delivery | `d71336680e6f7efdbb220501297c7b078b21dd0c` | MERGED |
 
 Corrects: concurrent duplicate delivery no longer raises lock error to caller.
 Invariant: `(subject_id, feature_key, idempotency_key)` unique constraint enforced
@@ -216,6 +247,6 @@ implementation is in `app/services/run_certificate_service.py` (PR #132).
 - PRs merged as direct commits to main appear as regular commit SHAs.
 - Inspect with:
   ```bash
-  git log 9adf751 --oneline
-  git log 9adf751 --oneline --merges
+  git log 226fe8d4ee15bfe60e441550f386e8985ae0c2f9 --oneline
+  git log 226fe8d4ee15bfe60e441550f386e8985ae0c2f9 --oneline --merges
   ```

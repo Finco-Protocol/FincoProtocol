@@ -17,11 +17,11 @@ is to independently verify or challenge them.
 Repository: `Finco-Protocol/FincoProtocol`
 
 **REVIEW PACKAGE PREPARED AGAINST PRODUCT BASE:**
-`9adf751cf3cb9fd087f99b433843cf8bdd9a7807`
+`226fe8d4ee15bfe60e441550f386e8985ae0c2f9`
 
 **DOCS PR HEAD:**
 This review package was prepared in a docs PR. The docs PR head SHA is
-recorded in `REVIEW_SNAPSHOT.json`. The product code at `9adf751` is
+recorded in `REVIEW_SNAPSHOT.json`. The product code at `226fe8d4` is
 the authoritative product base.
 
 **FINAL CLEAN-ROOM REVIEW TARGET:**
@@ -150,6 +150,27 @@ For each: verify from code, not from documentation claims.
 - Are the 4 rejected assets (MSFT, META, ORCL, PLTR) correctly excluded?
 - Does any surface imply an R-LIVE observation is a tradeable or executable price?
 
+**Multi-asset collector (PR #139) — verify independently:**
+- Does `python -m app.radar_rwa.r_live_collect` (no-arg) call `collect_all_approved()`
+  over the full `APPROVED_BY_CANONICAL_ID` registry? (`main([])` in `r_live_collect.py`)
+- Does `--asset-key` correctly restrict to one diagnostic run?
+- Does `collect_all_approved` use a single shared ledger for all assets and close it
+  exactly once, regardless of per-asset outcomes?
+- Are STALE/UNAVAILABLE per-asset market states correctly treated as non-process-failures
+  (exit 0 for mixed market states)?
+- Does a per-asset acquisition exception leave that asset as UNAVAILABLE while continuing
+  the batch over remaining assets?
+- Do process failures (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE)
+  correctly abort before per-asset work and exit 1?
+- Does `_safe_reason` ensure no raw exception text or credential appears in JSON output?
+- Is `ROBINHOOD_RPC_URL` the sole source for both the web current-read path and the
+  collector? Is it never committed to Git or emitted in collector output?
+- Is `RADAR_BNB_INTELLIGENCE_DB_PATH` the shared durable B1.3 history ledger used by
+  both the web history read surface and the collector? Are staging and production
+  ledgers documented as required to be separate?
+- Does the RPC preflight (`_check_rpc_health` / `eth_chainId` → 4663) gate all
+  per-asset work and close the transport regardless of outcome?
+
 ### G. Radar UX / R-LIVE / Stocks / Crypto / Economy
 
 - Does `/radar` redirect to `/radar/r-live`? Is R-LIVE the default Radar domain?
@@ -201,9 +222,14 @@ For each: verify from code, not from documentation claims.
 
 - What is the gap between "IMPLEMENTED" and "OPERATIONALLY CONFIGURED" for
   each claimed LIVE capability?
-- Specifically: R-LIVE requires `ROBINHOOD_RPC_URL` + running collector;
+- Specifically: R-LIVE web current-read requires `ROBINHOOD_RPC_URL`; R-LIVE
+  collector requires both `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH`;
   Signed Run Certificate requires `FINCO_RUN_CERT_SIGNING_KEY`; MCP requires
   `FINCO_SESSION_TOKEN`. Are all deployment requirements disclosed?
+- Is `RADAR_BNB_INTELLIGENCE_DB_PATH` correctly documented as shared between web
+  and collector, with staging/production separation required?
+- Does the staging config contract (`deploy/r_live_collector_v1/staging/`) correctly
+  isolate staging from production paths, DB, and environment files?
 - Is there any claimed LIVE capability that is not reliably deployable given
   the documented limitations?
 - Persistent storage: are DB paths, SQLite file locations, and migration
@@ -318,6 +344,24 @@ implemented. Identify specifically which current capability it builds on.
 
 18. **B2.3 concurrent fix** — confirm that PR #135 correctly handles concurrent
     duplicate delivery: no lock error to caller, exactly one event persisted.
+
+19. **R-LIVE current observation vs history separation** — confirm that the web
+    current-read path (`GET /api/v1.1/radar/r-live/{uid}`) acquires a fresh
+    on-chain observation at request time and does NOT depend on the history ledger.
+    UNAVAILABLE from the current-read path means the on-chain acquisition failed
+    or ROBINHOOD_RPC_URL is not configured — not that no history exists.
+
+20. **Multi-asset collector batch semantics** — confirm that `collect_all_approved`
+    in `app/radar_rwa/r_live_collect.py` iterates every key in
+    `APPROVED_BY_CANONICAL_ID`; uses one shared ledger; closes the ledger exactly
+    once; treats STALE/UNAVAILABLE market states as non-process-failures (exit 0
+    for mixed states); and captures per-asset exceptions without aborting the
+    remaining batch assets.
+
+21. **Collector credential safety** — confirm that `_safe_reason` in
+    `app/radar_rwa/r_live_collect.py` filters all typed output to
+    `[A-Z][A-Z0-9_]{0,95}`, ensuring no raw exception text, RPC URL, or other
+    credential appears in JSON stdout captured by journald.
 
 ---
 

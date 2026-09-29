@@ -96,12 +96,27 @@ treat any undisclosed deviation from these as a potential finding.
 
 ## 9. R-LIVE Collector and Operational Configuration
 
-- The R-LIVE collector timer is implemented (`PR #127`) with an external systemd
-  operational package.
-- Collection requires `ROBINHOOD_RPC_URL` and configured external API keys
-  (`app/radar_rwa/r_live_collect.py`).
-- Without valid RPC URL and API keys, R-LIVE collection fails gracefully (no crash,
-  no live snapshots). The R-LIVE public API returns `UNAVAILABLE` if no history exists.
+- The R-LIVE collector (PR #127, updated PR #139) is an external systemd
+  operational package. The no-arg command `python -m app.radar_rwa.r_live_collect`
+  iterates every key in `APPROVED_BY_CANONICAL_ID` serially (`collect_all_approved`).
+  `--asset-key` restricts a diagnostic run to one exact approved AssetKey.
+- Collection requires `ROBINHOOD_RPC_URL` (Robinhood Chain 4663 HTTPS RPC, private,
+  never committed to Git) and `RADAR_BNB_INTELLIGENCE_DB_PATH` (durable B1.3 history
+  ledger shared between the web service and collector). Missing `ROBINHOOD_RPC_URL`
+  produces `RPC_NOT_CONFIGURED` and exits 1 before any per-asset work.
+- The web current-read path (`GET /api/v1.1/radar/r-live/{uid}`) also requires
+  `ROBINHOOD_RPC_URL` at request time; it never reads or writes the history ledger.
+  Current observation and history are architecturally separate surfaces.
+- The web history read path (`GET /api/v1.1/radar/r-live/{uid}/history`) reads from
+  the shared B1.3 ledger (`RADAR_BNB_INTELLIGENCE_DB_PATH`); it never writes. The
+  collector is the sole history writer.
+- Web process and collector must be configured with the identical
+  `RADAR_BNB_INTELLIGENCE_DB_PATH`. Staging and production must be different files;
+  a shared path between environments silently cross-contaminates history.
+- STALE or UNAVAILABLE per-asset market states from the batch collector are not process
+  failures; exit 0 means the batch ran. Per-asset acquisition exceptions are captured
+  and recorded as UNAVAILABLE; remaining assets are always attempted. Process failures
+  (RPC_NOT_CONFIGURED, RPC_UNAVAILABLE, HISTORY_STORE_UNAVAILABLE) abort the batch.
 - Repository-ready deployment assets do not prove that a production VPS collector
   is currently active. Do not claim production collection is active without
   actual deployment evidence.

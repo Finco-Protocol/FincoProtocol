@@ -129,6 +129,11 @@ GET /api/v1.1/radar/r-live/{canonical_id}            — current reference (exac
 GET /api/v1.1/radar/r-live/{canonical_id}/history    — historical evidence (read-only)
 ```
 
+The R-LIVE collector (`python -m app.radar_rwa.r_live_collect`, no-arg) collects all
+approved registry assets serially. STALE/UNAVAILABLE per-asset market states are not
+process failures. Requires `ROBINHOOD_RPC_URL` and `RADAR_BNB_INTELLIGENCE_DB_PATH`
+(shared durable B1.3 ledger; never committed to Git; staging/production must be separate).
+
 Global Radar navigation lands on R-LIVE (`/radar` → `/radar/r-live`). Stocks remains at
 `/radar/stocks`. Crypto and Economy are separate Radar domains.
 

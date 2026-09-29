@@ -8,10 +8,12 @@ https://github.com/Finco-Protocol/FincoProtocol
 ## Live Main SHA (at handoff)
 
 ```
-9adf751cf3cb9fd087f99b433843cf8bdd9a7807
+226fe8d4ee15bfe60e441550f386e8985ae0c2f9
 ```
 
-Merge commit: **R-LIVE V2 product shell — registry-driven, canonical history parity, public API wiring** (PR #137, merged 2026-09-29)
+Merge commit: **R-LIVE V2 multi-asset collector and staging config contract** (PR #139, merged 2026-09-29)
+
+Product base includes PR #137 (R-LIVE V2 product shell) + PR #139 (multi-asset collector).
 
 This package describes the implemented repository state at this SHA.
 It is not a marketing document. Limitations are disclosed in `05_KNOWN_LIMITATIONS.md`.
@@ -72,6 +74,8 @@ pytest tests/test_b2_1_verified_authority.py \
        tests/test_radar_r14_rlive_shell.py \
        tests/test_radar_r14_rlive_public_routes.py \
        tests/test_radar_r14_rlive_history_contract.py \
+       tests/test_r_live_collector_batch.py \
+       tests/test_r_live_collector_ops.py \
        -v --tb=short
 ```
 
@@ -99,6 +103,7 @@ All authority tests in the suite are expected to run; no file-level exclusion re
 | **R-LIVE V2 authority** | `finco_radar/authority/r_live_policy.py`, `finco_radar/authority/r_live_onchain.py`, `app/radar_rwa/r_live_service.py` |
 | **R-LIVE V2 public API** | `app/api/v1_1/r_live_public_router.py` (3 unauthenticated read-only routes) |
 | **R-LIVE V2 UX shell** | `app/radar_ui/r_live_router.py`, templates `radar/r_live_landing.html`, `radar/r_live_detail.html` |
+| **R-LIVE multi-asset collector (PR #139)** | `app/radar_rwa/r_live_collect.py` — no-arg = `collect_all_approved()` over full registry; `--asset-key` for single diagnostic |
 | **FINCO VERIFY (B2.1)** | `app/verified/authority.py` |
 | **Signed Run Certificate V1** | `app/services/run_certificate_service.py`, docs: `docs/SIGNED_RUN_CERTIFICATE_V1.md` |
 | **Model Trust Pack UX V1** | `app/ui/trust_pack.py`, template: `app/templates/v2/partials/sheet_trust.html` |
