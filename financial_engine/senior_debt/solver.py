@@ -236,6 +236,16 @@ def _backward_dscr_capacity(
       allowed_ds_t = max(0, cfads_t / resolved_dscr_t) * resolved_availability_t
       opening_t    = (closing_t + allowed_ds_t) / (1 + f_t)
     where f_t = rate_t * day_frac_t.
+
+    No-capitalisation constraint (must match _forward_roll, which floors
+    principal at zero and pays interest in full):
+      principal_t = allowed_ds_t - f_t * opening_t  must be >= 0
+    which is equivalent to closing_t <= allowed_ds_t / f_t. When the balance the
+    later periods can repay exceeds that bound, this period cannot fund its own
+    interest inside the allowed debt service, so the balance carried across it is
+    capped. Without the cap the induction implicitly capitalises interest
+    (opening_t < closing_t) while the forward roll does not, so the sized debt
+    could not actually be serviced.
     """
     repayment_ids = [
         idx for idx in period_indices
@@ -253,6 +263,8 @@ def _backward_dscr_capacity(
         rate = rate_map.get(idx, 0.0)
         start, end = period_start_end[idx]
         f = rate * period_day_fraction(start, end, policy.day_count_convention)
+        if f > 1e-15:
+            closing = min(closing, ds / f)
         denom = 1.0 + f
         opening = (closing + ds) / denom if denom > 1e-15 else closing + ds
         closing = max(0.0, opening)
@@ -411,6 +423,55 @@ def _finalise_authoritative(
         dscr_map=dscr_map, availability_map=availability_map,
     )
     return candidate_rows, cfads_by, prev_cash_tax, False
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed feasibility of a DSCR-sculpted schedule
+# ---------------------------------------------------------------------------
+
+DSCR_SCULPTING_INFEASIBLE = "DSCR_SCULPTING_INFEASIBLE"
+
+
+def _dscr_sculpting_infeasibility(
+    rows: tuple[PeriodDebtRow, ...],
+    cfads_by: dict[int, float],
+    policy: SeniorDebtPolicy,
+    dscr_map: dict[int, float] | None,
+    availability_map: dict[int, float] | None,
+) -> str | None:
+    """Return a reason if the authoritative schedule cannot support its debt service.
+
+    A DSCR-sculpted result is only successful when, in every repayment period,
+    scheduled debt service (interest plus principal) fits inside the allowed
+    debt service max(0, CFADS / target_dscr) * availability, within the
+    documented convergence tolerance. That implies interest is fully funded,
+    achieved DSCR >= target and no unmodelled source covers a deficit. When
+    balloons are not permitted the maturity balance must also be repaid.
+    """
+    abs_tol = policy.convergence_tolerance_keur
+    rel_tol = policy.convergence_relative_tolerance
+    for row in rows:
+        idx = row.period_index
+        if not (policy.repayment_start_period_index <= idx <= policy.maturity_period_index):
+            continue
+        target = dscr_map[idx] if dscr_map is not None else policy.target_dscr
+        availability = availability_map[idx] if availability_map is not None else 1.0
+        cfads = cfads_by.get(idx, 0.0)
+        allowed = max(0.0, cfads / target) * availability if target > 0 else 0.0
+        if row.debt_service_keur > allowed and not _field_converged(
+            row.debt_service_keur, allowed, abs_tol, rel_tol
+        ):
+            return (
+                f"period {idx}: debt service {row.debt_service_keur:.6f} exceeds "
+                f"DSCR-allowed {allowed:.6f} (interest {row.interest_keur:.6f})"
+            )
+    if not policy.permit_terminal_balloon:
+        last = next((r for r in reversed(rows)
+                     if policy.repayment_start_period_index <= r.period_index
+                     <= policy.maturity_period_index), None)
+        if last is not None and not _field_converged(last.closing_keur, 0.0, abs_tol, rel_tol):
+            return f"terminal balance {last.closing_keur:.6f} not repaid at maturity"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -661,6 +722,17 @@ def _solve_dscr(
                         termination_reason="FINALISATION_NOT_CONVERGED",
                     )
                     return _to_schedules(final_rows, new_D, binding_constraint, diag)
+                if _dscr_sculpting_infeasibility(
+                    final_rows, final_cfads, policy, dscr_map, availability_map,
+                ) is not None:
+                    diag = _make_diag(
+                        converged=False, iteration=iteration,
+                        initial_guess=inputs.initial_debt_guess_keur,
+                        final_d=new_D, max_abs_diff=max_abs_diff,
+                        binding=binding_constraint,
+                        termination_reason=DSCR_SCULPTING_INFEASIBLE,
+                    )
+                    return _to_schedules(final_rows, new_D, binding_constraint, diag)
                 diag = _make_diag(
                     converged=True, iteration=iteration,
                     initial_guess=inputs.initial_debt_guess_keur,
@@ -800,6 +872,22 @@ def _solve_combined(
             max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
             binding=binding,
             termination_reason="FINALISATION_NOT_CONVERGED",
+            dscr_capacity=dscr_capacity,
+            gearing_capacity=gearing_cap,
+        )
+        return _to_schedules(final_rows, final_d, binding, diag)
+
+    if _dscr_sculpting_infeasibility(
+        final_rows, final_cfads, policy, dscr_map, availability_map,
+    ) is not None:
+        diag = _make_diag(
+            converged=False,
+            iteration=dscr_result.diagnostics.iteration_count,
+            initial_guess=inputs.initial_debt_guess_keur,
+            final_d=final_d,
+            max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
+            binding=binding,
+            termination_reason=DSCR_SCULPTING_INFEASIBLE,
             dscr_capacity=dscr_capacity,
             gearing_capacity=gearing_cap,
         )
