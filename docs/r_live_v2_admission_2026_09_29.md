@@ -1,12 +1,46 @@
 # R-LIVE V2 admission review — 2026-09-29
 
-Review-time evidence only; production performs no pool discovery. Identity came from the [official Robinhood registry](https://api.robinhood.com/rhj/assets), constrained to ACTIVE exact chain-4663 deployments. The registry had 195 active, single-deployment, ISIN-bearing equity-like entries at review; this bounded on-chain scan covered 28 candidates from a recognizable/liquid shortlist, not all 195. Pool evidence came from the official public Robinhood-chain RPC at a pinned block. No unscanned candidate is admitted.
+Review-time evidence only; production performs no pool discovery. Identity comes from the [official Robinhood registry](https://api.robinhood.com/rhj/assets), constrained to ACTIVE exact chain-4663 deployments with ISIN present and an official Robinhood Token name/classification. Ticker/symbol is display only; canonical identity is always the exact `chain_id:contract_address` AssetKey.
+
+---
+
+## Wide-pass admission scanner — 2026-09-29 (SCAN_BLOCKED)
+
+A wide authoritative scan covering all registry-derived candidates was planned using `tools/r_live_v2_candidate_review.py`. The scanner was improved for this pass:
+
+- **BATCH_SIZE reduced from 8 to 4** for conservative public-RPC transport
+- **Per-candidate Stage A1/A2 processing**: a transport failure for one candidate no longer aborts the full scan
+- **REVIEW_INCOMPLETE_RPC classification** added: transport errors are tracked separately from genuine admission rejections, so no candidate is silently dropped
+- **Exponential retry backoff** (1s, 2s, 4s) on transient HTTP errors
+
+**SCAN_COMPLETE = NO**
+
+**RPC_BLOCKER**: Both `api.robinhood.com:443` (Robinhood asset registry) and `rpc.mainnet.chain.robinhood.com:443` (official public RPC) are denied with HTTP 403 by the cloud session's egress policy. No other RPC or identity source is permitted by the admission rules. The scan cannot proceed.
+
+**NUMBER_OF_UNREVIEWED_CANDIDATES**: All candidates from the registry-wide authoritative derivation rule. The prior block-75763398 scan found 195 eligible registry entries and 28 candidates not yet approved; the current exact number at review time is unknown because the registry fetch was also blocked.
+
+**ELIGIBLE_REGISTRY_COUNT**: unknown (registry blocked)
+**AUTHORITATIVE_CANDIDATE_COUNT**: unknown (registry blocked)
+**NO_POOL_COUNT**: not run
+**CHEAP_PREFILTER_PASSED**: not run
+**FULL_POOL_REVIEWS**: not run
+**RPC_INCOMPLETE_COUNT**: not applicable (scan did not start)
+
+---
+
+## Previous scan — block 75763398 (2026-09-29) — 28-candidate shortlist
+
+This earlier partial scan used a recognizable/liquid 28-candidate shortlist (not the full registry-wide derivation). It is retained for traceability. **It does not constitute a complete wide admission pass.**
 
 - Pinned block: `75763398`, hash `0xe11cc60ed37987ca888cac06638433c3eeb43855b7c54a273e33dccc92e9e9bb`, timestamp `2026-09-29T15:27:47+00:00`.
 - Factory: `0x1f7d7550b1b028f7571e69a784071f0205fd2efa`; quote token USDG: `0x5fc5360d0400a0fd4f2af552add042d716f1d168`.
 - Quote: Chainlink USDG/USD `0x61b7e5650328764b076a108eff5fa7282a1b9ad2`; description, decimals, positive round and freshness valid: **true**.
-- Fee tiers inspected per candidate: 100, 500, 3000, 10000. A pool's factory, code, exact pair/fee, orientation, decimals, liquidity, observation cardinality, 300-second `observe`, and bounded 5,000-block Swap evidence were checked. Admission required at least two qualifying Swaps and one no older than 300 seconds at the pinned block. This is admission evidence, not a guarantee of ongoing AVAILABLE state.
-- Five newly admitted; existing eight plus five = thirteen. The target of fifteen was not used to relax admission rules.
+- Fee tiers inspected per candidate: 100, 500, 3000, 10000.
+- Five newly admitted in that pass; existing eight plus five = **thirteen total**. Admission rules unchanged.
+
+**TARGET_COUNT = 15**
+**FINAL_APPROVED_COUNT = 13**
+**TARGET_15_REACHED = NO** (wide scan blocked; admitted count stays at 13)
 
 | Symbol | Exact AssetKey | Economic UID | Pool | Fee | Orientation | Liquidity | Cardinality | Swaps / age | 300s TWAP | Admission / reason |
 |---|---|---|---|---:|---|---:|---:|---|---|---|
@@ -19,7 +53,7 @@ Review-time evidence only; production performs no pool discovery. Identity came 
 | MTSI | `4663:0xc93f4d80e268ab922e871bd169156c3cc41894e6` | `0x000000000000000000000000000000000cd0e8a5e7c341e09f4532de2dc256b2` | `0x2e9aee43bb86006d772dae42e12a0d811470d7c1` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | SMCI | `4663:0xc01aa1fecec0605b13bc84874ff7256c0f5f562a` | `0x000000000000000000000000000000000cfe41021541408ab92f19e6af2fa729` | `0x9f0167da6d9738b57cba0833a541db77762fb7bb` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | DELL | `4663:0x941ae714ec6d8130c7b75d67160ca08f1e7d11dd` | `0x0000000000000000000000000000000014eaef73a2c44d62b7952cfd0a44ff51` | `0xa0f5ef20f49db62bb20e0f2b51257ca897a01a5f` | 3000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
-| ↳ |  |  | `0xc30c89cb7815a1488b7998d15eec73961707fc5a` | 10000 | USDG/token | 123668942326345419 | 1500 | 6 / 197s | yes | APPROVED |
+| ↳ |  |  | `0xc30c89cb7815a1488b7998d15eec73961707fc5a` | 10000 | USDG/token | 123668942326345419 | 1500 | 6 / 197s | yes | **APPROVED** |
 | RUN | `4663:0x756bc80af765c82da966a788858d65adf14f3793` | `0x00000000000000000000000000000000159fb9b112cb4ac8acec13e01d48e763` | `0x320ffc07584f5f3cdf68986d2f97b7dd9aed3cb0` | 3000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0xe6d0f53073041e12bc46759519499764a4b92d13` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | WDAY | `4663:0x82da4646242e1d962e96e932269dc644c94a9caa` | `0x000000000000000000000000000000001805c8a4eb1a4b3fa49e2698c0da6baa` | `0x0958970ccbfb7cb99b007c7f326a9a9e4320d283` | 3000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
@@ -32,20 +66,20 @@ Review-time evidence only; production performs no pool discovery. Identity came 
 | GE | `4663:0x63b814ddbd6bf339f25fed8c36158a008d5b373e` | `0x00000000000000000000000000000000289ac6c307ef486d8201efa27fa14d63` | `0xc04635d723149390530b637f000c530738dd95ef` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | SNAP | `4663:0xf6589f11bc40b669e584073f428b05562f568733` | `0x000000000000000000000000000000002993bb34578a4b92b8addda0fc4d697b` | `0xe187202cae5587c2b482747b1d11ec506d730eaf` | 100 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0x666aedbac5587b38889859663e3b72605e7663da` | 500 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
-| ↳ |  |  | `0x0ebd4650c9e641e9745b5a508a2d46935dfe753e` | 3000 | USDG/token | 285105116168041968 | 1400 | 4 / 129s | yes | APPROVED |
+| ↳ |  |  | `0x0ebd4650c9e641e9745b5a508a2d46935dfe753e` | 3000 | USDG/token | 285105116168041968 | 1400 | 4 / 129s | yes | **APPROVED** |
 | ↳ |  |  | `0xc1bc4e31e763989616445a03627c17a5bc624778` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | TSM | `4663:0x58ffe4a942d3885baa22d7520691f611ef09e7aa` | `0x000000000000000000000000000000002e890a0884474abd86ba66b19722e827` | `0x2c240decd722b44e1cde06db77c2e1b969be7613` | 500 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0xccba175d31198e47968a7033179f512d7b38ead6` | 3000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0x07e8ea83d4c1340774c8965125e26e12bf943bf1` | 10000 | token/USDG | 55057583037933359 | 1801 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
 | NU | `4663:0x408c14038a04f7bd235329e26d2bf569ee20e250` | `0x000000000000000000000000000000002ea76ec420fa43ab81d6734184f7058a` | `0x0e3faed512e7909758eb924e6919e0057bd6b45e` | 3000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0xb6d047637151f6de1d02028acdd187aa9cb7afe3` | 10000 | token/USDG | 111785123154651047 | 1500 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
-| INTC | `4663:0xc72b96e0e48ecd4dc75e1e45396e26300bc39681` | `0x000000000000000000000000000000002eb75a2c20d7423881b4f812c27d0abe` | `0x2e5a92f5013a64661a49312111be2e8abd33f56a` | 3000 | USDG/token | 273817438914027552 | 7200 | 56 / 35s | yes | APPROVED |
+| INTC | `4663:0xc72b96e0e48ecd4dc75e1e45396e26300bc39681` | `0x000000000000000000000000000000002eb75a2c20d7423881b4f812c27d0abe` | `0x2e5a92f5013a64661a49312111be2e8abd33f56a` | 3000 | USDG/token | 273817438914027552 | 7200 | 56 / 35s | yes | **APPROVED** |
 | MSFT | `4663:0xe93237c50d904957cf27e7b1133b510c669c2e74` | `0x00000000000000000000000000000000307bb0113ca54f93adf80f4ff2bf681a` | `0x3d69ea64810300877b938e9ad9916c25912c08f5` | 100 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0x38fa8bf13a6b2ac49be77babb22c1837d1e505f9` | 500 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
-| ↳ |  |  | `0xeb60bcd1d920ad6e102690ccfc6fb488899e1510` | 3000 | USDG/token | 736292303804726453 | 7200 | 14 / 217s | yes | APPROVED |
+| ↳ |  |  | `0xeb60bcd1d920ad6e102690ccfc6fb488899e1510` | 3000 | USDG/token | 736292303804726453 | 7200 | 14 / 217s | yes | **APPROVED** |
 | ↳ |  |  | `0x2ea9292113514ed84fd16aa4ad1e416537e39c8c` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | META | `4663:0xc0d6457c16cc70d6790dd43521c899c87ce02f35` | `0x00000000000000000000000000000000343e7beca03644bcba2e50b8236784f5` | `0xad6df50832884f3498cd354086cefb0e39070f1b` | 100 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
-| ↳ |  |  | `0x107a7cb40d8665360ba10e59471af06150a50922` | 3000 | USDG/token | 181040182658541264 | 1801 | 14 / 94s | yes | APPROVED |
+| ↳ |  |  | `0x107a7cb40d8665360ba10e59471af06150a50922` | 3000 | USDG/token | 181040182658541264 | 1801 | 14 / 94s | yes | **APPROVED** |
 | ↳ |  |  | `0x6fd62e9843ad2ac2c4fbf2b62647953ea29b3537` | 10000 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | PLTR | `4663:0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a` | `0x000000000000000000000000000000007454a90b4aab491389ce9fa3c485de42` | `0x851680416a4f4e1c463d45171d61acddbc8554c0` | 3000 | USDG/token | 325594951999871422 | 1801 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
 | COIN | `4663:0x6330d8c3178a418788df01a47479c0ce7ccf450b` | `0x00000000000000000000000000000000970b46dbdece4ae4958a53815e62a85a` | `0x1aa941420f6347cf004e2d21e40f0632d8862cf8` | 100 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
@@ -58,9 +92,3 @@ Review-time evidence only; production performs no pool discovery. Identity came 
 | IBM | `4663:0x980dcf6766fa79f5cf0c4aadb3ab477ff15a9619` | `0x00000000000000000000000000000000c0d3fe37e35240d1a0f311a07e2b9fc4` | `0x05261191bc75f7bd572996bd03eaa9a26547c3c2` | 100 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0x8a9e0978e84ed7786e4251914ffff2f922ab351f` | 500 | — | — | — | — | — | POOL_LIQUIDITY_CARDINALITY_OR_DECIMALS_INSUFFICIENT |
 | ↳ |  |  | `0x8cd848ce18b829c5c769aff27164078bb52e0e97` | 3000 | USDG/token | 291085232835760643 | 1801 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
-| ↳ |  |  | `0xa0a79bc62fc822f3bcdf0ebbc586031781c53a5b` | 10000 | USDG/token | 12797495082512562 | 300 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
-| COST | `4663:0x4ea005168d7f09a7a0ba9d1def21a479950e44c2` | `0x00000000000000000000000000000000e0e44220991548d0b030699e3062c2a7` | `0x0a2121a50a09ed0796ae81f9c53ff9398355a398` | 3000 | token/USDG | 327364801872212244 | 1801 | 1 / 342s | yes | SWAP_ACTIVITY_INSUFFICIENT |
-| ↳ |  |  | `0xdb073638f94a384b8b7a647d73274decac9e7ca5` | 10000 | token/USDG | 813449931703991 | 1500 | 0 / none | yes | SWAP_ACTIVITY_INSUFFICIENT |
-
-The scanner is `tools/r_live_v2_candidate_review.py`. Rejected candidates are not present in `APPROVED_RLIVE_ASSETS`, and runtime never selects another pool. Current numeric values can still become STALE or UNAVAILABLE at runtime; historical values do not change that state.
-
