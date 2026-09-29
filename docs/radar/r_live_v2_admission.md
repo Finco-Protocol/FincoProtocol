@@ -4,6 +4,8 @@ This is a 2026-09-29 authority review, not a live price or trade recommendation.
 
 Admission is deliberately conservative: exact official UID/deployment; factory-returned pool with contract code, exact factory/pair/fee/token decimals; active liquidity and successful 300-second `observe`; plus at least two Swap events in the bounded 5,000-block review window. The event threshold is an admission screen, not a guarantee of market depth. Production acquisition rechecks on-chain identity, freshness, liquidity and oracle round at a single block, and fails closed. `No` means evidence was insufficient for *this* reviewed policy, not that the asset or any market does not exist. Future admissions require a new review; runtime has no pool discovery or fallback. The chain RPC observation is historical as of this review and must not be represented as current.
 
+**Correction A freshness rule:** pool approval does not imply a current observation. The runtime searches only the exact approved pool for canonical Uniswap V3 Swap logs in a bounded 5,000-block range ending at the pinned head. It validates the latest log's pool, event signature, block hash, nonzero swap amounts and on-chain block timestamp. The last qualifying Swap must be no older than **300 seconds** at the pinned head. This is deliberately the same as the 300-second TWAP window: if no price-forming trade occurred during that window, the TWAP can reflect a standing price rather than a live market. No threshold is relaxed to keep a particular asset AVAILABLE. Missing logs yield STALE; malformed or inaccessible activity evidence yields UNAVAILABLE. Either state suppresses current numeric reference, premium, dislocation and numeric history append. The effective `observed_at` is the earliest of chain-head, quote-round and last-pool-Swap timestamps. The historical review table below does **not** promise that any pool remains fresh later.
+
 Abbreviations in the table: all AssetKeys are `4663:<deployment>`; all pools are Uniswap V3 on Robinhood Chain; `USDG→USD` means the exact Chainlink proxy above; `L` is active pool liquidity; `C` is observation cardinality; `S` is bounded 5,000-block Swap count. Exact addresses are retained here to make the decision reproducible.
 
 | Asset | Economic asset UID | RH AssetKey deployment (chain 4663) | Reference venue / exact pool | Quote / USD conversion | Liquidity / observation evidence | Eligible | Rejection reason |
@@ -20,5 +22,18 @@ Abbreviations in the table: all AssetKeys are `4663:<deployment>`; all pools are
 | AMD | `0x0000000000000000000000000000000086aeaac3c7d9422c90f6fd41aff0eaf7` | `0x86923f96303d656e4aa86d9d42d1e57ad2023fdc` | V3 fee 3000, `0x48d284a2a4d3dc1b3da08231fe44317e7e7aa51f` | USDG→USD | L 99029074465301359; C 7200; S 2; 300s observe OK; USDG token0 | Yes | — |
 | ORCL | `0x00000000000000000000000000000000be23b7c535e841a3b1bae97bc0166eae` | `0xb0992820e760d836549ba69bc7598b4af75dee03` | No USDG pool returned by factory at tested fee tiers 100/500/3000/10000 | USDG→USD would be required | No pool/observe/liquidity evidence at tested tiers | No | No reviewed independent pool authority; other tiers not excluded |
 | PLTR | `0x000000000000000000000000000000007454a90b4aab491389ce9fa3c485de42` | `0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a` | V3 fee 3000, `0x851680416a4f4e1c463d45171d61acddbc8554c0` | USDG→USD | L 276738502203503563; C 1801; S 1; 300s observe OK; USDG token0 | No | Only one Swap in bounded review window; insufficient activity for V2 admission |
+
+The [Robinhood Chain Blockscout on-chain log API](https://robinhoodchain.blockscout.com/api-docs) corroborated the bounded Swap counts and the **latest qualifying activity at the reviewed head** (2026-09-29 08:19:27 UTC, block 75507992). All eight approved pools had a Swap within 300 seconds at that historical head; this is *admission evidence*, not a current availability guarantee. Token ordering below is the exact reviewed on-chain `token0`/`token1`, not inferred from symbol. Every approved pool quotes against USDG and uses the same USDG/USD Chainlink conversion; runtime revalidates both.
+
+| Pool-approved asset | Fee | token0 / token1 | Swaps in 5,000 blocks | Last Swap block / UTC | Age at reviewed head | Runtime currentness |
+|---|---:|---|---:|---|---:|---|
+| AAPL | 500 | USDG / AAPL | 36 | 75507835 / 08:19:11 | 16s | Recheck ≤300s |
+| NVDA | 500 | USDG / NVDA | 60 | 75507953 / 08:19:23 | 4s | Recheck ≤300s |
+| AMZN | 3000 | AMZN / USDG | 2 | 75507898 / 08:19:17 | 10s | Recheck ≤300s |
+| GOOGL | 500 | GOOGL / USDG | 25 | 75507959 / 08:19:24 | 3s | Recheck ≤300s |
+| TSLA | 3000 | TSLA / USDG | 6 | 75505706 / 08:15:38 | 229s | Recheck ≤300s |
+| AVGO | 3000 | AVGO / USDG | 3 | 75505994 / 08:16:07 | 200s | Recheck ≤300s |
+| NFLX | 3000 | USDG / NFLX | 8 | 75507738 / 08:19:01 | 26s | Recheck ≤300s |
+| AMD | 3000 | USDG / AMD | 2 | 75507475 / 08:18:35 | 52s | Recheck ≤300s |
 
 The runtime policy contains only the eight `Yes` identities and immutable exact addresses. The list endpoint is metadata; the current and history endpoints accept only canonical AssetKeys. Current reference is independent, indicative and non-executable. No FINCO Verify claim is made. A stale or unavailable current observation cannot be replaced by historical values. The existing AAPL one-shot service retains its V1 default and writes only when explicitly invoked as a collector. A non-AAPL job may pass `--asset-key 4663:<approved address>` to the same one-shot module; no timer or web scheduler is added here.

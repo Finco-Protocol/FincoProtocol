@@ -101,6 +101,10 @@ class _BadEvidence(ValueError):
     pass
 
 
+# Uniswap V3 IUniswapV3PoolEvents.Swap(address,address,int256,int256,uint160,uint128,int24)
+SWAP_TOPIC0 = "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
+
+
 def _hex(value: Any) -> str:
     if not isinstance(value, str) or not value.startswith("0x") or len(value) % 2:
         raise _BadEvidence("MALFORMED_HEX")
@@ -177,8 +181,52 @@ def _quote_price(mean_tick: int, pool: PoolAuthority, token0: str) -> Decimal:
 
 
 def _availability(key: AssetKey, uid: str | None, reason: str,
-                  state: AuthorityState = AuthorityState.UNAVAILABLE) -> OnchainReferenceObservation:
-    return OnchainReferenceObservation(state, key, uid, reason)
+                  state: AuthorityState = AuthorityState.UNAVAILABLE,
+                  evidence: Mapping[str, Any] | None = None) -> OnchainReferenceObservation:
+    return OnchainReferenceObservation(state, key, uid, reason, evidence=evidence or {})
+
+
+def _last_pool_swap(rpc: Rpc, pool: PoolAuthority, number: int, block_time: int,
+                    lookback_blocks: int) -> tuple[int, int, str] | None:
+    """Find a source-proven price-forming Swap in a bounded canonical range."""
+    from_block = max(0, number - lookback_blocks + 1)
+    logs = rpc.call("eth_getLogs", [{
+        "address": pool.pool_address, "fromBlock": f"0x{from_block:x}",
+        "toBlock": f"0x{number:x}", "topics": [SWAP_TOPIC0],
+    }])
+    if not isinstance(logs, list):
+        raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+    latest: tuple[int, int, str] | None = None
+    for log in logs:
+        if not isinstance(log, dict) or log.get("removed") is True:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        if not isinstance(log.get("address"), str) or log["address"].lower() != pool.pool_address:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        topics = log.get("topics")
+        if not isinstance(topics, list) or len(topics) != 3 or topics[0] != SWAP_TOPIC0:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        activity_block = _uint(log.get("blockNumber"))
+        log_index = _uint(log.get("logIndex"))
+        activity_hash = log.get("blockHash")
+        if not from_block <= activity_block <= number or len(_hex(activity_hash)) != 64:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        raw_data = _hex(log.get("data"))
+        if len(raw_data) != 5 * 64:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        amount0, amount1, sqrt_price, _, _ = _words(log["data"], 5)
+        if amount0 == 0 or amount1 == 0 or sqrt_price == 0:
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+        if latest is None or (activity_block, log_index) > (latest[0], latest[1]):
+            latest = (activity_block, log_index, activity_hash)
+    if latest is None:
+        return None
+    activity_block = rpc.call("eth_getBlockByNumber", [f"0x{latest[0]:x}", False])
+    if not isinstance(activity_block, dict) or activity_block.get("hash") != latest[2]:
+        raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+    activity_time = _uint(activity_block.get("timestamp"))
+    if activity_time > block_time:
+        raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE")
+    return latest[0], activity_time, latest[2]
 
 
 def observe_onchain_reference(
@@ -247,6 +295,25 @@ def observe_onchain_reference(
         slot = _words(_call(rpc, pool.pool_address, "0x3850c7bd", tag), 7)
         if liquidity <= 0 or slot[3] < 2:
             raise _BadEvidence("POOL_LIQUIDITY_OR_CARDINALITY_INSUFFICIENT")
+        try:
+            activity = _last_pool_swap(rpc, pool, number, block_time, policy.pool_activity_lookback_blocks)
+        except (_BadEvidence, RpcUnavailable, ValueError, TypeError, AttributeError):
+            raise _BadEvidence("POOL_ACTIVITY_UNAVAILABLE") from None
+        if activity is None:
+            return _availability(key, uid, "POOL_ACTIVITY_STALE", AuthorityState.STALE,
+                                 {"poolActivityLookbackBlocks": policy.pool_activity_lookback_blocks})
+        activity_number, activity_time, activity_hash = activity
+        activity_age = block_time - activity_time
+        activity_evidence = {
+            "lastPoolActivityBlock": activity_number,
+            "lastPoolActivityBlockHash": activity_hash,
+            "lastPoolActivityAt": datetime.fromtimestamp(activity_time, timezone.utc).isoformat(),
+            "poolActivityAgeSeconds": activity_age,
+            "maxPoolActivityAgeSeconds": policy.max_pool_activity_age_seconds,
+        }
+        if activity_age > policy.max_pool_activity_age_seconds:
+            return _availability(key, uid, "POOL_ACTIVITY_STALE", AuthorityState.STALE,
+                                 activity_evidence)
         cumulative_start, cumulative_end = _tick_cumulatives(
             _call(rpc, pool.pool_address, _observe_calldata(policy.twap_window_seconds), tag))
         mean_tick = (cumulative_end - cumulative_start) // policy.twap_window_seconds
@@ -273,7 +340,7 @@ def observe_onchain_reference(
             token_usd = +(token_quote * quote_usd)
         block_at = datetime.fromtimestamp(block_time, timezone.utc)
         quote_at = datetime.fromtimestamp(updated, timezone.utc)
-        observed = min(block_at, quote_at)
+        observed = min(block_at, quote_at, datetime.fromtimestamp(activity_time, timezone.utc))
         evidence = {
             "policyVersion": policy.authority_version, "poolAuthorityVersion": pool.version,
             "quoteAuthorityVersion": QUOTE_AUTHORITY_VERSION,
@@ -283,6 +350,7 @@ def observe_onchain_reference(
             "token0": token0, "token1": token1, "tokenDecimals": token_decimals,
             "quoteToken": pool.quote_token_address, "quoteDecimals": quote_decimals,
             "liquidity": str(liquidity), "observationCardinality": slot[3],
+            **activity_evidence,
             "blockNumber": number, "blockHash": block_hash, "blockTimestamp": block_at.isoformat(),
             "twapWindowSeconds": policy.twap_window_seconds,
             "dexWindowStartAt": datetime.fromtimestamp(block_time - policy.twap_window_seconds, timezone.utc).isoformat(),

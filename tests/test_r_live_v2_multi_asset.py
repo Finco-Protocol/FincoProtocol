@@ -12,7 +12,7 @@ from app.radar_rwa.r_live_service import compose_r_live, read_r_live_history
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.authority.contracts import AuthorityState
-from finco_radar.authority.r_live_onchain import observe_onchain_reference
+from finco_radar.authority.r_live_onchain import SWAP_TOPIC0, observe_onchain_reference
 from finco_radar.authority.r_live_policy import (
     AAPL_KEY, AAPL_POOL, APPROVED_BY_CANONICAL_ID, APPROVED_RLIVE_ASSETS,
 )
@@ -31,11 +31,27 @@ def _registry(policy, *, uid=None):
 
 
 class ReviewedPoolRpc(FakeRpc):
-    def __init__(self, policy, *, tick=0):
+    def __init__(self, policy, *, tick=0, activity_age_seconds=0, activity_unavailable=False):
         super().__init__(tick=tick)
         self.policy = policy
+        self.activity_age_seconds = activity_age_seconds
+        self.activity_unavailable = activity_unavailable
 
     def call(self, method, params):
+        if method == "eth_getLogs":
+            if self.activity_unavailable:
+                raise ValueError("secret https://rpc.invalid/credential")
+            return [{
+                "address": self.policy.pool.pool_address,
+                "topics": [SWAP_TOPIC0, "0x" + word(1), "0x" + word(2)],
+                "blockNumber": "0x122" if self.activity_age_seconds else "0x123",
+                "blockHash": "0x" + "cd" * 32 if self.activity_age_seconds else "0x" + "ab" * 32,
+                "logIndex": "0x0",
+                "data": "0x" + "".join(map(word, [1, 2, 2 ** 96, 1_000_000, 0])),
+            }]
+        if method == "eth_getBlockByNumber" and params[0] == "0x122":
+            return {"number": "0x122", "hash": "0x" + "cd" * 32,
+                    "timestamp": hex(BLOCK_TIME - self.activity_age_seconds)}
         if method != "eth_call":
             return super().call(method, params)
         to, data = params[0]["to"], params[0]["data"]
@@ -48,8 +64,9 @@ class ReviewedPoolRpc(FakeRpc):
             return "0x" + word(pool.quote_decimals)
         if to == pool.pool_address:
             if data == "0xc45a0155": return "0x" + word(int(pool.factory_address, 16))
-            if data == "0x0dfe1681": return "0x" + word(int(pool.quote_token_address, 16))
-            if data == "0xd21220a7": return "0x" + word(int(self.policy.asset_key.contract_address, 16))
+            token0, token1 = sorted((pool.quote_token_address, self.policy.asset_key.contract_address))
+            if data == "0x0dfe1681": return "0x" + word(int(token0, 16))
+            if data == "0xd21220a7": return "0x" + word(int(token1, 16))
             if data == "0xddca3f43": return "0x" + word(pool.fee)
             if data == "0x1a686502": return "0x" + word(1_000_000)
             if data == "0x3850c7bd": return "0x" + "".join(map(word, [1, 0, 1, 3, 3, 0, 1]))
@@ -64,10 +81,11 @@ class ReviewedPoolRpc(FakeRpc):
         raise AssertionError((to, data))
 
 
-def _observe(policy, *, tick=0, uid=None):
+def _observe(policy, *, tick=0, uid=None, activity_age_seconds=0, activity_unavailable=False):
     return observe_onchain_reference(
         registry=_registry(policy, uid=uid), key=policy.asset_key,
-        rpc=ReviewedPoolRpc(policy, tick=tick),
+        rpc=ReviewedPoolRpc(policy, tick=tick, activity_age_seconds=activity_age_seconds,
+                            activity_unavailable=activity_unavailable),
         retrieved_at=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
     )
 
@@ -93,10 +111,48 @@ def test_every_approved_policy_observes_exact_pair_and_quote(symbol):
     assert observed.registry_asset_uid == policy.economic_asset_uid
     assert observed.evidence["pool"] == policy.pool.pool_address
     assert observed.evidence["twapWindowSeconds"] == 300
+    assert observed.evidence["lastPoolActivityBlock"] == 0x123
+    assert observed.evidence["poolActivityAgeSeconds"] == 0
     assert observed.evidence["quoteUsdPrice"] == "0.99994"
     assert observed.price_usd_per_token != Decimal(1)
     assert _observe(policy, tick=-1).price_usd_per_token != observed.price_usd_per_token
     assert _observe(policy, uid="0x" + "ab" * 32).reason == "CANONICAL_ECONOMIC_UID_MISMATCH"
+
+
+def test_two_real_reviewed_pool_orientations_have_inverse_tick_math():
+    nvda = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    amzn = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "AMZN")
+    assert nvda.pool.quote_token_address < nvda.asset_key.contract_address  # USDG token0
+    assert amzn.asset_key.contract_address < amzn.pool.quote_token_address  # asset token0
+    nvda_positive = _observe(nvda, tick=100)
+    amzn_positive = _observe(amzn, tick=100)
+    assert nvda_positive.state is amzn_positive.state is AuthorityState.AVAILABLE
+    assert nvda_positive.evidence["token0"] == nvda.pool.quote_token_address
+    assert amzn_positive.evidence["token0"] == amzn.asset_key.contract_address
+    baseline = Decimal(10) ** 12
+    assert Decimal(nvda_positive.evidence["tokenQuotePrice"]) < baseline
+    assert Decimal(amzn_positive.evidence["tokenQuotePrice"]) > baseline
+    product = (Decimal(nvda_positive.evidence["tokenQuotePrice"])
+               * Decimal(amzn_positive.evidence["tokenQuotePrice"]))
+    assert abs(product - baseline * baseline) < Decimal("0.000001")
+
+
+def test_stale_or_unavailable_pool_activity_suppresses_current_number():
+    nvda = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    fresh = _observe(nvda, activity_age_seconds=300)
+    assert fresh.state is AuthorityState.AVAILABLE
+    assert fresh.observed_at == datetime.fromtimestamp(BLOCK_TIME - 300, timezone.utc)
+    stale = _observe(nvda, activity_age_seconds=301)
+    assert stale.state is AuthorityState.STALE
+    assert stale.reason == "POOL_ACTIVITY_STALE"
+    assert stale.price_usd_per_token is None
+    assert stale.to_independent_reference() is None
+    assert stale.evidence["poolActivityAgeSeconds"] == 301
+    unavailable = _observe(nvda, activity_unavailable=True)
+    assert unavailable.state is AuthorityState.UNAVAILABLE
+    assert unavailable.reason == "POOL_ACTIVITY_UNAVAILABLE"
+    assert unavailable.price_usd_per_token is None
+    assert "credential" not in str(unavailable.to_evidence_dict())
 
 
 def test_unknown_identity_rejected_before_rpc_and_no_symbol_resolution():
@@ -179,5 +235,20 @@ def test_generic_b1_premium_and_b13_idempotent_available_only():
         assert stale.onchain.state is AuthorityState.STALE
         assert stale.history_digest is None
         assert len(ledger.read(policy.economic_asset_uid, policy.asset_key)) == 1
+        stale_pool = compose_r_live(registry=_registry(policy), underlying=basis,
+            rpc=ReviewedPoolRpc(policy, activity_age_seconds=301), as_of=clock,
+            history=ledger, key=policy.asset_key)
+        assert stale_pool.onchain.state is AuthorityState.STALE
+        assert stale_pool.authority.token.price_usd_per_token is None
+        assert stale_pool.authority.premium.value_bps is None
+        assert stale_pool.history_digest is None
+        assert len(ledger.read(policy.economic_asset_uid, policy.asset_key)) == 1
+        with patch.dict("os.environ", {"ROBINHOOD_RPC_URL": "https://example.invalid"}):
+            with patch("app.radar_rwa.r_live_service.collect_r_live", return_value=stale_pool):
+                state, payload = institutional.get_r_live(policy.asset_key.canonical_id)
+        assert state == "STALE"
+        assert payload["token_reference"]["price_usd_per_token"] is None
+        assert payload["robinhood_basis"]["price_usd_per_token"] is None
+        assert payload["b1_0_premium"]["value_bps"] is None
     finally:
         ledger.close()

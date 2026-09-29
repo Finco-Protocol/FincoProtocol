@@ -61,6 +61,10 @@ class RLiveAssetPolicy:
     max_block_age_seconds: int = MAX_BLOCK_AGE_SECONDS
     max_registry_age_seconds: int = MAX_REGISTRY_AGE_SECONDS
     max_quote_age_seconds: int = MAX_QUOTE_AGE_SECONDS
+    # A token market is current only if a Swap occurred within its 300s TWAP
+    # window. A fresh chain block alone is not a fresh token market.
+    max_pool_activity_age_seconds: int = TWAP_WINDOW_SECONDS
+    pool_activity_lookback_blocks: int = 5000
 
     @property
     def asset_key(self) -> AssetKey:

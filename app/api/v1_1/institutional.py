@@ -318,7 +318,8 @@ def _r_live_composite_state(
     """Determine composite R-LIVE API state from all four current components.
 
     AVAILABLE only when ALL components are AVAILABLE.
-    STALE if any component is STALE and none is UNAVAILABLE/IDENTITY_UNAVAILABLE.
+    STALE if evidence is stale but otherwise bound; a stale on-chain reference
+    also makes its downstream token/premium placeholders unavailable.
     UNAVAILABLE otherwise.
 
     This enforces the PR #126 fail-closed contract: a partial current read
@@ -329,6 +330,12 @@ def _r_live_composite_state(
     components = [onchain_state, token_state, underlying_state, premium_state]
     if all(s is AuthorityState.AVAILABLE for s in components):
         return STATE_AVAILABLE
+    # A STALE on-chain reference has no numeric IndependentTokenReference by
+    # design. B1.0 consequently marks token/premium UNAVAILABLE; these are
+    # downstream placeholders, not independent evidence that the pool is absent.
+    if (onchain_state is AuthorityState.STALE
+            and underlying_state not in (AuthorityState.UNAVAILABLE, AuthorityState.IDENTITY_UNAVAILABLE)):
+        return "STALE"
     for s in components:
         if s is AuthorityState.UNAVAILABLE or s is AuthorityState.IDENTITY_UNAVAILABLE:
             return STATE_UNAVAILABLE
