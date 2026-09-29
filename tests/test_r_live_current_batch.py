@@ -30,9 +30,7 @@ import pytest
 from finco_radar.authority.contracts import (
     AuthoritySnapshot,
     AuthorityState,
-    BoundTokenReference,
     IndependentTokenReference,
-    PremiumSnapshot,
 )
 from finco_radar.authority.r_live_onchain import OnchainReferenceObservation
 from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
@@ -399,7 +397,7 @@ def test_H_streaming_is_completion_order_not_registry_order():
         with patch("app.radar_rwa.r_live_service.compose_r_live",
                    side_effect=_timed):
             results = list(collect_r_live_batch(rpc_url="https://rpc.example.com/",
-                                                workers=_APPROVED_COUNT))
+                                                workers=min(_APPROVED_COUNT, 4)))
 
     ids_in_order = [r[0] for r in results]
     if slow_id in ids_in_order and fast_id in ids_in_order:
@@ -529,8 +527,7 @@ def test_K_batch_compose_args_match_single_asset_contract():
             "compose_r_live must receive the shared registry, not None or a copy"
         )
         # Key must be an approved AssetKey
-        assert call_kwargs["key"] in APPROVED_BY_CANONICAL_ID.values().__class__ or \
-               call_kwargs["key"].canonical_id in APPROVED_BY_CANONICAL_ID
+        assert call_kwargs["key"].canonical_id in APPROVED_BY_CANONICAL_ID
         # History must be None (read-only)
         assert call_kwargs["history"] is None
 
