@@ -16,9 +16,20 @@ from typing import Callable
 from finco_radar.authority.contracts import AuthorityState
 
 from .bnb_history import BnbIntelligenceHistoryStore
+from .collector_health import CollectorHealthStore
 from .r_live_service import RLiveResult, collect_aapl_r_live, collect_r_live
 from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
 from finco_radar.authority.r_live_onchain import JsonRpc
+
+
+_SYSTEMIC_SOURCE_FAILURES = {
+    "APPROVED_REGISTRY_UNAVAILABLE",
+    "REGISTRY_UNAVAILABLE",
+    "RPC_UNAVAILABLE",
+    "RPC_CHAIN_UNAVAILABLE",
+    "HISTORY_STORE_UNAVAILABLE",
+    "HISTORY_PERSISTENCE_UNAVAILABLE",
+}
 
 
 def _safe_reason(value: object) -> str | None:
@@ -26,6 +37,13 @@ def _safe_reason(value: object) -> str | None:
     if value is None:
         return None
     return value if isinstance(value, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else "R_LIVE_COLLECTION_UNAVAILABLE"
+
+
+def _exception_reason(exc: Exception) -> str:
+    value = str(exc)
+    if isinstance(value, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value):
+        return value
+    return "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
 
 
 def _check_rpc_health(url: str) -> None:
@@ -70,9 +88,9 @@ def collect_once(
                 "asset_key": result.authority.canonical_token.canonical_id,
                 "observed_at": result.onchain.observed_at.isoformat(),
                 "retrieved_at": (as_of or datetime.now(timezone.utc)).isoformat()}
-    except Exception:
+    except Exception as exc:
         if process_errors is not None:
-            process_errors.append("R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE")
+            process_errors.append(_exception_reason(exc))
         return {"state": "UNAVAILABLE", "reason": "R_LIVE_COLLECTION_UNAVAILABLE",
                 "history_digest": None}
     finally:
@@ -85,76 +103,153 @@ def collect_all_approved(
     acquire: Callable[..., RLiveResult] = collect_r_live,
     history_factory: Callable[..., BnbIntelligenceHistoryStore] = BnbIntelligenceHistoryStore,
     rpc_healthcheck: Callable[[str], None] = _check_rpc_health,
+    health_factory: Callable[..., CollectorHealthStore] = CollectorHealthStore,
 ) -> tuple[dict, int]:
-    """Serial batch over the canonical registry; market states do not abort it.
+    """Serial canonical batch with separate durable operational-health state.
 
-    Exit 0 means the batch operated, not that every market was AVAILABLE.
-    Configuration, ledger initialization/persistence/close or registry failure
-    are process-level nonzero outcomes. No credential or exception is emitted.
+    Exit 0 means the collector operational path completed; individual market
+    states may legitimately be STALE/UNAVAILABLE. Systemic transport, registry,
+    persistence, invalid-result, or health-ledger failures are process-level
+    nonzero outcomes. Health metadata never changes asset authority/history.
     """
-    try:
-        keys = tuple(APPROVED_BY_CANONICAL_ID)
-        if not keys:
-            raise ValueError("empty reviewed registry")
-    except Exception:
-        return {"mode": "all_approved", "asset_count": 0, "results": [],
-                "summary": {"available": 0, "stale": 0, "unavailable": 0},
-                "process_error": "APPROVED_REGISTRY_UNAVAILABLE"}, 1
     summary = {"available": 0, "stale": 0, "unavailable": 0}
-    response = {"mode": "all_approved", "asset_count": len(keys),
+    response = {"mode": "all_approved", "asset_count": 0,
                 "results": [], "summary": summary}
-    url = rpc_url if rpc_url is not None else os.getenv("ROBINHOOD_RPC_URL")
-    if not url:
-        response["process_error"] = "RPC_NOT_CONFIGURED"
-        return response, 1
+
     try:
-        rpc_healthcheck(url)
+        health = health_factory()
+        health.record_attempt(now=as_of)
     except Exception:
-        response["process_error"] = "RPC_UNAVAILABLE"
+        response["process_error"] = "COLLECTOR_HEALTH_STORE_UNAVAILABLE"
         return response, 1
-    try:
-        ledger = history_factory(allowed_chain_id=4663)
-        if ledger is None:
-            raise ValueError("history store missing")
-    except Exception:
-        response["process_error"] = "HISTORY_STORE_UNAVAILABLE"
-        return response, 1
-    persistence_failed = False
-    invalid_result = False
-    process_errors: list[str] = []
-    try:
-        for key in keys:
-            status = collect_once(
-                rpc_url=url, as_of=as_of, history=ledger,
-                acquire=partial(acquire, canonical_asset_id=key),
-                process_errors=process_errors,
-            )
-            state = status.get("state") if isinstance(status, dict) else None
-            if state not in ("AVAILABLE", "STALE", "UNAVAILABLE"):
-                invalid_result = True
-                break
-            summary[state.lower()] += 1
-            response["results"].append({
-                "asset_key": key, "state": state, "reason": status.get("reason"),
-                "history_digest": status.get("history_digest"),
-            })
-            if status.get("reason") == "HISTORY_PERSISTENCE_UNAVAILABLE":
-                persistence_failed = True
-    finally:
+
+    def _health_failure(reason: str, attempted: int = 0) -> bool:
         try:
-            ledger.close()
+            health.record_systemic_failure(
+                reason, attempted=attempted,
+                available=summary["available"], stale=summary["stale"],
+                unavailable=summary["unavailable"], now=as_of,
+            )
+            return True
         except Exception:
-            persistence_failed = True
-    if persistence_failed:
-        response["process_error"] = "HISTORY_STORE_UNAVAILABLE"
-        return response, 1
-    if invalid_result:
-        response["process_error"] = "COLLECTOR_RESULT_INVALID"
-        return response, 1
-    if process_errors:
-        response["process_error"] = "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
-        return response, 1
-    return response, 0
+            response["process_error"] = "COLLECTOR_HEALTH_STORE_UNAVAILABLE"
+            return False
+
+    def _close_health() -> bool:
+        try:
+            health.close()
+            return True
+        except Exception:
+            response["process_error"] = "COLLECTOR_HEALTH_STORE_UNAVAILABLE"
+            return False
+
+    try:
+        try:
+            keys = tuple(APPROVED_BY_CANONICAL_ID)
+            if not keys:
+                raise ValueError("empty reviewed registry")
+        except Exception:
+            response["process_error"] = "APPROVED_REGISTRY_UNAVAILABLE"
+            _health_failure("APPROVED_REGISTRY_UNAVAILABLE")
+            return response, 1
+
+        response["asset_count"] = len(keys)
+        url = rpc_url if rpc_url is not None else os.getenv("ROBINHOOD_RPC_URL")
+        if not url:
+            response["process_error"] = "RPC_NOT_CONFIGURED"
+            _health_failure("RPC_NOT_CONFIGURED")
+            return response, 1
+        try:
+            rpc_healthcheck(url)
+        except Exception:
+            response["process_error"] = "RPC_UNAVAILABLE"
+            _health_failure("RPC_UNAVAILABLE")
+            return response, 1
+        try:
+            ledger = history_factory(allowed_chain_id=4663)
+            if ledger is None:
+                raise ValueError("history store missing")
+        except Exception:
+            response["process_error"] = "HISTORY_STORE_UNAVAILABLE"
+            _health_failure("HISTORY_STORE_UNAVAILABLE")
+            return response, 1
+
+        persistence_failed = False
+        invalid_result = False
+        process_errors: list[str] = []
+        try:
+            for key in keys:
+                status = collect_once(
+                    rpc_url=url, as_of=as_of, history=ledger,
+                    acquire=partial(acquire, canonical_asset_id=key),
+                    process_errors=process_errors,
+                )
+                state = status.get("state") if isinstance(status, dict) else None
+                if state not in ("AVAILABLE", "STALE", "UNAVAILABLE"):
+                    invalid_result = True
+                    break
+                summary[state.lower()] += 1
+                response["results"].append({
+                    "asset_key": key, "state": state, "reason": status.get("reason"),
+                    "history_digest": status.get("history_digest"),
+                })
+                if status.get("reason") == "HISTORY_PERSISTENCE_UNAVAILABLE":
+                    persistence_failed = True
+        finally:
+            try:
+                ledger.close()
+            except Exception:
+                persistence_failed = True
+
+        attempted = len(response["results"])
+        if persistence_failed:
+            response["process_error"] = "HISTORY_STORE_UNAVAILABLE"
+            _health_failure("HISTORY_STORE_UNAVAILABLE", attempted)
+            return response, 1
+        if invalid_result:
+            response["process_error"] = "COLLECTOR_RESULT_INVALID"
+            _health_failure("COLLECTOR_RESULT_INVALID", attempted)
+            return response, 1
+        if process_errors:
+            response["process_error"] = "R_LIVE_ACQUISITION_RUNTIME_UNAVAILABLE"
+            shared_reasons = set(process_errors)
+            systemic = (
+                attempted == len(keys)
+                and len(process_errors) == len(keys)
+                and len(shared_reasons) == 1
+                and next(iter(shared_reasons)) in _SYSTEMIC_SOURCE_FAILURES
+            )
+            try:
+                if systemic:
+                    health.record_systemic_failure(
+                        next(iter(shared_reasons)), attempted=attempted,
+                        available=summary["available"], stale=summary["stale"],
+                        unavailable=summary["unavailable"], now=as_of,
+                    )
+                else:
+                    health.record_degraded(
+                        attempted=attempted,
+                        available=summary["available"], stale=summary["stale"],
+                        unavailable=summary["unavailable"], now=as_of,
+                    )
+            except Exception:
+                response["process_error"] = "COLLECTOR_HEALTH_STORE_UNAVAILABLE"
+            return response, 1
+
+        # A completed canonical acquisition is operationally healthy even if
+        # legitimate authority evidence leaves individual assets unavailable.
+        try:
+            health.record_success(
+                attempted=attempted,
+                available=summary["available"], stale=summary["stale"],
+                unavailable=summary["unavailable"], now=as_of,
+            )
+        except Exception:
+            response["process_error"] = "COLLECTOR_HEALTH_STORE_UNAVAILABLE"
+            return response, 1
+        return response, 0
+    finally:
+        _close_health()
 
 
 def main(argv: list[str] | None = None) -> int:
