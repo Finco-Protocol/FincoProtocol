@@ -1,0 +1,26 @@
+{% extends "yield/base.html" %}
+{% block title %}FINCO Yield — Compare{% endblock %}
+{% block content %}
+<p class="k">FINCO Yield · Compare</p>
+<h1>Side-by-side mechanics</h1>
+<p class="sub">Up to four exact opportunities. No winner, score or recommendation is generated.</p>
+<div class="nav"><a class="a" href="/yield">← Explore</a></div>
+<div class="scroll" data-testid="yield-compare-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        {% for column in columns %}<th>{{ column.name }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for label, values in metrics %}
+      <tr>
+        <th>{{ label }}</th>
+        {% for value in values %}<td>{{ value }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

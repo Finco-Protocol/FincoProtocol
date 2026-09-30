@@ -1,0 +1,63 @@
+{% extends "yield/base.html" %}
+{% block title %}FINCO Yield — Explore{% endblock %}
+{% block content %}
+<p class="k">FINCO Yield · V1 Beta</p>
+<h1>Explore</h1>
+<p class="sub">Evidence-backed DeFi opportunities. Source confidence and freshness stay visible; FINCO does not rank a winner.</p>
+<div class="nav">
+  <a class="a" href="/">FINCO</a>
+  <a class="a" href="/yield/monitor">Wallet Monitor</a>
+</div>
+
+<form class="filters">
+  <select name="chain_id">
+    <option value="">All chains</option>
+    <option value="1" {% if filters.chain_id == 1 %}selected{% endif %}>Ethereum</option>
+    <option value="8453" {% if filters.chain_id == 8453 %}selected{% endif %}>Base</option>
+  </select>
+  <input name="protocol" placeholder="Protocol" value="{{ filters.protocol }}">
+  <input name="asset" placeholder="Asset" value="{{ filters.asset }}">
+  <select name="category">
+    <option value="">All assets</option>
+    <option value="stablecoin" {% if filters.category == "stablecoin" %}selected{% endif %}>Stablecoin</option>
+    <option value="major" {% if filters.category == "major" %}selected{% endif %}>Major</option>
+  </select>
+  <input name="min_tvl" placeholder="Min TVL USD" value="{{ filters.min_tvl }}">
+  <input name="min_history_days" placeholder="Min history days" value="{{ filters.min_history_days }}">
+  <input name="max_reward_dependency" placeholder="Max reward dependency" value="{{ filters.max_reward_dependency }}">
+  <select name="evidence">
+    <option value="">All evidence</option>
+    {% for choice in ["NATIVE_ENRICHED","DIRECT_ONCHAIN","THIRD_PARTY_REFERENCE"] %}
+      <option value="{{ choice }}" {% if filters.evidence == choice %}selected{% endif %}>{{ choice }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn">Filter</button>
+</form>
+
+<div class="scroll" data-testid="yield-opportunities-scroll">
+  <table>
+    <thead><tr><th>Opportunity</th><th>Protocol</th><th>Chain</th><th>TVL</th><th>Total APY</th><th>Base APY</th><th>Rewards APY</th><th>Evidence</th><th>Support</th><th>Exit</th><th>Freshness</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td><a href="/yield/{{ row.uid }}">{{ row.name }}</a><br><small>{{ row.underlying_symbol }}</small></td>
+        <td>{{ row.protocol }}</td>
+        <td>{{ row.chain }}</td>
+        <td>{{ row.tvl }}</td>
+        <td>{{ row.total_apy }}</td>
+        <td>{{ row.base_apy }}</td>
+        <td>{{ row.rewards_apy }}</td>
+        <td><span class="badge">{{ row.evidence }}</span></td>
+        <td><span class="badge">{{ row.support_state }}</span></td>
+        <td>{{ row.exit }}</td>
+        <td><span class="badge">{{ row.freshness }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="11">No exact matches.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="bound">Read-only by default. Execution planning is separately gated. FINCO never custodies assets, holds private keys, auto-invests or rebalances.</p>
+{% endblock %}

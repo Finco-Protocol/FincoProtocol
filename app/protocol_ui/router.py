@@ -198,3 +198,9 @@ async def protocol_roadmap(request: Request):
             "proto_active_page": "roadmap",
         },
     )
+
+
+# Explicit Yield integration boundary. The package initializer remains minimal
+# so ``app.protocol_ui.router`` continues to resolve to this Python module.
+from app.yield_ui_integration import router as _yield_integration_router
+router.include_router(_yield_integration_router)
