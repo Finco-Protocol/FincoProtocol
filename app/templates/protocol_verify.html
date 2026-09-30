@@ -16,10 +16,64 @@
   <div class="proto-verify">
 
     <div class="proto-verify__header">
-      <div class="proto-verify__eyebrow">Evidence Integrity</div>
-      <h1 class="proto-verify__title">Public Validation Corpus</h1>
+      <div class="proto-verify__eyebrow">Trust &amp; Verification</div>
+      <h1 class="proto-verify__title">Trust &amp; Verification</h1>
       <p class="proto-verify__desc">
-        Deterministic, network-free cross-surface verification.
+        FINCO separates several verification authorities. They are not
+        cumulative: a result at one layer never implies another.
+      </p>
+    </div>
+
+    <div class="proto-verify__trust" style="margin:0 auto 24px;max-width:1080px;padding:0 20px;">
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff;">
+        <h2 style="margin:0 0 6px;font-size:1.05rem;">Run Integrity Checks — SHIPPED</h2>
+        <p style="margin:0;font-size:.92rem;color:#374151;">
+          Read-only checks over the evidence recorded when a run is committed:
+          Sources &amp; Uses, balance-sheet reconciliation, senior debt rollforward,
+          debt-service/interest consistency, CFADS/DSCR integrity, DSCR sculpting
+          feasibility, unfunded-cash conditions and sponsor-return input
+          consistency. Recomputed from recorded evidence; they never re-run the
+          model. They do <strong>not</strong> validate external assumptions and are
+          not economic truth. In-product: the Model Trust Pack in the V2 workbook.
+        </p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff;">
+        <h2 style="margin:0 0 6px;font-size:1.05rem;">Reference Regression Check — SHIPPED</h2>
+        <p style="margin:0;font-size:.92rem;color:#374151;">
+          Re-runs canonical reference models against pinned expected outputs and
+          tolerances. Regression protection for the reference library. It does
+          <strong>not</strong> validate a user's Last Run and is not a
+          model-soundness guarantee. Distinct from Run Integrity.
+        </p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff;">
+        <h2 style="margin:0 0 6px;font-size:1.05rem;">Signed Run Certificate — SHIPPED (config-gated)</h2>
+        <p style="margin:0;font-size:.92rem;color:#374151;">
+          Ed25519 signatures over the exact committed run evidence
+          (<code>FINCO_RUN_CERTIFICATE_V1</code>). Issuance requires
+          <code>FINCO_RUN_CERT_SIGNING_KEY</code> and fails closed without it.
+          Signature verification works when the relying party holds the trusted
+          public key; public trust-key distribution and a public verifier are in
+          development (M-2). No blockchain anchoring is implemented.
+          <strong>Signed Run is not FINCO Verify and not economic truth.</strong>
+        </p>
+      </div>
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;margin-bottom:14px;background:#fff;">
+        <h2 style="margin:0 0 6px;font-size:1.05rem;">FINCO Verify — separate binding authority</h2>
+        <p style="margin:0;font-size:.92rem;color:#374151;">
+          Source-attested binding of a model/asset to a claimed external identity.
+          Requires explicit source-proven model↔market binding and canonical market evidence.
+          Production boundary: <strong>Verified production assets: 0</strong>.
+          Current records render MODEL_ONLY — MODEL_ONLY never means VERIFIED.
+        </p>
+      </div>
+    </div>
+
+    <div class="proto-verify__header">
+      <div class="proto-verify__eyebrow">Public Validation Corpus</div>
+      <h1 class="proto-verify__title" style="font-size:1.4rem;">Deterministic corpus check</h1>
+      <p class="proto-verify__desc">
+        Network-free cross-surface verification.
         Synthetic-only corpus: no client, workbook, wallet, company,
         person or jurisdiction-specific calibration data.
       </p>

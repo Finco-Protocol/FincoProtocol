@@ -41,6 +41,7 @@
       <a href="#model">Model</a>
       <a href="#outputs">Key outputs</a>
       <a href="#radar">Radar</a>
+      <a href="#trust-stack">Trust stack</a>
       <a href="#verified">Verified Assets</a>
       <a href="#evidence">Evidence & verification</a>
       <a href="#api">API Beta</a>
@@ -100,8 +101,9 @@
             <thead><tr><th>Surface</th><th>Primary question</th><th>Current scope</th></tr></thead>
             <tbody>
               <tr><td><strong>Model</strong></td><td>What are the economics of the asset?</td><td>Solar and Wind: mature production workflows. Data Center (A3.1) and EV Charging (A3.2): implemented and supported modelling workflows. Storage: reference view only; working-copy runtime not released.</td></tr>
-              <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto and Economy read-only intelligence surfaces. Execution simulation is analytics only; no order submitted.</td></tr>
-              <tr><td><strong>Verify</strong></td><td>How was this output certified?</td><td>Deterministic run certificates (<code>FINCO_RUN_CERTIFICATE_V1</code>). Off-chain; a digest proves identity of the hashed content, not truth of an external source.</td></tr>
+              <tr><td><strong>Radar</strong></td><td>What is the market, company or macro context showing?</td><td>Stocks, Crypto, Economy and R-LIVE read-only intelligence surfaces. R-LIVE provides on-chain reference observations for a source-proven approved identity universe; observations are not executable prices. Execution simulation is analytics only; no order submitted.</td></tr>
+              <tr><td><strong>Run Integrity</strong></td><td>Is the committed run internally consistent?</td><td>Read-only checks over committed Last Run evidence (Sources &amp; Uses, balance sheet, debt rollforward, debt-service consistency, CFADS/DSCR integrity, DSCR feasibility, unfunded cash, sponsor-flow consistency). Shipped; not economic truth.</td></tr>
+              <tr><td><strong>Signed Run</strong></td><td>Did FINCO sign these exact committed bytes?</td><td>Ed25519 <code>FINCO_RUN_CERTIFICATE_V1</code> issued from a committed Last Run only; config-gated, fails closed. Off-chain. Not FINCO Verify; not economic truth.</td></tr>
               <tr><td><strong>Verified Assets</strong></td><td>How does a model run connect to market identity?</td><td>Composed <code>FINCO_VERIFIED_ASSET_V1</code> records: model economics + run certificate + Radar evidence + $FINCO protocol metadata.</td></tr>
               <tr><td><strong>$FINCO</strong></td><td>How do I access protocol capabilities?</td><td>Protocol access and service-entitlement infrastructure is implemented. The $FINCO token is not yet launched. Token access is not a calculation authority and does not change model outputs or evidence truth.</td></tr>
               <tr><td><strong>API</strong></td><td>How can software read or run FINCO capabilities?</td><td>Beta Model reference/read/preview/run and Radar read/simulation endpoints.</td></tr>
@@ -209,6 +211,18 @@
               <li>Macro context does not automatically rewrite Model assumptions</li>
             </ul>
           </article>
+          <article class="pdocs-panel pdocs-panel--note">
+            <h3>R-LIVE</h3>
+            <p>On-chain reference observations for tokenized equities — a first-class Radar domain, not a sub-feature.</p>
+            <ul>
+              <li>Exact-identity authority: each approved identity is a specific canonical AssetKey / economic_asset_uid / pool reviewed from the official registry — no ticker-based or fuzzy lookup, no LLM fallback</li>
+              <li>300-second on-chain TWAP with oracle conversion; the stablecoin is never assumed to equal USD 1</li>
+              <li>Explicit AVAILABLE / STALE / UNAVAILABLE states — STALE suppresses current numeric output</li>
+              <li>1h / 24h historical ranges with collection-time semantics</li>
+              <li><strong>Reference observations — not tradeable or executable prices</strong>; no order routing</li>
+              <li>Public read-only API; R-LIVE data never flows into the financial engine</li>
+            </ul>
+          </article>
         </div>
 
         <div class="pdocs-definition-row">
@@ -216,6 +230,57 @@
           <div><strong>Executable price</strong><span>Quote bound to direction, size, route, settlement context and time.</span></div>
           <div><strong>Directional GAP</strong><span>Defined difference between executable quote authority and the relevant Radar reference authority.</span></div>
         </div>
+      </section>
+
+      <section id="trust-stack" class="pdocs-section">
+        <p class="pdocs-section-kicker">FINCO Trust Stack</p>
+        <h2>Five separate authorities. Each answers one question.</h2>
+        <p>
+          The layers below are <strong>separate authorities</strong>, not
+          automatically cumulative certification levels: a green result at one
+          layer never implies anything about the next.
+        </p>
+        <div class="pdocs-table-wrap">
+          <table class="pdocs-table">
+            <thead><tr><th>Layer</th><th>Question answered</th><th>Shipped</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Model</strong></td><td>What did FINCO calculate?</td><td>Yes — deterministic engine; the committed Last Run is the output authority.</td></tr>
+              <tr><td><strong>Run Integrity</strong></td><td>Is the committed run internally consistent under implemented checks?</td><td>Yes — read-only checks over evidence recorded at run commit.</td></tr>
+              <tr><td><strong>Reference Regression Check</strong></td><td>Does the canonical reference still reproduce pinned expected outputs?</td><td>Yes — regression protection for the reference library.</td></tr>
+              <tr><td><strong>Signed Run</strong></td><td>Did FINCO cryptographically sign these exact committed bytes/evidence?</td><td>Yes — Ed25519, config-gated. Public trust-key distribution and a public verifier are still in development (M-2).</td></tr>
+              <tr><td><strong>FINCO Verify</strong></td><td>Is there sufficient source-attested evidence to bind the model/asset to the claimed external identity?</td><td>Architecture shipped; production Verified assets: 0. Records currently render MODEL_ONLY.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pdocs-two-col">
+          <article class="pdocs-panel">
+            <h3>What each layer means</h3>
+            <ul>
+              <li><strong>Run Integrity</strong> — Sources &amp; Uses, balance-sheet reconciliation, debt rollforward, debt-service/interest consistency, CFADS/DSCR integrity, DSCR sculpting feasibility, unfunded-cash conditions and sponsor-return input consistency, recomputed from evidence recorded at commit. It does not re-run the model and does not validate external assumptions.</li>
+              <li><strong>Reference Regression Check</strong> — re-runs canonical reference models against pinned expected outputs and tolerances. Regression protection only: it does not validate a user's Last Run and is not a model-soundness guarantee.</li>
+              <li><strong>Signed Run</strong> — proves FINCO signed the exact committed run evidence. It does not prove economic truth, verify an underlying asset, or constitute blockchain anchoring (none is implemented).</li>
+              <li><strong>FINCO Verify</strong> — a separate source-attested binding authority. A MODEL_ONLY record is not VERIFIED.</li>
+            </ul>
+          </article>
+          <article class="pdocs-panel pdocs-panel--note">
+            <h3>Explicit separations</h3>
+            <ul>
+              <li><code>Reference Regression Check ≠ Run Integrity</code></li>
+              <li><code>Run Integrity ≠ FINCO Verify</code></li>
+              <li><code>Signed Run ≠ FINCO Verify</code></li>
+              <li><code>Signed Run ≠ economic truth</code></li>
+              <li><code>Reference price ≠ executable price</code></li>
+              <li><code>Working Copy ≠ Last Run</code></li>
+            </ul>
+          </article>
+        </div>
+        <p class="pdocs-small-note">
+          In the workbook, the Model Trust Pack presents these layers per project:
+          Last Run identity, core KPIs with lineage, the Reference Regression Check
+          (on-demand), Run Integrity, the Signed Run certificate and FINCO Verify state.
+          Machine compatibility may still use the internal authority key
+          <code>MODEL_VALIDATION</code> for the Reference Regression Check API.
+        </p>
       </section>
 
       <section id="verified" class="pdocs-section">
@@ -231,10 +296,12 @@
             <h3>What a Verified Asset record contains</h3>
             <ul>
               <li><strong>model</strong> — persisted canonical Last Run economics</li>
-              <li><strong>verify</strong> — Run Certificate (<code>FINCO_RUN_CERTIFICATE_V1</code>)</li>
+              <li><strong>Signed Run evidence</strong> — Ed25519 certificate over the committed run (<code>FINCO_RUN_CERTIFICATE_V1</code>)</li>
+              <li><strong>FINCO Verify binding state</strong> — separate source-attested authority; absent means MODEL_ONLY</li>
               <li><strong>market</strong> — Radar model/market bridge evidence (when available)</li>
               <li><strong>protocol</strong> — $FINCO utility registry metadata</li>
             </ul>
+            <p>A Signed Run certificate inside the record does not make the asset VERIFIED — signing and verification are separate authorities.</p>
           </article>
           <article class="pdocs-panel pdocs-panel--note">
             <h3>V1 status</h3>
