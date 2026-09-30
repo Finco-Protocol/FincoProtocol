@@ -54,19 +54,30 @@ the committed calculation.
 
 **Canonical module:** `app/model_validation/runner.py`, `app/model_validation/contracts.py`
 
-**Purpose:** MODEL VALIDATION — reference-model / reconciliation evidence.
-Structural and tolerance checks run against the committed Last Run outputs.
+**Purpose:** Reference Regression Check (H-4A) — pinned reference-model regression evidence.
+
+**What it does:** The Reference Regression Check executes against the canonical
+reference model for the vertical, not against the user's project data. It compares
+the reference model's outputs / KPIs with pinned expected reference values and
+tolerances. It is regression protection for the reference library.
 
 **What it proves:**
 - Specific numeric tolerances are declared in `app/model_validation/tolerances.py`.
-- Validation status is stored and surfaced per-project.
+- The canonical reference model still reproduces its pinned expected values within
+  those tolerances.
+- The result is surfaced on the Trust Pack; it always describes the canonical
+  reference, never the user's own Last Run.
 
 **What it does NOT prove:**
-- **MODEL VALIDATION ≠ FINCO VERIFY.** Validation checks model structure; it does
-  not establish a market identity or run binding.
-- A Validated project has not been verified against a real-world asset.
+- It does **not** validate the user's committed Last Run.
+- It does **not** establish accounting, debt, cash-flow or financing integrity of
+  that Last Run. Regression protection for the reference library is its whole
+  scope; it is not a model-soundness guarantee.
+- **Reference Regression Check ≠ FINCO VERIFY.** It does not establish a market
+  identity or run binding.
+- A passing check does not mean any real-world asset has been verified.
 
-**Read/write boundary:** Validation runs the P1.3 reference reconciliation.
+**Read/write boundary:** The Reference Regression Check runs the P1.3 reference reconciliation.
 From the Trust Pack UX, it is a DEFERRED / explicit user-action path — never
 triggered at page render time.
 
@@ -89,7 +100,7 @@ triggered at page render time.
 **What it does NOT prove:**
 - VERIFY does not assert that the model IRR equals the asset's market return.
 - The binding does not claim mathematical equivalence between model and market.
-- **FINCO VERIFY ≠ MODEL VALIDATION** (separate systems, separate authorities).
+- **FINCO VERIFY ≠ Reference Regression Check** (separate systems, separate authorities).
 - **FINCO VERIFY ≠ Signed Run Certificate** (separate systems, separate authorities).
 
 ---
@@ -167,7 +178,7 @@ canonical authorities.
 **API v1.1 endpoints (read-only):**
 - `/projects/{id}/run-identity` — committed Last Run identity
 - `/projects/{id}/kpis` — canonical KPIs from Last Run
-- `/projects/{id}/validation` — MODEL VALIDATION evidence
+- `/projects/{id}/validation` — Reference Regression Check evidence (machine authority key `MODEL_VALIDATION`)
 - `/projects/{id}/verify` — FINCO VERIFY state
 - `/projects/{id}/export` — institutional export metadata
 - `/projects/{id}/run-certificate` — Signed Run Certificate V1 (explicit action)
@@ -180,13 +191,13 @@ No duplicate financial or Verify logic. No trusted caller-controlled user_id.
 Signed session identity only. R-LIVE reads perform zero history writes.
 
 **Institutional XLSX export:**
-- Packages Last Run outputs, run lineage, validation status, and methodology notes.
+- Packages Last Run outputs, run lineage, Reference Regression Check status, and methodology notes.
 - Never re-runs the engine; reads persisted outputs only.
 - Requires a committed Last Run.
 
 **Model Trust Pack UX V1 (`app/ui/trust_pack.py`):**
-Read-only composition of seven canonical evidence sections. Sections C (MODEL
-VALIDATION) and G (Signed Run Certificate) are DEFERRED — loaded only by explicit
+Read-only composition of seven canonical evidence sections. Sections C (Reference
+Regression Check) and G (Signed Run Certificate) are DEFERRED — loaded only by explicit
 user action. Never runs the model and never silently issues a certificate.
 
 ---
@@ -231,7 +242,7 @@ user action. Never runs the model and never silently issues a certificate.
 ## Critical Invariants
 
 ```
-MODEL VALIDATION ≠ FINCO VERIFY
+Reference Regression Check ≠ FINCO VERIFY
 SIGNED RUN ≠ FINCO VERIFY
 SIGNED RUN ≠ economic truth
 SIGNED RUN ≠ model correctness

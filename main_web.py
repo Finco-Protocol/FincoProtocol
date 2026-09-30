@@ -343,6 +343,10 @@ def finco_signing_keys_well_known():
     from app.protocol.signing_keys import public_keys_document
     return public_keys_document()
 
+# -- Experimental JEV Radar Intelligence (read-only; default OFF, zero calls unless enabled) --
+from app.api.v1_1.r_live_intelligence_router import router as _rlive_intelligence_router
+app.include_router(_rlive_intelligence_router, prefix="/api/v1.1")
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""

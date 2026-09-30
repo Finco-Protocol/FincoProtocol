@@ -183,6 +183,36 @@
               </div>
             </div>
           </div>
+
+            <div class="papi__section" style="margin-top:24px;">
+              <h2 class="papi__section-title" id="r-live-api-heading">R-LIVE — On-Chain Reference Observations</h2>
+              <p class="papi__section-desc">Read-only reference observations for the reviewed approved identity universe. Exact canonical identity only — no ticker or fuzzy lookup. Observations are not executable prices. Freshness is fail-closed: states are AVAILABLE, STALE or UNAVAILABLE.</p>
+              <div class="papi__endpoint-row" role="row">
+                <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+                <div role="cell"><code class="papi__path">/api/v1.1/radar/r-live/assets</code></div>
+                <div role="cell" class="papi__endpoint-desc">List approved R-LIVE identities.</div>
+              </div>
+              <div class="papi__endpoint-row" role="row">
+                <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+                <div role="cell"><code class="papi__path">/api/v1.1/radar/r-live/current</code></div>
+                <div role="cell" class="papi__endpoint-desc">Current reference observations for all approved identities (NDJSON).</div>
+              </div>
+              <div class="papi__endpoint-row" role="row">
+                <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+                <div role="cell"><code class="papi__path">/api/v1.1/radar/r-live/{canonical_id}</code></div>
+                <div role="cell" class="papi__endpoint-desc">Current reference observation for one exact canonical identity.</div>
+              </div>
+              <div class="papi__endpoint-row" role="row">
+                <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+                <div role="cell"><code class="papi__path">/api/v1.1/radar/r-live/{canonical_id}/history</code></div>
+                <div role="cell" class="papi__endpoint-desc">Historical observations (read-only).</div>
+              </div>
+              <div class="papi__endpoint-row" role="row">
+                <div role="cell"><span class="papi__method papi__method--get">GET</span></div>
+                <div role="cell"><code class="papi__path">/api/v1.1/radar/r-live/{canonical_id}/history/ranges</code></div>
+                <div role="cell" class="papi__endpoint-desc">1h / 24h historical ranges by collection clock.</div>
+              </div>
+            </div>
         </section>
 
         <!-- ── curl Examples ── -->

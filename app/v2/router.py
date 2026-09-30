@@ -2591,7 +2591,7 @@ async def v2_workbook_export(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Model Trust Pack V1 — on-demand MODEL VALIDATION evidence fragment.
+# Model Trust Pack V1 — on-demand Reference Regression Check evidence fragment.
 # Deliberately a user-triggered load (explicit click in the Trust Pack panel):
 # vertical validation executes the reference production model inside
 # app.model_validation, so it must never run during workbook page rendering.

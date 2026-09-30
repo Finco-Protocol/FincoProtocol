@@ -17,7 +17,7 @@ Current production modelling verticals:
 
 - **Solar** — mature production modelling workflow
 - **Wind** — mature production modelling workflow
-- **Data Center** — implemented and vertically validated modelling workflow (A3.1)
+- **Data Center** — implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check
 - **EV Charging** — implemented modelling workflow (A3.2, P0.3 canonical reference)
 - **Storage** — PREVIEW (reference viewable; working-copy runtime not released)
 
@@ -39,29 +39,48 @@ Shared engine capabilities shipped:
 
 Institutional output capabilities:
 
-- Canonical Last Run (committed, immutable snapshot)
+- Canonical Last Run (committed snapshot — unchanged by Working Copy edits;
+  replaced only by a subsequent committed run)
 - Institutional XLSX Export (P1.2) — reads committed Last Run only
-- MODEL VALIDATION (P1.3) — reference reconciliation and tolerance checks
+- Reference Regression Check (P1.3) — re-runs canonical reference-model KPIs
+  against pinned expected values; regression protection for the reference
+  library. Does NOT independently validate a user's Last Run (H-4A).
 - EV Institutional Reconciliation (P1.4)
 - Institutional Trust Pack (P1.1) — methodology HTML, DSCR, XIRR ACT/365F
 
 ### Signed Run Certificate V1 (PR #132)
 
 Ed25519 asymmetric signed certificate issued from committed Last Run only.
-Requires `FINCO_RUN_CERT_SIGNING_KEY`. Fails closed without it. Third-party
-verifiable. Proves computational integrity — not economic truth.
+Requires `FINCO_RUN_CERT_SIGNING_KEY`. Fails closed without it. Signature
+verification works when the relying party independently holds the trusted
+FINCO public key; public trust-key distribution and a public verifier are
+not yet complete. Proves computational integrity — not economic truth.
 
 ### Model Trust Pack UX V1 (PR #133)
 
 Seven-section read-only evidence surface in the V2 workbook. Zero engine calls
-at render. Explicitly separates MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run.
+at render. Explicitly separates Reference Regression Check ≠ FINCO VERIFY ≠
+Signed Run. The Reference Regression Check is regression protection for the
+reference library, not independent validation of a user's Last Run.
 
+### Run Integrity Checks (shipped — H-4b)
+
+Internal consistency checks against a user's actual committed Last Run,
+recorded at run commit: Sources & Uses, balance-sheet reconciliation,
+senior debt rollforward, debt-service/interest consistency, CFADS/DSCR
+integrity, unfunded-cash deficit, DSCR sculpting feasibility, and
+sponsor-return/XIRR input consistency. Recomputed from evidence recorded
+at commit; they do not re-run the model. Distinct from the Reference
+Regression Check (P1.3), which re-runs canonical reference models against
+pinned expected values. Run Integrity does not validate external
+assumptions, establish economic truth, or equal FINCO VERIFY or Signed
+Run.
 ### Radar / R-LIVE
 
 - **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical
   identity, premium/execution gap, exact-identity history
 - **R-LIVE V2** (PR #136 / #137) — registry-driven on-chain reference surface.
-  300-second freshness gate. USDG/USD Chainlink conversion. Public API. UX shell.
+  300-second TWAP with fail-closed freshness policies. USDG/USD Chainlink conversion. Public API. UX shell.
   `/radar` → `/radar/r-live`. Exact canonical identity only; no ticker/fuzzy lookup.
 - **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
   collects all approved registry assets serially. STALE/UNAVAILABLE market states
