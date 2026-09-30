@@ -103,15 +103,76 @@ class TestRoadmapTruth:
         road = _flat("app/templates/protocol_roadmap.html")
         assert "Active now" in road
         assert "JEV Radar Intelligence V1" in road
-        assert "EXPERIMENTAL / ACTIVE DEVELOPMENT" in road or "IN DEVELOPMENT" in road
-        assert "not shipped" in road  # JEV explicitly not shipped
-        assert "JEV interprets. FINCO authorities remain authoritative." in road
+
+    def test_roadmap_jev_merged_experimental_truth(self):
+        """PR #146 merged: JEV is EXPERIMENTAL with exact runtime semantics —
+        never described as IN DEVELOPMENT, and never production-validated."""
+        road = _flat("app/templates/protocol_roadmap.html")
+        jev_card = road[road.index("JEV Radar Intelligence V1"):]
+        jev_card = jev_card[:jev_card.index("Signed Run Public Trust")]
+        assert "EXPERIMENTAL — merged (PR #146)" in jev_card
+        assert "IN DEVELOPMENT" not in jev_card
+        assert "not shipped" not in jev_card
+        # Runtime semantics: default OFF, SHADOW-not-silent, VISIBLE explicit.
+        assert "default OFF" in jev_card
+        assert "SHADOW" in jev_card and "VISIBLE" in jev_card
+        assert "SKIPPED_NO_KEY" in jev_card
+        # Boundaries retained.
+        assert "JEV interprets. FINCO authorities remain authoritative." in jev_card
+        for banned in ("investment recommendation", "trading signal", "price prediction"):
+            assert banned in jev_card.split("No investment recommendations")[1] or                 f"No {banned}s" in jev_card, banned
+        assert "no Verify or identity authority" in jev_card
+
+    def test_jev_module_matches_public_truth(self):
+        """The public EXPERIMENTAL framing matches the merged module contract."""
+        from app.radar_rwa.jev_intelligence.config import JevIntelligenceConfig
+        from app.radar_rwa.jev_intelligence.contracts import JevMode
+        cfg = JevIntelligenceConfig()
+        assert cfg.mode is JevMode.OFF          # default OFF
+        assert cfg.enabled is False
+        assert cfg.visible is False
+        shadow = JevIntelligenceConfig.from_env({
+            "FINCO_JEV_INTELLIGENCE_ENABLED": "1"
+        })
+        assert shadow.mode is JevMode.SHADOW    # enabled without mode = SHADOW
+        assert shadow.visible is False          # never silently promoted
+        explicit = JevIntelligenceConfig.from_env({
+            "FINCO_JEV_INTELLIGENCE_ENABLED": "1", "FINCO_JEV_INTELLIGENCE_MODE": "VISIBLE"
+        })
+        assert explicit.mode is JevMode.VISIBLE  # VISIBLE requires explicit config
 
     def test_roadmap_m2_in_development(self):
         road = _flat("app/templates/protocol_roadmap.html")
         assert "Signed Run Public Trust — M-2" in road
         assert "IN DEVELOPMENT" in road
         assert "M-2 is not shipped until merged" in road
+
+    def test_m2_state_matches_merged_main(self):
+        """M-2 must reflect actual merged main: at this release cut it is
+        deferred (no M-2 trust surface merged), so public wording stays
+        IN DEVELOPMENT and no verifier capability may be claimed."""
+        import subprocess
+        probe = subprocess.run(
+            ["git", "grep", "-l", "public_verifier", "origin/main", "--", "app/services/"],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        # If a public verifier ever merges, this test must be updated to the
+        # exact merged surface; until then no such module may exist.
+        assert probe.stdout.strip() == "", probe.stdout
+
+    def test_roadmap_yield_active_development_truth(self):
+        """PR #148 is an open active-development spike: never 'not started',
+        never shipped, never custody/execution claims."""
+        road = _flat("app/templates/protocol_roadmap.html")
+        assert "FINCO Yield" in road
+        assert "IN DEVELOPMENT / EXPERIMENTAL" in road
+        assert "not started" not in road
+        assert "PR #148, not merged" in road
+        assert "flags default OFF" in road
+        assert "Non-custodial" in road
+        assert "no mainnet execution" in road
+        assert "no FINCO-owned vault" in road
+        assert "Explore → Underwrite → Evidence → Monitor → Act" in road
 
     def test_roadmap_model_market_bridge(self):
         road = _flat("app/templates/protocol_roadmap.html")
