@@ -27,6 +27,11 @@ _METHODOLOGY = (
 )
 
 
+def _jev_visible() -> bool:
+    from app.radar_rwa.jev_intelligence.config import JevIntelligenceConfig
+    return JevIntelligenceConfig.from_env().visible
+
+
 def _approved_rows() -> list[dict]:
     """Build display rows from the canonical approved registry. Read-only."""
     from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
@@ -101,5 +106,7 @@ async def radar_r_live_detail(request: Request, canonical_id_slug: str):
             "row": row,
             "methodology": methodology,
             "user": user,
+            # Experimental JEV panel renders only in VISIBLE mode (default OFF: page unchanged).
+            "jev_visible": bool(policy is not None and _jev_visible()),
         },
     )

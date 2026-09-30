@@ -74,6 +74,31 @@
   </section>
   {% endif %}
 
+  {% if row.approved and jev_visible %}
+  <section style="margin-bottom:28px" id="jev-intelligence" data-testid="jev-intelligence-panel">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Jev Intelligence
+      <span class="rlive-badge rlive-badge--loading" data-testid="jev-experimental-badge">Experimental</span>
+    </h2>
+    <dl class="kv" id="jev-block">
+      <dt>Market regime (premium series)</dt>
+      <dd id="jev-regime" data-field="jev_market_regime">—</dd>
+      <dt>Attention state</dt>
+      <dd id="jev-attention" data-field="jev_attention">—</dd>
+      <dt>Confidence</dt>
+      <dd id="jev-confidence" data-field="jev_confidence">—</dd>
+      <dt>Evaluated</dt>
+      <dd id="jev-evaluated" data-field="jev_evaluated_at">—</dd>
+    </dl>
+    <p class="muted small" id="jev-status" data-testid="jev-status" style="margin-top:10px">Loading…</p>
+    <p class="muted small" id="jev-disclosure" style="margin-top:6px">
+      Jev intelligence is a probabilistic interpretation of FINCO canonical market evidence.
+      It does not modify canonical market data and is not an executable price, investment
+      recommendation, FINCO Verify result, or deterministic calculation authority.
+    </p>
+  </section>
+  {% endif %}
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Identity &amp; Deployment
@@ -125,6 +150,34 @@
 .rlive-badge--stale { background: rgba(234,179,8,.13); color: #eab308; }
 .rlive-badge--unavailable { background: rgba(255,255,255,.06); color: var(--radar-muted,#8d98a5); }
 </style>
+
+{% if row.approved and jev_visible %}
+<script>
+(function () {
+  // Experimental, read-only. A failure here never affects the canonical R-LIVE panels above.
+  var URL = "/api/v1.1/radar/r-live/" + encodeURIComponent({{ row.canonical_id|tojson }}) + "/intelligence";
+  function text(id, value) { var n = document.getElementById(id); if (n) { n.textContent = value; } }
+  function pct(v) { var x = parseFloat(v); return isFinite(x) ? (x * 100).toFixed(0) + "%" : "—"; }
+  function unavailable(reason) {
+    text("jev-regime", "—"); text("jev-attention", "—"); text("jev-confidence", "—");
+    text("jev-status", "Jev intelligence unavailable: " + (reason || "UNAVAILABLE"));
+  }
+  fetch(URL)
+    .then(function (r) { if (!r.ok) { throw new Error("HTTP_" + r.status); } return r.json(); })
+    .then(function (env) {
+      var d = env && env.data;
+      if (!d || d.state !== "AVAILABLE" || !d.answers) { unavailable(d && d.reason); return; }
+      var reg = d.answers.market_regime, att = d.answers.attention;
+      text("jev-regime", String(reg.choice).replace(/_/g, " "));
+      text("jev-attention", att.state);
+      text("jev-confidence", "regime " + pct(reg.confidence) + " · attention " + pct(att.confidence));
+      text("jev-evaluated", d.evaluated_at || "—");
+      text("jev-status", "Model " + (d.resolved_model || "—") + " · input " + String(d.input_fingerprint).slice(0, 12));
+    })
+    .catch(function () { unavailable("TRANSPORT_ERROR"); });
+})();
+</script>
+{% endif %}
 
 {% if row.approved %}
 <script>

@@ -326,6 +326,10 @@ app.include_router(_api_v1_router, prefix="/api/v1")
 from app.api.v1_1.r_live_public_router import router as _rlive_public_router
 app.include_router(_rlive_public_router, prefix="/api/v1.1")
 
+# -- Experimental JEV Radar Intelligence (read-only; default OFF, zero calls unless enabled) --
+from app.api.v1_1.r_live_intelligence_router import router as _rlive_intelligence_router
+app.include_router(_rlive_intelligence_router, prefix="/api/v1.1")
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""
