@@ -139,6 +139,14 @@ class TestRoadmapTruth:
         assert "DSCR-sculpting fail-closed feasibility" in road
         assert "production Verified assets: 0" in road
 
+    def test_roadmap_r_live_no_generic_300s_freshness_claim(self):
+        """F1: R-LIVE freshness is a TWAP window plus fail-closed rules — never
+        a single collapsed '300-second freshness' SLA on the public roadmap."""
+        road = _flat("app/templates/protocol_roadmap.html")
+        assert "300-second freshness" not in road
+        assert "300-second TWAP" in road
+        assert "fail-closed freshness rules" in road
+
     def test_roadmap_later_uses_bands(self):
         road = _flat("app/templates/protocol_roadmap.html")
         assert ">LATER<" in road
@@ -160,6 +168,13 @@ class TestVerifyTrustSurface:
         assert "Verified production assets: 0" in verify
         assert "MODEL_ONLY never means VERIFIED" in verify
         assert "Signed Run is not FINCO Verify and not economic truth" in verify
+
+    def test_verify_no_unsupported_evidence_id_claim(self):
+        """F2: the public Verify page must not invent an evidence_id contract."""
+        verify = _flat("app/templates/protocol_verify.html")
+        assert "confirmed evidence_id" not in verify
+        assert "source-proven model↔market binding" in verify
+        assert "canonical market evidence" in verify
 
     def test_verify_corpus_retained(self):
         verify = _read("app/templates/protocol_verify.html")
