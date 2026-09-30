@@ -31,6 +31,90 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
 # Default shock levels (percentage points applied as multipliers for % shocks)
 DEFAULT_SHOCK_LEVELS = [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0]
 
+
+class UnsupportedSensitivityDriverError(ValueError):
+    """Raised when a sensitivity driver is not supported for a vertical.
+
+    Fail-closed per Opus finding NEW-M-1: an unsupported driver is never
+    silently ignored, converted to another driver, or returned as a valid
+    no-op result.  ``vertical`` and ``shock_type`` identify the exact
+    rejected combination.
+    """
+
+    def __init__(self, vertical: str, shock_type: str):
+        self.vertical = vertical
+        self.shock_type = shock_type
+        super().__init__(
+            f"Sensitivity driver {shock_type!r} is not supported for "
+            f"vertical {vertical!r}."
+        )
+
+
+# Vertical-specific driver capability (Opus NEW-M-1).
+#
+# Canonicity of each mapping: every driver key corresponds to exactly one
+# existing canonical input path in _apply_shock.
+#   - Data Center drivers map to the Data Center input contract introduced
+#     with the Generic Data Center Reference (service price in
+#     revenue.service_price_eur_kw_month lineage; occupancy as the
+#     utilisation authority; PUE; purchased-electricity cost).  Renewable
+#     revenue semantics (PPA price, merchant price, yield/P50 hours) are
+#     economically meaningless for an IT-load capacity business and are
+#     FORBIDDEN for Data Center.
+#   - Solar/Wind/EV Charging keep their existing driver sets unchanged.
+#   - EV Charging shares the renewable driver set (its revenue model is
+#     energy-throughput based on the same technical fields).
+_VERTICAL_SENSITIVITY_DRIVERS: dict[str, frozenset[str]] = {
+    "solar": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+    "wind": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+    # Data Center: occupancy / IT MW / PUE / electricity price / service
+    # price / CAPEX / OPEX-style maintenance cost drivers.
+    "data_center": frozenset({
+        "capex", "opex", "dc_service_price", "dc_occupancy",
+        "dc_pue", "dc_electricity_price", "interest_rate", "tax_rate",
+    }),
+    # EV Charging: energy-throughput revenue on the same technical fields.
+    "ev_charging": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+}
+
+# Aliases accepted as vertical keys (project_type strings seen at runtime).
+_VERTICAL_ALIASES: dict[str, str] = {
+    "solar": "solar", "solar_pv": "solar",
+    "wind": "wind", "wind_onshore": "wind",
+    "data center": "data_center", "data_center": "data_center",
+    "datacenter": "data_center",
+    "ev charging": "ev_charging", "ev_charging": "ev_charging",
+    "ev": "ev_charging",
+}
+
+
+def resolve_vertical(vertical: str | None) -> str:
+    """Normalize a vertical key; unknown values resolve to themselves so the
+    capability lookup fails closed rather than matching a real vertical."""
+    key = (vertical or "").strip().lower()
+    return _VERTICAL_ALIASES.get(key, key)
+
+
+def supported_sensitivity_drivers(vertical: str | None) -> frozenset[str]:
+    """Return the supported sensitivity driver set for a vertical."""
+    return _VERTICAL_SENSITIVITY_DRIVERS.get(resolve_vertical(vertical), frozenset())
+
+
+def assert_driver_supported(vertical: str | None, shock_type: str) -> None:
+    """Fail closed when a driver is unsupported for the vertical."""
+    if shock_type not in supported_sensitivity_drivers(vertical):
+        raise UnsupportedSensitivityDriverError(
+            resolve_vertical(vertical), shock_type)
+
 # KPI definitions: (attr_on_WaterfallResult, display_label, format_hint)
 KPI_DEFS: list[tuple[str, str, str]] = [
     ("total_revenue_keur", "Revenue (kEUR)", "keur"),
@@ -186,6 +270,50 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
             tax=replace(proj.tax, corporate_rate=new_rate),
         )
 
+    elif shock_type == "dc_service_price":
+        # Data Center service price: scale the equivalent EUR/MWh curve AND
+        # the PPA-style tariff field (both carry the same service-price
+        # authority in the DC runtime adapter).
+        curve = proj.revenue.market_prices_curve
+        new_curve = tuple(v * factor for v in curve)
+        new_tariff = proj.revenue.ppa_base_tariff * factor
+        return replace(
+            proj,
+            revenue=replace(proj.revenue, market_prices_curve=new_curve,
+                            ppa_base_tariff=new_tariff),
+        )
+
+    elif shock_type == "dc_occupancy":
+        # Data Center occupancy: scale the equivalent EUR/MWh curve (the
+        # occupancy authority rides the curve in the DC runtime adapter).
+        curve = proj.revenue.market_prices_curve
+        new_curve = tuple(v * factor for v in curve)
+        return replace(proj, revenue=replace(proj.revenue, market_prices_curve=new_curve))
+
+    elif shock_type == "dc_pue":
+        # PUE scales facility power, and B.08 power expense is linear in PUE
+        # per the Data Center canonical identity (IT MW x occupancy x PUE x
+        # 8,760 x price).  Scale the derived Power Expenses schedule; no core
+        # TechnicalParams field is invented.
+        new_opex = tuple(
+            replace(
+                o,
+                y1_amount_keur=o.y1_amount_keur * factor,
+                step_changes=tuple((y, v * factor) for y, v in o.step_changes),
+            ) if o.name == "Power Expenses" else o
+            for o in proj.opex
+        )
+        return replace(proj, opex=opex_new)
+
+    elif shock_type == "dc_electricity_price":
+        # Electricity price scales the B.08 power expense steps.
+        opex_new = tuple(
+            replace(o, y1_amount_keur=o.y1_amount_keur * factor)
+            if o.name == "Power Expenses" else o
+            for o in proj.opex
+        )
+        return replace(proj, opex=opex_new)
+
     elif shock_type in ("bess_arbitrage_spread", "bess_cycles", "bess_rte",
                         "bess_ancillary_price", "bess_capacity_price"):
         bess = getattr(proj.technical, "bess", None)
@@ -225,7 +353,19 @@ def run_sensitivity(
     proj: Any,
     shock_types: list[str],
     shock_levels: list[float] | None = None,
+    vertical: str | None = None,
 ) -> dict[str, Any]:
+    """Run full sensitivity matrix.
+
+    ``vertical`` gates the driver set (Opus NEW-M-1): when provided, every
+    requested shock type must be supported for that vertical or
+    UnsupportedSensitivityDriverError is raised BEFORE any model execution.
+    Existing callers that omit ``vertical`` keep the legacy un-gated
+    behaviour.
+    """
+    if vertical is not None:
+        for shock_type in shock_types:
+            assert_driver_supported(vertical, shock_type)
     """Run full sensitivity matrix.
 
     Returns:
