@@ -352,12 +352,15 @@ def build_senior_debt_model_input_from_project_inputs(
         _target_policy = DsraTargetPolicy.FIXED_AMOUNT
     elif _raw_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value:
         _target_policy = DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+    elif _raw_policy == DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS.value:
+        _target_policy = DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS
     else:
         raise ValueError(
             f"DSRA_TARGET_POLICY_INVALID: dsra_target_policy={_raw_policy!r} is not a "
             "recognised DsraTargetPolicy value. "
             f"Supported: None (→ FIXED_AMOUNT), {DsraTargetPolicy.FIXED_AMOUNT.value!r}, "
-            f"{DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value!r}."
+            f"{DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value!r}, "
+            f"{DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS.value!r}."
         )
     # Preserve configured Operation months exactly — do not substitute defaults.
     _dsra_months = getattr(fin, "dsra_months", 6)

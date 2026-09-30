@@ -82,14 +82,14 @@ def app_server(tmp_path_factory):
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    deadline = time.time() + 30
+    deadline = time.time() + 300  # Opus H-1: startup seeds reference runs (~18 s each)
     while not server.started and time.time() < deadline:
         time.sleep(0.05)
     assert server.started, "app_server fixture did not start in time"
 
     # Wait for startup seeding to complete — at least Solar, Wind, Data Center
     from app.persistence.projects_repository import get_reference_projects
-    seed_deadline = time.time() + 30
+    seed_deadline = time.time() + 300  # Opus H-1: startup seeds reference runs (~18 s each)
     while time.time() < seed_deadline:
         if len(get_reference_projects()) >= 3:
             break

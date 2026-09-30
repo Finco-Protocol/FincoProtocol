@@ -24,9 +24,24 @@ class DsraTargetPolicy(Enum):
         Per-period target = next-period Senior DS multiplied by
         coverage_months * periods_per_year / 12.
         Policy-defined from the Generic Wind Reference, Generic Solar Reference, and Generic Storage Reference Operation CF formulas.
+
+    PEAK_FORWARD_DEBT_SERVICE_MONTHS:
+        Constant target equal to the PEAK forward-debt-service requirement over the
+        senior tenor (max over operating periods of the FORWARD target), held while
+        Senior debt service remains due and released once no further debt service is
+        due. Avoids seasonal top-up/release oscillation of the forward policy while
+        keeping the reserve tied to actual debt service and its release explicit.
     """
     FIXED_AMOUNT = "fixed_amount"
     FORWARD_DEBT_SERVICE_MONTHS = "forward_debt_service_months"
+    PEAK_FORWARD_DEBT_SERVICE_MONTHS = "peak_forward_debt_service_months"
+
+
+# Policies whose per-period target is a schedule built from the final Senior DS.
+SCHEDULE_TARGET_POLICIES = frozenset({
+    DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+    DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS,
+})
 
 
 def build_dsra_required_balance_schedule(
@@ -206,4 +221,7 @@ def build_dsra_required_balance_schedule(
         multiplier = coverage_months * periods_per_year / 12.0
         targets.append(senior_debt_service_keur[next_pos] * multiplier)
 
+    if policy == DsraTargetPolicy.PEAK_FORWARD_DEBT_SERVICE_MONTHS:
+        peak = max(targets, default=0.0)
+        return tuple(peak if target > 0.0 else 0.0 for target in targets)
     return tuple(targets)

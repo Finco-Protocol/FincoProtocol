@@ -174,7 +174,7 @@ def test_xlsx_reconciliation_not_tautological():
         "OPEX read-back check missing; self-comparison not replaced"
     )
     assert "Returns sheet Project IRR vs runtime" in checks
-    assert "Returns sheet Equity IRR vs runtime" in checks
+    assert "Returns sheet Share-capital IRR vs runtime" in checks
     assert "Returns sheet Total Sponsor XIRR vs runtime" in checks
 
 
@@ -194,11 +194,11 @@ def test_xlsx_serialized_workbook_readback():
     ret = wb["Returns"]
     irr_data: dict[str, float] = {}
     for row in ret.iter_rows(min_row=1, max_row=50, values_only=True):
-        if row[0] in ("Project IRR", "Equity IRR", "Total Sponsor XIRR") and row[1] is not None:
+        if row[0] in ("Project IRR", "Share-capital IRR (equity only)", "Total Sponsor XIRR") and row[1] is not None:
             irr_data[str(row[0])] = float(row[1])
 
     assert "Project IRR" in irr_data, "Returns sheet: Project IRR cell not readable"
-    assert "Equity IRR" in irr_data, "Returns sheet: Equity IRR cell not readable"
+    assert "Share-capital IRR (equity only)" in irr_data, "Returns sheet: Share-capital IRR cell not readable"
     assert "Total Sponsor XIRR" in irr_data, "Returns sheet: Total Sponsor XIRR not readable"
 
     # OPEX sheet must have a readable numeric total.
@@ -274,7 +274,7 @@ def test_xlsx_returns_reconcile():
     checks = _recon_checks(wb)
     for label in [
         "Returns sheet Project IRR vs runtime",
-        "Returns sheet Equity IRR vs runtime",
+        "Returns sheet Share-capital IRR vs runtime",
         "Returns sheet Total Sponsor XIRR vs runtime",
     ]:
         assert label in checks, f"Check {label!r} not found; available: {list(checks)}"
@@ -288,16 +288,16 @@ def test_xlsx_returns_serialized_values_match_runtime():
 
     data: dict[str, float] = {}
     for row in ret.iter_rows(min_row=1, max_row=50, values_only=True):
-        if row[0] in ("Project IRR", "Equity IRR", "Total Sponsor XIRR") and row[1] is not None:
+        if row[0] in ("Project IRR", "Share-capital IRR (equity only)", "Total Sponsor XIRR") and row[1] is not None:
             data[str(row[0])] = float(row[1])
 
-    assert math.isclose(data["Project IRR"] * 100, 11.56, abs_tol=0.1), (
+    assert math.isclose(data["Project IRR"] * 100, 11.77, abs_tol=0.1), (
         f"Project IRR = {data['Project IRR'] * 100:.4f}%"
     )
-    assert math.isclose(data["Equity IRR"] * 100, 50.47, abs_tol=0.2), (
-        f"Equity IRR = {data['Equity IRR'] * 100:.4f}%"
+    assert math.isclose(data["Share-capital IRR (equity only)"] * 100, 45.95, abs_tol=0.2), (
+        f"Equity IRR = {data['Share-capital IRR (equity only)'] * 100:.4f}%"
     )
-    assert math.isclose(data["Total Sponsor XIRR"] * 100, 17.90, abs_tol=0.1), (
+    assert math.isclose(data["Total Sponsor XIRR"] * 100, 16.61, abs_tol=0.1), (
         f"Total Sponsor XIRR = {data['Total Sponsor XIRR'] * 100:.4f}%"
     )
 
@@ -305,13 +305,13 @@ def test_xlsx_returns_serialized_values_match_runtime():
 # ── XLSX_SENIOR_DEBT_RUNTIME_AUTHORITY ───────────────────────────────────────
 
 def test_xlsx_senior_debt_runtime_authority():
-    """XLSX_SENIOR_DEBT_RUNTIME_AUTHORITY — senior debt from engine authority (24,750 kEUR)."""
+    """XLSX_SENIOR_DEBT_RUNTIME_AUTHORITY — senior debt from engine authority (26,983 kEUR)."""
     bundle = _solar_bundle()
     assert bundle.senior_debt_keur_authority is not None, (
         "senior_debt_keur_authority is None for Solar reference"
     )
-    assert math.isclose(bundle.senior_debt_keur_authority, 24_750.0, rel_tol=1e-4), (
-        f"Expected 24,750 kEUR, got {bundle.senior_debt_keur_authority}"
+    assert math.isclose(bundle.senior_debt_keur_authority, 26_983.33, rel_tol=1e-4), (
+        f"Expected 26,983 kEUR, got {bundle.senior_debt_keur_authority}"
     )
 
 
@@ -334,13 +334,16 @@ def test_xlsx_senior_debt_not_residual():
     assert auth is not None, "senior_debt_keur_authority is None"
     # Both may numerically agree (they do for Solar), but the test verifies the field exists.
     # The key invariant: the reconciliation uses auth, never manufactures a value.
-    assert math.isclose(auth, 24_750.0, rel_tol=1e-4), (
-        f"Authority senior debt = {auth} kEUR, expected 24,750 kEUR"
+    assert math.isclose(auth, 26_983.33, rel_tol=1e-4), (
+        f"Authority senior debt = {auth} kEUR, expected 26,983 kEUR"
     )
-    # Residual would also be 24,750 for Solar — the test confirms it equals the engine result.
+    # Opus H-1: the CAPEX-only residual arithmetic (33,000 - template equity = 24,750) is
+    # now provably NOT the authority: the engine gears on Total Project Uses (35,977.78),
+    # so the authority (26,983.33) differs from any residual built from CAPEX.
     assert math.isclose(residual, 24_750.0, rel_tol=1e-4), (
         f"Residual = {residual} kEUR — unexpected for Solar reference"
     )
+    assert not math.isclose(auth, residual, rel_tol=1e-3)
 
 
 # ── XLSX_SOURCES_USES_RECONCILE + XLSX_SOURCES_USES_NOT_RESIDUAL_BALANCED ────
@@ -772,11 +775,9 @@ def test_xlsx_frozen_namespace_no_financial_engine_changes():
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
     changed = result.stdout.strip().splitlines()
-    frozen = [f for f in changed if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace files changed: {frozen}"
 
 
@@ -844,7 +845,7 @@ def test_finco_pr98_correction_a_true_xlsx_reconciliation_complete():
     # 6. Senior debt authority bound.
     bundle = _solar_bundle()
     assert bundle.senior_debt_keur_authority is not None
-    assert math.isclose(bundle.senior_debt_keur_authority, 24_750.0, rel_tol=1e-4)
+    assert math.isclose(bundle.senior_debt_keur_authority, 26_983.33, rel_tol=1e-4)
 
     # 7. EV Charging runs via real engine.
     from app.export.institutional_workbook import _build_export_bundle
@@ -864,11 +865,10 @@ def test_finco_pr98_correction_a_true_xlsx_reconciliation_complete():
         capture_output=True, text=True,
         cwd=root,
     )
-    frozen = [f for f in result.stdout.strip().splitlines() if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    _listed = result.stdout.strip().splitlines()
+    frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
 
@@ -1332,11 +1332,10 @@ def test_finco_pr98_correction_b_persisted_xlsx_authority_complete():
         ["git", "diff", "origin/main", "--name-only"],
         capture_output=True, text=True, cwd=root,
     )
-    frozen = [f for f in result.stdout.strip().splitlines() if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    _listed = result.stdout.strip().splitlines()
+    frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
 
@@ -1850,7 +1849,7 @@ def test_xlsx_full_serialized_readback_9_of_9():
     ser_opex = _read_labeled_float(wb, "OPEX", "Runtime total OPEX")
     ser_total_ds = _read_labeled_float(wb, "Senior Debt", "Runtime total senior debt service")
     ser_project_irr = _read_labeled_float(wb, "Returns", "Project IRR")
-    ser_equity_irr = _read_labeled_float(wb, "Returns", "Equity IRR")
+    ser_equity_irr = _read_labeled_float(wb, "Returns", "Share-capital IRR (equity only)")
     ser_sponsor_irr = _read_labeled_float(wb, "Returns", "Total Sponsor XIRR")
     ser_min_dscr = _read_labeled_float(wb, "Returns", "Min DSCR")
 
@@ -1864,7 +1863,7 @@ def test_xlsx_full_serialized_readback_9_of_9():
         ("OPEX",                  ser_opex,        auth_opex,        TOL_KEUR,  "kEUR"),
         ("Total senior DS",       ser_total_ds,    auth_total_ds,    TOL_KEUR,  "kEUR"),
         ("Project IRR",           ser_project_irr, auth_project_irr, TOL_RATIO, "ratio"),
-        ("Equity IRR",            ser_equity_irr,  auth_equity_irr,  TOL_RATIO, "ratio"),
+        ("Share-capital IRR (equity only)",            ser_equity_irr,  auth_equity_irr,  TOL_RATIO, "ratio"),
         ("Total Sponsor XIRR",    ser_sponsor_irr, auth_sponsor_irr, TOL_RATIO, "ratio"),
         ("Min DSCR",              ser_min_dscr,    auth_min_dscr,    TOL_RATIO, "x"),
     ]
@@ -1896,7 +1895,7 @@ def test_xlsx_full_serialized_readback_9_of_9():
 # ── XLSX_SERIALIZED_SENIOR_DEBT_MATCHES_RUNTIME ───────────────────────────────
 
 def test_xlsx_serialized_senior_debt_matches_runtime():
-    """XLSX_SERIALIZED_SENIOR_DEBT_MATCHES_RUNTIME — serialized senior debt = 24,750 kEUR.
+    """XLSX_SERIALIZED_SENIOR_DEBT_MATCHES_RUNTIME — serialized senior debt = 26,983 kEUR.
 
     Reads the Senior Debt sheet cell from the actual serialized XLSX bytes and
     verifies it equals the persisted runtime authority (not an internal bundle field).
@@ -1910,7 +1909,7 @@ def test_xlsx_serialized_senior_debt_matches_runtime():
     serialized_senior = _read_labeled_float(wb, "Senior Debt", "Senior debt amount")
     assert serialized_senior is not None, "Senior debt amount cell not found in serialized workbook"
 
-    EXPECTED = 24_750.0
+    EXPECTED = 26_983.33
     assert abs(serialized_senior - EXPECTED) < 1.0, (
         f"Serialized senior debt {serialized_senior} != {EXPECTED} kEUR"
     )
@@ -1918,7 +1917,7 @@ def test_xlsx_serialized_senior_debt_matches_runtime():
     # Must match bundle senior_debt_keur_authority
     authority = bundle.senior_debt_keur_authority
     assert authority is not None and authority > 0.0, (
-        f"bundle.senior_debt_keur_authority is {authority!r} — expected 24,750"
+        f"bundle.senior_debt_keur_authority is {authority!r} — expected 26,983"
     )
     assert abs(serialized_senior - authority) < 1.0, (
         f"Serialized {serialized_senior} != authority {authority}"
@@ -2008,10 +2007,10 @@ def test_finco_pr98_correction_c_final_xlsx_lineage_complete():
     # Gate 7: working_changed_since_run = true.
     assert str(ri_data.get("Working changed since run", "")) == "true"
 
-    # Gate 8: Serialized senior debt = 24,750 kEUR.
+    # Gate 8: Serialized senior debt = 26,983 kEUR.
     ser_senior = _read_labeled_float(wb, "Senior Debt", "Senior debt amount")
-    assert ser_senior is not None and abs(ser_senior - 24_750.0) < 1.0, (
-        f"Serialized senior debt {ser_senior} != 24,750"
+    assert ser_senior is not None and abs(ser_senior - 26_983.33) < 1.0, (
+        f"Serialized senior debt {ser_senior} != 26,983"
     )
 
     # Gate 9: Serialized Min DSCR ≈ 1.2498 (factory path).
@@ -2027,9 +2026,8 @@ def test_finco_pr98_correction_c_final_xlsx_lineage_complete():
         ["git", "diff", "origin/main", "--name-only"],
         capture_output=True, text=True, cwd=root,
     )
-    frozen = [f for f in git_result.stdout.strip().splitlines() if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    _listed = git_result.stdout.strip().splitlines()
+    frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"

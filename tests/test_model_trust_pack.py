@@ -254,21 +254,24 @@ def test_trust_production_runtime_authority():
         f"Expected CLEAN_PRODUCTION_READY authority, got {ra.get('classification')!r}"
     )
     assert math.isclose(float(kpis["total_capex_keur"]), 33_000.0, rel_tol=1e-4)
-    assert math.isclose(float(kpis["senior_debt_keur"]), 24_750.0, rel_tol=1e-4)
-    assert math.isclose(float(kpis["project_irr"]) * 100, 11.56, abs_tol=0.1)
+    # Opus H-1: the product run gears on Total Project Uses (33,000 CAPEX + IDC, lender
+    # fees, initial DSRA = 35,977.78), so 75% gearing gives 26,983.33 (was 24,750).
+    assert math.isclose(float(kpis["senior_debt_keur"]), 26_983.33, rel_tol=1e-4)
+    assert math.isclose(float(kpis["total_project_uses_keur"]), 35_977.78, rel_tol=1e-4)
+    assert math.isclose(float(kpis["project_irr"]) * 100, 11.77, abs_tol=0.1)
     assert kpis["min_dscr"] >= 1.20 - 0.001
 
 
 def test_trust_solar_equity_irr():
-    """TRUST_PACK_SOLAR_EQUITY_IRR — Pure equity IRR must be approximately 50.47%."""
+    """TRUST_PACK_SOLAR_EQUITY_IRR — Pure equity IRR must be approximately 45.95% (was 50.47% before Opus H-1 financing costs)."""
     from app.api.project_runner import run_project
     result = run_project("Generic Solar Reference", "Base")
     kpis = result["kpis"]
     equity_irr = kpis.get("equity_irr")
     assert equity_irr is not None, "equity_irr not in KPI output"
     irr_pct = float(equity_irr) * 100
-    assert math.isclose(irr_pct, 50.47, abs_tol=0.2), (
-        f"Expected Equity IRR ≈ 50.47%, got {irr_pct:.4f}%"
+    assert math.isclose(irr_pct, 45.95, abs_tol=0.2), (
+        f"Expected Equity IRR ≈ 45.95%, got {irr_pct:.4f}%"
     )
 
 

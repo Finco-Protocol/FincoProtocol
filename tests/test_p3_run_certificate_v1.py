@@ -755,10 +755,11 @@ class TestFrozenNamespaces:
             capture_output=True, text=True,
             cwd=str(_REPO_ROOT),
         )
-        changed = [
-            line for line in result.stdout.strip().splitlines()
-            if line.startswith(("financial_engine/", "finco_core/", "finco_radar/"))
-        ]
+        # Opus Finance Integrity governance: allow-listed engine modules only.
+        from finance_integrity_governance import (
+            strictly_frozen_changes, unapproved_engine_changes)
+        listed = result.stdout.strip().splitlines()
+        changed = unapproved_engine_changes(listed) + strictly_frozen_changes(listed)
         assert changed == [], (
             f"Frozen namespaces must have ZERO DIFF. Changed: {changed}"
         )

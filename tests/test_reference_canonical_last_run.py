@@ -413,17 +413,18 @@ def test_reference_workbook_not_never_run(seeded_db, template_source):
 
 # ---------------------------------------------------------------------------
 # DATA_CENTER_REFERENCE_ECONOMICS_SANITY_CHECK
-# Classification A: first-year revenue ramp causes DSCR < 1.0 in periods 1-2.
-# Debt is sized to 1.30x on stabilized periods (period 3+). No model defect.
+# Opus H-2: the first-year revenue ramp no longer produces DSCR < 1.0 (that was a false
+# CONVERGED state: debt service the cash flows could not fund). Debt service is sculpted
+# to the ramp cash flow, so every period, ramp and stabilised, is at the 1.30x target.
 # ---------------------------------------------------------------------------
 
 def test_dc_dscr_ramp_classification_a(seeded_db):
     """DATA_CENTER_REFERENCE_ECONOMICS_SANITY_CHECK = PASS (Classification A).
 
-    Year-1 DSCR < 1.0 is expected: DC revenue ramps up over three stages
-    (Y1 ~40%, Y2 ~65%, Y3+ ~100%). Fixed OPEX runs from COD. Debt service
-    is sculpted lower in Y1 but not enough to compensate for the revenue
-    shortfall. Debt is correctly sized to 1.30x in stabilized periods.
+    DC revenue ramps up over three stages (Y1 ~40%, Y2 ~65%, Y3+ ~100%) and fixed
+    OPEX runs from COD. Since Opus H-2 the backward DSCR sizing cannot leave a period
+    whose debt service exceeds the sculpted capacity, so the ramp periods are at the
+    1.30x target too (they were < 1.0 while the run reported a false CONVERGED).
     """
     from app.project_factories import create_generic_data_center_reference
     from app.services.production_financial_authority import run_clean_production
@@ -435,14 +436,16 @@ def test_dc_dscr_ramp_classification_a(seeded_db):
     pmr = fr.project_model_result
     sd = pmr.senior_debt
 
-    dscr_all = list(sd.senior_dscr)
+    # Debt-service periods only (the schedule pads None after the debt is repaid)
+    dscr_all = [d for d in sd.senior_dscr if d is not None]
     # Ramp periods: first two operating periods (period indices 4-5 in full timeline)
     ramp_dscr = dscr_all[:2]
-    stable_dscr = dscr_all[2:-1]  # exclude final period (balloon payment effect)
+    stable_dscr = dscr_all[2:-1]  # exclude the final payoff period (residual balance)
+    assert dscr_all[-1] >= pi.financing.target_dscr - 0.001  # payoff tail never below target
 
-    # Ramp periods are below target — expected
-    assert all(d < 1.0 for d in ramp_dscr), \
-        f"Expected ramp-period DSCR < 1.0; got {ramp_dscr}"
+    # Ramp periods are at the target DSCR (never below it)
+    assert all(d >= pi.financing.target_dscr - 0.001 for d in ramp_dscr), \
+        f"Expected ramp-period DSCR >= target; got {ramp_dscr}"
 
     # Stabilized periods hit the target DSCR (1.30)
     target = pi.financing.target_dscr
@@ -602,7 +605,9 @@ def test_dc_gearing_semantics(seeded_db):
     """REFERENCE_DC_GEARING_SEMANTICS = PASS
 
     actual_gearing_pct must be distinct from gearing_cap_pct and approximately
-    0.4022 (not 0.65, which is the maximum gearing cap).
+    0.2806 (not 0.65, which is the maximum gearing cap). Rebaselined by Opus H-2/H-1:
+    58,411 kEUR senior debt / 208,201 kEUR Total Project Uses (was 40.22% = 80,436 /
+    200,000, from the false CONVERGED sizing and a CAPEX-only basis).
     """
     from app.persistence.projects_repository import get_reference_by_template_source
     from app.persistence.workspace_repository import get_workspace_state
@@ -620,8 +625,8 @@ def test_dc_gearing_semantics(seeded_db):
     assert cap is not None, "gearing_cap_pct must be persisted for DC reference"
     assert abs(actual - cap) > 0.10, \
         f"actual_gearing_pct ({actual:.4f}) must be materially lower than cap ({cap:.4f})"
-    assert actual == pytest.approx(0.4022, abs=0.005), \
-        f"DC actual gearing should be ~40.22%; got {actual:.4%}"
+    assert actual == pytest.approx(0.2806, abs=0.005), \
+        f"DC actual gearing should be ~28.06%; got {actual:.4%}"
     assert cap == pytest.approx(0.65, abs=0.01), \
         f"DC gearing cap should be ~65%; got {cap:.4%}"
 

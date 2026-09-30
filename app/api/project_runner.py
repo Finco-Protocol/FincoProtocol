@@ -419,8 +419,15 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "total_distributions_keur": getattr(result, 'total_distribution_keur', None),
             # Returns
             "project_irr": result.project_irr,
+            # H-3: ``equity_irr`` keeps its meaning (pure share-capital return, method
+            # equity_only). The two explicit fields below name what each return is;
+            # ``sponsor_irr`` is retained for compatibility and equals total_sponsor_xirr.
             "equity_irr": result.equity_irr,
+            "share_capital_irr": result.equity_irr,
             "sponsor_irr": getattr(result, 'sponsor_irr', None),
+            "total_sponsor_xirr": clean_run.g2c_result.total_sponsor_xirr,
+            "share_capital_irr_status": _status_name(clean_run.g2c_result.pure_equity_xirr_status),
+            "total_sponsor_xirr_status": _status_name(clean_run.g2c_result.total_sponsor_xirr_status),
             "project_npv_keur": getattr(result, 'project_npv', None),
             "equity_npv_keur": getattr(result, 'equity_npv', None),
             # Debt service
@@ -450,16 +457,38 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     # Gearing fields from the same clean_run — no second engine calculation.
     try:
         _fr = clean_run.g2c_result.financing_result
-        _capex_total = getattr(getattr(demo, "project_inputs", None), "capex", None)
-        _capex_total = _capex_total.total_capex if _capex_total is not None else None
-        if _capex_total and _capex_total > 0:
+        # Gearing is measured on the gearing basis (Total Project Uses, which now
+        # include capitalised IDC, lender fees and the initial DSRA funding), never on
+        # hard CAPEX alone, so actual gearing cannot exceed its cap by construction.
+        _gearing_basis = getattr(_fr, "gearing_basis_keur", None)
+        if _gearing_basis and _gearing_basis > 0:
             payload["kpis"]["actual_gearing_pct"] = (
-                _fr.final_senior_commitment_keur / _capex_total
+                _fr.final_senior_commitment_keur / _gearing_basis
             )
         payload["kpis"]["gearing_cap_pct"] = getattr(_fr, "gearing_ratio", None)
         payload["kpis"]["senior_debt_keur"] = getattr(_fr, "final_senior_commitment_keur", None)
     except Exception:
         pass
+
+    # H-1: explicit Sources & Uses from the engine's own audited financing result.
+    # Missing evidence stays absent (never zero); no plug — difference is reported.
+    from dataclasses import asdict as _asdict
+
+    from financial_engine.financing.generic_product_policy import build_sources_and_uses
+
+    _sources_uses = build_sources_and_uses(clean_run.g2c_result.financing_result)
+    payload["sources_uses"] = {k: round(v, 6) for k, v in _asdict(_sources_uses).items()}
+    # H-4b: full-precision evidence recorded with the committed Last Run so integrity can
+    # be checked later without re-running the model.
+    from app.run_integrity import build_run_integrity_evidence
+
+    payload["integrity_evidence"] = build_run_integrity_evidence(clean_run)
+    payload["kpis"]["total_project_uses_keur"] = payload["sources_uses"]["total_uses_keur"]
+    # Sources & Uses components persisted with the run summary so exports reconcile against
+    # the engine's own audited S&U (never a template assumption).
+    payload["kpis"]["derived_shl_cash_keur"] = payload["sources_uses"]["shareholder_loan_cash_keur"]
+    payload["kpis"]["sponsor_equity_sources_keur"] = payload["sources_uses"][
+        "share_capital_and_other_equity_keur"]
 
     # Phase B4: machine-readable clean production-authority lineage.
     payload["runtime_authority"] = (
@@ -591,6 +620,13 @@ def _serialize_financial_statements(fs) -> dict:
         "pf_cash_waterfall": {"periods": pf_periods},
         "source": "assemble_financial_statements(WaterfallResult)",
     }
+
+
+def _status_name(status) -> str | None:
+    """Stable string for an engine ReturnMetricStatus (None stays None, never 'OK' by default)."""
+    if status is None:
+        return None
+    return getattr(status, "value", None) or getattr(status, "name", None) or str(status)
 
 
 def _serialize_debt_schedule(result) -> dict:
