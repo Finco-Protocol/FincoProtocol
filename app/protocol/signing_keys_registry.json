@@ -1,22 +1,5 @@
 {
   "schema_version": "finco-signing-keys-v1",
   "issuer": "FINCO Protocol",
-  "keys": [
-    {
-      "kid": "finco-prod-2026-01",
-      "algorithm": "Ed25519",
-      "public_key": "MCowBQYDK2VwAyEAA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
-      "public_key_encoding": "DER",
-      "jwk": {
-        "kty": "OKP",
-        "crv": "Ed25519",
-        "x": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
-      },
-      "status": "ACTIVE",
-      "activated_at": "2026-01-01T00:00:00Z",
-      "retired_at": null,
-      "issuer": "FINCO Protocol",
-      "notes": "Canonical EV Charging / Signed Run Certificate V1 signing key. Deterministic test fixture key (seed = bytes(range(32))); replace with an HSM-generated key before production deployment."
-    }
-  ]
+  "keys": []
 }

@@ -1,13 +1,15 @@
 # FINCO M-2 — Signed Run Public Trust — Review Dossier
 
-Correction A cut. Branch: `protocol/m2-signed-run-public-trust`.
-Base: main `77f29ae` (post-#146) + merged sync of `7c4655b` (post-#147).
+Correction B cut (trust-root security hardening). Branch:
+`protocol/m2-signed-run-public-trust`. Base: main `77f29ae` (post-#146) +
+merged sync of `7c4655b` (post-#147).
 
 **Scope discipline:** this dossier covers the M-2 public trust closure ONLY.
 It does not modify PR #143 surfaces (README, ROADMAP, OPUS_V1_REVIEW,
 trust-pack templates/UI), `financial_engine/**`, `finco_core/**`,
-`finco_radar/**` (all ZERO DIFF), and does not change `app.verified`
-truth semantics or `PRODUCTION_VERIFIED_ASSET_COUNT`.
+`finco_radar/**`, `app/verified/**`, `app/model_validation/**` (all ZERO
+DIFF), and does not change `app.verified` truth semantics or
+`PRODUCTION_VERIFIED_ASSET_COUNT`.
 
 ---
 
@@ -27,7 +29,10 @@ M-2 ships:
 - a **public, unauthenticated certificate verifier**
   (`POST /api/v1.1/run-certificates/verify`) with typed, sanitized verdicts;
 - a **standalone offline verifier** (`tools/verify_finco_run_certificate.py`)
-  whose default trust root is the bundled manifest.
+  whose default trust root is the bundled manifest;
+- **ONE shared verification core** (`app/protocol/run_certificate_verifier.py`)
+  used by BOTH the public API and the offline CLI — the same certificate plus
+  the same registry returns the same state through both surfaces.
 
 M-2 does NOT ship (explicit non-goals, unchanged):
 
@@ -38,162 +43,234 @@ M-2 does NOT ship (explicit non-goals, unchanged):
 - economic truth claims — a valid signature proves provenance/integrity of
   the bytes, nothing else.
 
-## 2. Trust authority: the version-controlled manifest
+## 2. Trust root policy (Correction B, P0)
 
-Before Correction A the runtime registry was a process-local dict seeded
-only by runtime registration (tests) — production trust had no committed,
-auditable source. Correction A replaces that with:
+**No publicly forgeable trust root.** Correction A bundled a canonical test
+key (`seed = bytes(range(32))`) as the default trusted public key — its
+private counterpart was publicly reconstructable, so anyone could forge a
+certificate the public verifier accepted as VALID. Correction B removes that
+entirely:
+
+- the shipped manifest contains **`keys: []`** — no default trusted key
+  (`PUBLIC_ISSUER_KEY_NOT_CONFIGURED`);
+- until a real deployment commits its public issuer key (reviewed PR),
+  public verification returns `UNKNOWN_KEY_ID` for every certificate and
+  issuance fails closed;
+- deterministic fixture keys exist ONLY in test code / tmp fixtures; a
+  regression test proves a certificate signed with the known test seed is
+  **UNKNOWN_KEY_ID against the default registry**
+  (`KNOWN_TEST_PRIVATE_KEY_CAN_FORGE_DEFAULT_TRUST_ROOT = NO`);
+- no production private key is ever generated or committed in this PR.
+
+When a real issuer key is supplied externally: commit ONLY the public key,
+with a truthful production/staging kid; the private key stays outside git,
+logs, PR comments, and agent output.
+
+## 3. Trust authority: the version-controlled manifest
 
 - `app/protocol/signing_keys_registry.json` — public material only:
   `kid`, `algorithm`, DER `public_key`, `public_key_encoding`, `jwk`,
-  `status` (ACTIVE / VERIFY_ONLY), `activated_at`, `retired_at`, `issuer`,
-  `schema_version` (`finco-signing-keys-v1`).
+  `status`, `activated_at`, `retired_at`, `issuer`, `schema_version`
+  (`finco-signing-keys-v1`).
 - Loaded at import time by `app/protocol/signing_keys.py`
-  (`_load_bundled_registry`); runtime `register_key()` remains available for
-  tests/deployment bootstrap but production trust no longer depends on it.
-- Real cryptographic validation on every registration path:
-  `Crypto.PublicKey.ECC.import_key` + curve check — a non-Ed25519 or garbage
-  DER record raises `ValueError` (fail-closed), it is never stored as opaque
-  bytes.
-- The bundled canonical key (`finco-prod-2026-01`) is a **deterministic test
-  fixture key** (`seed = bytes(range(32))`) and its manifest `notes` field
-  says exactly that. It must be replaced with an HSM-generated key before
-  production deployment. **No real production private key is committed;
-  a deterministic test public key is never labelled prod-usable.**
+  (`load_registry_manifest`) — **fail-closed at import**: an invalid bundled
+  manifest refuses to boot the process; no partial registry is exposed.
+- Runtime `register_key()` remains for tests / deployment bootstrap; every
+  registration path runs the same strict validation.
 
-### Key confusion removal (Correction A)
+### STRICT ATOMIC validation (Correction B, P1)
+
+Every manifest / keys-document entry is validated in full; any invalid
+entry rejects the WHOLE document (`SigningKeyRegistryError`):
+
+- exact `schema_version` and `issuer` (document level and entry level);
+- algorithm exactly `Ed25519`; encoding exactly `DER`;
+- unique, non-empty `kid`; no duplicates;
+- cryptographically valid Ed25519 public key (real `ECC.import_key` +
+  curve check — P-256 or garbage DER rejected);
+- JWK `kty = "OKP"`, `crv = "Ed25519"`, and `x` EXACTLY equal to the DER
+  key's raw 32-byte public point (JWK/DER binding);
+- status in `{ACTIVE, VERIFY_ONLY, REVOKED}`;
+- explicit **timezone-aware** `activated_at` (required); optional
+  timezone-aware `retired_at` with `activated_at < retired_at`;
+  naive timestamps are rejected — never silently read as UTC;
+- strict field allow-list — unknown fields rejected;
+- issuer/schema consistency between entries and document.
+
+Negative tests cover every rule above, plus atomicity (one valid + one
+invalid entry → whole document rejected) and file-level failures
+(unreadable / non-JSON manifest).
+
+### Key confusion removal (Correction A, preserved)
 
 `tools/_offline_keys.json` (previously committed) carried a **different
-public key under the same kid** (`finco-prod-2026-01`) than the trust
-manifest, and tests wrote runtime key documents into `tools/`. Correction A:
+public key under the same kid** as the trust manifest, and tests wrote
+runtime key documents into `tools/`. Correction A deleted it; runtime
+verifier artifacts are gitignored; offline-verifier tests write key
+documents to pytest `tmp_path` only.
 
-- deletes `tools/_offline_keys.json` from the repository;
-- gitignores `tools/_offline_cert.json` / `tools/_offline_keys.json` so
-  runtime verifier artifacts can never be committed again;
-- offline-verifier tests write key documents to pytest `tmp_path` only.
+## 4. ONE shared verification core (Correction B, P2)
 
-## 3. Verification contract (public API and offline verifier — identical)
+`app/protocol/run_certificate_verifier.py` owns the entire verification
+state machine: structural validation, explicit kid resolution, key state,
+strict time validity, independent payload-digest recompute, `key_id`
+crosscheck, canonical bytes, Ed25519 verification, typed sanitized states.
 
-Both verifiers run the same checks, in the same order, over the same
-canonical bytes (`canonical_certificate_signing_bytes`: sorted keys, compact
-separators, UTF-8):
+- The public API router is a thin adapter (`verify_certificate_against_registry`
+  → `verify_certificate(cert, all_keys())`).
+- The offline CLI is a thin adapter (bundled manifest or `--keys` document →
+  `verify_certificate(cert, records)`).
+- Parity tests prove core == API == offline CLI state for VALID and
+  tampered certificates with the same trust list.
+
+## 5. Verification contract (identical in API and offline CLI)
 
 1. **Structural invariants** → `MALFORMED_CERTIFICATE` (missing
-   signature / payload digest / timestamps), `UNSUPPORTED_CERTIFICATE_VERSION`,
-   `UNSUPPORTED_ALGORITHM` (Ed25519 only).
-2. **Explicit kid** → the certificate MUST carry `kid`. There is **no
-   fallback** to the legacy `key_id` fingerprint or any other field; a
-   certificate with only `key_id` is `MALFORMED_CERTIFICATE`. The `key_id`
-   fingerprint remains in V1 certificates as an integrity crosscheck only —
-   never a trust anchor.
-3. **kid resolution** → exact lookup in the registry, no fuzzy matching →
+   signature / payload digest / oversized certificate — 1 MB canonical
+   cap), `UNSUPPORTED_CERTIFICATE_VERSION`, `UNSUPPORTED_ALGORITHM`
+   (Ed25519 only).
+2. **Explicit kid** → the certificate MUST carry `kid`. No fallback to the
+   legacy `key_id` fingerprint or any other field; a `key_id`-only
+   certificate is `MALFORMED_CERTIFICATE`. `key_id` remains in V1
+   certificates as an integrity crosscheck only — never a trust anchor.
+3. **kid resolution** → exact lookup, no fuzzy matching →
    `UNKNOWN_KEY_ID` otherwise.
-4. **Rotation contract** → `ACTIVE` and `VERIFY_ONLY` keys both verify
-   historical certificates; anything else → `KEY_NOT_VERIFY_CAPABLE`.
-   Issuance (separate path, `run_certificate_service.issue_run_certificate`)
-   accepts **only** ACTIVE keys and fails closed on
-   `SIGNING_KEY_UNKNOWN_KID` / `SIGNING_KEY_REGISTRY_MISMATCH` (derived
-   public key must equal the registry record) / missing kid env binding.
-5. **Key time validity** → the key must have been inside its
-   `activated_at`/`retired_at` window at the certificate's `issued_at`
-   (falling back to `run_at`) → otherwise
-   `KEY_NOT_VALID_FOR_CERTIFICATE_TIME`. An open end (`retired_at: null`)
-   stays valid. Rotation never invalidates history: a VERIFY_ONLY key whose
-   window covered issuance still verifies.
+4. **Rotation / revocation contract (P5)** → `ACTIVE` and `VERIFY_ONLY`
+   keys verify historical certificates; **`REVOKED` (compromised) keys
+   verify NOTHING** → `KEY_NOT_VERIFY_CAPABLE`. Issuance accepts ONLY
+   ACTIVE keys and fails closed on `SIGNING_KEY_UNKNOWN_KID` /
+   `SIGNING_KEY_REGISTRY_MISMATCH` / missing kid env binding.
+   **Rotation is not compromise:** retiring (VERIFY_ONLY) never breaks
+   history; revoking removes trust even for historical certificates.
+5. **STRICT certificate time (P4)** → `issued_at` is REQUIRED and MUST be
+   timezone-aware; naive timestamps are rejected, never silently read as
+   UTC; `run_at` is NEVER consulted (different authority). Key validity is
+   decided against `issued_at` only: the key's `activated_at`/`retired_at`
+   window must contain it → otherwise
+   `KEY_NOT_VALID_FOR_CERTIFICATE_TIME`.
 6. **Payload digest recompute** → the stated `payload_digest` must equal an
-   independent recompute over the received fields (everything except
-   `payload_digest` and `signature`) → otherwise `PAYLOAD_DIGEST_MISMATCH`.
-   This catches tampering with a precise typed state BEFORE the signature
-   check; a tamperer who also recomputes the digest still fails
-   `INVALID_SIGNATURE` because the canonical bytes no longer match the
-   signature.
-7. **Ed25519 verification** over the canonical signed bytes (certificate
-   minus `signature`) → `VALID` with `signature_valid: true`, or
+   independent recompute over the received fields → otherwise
+   `PAYLOAD_DIGEST_MISMATCH`. Tampering caught precisely before the
+   signature check; a tamperer who also recomputes the digest still fails
    `INVALID_SIGNATURE`.
+7. **Ed25519 verification** over the canonical signed bytes → `VALID`
+   with `signature_valid: true`, or `INVALID_SIGNATURE`.
 
-Failure details are **sanitized**: no traceback printing, no exception class
-names or messages, no key material in any response or stdout. Unexpected
-internal errors surface as HTTP 503 `VERIFICATION_UNAVAILABLE` (API) or a
-typed JSON verdict (offline), never a stack trace.
+Failure details are **sanitized**: no traceback printing, no exception
+class names or messages, no key material in any response or stdout.
+Unexpected internal errors surface as HTTP 503 `VERIFICATION_UNAVAILABLE`
+(API) or a typed JSON verdict (offline), never a stack trace.
 
-## 4. Surfaces
+### Malformed external keys documents (Correction B, P3)
+
+The offline CLI validates `--keys` documents atomically; malformed
+documents (missing public_key, invalid base64, non-Ed25519 DER, malformed
+JWK, duplicate kid, malformed timestamps, oversized document) return a
+typed `KEYS_DOCUMENT_INVALID` machine-readable failure — never an uncaught
+traceback, never raw exception text, never key material. Malformed
+certificate signature base64 → sanitized `INVALID_SIGNATURE`.
+
+## 6. Surfaces
 
 | Surface | Route / path | Auth | Source |
 | --- | --- | --- | --- |
 | Well-known discovery | `GET /.well-known/finco/keys.json` | none | manifest via `public_keys_document()` |
 | API mirror | `GET /api/v1.1/protocol/signing-keys` | none | same function — byte-identical output |
-| Public verifier | `POST /api/v1.1/run-certificates/verify` | none | registry + canonical bytes |
-| Offline verifier | `python tools/verify_finco_run_certificate.py cert.json` | none | bundled manifest (default) or `--keys` document |
+| Public verifier | `POST /api/v1.1/run-certificates/verify` | none | shared core + registry |
+| Offline verifier | `python tools/verify_finco_run_certificate.py cert.json` | none | shared core + bundled manifest (default) or `--keys` document |
 
 Verifier guarantees (tested): zero engine calls, zero Working Copy access,
 zero Last Run / FINCO Verify / Radar mutations, zero DB writes, no token or
 wallet requirement.
 
-## 5. Legacy certificate policy (explicit)
+## 7. Legacy certificate policy (explicit)
 
 Certificates issued under PR #132 before the kid binding existed carry
-`key_id` but no `kid`. Policy: such certificates are **`MALFORMED_CERTIFICATE`
-for public verification** — they were never publicly verifiable (no public
-registry existed before M-2), so nothing that was previously accepted is now
-rejected. Re-issue under the current issuance path if a historical run needs
-a publicly verifiable certificate. No silent migration, no fallback trust.
+`key_id` but no `kid`. Policy: such certificates are
+**`MALFORMED_CERTIFICATE` for public verification** — they were never
+publicly verifiable (no public registry existed before M-2), so nothing
+that was previously accepted is now rejected. Re-issue under the current
+issuance path if a historical run needs a publicly verifiable certificate.
+No silent migration, no fallback trust.
 
-## 6. Operational configuration
+## 8. Operational configuration
 
 Issuance (deployment-side, private):
 
 - `FINCO_RUN_CERT_SIGNING_KEY` — base64 of the 32-byte Ed25519 seed.
   Never committed, never logged; the service fails closed
   (`SIGNING_KEY_UNAVAILABLE`) when absent or malformed.
-- `FINCO_RUN_CERT_SIGNING_KID` — the kid of the ACTIVE registry record whose
-  public key must equal the configured key's derived public key.
+- `FINCO_RUN_CERT_SIGNING_KID` — the kid of the ACTIVE registry record
+  whose public key must equal the configured key's derived public key.
+- With the shipped `keys: []` manifest, a deployment must commit its real
+  public key to the manifest (reviewed PR) AND register/hold the private
+  key in its own configuration (`PUBLIC_ISSUER_KEY_NOT_CONFIGURED` until
+  then).
 
-Rotation runbook:
+Rotation vs compromise runbook:
 
-1. Generate a NEW key in an HSM/KMS; derive the public DER.
-2. Add the new record to `signing_keys_registry.json` with
-   `status: ACTIVE`, `activated_at` = now (UTC), `retired_at: null`; open a
-   reviewed PR (this file is the trust root — changes must be reviewed like
-   code).
-3. Deploy the manifest update; switch issuance env vars to the new kid.
-4. Retire the old key: set `status: VERIFY_ONLY` and `retired_at` = switch
-   time in a second reviewed PR. **Never delete a retired key** — historical
-   certificates must stay verifiable.
+- **Rotation (planned):** generate the NEW key in an HSM/KMS → add its
+  PUBLIC record to the manifest as `ACTIVE` with `activated_at` = now
+  (reviewed PR) → switch issuance env vars → mark the old key
+  `VERIFY_ONLY` with `retired_at` = switch time (second reviewed PR).
+  Historical certificates stay verifiable.
+- **Compromise (REVOKED):** if a private key is compromised, set its
+  status to `REVOKED` (reviewed PR). It can no longer issue OR verify —
+  certificates relying on it stop verifying. That is the point: a
+  compromised key must be removable from trust.
+
+Never delete keys from the manifest (revocation, not deletion, is the
+mechanism); never commit private material.
 
 Verification (public, private-key-free): fetch
 `/.well-known/finco/keys.json` (or use the bundled manifest) and run the
 offline verifier; or POST the certificate to the public verify endpoint.
 
-## 7. Test coverage (M-2 suite — 32 tests, all green)
+## 9. Test coverage (M-2 suite — 60 tests, all green)
 
-- Discovery: well-known document shape, determinism, public-material-only.
-- API mirror == well-known (one source).
+- P0/P7: bundled manifest ships `keys: []` with no seed documentation;
+  certificate signed by the known test seed is UNKNOWN_KEY_ID against the
+  default trust root (`KNOWN_TEST_PRIVATE_KEY_CAN_FORGE_DEFAULT_TRUST_ROOT
+  = NO`).
+- Discovery: well-known document shape, determinism, public-material-only;
+  API mirror byte-identical to well-known.
 - Issuance kid binding: missing kid / unknown kid / registry mismatch /
-  VERIFY_ONLY issuance all fail closed; kid + fingerprint present in cert.
-- Rotation: VERIFY_ONLY verifies history; ACTIVE required for new issuance.
-- Public verifier: VALID path; tampered field → `PAYLOAD_DIGEST_MISMATCH`;
-  tampered field + attacker-recomputed digest → `INVALID_SIGNATURE`;
-  tampered signature → `INVALID_SIGNATURE`; unknown kid; unsupported
-  algorithm/version; malformed; legacy key_id-only → `MALFORMED_CERTIFICATE`;
-  key activated-after / retired-before issuance →
-  `KEY_NOT_VALID_FOR_CERTIFICATE_TIME`; in-window key → VALID; sanitized
-  failure details (no exception text, no key material); no engine calls.
-- Offline verifier: VALID (explicit keys doc AND bundled manifest trust
-  root), tampered → `PAYLOAD_DIGEST_MISMATCH`, unknown kid, expired window.
-- Registry hardening: real Ed25519 validation rejects P-256 and garbage DER;
-  manifest seeds the process registry; `public_keys_document()` contains no
-  private material.
+  VERIFY_ONLY issuance / REVOKED issuance all fail closed.
+- Rotation + revocation: VERIFY_ONLY verifies history; REVOKED verifies
+  nothing (API + offline) and cannot issue.
+- Public verifier: VALID; tampered field → `PAYLOAD_DIGEST_MISMATCH`;
+  tampered + attacker-recomputed digest → `INVALID_SIGNATURE`; tampered
+  signature; unknown kid; unsupported algorithm/version; malformed;
+  legacy key_id-only → `MALFORMED_CERTIFICATE`; missing issued_at (with
+  run_at present) → `MALFORMED_CERTIFICATE` (no fallback); naive
+  issued_at → `MALFORMED_CERTIFICATE`; key activated-after /
+  retired-before issuance → `KEY_NOT_VALID_FOR_CERTIFICATE_TIME`;
+  in-window key → VALID; REVOKED → `KEY_NOT_VERIFY_CAPABLE`; oversized
+  certificate → `MALFORMED_CERTIFICATE`; sanitized failure details; no
+  engine calls.
+- P2 parity: shared core == API == offline CLI for VALID and tampered.
+- P3: malformed external keys documents (missing/invalid public_key,
+  non-Ed25519 DER, 4 JWK corruptions, duplicate kid, naive/missing
+  activated_at, naive retired_at, retired-before-activated, wrong schema
+  version/issuer, unknown field) → typed `SigningKeyRegistryError`;
+  offline CLI → typed sanitized `KEYS_DOCUMENT_INVALID` (incl. non-JSON
+  file); file-level manifest failures fail closed; valid empty manifest
+  loads.
+- Registry hardening: real Ed25519 validation rejects P-256 and garbage
+  DER; `public_keys_document()` contains no private material.
 
-Regression: `tests/test_signed_run_certificate.py` 24/24,
-`tests/test_ev_charging_efficiency_authority.py` 13/13,
-`tests/test_ev_charging_range_parity.py` 13/13.
+Regression: `tests/test_signed_run_certificate.py` (updated fixture for
+the strict registry), EV suites untouched.
 
-## 8. Status
+## 10. Status
 
 | Item | Status |
 | --- | --- |
 | Signed Run Certificate V1 issuance (PR #132 lineage) | SHIPPED (config-gated) |
 | M-2 public trust closure (this branch) | **OPEN DRAFT PR — not merged; not shipped until merged** |
+| DEFAULT_TRUST_ROOT_PRIVATE_KEY_PUBLICLY_KNOWN | NO |
+| DEFAULT_REGISTRY_TEST_KEY | NO |
+| KNOWN_TEST_PRIVATE_KEY_CAN_FORGE_DEFAULT_TRUST_ROOT | NO |
 | BLOCKCHAIN_ANCHORING | NOT_SHIPPED |
 | TOKEN_GATING | NOT_ADDED |
 | PUBLIC_VERIFICATION_REQUIRES_TOKEN | NO |

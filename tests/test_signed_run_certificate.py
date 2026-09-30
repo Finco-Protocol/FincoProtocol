@@ -42,7 +42,8 @@ def _test_signing_key(monkeypatch):
     from app.protocol.signing_keys import register_key_values
     from Crypto.PublicKey import ECC
     der = ECC.construct(curve="Ed25519", seed=TEST_SEED).public_key().export_key(format="DER")
-    register_key_values(TEST_KID, der, status="ACTIVE")
+    register_key_values(TEST_KID, der, status="ACTIVE",
+                        activated_at="2026-01-01T00:00:00+00:00")
 
 
 @pytest.fixture()
