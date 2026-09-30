@@ -51,34 +51,26 @@ def _ensure_base_history(base_sha: str) -> None:
     )
     if shallow.stdout.strip() != "true":
         return  # full clone: ancestry is already decidable
-    check = subprocess.run(
-        ["git", "cat-file", "-e", f"{base_sha}^{{commit}}"],
+    # Shallow CI checkout: unshallow so the merge-base containment
+    # assertion runs on the complete commit graph.  This is the test-level
+    # "explicitly fetch/deepen the exact PR base ancestry" contract; the
+    # workflow itself stays shallow per the M-9 governance contract.
+    unshallowed = subprocess.run(
+        ["git", "fetch", "--unshallow", "origin"],
         cwd=REPO, capture_output=True, text=True,
     )
-    if check.returncode == 0:
-        ancestors = subprocess.run(
-            ["git", "rev-list", "--max-parents=1", "-n", "1", base_sha],
+    if unshallowed.returncode != 0:
+        fetched = subprocess.run(
+            ["git", "fetch", "--depth=1000", "origin", base_sha],
             cwd=REPO, capture_output=True, text=True,
         )
-        if ancestors.returncode == 0 and ancestors.stdout.strip():
-            # Base object with its parent link present; deepen a little more
-            # so is-ancestor walking is possible, best effort.
-            subprocess.run(
-                ["git", "fetch", "--deepen=200", "origin"],
-                cwd=REPO, capture_output=True, text=True,
+        if fetched.returncode != 0:
+            raise RuntimeError(
+                "HISTORY_UNAVAILABLE: cannot fetch the PR base ancestry; the "
+                "governance containment assertion cannot run in this checkout. "
+                "This is a history-availability failure, NOT evidence that "
+                "the branch is behind main."
             )
-            return
-    fetched = subprocess.run(
-        ["git", "fetch", "--depth=500", "origin", base_sha],
-        cwd=REPO, capture_output=True, text=True,
-    )
-    if fetched.returncode != 0:
-        raise RuntimeError(
-            "HISTORY_UNAVAILABLE: cannot fetch the PR base ancestry; the "
-            "governance containment assertion cannot run in this checkout "
-            "(configure fetch-depth: 0). This is a history-availability "
-            "failure, NOT evidence that the branch is behind main."
-        )
 
 
 def _main_sha() -> str | None:
