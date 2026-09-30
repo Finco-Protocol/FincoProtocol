@@ -58,16 +58,13 @@ Scope qualifications on the list above (Opus clean-room review):
   (EQUITY_ONLY method); Total Sponsor XIRR — which additionally includes
   shareholder-loan flows — is reported separately and must not be read as
   the same number;
-- the generic product run path currently does **not** apply construction-period
-  IDC, the lender commitment fee, the structuring/arrangement fee, or DSRA
-  funding/sizing: construction financing is disabled by default
-  (`construction_financing=None`) and `dsra_support_mode=NONE` for every shipped
-  project template and reference model, so a normal product run excludes these
-  costs and reserves (Opus finding H-1, correction required). Opt-in engine-level
-  structures for construction financing and DSRA exist in the financial engine,
-  but they are not applied by a normal product run today. This qualifies the
-  "construction and long-term financing" and "cash reserves and liquidity
-  accounts" entries above.
+- the generic product run path wires the approved construction-financing
+  economics through the model (Opus finding H-1 closed by PR #144):
+  construction-period IDC, the lender commitment fee, the
+  structuring/arrangement fee, sponsor-funded initial DSRA under the approved
+  V1 policy, and explicit Sources & Uses treatment are part of the shipped
+  generic product semantics. This describes what #144 established; it is not
+  a claim that all possible financing structures are supported.
 
 For a Solar or Wind asset, FINCO can take the model from installed capacity, production, pricing, and operating assumptions through debt, tax, reserves, distributions, and final investor returns. Data Center and EV Charging follow the same framework with asset-specific operating assumptions.
 
@@ -176,7 +173,13 @@ The Protocol layer implements off-chain verification and composition. Current ca
   Explicitly separates the three authority layers: Reference Regression Check ≠ FINCO VERIFY ≠ Signed Run.
   The Reference Regression Check re-runs canonical reference models against pinned expected
   values (regression protection for the reference library); it does not independently validate
-  a user's Last Run. Independent Run Integrity Checks are planned (P0) and not yet shipped.
+  a user's Last Run. Run Integrity Checks (shipped, H-4b) verify the internal
+  consistency of a committed Last Run — Sources & Uses, balance-sheet
+  reconciliation, senior debt rollforward, debt-service/interest consistency,
+  CFADS/DSCR integrity, unfunded-cash deficit, DSCR sculpting feasibility,
+  and sponsor-return/XIRR input consistency — recomputed from evidence
+  recorded at commit; they do not validate external assumptions and are not
+  economic truth.
 - **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar
   evidence and protocol metadata into a single verifiable asset record. V1 assets currently
   render as MODEL_ONLY because no canonical model↔market identity mapping is yet established

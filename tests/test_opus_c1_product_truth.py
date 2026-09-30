@@ -159,11 +159,16 @@ class TestReferenceRegressionCheckNaming:
         assert "independently validate your project's Last Run" in page.text
         assert "regression protection" in page.text
         # The authority separation keeps the invariant with the new term.
-        assert "REFERENCE REGRESSION CHECK and FINCO VERIFY are separate authorities" in page.text
-        assert "never implies Verified status" in page.text
-        # Run Integrity Checks: planned, never shipped.
+        separator_text = " ".join(page.text.split())
+        assert (
+            "REFERENCE REGRESSION CHECK, RUN INTEGRITY CHECKS and FINCO "
+            "VERIFY are separate authorities" in separator_text
+        )
+        assert "never implies Verified status" in separator_text
+        # Run Integrity Checks: SHIPPED (H-4b) and authority-separated.
         assert "Run Integrity Checks" in page.text
-        assert "planned (P0) and not yet shipped" in page.text
+        assert "Run Integrity Checks (shipped)" in page.text
+        assert "planned (P0) and not yet shipped" not in page.text
 
     def test_validation_fragment_carries_scope_statement(self):
         body = _read("app/templates/v2/partials/_trust_validation_body.html")
@@ -220,36 +225,36 @@ class TestPublishedTruthCorrections:
         assert "EQUITY_ONLY" in readme
         assert "Total Sponsor XIRR" in readme
 
-    def test_readme_financing_costs_qualification(self):
+    def test_readme_h1_closed_shipped_financing_semantics(self):
+        """H-1 is CLOSED by PR #144: README states the shipped wiring, no exclusion claim."""
         readme = _flat("README.md")
-        # Ambiguous "not yet fully wired" wording is gone.
+        # Stale pre-#144 exclusion wording is gone.
         assert "not yet fully wired" not in readme
-        assert "the generic product run path currently does **not** apply" in readme
+        assert "a normal product run excludes these costs and reserves" not in readme
+        assert "not applied by a normal product run today" not in readme
+        assert "`construction_financing=None`" not in readme
+        assert "`dsra_support_mode=NONE`" not in readme
+        # Shipped semantics stated, with the honest scope boundary.
+        assert "H-1 closed by PR #144" in readme
+        assert "wires the approved construction-financing" in readme
         for item in ("construction-period IDC", "the lender commitment fee",
-                     "the structuring/arrangement fee", "DSRA funding/sizing"):
+                     "the structuring/arrangement fee", "sponsor-funded initial DSRA",
+                     "Sources & Uses"):
             assert item in readme, item
-        # The claim is grounded in the actual defaults, and states exclusion.
-        assert "`construction_financing=None`" in readme
-        assert "`dsra_support_mode=NONE`" in readme
-        assert "a normal product run excludes these costs and reserves" in readme
-        # Engine-level capability is mentioned separately, not as applied.
-        assert "not applied by a normal product run today" in readme
+        assert "not a claim that all possible financing structures are supported" in readme
 
-    def test_product_templates_really_do_not_apply_h1_items(self):
-        """Ground the README claim in code: shipped templates leave both disabled."""
-        from app import project_factories as pf
-
-        for name in dir(pf):
-            if not name.startswith("create_") or not ("reference" in name or "default" in name):
-                continue
-            fin = getattr(pf, name)().financing
-            assert getattr(fin, "construction_financing", None) is None, name
-            assert str(getattr(fin, "dsra_support_mode")).endswith("NONE"), name
-
-    def test_roadmap_run_integrity_checks_planned_not_shipped(self):
+    def test_roadmap_run_integrity_checks_shipped(self):
+        """H-4b shipped: Run Integrity Checks are documented as shipped and scoped."""
         roadmap = _read("docs/ROADMAP.md")
-        assert "Run Integrity Checks (planned — P0, not shipped)" in roadmap
-        assert "Not implemented in V1" in roadmap
+        assert "Run Integrity Checks (shipped — H-4b)" in roadmap
+        assert "planned — P0, not shipped" not in roadmap
+        assert "Not implemented in V1" not in roadmap
+        for scope in ("Sources & Uses", "senior debt rollforward", "DSCR",
+                      "unfunded-cash deficit", "sponsor-return/XIRR input consistency"):
+            assert scope in roadmap, scope
+        # Boundaries retained: distinct from regression check / Verify / Signed Run.
+        assert "do not re-run the model" in roadmap
+        assert "equal FINCO VERIFY" in roadmap
         # Reference Regression Check naming present; generic label gone.
         assert "Reference Regression Check (P1.3)" in roadmap
         assert "MODEL VALIDATION (P1.3)" not in roadmap
@@ -257,17 +262,23 @@ class TestPublishedTruthCorrections:
         assert "replaced only by a subsequent committed run" in roadmap
         assert "committed, immutable snapshot" not in roadmap
 
-    def test_capability_matrix_uses_new_name(self):
+    def test_capability_matrix_uses_new_name_and_lists_run_integrity(self):
         matrix = _read("OPUS_V1_REVIEW/02_CAPABILITY_MATRIX.md")
         assert "Reference Regression Check (P1.3)" in matrix
         assert "MODEL VALIDATION (P1.3)" not in matrix
-        assert "Run Integrity" not in matrix  # not present as a shipped capability
+        # H-4b shipped: Run Integrity Checks listed as a shipped capability.
+        assert "Run Integrity Checks" in matrix
+        assert "LIVE" in matrix[matrix.index("Run Integrity Checks"):]
 
-    def test_known_limitations_carry_h2_and_key_distribution(self):
+    def test_known_limitations_mark_h2_closed_and_key_distribution(self):
         limits = _read("OPUS_V1_REVIEW/05_KNOWN_LIMITATIONS.md")
-        assert "H-2" in limits
-        assert "Do NOT claim unconditional institutional-grade DSCR sculpting convergence" in limits
-        assert "public verifier are NOT yet" in limits or "public verifier" in limits
+        # H-2 CLOSED by PR #144 — not presented as an open limitation.
+        assert "H-2 CLOSED by PR #144" in limits
+        assert "H-2, under review" not in limits
+        assert "while H-2 is open" not in limits
+        assert "fails closed when forward repayment economics cannot" in limits
+        # Signed Run public trust-key / verifier limitation stays truthful.
+        assert "public verifier" in limits
 
     def test_authority_boundaries_use_accurate_scope(self):
         bounds = _read("OPUS_V1_REVIEW/03_AUTHORITY_BOUNDARIES.md")

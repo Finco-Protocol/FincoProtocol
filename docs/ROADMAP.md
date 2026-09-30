@@ -63,14 +63,18 @@ at render. Explicitly separates Reference Regression Check ≠ FINCO VERIFY ≠
 Signed Run. The Reference Regression Check is regression protection for the
 reference library, not independent validation of a user's Last Run.
 
-### Run Integrity Checks (planned — P0, not shipped)
+### Run Integrity Checks (shipped — H-4b)
 
-Independent checks validating the integrity of a user's actual Last Run
-(accounting, debt, and cash-flow reconciliation of the committed snapshot).
-Planned as a P0 roadmap capability. **Not implemented in V1** — do not
-represent as shipped. Distinct from the Reference Regression Check (P1.3),
-which re-runs canonical reference models against pinned expected values.
-
+Internal consistency checks against a user's actual committed Last Run,
+recorded at run commit: Sources & Uses, balance-sheet reconciliation,
+senior debt rollforward, debt-service/interest consistency, CFADS/DSCR
+integrity, unfunded-cash deficit, DSCR sculpting feasibility, and
+sponsor-return/XIRR input consistency. Recomputed from evidence recorded
+at commit; they do not re-run the model. Distinct from the Reference
+Regression Check (P1.3), which re-runs canonical reference models against
+pinned expected values. Run Integrity does not validate external
+assumptions, establish economic truth, or equal FINCO VERIFY or Signed
+Run.
 ### Radar / R-LIVE
 
 - **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical

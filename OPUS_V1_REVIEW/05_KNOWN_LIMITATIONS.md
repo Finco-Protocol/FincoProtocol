@@ -86,14 +86,18 @@ treat any undisclosed deviation from these as a potential finding.
 
 ---
 
-## 7b. DSCR Sculpting — Convergence Under Review (H-2)
+## 7b. DSCR Sculpting — H-2 CLOSED by PR #144
 
-- The DSCR-sculpted senior sizing can leave residual distress conditions in
-  some synthetic reference configurations (finding H-2, under review).
-- Do NOT claim unconditional institutional-grade DSCR sculpting convergence
-  while H-2 is open.
-- A Reference Regression Check (P1.3) PASS does not clear H-2 and is not
-  evidence of model soundness.
+- H-2 (DSCR sculpting could report false CONVERGED states while forward
+  repayment economics were infeasible) is CLOSED by PR #144.
+- DSCR sculpting now fails closed when forward repayment economics cannot
+  satisfy the required feasibility contract; authoritative success cannot
+  rely on hidden interest capitalization or unfunded cash. Typed
+  infeasibility is surfaced through the approved finance correction.
+- Avoid marketing language such as "perfect" or "unconditionally
+  institutional-grade" convergence: state the fail-closed contract.
+- A Reference Regression Check (P1.3) PASS is regression protection for the
+  reference library and is not evidence of model soundness on its own.
 
 ## 8. B2.3 Usage Metering — Hook Coverage
 
