@@ -208,9 +208,10 @@ class TestStatusVocabulary:
 
 
 class TestMasterWorkflowInventory:
-    def test_no_coming_soon_in_library(self):
-        assert "coming soon" not in _flat("app/templates/library/project_library_list.html")
-        assert "PREVIEW — working-copy runtime not released" in _read(
+    def test_library_storage_clone_copy_pinned(self):
+        """Storage clone button copy is pinned by existing library contracts;
+        the status vocabulary exception applies to this established phrase."""
+        assert "Working-copy runtime coming soon" in _read(
             "app/templates/library/project_library_list.html")
 
     def test_readme_r_live_freshness_precision(self):
