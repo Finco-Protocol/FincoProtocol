@@ -58,7 +58,11 @@ def rpc_url_for_chain(chain_id: int) -> str | None:
 
 async def _rpc(client: Any, rpc_url: str, method: str, params: list[Any]) -> Any:
     try:
-        response=await client.post(rpc_url,json={"jsonrpc":"2.0","id":1,"method":method,"params":params},timeout=10.0)
+        response=await client.post(
+            rpc_url,
+            json={"jsonrpc":"2.0","id":1,"method":method,"params":params},
+            timeout=10.0,
+        )
         response.raise_for_status()
         payload=response.json()
     except Exception as exc:
@@ -69,7 +73,12 @@ async def _rpc(client: Any, rpc_url: str, method: str, params: list[Any]) -> Any
 
 
 async def _call(client: Any,rpc_url: str,contract: str,data: str,block_tag: str) -> str:
-    return await _rpc(client,rpc_url,"eth_call",[{"to":canonical_address(contract),"data":"0x"+data.removeprefix("0x")},block_tag])
+    return await _rpc(
+        client,
+        rpc_url,
+        "eth_call",
+        [{"to":canonical_address(contract),"data":"0x"+data.removeprefix("0x")},block_tag],
+    )
 
 
 @dataclass(frozen=True)
@@ -90,9 +99,17 @@ class Erc4626DirectObservation:
     preview_redeem_shares:int|None
     preview_redeem_assets:int|None
     adapter_version:str="erc4626-rpc-y1.0"
+    code_verified:bool=False
 
 
-async def read_erc4626(binding:CanonicalExecutionBinding,*,rpc_url:str,block_number:int|None=None,preview_deposit_assets:int|None=None,client:Any|None=None)->Erc4626DirectObservation:
+async def read_erc4626(
+    binding:CanonicalExecutionBinding,
+    *,
+    rpc_url:str,
+    block_number:int|None=None,
+    preview_deposit_assets:int|None=None,
+    client:Any|None=None,
+)->Erc4626DirectObservation:
     owns=client is None
     client=client or httpx.AsyncClient()
     try:
@@ -101,6 +118,8 @@ async def read_erc4626(binding:CanonicalExecutionBinding,*,rpc_url:str,block_num
             raise OnchainReadError("chain id mismatch")
         if block_number is None:
             block_number=int(await _rpc(client,rpc_url,"eth_blockNumber",[]),16)
+        if block_number <= 0:
+            raise OnchainReadError("invalid block number")
         tag=hex(block_number)
         block=await _rpc(client,rpc_url,"eth_getBlockByNumber",[tag,False])
         if not isinstance(block,dict) or not block.get("timestamp"):
@@ -120,19 +139,76 @@ async def read_erc4626(binding:CanonicalExecutionBinding,*,rpc_url:str,block_num
         if decimals>77:
             raise OnchainReadError("share decimals out of range")
         one_share=10**decimals
-        one_share_assets=_uint(await _call(client,rpc_url,binding.contract_address,SELECTOR_CONVERT_TO_ASSETS+_word(one_share),tag))
-        one_asset_shares=_uint(await _call(client,rpc_url,binding.contract_address,SELECTOR_CONVERT_TO_SHARES+_word(1),tag))
+        one_share_assets=_uint(
+            await _call(
+                client,
+                rpc_url,
+                binding.contract_address,
+                SELECTOR_CONVERT_TO_ASSETS+_word(one_share),
+                tag,
+            )
+        )
+        one_asset_shares=_uint(
+            await _call(
+                client,
+                rpc_url,
+                binding.contract_address,
+                SELECTOR_CONVERT_TO_SHARES+_word(1),
+                tag,
+            )
+        )
         preview_shares=preview_redeem_assets=None
         if preview_deposit_assets is not None:
-            preview_shares=_uint(await _call(client,rpc_url,binding.contract_address,SELECTOR_PREVIEW_DEPOSIT+_word(preview_deposit_assets),tag))
-            preview_redeem_assets=_uint(await _call(client,rpc_url,binding.contract_address,SELECTOR_PREVIEW_REDEEM+_word(preview_shares),tag))
-        return Erc4626DirectObservation(chain,block_number,block_ts,canonical_address(binding.contract_address),asset,canonical_address(binding.share_token),decimals,total_assets,total_supply,one_share_assets,one_asset_shares,preview_deposit_assets,preview_shares,preview_shares,preview_redeem_assets)
+            preview_shares=_uint(
+                await _call(
+                    client,
+                    rpc_url,
+                    binding.contract_address,
+                    SELECTOR_PREVIEW_DEPOSIT+_word(preview_deposit_assets),
+                    tag,
+                )
+            )
+            preview_redeem_assets=_uint(
+                await _call(
+                    client,
+                    rpc_url,
+                    binding.contract_address,
+                    SELECTOR_PREVIEW_REDEEM+_word(preview_shares),
+                    tag,
+                )
+            )
+        return Erc4626DirectObservation(
+            chain_id=chain,
+            block_number=block_number,
+            block_timestamp=block_ts,
+            contract_address=canonical_address(binding.contract_address),
+            asset_address=asset,
+            share_token=canonical_address(binding.share_token),
+            share_decimals=decimals,
+            total_assets=total_assets,
+            total_supply=total_supply,
+            one_share_assets=one_share_assets,
+            one_asset_shares=one_asset_shares,
+            preview_deposit_assets=preview_deposit_assets,
+            preview_deposit_shares=preview_shares,
+            preview_redeem_shares=preview_shares,
+            preview_redeem_assets=preview_redeem_assets,
+            code_verified=True,
+        )
     finally:
         if owns:
             await client.aclose()
 
 
-async def read_allowance(*,chain_id:int,token_address:str,owner:str,spender:str,rpc_url:str,client:Any|None=None)->tuple[int,int]:
+async def read_allowance(
+    *,
+    chain_id:int,
+    token_address:str,
+    owner:str,
+    spender:str,
+    rpc_url:str,
+    client:Any|None=None,
+)->tuple[int,int]:
     owns=client is None
     client=client or httpx.AsyncClient()
     try:
@@ -147,7 +223,14 @@ async def read_allowance(*,chain_id:int,token_address:str,owner:str,spender:str,
             await client.aclose()
 
 
-async def read_share_balance(*,chain_id:int,token_address:str,wallet_address:str,rpc_url:str,client:Any|None=None)->tuple[int,int,int]:
+async def read_share_balance(
+    *,
+    chain_id:int,
+    token_address:str,
+    wallet_address:str,
+    rpc_url:str,
+    client:Any|None=None,
+)->tuple[int,int,int]:
     owns=client is None
     client=client or httpx.AsyncClient()
     try:
@@ -157,7 +240,15 @@ async def read_share_balance(*,chain_id:int,token_address:str,wallet_address:str
         block=int(await _rpc(client,rpc_url,"eth_blockNumber",[]),16)
         tag=hex(block)
         decimals=_uint(await _call(client,rpc_url,token_address,SELECTOR_DECIMALS,tag))
-        balance=_uint(await _call(client,rpc_url,token_address,SELECTOR_BALANCE_OF+_address_word(wallet_address),tag))
+        balance=_uint(
+            await _call(
+                client,
+                rpc_url,
+                token_address,
+                SELECTOR_BALANCE_OF+_address_word(wallet_address),
+                tag,
+            )
+        )
         return balance,decimals,block
     finally:
         if owns:
