@@ -243,12 +243,18 @@ def _release_run_slot() -> None:
 async def _bootstrap_reference_models():
     """Idempotent: ensure system reference projects exist before first request."""
     try:
+        import time as _time
         from app.services.project_library_service import (
             ensure_reference_models,
             ensure_reference_canonical_last_runs,
         )
+        _started = _time.monotonic()
         ensure_reference_models()
         ensure_reference_canonical_last_runs()
+        # Bounded observability: a fresh database seeds real model runs here (tens of seconds);
+        # an existing one is idempotent. No configuration or secret value is logged.
+        print("startup reference_bootstrap complete duration_s=%.1f" % (_time.monotonic() - _started),
+              flush=True)
     except Exception:
         import logging
         logging.getLogger(__name__).exception("Failed to bootstrap reference models at startup")

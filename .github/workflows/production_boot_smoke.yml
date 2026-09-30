@@ -126,37 +126,70 @@ jobs:
           set -euo pipefail
           LOG=/tmp/finco-h6-uvicorn.log
           BODY=/tmp/finco-h6-health-body
+          PORT=8765
+          # Readiness window. A FRESH database makes application startup seed the reference models'
+          # canonical Last Runs (real model runs, about 70 s measured on a clean checkout, identical on
+          # main); later starts are idempotent and take seconds. The window is that measured cost
+          # with headroom, not an arbitrary value; on timeout the diagnostics below say why.
+          READY_SECONDS=150
 
           /bin/bash deploy/scripts/run_web.sh >"$LOG" 2>&1 &
           PID=$!
 
-          cleanup() {
-            kill "$PID" 2>/dev/null || true
-            wait "$PID" 2>/dev/null || true
+          diagnostics() {
+            echo "---- PRODUCTION_BOOT_DIAGNOSTICS ----" >&2
+            if kill -0 "$PID" 2>/dev/null; then
+              echo "process: ALIVE (pid $PID, state $(ps -o stat= -p "$PID" 2>/dev/null || echo '?'))" >&2
+            else
+              echo "process: EXITED" >&2
+            fi
+            if command -v ss >/dev/null 2>&1 && ss -ltn "sport = :$PORT" 2>/dev/null | grep -q ":$PORT"; then
+              echo "listener: PRESENT on :$PORT" >&2
+            else
+              echo "listener: ABSENT on :$PORT" >&2
+            fi
+            echo "last health status: ${STATUS:-none}" >&2
+            echo "---- server log (complete) ----" >&2
+            cat "$LOG" >&2 || true
+            echo "---- end diagnostics ----" >&2
           }
-          trap cleanup EXIT
+
+          # Bounded shutdown: SIGTERM, wait at most 10 s, then SIGKILL. Never hangs the job.
+          stop_server() {
+            kill "$PID" 2>/dev/null || true
+            for _ in $(seq 1 40); do
+              kill -0 "$PID" 2>/dev/null || return 0
+              sleep 0.25
+            done
+            kill -9 "$PID" 2>/dev/null || true
+          }
+          trap stop_server EXIT
 
           STATUS=000
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 "$READY_SECONDS"); do
             if ! kill -0 "$PID" 2>/dev/null; then
-              echo "ERROR: production process exited during startup" >&2
-              cat "$LOG" >&2 || true
+              echo "PRODUCTION_BOOT_FAILED: process exited during startup" >&2
+              diagnostics
               exit 1
             fi
-            STATUS=$(curl --max-time 1 -sS -o "$BODY" -w '%{http_code}' http://127.0.0.1:8765/public-health || true)
+            STATUS=$(curl --max-time 1 -sS -o "$BODY" -w '%{http_code}' "http://127.0.0.1:$PORT/public-health" 2>/dev/null || true)
             if [[ "$STATUS" == "200" ]]; then
               break
             fi
             if [[ "$STATUS" != "000" ]]; then
-              echo "ERROR: /public-health returned HTTP $STATUS" >&2
+              echo "PRODUCTION_BOOT_FAILED: /public-health returned HTTP $STATUS" >&2
               cat "$BODY" >&2 || true
-              cat "$LOG" >&2 || true
+              diagnostics
               exit 1
             fi
             sleep 1
           done
 
-          test "$STATUS" = "200"
+          if [[ "$STATUS" != "200" ]]; then
+            echo "PRODUCTION_BOOT_TIMEOUT: no HTTP 200 within ${READY_SECONDS}s" >&2
+            diagnostics
+            exit 1
+          fi
           grep -Fq '"status":"ok"' "$BODY"
           kill -0 "$PID"
           sleep 1
