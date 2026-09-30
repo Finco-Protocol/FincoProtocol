@@ -437,63 +437,58 @@ def test_DC_TERMINOLOGY_NO_IT_LOAD_HOURS():
 def test_DC_SOURCES_AND_USES_RECONCILE():
     """True Sources & Uses reconciliation against canonical production authority.
 
-    Exact engine values for Generic Data Center Reference V1 (20 MW IT, 20 yr,
-    EUR, Spain):
-      Senior Debt   = 80,436.50 kEUR  (DSCR-constrained, binding = DSCR)
-      Share Capital = 80,000.00 kEUR
-      Derived SHL   = 39,563.50 kEUR
-      Total Sources = 200,000.00 kEUR
-      Total Uses    = 200,000.00 kEUR  (hard CAPEX, no construction financing costs)
-      Balance       = 0.00 kEUR  (identity within float tolerance)
-      Max gearing cap = 65% (130,000 kEUR) — NOT the binding constraint
-      Actual gearing  = 40.22% (80,436.50 / 200,000)
+    Rebaselined for the Opus Finance Integrity stream (H-2 + H-1). Exact engine values
+    for Generic Data Center Reference (20 MW IT, 20 yr, EUR):
+
+      Senior Debt   = 58,410.96 kEUR  (was 80,436.50: that figure was a false CONVERGED
+                                       state whose debt service could not be serviced;
+                                       H-2 caps the balance so every period is funded)
+      Share Capital = 90,000.00 kEUR  (reference assumption raised from 80,000 so the
+                                       derived SHL is repayable by maturity; flagged)
+      Derived SHL   = 59,789.63 kEUR
+      Total Uses    = 208,200.59 kEUR (200,000 CAPEX + IDC 1,003.56 + commitment fee
+                                       1,068.04 + structuring fee 584.11 + initial
+                                       DSRA 5,544.88 — H-1)
+      Sources - Uses = 0.00 (no plug)
+      Gearing       = senior / Total Project Uses
     """
     pytest.importorskip("dateutil", reason="dateutil required for engine run")
     from app.project_factories import create_generic_data_center_reference
     from app.services.production_financial_authority import run_clean_production
+    from financial_engine.financing.generic_product_policy import build_sources_and_uses
     pi = create_generic_data_center_reference()
     run = run_clean_production(pi, "Base", project_type="Data Center")
     fin = run.g2c_result.financing_result
+    su = build_sources_and_uses(fin)
 
     senior_debt = fin.final_senior_commitment_keur
     share_capital = fin.share_capital_keur
     derived_shl = fin.derived_shl_cash_principal_keur
-    total_uses = 200_000.0
 
-    # Exact value assertions (tolerance ±1 kEUR to survive float arithmetic)
-    assert abs(senior_debt - 80_436.50) < 1.0, (
-        f"Senior debt must be ~80,436.50 kEUR, got {senior_debt:.2f}"
-    )
-    assert abs(share_capital - 80_000.0) < 0.01, (
-        f"Share capital must be 80,000.00 kEUR, got {share_capital:.2f}"
-    )
-    assert abs(derived_shl - 39_563.50) < 1.0, (
-        f"Derived SHL must be ~39,563.50 kEUR, got {derived_shl:.2f}"
-    )
+    assert abs(senior_debt - 58_410.96) < 1.0, f"got {senior_debt:.2f}"
+    assert abs(share_capital - 90_000.0) < 0.01, f"got {share_capital:.2f}"
+    assert abs(derived_shl - 59_789.63) < 1.0, f"got {derived_shl:.2f}"
 
-    # Sources = Uses (perfect reconciliation)
+    assert abs(su.base_project_capex_keur - 200_000.0) < 0.01
+    assert abs(su.capitalized_idc_keur - 1_003.56) < 0.5
+    assert abs(su.commitment_fee_keur - 1_068.04) < 0.5
+    assert abs(su.structuring_fee_keur - 584.11) < 0.5
+    assert abs(su.initial_dsra_funding_keur - 5_544.88) < 0.5
+    total_uses = su.total_uses_keur
+    assert abs(total_uses - 208_200.59) < 1.0
+
+    # Sources = Uses exactly, with no balancing plug
     total_sources = senior_debt + share_capital + derived_shl
-    balance = total_sources - total_uses
-    assert abs(balance) < 0.5, (
-        f"Sources − Uses balance must be ≤ 0.50 kEUR, got {balance:.4f} kEUR"
-    )
+    assert abs(total_sources - total_uses) < 0.5
+    assert abs(su.difference_keur) < 1e-6
 
-    # Binding constraint is DSCR, not gearing
-    assert fin.binding_senior_constraint == "DSCR", (
-        f"Binding constraint must be DSCR, got {fin.binding_senior_constraint!r}"
-    )
+    assert fin.binding_senior_constraint == "DSCR"
+    assert senior_debt < 0.65 * total_uses
 
-    # Max gearing cap is 65% — DSCR-sized debt is well below this
-    max_gearing_keur = 0.65 * total_uses  # 130,000 kEUR
-    assert senior_debt < max_gearing_keur, (
-        f"Actual senior debt {senior_debt:,.0f} kEUR must be below 65% cap "
-        f"{max_gearing_keur:,.0f} kEUR"
-    )
-
-    # Actual gearing = 40.22% (±0.5 pp tolerance)
+    # Gearing on Total Project Uses (was 40.22% on CAPEX only, from the false state)
     actual_gearing_pct = senior_debt / total_uses * 100.0
-    assert abs(actual_gearing_pct - 40.22) < 0.5, (
-        f"Actual gearing must be ~40.22%, got {actual_gearing_pct:.2f}%"
+    assert abs(actual_gearing_pct - 28.06) < 0.5, (
+        f"Actual gearing must be ~28.06%, got {actual_gearing_pct:.2f}%"
     )
 
 
@@ -572,6 +567,7 @@ def test_DC_OCCUPANCY_SENSITIVITY_EXECUTION():
 
     revenues: dict[int, float] = {}
     opex_power: dict[int, float] = {}
+    infeasible: list[int] = []
 
     for occ_pct in [80, 85, 90, 95]:
         occ_frac = occ_pct / 100.0
@@ -582,7 +578,17 @@ def test_DC_OCCUPANCY_SENSITIVITY_EXECUTION():
             occupancy_y1=min(base_drivers.occupancy_y1, occ_frac),
         )
         pi_mod = apply_data_center_runtime_adapter(pi_base, drivers_mod)
-        res = run_project("Generic Data Center Reference", "Base", project_inputs_override=pi_mod)
+        try:
+            res = run_project("Generic Data Center Reference", "Base", project_inputs_override=pi_mod)
+        except Exception as exc:  # noqa: BLE001
+            # Opus H-1/H-2: with financing costs and a funded DSRA, low occupancy cannot
+            # repay the derived SHL by maturity. That is the typed fail-closed outcome,
+            # never a fabricated repayment; anything else is a real failure.
+            assert "SHL_MATURITY_RESIDUAL_FAILS_CLOSED" in str(exc) or (
+                "SHL_MATURITY_RESIDUAL_FAILS_CLOSED" in str(getattr(exc, "__cause__", ""))
+            ), f"unexpected failure at {occ_pct}% occupancy: {exc!r}"
+            infeasible.append(occ_pct)
+            continue
         kpis = res.get("kpis", {})
 
         rev = kpis.get("total_revenue_keur")
@@ -597,13 +603,18 @@ def test_DC_OCCUPANCY_SENSITIVITY_EXECUTION():
         revenues[occ_pct] = float(rev)
         opex_power[occ_pct] = float(opex) if opex is not None else 0.0
 
+    # Only occupancy steps that fail closed may be missing, and never the upper steps.
+    assert 90 in revenues and 95 in revenues, f"infeasible steps: {infeasible}"
+    steps = sorted(revenues)
+    revs = [revenues[k] for k in steps]
+    opexs = [opex_power[k] for k in steps]
     # Revenue must increase with occupancy
-    assert revenues[80] < revenues[85] < revenues[90] < revenues[95], (
+    assert revs == sorted(revs) and len(set(revs)) == len(revs), (
         f"Revenue must increase with occupancy: {revenues}"
     )
 
     # Power OPEX must increase with occupancy (higher occupancy = more IT load = more power)
-    assert opex_power[80] < opex_power[85] < opex_power[90] < opex_power[95], (
+    assert opexs == sorted(opexs) and len(set(opexs)) == len(opexs), (
         f"Total OPEX must increase with occupancy (power component): {opex_power}"
     )
 

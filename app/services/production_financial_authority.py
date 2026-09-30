@@ -244,8 +244,25 @@ def _memoised_policy_run(effective_inputs, policy, compute):
     """
     import hashlib
 
+    import financial_engine.orchestrator as _orch
+    import financial_engine.senior_debt.solver as _solver
+    import financial_engine.shl.production as _shl
+
+    # Engine callables are part of the key so a patched/replaced engine never reads a
+    # result computed by a different implementation.
+    engine_identity = tuple(
+        id(getattr(module, name, None))
+        for module, name in (
+            (_solver, "_backward_dscr_capacity"),
+            (_solver, "_solve_dscr"),
+            (_solver, "_solve_combined"),
+            (_shl, "compute_shareholder_loan_schedules"),
+            (_orch, "compute_shareholder_loan_schedules"),
+            (_orch, "run_project_model"),
+        )
+    )
     key = hashlib.sha256(
-        (repr(effective_inputs) + "|" + repr(policy)).encode("utf-8")
+        (repr(effective_inputs) + "|" + repr(policy) + "|" + repr(engine_identity)).encode("utf-8")
     ).hexdigest()
     hit = _POLICY_RUN_CACHE.get(key)
     if hit is not None:
