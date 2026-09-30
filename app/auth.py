@@ -123,13 +123,47 @@ else:
 
 ADMIN_USERNAME = os.getenv("FINCO_ADMIN_USER", "admin")
 ADMIN_PASSWORD_HASH_ENV = os.getenv("FINCO_ADMIN_PASSWORD_HASH")
-ADMIN_PASSWORD_PLAIN = os.getenv("FINCO_ADMIN_PASSWORD", "FINCO Model2026!")
+_DEFAULT_ADMIN_PASSWORD = "FINCO Model2026!"  # repository-known development default
+ADMIN_PASSWORD_PLAIN = os.getenv("FINCO_ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD)
+MIN_SECURE_ADMIN_PASSWORD_LENGTH = 12
 
-if is_placeholder_secret(ADMIN_PASSWORD_PLAIN) and _is_pilot_mode():
-    raise RuntimeError(
-        "FINCO_ADMIN_PASSWORD is a placeholder value in pilot mode. "
-        "Set a real password: FINCO_ADMIN_PASSWORD=<secure-password>"
-    )
+
+def validate_secure_admin_credentials(*, secure: bool, plain: str | None, hash_value: str | None,
+                                      user: str) -> None:
+    """Fail closed (typed, value-free) if a secure mode would accept a weak admin credential.
+
+    Secure modes (pilot and any unrecognized mode) never run on the repository-known default,
+    a missing credential, a placeholder, or a too-short password. A bcrypt hash is accepted as is.
+    Messages name the variable and the rule only; they never contain a credential value.
+    """
+    if not secure:
+        return
+    if not user or not user.strip():
+        raise RuntimeError("FINCO_ADMIN_USER is not set in secure deployment mode.")
+    if hash_value:
+        if not hash_value.startswith(("$2a$", "$2b$", "$2y$")):
+            raise RuntimeError("FINCO_ADMIN_PASSWORD_HASH is not a bcrypt hash in secure deployment mode.")
+        return
+    if plain is None or plain == "":
+        raise RuntimeError("FINCO_ADMIN_PASSWORD is not set in secure deployment mode. "
+                           "Set FINCO_ADMIN_PASSWORD or FINCO_ADMIN_PASSWORD_HASH.")
+    if plain == _DEFAULT_ADMIN_PASSWORD:
+        raise RuntimeError("FINCO_ADMIN_PASSWORD is the repository default in secure deployment mode. "
+                           "Refusing to start; set a real password.")
+    if is_placeholder_secret(plain):
+        raise RuntimeError("FINCO_ADMIN_PASSWORD is a placeholder value in secure deployment mode. "
+                           "Set a real password.")
+    if len(plain) < MIN_SECURE_ADMIN_PASSWORD_LENGTH:
+        raise RuntimeError("FINCO_ADMIN_PASSWORD is shorter than "
+                           f"{MIN_SECURE_ADMIN_PASSWORD_LENGTH} characters in secure deployment mode.")
+
+
+validate_secure_admin_credentials(
+    secure=_SECURE_MODE,
+    plain=os.getenv("FINCO_ADMIN_PASSWORD"),
+    hash_value=ADMIN_PASSWORD_HASH_ENV,
+    user=ADMIN_USERNAME,
+)
 
 SESSION_MAX_AGE_HOURS = int(os.getenv("FINCO_SESSION_HOURS", "24"))
 DEMO_TTL_HOURS = int(os.getenv("FINCO_DEMO_TTL_HOURS", "24"))
@@ -139,6 +173,9 @@ DEMO_COOKIE_NAME = "finco_demo"
 
 COOKIE_SECURE = os.getenv("FINCO_COOKIE_SECURE", "true").lower() in ("true", "1", "yes")
 COOKIE_SAMESITE = os.getenv("FINCO_COOKIE_SAMESITE", "lax")
+if _SECURE_MODE and not COOKIE_SECURE:
+    raise RuntimeError("FINCO_COOKIE_SECURE must be true in secure deployment mode "
+                       f"(FINCO_APP_MODE={FINCO_APP_MODE!r}).")
 
 # Demo session user_id prefix — never overlaps with admin ("1") or reference ("__reference__")
 DEMO_USER_ID_PREFIX = "demo_"

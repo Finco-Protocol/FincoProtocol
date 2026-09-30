@@ -5,7 +5,7 @@ history evidence, identity, price/premium math, Verify, or Model outputs.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -16,6 +16,18 @@ from typing import Literal
 from .bnb_history import DEFAULT_DB_PATH
 
 CollectorHealthState = Literal["HEALTHY", "DEGRADED", "UNHEALTHY"]
+
+# Liveness (P0-B / M-7). The collector runs on a timer; every run stamps ``last_attempt_at`` (the
+# heartbeat) before doing any work. Health is computed at READ time from that heartbeat so a stopped
+# scheduler can never leave a stale "HEALTHY" on screen. Stored health_state is only the outcome of
+# the last run; the effective state is the worse of the outcome and the liveness verdict.
+HEARTBEAT_INTERVAL_SECONDS = 300          # deploy/r_live_collector_v1 timer cadence
+HEARTBEAT_DEGRADED_AFTER_SECONDS = 3 * HEARTBEAT_INTERVAL_SECONDS    # 3 missed runs
+HEARTBEAT_UNHEALTHY_AFTER_SECONDS = 12 * HEARTBEAT_INTERVAL_SECONDS  # 1 hour without any run
+LIVENESS_LIVE = "LIVE"
+LIVENESS_STALE = "STALE"
+LIVENESS_STOPPED = "STOPPED"
+LIVENESS_UNKNOWN = "UNKNOWN"
 
 HEALTHY = "HEALTHY"
 DEGRADED = "DEGRADED"
@@ -74,6 +86,10 @@ class CollectorHealthSnapshot:
     consecutive_systemic_failures: int
     health_state: CollectorHealthState
     updated_at: str | None
+    # Derived at read time, never stored.
+    liveness: str = LIVENESS_UNKNOWN
+    heartbeat_age_seconds: int | None = None
+    stored_health_state: CollectorHealthState | None = None
 
     def public_dict(self) -> dict:
         return asdict(self)
@@ -237,7 +253,8 @@ class CollectorHealthStore:
         ))
 
 
-def read_collector_health_readonly(*, path: str | None = None) -> CollectorHealthSnapshot:
+def read_collector_health_readonly(*, path: str | None = None,
+                                   now: datetime | None = None) -> CollectorHealthSnapshot:
     """Read health without creating a database/table or fabricating success."""
     location = _db_path(path)
     if location == ":memory:" or not Path(location).is_file():
@@ -255,4 +272,30 @@ def read_collector_health_readonly(*, path: str | None = None) -> CollectorHealt
         return _EMPTY
     if row is None:
         return _EMPTY
-    return CollectorHealthSnapshot(*row)
+    return apply_liveness(CollectorHealthSnapshot(*row), now=now)
+
+
+def apply_liveness(snapshot: CollectorHealthSnapshot, *, now: datetime | None = None) -> CollectorHealthSnapshot:
+    """Return the snapshot with liveness and the effective (never better than stored) state."""
+    stored = snapshot.health_state
+    beat = snapshot.last_attempt_at
+    if not beat:
+        return replace(snapshot, liveness=LIVENESS_UNKNOWN, stored_health_state=stored)
+    try:
+        stamp = datetime.fromisoformat(beat)
+        if stamp.tzinfo is None:
+            raise ValueError
+    except ValueError:
+        return replace(snapshot, health_state=UNHEALTHY, liveness=LIVENESS_UNKNOWN,
+                       stored_health_state=stored)
+    current = now or datetime.now(timezone.utc)
+    age = max(0, int((current - stamp).total_seconds()))
+    if age >= HEARTBEAT_UNHEALTHY_AFTER_SECONDS:
+        liveness, effective = LIVENESS_STOPPED, UNHEALTHY
+    elif age >= HEARTBEAT_DEGRADED_AFTER_SECONDS:
+        liveness = LIVENESS_STALE
+        effective = UNHEALTHY if stored == UNHEALTHY else DEGRADED
+    else:
+        liveness, effective = LIVENESS_LIVE, stored
+    return replace(snapshot, health_state=effective, liveness=liveness,
+                   heartbeat_age_seconds=age, stored_health_state=stored)

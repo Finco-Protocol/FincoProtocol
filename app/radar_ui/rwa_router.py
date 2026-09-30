@@ -6,7 +6,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.radar_rwa.service import RwaDashboardService
@@ -25,14 +25,22 @@ _bnb_service = BnbRwaDashboardService()
 
 
 @router.get("/radar/crypto/rwa/r-live/aapl/snapshot")
-async def radar_r_live_aapl_snapshot():
+async def radar_r_live_aapl_snapshot(request: Request = None):  # type: ignore[assignment]
     """Read-only exact AAPL reference; never infer an RPC endpoint or pool."""
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
     if not rpc_url:
         return {"state": "UNAVAILABLE", "reason": "RPC_NOT_CONFIGURED"}
-    try:
-        result = await run_in_threadpool(lambda: collect_aapl_r_live(
-            rpc_url=rpc_url, persist_history=False))
+    from app.radar_rwa.r_live_public_acquisition import (
+        R_LIVE_SERVICE_BUSY, RLiveServiceBusy, acquire_single_current)
+    from app.runtime.client_rate_limit import enforce as _enforce_client
+    limited = _enforce_client(request, "r_live_current") if request is not None else None
+    if limited is not None:
+        return limited
+    try:  # P0-B: same bounded, coalescing coordinator as every other live RPC path
+        result = await run_in_threadpool(acquire_single_current, AAPL_KEY.canonical_id, rpc_url)
+    except RLiveServiceBusy:
+        return JSONResponse(status_code=429, headers={"Retry-After": "5", "Cache-Control": "no-store"},
+                            content={"state": "SERVICE_BUSY", "reason": R_LIVE_SERVICE_BUSY})
     except Exception:
         return {"state": "UNAVAILABLE", "reason": "R_LIVE_EVIDENCE_UNAVAILABLE"}
     premium = result.authority.premium

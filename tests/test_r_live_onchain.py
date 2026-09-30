@@ -15,6 +15,7 @@ from finco_radar.authority.r_live_policy import AAPL_KEY, AAPL_POOL, AAPL_UID, T
 from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.tokenization_premium.engine import premium_bps
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore
+from app.radar_rwa import r_live_service
 from app.radar_rwa.r_live_service import compose_r_live
 from app.radar_rwa.r_live_collect import collect_once
 
@@ -317,7 +318,7 @@ def test_api_exposes_only_canonical_reference_and_premium(monkeypatch):
     result = compose_r_live(registry=registry(), underlying=basis, rpc=FakeRpc(),
                             as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
     monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://example.invalid/FAKE_SECRET")
-    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: result)
+    monkeypatch.setattr(r_live_service, "collect_aapl_r_live", lambda **_: result)
     payload = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
     assert payload["state"] == "AVAILABLE"
     assert payload["reference"]["evidence"]["pool"] == AAPL_POOL.pool_address
@@ -478,7 +479,7 @@ def test_radar_live_surface_age_history_and_fail_closed(monkeypatch):
     result = compose_r_live(registry=registry(), underlying=_basis(), rpc=FakeRpc(),
                             as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
     monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example/FAKE_SECRET")
-    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: result)
+    monkeypatch.setattr(r_live_service, "collect_aapl_r_live", lambda **_: result)
     payload = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
     assert payload["state"] == "AVAILABLE"
     assert payload["source_label"] == "Direct On-Chain"
@@ -490,7 +491,7 @@ def test_radar_live_surface_age_history_and_fail_closed(monkeypatch):
     stale = compose_r_live(registry=registry(), underlying=_basis(),
                            rpc=FakeRpc(feed_updated=BLOCK_TIME - 86401),
                            as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc))
-    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", lambda **_: stale)
+    monkeypatch.setattr(r_live_service, "collect_aapl_r_live", lambda **_: stale)
     hidden = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())
     assert hidden["state"] == "STALE"
     assert hidden["reference"] is None
@@ -539,7 +540,7 @@ def test_snapshot_get_and_browser_refresh_never_open_history_writer(monkeypatch)
     monkeypatch.setattr(r_live_service, "BnbIntelligenceHistoryStore", forbidden_writer)
     monkeypatch.setattr(r_live_service, "compose_r_live", lambda **kwargs: (
         result if kwargs["history"] is None else forbidden_writer()))
-    monkeypatch.setattr(rwa_router, "collect_aapl_r_live", acquire)
+    monkeypatch.setattr(r_live_service, "collect_aapl_r_live", acquire)
     monkeypatch.setenv("ROBINHOOD_RPC_URL", "https://rpc.example/FAKE_SECRET")
 
     first = asyncio.run(rwa_router.radar_r_live_aapl_snapshot())

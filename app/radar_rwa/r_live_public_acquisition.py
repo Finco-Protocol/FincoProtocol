@@ -17,7 +17,7 @@ T = TypeVar("T")
 
 R_LIVE_SERVICE_BUSY = "R_LIVE_SERVICE_BUSY"
 CURRENT_CACHE = "NONE"
-PER_CLIENT_RATE_LIMIT = "NOT_IMPLEMENTED"
+PER_CLIENT_RATE_LIMIT = "PROCESS_LOCAL"  # see app/runtime/client_rate_limit.py (P0-B)
 
 
 def _positive_int_env(name: str, default: int, *, maximum: int) -> int:
@@ -232,3 +232,44 @@ PUBLIC_RLIVE_ACQUISITION: PublicAcquisitionCoordinator[tuple[str, str, dict]] = 
         max_coalesced_callers=MAX_COALESCED_CALLERS,
     )
 )
+
+
+def single_asset_acquisition_key(canonical_id: str, rpc_url: str) -> tuple[str, str, str]:
+    """Coalescing key for ONE exact asset: identical only if asset and RPC endpoint are identical."""
+    digest = hashlib.sha256(rpc_url.encode("utf-8")).hexdigest()
+    return ("asset-current-v1", canonical_id, digest)
+
+
+def acquire_single_current(canonical_id: str, rpc_url: str):
+    """One exact approved asset's live R-LIVE acquisition through the SAME bounded coordinator.
+
+    - Admission: shares the process-wide gate with the all-assets stream; a new distinct acquisition
+      beyond capacity raises ``RLiveServiceBusy`` (typed overload, never a market state).
+    - Coalescing: concurrent identical (asset, endpoint) requests share ONE in-flight RPC acquisition.
+      Completed results are never retained (CURRENT_CACHE = NONE) so stale evidence can never be
+      served as current, and evidence timestamps are never rewritten.
+    - Authority is untouched: the producer is the unchanged ``collect_r_live`` /
+      ``collect_aapl_r_live`` with ``persist_history=False`` (zero history writes).
+    Raises ``RLiveBatchAcquisitionFailed`` if the acquisition itself fails.
+    """
+    def _producer():
+        from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
+        from app.radar_rwa import r_live_service as service
+
+        policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
+        if policy is None:
+            raise ValueError("R_LIVE_EXACT_ASSETKEY_NOT_APPROVED")
+        if policy.asset_key == AAPL_KEY:
+            return [service.collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)]
+        return [service.collect_r_live(canonical_asset_id=canonical_id, rpc_url=rpc_url,
+                                       persist_history=False)]
+
+    subscription = PUBLIC_RLIVE_ACQUISITION.subscribe(
+        single_asset_acquisition_key(canonical_id, rpc_url), _producer)
+    try:
+        rows = list(subscription)
+    finally:
+        subscription.close()
+    if len(rows) != 1:
+        raise RLiveBatchAcquisitionFailed("R_LIVE_ACQUISITION_NO_RESULT")
+    return rows[0]
