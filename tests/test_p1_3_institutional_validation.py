@@ -213,22 +213,23 @@ def test_p1_3_wind_kpi_pinning():
 
     project_irr = kpis.get("project_irr")
     assert project_irr is not None and math.isfinite(project_irr)
-    assert math.isclose(project_irr * 100, 13.72, abs_tol=0.1), (
-        f"Wind project_irr expected ≈ 13.72%, got {project_irr * 100:.4f}%"
+    assert math.isclose(project_irr * 100, 13.31, abs_tol=0.1), (
+        f"Wind project_irr expected ≈ 13.31%, got {project_irr * 100:.4f}%"
     )
 
     equity_irr = kpis.get("equity_irr")
     assert equity_irr is not None and math.isfinite(equity_irr), (
         "Wind equity_irr must be finite (Wind reference is bankable)"
     )
-    assert equity_irr > 0.70, (
-        f"Wind equity_irr expected > 70%, got {equity_irr * 100:.2f}%"
+    # Opus H-1: 68.42% (was 74.60% before financing costs entered Total Project Uses)
+    assert equity_irr > 0.65, (
+        f"Wind equity_irr expected > 65%, got {equity_irr * 100:.2f}%"
     )
 
     senior_debt = kpis.get("senior_debt_keur")
     assert senior_debt is not None
-    assert math.isclose(float(senior_debt), 32_250.0, rel_tol=1e-4), (
-        f"Wind senior_debt_keur expected 32,250, got {senior_debt}"
+    assert math.isclose(float(senior_debt), 36_505.16, rel_tol=1e-4), (
+        f"Wind senior_debt_keur expected 36,505, got {senior_debt}"
     )
 
     capex = kpis.get("total_capex_keur")
@@ -254,8 +255,8 @@ def test_p1_3_wind_xirr_pinning():
     xirr = summary.get("total_sponsor_xirr")
     assert xirr is not None, "Wind total_sponsor_xirr must be present in sponsor_schedule.summary"
     assert math.isfinite(float(xirr)), "Wind total_sponsor_xirr must be finite"
-    assert math.isclose(float(xirr) * 100, 20.79, abs_tol=0.2), (
-        f"Wind total_sponsor_xirr expected ≈ 20.79%, got {float(xirr) * 100:.4f}%"
+    assert math.isclose(float(xirr) * 100, 18.71, abs_tol=0.2), (
+        f"Wind total_sponsor_xirr expected ≈ 18.71%, got {float(xirr) * 100:.4f}%"
     )
 
     # Source documented in P1.1 registry
@@ -278,8 +279,8 @@ def test_p1_3_data_center_kpi_pinning():
     assert project_irr < 0.05, (
         f"DC project_irr expected < 5% (synthetic distressed), got {project_irr * 100:.3f}%"
     )
-    assert abs(project_irr - 0.02293) < 0.005, (
-        f"DC project_irr has drifted from ~2.29%: got {project_irr * 100:.3f}%"
+    assert abs(project_irr - 0.02301) < 0.005, (
+        f"DC project_irr has drifted from ~2.30%: got {project_irr * 100:.3f}%"
     )
 
     capex = kpis.get("total_capex_keur")
@@ -292,16 +293,17 @@ def test_p1_3_data_center_kpi_pinning():
     assert senior_debt is not None and float(senior_debt) > 0, (
         "DC senior_debt_keur must be positive"
     )
-    # DC senior debt is sculpted: ~80,437 kEUR (DSCR sculpted, not gearing-capped)
-    assert abs(float(senior_debt) - 80_436.5) < 500.0, (
-        f"DC senior_debt_keur expected ≈ 80,437, got {senior_debt}"
+    # DC senior debt is DSCR-sculpted: ~58,411 kEUR (Opus H-2: was 80,437, a false CONVERGED state)
+    assert abs(float(senior_debt) - 58_410.96) < 500.0, (
+        f"DC senior_debt_keur expected ≈ 58,411, got {senior_debt}"
     )
 
     min_dscr = kpis.get("min_dscr")
     assert min_dscr is not None
-    # DC distressed reference: min DSCR < 1.0 (occupancy ramp)
-    assert float(min_dscr) < 1.0, (
-        f"DC min_dscr expected < 1.0 (occupancy-ramp distress), got {min_dscr}"
+    # Opus H-2: the former sub-1.0 minimum DSCR (0.94x) was a false CONVERGED state.
+    # Correct sculpting keeps every period at/above the 1.30x target.
+    assert float(min_dscr) >= 1.30 - 1e-6, (
+        f"DC min_dscr expected at/above the 1.30x target, got {min_dscr}"
     )
 
 
@@ -314,14 +316,14 @@ def test_p1_3_ev_charging_kpi_pinning():
 
     project_irr = kpis.get("project_irr")
     assert project_irr is not None and math.isfinite(project_irr)
-    assert math.isclose(project_irr * 100, 14.68, abs_tol=0.5), (
-        f"EV project_irr expected ≈ 14.68%, got {project_irr * 100:.4f}%"
+    assert math.isclose(project_irr * 100, 15.09, abs_tol=0.5), (
+        f"EV project_irr expected ≈ 15.09%, got {project_irr * 100:.4f}%"
     )
 
     equity_irr = kpis.get("equity_irr")
     assert equity_irr is not None and math.isfinite(float(equity_irr))
-    assert math.isclose(float(equity_irr) * 100, 39.54, abs_tol=0.5), (
-        f"EV equity_irr expected ≈ 39.54%, got {float(equity_irr) * 100:.4f}%"
+    assert math.isclose(float(equity_irr) * 100, 37.63, abs_tol=0.5), (
+        f"EV equity_irr expected ≈ 37.63%, got {float(equity_irr) * 100:.4f}%"
     )
 
     capex = kpis.get("total_capex_keur")
@@ -332,8 +334,8 @@ def test_p1_3_ev_charging_kpi_pinning():
 
     senior_debt = kpis.get("senior_debt_keur")
     assert senior_debt is not None
-    assert math.isclose(float(senior_debt), 5_850.0, rel_tol=1e-4), (
-        f"EV senior_debt_keur expected 5,850, got {senior_debt}"
+    assert math.isclose(float(senior_debt), 6_477.35, rel_tol=1e-4), (
+        f"EV senior_debt_keur expected 6,477, got {senior_debt}"
     )
 
     sponsor = result.get("sponsor_schedule") or {}
@@ -368,7 +370,7 @@ def test_p1_3_wind_xlsx_returns_sheet_present():
     assert "Returns" in wb.sheetnames, "Wind workbook missing Returns sheet"
     ret = wb["Returns"]
     labels = {row[0] for row in ret.iter_rows(values_only=True) if row[0] is not None}
-    for expected_label in ("Project IRR", "Equity IRR", "Total Sponsor XIRR"):
+    for expected_label in ("Project IRR", "Share-capital IRR (equity only)", "Total Sponsor XIRR"):
         assert expected_label in labels, (
             f"Wind Returns sheet missing label: {expected_label!r}"
         )
@@ -400,12 +402,13 @@ def test_p1_3_data_center_xlsx_structure():
 
 
 def test_p1_3_data_center_xlsx_reconciliation():
-    """DC workbook Reconciliation sheet: Project IRR check PASS; Equity/XIRR NOT_AVAILABLE.
+    """DC workbook Reconciliation sheet: Project IRR, Share-capital IRR and Sources=Uses PASS.
 
-    DC is a distressed reference (project_irr ≈ 2.3%, sub-bankable). The engine
-    produces equity_irr=None and total_sponsor_xirr=None; those reconciliation
-    checks report NOT_AVAILABLE. Sources=Uses fails due to the DC-specific sculpted
-    structure.  Project IRR is real and reconciles as PASS.
+    Opus H-2/H-1: the DC reference is a low-return (project IRR ≈ 2.3%) but now
+    correctly sized reference. Share-capital IRR (-4.88%) and Total Sponsor XIRR
+    (2.08%) are computable and reconcile; Sources = Uses reconciles against the
+    engine's audited Total Project Uses. (Before, the false CONVERGED sizing left the
+    equity return NOT_AVAILABLE.)
     """
     wb = _wb("generic_data_center_reference")
     checks = _recon_checks(wb)
@@ -415,14 +418,11 @@ def test_p1_3_data_center_xlsx_reconciliation():
     assert checks.get("Returns sheet Project IRR vs runtime") == "PASS", (
         f"DC Returns Project IRR: {checks.get('Returns sheet Project IRR vs runtime')!r}"
     )
-    # Equity IRR and Sponsor XIRR: must be exactly NOT_AVAILABLE (distressed path, equity_irr=None)
-    # DC_A3_ECONOMICS_DISTRESSED_DOCUMENTED: sub-bankable reference, no equity return.
-    # Accepting PASS here would mean the check passed with None — that is wrong.
-    assert checks.get("Returns sheet Equity IRR vs runtime") == "NOT_AVAILABLE", (
-        f"DC Returns Equity IRR must be exactly NOT_AVAILABLE (not PASS or None); "
-        f"got {checks.get('Returns sheet Equity IRR vs runtime')!r}. "
-        f"If this is PASS, the distressed scenario config has changed."
+    assert checks.get("Returns sheet Share-capital IRR vs runtime") == "PASS", (
+        f"DC Returns Share-capital IRR must reconcile as PASS; "
+        f"got {checks.get('Returns sheet Share-capital IRR vs runtime')!r}."
     )
+    assert checks.get("Total Sources vs Total Uses (kEUR)") == "PASS"
     # Run Identity must be present
     ri = _ri_data(wb)
     assert "Engine version" in ri, "DC Run Identity missing Engine version"
@@ -455,7 +455,7 @@ def test_p1_3_ev_charging_xlsx_reconciliation():
         "Total Sources vs Total Uses (kEUR)",
         "CAPEX line items sum vs context total (kEUR)",
         "Returns sheet Project IRR vs runtime",
-        "Returns sheet Equity IRR vs runtime",
+        "Returns sheet Share-capital IRR vs runtime",
         "Returns sheet Total Sponsor XIRR vs runtime",
     ):
         assert checks.get(label) == "PASS", (
@@ -786,9 +786,9 @@ def test_p1_3_solar_cross_surface_reconciliation():
         f"Solar cross-surface: Returns sheet Project IRR vs runtime = "
         f"{checks.get('Returns sheet Project IRR vs runtime')!r}"
     )
-    assert checks.get("Returns sheet Equity IRR vs runtime") == "PASS", (
-        f"Solar cross-surface: Returns sheet Equity IRR vs runtime = "
-        f"{checks.get('Returns sheet Equity IRR vs runtime')!r}"
+    assert checks.get("Returns sheet Share-capital IRR vs runtime") == "PASS", (
+        f"Solar cross-surface: Returns sheet Share-capital IRR vs runtime = "
+        f"{checks.get('Returns sheet Share-capital IRR vs runtime')!r}"
     )
     assert checks.get("Returns sheet Total Sponsor XIRR vs runtime") == "PASS", (
         f"Solar cross-surface: Returns sheet Total Sponsor XIRR vs runtime = "
@@ -806,9 +806,9 @@ def test_p1_3_wind_cross_surface_reconciliation():
         f"Wind cross-surface: Returns sheet Project IRR vs runtime = "
         f"{checks.get('Returns sheet Project IRR vs runtime')!r}"
     )
-    assert checks.get("Returns sheet Equity IRR vs runtime") == "PASS", (
-        f"Wind cross-surface: Returns sheet Equity IRR vs runtime = "
-        f"{checks.get('Returns sheet Equity IRR vs runtime')!r}"
+    assert checks.get("Returns sheet Share-capital IRR vs runtime") == "PASS", (
+        f"Wind cross-surface: Returns sheet Share-capital IRR vs runtime = "
+        f"{checks.get('Returns sheet Share-capital IRR vs runtime')!r}"
     )
 
 
@@ -849,7 +849,7 @@ def test_p1_3_corruption_wrong_vertical_detected():
     wind_runtime_irr = float(wind_result["kpis"]["project_irr"])
 
     assert solar_xlsx_irr is not None
-    # Solar IRR ≈ 11.56%, Wind IRR ≈ 13.72%: they must NOT be close
+    # Solar IRR ≈ 11.77%, Wind IRR ≈ 13.31%: they must NOT be close
     assert not math.isclose(float(solar_xlsx_irr), wind_runtime_irr, rel_tol=0.01), (
         f"CORRUPTION NOT DETECTED: Solar XLSX IRR {float(solar_xlsx_irr):.4f} "
         f"should differ from Wind runtime IRR {wind_runtime_irr:.4f}"
@@ -1922,9 +1922,7 @@ def test_finco_p1_3_institutional_validation_pack_complete():
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
     changed = r.stdout.strip().splitlines()
-    frozen = [f for f in changed if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace violated: {frozen}"

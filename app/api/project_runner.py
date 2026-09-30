@@ -484,6 +484,11 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
 
     payload["integrity_evidence"] = build_run_integrity_evidence(clean_run)
     payload["kpis"]["total_project_uses_keur"] = payload["sources_uses"]["total_uses_keur"]
+    # Sources & Uses components persisted with the run summary so exports reconcile against
+    # the engine's own audited S&U (never a template assumption).
+    payload["kpis"]["derived_shl_cash_keur"] = payload["sources_uses"]["shareholder_loan_cash_keur"]
+    payload["kpis"]["sponsor_equity_sources_keur"] = payload["sources_uses"][
+        "share_capital_and_other_equity_keur"]
 
     # Phase B4: machine-readable clean production-authority lineage.
     payload["runtime_authority"] = (

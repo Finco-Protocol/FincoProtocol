@@ -1,4 +1,4 @@
-﻿"""Institutional workbook export for Phase 10.
+"""Institutional workbook export for Phase 10.
 
 This module binds existing runtime outputs, project context assumptions, and
 offline financial statement assembly into a standardized review workbook.
@@ -83,6 +83,8 @@ class WorkbookExportBundle:
     run_id: str = "not_applicable"
     run_at: str = "not_applicable"
     senior_debt_keur_authority: float | None = None
+    # Engine-audited Sources & Uses (H-1): total_uses / derived SHL / sponsor equity, kEUR.
+    sources_uses_authority: dict | None = None
     project_id: str = "not_applicable"
     input_composite_hash: str = "not_applicable"
     engine_version: str = "not_applicable"
@@ -400,6 +402,20 @@ def _build_export_bundle(
         except Exception:
             _senior_debt_auth = None
 
+    _sources_uses_auth: dict | None = None
+    if execution.clean_run is not None:
+        try:
+            from financial_engine.financing.generic_product_policy import build_sources_and_uses
+
+            _su = build_sources_and_uses(execution.clean_run.g2c_result.financing_result)
+            _sources_uses_auth = {
+                "total_uses_keur": float(_su.total_uses_keur),
+                "derived_shl_cash_keur": float(_su.shareholder_loan_cash_keur),
+                "sponsor_equity_keur": float(_su.share_capital_and_other_equity_keur),
+            }
+        except Exception:
+            _sources_uses_auth = None
+
     # Engine version for Run Identity binding.
     try:
         from financial_engine.version import ENGINE_VERSION as _EV
@@ -489,6 +505,7 @@ def _build_export_bundle(
         revenue_table=build_revenue_table(runtime_result),
         debt_table=build_debt_table(runtime_result),
         senior_debt_keur_authority=_senior_debt_auth,
+        sources_uses_authority=_sources_uses_auth,
         project_id=project_key,
         input_composite_hash="not_applicable",
         engine_version=_engine_version_str,
@@ -1154,6 +1171,21 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     total_sources = (senior_debt + equity_total) if senior_debt is not None else None
 
+    # Opus H-1: when the committed run carries the engine's audited Sources & Uses, the
+    # reconciliation is senior debt (authority) + sponsor equity + derived SHL (engine S&U
+    # components) against Total Project Uses (CAPEX + IDC, lender fees, initial DSRA).
+    # Legacy runs without those persisted components keep the template-assumption path.
+    _su_auth = getattr(bundle, "sources_uses_authority", None) or {}
+    _su_uses = _safe_float(_su_auth.get("total_uses_keur", getattr(rt, "total_project_uses_keur", None)))
+    _su_shl = _safe_float(_su_auth.get("derived_shl_cash_keur", getattr(rt, "derived_shl_cash_keur", None)))
+    _su_equity = _safe_float(_su_auth.get("sponsor_equity_keur", getattr(rt, "sponsor_equity_sources_keur", None)))
+    total_uses = total_capex
+    if _su_uses is not None and _su_shl is not None and _su_equity is not None:
+        shl, share_capital, share_premium = _su_shl, _su_equity, 0.0
+        equity_total = _su_shl + _su_equity
+        total_uses = _su_uses
+        total_sources = (senior_debt + equity_total) if senior_debt is not None else None
+
     runtime_revenue = _safe_float(getattr(rt, "total_revenue_keur", None))
     runtime_opex = _safe_float(getattr(rt, "total_opex_keur", None))
     runtime_project_irr = _safe_float(getattr(rt, "project_irr", None))
@@ -1179,7 +1211,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     # Sources = Uses reconciliation — authoritative senior debt, never residual.
     checks = [
-        _check("Total Sources vs Total Uses (kEUR)", total_sources, total_capex, _TOL_ZERO),
+        _check("Total Sources vs Total Uses (kEUR)", total_sources, total_uses, _TOL_ZERO),
     ]
 
     # CAPEX detail sum vs context total
@@ -1241,6 +1273,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     # Reference values block
     ref_rows = [
         ("Total CAPEX (kEUR)", total_capex, "template assumption", "Total uses = project context capex.", K_EUR_FORMAT),
+        ("Total Project Uses (kEUR)", total_uses, "runtime", "CAPEX + IDC, lender fees, initial DSRA (engine Sources & Uses).", K_EUR_FORMAT),
         ("Senior debt (kEUR)", senior_debt, "template assumption + runtime", "From _resolve_export_senior_debt_keur.", K_EUR_FORMAT),
         ("SHL incl IDC (kEUR)", shl, "template assumption", "From project context.", K_EUR_FORMAT),
         ("Share capital (kEUR)", share_capital, "template assumption", "From financing inputs.", K_EUR_FORMAT),
