@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}FINCO Yield{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{max-width:100%}
+    body{font-family:Inter,system-ui,sans-serif;background:#f8fafc;color:#111827;margin:0}
+    .y{width:min(1180px,100%);margin:auto;padding:28px 18px 64px;min-width:0}
+    .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6b7280}
+    .sub{color:#4b5563;overflow-wrap:anywhere}
+    .nav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 22px}
+    .a,.btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d1d5db;border-radius:7px;padding:8px 12px;text-decoration:none;color:#1f2937;background:#fff;font-weight:600;max-width:100%}
+    .btn{background:#1a56db;color:#fff;border:0}
+    .btn[disabled]{background:#9ca3af;cursor:not-allowed}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:14px;min-width:0}
+    .card,.filters{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:15px;min-width:0;overflow-wrap:anywhere}
+    .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:8px;margin-bottom:16px}
+    .filters input,.filters select,.action-form input{width:100%;min-width:0;padding:8px;border:1px solid #d1d5db;border-radius:6px}
+    table{width:100%;border-collapse:collapse;background:#fff}
+    th,td{padding:10px;border-bottom:1px solid #eef2f7;text-align:left;font-size:13px;white-space:nowrap}
+    th{font-size:11px;text-transform:uppercase;color:#6b7280}
+    .scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;-webkit-overflow-scrolling:touch}
+    .scroll table{min-width:760px}
+    .badge{display:inline-block;border:1px solid #d1d5db;border-radius:999px;padding:3px 7px;font-size:11px}
+    .warn{border-left:4px solid #f59e0b;background:#fffbeb;padding:10px;overflow-wrap:anywhere}
+    .bound{border-left:4px solid #1a56db;background:#eff6ff;padding:10px;margin-top:18px;overflow-wrap:anywhere}
+    .hash,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;font-size:11px}
+    .action-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
+    .muted-link{color:#6b7280;border-style:dashed}
+    @media(max-width:700px){
+      .y{padding:20px 12px}
+      .filters,.grid,.action-form{grid-template-columns:1fr}
+      .btn,.a{width:auto}
+      .scroll{border-radius:8px}
+    }
+  </style>
+</head>
+<body>
+<main class="y">
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

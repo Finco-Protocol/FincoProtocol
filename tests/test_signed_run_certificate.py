@@ -26,6 +26,7 @@ TEST_SEED_B64 = base64.b64encode(bytes(range(32))).decode()
 TEST_SEED = bytes(range(32))
 TEST_PUBLIC_DER = rcs.public_key_der_from_seed(TEST_SEED)
 TEST_KEY_ID = rcs.key_id_for_public_key(TEST_PUBLIC_DER)
+TEST_KID = "finco-prod-2026-01"
 WRONG_PUBLIC_DER = rcs.public_key_der_from_seed(bytes(range(32, 64)))
 RUN_AT = datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc)
 ISSUED_AT = datetime(2026, 9, 29, 12, 5, tzinfo=timezone.utc)
@@ -35,6 +36,14 @@ COMPOSITE_HASH = "a" * 64
 @pytest.fixture(autouse=True)
 def _test_signing_key(monkeypatch):
     monkeypatch.setenv(rcs.SIGNING_KEY_ENV_VAR, TEST_SEED_B64)
+    monkeypatch.setenv(rcs.SIGNING_KID_ENV_VAR, TEST_KID)
+    # M-2: register the test public key in the signing-key registry so the
+    # kid binding check passes.
+    from app.protocol.signing_keys import register_key_values
+    from Crypto.PublicKey import ECC
+    der = ECC.construct(curve="Ed25519", seed=TEST_SEED).public_key().export_key(format="DER")
+    register_key_values(TEST_KID, der, status="ACTIVE",
+                        activated_at="2026-01-01T00:00:00+00:00")
 
 
 @pytest.fixture()
