@@ -440,15 +440,33 @@ def _build_export_bundle(
         # in this workbook).  This is serialization of existing authority —
         # never a second statement engine, never reconstructed from legacy.
         from app.export.clean_statements_adapter import serialize_clean_statements
+        _run_authority_id = runtime_rows[0]["run_id"]
+        _run_authority_snapshot = runtime_rows[0]["runtime_snapshot_id"]
         _clean_fs = getattr(execution.clean_run, "financial_statements_result", None)
         statements = (
             serialize_clean_statements(
                 _clean_fs,
-                run_id=runtime_rows[0]["run_id"],
-                run_identity_hash=runtime_rows[0]["runtime_snapshot_id"],
+                run_id=_run_authority_id,
+                run_identity_hash=_run_authority_snapshot,
             )
             if _clean_fs is not None else None
         )
+        if statements is not None:
+            # SAME-RUN STATEMENT IDENTITY BOUNDARY (fail closed): the bound
+            # statement package must carry the exact run identity of the
+            # workbook.  Cross-run substitution is rejected, never silently
+            # serialized.
+            if statements.run_id != _run_authority_id or (
+                statements.run_identity_hash != _run_authority_snapshot
+            ):
+                raise ValueError(
+                    "CROSS_RUN_STATEMENT_SUBSTITUTION: statement package "
+                    f"run_id={statements.run_id!r} / "
+                    f"snapshot={statements.run_identity_hash!r} does not match "
+                    f"the workbook run authority "
+                    f"run_id={_run_authority_id!r} / "
+                    f"snapshot={_run_authority_snapshot!r}."
+                )
     else:
         statements = assemble_financial_statements(runtime_result)
     # R5/F04: the workbook context must describe the exported project. For a
@@ -901,11 +919,18 @@ def _write_tax_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     ]
     rows.extend(_statement_run_identity_rows(bundle))
     next_row = _write_key_value_section(sheet, 6, "Tax summary", rows, include_format=True)
+    # Clean runtime TaxBridgePeriod carries period_index (no calendar date);
+    # label from the index rather than fabricating dates.
+    tax_labels = [
+        period.date.isoformat() if getattr(period, "date", None) is not None
+        else f"Period {period.period_index}"
+        for period in periods
+    ]
     _write_horizontal_metric_table(
         sheet,
         next_row,
         "Tax bridge periods",
-        [period.date.isoformat() for period in periods],
+        tax_labels,
         [
             ("Tax depreciation", [period.tax_depreciation_keur for period in periods], "runtime", "Existing assembled tax bridge."),
             ("Fiscal reintegration", [period.fiscal_reintegration_keur for period in periods], "runtime", "Existing assembled tax bridge."),
@@ -929,10 +954,11 @@ def _write_pnl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     periods = list(bundle.statements.pnl.periods)
     rows_pnl_identity = _statement_run_identity_rows(bundle)
-    _write_key_value_section(sheet, 6, "Same-run identity", rows_pnl_identity)
+    identity_next = _write_key_value_section(
+        sheet, 6, "Same-run identity", rows_pnl_identity)
     _write_horizontal_metric_table(
         sheet,
-        6,
+        identity_next + 1,
         "P&L period table",
         [period.date.isoformat() for period in periods],
         [
@@ -960,10 +986,11 @@ def _write_cash_flow_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     periods = list(bundle.statements.pf_cash_waterfall.periods)
     rows_cf_identity = _statement_run_identity_rows(bundle)
-    _write_key_value_section(sheet, 6, "Same-run identity", rows_cf_identity)
+    identity_next = _write_key_value_section(
+        sheet, 6, "Same-run identity", rows_cf_identity)
     _write_horizontal_metric_table(
         sheet,
-        6,
+        identity_next + 1,
         "Project finance cash waterfall",
         [period.date.isoformat() for period in periods],
         [
@@ -990,10 +1017,11 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     periods = list(bundle.statements.balance_sheet.periods)
     rows_bs_identity = _statement_run_identity_rows(bundle)
-    _write_key_value_section(sheet, 6, "Same-run identity", rows_bs_identity)
+    identity_next = _write_key_value_section(
+        sheet, 6, "Same-run identity", rows_bs_identity)
     _write_horizontal_metric_table(
         sheet,
-        6,
+        identity_next + 1,
         "Balance sheet period table",
         [period.date.isoformat() for period in periods],
         [

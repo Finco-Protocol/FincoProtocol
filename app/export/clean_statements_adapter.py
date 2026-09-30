@@ -76,6 +76,9 @@ def serialize_clean_statements(
         raise ValueError("clean financial_statements_result is required")
 
     tax_periods = _wrap_periods(fs.tax_bridge_periods, {
+        # the clean TaxBridgePeriod has no calendar date; writers label by
+        # period_index instead (no fabricated dates)
+        "date": None,
         # identical names — pass-through
         "tax_depreciation_keur": "tax_depreciation_keur",
         "fiscal_reintegration_keur": "fiscal_reintegration_keur",
@@ -89,6 +92,7 @@ def serialize_clean_statements(
     })
 
     pnl_periods = _wrap_periods(fs.income_statement_periods, {
+        "date": "period_end",
         "revenues_keur": "revenue_keur",
         "operating_expenses_keur": "opex_keur",
         "depreciation_keur": "book_depreciation_keur",
@@ -104,6 +108,7 @@ def serialize_clean_statements(
     })
 
     cf_periods = _wrap_periods(fs.pf_cash_waterfall_periods, {
+        "date": "cashflow_date",
         "revenue_cash_keur": "revenue_cash_keur",
         "opex_cash_keur": "opex_cash_keur",
         "ebitda_cash_keur": "ebitda_keur",
@@ -118,6 +123,7 @@ def serialize_clean_statements(
     })
 
     bs_periods = _wrap_periods(fs.balance_sheet_periods, {
+        "date": "period_end",
         "gross_fixed_assets_keur": "gross_fixed_assets_keur",
         "accumulated_depreciation_keur": "accumulated_book_depreciation_keur",
         # net fixed assets: gross - accumulated would be arithmetic; the

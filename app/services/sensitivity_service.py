@@ -308,10 +308,15 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
         return replace(proj, opex=opex_new)
 
     elif shock_type == "dc_electricity_price":
-        # Electricity price scales the B.08 power expense steps.
+        # Electricity price scales the ENTIRE canonical B.08 power-expense
+        # schedule: y1_amount_keur AND every explicit step_change amount.
+        # Later operating years must move by the same sensitivity factor.
         opex_new = tuple(
-            replace(o, y1_amount_keur=o.y1_amount_keur * factor)
-            if o.name == "Power Expenses" else o
+            replace(
+                o,
+                y1_amount_keur=o.y1_amount_keur * factor,
+                step_changes=tuple((y, v * factor) for y, v in o.step_changes),
+            ) if o.name == "Power Expenses" else o
             for o in proj.opex
         )
         return replace(proj, opex=opex_new)
