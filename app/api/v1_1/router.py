@@ -368,7 +368,17 @@ def get_validation(project_id: str, request: Request):
     if get_project(project_id, user_id) is None:
         return _not_found(project_id)
 
-    state, evidence = _svc.get_institutional_validation(user_id, project_id)
+    # P0-A: reference validation is model work. Same process-wide admission gate; typed 429 when busy.
+    from fastapi.responses import JSONResponse as _JSON
+    from app.runtime.model_execution import (
+        BUSY_CODE, BUSY_MESSAGE, ModelExecutionBusy, get_model_executor,
+    )
+    try:
+        with get_model_executor().admit_inline():
+            state, evidence = _svc.get_institutional_validation(user_id, project_id)
+    except ModelExecutionBusy:
+        return _JSON(status_code=429, headers={"Retry-After": "5"},
+                     content={"state": BUSY_CODE, "message": BUSY_MESSAGE})
     return _envelope(state, {}, project_id=project_id, evidence=evidence)
 
 

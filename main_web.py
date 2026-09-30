@@ -153,6 +153,12 @@ ASSET_VERSION = _compute_asset_version()
 _logger = logging.getLogger(__name__)
 _logger.info("FINCO Model startup: asset_version=%s", ASSET_VERSION)
 
+from app.runtime.model_execution import (
+    BUSY_CODE as _MODEL_BUSY_CODE, BUSY_MESSAGE as _MODEL_BUSY_MESSAGE,
+    ModelExecutionBusy as _ModelBusy, ModelExecutionFailed as _ModelFailed,
+    ModelExecutionTimeout as _ModelTimeout, run_model_thread as _run_model_thread,
+    validate_model_execution_config as _validate_model_execution_config,
+)
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(
     title="FINCO Protocol",
@@ -164,6 +170,30 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+# -- P0-A: bounded model execution (typed BUSY / failure responses) ----------------
+# Expensive model computation runs behind ONE process-local admission gate
+# (app/runtime/model_execution.py). Invalid FINCO_MODEL_EXECUTION_* settings fail startup with a
+# typed error that never contains a value.
+_validate_model_execution_config()
+
+
+@app.exception_handler(_ModelBusy)
+async def _model_execution_busy_handler(request: Request, exc: _ModelBusy):
+    headers = {"Retry-After": str(_ModelBusy.retry_after_seconds), "X-Finco-Model-Busy": "1"}
+    wants_html = request.headers.get("HX-Request") == "true" or "text/html" in request.headers.get("accept", "")
+    if wants_html:
+        return HTMLResponse(content=f'<p class="muted">{_MODEL_BUSY_MESSAGE}</p>', status_code=429, headers=headers)
+    return JSONResponse({"state": _MODEL_BUSY_CODE, "message": _MODEL_BUSY_MESSAGE}, status_code=429, headers=headers)
+
+
+@app.exception_handler(_ModelFailed)
+@app.exception_handler(_ModelTimeout)
+async def _model_execution_failure_handler(request: Request, exc: Exception):
+    body = {"state": getattr(exc, "code", "MODEL_EXECUTION_FAILED"),
+            "message": "The calculation could not be completed. Nothing was saved; please retry."}
+    return JSONResponse(body, status_code=503)
+
 
 # -- Model run concurrency limiter (P6.6) -------------------------------------
 # Bounds concurrent model runs to prevent resource exhaustion.
@@ -3745,7 +3775,7 @@ async def runtime_summary_export(request: Request, project: str = "generic_wind_
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    export = build_runtime_summary_csv_export(
+    export = await _run_model_thread(build_runtime_summary_csv_export, 
         runtime_project_code,
         safe_project=safe_project,
         project_record=project_record,
@@ -3803,7 +3833,7 @@ async def institutional_workbook_export(request: Request, project: str = "generi
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    export = build_institutional_workbook_export(runtime_project_code, safe_project=safe_project, project_record=project_record, user_id=user.user_id)
+    export = await _run_model_thread(build_institutional_workbook_export, runtime_project_code, safe_project=safe_project, project_record=project_record, user_id=user.user_id)
     if export.has_error():
         return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
@@ -5004,6 +5034,11 @@ async def scenario_sensitivity_endpoint(
                 pass
     if not shock_levels:
         shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+    # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
+    from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
+    _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
+    if _grid_error:
+        return JSONResponse({"state": "SENSITIVITY_GRID_TOO_LARGE", "message": _grid_error}, status_code=422)
 
     error_state: str | None = None
     sens_result = None
@@ -5012,8 +5047,10 @@ async def scenario_sensitivity_endpoint(
 
     try:
         proj, scenario_name = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = run_sensitivity(proj, shock_types, shock_levels)
+        sens_result = await _run_model_thread(run_sensitivity, proj, shock_types, shock_levels)
         tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         error_state = _friendly_error(exc, "sensitivity analysis")
 
@@ -5090,10 +5127,17 @@ async def scenario_sensitivity_export_endpoint(
                 pass
     if not shock_levels:
         shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+    # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
+    from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
+    _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
+    if _grid_error:
+        return JSONResponse({"state": "SENSITIVITY_GRID_TOO_LARGE", "message": _grid_error}, status_code=422)
 
     try:
         proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = run_sensitivity(proj, shock_types, shock_levels)
+        sens_result = await _run_model_thread(run_sensitivity, proj, shock_types, shock_levels)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         _logger.exception("Sensitivity export failed: %s", exc)
         return Response(content="Export failed — please check your inputs.", status_code=500, media_type="text/plain")
@@ -5173,10 +5217,12 @@ async def scenario_lender_case_endpoint(
         # (clean G2C for clean-ready projects; explicit legacy for blocked).
         from app.services.production_waterfall_seam import execute_production_waterfall
 
-        base_execution = execute_production_waterfall(proj)
+        base_execution = await _run_model_thread(execute_production_waterfall, proj)
         base_kpis = build_canonical_report_kpis(base_execution.result)
 
-        lc_result = run_lender_case(proj, adjustments)
+        lc_result = await _run_model_thread(run_lender_case, proj, adjustments)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         lc_error = _friendly_error(exc, "lender case")
 
@@ -5228,8 +5274,10 @@ async def scenario_covenant_endpoint(
         # explicitly-classified legacy calibration for blocked projects).
         from app.services.production_waterfall_seam import execute_production_waterfall
 
-        execution = execute_production_waterfall(proj)
+        execution = await _run_model_thread(execute_production_waterfall, proj)
         cov_periods = build_covenant_periods(execution.result)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         cov_error = _friendly_error(exc, "covenant analytics")
 
@@ -5278,7 +5326,7 @@ async def scenario_credit_summary_endpoint(
         # PR-8 production authority seam (clean G2C for clean-ready projects).
         from app.services.production_waterfall_seam import execute_production_waterfall
 
-        base_execution = execute_production_waterfall(proj)
+        base_execution = await _run_model_thread(execute_production_waterfall, proj)
         base_kpis = build_canonical_report_kpis(base_execution.result)
 
         lender_kpis = None
@@ -5289,10 +5337,12 @@ async def scenario_credit_summary_endpoint(
             "opex_contingency": lender_opex_contingency,
         }
         if any(v != 0.0 for v in adjustments.values()):
-            lc = run_lender_case(proj, adjustments)
+            lc = await _run_model_thread(run_lender_case, proj, adjustments)
             lender_kpis = lc["kpis"]
 
         cs = build_credit_summary(proj, base_kpis, lender_kpis)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         cs_error = _friendly_error(exc, "credit summary")
 
@@ -5353,8 +5403,10 @@ async def scenario_exec_summary_endpoint(
 
     try:
         proj, scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         es = build_exec_summary(proj, result, scenario_name)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         es_error = _friendly_error(exc, "executive summary")
 
@@ -5392,9 +5444,11 @@ async def scenario_ic_pack_endpoint(
 
     try:
         proj, scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         covenant_periods = build_covenant_periods(result)
         ic = build_ic_pack(proj, result, scenario_name, covenant_periods=covenant_periods)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         ic_error = _friendly_error(exc, "IC pack")
 
@@ -5441,13 +5495,15 @@ async def scenario_credit_pack_endpoint(
 
     try:
         proj, scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         cov_periods = build_covenant_periods(result)
         cp = build_credit_pack(
             proj, result, scenario_name,
             covenant_periods=cov_periods,
             covenant_thresholds=thresholds,
         )
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         cp_error = _friendly_error(exc, "credit pack")
 
@@ -5481,10 +5537,12 @@ async def scenario_bess_revenue_endpoint(
     br_error = None
     try:
         proj, _scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         br = build_bess_revenue_breakdown(proj, result)
         if br is None:
             br_error = "Project does not have BESS enabled or BessParams not configured."
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         br_error = _friendly_error(exc, "BESS revenue breakdown")
 
@@ -5517,10 +5575,12 @@ async def scenario_bess_asset_endpoint(
     ba_error = None
     try:
         proj, _scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         ba = build_bess_asset_dashboard(proj, result)
         if ba is None:
             ba_error = "Project does not have BESS enabled or BessParams not configured."
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         ba_error = _friendly_error(exc, "BESS asset dashboard")
 
@@ -5558,8 +5618,10 @@ async def scenario_report_export_endpoint(
 
     try:
         proj, scenario_name = _resolve_report_project(user, project, scenario_id)
-        result = _run_base_result(proj)
+        result = await _run_model_thread(_run_base_result, proj)
         cov_periods = build_covenant_periods(result)
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         _logger.exception("Report export failed: %s", exc)
         return Response(content="Export failed — please check your inputs.", status_code=500, media_type="text/plain")
@@ -6714,7 +6776,8 @@ async def m4_run_scenario(request: Request, scenario_id: str):
 
     try:
         project_inputs = build_projectinputs_from_snapshot(effective_snapshot)
-        result = run_project(
+        result = await _run_model_thread(
+            run_project,
             project_type=project_type,
             scenario="Base",
             project_inputs_override=project_inputs,
@@ -6757,6 +6820,8 @@ async def m4_run_scenario(request: Request, scenario_id: str):
         response.headers["HX-Trigger"] = "matrixRunComplete"
         return response
 
+    except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
+        raise
     except Exception as exc:
         response = templates.TemplateResponse(
             request=request,

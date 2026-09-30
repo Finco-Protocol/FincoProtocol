@@ -123,6 +123,8 @@ that as a 200 + save_result-err with the message, not a NameError.
 
 from __future__ import annotations
 
+from app.runtime.model_execution import ModelExecutionBusy as _ModelBusy, run_model_thread as _run_model_thread
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -382,10 +384,12 @@ async def execute_save_run_route(
                     if deps.canonical_project_type(effective_project_type) == "Solar"
                     else "Wind"
                 )
-        result = deps.run_project(
+        result = await _run_model_thread(deps.run_project, 
             runtime_project_key, scenario, project_inputs_override=override
         )
         kpis = result["kpis"]
+    except _ModelBusy:  # P0-A: capacity BUSY is not an application error; let the 429 handler answer
+        raise
     except Exception as e:
         return SaveRunRouteOutcome(
             context={"success": False, "error": f"Model error: {str(e)}"},

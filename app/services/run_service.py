@@ -24,6 +24,8 @@ callable dependencies by the route. This keeps the import direction clean
 """
 from __future__ import annotations
 
+from app.runtime.model_execution import ModelExecutionBusy as _ModelBusy, run_model_thread as _run_model_thread
+
 import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping, Optional
@@ -439,7 +441,7 @@ async def _execute_user_created_path(
             (runtime_snapshot.get("project_type") if runtime_snapshot else None)
             or project_record.project_type  # type: ignore[union-attr]
         )
-        result = deps.run_project(runtime_project_key, scenario_name, project_inputs_override=override)
+        result = await _run_model_thread(deps.run_project, runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
         runtime_snapshot_id = _utc_now_iso_compact()
@@ -525,6 +527,8 @@ async def _execute_user_created_path(
             },
             prepend_html=prepend_html,
         )
+    except _ModelBusy:  # P0-A: capacity BUSY is not an application error; let the 429 handler answer
+        raise
     except deps.snapshot_input_error as e:  # type: ignore[misc]
         return RunRouteOutcome(
             template_name="partials/errors.html",
@@ -578,7 +582,7 @@ async def _execute_template_seeded_path(
                 override = _build_seeded(schema, _seed_base)
             else:
                 override = deps.build_projectinputs(schema)
-        result = deps.run_project(project_key, scenario_name, project_inputs_override=override)
+        result = await _run_model_thread(deps.run_project, project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
         runtime_snapshot_id = _utc_now_iso_compact()
@@ -663,6 +667,8 @@ async def _execute_template_seeded_path(
             },
             prepend_html=prepend_html,
         )
+    except _ModelBusy:  # P0-A: capacity BUSY is not an application error; let the 429 handler answer
+        raise
     except Exception as e:  # noqa: BLE001
         return RunRouteOutcome(
             template_name="partials/errors.html",
@@ -716,7 +722,7 @@ async def _execute_generic_path(
         runtime_project_key = _runtime_project_key(
             deps.canonical_project_type(effective_project_type)
         )
-        result = deps.run_project(runtime_project_key, scenario_name, project_inputs_override=override)
+        result = await _run_model_thread(deps.run_project, runtime_project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
         # STAB-7: compute runtime_summary so dashboard OOB refresh works for generic projects.
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
@@ -811,6 +817,8 @@ async def _execute_generic_path(
             },
             prepend_html=prepend_html,
         )
+    except _ModelBusy:  # P0-A: capacity BUSY is not an application error; let the 429 handler answer
+        raise
     except Exception as e:  # noqa: BLE001
         return RunRouteOutcome(
             template_name="partials/errors.html",
