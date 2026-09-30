@@ -54,7 +54,7 @@ def run_cash_dsra_model(
     if dsra_input is None:
         dsra_input = CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=0.0)
 
-    from financial_engine.dsra.target import DsraTargetPolicy
+    from financial_engine.dsra.target import SCHEDULE_TARGET_POLICIES, DsraTargetPolicy
     mode = dsra_input.mode
     req = dsra_input.requirement_keur
     balance_schedule = dsra_input.required_balance_schedule
@@ -62,11 +62,11 @@ def run_cash_dsra_model(
 
     # Policy / schedule authority enforcement — fail closed on mismatches.
     n_periods = len(post_senior_cash.period_indices)
-    if policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS:
+    if policy in SCHEDULE_TARGET_POLICIES:
         if balance_schedule is None:
             raise ValueError(
                 "CASH_DSRA_DYNAMIC_TARGET_SCHEDULE_REQUIRED: "
-                "target_policy=FORWARD_DEBT_SERVICE_MONTHS but required_balance_schedule is None. "
+                f"target_policy={policy.name} but required_balance_schedule is None. "
                 "The orchestrator must build the dynamic schedule from the final Senior DS "
                 "schedule before calling run_cash_dsra_model()."
             )

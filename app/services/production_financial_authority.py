@@ -231,11 +231,55 @@ class CleanProductionRun:
     financial_statements_result: object | None = None
 
 
+_POLICY_RUN_CACHE: "dict[str, tuple]" = {}
+_POLICY_RUN_CACHE_MAX = 16
+
+
+def _memoised_policy_run(effective_inputs, policy, compute):
+    """Deterministic in-process memo of the policy-wrapped engine run.
+
+    The engine is a pure function of (inputs, policy); the H-1 fixed points make one run
+    cost several engine evaluations, so identical repeat runs (same process) reuse the
+    result. Keyed by a digest of the full input/policy representation; bounded.
+    """
+    import hashlib
+
+    import financial_engine.orchestrator as _orch
+    import financial_engine.senior_debt.solver as _solver
+    import financial_engine.shl.production as _shl
+
+    # Engine callables are part of the key so a patched/replaced engine never reads a
+    # result computed by a different implementation.
+    engine_identity = tuple(
+        id(getattr(module, name, None))
+        for module, name in (
+            (_solver, "_backward_dscr_capacity"),
+            (_solver, "_solve_dscr"),
+            (_solver, "_solve_combined"),
+            (_shl, "compute_shareholder_loan_schedules"),
+            (_orch, "compute_shareholder_loan_schedules"),
+            (_orch, "run_project_model"),
+        )
+    )
+    key = hashlib.sha256(
+        (repr(effective_inputs) + "|" + repr(policy) + "|" + repr(engine_identity)).encode("utf-8")
+    ).hexdigest()
+    hit = _POLICY_RUN_CACHE.get(key)
+    if hit is not None:
+        return hit
+    value = compute()
+    if len(_POLICY_RUN_CACHE) >= _POLICY_RUN_CACHE_MAX:
+        _POLICY_RUN_CACHE.pop(next(iter(_POLICY_RUN_CACHE)))
+    _POLICY_RUN_CACHE[key] = value
+    return value
+
+
 def run_clean_production(
     project_inputs,
     scenario: str = "Base",
     *,
     project_type: str = "",
+    financing_policy=None,
 ) -> CleanProductionRun:
     """Execute the ONE clean production financial calculation.
 
@@ -265,13 +309,29 @@ def run_clean_production(
         mgr = ScenarioManager((project_type or "").lower())
         effective_inputs = mgr.apply_overrides(project_inputs, scenario)
 
+    from financial_engine.financing.generic_product_policy import (
+        DEFAULT_GENERIC_FINANCING_POLICY,
+        run_with_generic_financing_policy,
+    )
     from financial_engine.shareholder_waterfall import (
         run_project_shareholder_waterfall_model,
     )
 
+    policy = DEFAULT_GENERIC_FINANCING_POLICY if financing_policy is None else financing_policy
     try:
-        g2c = run_project_shareholder_waterfall_model(
-            effective_inputs, source_id="pr8_clean_production_authority"
+        # H-1: apply the project's declared construction financing (IDC, commitment
+        # and structuring fees) and DSRA policy. One production calculation; the
+        # policy owns the initial-DSRA fixed point around the single engine entry.
+        g2c, effective_inputs, policy_evidence = _memoised_policy_run(
+            effective_inputs,
+            policy,
+            lambda: run_with_generic_financing_policy(
+                effective_inputs,
+                lambda applied: run_project_shareholder_waterfall_model(
+                    applied, source_id="pr8_clean_production_authority"
+                ),
+                policy,
+            ),
         )
     except CleanProductionRunUnavailable:
         raise
@@ -288,6 +348,10 @@ def run_clean_production(
         ),
         "scenario": scenario,
         "calculation_count": 1,
+        "financing_policy_authority": policy_evidence.authority,
+        "construction_financing_applied": policy_evidence.construction_financing_applied,
+        "cash_dsra_applied": policy_evidence.cash_dsra_applied,
+        "initial_dsra_funding_keur": policy_evidence.initial_dsra_funding_keur,
     }
     construction = getattr(g2c.financing_result, "construction_financing", None)
     if construction is not None:

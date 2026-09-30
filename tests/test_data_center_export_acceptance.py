@@ -231,8 +231,8 @@ def test_DC_API_WORKBOOK_EQUIVALENCE():
 
     # Senior debt from financing_result must match expected range
     senior_debt = fin.final_senior_commitment_keur
-    assert abs(senior_debt - 80_436.50) < 1.0, (
-        f"Senior debt from production authority must be ~80,436.50 kEUR, got {senior_debt:.2f}"
+    assert abs(senior_debt - 58_410.96) < 1.0, (
+        f"Senior debt from production authority must be ~58,410.96 kEUR (Opus H-2 corrected sizing; was 80,436.50), got {senior_debt:.2f}"
     )
 
     # Min DSCR from API (engine-computed) vs financing result (same engine path)

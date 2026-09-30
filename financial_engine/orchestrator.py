@@ -2090,13 +2090,13 @@ def _run_senior_debt_model_with_shl(
     from financial_engine.dsra.model import run_cash_dsra_model as _run_dsra
     from financial_engine.dsra.contracts import CashDsraInput as _CashDsraInput
     from financial_engine.dsra.target import (
-        DsraTargetPolicy as _DsraTargetPolicy,
+        SCHEDULE_TARGET_POLICIES as _SCHEDULE_TARGET_POLICIES,
         build_dsra_required_balance_schedule as _build_dsra_schedule,
     )
     _shl_dsra_input = inputs.dsra if isinstance(inputs.dsra, _CashDsraInput) else None
     if (
         _shl_dsra_input is not None
-        and _shl_dsra_input.target_policy == _DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+        and _shl_dsra_input.target_policy in _SCHEDULE_TARGET_POLICIES
     ):
         _shl_all_indices = tuple(p.period_index for p in phase2b_result.periods)
         _shl_all_starts = tuple(p.period_start for p in phase2b_result.periods)
@@ -2110,6 +2110,7 @@ def _run_senior_debt_model_with_shl(
             senior_debt_service_keur=final_post_senior_cash.senior_debt_service_keur,
             coverage_months=_shl_dsra_input.dsra_months,
             periods_per_year=inputs.senior_debt_policy.periods_per_year,
+            policy=_shl_dsra_input.target_policy,
         )
         _shl_dsra_input = _CashDsraInput(
             mode=_shl_dsra_input.mode,
@@ -2634,11 +2635,11 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Do NOT route cash_dsra output to SHL or DA in this PR — that is PR-4.
     from financial_engine.dsra.model import run_cash_dsra_model
     from financial_engine.dsra.contracts import CashDsraInput
-    from financial_engine.dsra.target import DsraTargetPolicy, build_dsra_required_balance_schedule
+    from financial_engine.dsra.target import SCHEDULE_TARGET_POLICIES, build_dsra_required_balance_schedule
     _dsra_input = inputs.dsra if isinstance(inputs.dsra, CashDsraInput) else None
     if (
         _dsra_input is not None
-        and _dsra_input.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+        and _dsra_input.target_policy in SCHEDULE_TARGET_POLICIES
     ):
         _all_starts = tuple(p.period_start for p in phase2b_result.periods)
         _all_ends = tuple(p.period_end for p in phase2b_result.periods)
@@ -2651,6 +2652,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             senior_debt_service_keur=post_senior_cash.senior_debt_service_keur,
             coverage_months=_dsra_input.dsra_months,
             periods_per_year=inputs.senior_debt_policy.periods_per_year,
+            policy=_dsra_input.target_policy,
         )
         _dsra_input = CashDsraInput(
             mode=_dsra_input.mode,

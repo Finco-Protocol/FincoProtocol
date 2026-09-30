@@ -86,8 +86,15 @@ def kpis_out(ws: Any, result_adapter: Any) -> Dict[str, Any]:
 
     return {
         "project_irr": _kpi_field(_safe("project_irr"), "pct"),
+        # H-3: ``equity_irr`` keeps its meaning (pure share-capital return, equity_only);
+        # ``share_capital_irr`` is the explicit name for the same value. Total sponsor
+        # return (equity + shareholder loan) is served from the persisted
+        # ``total_sponsor_xirr`` key; older Last Runs persisted it as ``sponsor_irr``.
         "equity_irr": _kpi_field(_safe("equity_irr"), "pct"),
-        "total_sponsor_xirr": _kpi_field(_safe("sponsor_xirr"), "pct"),
+        "share_capital_irr": _kpi_field(_safe("share_capital_irr"), "pct"),
+        "total_sponsor_xirr": _kpi_field(
+            _safe("total_sponsor_xirr") if _safe("total_sponsor_xirr") is not None
+            else _safe("sponsor_irr"), "pct"),
         "senior_debt_keur": _kpi_field(_safe("senior_debt_keur"), "kEUR"),
         "min_dscr": _kpi_field(_safe("min_dscr"), "x"),
         "avg_dscr": _kpi_field(_safe("actual_avg_dscr"), "x"),
@@ -138,6 +145,11 @@ def export_metadata_out(ws: Any, project_record: Any) -> Dict[str, Any]:
             "No model re-run occurs at download time."
         ),
     }
+
+
+def integrity_out(report: Any, ws: Any) -> Dict[str, Any]:
+    """Serialise a RunIntegrityReport (H-4b) bound to the committed Last Run identity."""
+    return {**report.to_dict(), "run_identity": run_identity_out(ws)}
 
 
 def validation_out(vr: Any) -> Dict[str, Any]:

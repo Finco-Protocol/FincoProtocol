@@ -1,4 +1,4 @@
-﻿"""Institutional workbook export for Phase 10.
+"""Institutional workbook export for Phase 10.
 
 This module binds existing runtime outputs, project context assumptions, and
 offline financial statement assembly into a standardized review workbook.
@@ -83,6 +83,8 @@ class WorkbookExportBundle:
     run_id: str = "not_applicable"
     run_at: str = "not_applicable"
     senior_debt_keur_authority: float | None = None
+    # Engine-audited Sources & Uses (H-1): total_uses / derived SHL / sponsor equity, kEUR.
+    sources_uses_authority: dict | None = None
     project_id: str = "not_applicable"
     input_composite_hash: str = "not_applicable"
     engine_version: str = "not_applicable"
@@ -153,7 +155,7 @@ INSTITUTIONAL_SHEET_DEFINITIONS = (
     WorkbookSheetDefinition(12, "P&L", "runtime_bound", "runtime", True, "Offline assembled P&L using existing runtime result as source."),
     WorkbookSheetDefinition(13, "Cash Flow", "runtime_bound", "runtime", True, "Offline PF cash waterfall using existing runtime result as source."),
     WorkbookSheetDefinition(14, "Balance Sheet", "runtime_bound", "runtime", True, "Offline balance sheet assembly from existing runtime result."),
-    WorkbookSheetDefinition(15, "Returns", "implemented", "runtime", True, "Project IRR, Equity IRR, Total Sponsor XIRR bound from runtime outputs. P1.2."),
+    WorkbookSheetDefinition(15, "Returns", "implemented", "runtime", True, "Project IRR, Share-capital IRR (equity only), Total Sponsor XIRR (equity + SHL) bound from runtime outputs. P1.2."),
     WorkbookSheetDefinition(16, "Run Identity", "implemented", "runtime + review", True, "Explicit run binding: run_id, project_id, engine version, input hash, export timestamp. P1.2."),
     WorkbookSheetDefinition(17, "Reconciliation", "implemented", "runtime", True, "Sources=Uses, CAPEX, Revenue, OPEX, Debt, Returns reconciliation checks. P1.2."),
     WorkbookSheetDefinition(18, "Audit", "runtime_bound", "review", True, "Runtime source notes, provenance, and audit boundary statements."),
@@ -188,7 +190,7 @@ MULTIPLE_FORMAT = "0.000x"
 RUNTIME_SUMMARY_LABELS = {
     "active_project": ("Active project", ""),
     "project_irr": ("Project IRR", RATIO_FORMAT),
-    "equity_irr": ("Equity IRR", RATIO_FORMAT),
+    "equity_irr": ("Share-capital IRR (equity only)", RATIO_FORMAT),
     "total_revenue_keur": ("Total revenue", K_EUR_FORMAT),
     "total_ebitda_keur": ("Total EBITDA", K_EUR_FORMAT),
     "total_opex_keur": ("Total OPEX", K_EUR_FORMAT),
@@ -400,6 +402,20 @@ def _build_export_bundle(
         except Exception:
             _senior_debt_auth = None
 
+    _sources_uses_auth: dict | None = None
+    if execution.clean_run is not None:
+        try:
+            from financial_engine.financing.generic_product_policy import build_sources_and_uses
+
+            _su = build_sources_and_uses(execution.clean_run.g2c_result.financing_result)
+            _sources_uses_auth = {
+                "total_uses_keur": float(_su.total_uses_keur),
+                "derived_shl_cash_keur": float(_su.shareholder_loan_cash_keur),
+                "sponsor_equity_keur": float(_su.share_capital_and_other_equity_keur),
+            }
+        except Exception:
+            _sources_uses_auth = None
+
     # Engine version for Run Identity binding.
     try:
         from financial_engine.version import ENGINE_VERSION as _EV
@@ -489,6 +505,7 @@ def _build_export_bundle(
         revenue_table=build_revenue_table(runtime_result),
         debt_table=build_debt_table(runtime_result),
         senior_debt_keur_authority=_senior_debt_auth,
+        sources_uses_authority=_sources_uses_auth,
         project_id=project_key,
         input_composite_hash="not_applicable",
         engine_version=_engine_version_str,
@@ -976,7 +993,9 @@ def _write_returns_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     project_irr = getattr(rt, "project_irr", None)
     equity_irr = getattr(rt, "equity_irr", None)
-    sponsor_irr = getattr(rt, "sponsor_irr", None)
+    sponsor_irr = getattr(rt, "total_sponsor_xirr", None)
+    if sponsor_irr is None:  # Last Runs persisted before H-3 carry the same value as sponsor_irr
+        sponsor_irr = getattr(rt, "sponsor_irr", None)
 
     def _safe_float(v):
         if v is None:
@@ -999,17 +1018,21 @@ def _write_returns_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             RATIO_FORMAT,
         ),
         (
-            "Equity IRR",
+            "Share-capital IRR (equity only)",
             equity_irr_f,
             "runtime",
-            "Pure levered equity XIRR (post-SHL, post-tax). Source: runtime_result.equity_irr.",
+            "Return on pure share capital only (equity_only method): share-capital contributions "
+            "and equity distributions. EXCLUDES shareholder-loan flows; see Total Sponsor XIRR. "
+            "Source: runtime_result.equity_irr (machine key unchanged).",
             RATIO_FORMAT,
         ),
         (
             "Total Sponsor XIRR",
             sponsor_irr_f,
             "runtime",
-            "Sponsor XIRR inclusive of SHL cash service flows. Source: runtime_result.sponsor_irr.",
+            "Total sponsor return: share capital plus shareholder loan (contributions, equity "
+            "distributions, SHL cash interest and principal received), each counted once. "
+            "Source: runtime_result.total_sponsor_xirr (sponsor_irr for older Last Runs).",
             RATIO_FORMAT,
         ),
     ]
@@ -1148,11 +1171,28 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     total_sources = (senior_debt + equity_total) if senior_debt is not None else None
 
+    # Opus H-1: when the committed run carries the engine's audited Sources & Uses, the
+    # reconciliation is senior debt (authority) + sponsor equity + derived SHL (engine S&U
+    # components) against Total Project Uses (CAPEX + IDC, lender fees, initial DSRA).
+    # Legacy runs without those persisted components keep the template-assumption path.
+    _su_auth = getattr(bundle, "sources_uses_authority", None) or {}
+    _su_uses = _safe_float(_su_auth.get("total_uses_keur", getattr(rt, "total_project_uses_keur", None)))
+    _su_shl = _safe_float(_su_auth.get("derived_shl_cash_keur", getattr(rt, "derived_shl_cash_keur", None)))
+    _su_equity = _safe_float(_su_auth.get("sponsor_equity_keur", getattr(rt, "sponsor_equity_sources_keur", None)))
+    total_uses = total_capex
+    if _su_uses is not None and _su_shl is not None and _su_equity is not None:
+        shl, share_capital, share_premium = _su_shl, _su_equity, 0.0
+        equity_total = _su_shl + _su_equity
+        total_uses = _su_uses
+        total_sources = (senior_debt + equity_total) if senior_debt is not None else None
+
     runtime_revenue = _safe_float(getattr(rt, "total_revenue_keur", None))
     runtime_opex = _safe_float(getattr(rt, "total_opex_keur", None))
     runtime_project_irr = _safe_float(getattr(rt, "project_irr", None))
     runtime_equity_irr = _safe_float(getattr(rt, "equity_irr", None))
-    runtime_sponsor_irr = _safe_float(getattr(rt, "sponsor_irr", None))
+    runtime_sponsor_irr = _safe_float(getattr(rt, "total_sponsor_xirr", None))
+    if runtime_sponsor_irr is None:
+        runtime_sponsor_irr = _safe_float(getattr(rt, "sponsor_irr", None))
     runtime_min_dscr = _safe_float(getattr(rt, "actual_min_dscr", None))
 
     # Build capex line-item sum from capex_items DataFrame
@@ -1171,7 +1211,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     # Sources = Uses reconciliation — authoritative senior debt, never residual.
     checks = [
-        _check("Total Sources vs Total Uses (kEUR)", total_sources, total_capex, _TOL_ZERO),
+        _check("Total Sources vs Total Uses (kEUR)", total_sources, total_uses, _TOL_ZERO),
     ]
 
     # CAPEX detail sum vs context total
@@ -1213,10 +1253,10 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
     # Returns: true read-back from the serialized Returns sheet cells, not self-comparisons.
     serialized_project_irr = _read_labeled_cell(sheet.parent, "Returns", "Project IRR")
-    serialized_equity_irr = _read_labeled_cell(sheet.parent, "Returns", "Equity IRR")
+    serialized_equity_irr = _read_labeled_cell(sheet.parent, "Returns", "Share-capital IRR (equity only)")
     serialized_sponsor_irr = _read_labeled_cell(sheet.parent, "Returns", "Total Sponsor XIRR")
     checks.append(_check("Returns sheet Project IRR vs runtime", serialized_project_irr, runtime_project_irr, _TOL_IRR, "ratio"))
-    checks.append(_check("Returns sheet Equity IRR vs runtime", serialized_equity_irr, runtime_equity_irr, _TOL_IRR, "ratio"))
+    checks.append(_check("Returns sheet Share-capital IRR vs runtime", serialized_equity_irr, runtime_equity_irr, _TOL_IRR, "ratio"))
     checks.append(_check("Returns sheet Total Sponsor XIRR vs runtime", serialized_sponsor_irr, runtime_sponsor_irr, _TOL_IRR, "ratio"))
 
     # Count pass/fail
@@ -1233,6 +1273,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     # Reference values block
     ref_rows = [
         ("Total CAPEX (kEUR)", total_capex, "template assumption", "Total uses = project context capex.", K_EUR_FORMAT),
+        ("Total Project Uses (kEUR)", total_uses, "runtime", "CAPEX + IDC, lender fees, initial DSRA (engine Sources & Uses).", K_EUR_FORMAT),
         ("Senior debt (kEUR)", senior_debt, "template assumption + runtime", "From _resolve_export_senior_debt_keur.", K_EUR_FORMAT),
         ("SHL incl IDC (kEUR)", shl, "template assumption", "From project context.", K_EUR_FORMAT),
         ("Share capital (kEUR)", share_capital, "template assumption", "From financing inputs.", K_EUR_FORMAT),
@@ -1241,7 +1282,7 @@ def _write_reconciliation_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Runtime Revenue (kEUR)", runtime_revenue, "runtime", "runtime_result.total_revenue_keur.", K_EUR_FORMAT),
         ("Runtime OPEX (kEUR)", runtime_opex, "runtime", "runtime_result.total_opex_keur.", K_EUR_FORMAT),
         ("Runtime Project IRR", runtime_project_irr, "runtime", "runtime_result.project_irr.", RATIO_FORMAT),
-        ("Runtime Equity IRR", runtime_equity_irr, "runtime", "runtime_result.equity_irr.", RATIO_FORMAT),
+        ("Runtime Share-capital IRR (equity only)", runtime_equity_irr, "runtime", "runtime_result.equity_irr.", RATIO_FORMAT),
         ("Runtime Total Sponsor XIRR", runtime_sponsor_irr, "runtime", "runtime_result.sponsor_irr.", RATIO_FORMAT),
         ("Runtime Min DSCR", runtime_min_dscr, "runtime", "runtime_result.actual_min_dscr.", MULTIPLE_FORMAT),
     ]

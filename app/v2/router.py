@@ -2320,6 +2320,7 @@ async def v2_workbook_run(
             tax_schedule=result.get("tax_schedule"),
             distribution_schedule=result.get("distribution_schedule"),
             sponsor_schedule=result.get("sponsor_schedule"),
+            integrity_evidence=result.get("integrity_evidence"),
             active_scenario_id=active_scenario_id,
             active_scenario_name=active_scenario_name,
             last_runtime_scenario_id=active_scenario_id,

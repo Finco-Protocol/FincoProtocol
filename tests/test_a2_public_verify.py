@@ -507,8 +507,8 @@ class TestMethodologyReproducibility:
     def test_stub_period_interest_act360(self, stub_debt_period):
         """Y2031-H1 (stub) interest uses ACT/360 with 121 exclusive days."""
         interest = stub_debt_period.get("senior_interest_keur", 0)
-        # Expected: 24750 × 0.055 × 121/360 ≈ 457.53
-        expected_interest = 24750.0 * 0.055 * (121 / 360)
+        # Expected (Opus H-1, gearing on Total Project Uses): 26983.33 × 0.055 × 121/360 ≈ 498.82
+        expected_interest = 26983.33 * 0.055 * (121 / 360)
         assert abs(interest - expected_interest) < 0.05, (
             f"Stub period ACT/360 interest: expected ≈{expected_interest:.2f}, got {interest:.2f}"
         )
@@ -598,14 +598,19 @@ class TestMethodologyReproducibility:
             f"Total CAPEX: expected 33,000 kEUR, got {total_capex}"
         )
 
-    def test_senior_debt_24750(self, solar_run):
-        """Senior debt = 24,750 kEUR (gearing cap binding: 75% × 33,000)."""
+    def test_senior_debt_gearing_on_total_project_uses(self, solar_run):
+        """Senior debt = 26,983 kEUR (gearing cap binding: 75% × 35,977.78 Total Project Uses).
+
+        Rebaselined by Opus H-1 (was 24,750 = 75% × 33,000 CAPEX only, before IDC, lender
+        fees and the initial DSRA were Project Uses).
+        """
         kpis = solar_run.get("kpis", {})
         senior_debt = kpis.get("senior_debt_keur")
         assert senior_debt is not None
-        assert abs(senior_debt - 24750) < 1, (
-            f"Senior debt: expected 24,750 kEUR, got {senior_debt}"
+        assert abs(senior_debt - 26983.33) < 1, (
+            f"Senior debt: expected 26,983 kEUR, got {senior_debt}"
         )
+        assert abs(senior_debt - 0.75 * kpis["total_project_uses_keur"]) < 1e-6
 
     def test_p90_yield_ratio(self):
         """Solar reference: P90_10Y operating hours = 1400, P50 = 1500 → ratio = 0.9333."""

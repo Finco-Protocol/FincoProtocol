@@ -58,7 +58,7 @@ def dc_app(tmp_path_factory):
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    deadline = time.time() + 15
+    deadline = time.time() + 300  # Opus H-1: startup seeds reference runs (~18 s each)
     while not server.started and time.time() < deadline:
         time.sleep(0.05)
     assert server.started, "Data Center browser fixture server did not start"
