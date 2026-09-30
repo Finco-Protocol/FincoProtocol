@@ -25,11 +25,12 @@ the Model vertical list.
 |---|---|---|
 | Canonical Last Run (COMMIT) | LIVE | `app/persistence/runs_repository.py` |
 | Institutional XLSX Export (P1.2) | LIVE | `app/export/institutional_workbook.py`; requires committed Last Run |
-| MODEL VALIDATION (P1.3) | LIVE | `app/model_validation/`; P1.3 reference reconciliation |
+| Reference Regression Check (P1.3) | LIVE | `app/model_validation/`; re-runs canonical reference-model KPIs against pinned expected values (regression protection). Does NOT independently validate a user's Last Run (H-4A). Machine authority key: `MODEL_VALIDATION` |
 | EV Institutional Reconciliation (P1.4) | LIVE | EV-specific reconciliation closure |
 | Institutional Trust Pack (P1.1) | LIVE | Methodology HTML, DSCR, XIRR ACT/365F docs |
 | FINCO VERIFY / Verified Assets (B2.1) | LIVE | `app/verified/authority.py`; explicit market binding required |
-| Signed Run Certificate V1 | LIVE | `app/services/run_certificate_service.py`; Ed25519; requires `FINCO_RUN_CERT_SIGNING_KEY` |
+| Signed Run Certificate V1 | LIVE | `app/services/run_certificate_service.py`; Ed25519; implemented in code — issuance is available only when `FINCO_RUN_CERT_SIGNING_KEY` is correctly configured and fails closed without it. Status LIVE here means implemented, not that any host's key configuration is demonstrated; public key distribution, a public verifier and blockchain anchoring are not implemented |
+| Run Integrity Checks (H-4b) | LIVE | `app/run_integrity/`; internal consistency of the committed Last Run (Sources & Uses, balance sheet, senior debt rollforward, DSCR integrity/feasibility, unfunded cash, sponsor flows); recorded at commit, recomputed from evidence; NOT economic truth, NOT FINCO VERIFY, NOT Signed Run |
 | Model Trust Pack UX V1 | LIVE | `app/ui/trust_pack.py`; 7-section read-only evidence surface in V2 workbook; PR #133 |
 
 ## Radar

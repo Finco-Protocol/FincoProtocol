@@ -111,10 +111,10 @@ For each: verify from code, not from documentation claims.
 ### C. Model Trust Pack
 
 - Does `app/ui/trust_pack.py:build_trust_pack()` correctly distinguish its
-  7 sections (A: Last Run Identity, B: Core KPIs, C: MODEL VALIDATION [DEFERRED],
+  7 sections (A: Last Run Identity, B: Core KPIs, C: Reference Regression Check [DEFERRED],
   D: FINCO VERIFY, E: Institutional Export, F: Methodology, G: Signed Run
   Certificate [DEFERRED])?
-- Does it correctly present MODEL VALIDATION ≠ FINCO VERIFY?
+- Does it correctly present Reference Regression Check ≠ FINCO VERIFY (H-4A: the check re-runs canonical reference models against pinned expected values and does not validate a user's Last Run)?
 - Does it correctly present Signed Run Certificate ≠ FINCO VERIFY?
 - Are DEFERRED sections (C, G) correctly guarded — no actionable load URL
   without a committed Last Run?

@@ -1,6 +1,6 @@
 {# ── Model Trust Pack V1 (sheet_trust.html) ────────────────────────────
    Read-only, evidence-first composition of existing canonical authorities:
-   Last Run identity · Core KPIs · MODEL VALIDATION · FINCO VERIFY ·
+   Last Run identity · Core KPIs · Reference Regression Check · FINCO VERIFY ·
    Institutional export · Methodology.
 
    Authority: app/ui/trust_pack.py composes app.api.v1_1 read services.
@@ -123,32 +123,47 @@
     {% endif %}
   </div>
 
-  {# ── C. MODEL VALIDATION ──────────────────────────────────────────── #}
+  {# ── C. Reference Regression Check (formerly generic "MODEL VALIDATION").
+     H-4A: re-runs canonical reference-model KPIs against pinned expected
+     values; regression protection — NOT independent validation of a user's
+     Last Run. ─────────────────────────────────────────────────────────── #}
   <div class="v2-trust-section" data-testid="trust-pack-validation">
-    <div class="v2-trust-title">MODEL VALIDATION
-      <small>reconciliation status and evidence</small>
+    <div class="v2-trust-title">REFERENCE REGRESSION CHECK
+      <small>pinned-reference regression evidence</small>
       <span class="v2-trust-chip v2-trust-chip--unavailable">ON-DEMAND</span>
     </div>
     {% if trust_pack.validation.state == 'DEFERRED' %}
       <div class="v2-trust-note" data-testid="trust-pack-validation-deferred">
-        Vertical validation executes a read-only reconciliation against the
-        canonical reference model — it is loaded only on explicit request so
-        that opening this page never runs the model.
+        This check re-runs canonical reference models against pinned expected
+        values (regression protection for the reference library). It does
+        <strong>not</strong> independently validate your project's Last Run and
+        does not establish accounting, debt or cash integrity. It is loaded
+        only on explicit request so that opening this page never runs the
+        model.
         <button type="button" class="btn btn-ghost"
                 hx-get="{{ trust_pack.validation.load_url }}"
                 hx-target="#v2-trust-validation-body" hx-swap="innerHTML"
-                data-testid="trust-pack-validation-load">Load validation evidence</button>
+                data-testid="trust-pack-validation-load">Load regression evidence</button>
       </div>
       <div id="v2-trust-validation-body"></div>
     {% else %}
-      <div class="v2-trust-note">No vertical validation evidence is available for this
-        project. This is an intentional unavailable state, not an error.</div>
+      <div class="v2-trust-note">
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+        No Reference Regression Check evidence is available for this project —
+        an intentional unavailable state, not an error. Scope of this
+        capability: re-runs canonical reference models against pinned expected
+        values; it does <strong>not</strong> independently validate your
+        project's Last Run.
+      </div>
     {% endif %}
   </div>
 
   <div class="v2-trust-separator" data-testid="trust-pack-authority-separator">
-    MODEL VALIDATION and FINCO VERIFY are separate authorities.
-    Validation status never implies Verified status.
+    REFERENCE REGRESSION CHECK, RUN INTEGRITY CHECKS and FINCO VERIFY are
+    separate authorities. Reference regression status never implies Verified
+    status. Run Integrity Checks (shipped) verify the internal consistency of
+    your committed Last Run; they do not validate external assumptions,
+    establish economic truth, or equal FINCO VERIFY or Signed Run.
   </div>
 
   {# ── D. FINCO VERIFY ──────────────────────────────────────────────── #}

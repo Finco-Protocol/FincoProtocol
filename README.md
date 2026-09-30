@@ -25,7 +25,7 @@ FINCO Model is the deterministic modelling surface for real-world infrastructure
 The current modelling verticals are:
 
 - Solar and Wind — mature production modelling workflows;
-- Data Center — implemented and vertically validated modelling workflow (A3.1);
+- Data Center — implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check;
 - EV Charging — implemented modelling workflow (A3.2, canonical reference and working-copy runtime supported);
 - Storage — limited/reference scope (reference viewable; working-copy runtime not released).
 
@@ -52,6 +52,20 @@ The current engine can model and reconcile:
 - IRR, NPV, DSCR, and other credit / return metrics,
 - scenarios, sensitivities, reporting, and controlled exports.
 
+Scope qualifications on the list above (Opus clean-room review):
+
+- the current headline Equity IRR is the pure share-capital return
+  (EQUITY_ONLY method); Total Sponsor XIRR — which additionally includes
+  shareholder-loan flows — is reported separately and must not be read as
+  the same number;
+- the generic product run path wires the approved construction-financing
+  economics through the model (Opus finding H-1 closed by PR #144):
+  construction-period IDC, the lender commitment fee, the
+  structuring/arrangement fee, sponsor-funded initial DSRA under the approved
+  V1 policy, and explicit Sources & Uses treatment are part of the shipped
+  generic product semantics. This describes what #144 established; it is not
+  a claim that all possible financing structures are supported.
+
 For a Solar or Wind asset, FINCO can take the model from installed capacity, production, pricing, and operating assumptions through debt, tax, reserves, distributions, and final investor returns. Data Center and EV Charging follow the same framework with asset-specific operating assumptions.
 
 That same deterministic architecture is designed to support additional RWA infrastructure verticals by adding asset-specific operating assumptions while preserving the common financial, financing, tax, cash-flow, reporting, and verification layers.
@@ -70,7 +84,7 @@ Planned infrastructure verticals include:
 - **Telecom infrastructure** — towers, networks, and connectivity assets;
 - **Industrial infrastructure** — long-life industrial and process facilities.
 
-These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
+These verticals are roadmap targets, not claims that all asset-specific modules are already implemented. Solar and Wind are mature production modelling workflows; Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check; EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported); Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
 See [docs/RWA_INFRASTRUCTURE.md](docs/RWA_INFRASTRUCTURE.md) for the RWA infrastructure thesis, current engine capabilities, and planned module expansion.
 
@@ -144,14 +158,28 @@ Global Radar navigation lands on R-LIVE (`/radar` → `/radar/r-live`). Stocks r
 
 The Protocol layer implements off-chain verification and composition. Current capabilities include:
 
-- **Signed Run Certificate V1** — Ed25519 asymmetric signed evidence of what was computed.
-  Issued from a committed Last Run only. Requires `FINCO_RUN_CERT_SIGNING_KEY` deployment
-  configuration; fails closed without it (`SIGNING_KEY_UNAVAILABLE`). Third-party verifiable
-  with the FINCO public key. **Not FINCO Verify. Not economic truth.**
+- **Signed Run Certificate V1** — implemented. Ed25519 issuance is available when
+  `FINCO_RUN_CERT_SIGNING_KEY` is correctly configured; it issues from a committed Last Run
+  only and fails closed without the key (`SIGNING_KEY_UNAVAILABLE`). Signature verification
+  works when a relying party possesses and pins the trusted public key. Public FINCO
+  trust-key distribution and a public verifier are not yet complete, and blockchain
+  anchoring is not implemented. Implemented is not the same as configured on a host,
+  demonstrated operationally, or production-ready; this repository does not prove any host's
+  key configuration.
+  **Not FINCO Verify. Not economic truth.**
 - **Model Trust Pack UX V1** — a seven-section read-only evidence surface in the V2 workbook
-  (A: Last Run Identity, B: Core KPIs, C: MODEL VALIDATION, D: FINCO VERIFY, E: Institutional
+  (A: Last Run Identity, B: Core KPIs, C: Reference Regression Check, D: FINCO VERIFY, E: Institutional
   Export, F: Methodology, G: Signed Run Certificate). Zero engine calls at render. Zero DB writes.
-  Explicitly separates the three authority layers: MODEL VALIDATION ≠ FINCO VERIFY ≠ Signed Run.
+  Explicitly separates the three authority layers: Reference Regression Check ≠ FINCO VERIFY ≠ Signed Run.
+  The Reference Regression Check re-runs canonical reference models against pinned expected
+  values (regression protection for the reference library); it does not independently validate
+  a user's Last Run. Run Integrity Checks (shipped, H-4b) verify the internal
+  consistency of a committed Last Run — Sources & Uses, balance-sheet
+  reconciliation, senior debt rollforward, debt-service/interest consistency,
+  CFADS/DSCR integrity, unfunded-cash deficit, DSCR sculpting feasibility,
+  and sponsor-return/XIRR input consistency — recomputed from evidence
+  recorded at commit; they do not validate external assumptions and are not
+  economic truth.
 - **Verified Assets** — composed records that bind model economics, a Run Certificate, Radar
   evidence and protocol metadata into a single verifiable asset record. V1 assets currently
   render as MODEL_ONLY because no canonical model↔market identity mapping is yet established
@@ -230,13 +258,13 @@ python tools/build_public_validation_corpus.py \
   --output artifacts/finco-public-validation-corpus.json
 ```
 
-FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-LIVE V2 is live with a reviewed 13-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META). Signed Run Certificate V1 (Ed25519), Model Trust Pack UX V1, Verified Assets V1, API v1.1, and MCP V1 are implemented. The $FINCO token is not yet launched. Blockchain anchoring remains future work.
+FINCO Model is the current RWA infrastructure modelling surface. FINCO Radar R-LIVE V2 is live with a reviewed 13-asset surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META). Signed Run Certificate V1 (Ed25519 — implemented; issuance requires a correctly configured signing key; public trust-key distribution and a public verifier are not yet complete), Model Trust Pack UX V1, Verified Assets V1, API v1.1, and MCP V1 are implemented. The $FINCO token is not yet launched. Blockchain anchoring remains future work.
 
 ## Safety boundaries
 
 - deterministic engine outputs are not investment, tax, legal, or credit advice;
 - synthetic reference markets are illustrative and are not jurisdictional tax templates;
-- Solar and Wind are mature production modelling workflows; Data Center is an implemented and vertically validated modelling workflow (A3.1 complete); EV Charging is an implemented modelling workflow (A3.2 complete); Storage remains limited/reference scope (reference viewable; working-copy runtime not released); further asset-class modules are roadmap items until implemented and validated;
+- Solar and Wind are mature production modelling workflows; Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check; EV Charging is an implemented modelling workflow (A3.2 complete); Storage remains limited/reference scope (reference viewable; working-copy runtime not released); further asset-class modules are roadmap items until implemented and validated;
 - FINCO Model does not require wallet signing, custody, swaps, approvals, or private keys;
 - Radar and Protocol verification remain architecturally separate from the RWA infrastructure modelling engine;
 - a deterministic evidence digest is not proof that external market data is true and is not an on-chain notarization by itself;
@@ -256,10 +284,10 @@ The research roadmap includes financial digital twins, cross-market price truth,
 
 Sanitized corporate codebase under active development and prepared for controlled public release.
 
-**Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented and vertically validated modelling workflow (A3.1 complete). EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
+**Model:** Solar and Wind are mature production modelling workflows. Data Center is an implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check. EV Charging is an implemented modelling workflow (A3.2 complete, canonical reference and working-copy runtime supported). Storage remains limited/reference scope (reference viewable; working-copy runtime not released).
 
 **Radar / R-LIVE:** R-LIVE V2 is live — registry-driven 13-asset reviewed surface (AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD, DELL, SNAP, INTC, MSFT, META) on Robinhood Chain with 300-second freshness gate, source-component freshness clocks, USDG/USD Chainlink conversion, collection-time history, 1h/24h ranges, STALE last-available UX, and 6 public read-only API routes. Global Radar lands on R-LIVE. Wide admission scan environment-blocked (SCAN_COMPLETE = NO); 13 assets are source-proven.
 
-**Protocol:** Signed Run Certificate V1 (Ed25519) is live. Model Trust Pack UX V1 (7-section read-only evidence surface) is live. Verified Assets V1 (currently MODEL_ONLY) are active. API v1.1 institutional surface and MCP V1 read-only agent interface are live.
+**Protocol:** Signed Run Certificate V1 (Ed25519) is implemented; issuance is available when `FINCO_RUN_CERT_SIGNING_KEY` is correctly configured, and fails closed without it. Public trust-key distribution and a public verifier are not yet complete, and blockchain anchoring is not implemented. Model Trust Pack UX V1 (7-section read-only evidence surface) is live. Verified Assets V1 (currently MODEL_ONLY) are active. API v1.1 institutional surface and MCP V1 read-only agent interface are live.
 
-**Token / Access:** B2.2 token entitlement and B2.3 usage metering are implemented. The $FINCO token is not yet launched. Public deployment, live token launch, and blockchain anchoring remain roadmap functionality.
+**Token / Access:** B2.2 token entitlement is implemented. The B2.3 usage-metering ledger exists but is not yet wired into all production resource-usage paths — production metering coverage is not LIVE. The $FINCO token is not yet launched. Public deployment, live token launch, and blockchain anchoring remain roadmap functionality.
