@@ -58,8 +58,21 @@ Repayment method (Issue 3 — Option B):
 Non-convergence → termination_reason=MAX_ITERATIONS_REACHED; result has
 is_authoritative=False.
 
-GEARING_CAP: D = eligible_project_cost × maximum_gearing; level-principal amort;
+GEARING_CAP: D = eligible_project_cost × maximum_gearing; level-principal amort (DEFAULT);
 one iteration (no sizing loop). Tax feedback computed once; finalisation applied.
+
+GEARING_CAP + gearing_cap_repayment_method=DSCR_SCULPTED (M-6, explicit opt-in):
+D is STILL eligible_project_cost × maximum_gearing and is never resized to DSCR capacity (that
+would be COMBINED_MINIMUM). The fixed balance is sculpted over the FULL repayment tenor with the
+canonical DSCR primitives (per-period DSCR targets, debt-service availability, rolling-balance
+interest, day count): every period uses the same fraction k of the DSCR-allowed debt service, with
+k the smallest value that repays the balance exactly at maturity (achieved DSCR = target / k). The
+plain DSCR-sculpted roll would instead retire a balance below DSCR capacity EARLY. Because interest
+feeds tax and CFADS and CFADS drives principal, a CFADS fixed point (maximum_iterations,
+deterministic) is solved at fixed D, then the standard finalisation handshake is applied. A balance
+the CFADS cannot repay inside CFADS / target_dscr fails closed as DSCR_SCULPTING_INFEASIBLE (never
+authoritative): no resizing, no capitalisation, no maturity extension, no DSCR relaxation, no
+invented CFADS.
 
 COMBINED_MINIMUM: run DSCR sizing loop to convergence, then apply gearing cap and
 take the minimum; forward roll with DSCR-sculpted repayment at that final D.
@@ -81,7 +94,11 @@ from financial_engine.senior_debt.interest import (
     period_interest,
 )
 from financial_engine.senior_debt.models import SeniorDebtSchedules, SolverDiagnostics
-from financial_engine.senior_debt.policy import SeniorDebtPolicy, SeniorDebtSizingMode
+from financial_engine.senior_debt.policy import (
+    GearingCapRepaymentMethod,
+    SeniorDebtPolicy,
+    SeniorDebtSizingMode,
+)
 from financial_engine.senior_debt.sculpting import (
     PeriodDebtRow,
     build_explicit_schedule,
@@ -103,6 +120,9 @@ TaxCfadsCallable = Callable[
 
 # Maximum finalisation sub-loop iterations to enforce interest/CFADS self-consistency.
 _MAX_FINALISATION_ITERATIONS = 20
+
+# Fixed bisection length for the full-tenor debt-service scale (M-6): 2^-80 resolution, deterministic.
+_FULL_TENOR_BISECTIONS = 80
 
 
 # ---------------------------------------------------------------------------
@@ -287,13 +307,19 @@ def _forward_roll(
     explicit_by: dict[int, float] | None = None,
     dscr_map: dict[int, float] | None = None,
     availability_map: dict[int, float] | None = None,
+    debt_service_scale: float = 1.0,
 ) -> tuple[PeriodDebtRow, ...]:
     """Single-pass authoritative forward roll.
 
     Interest is computed from the rolling balance — the identity of this function.
     For dscr_sculpted repayment:
       allowed_ds[p] = max(0, CFADS[p] / resolved_dscr[p]) * resolved_availability[p]
+                      * debt_service_scale
       principal[p]  = max(0, min(allowed_ds[p] - interest[p], balance[p]))
+
+    debt_service_scale is 1.0 for every canonical caller (multiplying by 1.0 is exact, so existing
+    results are bit-identical). Only GEARING_CAP + DSCR_SCULPTED (M-6) passes a scale in (0, 1]
+    to spread a fixed, gearing-sized balance over the full tenor.
     """
     rows: list[PeriodDebtRow] = []
     balance = opening_keur
@@ -322,6 +348,7 @@ def _forward_roll(
             target_dscr = dscr_map[idx] if dscr_map is not None else policy.target_dscr
             availability = availability_map[idx] if availability_map is not None else 1.0
             ds = max(0.0, cfads / target_dscr) * availability if target_dscr > 0 else 0.0
+            ds = ds * debt_service_scale
             principal = max(0.0, ds - interest)
             principal = min(principal, balance)  # safety floor
         elif repayment_method_str == "level_principal":
@@ -372,8 +399,13 @@ def _finalise_authoritative(
     explicit_by: dict[int, float] | None = None,
     dscr_map: dict[int, float] | None = None,
     availability_map: dict[int, float] | None = None,
+    roll: "Callable[[dict[int, float]], tuple[PeriodDebtRow, ...]] | None" = None,
 ) -> tuple[tuple[PeriodDebtRow, ...], dict[int, float], dict[int, float], bool]:
     """After outer loop convergence, ensure schedule is self-consistent with tax/CFADS.
+
+    roll (optional): maps a CFADS dict to the schedule rows. Default None = the canonical
+    _forward_roll at fixed D (every existing caller). GEARING_CAP + DSCR_SCULPTED supplies its
+    full-tenor roll so the same handshake applies to it unchanged.
 
     Invariant by construction:
       The last tax_cfads_fn call receives candidate_interest (from candidate_rows).
@@ -386,22 +418,23 @@ def _finalise_authoritative(
     rel_tol = policy.convergence_relative_tolerance
     prev_cash_tax: dict[int, float] = {idx: 0.0 for idx in period_indices}
 
-    for _ in range(_MAX_FINALISATION_ITERATIONS):
-        # candidate_rows: schedule with current CFADS at debt D
-        candidate_rows = _forward_roll(
+    def _roll(cf: dict[int, float]) -> tuple[PeriodDebtRow, ...]:
+        if roll is not None:
+            return roll(cf)
+        return _forward_roll(
             D, period_indices, rate_map, period_start_end,
-            cfads_by, policy, repayment_str, explicit_by=explicit_by,
+            cf, policy, repayment_str, explicit_by=explicit_by,
             dscr_map=dscr_map, availability_map=availability_map,
         )
+
+    for _ in range(_MAX_FINALISATION_ITERATIONS):
+        # candidate_rows: schedule with current CFADS at debt D
+        candidate_rows = _roll(cfads_by)
         # Last tax call with candidate interest — new_cfads is RESPONSE to candidate_rows
         candidate_interest = {r.period_index: r.interest_keur for r in candidate_rows}
         new_cfads, new_cash_tax = tax_cfads_fn(candidate_interest)
         # verify_rows: what the schedule looks like if we use the response CFADS
-        verify_rows = _forward_roll(
-            D, period_indices, rate_map, period_start_end,
-            new_cfads, policy, repayment_str, explicit_by=explicit_by,
-            dscr_map=dscr_map, availability_map=availability_map,
-        )
+        verify_rows = _roll(new_cfads)
         # Converged when candidate_rows ≈ verify_rows across ALL fields (same contract as outer loop)
         if _schedules_converged(
             candidate_rows, verify_rows,
@@ -417,11 +450,7 @@ def _finalise_authoritative(
         cfads_by = new_cfads
 
     # Exhausted finalisation iterations — not self-consistent
-    candidate_rows = _forward_roll(
-        D, period_indices, rate_map, period_start_end,
-        cfads_by, policy, repayment_str, explicit_by=explicit_by,
-        dscr_map=dscr_map, availability_map=availability_map,
-    )
+    candidate_rows = _roll(cfads_by)
     return candidate_rows, cfads_by, prev_cash_tax, False
 
 
@@ -601,6 +630,7 @@ def solve_senior_debt(
         return _solve_gearing(
             policy=policy, inputs=inputs, period_indices=period_indices,
             period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
+            dscr_map=dscr_map, availability_map=availability_map,
         )
 
     if mode == SeniorDebtSizingMode.DSCR_SCULPTED:
@@ -776,9 +806,21 @@ def _solve_gearing(
     period_start_end: dict[int, tuple],
     rate_map: dict[int, float],
     tax_cfads_fn: TaxCfadsCallable,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> SeniorDebtSchedules:
-    """Single-pass gearing-cap sizing (level-principal amortization) with finalisation."""
+    """Gearing-cap sizing with finalisation.
+
+    Default (LEVEL_PRINCIPAL): single pass, level-principal amortisation. Opt-in
+    (DSCR_SCULPTED, M-6): same fixed debt size, DSCR-sculpted amortisation.
+    """
     assert policy.maximum_gearing is not None
+    if policy.gearing_cap_repayment_method is GearingCapRepaymentMethod.DSCR_SCULPTED:
+        return _solve_gearing_sculpted(
+            policy=policy, inputs=inputs, period_indices=period_indices,
+            period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
+            dscr_map=dscr_map, availability_map=availability_map,
+        )
     D = inputs.eligible_project_cost_keur * policy.maximum_gearing
 
     # Initial roll with zero CFADS → get interest for tax feedback
@@ -809,6 +851,142 @@ def _solve_gearing(
         binding="GEARING", termination_reason="CONVERGED",
     )
     return _to_schedules(final_rows, D, "GEARING", diag)
+
+
+# ---------------------------------------------------------------------------
+# GEARING_CAP + DSCR_SCULPTED repayment (M-6, explicit opt-in)
+# ---------------------------------------------------------------------------
+
+def _maturity_balance(rows: tuple[PeriodDebtRow, ...], policy: SeniorDebtPolicy) -> float:
+    """Closing balance at the last period inside the repayment window (maturity)."""
+    window = [r for r in rows if r.period_index <= policy.maturity_period_index]
+    return window[-1].closing_keur if window else 0.0
+
+
+def _full_tenor_scale(
+    D: float,
+    period_indices: tuple[int, ...],
+    rate_map: dict[int, float],
+    period_start_end: dict[int, tuple],
+    cfads_by: dict[int, float],
+    policy: SeniorDebtPolicy,
+    dscr_map: dict[int, float] | None,
+    availability_map: dict[int, float] | None,
+) -> float:
+    """Smallest uniform debt-service scale k in (0, 1] that repays D exactly at maturity.
+
+    The canonical DSCR-sculpted roll pays ALL the debt service the DSCR allows, which retires a
+    balance smaller than the DSCR capacity EARLY. Sculpting a gearing-sized balance over the FULL
+    tenor therefore uses a fraction k of the allowed debt service in every period:
+
+        allowed_ds[p] = max(0, CFADS[p] / DSCR[p]) * availability[p] * k      (achieved DSCR = target / k)
+
+    Maturity balance is non-increasing in k (more service never leaves more debt), so the smallest k
+    that clears the balance is found by a fixed-length bisection — deterministic, no tolerance loop.
+    k == 1.0 when even full debt service cannot repay D (the infeasibility / balloon rules then apply:
+    the target DSCR is never relaxed and the maturity is never extended).
+    """
+    if D <= 0.0:
+        return 1.0
+
+    def cleared(k: float) -> bool:
+        rows = _forward_roll(
+            D, period_indices, rate_map, period_start_end, cfads_by, policy, "dscr_sculpted",
+            dscr_map=dscr_map, availability_map=availability_map, debt_service_scale=k,
+        )
+        return _maturity_balance(rows, policy) == 0.0
+
+    if not cleared(1.0):
+        return 1.0
+    lo, hi = 0.0, 1.0           # cleared(lo) is False (D > 0 and nothing paid), cleared(hi) is True
+    for _ in range(_FULL_TENOR_BISECTIONS):
+        mid = 0.5 * (lo + hi)
+        if cleared(mid):
+            hi = mid
+        else:
+            lo = mid
+    return hi
+
+
+def _solve_gearing_sculpted(
+    *,
+    policy: SeniorDebtPolicy,
+    inputs: "SeniorDebtInputs",
+    period_indices: tuple[int, ...],
+    period_start_end: dict[int, tuple],
+    rate_map: dict[int, float],
+    tax_cfads_fn: TaxCfadsCallable,
+    dscr_map: dict[int, float] | None,
+    availability_map: dict[int, float] | None,
+) -> SeniorDebtSchedules:
+    """Gearing-sized debt sculpted over the full repayment tenor (M-6, explicit opt-in).
+
+    The opening debt is FIXED at eligible_project_cost × maximum_gearing for the whole solve.
+    Only the CFADS (through the interest → cash tax feedback) is iterated:
+
+      rows      = roll(D, CFADS_k)        # full-tenor DSCR sculpting, rolling-balance interest
+      CFADS_k+1 = tax_cfads_fn(interest of rows)
+      converged when rows(CFADS_k) ≈ rows(CFADS_k+1) on every tracked field (abs OR rel)
+
+    then the standard finalisation handshake runs (with the same roll), and the authoritative
+    result is accepted only if the schedule is serviceable (debt service ≤ allowed at every
+    repayment period; terminal balance repaid unless permit_terminal_balloon). Otherwise
+    DSCR_SCULPTING_INFEASIBLE.
+    """
+    assert policy.maximum_gearing is not None
+    D = inputs.eligible_project_cost_keur * policy.maximum_gearing
+    max_iter = policy.maximum_iterations
+    abs_tol = policy.convergence_tolerance_keur
+    rel_tol = policy.convergence_relative_tolerance
+
+    def _roll(cf: dict[int, float]) -> tuple[PeriodDebtRow, ...]:
+        k = _full_tenor_scale(D, period_indices, rate_map, period_start_end, cf, policy,
+                              dscr_map, availability_map)
+        return _forward_roll(
+            D, period_indices, rate_map, period_start_end, cf, policy, "dscr_sculpted",
+            dscr_map=dscr_map, availability_map=availability_map, debt_service_scale=k,
+        )
+
+    def _diag(reason: str, iteration: int, max_abs_diff: float) -> SolverDiagnostics:
+        return _make_diag(
+            converged=(reason == "CONVERGED"), iteration=iteration,
+            initial_guess=D, final_d=D, max_abs_diff=max_abs_diff,
+            binding="GEARING", termination_reason=reason,
+        )
+
+    cfads_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
+    cash_tax_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
+    max_abs_diff = float("inf")
+
+    for iteration in range(1, max_iter + 1):
+        rows = _roll(cfads_by)
+        new_cfads, new_cash_tax = tax_cfads_fn({r.period_index: r.interest_keur for r in rows})
+        new_rows = _roll(new_cfads)
+        max_abs_diff = _compute_max_abs_diff(
+            rows, new_rows, cfads_by, new_cfads, cash_tax_by, new_cash_tax, D, D,
+        )
+        if _schedules_converged(
+            rows, new_rows, cfads_by, new_cfads, cash_tax_by, new_cash_tax, D, D,
+            abs_tol, rel_tol,
+        ):
+            final_rows, final_cfads, _final_tax, fin_ok = _finalise_authoritative(
+                D, period_indices, rate_map, period_start_end, new_cfads, policy,
+                "dscr_sculpted", tax_cfads_fn,
+                dscr_map=dscr_map, availability_map=availability_map, roll=_roll,
+            )
+            if not fin_ok:
+                return _to_schedules(final_rows, D, "GEARING",
+                                     _diag("FINALISATION_NOT_CONVERGED", iteration, max_abs_diff))
+            if _dscr_sculpting_infeasibility(
+                final_rows, final_cfads, policy, dscr_map, availability_map,
+            ) is not None:
+                return _to_schedules(final_rows, D, "GEARING",
+                                     _diag(DSCR_SCULPTING_INFEASIBLE, iteration, max_abs_diff))
+            return _to_schedules(final_rows, D, "GEARING", _diag("CONVERGED", iteration, max_abs_diff))
+        cfads_by, cash_tax_by = new_cfads, new_cash_tax
+
+    return _to_schedules(_roll(cfads_by), D, "GEARING",
+                         _diag("MAX_ITERATIONS_REACHED", max_iter, max_abs_diff))
 
 
 # ---------------------------------------------------------------------------
