@@ -685,21 +685,10 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # permitting the already-approved equity sub-package, without opening an
     # unbounded whitelist that would let unknown future paths bypass the gate.
     import subprocess
-    # Baseline: the live origin/main tip when resolvable.  The legacy pinned
-    # P3 base predates the reviewed R-LIVE merges on main and mis-flags them
-    # under a full-history checkout (independently demonstrated stale-pin
-    # defect); the pin is kept only as a shallow-checkout fallback, and a
-    # missing baseline means skip (history unavailable — never a violation).
-    base = "aca630821ae64dba55c35ae12ae5c48401b6aa67"
-    probe = subprocess.run(
-        ["git", "rev-parse", "--verify", "origin/main"],
-        capture_output=True, text=True,
-    )
-    if probe.returncode == 0:
-        base = probe.stdout.strip()
     try:
         changed = subprocess.run(
-            ["git", "diff", "--name-only", base, "HEAD"],
+            ["git", "diff", "--name-only",
+             "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
             capture_output=True, text=True, check=True).stdout.splitlines()
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("base commit unavailable in shallow checkout")

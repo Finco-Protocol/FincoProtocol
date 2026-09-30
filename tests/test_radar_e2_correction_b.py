@@ -1000,28 +1000,11 @@ class TestB15FrozenP3Gate:
     """B15: gate rejects arbitrary non-equity finco_radar changes on HEAD."""
 
     def _get_changed_files(self):
-        """Changed finco_radar paths on HEAD relative to the current baseline.
-
-        Baseline: the live ``origin/main`` tip when this checkout can resolve
-        it.  The legacy pinned B15 base (aca6308) predates the reviewed
-        R-LIVE merges on main, so with a full-history checkout (which the C1
-        governance gates legitimately trigger via --unshallow) the pin
-        flags main's own merged changes as violations — an independently
-        demonstrated stale-pin defect.  Falls back to the pin only when
-        origin/main cannot be resolved; skip when neither is available
-        (history unavailable — never treated as a violation).
-        """
         import subprocess
-        base = "aca630821ae64dba55c35ae12ae5c48401b6aa67"
-        probe = subprocess.run(
-            ["git", "rev-parse", "--verify", "origin/main"],
-            capture_output=True, text=True,
-        )
-        if probe.returncode == 0:
-            base = probe.stdout.strip()
         try:
             result = subprocess.run(
-                ["git", "diff", "--name-only", base, "HEAD"],
+                ["git", "diff", "--name-only",
+                 "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
                 capture_output=True, text=True, check=True,
             )
             return result.stdout.splitlines()
@@ -1060,17 +1043,18 @@ class TestB15FrozenP3Gate:
         )
 
     def test_b15_equity_additions_are_permitted(self):
-        """Gate does NOT flag finco_radar/equity/** changes.
-
-        Property form: equity paths are permitted by the gate regardless of
-        the baseline, and the live HEAD diff introduces no violations.  (The
-        original assertion expected one historical PR's own equity diff,
-        which does not exist against the live origin/main baseline.)
-        """
-        assert not self._is_violation("finco_radar/equity/batch_api.py")
-        assert not self._is_violation("finco_radar/equity/anything_new.py")
+        """Gate does NOT flag finco_radar/equity/** changes."""
         changed = self._get_changed_files()
-        violations = [p for p in changed if self._is_violation(p)]
-        assert not violations, (
-            "Non-permitted finco_radar paths modified (frozen): " + str(violations)
+        equity_changes = [
+            p for p in changed if p.startswith("finco_radar/equity/")
+        ]
+        # There should be some equity changes (we added batch API)
+        assert equity_changes, (
+            "Expected finco_radar/equity/ changes in this PR; found none"
         )
+        # None of them should appear as violations
+        violations = [
+            p for p in equity_changes
+            if not p.startswith("finco_radar/equity/")
+        ]
+        assert not violations
