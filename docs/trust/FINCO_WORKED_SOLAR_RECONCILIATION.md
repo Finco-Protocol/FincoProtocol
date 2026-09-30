@@ -128,17 +128,18 @@ The master stream reuses the already-shipped P1.2/P1.3 evidence rather than impl
 | Serialized OPEX vs runtime | P1.2 two-sided workbook readback + corruption test | PASS |
 | Serialized returns vs runtime | P1.2 Returns readback and corruption tests | PASS |
 | Senior debt authority | P1.2 pins current 26,983.33 kEUR clean authority | PASS |
+| Debt roll-forward | P1.3 Solar debt schedule: prior closing/opening less principal reconciles to closing balance within explicit tolerance | PASS |
+| Cash movement | P1.3 clean PF cash-waterfall identity + C3 `cash_flow_status=OK`; construction funding carries its own audited Sources & Uses residual | PASS |
+| Balance Sheet | P1.3 Solar clean statement test proves all populated operating-period `balance_check_keur` values within tolerance; C3 only reports OK after complete coverage and identity check | PASS |
+| DSRA funding + movement | master Solar guard binds Project Uses reserve funding to policy evidence/COD funding and proves per-period opening + top-up - draw - release = closing | PASS when exact-head master guard passes |
 | Working Copy edit vs Last Run | P1.3 real persisted run: draft mutation leaves historical hash/snapshot/engine version/summary unchanged | PASS |
 | XLSX same Last Run identity | P1.3 canonical Last Run XLSX: composite hash + run-bound engine version + Project IRR trace to the same committed run | PASS |
 | Cross-run identity confusion | P1.3 committed Solar/Wind corruption guard | PASS |
-| Debt schedule total vs runtime total debt service | XLSX Reconciliation sheet uses period debt table vs runtime total where available | PASS where authority available |
-| Project cash flows -> Project return | clean project-return authority + P1.2 serialized Project IRR trace | PASS for published return metric |
-| Sponsor cash flows -> sponsor return | gated sponsor-return authority + P1.2 Share-capital IRR / Total Sponsor XIRR trace | PASS for published return metrics |
-| Cash-statement movement | clean C3 statement authority exists, but current institutional XLSX does not bind clean statements into the export bundle | NOT_AVAILABLE in canonical XLSX |
-| Balance Sheet balances | clean C3 has typed BS status / residual checks, but current institutional XLSX clean path intentionally leaves statements unavailable | NOT_AVAILABLE in canonical XLSX |
-| DSRA movement in institutional XLSX | cash-DSRA authority is typed in G2C/C3, but no dedicated two-sided XLSX DSRA movement reconciliation is currently claimed | PARTIAL |
+| Project cash flows -> Project return | clean project-return authority + P1.2 serialized Project IRR trace | PASS |
+| Sponsor cash flows -> sponsor return | gated sponsor-return authority + P1.2 Share-capital IRR / Total Sponsor XIRR trace | PASS |
+| Clean statements rendered inside institutional XLSX | Current workbook clean bundle intentionally does not bind C3 statements | NOT_AVAILABLE — presentation limitation only |
 
-The last three rows are deliberate non-PASS states. This dossier must not upgrade them to PASS without actual binding/reconciliation evidence.
+The last row does not negate the runtime statement reconciliation above. It means the current institutional XLSX does not yet serialize the already-existing clean C3 statement package.
 
 ## 6. Sources & Uses proof
 
@@ -155,8 +156,15 @@ This is the key institutional distinction: a balanced workbook is not evidence i
 The effective cash-DSRA requirement is resolved by the shared reserve-policy authority. For `CASH_DSRA`, the same resolved amount is carried as:
 
 - Project Uses reserve funding;
-- the clean cash-DSRA requirement;
+- clean-run `initial_dsra_funding_keur` policy evidence;
+- the non-construction FC/COD funding use and its source split;
 - opening operating cash-DSRA balance.
+
+The master Solar guard also checks the clean G2C period identity:
+
+`opening DSRA + top-up - draw - release = closing DSRA`
+
+and period-to-period continuity of the DSRA balance.
 
 Because the reserve amount enters Total Project Uses, the funding source is determined inside the canonical project funding stack. The Trust Pack therefore avoids the stale blanket phrase “sponsor-funded DSRA.”
 
@@ -164,13 +172,25 @@ For `DSRF`, the Project Uses reserve amount is zero; DSRF sufficiency is separat
 
 ## 8. Debt roll-forward / sculpting evidence
 
-Senior debt is produced by the clean financing authority, not reconstructed by the export. The workbook debt table and runtime total debt-service reconciliation provide presentation-level traceability, while the underlying senior-debt engine owns opening balance, interest, principal and closing balance.
+Senior debt is produced by the clean financing authority, not reconstructed by the export. P1.3 independently checks the Solar operating debt roll-forward from the runtime debt schedule, while the institutional workbook debt table reconciles period debt service to the runtime total where available.
 
 The critical fail-closed invariant is already part of the Finance Integrity baseline: sculpting may not report `CONVERGED` when CFADS cannot fund the required interest / target debt service.
 
-This master stream does not add a second debt roll-forward formula in documentation.
+This master stream does not add a second debt calculation in documentation.
 
-## 9. Project and sponsor return basis
+## 9. Cash and Balance Sheet evidence
+
+The clean production run owns one downstream C3 `financial_statements_result`. P1.3 consumes the runtime-presented version of that same clean authority and proves, for the canonical Solar case:
+
+- the PF cash-waterfall operating identity `revenue cash - OPEX cash = EBITDA cash` across the statement periods;
+- the senior debt roll-forward;
+- the Balance Sheet residual stays within the explicit tolerance for every populated operating period.
+
+The C3 assembler itself gates `balance_sheet_status=OK` on complete operating-period coverage, availability of required authorities and a real zero-residual identity. It does not insert a balancing plug.
+
+This is the evidence basis for overall `CASH_RECONCILIATION = PASS` and `BALANCE_SHEET_RECONCILIATION = PASS` once the unchanged P1.3 suite is green on the exact PR head.
+
+## 10. Project and sponsor return basis
 
 ### Project return
 
@@ -194,7 +214,7 @@ All sponsor funding/receipts exactly once: equity contributions, SHL contributio
 
 All three dated return families use the current XIRR date-axis convention rather than a simple equal-period IRR assumption.
 
-## 10. One run — multiple surfaces
+## 11. One run — multiple surfaces
 
 For a persisted working project, the intended institutional invariant is:
 
@@ -209,7 +229,7 @@ P1.3 already proves the runtime↔XLSX binding using a real V2 run commit, persi
 
 A factory-reference workbook is a different evidence class (`FACTORY_REFERENCE`) and must not be described as a persisted user Last Run.
 
-## 11. Working Copy mutation test
+## 12. Working Copy mutation test
 
 Existing P1.3 coverage performs the required same-project journey:
 
@@ -223,25 +243,21 @@ Existing P1.3 coverage performs the required same-project journey:
 
 The master Trust Pack treats this as the authoritative Last Run / Working Copy proof; it does not duplicate the database journey under a new fixture.
 
-## 12. Statement limitation discovered by this master audit
+## 13. Institutional XLSX statement-surface limitation
 
-`run_clean_production()` already assembles `CleanProductionRun.financial_statements_result` once. However, the current institutional workbook builder sets its clean-path `statements` bundle field to unavailable instead of binding that existing C3 result. The XLSX P&L, Tax, Cash Flow and Balance Sheet writers therefore intentionally emit unavailable state on the clean path.
+`run_clean_production()` already assembles `CleanProductionRun.financial_statements_result` once. However, the current institutional workbook builder does not bind that clean C3 result into its `WorkbookExportBundle`; the XLSX P&L, Tax, Cash Flow and Balance Sheet writers therefore emit unavailable state on the clean path.
 
-This is a presentation/binding gap, not permission to construct new statement maths. Until an app-layer correction binds the existing clean C3 result and reconciliation evidence proves it, the master stream records:
+This is a **presentation/binding limitation**, not a missing runtime statement authority and not a reason to downgrade the already-proven clean runtime Balance Sheet/cash reconciliation. It must be closed later by wiring the existing C3 result through the app-layer exporter, preserving typed unavailable statuses where applicable. No new statement maths or balancing plug belongs in this Trust Pack PR.
 
-- `CASH_RECONCILIATION = PARTIAL / XLSX NOT_AVAILABLE`;
-- `BALANCE_SHEET_RECONCILIATION = NOT_AVAILABLE`.
+`XLSX_STATEMENT_TRACE = NOT_AVAILABLE`
 
-No completion report may state PASS for those gates at the current base SHA.
-
-## 13. Reproduction map
+## 14. Reproduction map
 
 Focused evidence suites already in the repository:
 
 - `tests/test_p1_1_institutional_trust_pack.py` — methodology/authority registry and conventions;
 - `tests/test_p1_2_xlsx_export_reconciliation.py` — institutional XLSX, two-sided reconciliation, serialized readback, run identity;
-- `tests/test_p1_3_institutional_validation.py` — real Last Run journey, Working Copy separation, same-run XLSX evidence;
+- `tests/test_p1_3_institutional_validation.py` — Balance Sheet, debt roll-forward, cash-waterfall identity, real Last Run journey, Working Copy separation, same-run XLSX evidence;
 - `tests/test_model_trust_pack_ux.py` — read-only Trust Pack composition/browser acceptance;
-- Finance Integrity regression tests — corrected Sources & Uses, debt sizing/sculpting and return terminology.
-
-The master guard test `tests/test_p1_institutional_trust_pack_master.py` protects the canonical identity, authority links and the explicit non-PASS statement limitation without rerunning a parallel finance model.
+- Finance Integrity regression tests — corrected Sources & Uses, debt sizing/sculpting and return terminology;
+- `tests/test_p1_institutional_trust_pack_master.py` — canonical identity/authority guards plus Solar DSRA funding and roll-forward reconciliation.
