@@ -315,6 +315,17 @@ def _build_persisted_bundle(
         input_composite_hash=_input_composite_hash,
         engine_version=_engine_version_str,
         senior_debt_keur_authority=_senior_debt_auth,
+        sources_uses_authority=(
+            {
+                "total_uses_keur": float(result_adapter.total_project_uses_keur),
+                "derived_shl_cash_keur": float(result_adapter.derived_shl_cash_keur),
+                "sponsor_equity_keur": float(result_adapter.sponsor_equity_sources_keur),
+            }
+            if (result_adapter.total_project_uses_keur is not None
+                and result_adapter.derived_shl_cash_keur is not None
+                and result_adapter.sponsor_equity_sources_keur is not None)
+            else None
+        ),
     )
 
 

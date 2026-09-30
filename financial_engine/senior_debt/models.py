@@ -21,6 +21,8 @@ class SolverDiagnostics:
       MAX_ITERATIONS_REACHED     : iteration cap hit before convergence
       INVALID_INPUT              : input validation failure
       NO_DEBT_CAPACITY           : zero sculpted capacity (CFADS too low)
+      DSCR_SCULPTING_INFEASIBLE  : the forward schedule cannot fund its own debt
+                                   service inside CFADS / target_dscr (never authoritative)
       TERMINAL_BALANCE_NOT_ALLOWED : residual terminal balance and balloon prohibited
       INPUT_SOURCE_BLOCKED       : baseline blocked (opening-loss unresolved)
     """

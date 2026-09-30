@@ -32,7 +32,7 @@ Behavior is preserved exactly as it was before Phase 53I-2.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
@@ -240,6 +240,8 @@ class WorkspaceStateRecord:
     # F07-B Correction B: run-bound composite identity for canonical export.
     last_runtime_composite_hash: Optional[str] = None
     last_runtime_identity: Optional[dict] = None  # decoded last_runtime_identity_json
+    # H-4b: Run Integrity evidence recorded at commit ({} for Last Runs committed earlier).
+    last_integrity_evidence: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_row(cls, row) -> "WorkspaceStateRecord":
@@ -271,6 +273,7 @@ class WorkspaceStateRecord:
             any_run_committed=bool(row["any_run_committed"]) if "any_run_committed" in row.keys() else False,
             last_runtime_composite_hash=row["last_runtime_composite_hash"] if "last_runtime_composite_hash" in row.keys() else None,
             last_runtime_identity=_from_json(row["last_runtime_identity_json"] if "last_runtime_identity_json" in row.keys() else None, None),
+            last_integrity_evidence=_from_json(row["last_integrity_evidence_json"] if "last_integrity_evidence_json" in row.keys() else "{}", {}),
         )
 
 

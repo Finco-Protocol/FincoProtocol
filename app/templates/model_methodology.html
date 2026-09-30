@@ -653,8 +653,8 @@ llcr_t = Σ[ cfads_s / (1 + all_in_rate)^(s−t+1)  for s in remaining_debt_life
         <div class="pmeth-callout pmeth-callout--info">
           <strong>Sizing vs amortization — important distinction.</strong>
           For the Solar Reference, the binding size constraint is <strong>GEARING</strong>:
-          the loan amount is capped at 75% × 33,000 = 24,750 kEUR, because the DSCR capacity
-          (36,113 kEUR) exceeds the gearing cap. Once the loan size is set by the gearing cap,
+          the loan amount is capped at 75% × 35,978 (Total Project Uses) = 26,983 kEUR, because the DSCR capacity
+          (36,238 kEUR) exceeds the gearing cap. Once the loan size is set by the gearing cap,
           the amortization schedule is still determined by <strong>DSCR-sculpted</strong>
           repayment (FLAT_DSCR_SCULPTED mode): each period's principal repayment is sized so
           that CFADS / debt service = target DSCR. Gearing constrains the <em>size</em>;
@@ -803,7 +803,7 @@ net_ucf[t] = cf_operating[t] + terminal_component_t − cf_construction[t]
 construction_cf[t] = −hard_capex_draw_t
 operating_cf[t]    = ebitda_t − unlevered_tax_t   <span class="comment"># no debt service</span>
 project_irr = xirr(construction_cf + operating_cf, dates)
-<span class="comment"># Solar reference: 11.56%</span>
+<span class="comment"># Solar reference: 11.77%</span>
         </div>
 
         <h3>2. Equity IRR — legal equity only (EQUITY_ONLY)</h3>
@@ -813,7 +813,7 @@ project_irr = xirr(construction_cf + operating_cf, dates)
 initial_outflow = share_capital_contributed_keur   <span class="comment"># 500 kEUR for Solar ref</span>
 periodic_cf     = equity_distributions_t           <span class="comment"># post-senior, post-SHL</span>
 equity_irr = xirr(−initial_outflow + periodic_cf, dates)
-<span class="comment"># Solar reference: 50.47%  (leveraged; SHL excluded from this metric)</span>
+<span class="comment"># Solar reference: 45.95%  (leveraged; SHL excluded from this metric)</span>
         </div>
 
         <h3>3. Total Sponsor XIRR — all sponsor cash (equity + SHL)</h3>
@@ -822,7 +822,7 @@ equity_irr = xirr(−initial_outflow + periodic_cf, dates)
 contributions = share_capital + shl_cash_contributed   <span class="comment"># 500 + 7,750 = 8,250 kEUR</span>
 receipts      = shl_cash_interest + shl_principal_repaid + equity_distributions
 total_sponsor_xirr = xirr(−contributions + receipts, dates)
-<span class="comment"># Solar reference: 17.90%  (diluted by SHL cost of carry)</span>
+<span class="comment"># Solar reference: 16.61%  (diluted by SHL cost of carry)</span>
         </div>
 
         <span class="pmeth-authority">finco_core/waterfall/waterfall_engine.py</span>
@@ -835,9 +835,9 @@ total_sponsor_xirr = xirr(−contributions + receipts, dates)
               <tr><th>Metric</th><th>Perspective</th><th>Solar Reference</th><th>Cash flow basis</th></tr>
             </thead>
             <tbody>
-              <tr><td>Project IRR</td><td>Unlevered project</td><td class="num">11.56%</td><td>CAPEX outflows + EBITDA − unlevered tax</td></tr>
-              <tr><td>Equity IRR</td><td>Legal equity only</td><td class="num">50.47%</td><td>Share capital contributions &amp; equity distributions</td></tr>
-              <tr class="highlight"><td>Total Sponsor XIRR</td><td>All sponsor cash</td><td class="num">17.90%</td><td>Share capital + SHL contributions &amp; all receipts</td></tr>
+              <tr><td>Project IRR</td><td>Unlevered project</td><td class="num">11.77%</td><td>CAPEX outflows + EBITDA − unlevered tax</td></tr>
+              <tr><td>Equity IRR</td><td>Legal equity only</td><td class="num">45.95%</td><td>Share capital contributions &amp; equity distributions</td></tr>
+              <tr class="highlight"><td>Total Sponsor XIRR</td><td>All sponsor cash</td><td class="num">16.61%</td><td>Share capital + SHL contributions &amp; all receipts</td></tr>
             </tbody>
           </table>
         </div>
@@ -990,11 +990,11 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
           <table class="pmeth-table">
             <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
             <tbody>
-              <tr><td>Total project cost</td><td class="num">33,000 kEUR</td></tr>
-              <tr><td>Senior debt (drawn)</td><td class="num">24,750 kEUR</td></tr>
+              <tr><td>Total Project Uses (33,000 CAPEX + IDC, lender fees, initial DSRA)</td><td class="num">35,978 kEUR</td></tr>
+              <tr><td>Senior debt (drawn)</td><td class="num">26,983 kEUR</td></tr>
               <tr><td>Senior gearing</td><td class="num">75.0%</td></tr>
-              <tr><td>Binding constraint</td><td>GEARING (75% cap)</td></tr>
-              <tr><td>DSCR capacity (headroom)</td><td class="num">36,113 kEUR</td></tr>
+              <tr><td>Binding constraint</td><td>GEARING (75% cap on Total Project Uses)</td></tr>
+              <tr><td>DSCR capacity (headroom)</td><td class="num">36,238 kEUR</td></tr>
               <tr><td>Senior tenor</td><td>15 years</td></tr>
               <tr><td>Senior base rate</td><td class="num">3.0%</td></tr>
               <tr><td>Senior margin</td><td class="num">250 bps</td></tr>
@@ -1013,17 +1013,17 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
         <h3>Engine outputs — Phase 2C base case (P50)</h3>
         <div class="pmeth-metrics">
           <div class="pmeth-metric">
-            <div class="pmeth-metric__value">11.56%</div>
+            <div class="pmeth-metric__value">11.77%</div>
             <div class="pmeth-metric__label">Project IRR</div>
             <div class="pmeth-metric__note">Unlevered XIRR<br/>hard CAPEX + EBITDA − unlevered tax</div>
           </div>
           <div class="pmeth-metric">
-            <div class="pmeth-metric__value">50.47%</div>
+            <div class="pmeth-metric__value">45.95%</div>
             <div class="pmeth-metric__label">Equity IRR</div>
             <div class="pmeth-metric__note">EQUITY_ONLY method<br/>legal equity (500 kEUR) only</div>
           </div>
           <div class="pmeth-metric">
-            <div class="pmeth-metric__value">17.90%</div>
+            <div class="pmeth-metric__value">16.61%</div>
             <div class="pmeth-metric__label">Total Sponsor XIRR</div>
             <div class="pmeth-metric__note">Share capital + SHL<br/>contributions &amp; receipts</div>
           </div>
@@ -1066,16 +1066,16 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
         <h3 id="sources-uses">Sources &amp; uses reconciliation</h3>
         <p>
           Total project costs (Uses) must equal total funding sources (Sources).
-          For the Solar Reference, Sources and Uses balance at 33,000 kEUR:
+          For the Solar Reference, Sources and Uses balance at 35,978 kEUR (33,000 CAPEX plus construction-period IDC, commitment and structuring fees, and the initial DSRA funding):
         </p>
         <div class="pmeth-table-wrap">
           <table class="pmeth-table">
             <thead><tr><th>Sources</th><th>Amount (kEUR)</th><th>Basis</th></tr></thead>
             <tbody>
-              <tr><td>Senior debt</td><td class="num">24,750</td><td>75.0% × 33,000 (gearing cap, binding)</td></tr>
+              <tr><td>Senior debt</td><td class="num">26,983</td><td>75.0% × 35,978 (gearing cap on Total Project Uses, binding)</td></tr>
               <tr><td>Share capital</td><td class="num">500</td><td>FinancingParams.share_capital_keur</td></tr>
-              <tr><td>Shareholder loan (SHL)</td><td class="num">7,750</td><td>FinancingParams.clean_shl_principal_keur</td></tr>
-              <tr class="total"><td>Total Sources</td><td class="num">33,000</td><td>= Total Uses (CAPEX)</td></tr>
+              <tr><td>Shareholder loan (SHL)</td><td class="num">8,494</td><td>Derived residual after senior debt and share capital (no plug: Sources = Uses)</td></tr>
+              <tr class="total"><td>Total Sources</td><td class="num">35,978</td><td>= Total Uses (CAPEX 33,000 + IDC 545 + commitment fee 230 + structuring fee 270 + initial DSRA 1,934)</td></tr>
             </tbody>
           </table>
         </div>
@@ -1111,11 +1111,11 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
               <tr class="highlight"><td>CFADS (base, P50)</td><td class="num">1,445.4</td><td>EBITDA + fin. income − cash tax</td></tr>
               <tr style="background:#fef9c3;"><td>Revenue (bank, P90_10Y)</td><td class="num">1,467.6</td><td>1,572.5 × (1,400 / 1,500) — used for debt sculpting only</td></tr>
               <tr style="background:#fef9c3;"><td>CFADS (bank, P90_10Y)</td><td class="num">1,340.6</td><td>1,467.6 − 127.0 — sculpting input, not reported in statements</td></tr>
-              <tr><td>Senior interest</td><td class="num">457.5</td><td>24,750 × 5.5% × (121/360) — ACT/360 exclusive day-count</td></tr>
-              <tr><td>Senior principal</td><td class="num">659.6</td><td>bank_CFADS / target_DSCR − interest = 1,340.6 / 1.20 − 457.5</td></tr>
+              <tr><td>Senior interest</td><td class="num">498.8</td><td>26,983 × 5.5% × (121/360) — ACT/360 exclusive day-count</td></tr>
+              <tr><td>Senior principal</td><td class="num">618.4</td><td>bank_CFADS / target_DSCR − interest = 1,340.6 / 1.20 − 498.8</td></tr>
               <tr><td>Total senior DS</td><td class="num">1,117.2</td><td>interest + principal</td></tr>
               <tr class="highlight"><td>Achieved DSCR (P50)</td><td class="num">1.29×</td><td>base CFADS / senior DS = 1,445.4 / 1,117.2</td></tr>
-              <tr><td>Closing senior balance</td><td class="num">24,090.4</td><td>24,750.0 − 659.6</td></tr>
+              <tr><td>Closing senior balance</td><td class="num">26,365.0</td><td>26,983.3 − 618.4</td></tr>
             </tbody>
           </table>
         </div>
@@ -1210,8 +1210,8 @@ npv(r) = Σ[ cf_t / (1 + r)^year_frac_t ]
         </p>
         <div class="pmeth-callout pmeth-callout--green">
           <strong>TRUST_PACK_REPRODUCIBILITY_CONTRACT:</strong>
-          <code>run_project("Generic Solar Reference", "Base")</code> → Project IRR = 11.56%,
-          Senior debt = 24,750 kEUR, Total Sponsor XIRR = 17.90%. These values are stable
+          <code>run_project("Generic Solar Reference", "Base")</code> → Project IRR = 11.77%,
+          Senior debt = 26,983 kEUR, Total Sponsor XIRR = 16.61%. These values are stable
           and auditable on any build of the current codebase.
         </div>
       </section>

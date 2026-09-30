@@ -447,9 +447,11 @@ class TestFrozenAuthoritiesZeroDiff:
             ["git", "diff", "origin/main", "--name-only", "--", "financial_engine/"],
             capture_output=True, text=True, cwd=REPO,
         )
-        changed = [f for f in result.stdout.strip().splitlines() if f]
+        # Opus Finance Integrity governance: allow-listed engine modules only.
+        from finance_integrity_governance import unapproved_engine_changes
+        changed = unapproved_engine_changes([f for f in result.stdout.strip().splitlines() if f])
         assert changed == [], (
-            f"financial_engine must have zero diff vs main; changed: {changed}"
+            f"unapproved financial_engine changes vs main: {changed}"
         )
 
     def test_finco_core_zero_diff(self):

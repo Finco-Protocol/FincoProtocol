@@ -9,7 +9,7 @@ import math
 from dataclasses import dataclass, field
 
 from finco_core.inputs import DebtServiceReserveSupportMode
-from financial_engine.dsra.target import DsraTargetPolicy
+from financial_engine.dsra.target import SCHEDULE_TARGET_POLICIES, DsraTargetPolicy
 
 
 @dataclass(frozen=True)
@@ -97,20 +97,17 @@ class CashDsraInput:
             raise ValueError(
                 f"CashDsraInput: dsra_months must be an integer, got {self.dsra_months!r}."
             )
-        if (
-            self.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
-            and self.dsra_months <= 0
-        ):
+        if self.target_policy in SCHEDULE_TARGET_POLICIES and self.dsra_months <= 0:
             raise ValueError(
-                "CashDsraInput: FORWARD_DEBT_SERVICE_MONTHS requires dsra_months > 0, "
+                f"CashDsraInput: {self.target_policy.name} requires dsra_months > 0, "
                 f"got {self.dsra_months!r}."
             )
         if (
-            self.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+            self.target_policy in SCHEDULE_TARGET_POLICIES
             and self.mode != DebtServiceReserveSupportMode.CASH_DSRA
         ):
             raise ValueError(
-                "CashDsraInput: FORWARD_DEBT_SERVICE_MONTHS policy requires mode=CASH_DSRA, "
+                f"CashDsraInput: {self.target_policy.name} policy requires mode=CASH_DSRA, "
                 f"got mode={self.mode!r}."
             )
         if self.required_balance_schedule is not None:

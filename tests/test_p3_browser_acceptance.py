@@ -35,7 +35,7 @@ def app_server():
     thread.start()
 
     import socket
-    deadline = time.time() + 30
+    deadline = time.time() + 300  # Opus H-1: startup seeds reference runs (~18 s each)
     while time.time() < deadline:
         try:
             with socket.create_connection(("127.0.0.1", 19750), timeout=1):

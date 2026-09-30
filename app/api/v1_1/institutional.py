@@ -281,6 +281,29 @@ def get_institutional_validation(user_id: str, project_id: str) -> Tuple[str, di
     return STATE_AVAILABLE, validation_out(vr)
 
 
+def get_run_integrity_checks(user_id: str, project_id: str) -> Tuple[str, dict]:
+    """Return (state, evidence) for Run Integrity Checks on the committed Last Run.
+
+    /integrity — read-only. Checks the INTERNAL CONSISTENCY of the committed Last Run from
+    the evidence recorded at commit. It never re-runs the model, never mutates the Working
+    Copy or Last Run, never issues a Signed Run and never touches Verify or Radar. It is a
+    separate authority from the Reference Regression Check (/validation).
+    """
+    pr, ws = _load_workspace(user_id, project_id)
+    if pr is None:
+        return STATE_UNAVAILABLE, {"reason": "PROJECT_NOT_FOUND"}
+    if ws is None or not getattr(ws, "any_run_committed", False):
+        return STATE_UNAVAILABLE, {"reason": "NO_COMMITTED_RUN"}
+    try:
+        from app.api.v1_1.schemas import integrity_out
+        from app.run_integrity import run_integrity_checks
+
+        report = run_integrity_checks(getattr(ws, "last_integrity_evidence", None))
+        return STATE_AVAILABLE, integrity_out(report, ws)
+    except Exception:
+        return STATE_UNAVAILABLE, {"reason": "INTEGRITY_CHECKS_UNAVAILABLE"}
+
+
 def get_verify_state(user_id: str, project_id: str) -> Tuple[str, dict]:
     """Return (state, evidence) from canonical Verify authority for this project.
 

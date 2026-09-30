@@ -75,12 +75,16 @@ class DataCenterDrivers:
 GENERIC_DATA_CENTER_REFERENCE_DRIVERS = DataCenterDrivers()
 
 # Sponsor equity is proportional to IT capacity (same convention as CAPEX and
-# non-power OPEX): 4,000 kEUR share capital per MW IT at the 20 MW reference
-# (80,000 kEUR total).  The SHL residual and senior debt remain derived by the
+# non-power OPEX): 4,500 kEUR share capital per MW IT at the 20 MW reference
+# (90,000 kEUR total; was 4,000 / 80,000 before Opus H-1 — REFERENCE ASSUMPTION
+# recalibration flagged for reviewer approval: with IDC, lender fees and the funded
+# DSRA in Total Project Uses, the derived SHL at 80,000 kEUR cannot be repaid from
+# post-senior cash by maturity and the run fails closed with
+# SHL_MATURITY_RESIDUAL_FAILS_CLOSED; no engine rule or maturity is changed).  The SHL residual and senior debt remain derived by the
 # existing Sources & Uses / DSCR-sculpting authority; this keeps the sponsor
 # funding mix debt-serviceable across seeded capacities (a fixed absolute
 # equity amount leaves the SHL sweep under-water at larger capacities).
-DC_SHARE_CAPITAL_KEUR_PER_MW = 4_000.0
+DC_SHARE_CAPITAL_KEUR_PER_MW = 4_500.0
 
 # Base contracted service period; after the base term V1 continues service
 # revenue under the same indexed convention (deterministic policy A — the

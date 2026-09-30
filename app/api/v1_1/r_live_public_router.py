@@ -9,26 +9,28 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.v1_1.schemas import InstitutionalEnvelope
+from app.radar_rwa.r_live_public_acquisition import (
+    PUBLIC_RLIVE_ACQUISITION,
+    R_LIVE_SERVICE_BUSY,
+    RLiveBatchAcquisitionFailed,
+    RLiveServiceBusy,
+    current_acquisition_key,
+)
 
 router = APIRouter()
-
-# Process-wide gate: at most this many concurrent batch acquisitions.
-# Each acquisition uses _CURRENT_WORKERS=2 RPC workers internally.
-# Prevents unbounded upstream fan-out under simultaneous /current requests.
-_MAX_CONCURRENT_ACQUISITIONS = 2
-_ACQUISITION_GATE = threading.BoundedSemaphore(_MAX_CONCURRENT_ACQUISITIONS)
+_R_LIVE_CACHE_HEADERS = {"Cache-Control": "no-store"}
 
 
 @router.get("/radar/r-live/assets")
 def list_r_live_assets():
-    """List reviewed identities — not a symbol-based runtime selector."""
+    """List reviewed identities plus read-only collector operational health."""
     from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
+    from app.radar_rwa.collector_health import read_collector_health_readonly
     assets = [
         {
             "canonical_id": p.asset_key.canonical_id,
@@ -39,58 +41,57 @@ def list_r_live_assets():
         }
         for p in APPROVED_RLIVE_ASSETS.values()
     ]
+    health = read_collector_health_readonly()
     return JSONResponse(
         status_code=200,
-        content=InstitutionalEnvelope(state="AVAILABLE", data={"assets": assets}).model_dump(),
+        content=InstitutionalEnvelope(
+            state="AVAILABLE",
+            data={"assets": assets, "collector_health": health.public_dict()},
+        ).model_dump(),
+        headers=_R_LIVE_CACHE_HEADERS,
     )
 
 
 @router.get("/radar/r-live/current")
 def stream_r_live_current():
-    """Stream all approved R-LIVE assets as NDJSON; one line per asset as it completes.
+    """Stream current approved R-LIVE assets with bounded public acquisition.
 
-    ONE registry fetch and ONE shared RPC transport per request.
-    Process-wide acquisition gate prevents unbounded concurrent upstream work.
-    Zero history writes. Unauthenticated reference surface.
-
-    Response: application/x-ndjson
-    Each line: {"canonical_id": "...", "display_symbol": "...", "state": "...", "data": {...}}
-    On RPC not configured: single JSON object {"state": "UNAVAILABLE", "reason": "..."}
-    On gate full: all-UNAVAILABLE stream with reason ACQUISITION_GATE_FULL.
+    Identical simultaneous requests share one in-flight canonical batch. New
+    distinct work is rejected with HTTP 429 when process capacity is exhausted.
+    Operational SERVICE_BUSY is deliberately distinct from market UNAVAILABLE.
+    Completed current values are not cached and evidence timestamps are never
+    rewritten by this layer. Zero history writes. Unauthenticated reference surface.
     """
-    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _ids
 
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
     if not rpc_url:
         return JSONResponse(
             status_code=200,
             content=InstitutionalEnvelope(
-                state="UNAVAILABLE",
-                data={"reason": "RPC_NOT_CONFIGURED"},
+                state="UNAVAILABLE", data={"reason": "RPC_NOT_CONFIGURED"}
             ).model_dump(),
-            headers={"Cache-Control": "no-store"},
+            headers=_R_LIVE_CACHE_HEADERS,
+        )
+
+    def _producer():
+        from app.radar_rwa.r_live_service import collect_r_live_batch
+        return collect_r_live_batch(rpc_url=rpc_url)
+
+    try:
+        subscription = PUBLIC_RLIVE_ACQUISITION.subscribe(
+            current_acquisition_key(rpc_url), _producer
+        )
+    except RLiveServiceBusy:
+        return JSONResponse(
+            status_code=429,
+            content={"state": "SERVICE_BUSY", "reason": R_LIVE_SERVICE_BUSY},
+            headers=_R_LIVE_CACHE_HEADERS,
         )
 
     def _stream():
-        from app.radar_rwa.r_live_service import collect_r_live_batch
-        from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _ids
-        from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
-
-        acquired = _ACQUISITION_GATE.acquire(blocking=False)
-        if not acquired:
-            # Gate full: emit UNAVAILABLE for all assets rather than queueing
-            for policy in APPROVED_RLIVE_ASSETS.values():
-                row = {
-                    "canonical_id": policy.asset_key.canonical_id,
-                    "display_symbol": policy.symbol,
-                    "state": "UNAVAILABLE",
-                    "data": {"reason": "ACQUISITION_GATE_FULL"},
-                }
-                yield json.dumps(row, separators=(",", ":")) + "\n"
-            return
-
         try:
-            for canonical_id, state, data in collect_r_live_batch(rpc_url=rpc_url):
+            for canonical_id, state, data in subscription:
                 policy = _ids.get(canonical_id)
                 row = {
                     "canonical_id": canonical_id,
@@ -99,16 +100,14 @@ def stream_r_live_current():
                     "data": data,
                 }
                 yield json.dumps(row, separators=(",", ":")) + "\n"
-        except Exception:
+        except RLiveBatchAcquisitionFailed:
             row = {"state": "UNAVAILABLE", "reason": "BATCH_ACQUISITION_FAILED"}
             yield json.dumps(row, separators=(",", ":")) + "\n"
         finally:
-            _ACQUISITION_GATE.release()
+            subscription.close()
 
     return StreamingResponse(
-        _stream(),
-        media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-store"},
+        _stream(), media_type="application/x-ndjson", headers=_R_LIVE_CACHE_HEADERS
     )
 
 
@@ -118,8 +117,6 @@ def get_all_r_live_ranges():
 
     Delegates to canonical read_r_live_ranges → read_r_live_range_summary_readonly.
     Uses collected_at clock. Zero writes. Unauthenticated reference surface.
-
-    Response: {"state": "AVAILABLE", "data": {"history_kind": "HISTORICAL", "assets": {...}}}
     """
     from app.radar_rwa.r_live_service import read_r_live_ranges
     from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
@@ -133,10 +130,9 @@ def get_all_r_live_ranges():
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(
-            state="AVAILABLE",
-            data={"history_kind": "HISTORICAL", "assets": ranges},
+            state="AVAILABLE", data={"history_kind": "HISTORICAL", "assets": ranges}
         ).model_dump(),
-        headers={"Cache-Control": "no-store"},
+        headers=_R_LIVE_CACHE_HEADERS,
     )
 
 
@@ -145,7 +141,7 @@ def get_r_live_history(uid: str, limit: int = 30):
     """Read explicitly historical B1.3 evidence for an exact approved identity.
 
     persist_history=False: this route never writes history.
-    UID must be exact canonical_id — no ticker/fuzzy lookup.
+    UID must be exact canonical_id — no ticker/fuzzy identity.
     """
     from app.radar_rwa.r_live_service import read_r_live_history
     try:
@@ -154,23 +150,20 @@ def get_r_live_history(uid: str, limit: int = 30):
         return JSONResponse(
             status_code=200,
             content=InstitutionalEnvelope(
-                state="UNAVAILABLE",
-                data={"reason": "ASSET_OR_LIMIT_INVALID"},
+                state="UNAVAILABLE", data={"reason": "ASSET_OR_LIMIT_INVALID"}
             ).model_dump(),
         )
     except Exception:
         return JSONResponse(
             status_code=200,
             content=InstitutionalEnvelope(
-                state="UNAVAILABLE",
-                data={"reason": "HISTORY_UNAVAILABLE"},
+                state="UNAVAILABLE", data={"reason": "HISTORY_UNAVAILABLE"}
             ).model_dump(),
         )
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(
-            state="AVAILABLE",
-            data={"history_kind": "HISTORICAL", "points": points},
+            state="AVAILABLE", data={"history_kind": "HISTORICAL", "points": points}
         ).model_dump(),
     )
 
@@ -181,7 +174,7 @@ def get_r_live_ranges(uid: str):
 
     Delegates to canonical read_r_live_ranges → read_r_live_range_summary_readonly.
     Uses collected_at; digest-invalid history fails closed. Zero writes.
-    UID must be exact canonical_id — no ticker/fuzzy lookup.
+    UID must be exact canonical_id — no ticker/fuzzy identity.
     """
     from app.radar_rwa.r_live_service import read_r_live_ranges
     try:
@@ -190,23 +183,20 @@ def get_r_live_ranges(uid: str):
         return JSONResponse(
             status_code=200,
             content=InstitutionalEnvelope(
-                state="UNAVAILABLE",
-                data={"reason": "ASSET_UID_INVALID"},
+                state="UNAVAILABLE", data={"reason": "ASSET_UID_INVALID"}
             ).model_dump(),
         )
     except Exception:
         return JSONResponse(
             status_code=200,
             content=InstitutionalEnvelope(
-                state="UNAVAILABLE",
-                data={"reason": "HISTORY_UNAVAILABLE"},
+                state="UNAVAILABLE", data={"reason": "HISTORY_UNAVAILABLE"}
             ).model_dump(),
         )
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(
-            state="AVAILABLE",
-            data={"history_kind": "HISTORICAL", **ranges},
+            state="AVAILABLE", data={"history_kind": "HISTORICAL", **ranges}
         ).model_dump(),
     )
 

@@ -261,6 +261,30 @@
     </div>
   </div>
 
+  {# ── Run Integrity Checks (H-4b) — internal consistency of the committed Last Run. #}
+  <div class="v2-trust-section" data-testid="trust-pack-integrity">
+    <div class="v2-trust-title">RUN INTEGRITY CHECKS
+      <small>internal consistency of this committed Last Run</small>
+      {% if trust_pack.integrity.state == 'AVAILABLE' %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable" data-testid="trust-pack-integrity-overall">{{ trust_pack.integrity.overall }}</span>
+      {% else %}
+        <span class="v2-trust-chip v2-trust-chip--unavailable">UNAVAILABLE</span>
+      {% endif %}
+    </div>
+    {% if trust_pack.integrity.state == 'AVAILABLE' %}
+      <div class="v2-trust-grid">
+        {% for check in trust_pack.integrity.checks %}
+          <span class="v2-trust-k">{{ check.title }}</span>
+          <span class="v2-trust-v" data-testid="trust-pack-integrity-{{ check.check_id }}">{{ check.status }}{% if check.reason_code %} — {{ check.reason_code }}{% endif %}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="v2-trust-note">Run integrity checks become available after the first committed Run.</div>
+    {% endif %}
+    <div class="v2-trust-note">{{ trust_pack.integrity.scope }}
+      They recompute identities from evidence recorded at commit; they do not re-run the model.</div>
+  </div>
+
   {# ── F. Methodology / Conventions ─────────────────────────────────── #}
   <div class="v2-trust-section" data-testid="trust-pack-methodology">
     <div class="v2-trust-title">F. Methodology / Conventions
