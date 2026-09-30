@@ -42,6 +42,7 @@ ISSUER = "FINCO Protocol — Signed Run Certificate V1"
 
 # Environment variable holding the base64-encoded 32-byte Ed25519 seed.
 SIGNING_KEY_ENV_VAR = "FINCO_RUN_CERT_SIGNING_KEY"
+SIGNING_KID_ENV_VAR = "FINCO_RUN_CERT_SIGNING_KID"
 
 
 class SigningKeyUnavailable(RuntimeError):
@@ -57,6 +58,17 @@ class CertificateBuildUnavailable(RuntimeError):
     def __init__(self, reason: str) -> None:
         self.REASON = reason
         super().__init__(reason)
+
+
+def canonical_certificate_signing_bytes(payload: dict) -> bytes:
+    """Public canonical serialization authority (M-2 §12).
+
+    One deterministic byte serialization shared by issuance, API
+    verification and the offline verifier: sorted keys, compact
+    separators, UTF-8.  One-byte differences change the signature — by
+    design.
+    """
+    return _canonical_json_bytes(payload)
 
 
 def _canonical_json_bytes(payload: dict) -> bytes:
@@ -214,7 +226,37 @@ def issue_run_certificate(ws, *, issued_at: datetime | None = None) -> dict:
     """
     payload = build_certificate_payload(ws, issued_at=issued_at)
     seed, public_key_der = _signing_key_pair()
+
+    # M-2 kid binding: issuance fails closed unless the configured signing
+    # key corresponds to a REGISTERED ACTIVE public key record.  The kid is
+    # signed into the certificate, so a verifier never guesses the key.
+    configured_kid = os.getenv(SIGNING_KID_ENV_VAR, "").strip()
+    if not configured_kid:
+        raise SigningKeyUnavailable(
+            f"{SigningKeyUnavailable.REASON}: {SIGNING_KID_ENV_VAR} is not "
+            "configured - certificate kid binding is required."
+        )
+    from app.protocol.signing_keys import get_signing_key, is_issuance_capable
+    record = get_signing_key(configured_kid)
+    if record is None:
+        raise SigningKeyUnavailable(
+            f"{SigningKeyUnavailable.REASON}: kid {configured_kid!r} is not "
+            "present in the FINCO signing-key registry (SIGNING_KEY_UNKNOWN_KID)."
+        )
+    if not is_issuance_capable(record):
+        raise SigningKeyUnavailable(
+            f"{SigningKeyUnavailable.REASON}: kid {configured_kid!r} has status "
+            f"{record.status} and cannot sign NEW certificates."
+        )
+    if public_key_der != record.public_key_der():
+        raise SigningKeyUnavailable(
+            f"{SigningKeyUnavailable.REASON}: configured signing key does not "
+            f"match the registry public key for kid {configured_kid!r} "
+            "(SIGNING_KEY_REGISTRY_MISMATCH)."
+        )
+
     payload["signature_algorithm"] = SIGNATURE_ALGORITHM
+    payload["kid"] = configured_kid
     payload["key_id"] = key_id_for_public_key(public_key_der)
     digest_input = {
         k: v for k, v in payload.items()

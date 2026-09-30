@@ -326,6 +326,23 @@ app.include_router(_api_v1_router, prefix="/api/v1")
 from app.api.v1_1.r_live_public_router import router as _rlive_public_router
 app.include_router(_rlive_public_router, prefix="/api/v1.1")
 
+# ── M-2 Signed Run public trust ──────────────────────────────────────────────
+# Public key discovery (unauthenticated, read-only, deterministic) and the
+# public certificate verification surface.  Public trust material only —
+# no private key, seed, env value or credential metadata is ever exposed.
+from app.api.v1_1.run_certificate_public_router import router as _run_cert_public_router
+app.include_router(_run_cert_public_router, prefix="/api/v1.1")
+
+
+@app.get("/.well-known/finco/keys.json")
+def finco_signing_keys_well_known():
+    """FINCO public signing-key discovery document (RFC 8615 well-known path).
+
+    Unauthenticated, read-only, deterministic.  Contains only PUBLIC trust
+    material for offline verification of Signed Run certificates."""
+    from app.protocol.signing_keys import public_keys_document
+    return public_keys_document()
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""
