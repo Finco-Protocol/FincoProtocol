@@ -28,8 +28,8 @@ real-money transfer is permitted.
 ## Release provenance
 
 If this staging-configuration PR is used before merge, the deployed Git SHA is the reviewed
-staging-config commit whose parent is the accepted application baseline above. The staging
-preflight requires `FINCO_DEPLOY_SHA` to equal the checked-out exact Git HEAD.
+staging-config commit whose parent/ancestry is the accepted application baseline above. The
+staging preflight requires `FINCO_DEPLOY_SHA` to equal the checked-out exact Git HEAD.
 
 Before deployment record:
 
@@ -81,8 +81,8 @@ git checkout --detach <REVIEWED_STAGING_CONFIG_SHA>
 git rev-parse HEAD
 ```
 
-The commit must descend directly from the accepted application baseline or be the reviewed
-merge of this staging-config PR with no unrelated application changes.
+The commit must descend from the accepted application baseline and contain no unrelated
+application changes.
 
 ## 3. Python environment
 
@@ -97,13 +97,24 @@ python3 -m venv .venv
 
 Do not share the production virtualenv.
 
-## 4. Private staging environment
+## 4. Required staging data before preflight
+
+The existing E5 corporate-staging contract remains in force. Before starting the service,
+place the reviewed, WAL-checkpointed Equity Fundamentals SQLite snapshot at the staging-only
+path configured by `FINCO_EQUITY_FUNDAMENTALS_DB_PATH`. It must be a readable regular file,
+use `FINCO_EQUITY_FUNDAMENTALS_DB_MODE=snapshot`, remain distinct from `FINCO_DB_PATH`, and
+must not be copied from or pointed at a live production database.
+
+R-LIVE history, when configured, must likewise use the existing staging-only
+`RADAR_BNB_INTELLIGENCE_DB_PATH`; never point the web or collector at production history.
+
+## 5. Private staging environment
 
 Copy `deploy/staging.env.example` OUTSIDE version control to:
 
 `/opt/finco_staging/.env.staging`
 
-Populate real staging-only values. Required security rules:
+Populate real staging-only values. Required security/runtime rules include:
 
 - `FINCO_APP_MODE=pilot`
 - unique non-placeholder `FINCO_SECRET_KEY`
@@ -112,10 +123,13 @@ Populate real staging-only values. Required security rules:
 - exactly one of `FINCO_ADMIN_PASSWORD` or `FINCO_ADMIN_PASSWORD_HASH`
 - `FINCO_COOKIE_SECURE=true`
 - `FINCO_COOKIE_SAMESITE=lax` or `strict`
+- `FINCO_DEMO_RESET_ALLOWED=true` (preserved corporate-staging second factor; it does not perform a reset by itself)
 - `FINCO_WEB_HOST=127.0.0.1`
 - `FINCO_WEB_PORT=8100`
+- current PR #152 execution-gate variables (`FINCO_MODEL_EXECUTION_*`)
 - `FINCO_DEPLOY_SHA=<exact checked-out SHA>`
 - staging-only database/storage paths
+- E5 Equity Fundamentals snapshot path/mode
 - `FINCO_YIELD_ENABLED=1`
 - `FINCO_YIELD_EXECUTION_ENABLED=0`
 
@@ -128,7 +142,7 @@ sudo chmod 600 /opt/finco_staging/.env.staging
 
 Never print populated secrets in shell history, logs, PR comments or acceptance evidence.
 
-## 5. Preflight
+## 6. Preflight
 
 Run the same fail-closed preflight systemd will run:
 
@@ -139,13 +153,13 @@ sudo -u finco-staging /opt/finco_staging/.venv/bin/python \
   --repo-root /opt/finco_staging
 ```
 
-Required result:
+Required result (preserved historical marker):
 
-`YIELD_STAGING_PREFLIGHT_PASS`
+`P7_STAGING_PREFLIGHT_PASS`
 
 Do not start the service on any blocked result.
 
-## 6. systemd
+## 7. systemd
 
 Install the reviewed staging unit only:
 
@@ -166,7 +180,7 @@ sudo systemctl status finco-staging.service --no-pager
 sudo journalctl -u finco-staging.service -n 100 --no-pager
 ```
 
-## 7. Bounded readiness
+## 8. Bounded readiness
 
 A fresh staging DB may take roughly 70 seconds while canonical reference Last Runs are seeded.
 Treat the process as starting, not crashed, while it remains alive inside the bounded gate.
@@ -186,7 +200,7 @@ done
 If the process exits or `/public-health` never becomes healthy within the accepted window,
 stop and investigate before exposing the vhost.
 
-## 8. Nginx / TLS
+## 9. Nginx / TLS
 
 Install only the staging vhost:
 
@@ -205,7 +219,7 @@ certificate-management procedure before enabling HTTPS if it is not already pres
 
 Do not reuse the production hostname or production certificate path.
 
-## 9. Browser/manual acceptance
+## 10. Browser/manual acceptance
 
 Verify at least:
 
@@ -251,7 +265,7 @@ Execution controls must remain unavailable because
 `FINCO_YIELD_EXECUTION_ENABLED=0`. Direct ERC-4626 remains non-signable
 `UNPROTECTED_PREVIEW_ONLY` where that contract applies.
 
-## 10. Feature-flag OFF control
+## 11. Feature-flag OFF control
 
 After the normal Phase 1 checks, prove isolation on staging only:
 
@@ -264,7 +278,7 @@ After the normal Phase 1 checks, prove isolation on staging only:
 
 Never change code merely to make this toggle test pass.
 
-## 11. Stop conditions
+## 12. Stop conditions
 
 STOP Phase 1 and do not enable execution if any of these occurs:
 
@@ -276,6 +290,6 @@ STOP Phase 1 and do not enable execution if any of these occurs:
 - private-key input/signing/broadcast appears;
 - reference data is presented as an executable quote without authority;
 - provider failure crashes the page or leaks a stack trace/secret;
-- app.finco.one is modified by this workflow.
+- `app.finco.one` is modified by this workflow.
 
 Phase 2 execution-planning acceptance is a separate user-approved workflow.
