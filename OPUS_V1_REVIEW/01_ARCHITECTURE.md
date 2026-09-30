@@ -71,8 +71,8 @@ tolerances. It is regression protection for the reference library.
 **What it does NOT prove:**
 - It does **not** validate the user's committed Last Run.
 - It does **not** establish accounting, debt, cash-flow or financing integrity of
-  that Last Run, and it can pass while a reference still carries an open finding
-  (for example H-2).
+  that Last Run. Regression protection for the reference library is its whole
+  scope; it is not a model-soundness guarantee.
 - **Reference Regression Check ≠ FINCO VERIFY.** It does not establish a market
   identity or run binding.
 - A passing check does not mean any real-world asset has been verified.

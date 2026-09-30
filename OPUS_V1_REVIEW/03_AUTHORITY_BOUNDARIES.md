@@ -97,8 +97,9 @@ the engine, never accepts Working Copy state.
   runs against the canonical reference, NOT the user's committed Last Run;
   it is regression protection for the reference library and does NOT
   independently validate a user's model or establish accounting/debt/cash
-  integrity of the Last Run. It can pass while a reference still contains a
-  known open issue (e.g. the H-2 DSCR sculpting review).
+  integrity of the Last Run. (Historical note: H-2 — the DSCR sculpting
+  false-CONVERGED finding — was CLOSED by PR #144; a regression-check PASS
+  was never evidence of model soundness and still is not.)
 - **Verification** establishes a source-attested market binding. Requires
   explicit on-chain evidence with confirmed `evidence_id`.
 - A "Validated" project has passed structural checks. It has not been verified
