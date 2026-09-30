@@ -310,7 +310,7 @@ def finco_verify(project_id: str) -> dict[str, Any]:
 def finco_r_live(uid: str) -> dict[str, Any]:
     """Return R-LIVE reference data for the exact AssetKey uid."""
     from app.api.v1_1.institutional import get_r_live
-    result = _safe_call(get_r_live, uid)
+    result = _safe_call(get_r_live, uid)  # RLiveServiceBusy is an Exception: typed unavailable below
     if result is _SERVICE_ERROR:
         return _service_unavailable_response()
     state, data = result

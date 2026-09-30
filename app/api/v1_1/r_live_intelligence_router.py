@@ -6,7 +6,7 @@ certificate issuance. In OFF and SHADOW modes the route makes zero Jev calls.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from app.api.v1_1.schemas import InstitutionalEnvelope
@@ -35,12 +35,16 @@ def _not_exposed(config: JevIntelligenceConfig, canonical_id: str, reason: str) 
 
 
 @router.get("/radar/r-live/{canonical_id}/intelligence")
-def get_r_live_intelligence(canonical_id: str):
+def get_r_live_intelligence(canonical_id: str, request: Request):
     config = JevIntelligenceConfig.from_env()
     if config.mode is JevMode.OFF:
         return _not_exposed(config, canonical_id, "JEV_INTELLIGENCE_DISABLED")
     if config.mode is JevMode.SHADOW:  # shadow evaluates via operator jobs, never via public GET
         return _not_exposed(config, canonical_id, "JEV_SHADOW_MODE_NOT_EXPOSED")
+    from app.runtime.client_rate_limit import enforce as _enforce_client
+    limited = _enforce_client(request, "jev_intelligence")
+    if limited is not None:
+        return limited
     from app.radar_rwa.jev_intelligence.service import evaluate_intelligence
     result = evaluate_intelligence(canonical_id, config=config)
     return _envelope(result.state.value, result.to_public_dict())

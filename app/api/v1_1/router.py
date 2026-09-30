@@ -440,7 +440,12 @@ def get_r_live(uid: str):
     UID must be exact canonical_id (chain:address) — no ticker/fuzzy identity.
     User session is NOT required: R-LIVE is a reference surface.
     """
-    state, data = _svc.get_r_live(uid)
+    from app.radar_rwa.r_live_public_acquisition import R_LIVE_SERVICE_BUSY, RLiveServiceBusy
+    try:
+        state, data = _svc.get_r_live(uid)
+    except RLiveServiceBusy:
+        return JSONResponse(status_code=429, headers={"Retry-After": "5", "Cache-Control": "no-store"},
+                            content={"state": "SERVICE_BUSY", "reason": R_LIVE_SERVICE_BUSY})
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(

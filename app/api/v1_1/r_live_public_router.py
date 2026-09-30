@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.v1_1.schemas import InstitutionalEnvelope
@@ -53,7 +53,7 @@ def list_r_live_assets():
 
 
 @router.get("/radar/r-live/current")
-def stream_r_live_current():
+def stream_r_live_current(request: Request):
     """Stream current approved R-LIVE assets with bounded public acquisition.
 
     Identical simultaneous requests share one in-flight canonical batch. New
@@ -63,7 +63,11 @@ def stream_r_live_current():
     rewritten by this layer. Zero history writes. Unauthenticated reference surface.
     """
     from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID as _ids
+    from app.runtime.client_rate_limit import enforce as _enforce_client
 
+    limited = _enforce_client(request, "r_live_current")
+    if limited is not None:
+        return limited
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
     if not rpc_url:
         return JSONResponse(
@@ -202,7 +206,7 @@ def get_r_live_ranges(uid: str):
 
 
 @router.get("/radar/r-live/{uid}")
-def get_r_live(uid: str):
+def get_r_live(uid: str, request: Request):
     """Return R-LIVE exact AssetKey reference data.
 
     Delegates to app.radar_rwa.r_live_service (read-only, zero history writes).
@@ -210,7 +214,18 @@ def get_r_live(uid: str):
     No user session required: R-LIVE is a reference surface.
     """
     from app.api.v1_1 import institutional as _svc
-    state, data = _svc.get_r_live(uid)
+    from app.runtime.client_rate_limit import enforce as _enforce_client
+    limited = _enforce_client(request, "r_live_current")
+    if limited is not None:
+        return limited
+    try:
+        state, data = _svc.get_r_live(uid)
+    except RLiveServiceBusy:
+        return JSONResponse(
+            status_code=429,
+            content={"state": "SERVICE_BUSY", "reason": R_LIVE_SERVICE_BUSY},
+            headers={**_R_LIVE_CACHE_HEADERS, "Retry-After": "5"},
+        )
     try:  # Optional JEV SHADOW observation: enqueue-only, never blocks, never alters this response.
         from app.radar_rwa.jev_intelligence.shadow import observe as _jev_shadow_observe
         _jev_shadow_observe(uid, state, data)

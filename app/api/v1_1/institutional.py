@@ -431,12 +431,13 @@ def get_r_live(uid: str) -> Tuple[str, dict]:
     if not rpc_url:
         return STATE_UNAVAILABLE, {"reason": "RPC_NOT_CONFIGURED"}
 
+    # P0-B: every live RPC read goes through the one bounded, coalescing coordinator. Overload is a
+    # typed ``RLiveServiceBusy`` (never a market state) that callers translate to 429 / typed busy.
+    from app.radar_rwa.r_live_public_acquisition import RLiveServiceBusy, acquire_single_current
     try:
-        from app.radar_rwa.r_live_service import collect_aapl_r_live, collect_r_live
-        if policy.asset_key == AAPL_KEY:
-            result = collect_aapl_r_live(rpc_url=rpc_url, persist_history=False)
-        else:
-            result = collect_r_live(canonical_asset_id=uid, rpc_url=rpc_url, persist_history=False)
+        result = acquire_single_current(uid, rpc_url)
+    except RLiveServiceBusy:
+        raise
     except Exception:
         return STATE_UNAVAILABLE, {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
 
