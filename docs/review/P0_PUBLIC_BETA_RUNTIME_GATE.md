@@ -121,4 +121,129 @@ Sensitivity: the V2 grid is one admitted, ordered task (5 evaluations); the lega
 49 evaluations (shocks × levels + base, the legacy default) and an oversized request is a typed 422
 before any work is admitted. Sensitivity economics are unchanged.
 
-_(Sections H–T for P0-B and P0-C are added below as those streams land.)_
+## H. Radar live RPC inventory (P0-B)
+
+| Path | Before | Now |
+|---|---|---|
+| `GET /api/v1.1/radar/r-live/current` (all assets, NDJSON) | coordinated | coordinated (+ per-client control) |
+| `GET /api/v1.1/radar/r-live/{uid}` and the v1.1 router twin | direct RPC | `institutional.get_r_live` → coordinator |
+| `GET /radar/crypto/rwa/r-live/aapl/snapshot` | direct RPC in a thread | coordinator (+ per-client control) |
+| MCP `finco_r_live` | direct RPC via `get_r_live` | coordinator (busy → typed unavailable) |
+| JEV intelligence provider (`default_current_provider`) | direct RPC via `get_r_live` | coordinator (busy → `R_LIVE_SERVICE_BUSY`) |
+| `collect_all_approved` (systemd timer) | offline process, own RPC | unchanged: a separate process, never a web request |
+
+The coordination lives inside `institutional.get_r_live`, the single per-asset entry point, so every
+reader gets admission and coalescing at once. There is no second gate.
+
+## I. Coordinator and in-flight coalescing
+
+`acquire_single_current(canonical_id, rpc_url)` uses the existing `PublicAcquisitionCoordinator`
+(process gate, coalescing, `CURRENT_CACHE = NONE`). Key: `("asset-current-v1", canonical_id, sha256(rpc_url))`.
+Identical concurrent reads share one upstream acquisition; a distinct read beyond capacity raises
+`RLiveServiceBusy`, which is an operational typed overload (HTTP 429 `SERVICE_BUSY`, `Retry-After: 5`),
+never a market state. Completed results are not retained, so stale evidence can never be served as current
+and no evidence timestamp is rewritten. Authority is untouched: the producer is the unchanged
+`collect_r_live` / `collect_aapl_r_live` with `persist_history=False`.
+JEV VISIBLE performs exactly **one** coordinated canonical read per request (tested); it has no second
+canonical read and no independent RPC path. The R-LIVE canonical authority (`finco_radar/authority/**`)
+is untouched.
+
+## J. Per-client amplification control
+
+`app/runtime/client_rate_limit.py`: fixed-window counter per (route family, client host), default 30 per
+minute (`FINCO_CLIENT_REFRESH_LIMIT_PER_MINUTE`, 1–600, invalid value fails with a value-free error).
+Bounded memory (4096 keys), in-process only, no persistence, no logging of keys. Applied only to the
+expensive live routes (R-LIVE current, per-asset, AAPL snapshot, JEV intelligence). **Scope:
+`PROCESS_LOCAL`**: with N workers one client can reach about N × the limit. It is amplification control,
+not identity, not billing, and not distributed. `PER_CLIENT_RATE_LIMIT` changed from `NOT_IMPLEMENTED` to
+`PROCESS_LOCAL` and its test was updated accordingly.
+
+## K. Collector Health liveness (M-7)
+
+The collector stamps `last_attempt_at` at the start of every run; that is the heartbeat. Health is now
+computed at **read time**: `apply_liveness` compares the heartbeat age with the 5-minute timer cadence.
+Under 15 minutes: stored state kept (`LIVE`). 15 minutes to 1 hour: `DEGRADED` (`STALE`). Over 1 hour:
+`UNHEALTHY` (`STOPPED`). A missing or corrupt heartbeat is never healthy. Liveness can only make the
+state worse than the stored outcome, never better. The public dict gains `liveness`,
+`heartbeat_age_seconds` and `stored_health_state`. Per-asset failure isolation is unchanged and now tested:
+one asset raising does not stop the remaining assets.
+
+## L. systemd hardening
+
+`deploy/systemd/finco-web.service` now sets `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`,
+`ProtectKernel{Tunables,Modules,Logs}`, `ProtectControlGroups`, `ProtectClock`, `ProtectHostname`,
+`LockPersonality`, `RestrictRealtime`, `RestrictSUIDSGID`, `RestrictNamespaces`,
+`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, `SystemCallArchitectures=native`, an empty
+`CapabilityBoundingSet`/`AmbientCapabilities`, `UMask=0077`, and explicit `ReadWritePaths` limited to
+`storage/`, `data/` and `/var/lib/finco`. **Deliberate omissions** (each named in the unit file):
+`PrivateDevices` (the worker-process pool needs POSIX semaphores in `/dev/shm`), `MemoryDenyWriteExecute`
+(CPython extension modules may need W+X mappings), `SystemCallFilter` (not validated against the full
+dependency set on the host), `PrivateNetwork` (the service must reach the network). These were not
+enabled because they could not be proven safe without the target host; validate with
+`systemd-analyze security finco-web.service` before adding any of them.
+
+## M. Secure application mode (NEW-M-2)
+
+`FINCO_APP_MODE=pilot` is the secure mode. `finco-web.service` sets it; `deploy/env.example` declares it;
+`run_web.sh` refuses (exit 78, no values printed) unless the **effective** value is exactly `pilot`
+(systemd applies `EnvironmentFile` after `Environment=`, so the launcher checks the final value).
+An unrecognized mode is also treated as secure by `app/auth.py`. In a secure mode startup fails closed on:
+a missing admin credential, the repository-default admin password, a placeholder, a password shorter than
+12 characters, a non-bcrypt `FINCO_ADMIN_PASSWORD_HASH`, a missing or placeholder signing secret, a
+placeholder CSRF secret, and `FINCO_COOKIE_SECURE=false`. Messages name the variable and the rule, never
+a value. `development` and `internal` keep their documented dev workflow. The production boot-smoke
+workflow now uses the secure mode with a synthetic strong credential and adds negative launcher checks.
+One existing test (unrecognized mode starts with a valid secret) now also supplies an admin credential,
+because an unrecognized mode is now stricter, not looser.
+
+## N. Secrets and file permissions
+
+`.env` owned by the service user, mode `0600`; never pass secrets in a command line; never commit `.env`.
+Example files contain only placeholders that the startup checks reject, so copying an example unchanged
+cannot start a secure deployment (tested). The collector unit already runs with `UMask=0077`.
+
+## O. Debug and documentation surface
+
+`main_web` (the production ASGI app) has no debug mode and `docs_url`, `redoc_url`, `openapi_url` are
+`None`. The deliberate public surface is the self-hosted `/api/docs` and `/api/openapi.json`, which list
+only `/api/v1` paths (tested). No change was needed. `main_api.py` is a separate composition that is not
+the production ASGI target.
+
+## P. Cross-system isolation
+
+Tested (`tests/test_p0_cross_system_isolation.py`): Model saturation leaves Radar, Verify (public
+certificate route) and health reads working; Radar saturation returns typed 429 for the extra read while
+Model and Verify are unaffected; a Radar RPC outage is typed `UNAVAILABLE` without leaking the upstream
+detail and does not affect Model or Verify; a TypeSafe/JEV transport failure is typed and independent.
+
+## Q. Bounded load harness
+
+`tools/load_p0_gate.py` (in-process, synthetic work, about 3 seconds): **A** model burst: 12 callers,
+exactly 2 admitted, 10 typed BUSY, capacity fully released, loop lateness about 1 ms. **B** radar burst:
+20 identical callers produce 1 upstream call, a distinct read beyond capacity is typed busy. **C** both
+together. It proves bounds and isolation; it is not a capacity benchmark.
+
+## R. Observability
+
+Bounded fields only: executor `stats()` (scope, mode, concurrency, active, counters, p50 duration),
+`busy_rejected` log lines with the numeric limit, collector `liveness` and `heartbeat_age_seconds`. No
+secret, URL, credential, path or trace is logged or returned (tested).
+
+## S. Verification
+
+Focused suites: `test_p0a_model_execution.py`, `test_p0b_radar_reliability.py`,
+`test_p0c_secure_runtime.py`, `test_p0_cross_system_isolation.py`, plus the updated M-7, H-7, F04 and
+R-LIVE on-chain suites. Full-suite and CI results are recorded in the PR report, not in this file.
+
+## T. Deferred (not in this PR)
+
+- multitenancy and organisation RBAC;
+- full DC-native sensitivity semantics;
+- financial-engine performance optimisation (the engine is frozen; this PR only moves where it runs);
+- final Product Truth reconciliation;
+- Model ↔ Market production Verify activation;
+- token production metering.
+
+Known honest limits: the model gate and the per-client control are `PROCESS_LOCAL`, not host-global;
+an abandoned request lets its calculation finish (semantic A); systemd omissions above are unvalidated
+on a real host.
