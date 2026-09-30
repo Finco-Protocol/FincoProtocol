@@ -74,6 +74,41 @@
   </section>
   {% endif %}
 
+  {% if row.approved and jev_visible %}
+  <section style="margin-bottom:28px;padding:14px 16px;border:1px dashed var(--radar-border,#3a424d);border-radius:8px;max-width:100%;box-sizing:border-box"
+           id="jev-intelligence" data-testid="jev-intelligence-panel" data-jev-state="LOADING">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span>Jev Intelligence</span>
+      <span class="rlive-badge rlive-badge--loading" data-testid="jev-experimental-badge">Experimental</span>
+    </h2>
+    <p class="muted small" style="margin:0 0 12px" data-testid="jev-scope-note">
+      Jev interpretation of the canonical evidence above. It is not canonical FINCO market data.
+    </p>
+    <dl class="kv" id="jev-block" style="word-break:break-word">
+      <dt>Market regime (premium series)</dt>
+      <dd id="jev-regime" data-field="jev_market_regime">—</dd>
+      <dt>Attention state</dt>
+      <dd id="jev-attention" data-field="jev_attention">—</dd>
+      <dt>Confidence</dt>
+      <dd id="jev-confidence" data-field="jev_confidence">—</dd>
+      <dt>Observation interpreted</dt>
+      <dd id="jev-observed" data-field="jev_observation_time">—</dd>
+      <dt>Evidence freshness</dt>
+      <dd id="jev-freshness" data-field="jev_evidence_freshness">—</dd>
+      <dt>Interpretation generated</dt>
+      <dd id="jev-evaluated" data-field="jev_evaluated_at">—</dd>
+      <dt>Model</dt>
+      <dd id="jev-model" data-field="jev_resolved_model">—</dd>
+    </dl>
+    <p class="muted small" id="jev-status" data-testid="jev-status" style="margin-top:10px">Loading…</p>
+    <p class="muted small" id="jev-disclosure" style="margin-top:6px">
+      Jev intelligence is a probabilistic interpretation of FINCO canonical market evidence.
+      It does not modify canonical market data and is not an executable price, investment
+      recommendation, FINCO Verify result, or deterministic calculation authority.
+    </p>
+  </section>
+  {% endif %}
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Identity &amp; Deployment
@@ -125,6 +160,59 @@
 .rlive-badge--stale { background: rgba(234,179,8,.13); color: #eab308; }
 .rlive-badge--unavailable { background: rgba(255,255,255,.06); color: var(--radar-muted,#8d98a5); }
 </style>
+
+{% if row.approved and jev_visible %}
+<script>
+(function () {
+  // Experimental, read-only. A failure here never affects the canonical R-LIVE panels above.
+  // Every provider-supplied value is written with textContent (no HTML is ever interpreted).
+  var URL = "/api/v1.1/radar/r-live/" + encodeURIComponent({{ row.canonical_id|tojson }}) + "/intelligence";
+  var panel = document.getElementById("jev-intelligence");
+  var MESSAGES = {
+    JEV_TRANSPORT_UNAVAILABLE: "Interpretation temporarily unavailable.",
+    JEV_RATE_LIMITED: "Interpretation paused to limit provider calls.",
+    JEV_API_KEY_NOT_CONFIGURED: "Interpretation is not configured.",
+    JEV_EVALUATION_FAILED: "Interpretation temporarily unavailable.",
+    CANONICAL_CURRENT_NOT_AVAILABLE: "Canonical evidence is stale or unavailable, so no interpretation is offered.",
+    CANONICAL_CURRENT_UNAVAILABLE: "Canonical evidence is unavailable, so no interpretation is offered.",
+    CANONICAL_PREMIUM_NOT_AVAILABLE: "Canonical evidence is unavailable, so no interpretation is offered.",
+    CANONICAL_RETRIEVAL_TIME_UNAVAILABLE: "Canonical evidence is unavailable, so no interpretation is offered.",
+    INSUFFICIENT_HISTORY: "Not enough canonical history for an interpretation yet.",
+    HISTORY_UNAVAILABLE: "Canonical history is unavailable, so no interpretation is offered."
+  };
+  var FRESHNESS = { WITHIN_5M: "last pool activity within 5 minutes", WITHIN_1H: "last pool activity within 1 hour",
+                    WITHIN_6H: "last pool activity within 6 hours", OVER_6H: "last pool activity over 6 hours ago" };
+  function text(id, value) { var n = document.getElementById(id); if (n) { n.textContent = value; } }
+  function pct(v) { var x = parseFloat(v); return isFinite(x) ? (x * 100).toFixed(0) + "%" : "—"; }
+  function clear() {
+    ["jev-regime", "jev-attention", "jev-confidence", "jev-observed", "jev-freshness", "jev-evaluated", "jev-model"]
+      .forEach(function (id) { text(id, "—"); });
+  }
+  function unavailable(reason) {
+    clear();
+    if (panel) { panel.setAttribute("data-jev-state", "UNAVAILABLE"); panel.setAttribute("data-jev-reason", String(reason || "UNKNOWN").slice(0, 64)); }
+    text("jev-status", Object.prototype.hasOwnProperty.call(MESSAGES, reason) ? MESSAGES[reason] : "Interpretation unavailable.");
+  }
+  fetch(URL)
+    .then(function (r) { if (!r.ok) { throw new Error("HTTP_" + r.status); } return r.json(); })
+    .then(function (env) {
+      var d = env && env.data;
+      if (!d || d.state !== "AVAILABLE" || !d.answers) { unavailable(d && d.reason); return; }
+      var reg = d.answers.market_regime, att = d.answers.attention, prov = d.provenance || {};
+      text("jev-regime", String(reg.choice).replace(/_/g, " "));
+      text("jev-attention", att.state);
+      text("jev-confidence", "regime " + pct(reg.confidence) + " · attention " + pct(att.confidence));
+      text("jev-observed", prov.as_of || "—");
+      text("jev-freshness", Object.prototype.hasOwnProperty.call(FRESHNESS, prov.evidence_freshness) ? FRESHNESS[prov.evidence_freshness] : "—");
+      text("jev-evaluated", d.evaluated_at || "—");
+      text("jev-model", d.resolved_model || "—");
+      text("jev-status", "Interpretation of canonical evidence · input " + String(d.input_fingerprint).slice(0, 12));
+      if (panel) { panel.setAttribute("data-jev-state", "AVAILABLE"); }
+    })
+    .catch(function () { unavailable("JEV_TRANSPORT_UNAVAILABLE"); });
+})();
+</script>
+{% endif %}
 
 {% if row.approved %}
 <script>
