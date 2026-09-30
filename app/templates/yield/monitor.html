@@ -1,0 +1,26 @@
+{% extends "yield/base.html" %}
+{% block title %}FINCO Yield — Monitor{% endblock %}
+{% block content %}
+<p class="k">FINCO Yield · Wallet Monitor</p>
+<h1>Read-only positions</h1>
+<div class="nav"><a class="a" href="/yield">← Explore</a></div>
+<p class="sub">{{ info }}</p>
+
+<div class="grid">
+  {% for position in positions %}
+  <section class="card">
+    <h2>{{ position.name }}</h2>
+    <p>Share balance: {{ position.balance }}</p>
+    <p>Observed APY: {{ position.observed_apy }}</p>
+    <p>Exit: {{ position.exit_state }}</p>
+    <p>Evidence freshness: {{ position.evidence_freshness }}</p>
+    <p>Position value: UNAVAILABLE</p>
+    <p>Estimated earned: UNAVAILABLE</p>
+  </section>
+  {% else %}
+  <section class="card"><p>No supported non-zero vault-share positions detected on configured Yield RPC chains.</p></section>
+  {% endfor %}
+</div>
+
+<p class="bound">Wallet ownership ≠ transaction signing ≠ $FINCO entitlement. No signing control is present on this read-only monitor.</p>
+{% endblock %}
