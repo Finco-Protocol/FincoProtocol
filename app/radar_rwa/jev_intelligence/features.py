@@ -37,6 +37,82 @@ FEATURE_KEYS = (
 )
 
 
+_CUR = "current B1.0 premium (bps), R-LIVE authority via get_r_live"
+_RNG = "R-LIVE 1h/24h premium range summary (read_r_live_ranges, collected_at clock)"
+_PTS = "R-LIVE ordered premium history points (read_r_live_history, limit 100)"
+_FRS = "R-LIVE freshness evidence (market_activity_age_seconds)"
+
+# Outbound-feature contract. Every feature sent to the provider is listed here; nothing else is.
+# ``raw_value_sent`` is False for all of them: only the closed-vocabulary bucket leaves FINCO, and
+# ``identity_exposed`` is False for all of them. ``evidence_for`` lists the questions a feature
+# supports (a question without supporting evidence would be removed, not padded with new data).
+FEATURE_CONTRACT: dict[str, dict[str, object]] = {
+    "premium_level": {
+        "source": _CUR, "transform": "abs(premium) bucketed; side from sign",
+        "buckets": ("NEAR_PARITY", "MODERATE_PREMIUM", "MODERATE_DISCOUNT", "WIDE_PREMIUM",
+                    "WIDE_DISCOUNT", "EXTREME_PREMIUM", "EXTREME_DISCOUNT"),
+        "boundaries": "abs bps <10 | <50 | <150 | >=150", "missing": "call not made (fail closed)",
+        "raw_value_sent": False, "identity_exposed": False, "evidence_for": ("attention",)},
+    "position_in_1h_range": {
+        "source": _CUR + "; " + _RNG, "transform": "position of current premium inside 1h low/high",
+        "buckets": ("BELOW_RANGE", "LOWER_THIRD", "MIDDLE_THIRD", "UPPER_THIRD", "ABOVE_RANGE",
+                    "FLAT_RANGE", UNAVAILABLE_FEATURE),
+        "boundaries": "thirds of (high-low)", "missing": UNAVAILABLE_FEATURE,
+        "raw_value_sent": False, "identity_exposed": False,
+        "evidence_for": ("market_regime", "attention")},
+    "position_in_24h_range": {
+        "source": _CUR + "; " + _RNG, "transform": "position of current premium inside 24h low/high",
+        "buckets": ("BELOW_RANGE", "LOWER_THIRD", "MIDDLE_THIRD", "UPPER_THIRD", "ABOVE_RANGE",
+                    "FLAT_RANGE"),
+        "boundaries": "thirds of (high-low)", "missing": "call not made (24h range required)",
+        "raw_value_sent": False, "identity_exposed": False,
+        "evidence_for": ("market_regime", "attention")},
+    "direction_1h": {
+        "source": _CUR + "; " + _PTS, "transform": "sign of (current - earliest in-window point)",
+        "buckets": ("UP", "DOWN", "FLAT", UNAVAILABLE_FEATURE),
+        "boundaries": "flat if abs(delta) < 2 bps; needs >=50% window coverage, untruncated read",
+        "missing": UNAVAILABLE_FEATURE, "raw_value_sent": False, "identity_exposed": False,
+        "evidence_for": ("market_regime",)},
+    "direction_24h": {
+        "source": _CUR + "; " + _PTS, "transform": "sign of (current - earliest in-window point)",
+        "buckets": ("UP", "DOWN", "FLAT", UNAVAILABLE_FEATURE),
+        "boundaries": "flat if abs(delta) < 2 bps; needs >=50% window coverage, untruncated read",
+        "missing": UNAVAILABLE_FEATURE, "raw_value_sent": False, "identity_exposed": False,
+        "evidence_for": ("market_regime",)},
+    "short_long_agreement": {
+        "source": "derived from direction_1h and direction_24h", "transform": "compare directions",
+        "buckets": ("AGREE", "DISAGREE", "FLAT_INVOLVED", UNAVAILABLE_FEATURE),
+        "boundaries": "n/a", "missing": UNAVAILABLE_FEATURE, "raw_value_sent": False,
+        "identity_exposed": False, "evidence_for": ("market_regime",)},
+    "range_shape": {
+        "source": _RNG, "transform": "1h width / 24h width",
+        "buckets": ("COMPRESSED", "INTERMEDIATE", "EXPANDED", "FLAT_RANGE", UNAVAILABLE_FEATURE),
+        "boundaries": "<=0.25 | <=0.75 | >0.75", "missing": UNAVAILABLE_FEATURE,
+        "raw_value_sent": False, "identity_exposed": False,
+        "evidence_for": ("market_regime", "attention")},
+    "range_width_24h": {
+        "source": _RNG, "transform": "24h high - low (bps) bucketed",
+        "buckets": ("NARROW", "MODERATE", "WIDE"), "boundaries": "<5 | <25 | >=25 bps",
+        "missing": "call not made (24h range required)", "raw_value_sent": False,
+        "identity_exposed": False, "evidence_for": ("market_regime", "attention")},
+    "observation_density_1h": {
+        "source": _RNG, "transform": "1h observation count bucketed",
+        "buckets": ("SPARSE", "MODERATE", "DENSE", UNAVAILABLE_FEATURE),
+        "boundaries": "<3 | <12 | >=12", "missing": UNAVAILABLE_FEATURE,
+        "raw_value_sent": False, "identity_exposed": False, "evidence_for": ("attention",)},
+    "observation_density_24h": {
+        "source": _RNG, "transform": "24h observation count bucketed",
+        "buckets": ("SPARSE", "MODERATE", "DENSE", UNAVAILABLE_FEATURE),
+        "boundaries": "<12 | <72 | >=72", "missing": UNAVAILABLE_FEATURE,
+        "raw_value_sent": False, "identity_exposed": False, "evidence_for": ("attention",)},
+    "market_activity_age": {
+        "source": _FRS, "transform": "age of last pool activity bucketed",
+        "buckets": ("WITHIN_5M", "WITHIN_1H", "WITHIN_6H", "OVER_6H", UNAVAILABLE_FEATURE),
+        "boundaries": "<=300s | <=3600s | <=21600s | more", "missing": UNAVAILABLE_FEATURE,
+        "raw_value_sent": False, "identity_exposed": False, "evidence_for": ("attention",)},
+}
+
+
 class FeatureUnavailable(ValueError):
     """Canonical inputs cannot support any interpretation (fail closed)."""
 

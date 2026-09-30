@@ -211,6 +211,11 @@ def get_r_live(uid: str):
     """
     from app.api.v1_1 import institutional as _svc
     state, data = _svc.get_r_live(uid)
+    try:  # Optional JEV SHADOW observation: enqueue-only, never blocks, never alters this response.
+        from app.radar_rwa.jev_intelligence.shadow import observe as _jev_shadow_observe
+        _jev_shadow_observe(uid, state, data)
+    except Exception:
+        pass
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(state=state, data=data).model_dump(),

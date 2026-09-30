@@ -19,6 +19,7 @@ from .contracts import FAILURE_CATEGORIES
 
 TYPESAFE_SYSTEMONE_URL = "https://api.typesafe.ai/v1/systemone"
 TYPESAFE_MODELS_URL = "https://api.typesafe.ai/v1/models"
+MAX_RESPONSE_BYTES = 262_144  # a 2-answer response is ~1 KB; refuse anything absurd
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _REQUEST_ID_HEADERS = ("x-request-id", "request-id", "x-typesafe-request-id")
 
@@ -184,6 +185,9 @@ class TypeSafeJevTransport:
                         raw = response.json()
                     except Exception:
                         raise self._failure("INVALID_RESPONSE", started, attempts) from None
+                    declared = getattr(response, "headers", {}).get("Content-Length")
+                    if isinstance(declared, str) and declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+                        raise self._failure("INVALID_RESPONSE", started, attempts)
                     if not isinstance(raw, Mapping) or _contains_secret(raw, self._api_key):
                         raise self._failure("INVALID_RESPONSE", started, attempts)
                     payload = dict(raw)

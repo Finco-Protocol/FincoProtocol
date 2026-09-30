@@ -7,11 +7,14 @@ Included: ``market_regime`` (Choice) and ``attention`` (Score). Deliberately NOT
 """
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Mapping
 
 from .contracts import (ATTENTION_LEVELS, QUESTION_IDS, REGIME_OPTIONS, AttentionAnswer,
                         FeatureState, RegimeAnswer)
+
+_MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,63}$")
 
 _COMMON = (
     "The state is a set of closed-vocabulary buckets describing the premium/discount series "
@@ -33,11 +36,9 @@ def build_request(state: FeatureState, *, model: str) -> dict[str, object]:
         raise ValueError("model must be non-empty")
     return {
         "model": model,
-        "state": {
-            "feature_schema_version": state.schema_version,
-            "input_fingerprint": state.input_fingerprint,
-            "features": dict(state.features),
-        },
+        # Minimum necessary: only the closed-vocabulary feature buckets. Schema version, fingerprint,
+        # identity and every raw value stay local.
+        "state": {"features": dict(state.features)},
         "questions": {
             # TypeSafe System One request contract: Choice and Score both take ``criteria``
             # (Choice: mapping label -> description; Score: ordered list of levels). ``options``
@@ -142,6 +143,8 @@ def parse_response(response: Mapping[str, object]) -> tuple[RegimeAnswer, Attent
     answers = response.get("answers")
     if not isinstance(model, str) or not model.strip() or not isinstance(answers, Mapping):
         raise ValueError("JEV_RESPONSE_SHAPE_INVALID")
+    if not _MODEL_RE.fullmatch(model):  # provider-controlled string reaches logs and the UI
+        raise ValueError("JEV_RESOLVED_MODEL_INVALID")
     if set(answers) != set(QUESTION_IDS):
         raise ValueError("JEV_UNEXPECTED_QUESTION_OUTPUT")
     return _parse_regime(answers["market_regime"]), _parse_attention(answers["attention"]), model

@@ -104,6 +104,7 @@ class IntelligenceResult:
     evaluated_at: datetime | None = None
     as_of: datetime | None = None
     sources: tuple[str, ...] = ()
+    evidence_freshness: str | None = None
     mode: JevMode = JevMode.VISIBLE
     diagnostics: Diagnostics = field(default_factory=Diagnostics)
 
@@ -166,6 +167,7 @@ class IntelligenceResult:
             "provenance": {
                 "as_of": self.as_of.isoformat() if self.as_of else None,
                 "feature_sources": list(self.sources),
+                "evidence_freshness": self.evidence_freshness,
                 "authority": "JEV_INTERPRETATION_NON_CANONICAL",
             },
             "diagnostics": {

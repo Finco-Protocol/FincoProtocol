@@ -1,317 +1,295 @@
 # JEV Radar Intelligence V1 — delta review dossier
 
-Status: **experimental, pre-release, draft PR #146**, default OFF. Not shipped, not deployed.
-Public Product Truth (README, ROADMAP, `OPUS_V1_REVIEW/**`) is deliberately not updated.
+Internal review artifact for PR #146. Status: **experimental, pre-release, draft, default OFF**.
+Public Product Truth (README, ROADMAP, `OPUS_V1_REVIEW/**`, /docs, /roadmap, /verify,
+/protocol/finco) is deliberately not touched and nothing here claims JEV is shipped.
 
-This dossier is written so that a clean-room reviewer can answer six questions:
-usefulness, scoping, authority contamination, scientific defensibility, production
-characteristics, and ship / keep experimental / remove. Section 10 gives the author's own
-assessment; every claim in the other sections can be checked against the files named.
+A reviewer should be able to judge the feature from this file: usefulness, scope, authority
+contamination, scientific defensibility, production characteristics, and ship / keep
+experimental / remove (§16).
 
-## 1. Purpose
+## A. Product purpose
 
-Attach small, typed, probabilistic **interpretation labels** to canonical R-LIVE evidence, so
-that a reader of an R-LIVE asset page gets a quick "what regime does this premium series look
-like, and does it deserve attention" reading. Jev (TypeSafe's System One model) is a fast
-classifier of structured state: it returns typed answers with probabilities. It is not a
-generator, a retrieval system or a calculator, and V1 uses it only as a classifier.
+Attach small, typed, probabilistic **interpretation labels** to canonical R-LIVE evidence: which
+regime the premium/discount series looks like, and how much analyst attention the current state
+deserves. Jev (TypeSafe System One) is used only as a fast classifier of structured state.
 
-Not in scope: chat, narrative or news explanation, financial calculation, trading signals,
-Verify, model-input generation, economic truth.
+Not in scope: chat, narrative or news, calculation, trading signals, Verify, Model-input
+generation, economic truth, prediction.
 
-## 2. Architecture
+## B. Architecture
 
 ```
-FINCO canonical R-LIVE evidence          (read-only, exact approved canonical_id)
-  → deterministic feature extraction     (Decimal arithmetic, closed-vocabulary buckets)
-  → identity-blinded feature state       (no ticker, name, uid, price or premium value)
-  → typed Jev request                    (2 questions, POST /v1/systemone)
-  → strict response validation           (closed IDs, bounded probabilities, fail closed)
-  → read-only labels                     (API route + small experimental panel)
+canonical FINCO evidence (R-LIVE, exact approved canonical_id, read-only)
+  → deterministic feature extraction   (Decimal arithmetic, closed-vocabulary buckets)
+  → identity-blinded feature state     (only the bucket strings leave FINCO)
+  → typed Jev request                  (2 questions, POST /v1/systemone)
+  → strict response validation         (closed IDs, bounded values; fail closed)
+  → typed interpretation               (API route + small experimental panel, VISIBLE mode only)
 ```
 
-Files (`app/radar_rwa/jev_intelligence/`): `contracts.py` (types, versions, disclosure),
-`config.py` (env, modes), `features.py` (all arithmetic), `questions.py` (request and response
-validation), `transport.py` (HTTP), `cache.py`, `telemetry.py`, `service.py` (orchestration).
-Plus `app/api/v1_1/r_live_intelligence_router.py`, a small edit to
-`app/radar_ui/r_live_router.py` and `app/templates/radar/r_live_detail.html`, one mount line in
-`main_web.py`, and `tests/test_jev_radar_intelligence.py`.
+Flow is one-directional. Package `app/radar_rwa/jev_intelligence/`: `contracts.py` (types,
+versions, disclosure), `config.py`, `features.py` (all arithmetic and the feature contract),
+`questions.py` (request text and response validation), `transport.py`, `cache.py`,
+`telemetry.py`, `shadow.py`, `service.py`. Outside the package: the separate route
+`app/api/v1_1/r_live_intelligence_router.py`, a five-line enqueue-only hook in
+`app/api/v1_1/r_live_public_router.py` (`get_r_live`), the panel in
+`app/templates/radar/r_live_detail.html` and its context flag in `app/radar_ui/r_live_router.py`,
+one mount line in `main_web.py`, and the operator tool `tools/jev_live_smoke.py`.
 
-### 2.1 Canonical inputs (audited against current main)
+Canonical inputs (audited against current main; all existing, read-only, unchanged): the current
+B1.0 premium and state via `get_r_live`; freshness evidence; the 1h/24h premium range summary
+(`read_r_live_ranges`); ordered history points (`read_r_live_history`, limit 100). **Not available
+in current R-LIVE and therefore not used or claimed:** liquidity, depth, volume, trade counts,
+wallet or flow data, executable quotes.
 
-| Input | Source (existing, unchanged) | Used for |
-|---|---|---|
-| Current B1.0 premium (bps) and composite state | `app.api.v1_1.institutional.get_r_live` → `r_live_service` | current level, positions, direction |
-| Freshness (`market_activity_age_seconds`, `retrieved_at`) | same | activity bucket, evaluation clock |
-| 1h and 24h premium range low / high / count | `read_r_live_ranges` (read-only) | positions, shape, width, density |
-| Ordered premium history points | `read_r_live_history(limit=100)` (read-only) | 1h and 24h direction |
+## C. Exact outbound features (`JEV_RLIVE_FEATURES_V1`)
 
-Audited and **not available** in current R-LIVE: liquidity, depth, volume, trade counts, wallet
-or flow data, executable quotes. V1 therefore has no such feature and makes no such claim
-(no whale, wash-trading, organic-demand, smart-money or wallet-quality language; a test scans
-the package and panel for this vocabulary).
+The request `state` is exactly `{"features": {...}}`: these eleven closed-vocabulary buckets and
+nothing else (no schema version, fingerprint, identity, price, premium value, timestamp, user,
+workspace or entitlement). The machine-readable version is `features.FEATURE_CONTRACT`; a test
+asserts it matches the emitted keys, that no raw value or identity is sent, that every emitted
+bucket is inside the documented vocabulary, and that each feature appears below.
 
-### 2.2 Deterministic features (`JEV_RLIVE_FEATURES_V1`)
+All values are computed in Python `Decimal`. **Missing data**: a missing input yields
+`UNAVAILABLE` for that feature (never 0, never inferred). If the current observation is not
+`AVAILABLE`, or the 24h range is not available, no call is made at all.
 
-All values are closed-vocabulary strings. A missing input yields `UNAVAILABLE`, never 0, never
-inferred. If the current observation is not `AVAILABLE`, or the 24h range is not available, no
-Jev call is made (`CANONICAL_CURRENT_NOT_AVAILABLE`, `INSUFFICIENT_HISTORY`).
+| Feature | Canonical source | Deterministic transformation and buckets | Missing | Raw value sent | Identity exposed | Supports |
+|---|---|---|---|---|---|---|
+| `premium_level` | current B1.0 premium | \|bps\| <10 near parity; <50 moderate; <150 wide; else extreme; side from sign (7 values) | call not made | no | no | attention |
+| `position_in_1h_range` | premium + 1h range | below / lower third / middle third / upper third / above / flat range | UNAVAILABLE | no | no | regime, attention |
+| `position_in_24h_range` | premium + 24h range | same buckets over the 24h range | call not made | no | no | regime, attention |
+| `direction_1h` | premium + history points | sign of (current − earliest in-window point); flat if \|Δ\|<2 bps; needs ≥50% window coverage and an untruncated read | UNAVAILABLE | no | no | regime |
+| `direction_24h` | premium + history points | same rule over 24h | UNAVAILABLE | no | no | regime |
+| `short_long_agreement` | the two directions | agree / disagree / flat involved | UNAVAILABLE | no | no | regime |
+| `range_shape` | 1h and 24h ranges | 1h width ÷ 24h width: ≤0.25 compressed, ≤0.75 intermediate, else expanded; flat range | UNAVAILABLE | no | no | regime, attention |
+| `range_width_24h` | 24h range | width bps: <5 narrow, <25 moderate, else wide | call not made | no | no | regime, attention |
+| `observation_density_1h` | 1h range count | <3 sparse, <12 moderate, else dense | UNAVAILABLE | no | no | attention |
+| `observation_density_24h` | 24h range count | <12 sparse, <72 moderate, else dense | UNAVAILABLE | no | no | attention |
+| `market_activity_age` | freshness (last pool activity age) | ≤5 min, ≤1 h, ≤6 h, over 6 h | UNAVAILABLE | no | no | attention |
 
-| Feature | Rule (thresholds are declared constants in `features.py`) |
-|---|---|
-| `premium_level` | absolute premium bps: <10 near parity, <50 moderate, <150 wide, else extreme; side from sign |
-| `position_in_1h_range`, `position_in_24h_range` | below / lower third / middle third / upper third / above range, or flat range |
-| `direction_1h`, `direction_24h` | sign of (current − earliest in-window point); flat if \|Δ\| < 2 bps; unavailable unless the earliest point covers ≥50% of the window and the 100-point read is not truncated |
-| `short_long_agreement` | agree / disagree / flat involved, from the two directions |
-| `range_shape` | 1h width ÷ 24h width: ≤0.25 compressed, ≤0.75 intermediate, else expanded |
-| `range_width_24h` | 24h width bps: <5 narrow, <25 moderate, else wide |
-| `observation_density_1h`, `_24h` | count buckets (1h: <3 / <12; 24h: <12 / <72) |
-| `market_activity_age` | age of last pool activity: ≤5m, ≤1h, ≤6h, over 6h |
+Jev is never asked to compute any of these, and the question text forbids recomputation.
+Minimisation review: no ticker, company name, token contract, wallet, user, workspace,
+entitlement or private FINCO data is sent, and none is required by either question. The local
+input fingerprint and observation digest stay inside FINCO.
 
-Jev is never asked to compute any of these. The tests assert that no feature value is numeric,
-that identity strings and the premium never appear in the outbound request, and that the
-instructions contain no calculate/compute request.
+## D. Exact questions (`JEV_RLIVE_QUESTIONS_V1`, frozen)
 
-### 2.3 Jev questions (`JEV_RLIVE_QUESTIONS_V1`)
+1. `market_regime` — Choice, `criteria` = `MOMENTUM`, `MEAN_REVERTING`, `RANGE_BOUND`,
+   `UNRESOLVED` (each with a short descriptive sentence).
+2. `attention` — Score, `criteria` = ordered list `NORMAL`, `ELEVATED`, `HIGH`.
 
-Exactly two, in one request (request body about 1.8 KB, roughly 460 input tokens by a
-characters÷4 heuristic; the provider's own count is captured in `usage`, see §6):
+Both instructions say the state describes the premium/discount series of an on-chain token
+reference versus a source-bound equity basis, that only the supplied buckets may be judged, that
+`UNAVAILABLE` means unknown, and that identity inference, recomputation and advice are forbidden.
+A test scans the request for forecast, recommendation, whale, smart-money, manipulation and
+wash-trading language.
 
-1. `market_regime` — **Choice**: `criteria` is a mapping of `MOMENTUM`, `MEAN_REVERTING`,
-   `RANGE_BOUND`, `UNRESOLVED` to descriptions.
-2. `attention` — **Score**: `criteria` is the ordered list `NORMAL`, `ELEVATED`, `HIGH`.
+Evidence review: `market_regime` is supported by direction, position, agreement and range-shape
+features; `attention` by premium level, position, shape, width, density and activity age (each
+question has at least three supporting canonical features). Both are kept. **Deliberately not
+included:** a persistence Noul (see §M) and a movement-quality Choice (FINCO has no wallet-flow or
+trade-level evidence). Nothing was added to pad the set.
 
-Request contract (locked by `tests/fixtures/typesafe_systemone_contract.json` and tests): Choice
-and Score both take `criteria`. `options` is not a Choice request field and `legend` is a Score
-**response** field, never a request field; neither appears in the request.
+## E. Provider contract
 
-Both instructions state that the state describes the premium/discount series of an on-chain
-token reference versus a source-bound equity basis, that only the supplied buckets may be
-judged, and that identity inference, recomputation and advice are forbidden.
+- Endpoint `POST https://api.typesafe.ai/v1/systemone`; `Authorization: Bearer $TYPESAFE_API_KEY`;
+  diagnostic-only `GET /v1/models` (never on the request path).
+- **Request**: `{model, state, questions}`. Choice and Score both use `criteria` (Choice: mapping
+  label → description; Score: ordered list). `options` and `legend` are never sent (`legend` is a
+  Score response field). Locked by `tests/fixtures/typesafe_systemone_contract.json`, a strict
+  validator, and tests that fail on the old shapes.
+- **Response** (strict, no defaults): Choice needs `type = choice`, a valid `choice`,
+  `probabilities` (keys within the criteria, each in [0,1], sum ≤ 1.001, including the chosen
+  option) and `confidence`. Score needs `type = score`, `score`, `legend` exactly
+  `{0: NORMAL, 1: ELEVATED, 2: HIGH}`, `probabilities` and `confidence`. Only the two expected
+  answer IDs are accepted. The resolved model string must match a conservative identifier pattern.
+- **Score policy**: a 0-based level index; must satisfy 0 ≤ score ≤ 2 (out of range is rejected,
+  not rounded). Level = nearest index with `ROUND_HALF_UP` (a tie goes to the higher attention
+  level): 0.4999 → NORMAL, 0.5 → ELEVATED, 1.4999 → ELEVATED, 1.5 → HIGH. Boundaries are tested.
+- Transport: 5 s per attempt, 2 retries (3 attempts), backoff 0.25 s then 0.5 s, 12 s total
+  budget; retry 408/429/5xx (incl. 529) and network errors, honour `Retry-After`; no retry on
+  401/403/400/404/422; responses declaring more than 256 KB are refused; a response echoing the
+  key is rejected.
 
-Deliberately omitted: a persistence "likely to persist" Noul (no immutable outcome policy or
-baseline, see §4) and a movement-quality Choice (FINCO has no wallet-flow or trade-level
-evidence, so an organic-versus-abrupt distinction would not be evidence-backed).
+## F. Failure behaviour
 
-### 2.4 Typed outputs
-
-Response contract (strict, no defaults): Choice requires `type = choice`, a valid `choice`,
-`probabilities` (keys within the criteria, each in [0,1], sum ≤ 1.001, containing the chosen
-option) and `confidence`. Score requires `type = score`, `score`, `legend` (exactly
-`{0: NORMAL, 1: ELEVATED, 2: HIGH}`), `probabilities` and `confidence`. A missing `type` is
-invalid, not defaulted. Score is a 0-based level index and must satisfy 0 ≤ score ≤ 2; values
-outside that range are rejected, not rounded into a label. Level policy (`ROUND_HALF_UP`, so a
-tie goes to the higher attention level): 0.4999 → NORMAL, 0.5 → ELEVATED, 1.4999 → ELEVATED,
-1.5 → HIGH, 2.0 → HIGH; the boundaries are tested.
-
-`IntelligenceResult` (`contracts.py`): state (`AVAILABLE`, `DISABLED`, `UNAVAILABLE`,
-`INVALID_RESPONSE`), reason, canonical identity, observation digest, input fingerprint, feature
-and question schema versions, regime answer (choice, per-option probabilities, confidence),
-attention answer (state, score, confidence), requested and resolved model and whether they
-match, `evaluated_at`, provenance (evaluation clock, feature sources, authority label
-`JEV_INTERPRETATION_NON_CANONICAL`), diagnostics (cache status, latency, attempts, provider
-request id, usage, failure category) and the disclosure text.
-
-### 2.5 API and UI
-
-- `GET /api/v1.1/radar/r-live/{canonical_id}/intelligence`, unauthenticated like the other public
-  R-LIVE reads, `Cache-Control: no-store`, in its own router so the reviewed six-route public
-  R-LIVE contract is unchanged (an existing test still passes). No history write from GET.
-- OFF and SHADOW: the route returns `DISABLED` and never evaluates. VISIBLE: it evaluates.
-- UI: a small "Jev Intelligence" section with an Experimental badge on the R-LIVE detail page,
-  rendered only in VISIBLE mode (the OFF and SHADOW pages contain no panel and no fetch). It shows
-  regime, attention, confidence, evaluation time, resolved model and a short fingerprint, plus the
-  disclosure. Canonical panels are always present; a Jev failure only changes the panel to a typed
-  "unavailable" line. No recommendation vocabulary.
-
-### 2.6 Cache, timeout, retry, limits
-
-| Behaviour | Value |
-|---|---|
-| Cache key | `(economic_asset_uid, input_fingerprint, question_schema_version, requested_model, observation_digest)` |
-| TTL | 30 s if last pool activity ≤5m, 60 s if ≤1h, else 120 s (clamped 30–120) |
-| Coalescing | concurrent identical requests share one in-flight call |
-| What is cached | only `AVAILABLE` results; failures are never replayed as answers |
-| Per-attempt timeout / retries | 5 s / 2 retries (3 attempts); backoff 0.25 s then 0.5 s; total budget 12 s |
-| Retried | 408, 429, 5xx (including 529), timeouts, network errors; `Retry-After` honoured |
-| Not retried | 401/403 (auth), 400/404/422 (invalid request) |
-| Rate limit | **process-wide** (one Python process, not host-global): 30 evaluations per minute by default (`FINCO_JEV_MAX_EVALUATIONS_PER_MINUTE`), then `JEV_RATE_LIMITED`. With N web workers the theoretical host ceiling is about N × that value until a shared limiter exists |
-
-The fingerprint covers only coarse buckets, and different canonical evidence can share it. A
-result carries the observation digest, evaluation clock and provenance of the evidence it
-interprets, so the key includes `observation_digest`: the same exact observation is a cache hit,
-while any different canonical evidence forces a new evaluation even if the buckets are identical.
-A regression test (same fingerprint, different digest → two provider calls, each with its own
-`observation_digest` and `as_of`) locks this. Evidence correctness is preferred over reuse; a
-consequence is that the cache saves calls only for repeated reads of the same observation.
-
-### 2.7 Failure modes
-
-Every failure is a typed state; none produces fabricated intelligence and none touches
-canonical data. Reasons include `JEV_INTELLIGENCE_DISABLED`, `ASSET_UID_INVALID`,
+Every failure is a typed state and none fabricates intelligence or touches canonical data:
+`DISABLED`, `UNAVAILABLE` and `INVALID_RESPONSE` with closed reasons (`ASSET_UID_INVALID`,
 `CANONICAL_CURRENT_UNAVAILABLE`, `CANONICAL_IDENTITY_MISMATCH`, `CANONICAL_CURRENT_NOT_AVAILABLE`,
 `INSUFFICIENT_HISTORY`, `HISTORY_UNAVAILABLE`, `JEV_API_KEY_NOT_CONFIGURED`, `JEV_RATE_LIMITED`,
-`JEV_TRANSPORT_UNAVAILABLE` (with failure category `TIMEOUT`, `NETWORK`, `HTTP_408`, `HTTP_429`,
-`HTTP_5XX`, `AUTH`, `INVALID_REQUEST`, `RETRY_BUDGET_EXHAUSTED`), and `INVALID_RESPONSE` with a
-closed reason such as `JEV_UNEXPECTED_QUESTION_OUTPUT` or `CONFIDENCE_OUT_OF_BOUNDS`. No raw
-provider text, key or exception is ever returned or logged.
+`JEV_TRANSPORT_UNAVAILABLE` with failure category `TIMEOUT`, `NETWORK`, `HTTP_408`, `HTTP_429`,
+`HTTP_5XX`, `AUTH`, `INVALID_REQUEST`, `RETRY_BUDGET_EXHAUSTED`, and response-validation reasons).
+No raw provider text, key or exception is returned or logged.
 
-## 3. Authority boundary
+**Isolation** (tested at API level): a TypeSafe outage makes JEV unavailable and nothing else. The
+canonical R-LIVE response is byte-identical with and without a failing, timing-out, unauthorised
+or hanging provider; the R-LIVE landing and detail pages stay up; startup and import never
+initialise the provider (construction is lazy and patched to fail in the test); a missing key is
+`JEV_API_KEY_NOT_CONFIGURED`, not a crash.
 
-```
-FINCO canonical data → deterministic features → JEV interpretation      (one direction only)
-```
+**User-facing states** (VISIBLE panel): calm muted text, never a red error and never a raw code:
+provider unavailable or timeout → "Interpretation temporarily unavailable."; rate limited →
+"Interpretation paused to limit provider calls."; invalid provider response or anything unknown →
+"Interpretation unavailable."; stale or unavailable canonical evidence → "Canonical evidence is
+stale or unavailable, so no interpretation is offered."; too little history → "Not enough
+canonical history for an interpretation yet."; not configured → "Interpretation is not
+configured." The reason code is only a bounded data attribute.
 
-Nothing flows back. The evidence for each non-equivalence:
+## G. Cache, rate limit, cost and call control
 
-| Claim | Structural evidence | Test |
-|---|---|---|
-| **JEV ≠ calculation authority** | All arithmetic is in `features.py`; Jev receives only buckets, never numbers; its output is a label with probabilities and is not used in any FINCO number | features tests; "request is identity-blinded and has no arithmetic or numbers" |
-| **JEV ≠ FINCO Verify** | Package never references `app.verified`, `app.persistence` or any Verify writer; no VERIFIED status can be produced; output authority is `JEV_INTERPRETATION_NON_CANONICAL` | forbidden-import scan; zero-diff on `app/verified/**` |
-| **JEV ≠ canonical identity authority** | Input must be an exact approved `canonical_id` (tickers, names, case variants, prefixed forms rejected); the returned evidence's key and uid are re-checked against the reviewed policy; the outbound request carries no identity | identity tests; substitution test |
-| **JEV ≠ executable-price authority** | No price, quote or premium value is sent or returned; the disclosure states it is not an executable price; no execution field exists in the outputs | request-blinding test; disclosure in every response |
-| **JEV ≠ Signed Run authority** | No import of run-certificate or Model code; results live only in process memory and telemetry, never in any certificate or stored artifact | forbidden-import scan; zero-diff on `financial_engine/**`, `finco_core/**` |
-
-Zero-diff evidence (against `origin/main`): `financial_engine/**`, `finco_core/**`,
-`app/model_validation/**`, `app/verified/**`, `finco_radar/**` — no changes. Reproduce with:
-`git diff origin/main --name-only -- financial_engine finco_core app/model_validation app/verified finco_radar`
-(expected output: empty).
-
-Read-path writes: a test replaces the history store's write methods and the engine's entry
-point with recorders and asserts nothing is called; a second test runs the real read functions
-against a real ledger and asserts the ledger file is byte-identical afterwards. (Opening a
-read-only SQLite handle on a WAL database can create empty `-wal`/`-shm` sidecars, exactly as the
-existing canonical range/history reads already do; ledger content never changes.)
-
-## 4. Predictive claims
-
-**No predictive output ships in V1.** `market_regime` and `attention` are descriptive
-classification labels of the current premium series. They make no statement about a future
-observation, and the UI labels them "Market regime (premium series)" and "Attention state".
-
-| Candidate predictive output | T0 | Horizon | Outcome rule | Evaluation window | Policy version | Baseline | Calibration | Decision |
-|---|---|---|---|---|---|---|---|---|
-| `likely_to_persist` (Noul) | not defined | not defined | not defined | not defined | none | not defined | none | **Not shipped.** No immutable outcome policy or same-information baseline exists on the current R-LIVE architecture. |
-| Movement quality (Choice) | n/a | n/a | n/a | n/a | none | n/a | none | **Not shipped.** No supporting evidence class in FINCO. |
-
-Consequence: `PREDICTIVE_QUESTION_INCLUDED = NO`, `OUTCOME_POLICY_DEFINED = N/A`,
-`BASELINE_DEFINED = N/A`. Enabling a predictive question later requires, before any outcome is
-collected: exact T0, target horizon, first eligible observation, tolerance window, label rule,
-an immutable policy version, and a deterministic baseline on the same information set (the
-discipline PR #119 applied to its own experiment).
-
-**Scientific status of the descriptive labels.** There is no ground truth for "regime" or
-"attention", so they cannot be calibrated against outcomes as they stand. What is verified is
-engineering correctness (deterministic features, closed schemas, fail-closed validation), not
-that the labels are right. The recommended validation before any visible release is: run SHADOW,
-sample labels, have a reviewer label the same buckets blind, and compare agreement with a
-deterministic rule baseline (e.g. direction agreement plus range position). Until then the labels
-are unvalidated model opinions and are presented as such.
-
-## 5. Production characteristics
-
-| Item | Value |
+| Item | Behaviour |
 |---|---|
-| Provider | TypeSafe (System One "Jev") |
-| Endpoint | `POST https://api.typesafe.ai/v1/systemone` (diagnostic-only `GET /v1/models`, never on the request path) |
-| Auth | `Authorization: Bearer $TYPESAFE_API_KEY`; key held in memory only, redacted in `repr`, never logged or serialized; a response echoing the key is rejected |
-| Requested model | `FINCO_JEV_MODEL`, default `jev-latest`; recorded per result |
-| Resolved model | taken from the provider response `model`; recorded per result; `model_match` is false when they differ. An alias is not treated as immutable |
-| Timeout / retry | see §2.6 |
-| Caching | see §2.6 |
-| Feature flag | `FINCO_JEV_INTELLIGENCE_ENABLED` (default `0`) |
-| Modes | OFF (default), SHADOW (enabled with no mode; evaluates through the operator function `evaluate_shadow`, telemetry only, not exposed), VISIBLE (`FINCO_JEV_INTELLIGENCE_MODE=VISIBLE`: API and panel). Unknown mode fails closed to OFF. Never silently promoted |
-| Request fan-out | one provider request per cache miss per asset, two questions per request. Panel only on the per-asset detail page, so no landing-page fan-out. Worst case is bounded per process by the process-wide limit (30 per minute by default), so the host ceiling is about N × 30 with N workers; the TTL cache only helps for repeated reads of the same exact observation |
-| Provider usage telemetry | whatever scalar `usage` fields the provider returns are recorded verbatim (closed scalar map); provider request id captured only if it matches a safe pattern |
-| Local telemetry | bounded in-memory ring plus a structured log line: outcome, cache status, latency, requested and resolved model, request id, usage, failure category |
-| Latency | vendor-reported 70–500 ms (secondary sources, **not measured here**). The page path also performs the existing live R-LIVE acquisition, so end-to-end latency is dominated by that, not by Jev |
-| Cost | **not measured**. No provider call has been made with a real key in this work. Request size is about 460 input tokens by heuristic. `telemetry.estimate_request_cost_usd` is an explicit estimate helper using a vendor-published rate that was not verified against vendor documentation; treat any monetary figure derived from it as unsupported until real `usage` data from SHADOW exists |
+| Cache key | `(economic_asset_uid, input_fingerprint, question_schema_version, requested_model, observation_digest)`; a tuple, so delimiter-shifted fields cannot collide |
+| Why the digest | different canonical evidence can share coarse buckets; binding to the exact observation prevents a hit returning an older observation's provenance. Locked by a same-bucket regression that fails without the fix |
+| TTL | 30 s if last pool activity ≤5 min, 60 s if ≤1 h, else 120 s |
+| Coalescing | concurrent identical requests share one in-flight call (tested with 5 and 8 concurrent readers) |
+| Cached | only `AVAILABLE` results; failures are never replayed |
+| Rate limit | **process-wide** (one process, not host-global), 30 evaluations/minute by default; then `JEV_RATE_LIMITED`. With N workers the theoretical host ceiling is about N × the limit. No shared limiter is built |
+| Reloads and repeats | 12 page reloads plus 12 API reads of the same evidence produce one provider call; new evidence produces exactly one more |
+| Fan-out | one provider request per cache miss per asset, two questions each (request body about 1.8 KB, roughly 460 tokens by a characters÷4 heuristic; the provider's own count is captured when supplied). The panel exists only on the per-asset detail page, so there is no landing-page fan-out |
+| Cost | **not measured; no live call has been made.** No monetary figure is claimed. Provider `usage` fields are recorded verbatim (bounded scalars) so SHADOW will produce evidence. `telemetry.estimate_request_cost_usd` is an explicitly labelled estimate from an unverified published rate |
 
-Provider contract status: the vendor documentation site was unreachable from the build
-environment. The first implementation used a community SDK's shape (`options`, `legend`), which
-an independent review found to be wrong; V1 now follows the current System One schema
-(`criteria` for both Choice and Score) and locks it with a fixture and tests. **No live provider
-call has been made** (no `TYPESAFE_API_KEY` in the build environment: `LIVE_PROVIDER_SMOKE =
-SKIPPED_NO_KEY`), so the contract is validated against the documented schema, not against the
-live service. The first live call must be made in SHADOW; a mismatch would surface as
-`INVALID_RESPONSE` or an `INVALID_REQUEST` failure (fail closed), not as wrong labels.
+## H. OFF / SHADOW / VISIBLE
 
-## 6. Reuse from PR #119 (experimental, remains experimental)
+| Mode | How selected | Behaviour |
+|---|---|---|
+| OFF (default) | `FINCO_JEV_INTELLIGENCE_ENABLED` unset or `0`; unknown mode also fails closed here | zero provider calls, zero extra canonical reads, no panel, no fetch, canonical behaviour unchanged |
+| SHADOW | enabled with no mode, or `FINCO_JEV_INTELLIGENCE_MODE=SHADOW` | the hook in the canonical single-asset R-LIVE read enqueues the **observation just served** (no second RPC) to a lazily started, bounded single worker (queue of 8; overflow is dropped, never blocks). Results go to telemetry and a bounded in-memory log of sanitized summaries marked `SHADOW_NOT_PUBLIC`. The public intelligence route returns `DISABLED` and never evaluates; no panel is rendered; never promoted |
+| VISIBLE | `FINCO_JEV_INTELLIGENCE_MODE=VISIBLE` (explicit only) | the intelligence route evaluates on request (cache and limit apply); the panel renders. No shadow enqueue |
 
-PR #119 was used as a **design reference**. Nothing was merged, imported or rebased from it.
+Configuration surface (all optional; safe defaults): `FINCO_JEV_INTELLIGENCE_ENABLED` (default `0`),
+`FINCO_JEV_INTELLIGENCE_MODE` (default SHADOW when enabled), `TYPESAFE_API_KEY` (read only when a
+call is needed; never logged), `FINCO_JEV_MODEL` (default `jev-latest`),
+`FINCO_JEV_MAX_EVALUATIONS_PER_MINUTE` (default 30, per process). Requested and resolved models
+are both recorded; `model_match` is false when they differ, because an alias is not immutable.
 
-**Reused as design (concepts):** Bearer-key handling, bounded timeout/retry/`Retry-After`,
-sanitized failure categories, closed response validation, input fingerprinting, requested versus
-resolved model tracking, usage and latency telemetry, feature allowlisting with a hard assertion,
-no-secret guarantees, and strict authority separation (Jev downstream only).
+Telemetry (bounded, in-memory plus a structured log line, never a second data store): request
+count, outcome, cache hit/miss, latency, requested and resolved model, provider request id (only
+if it matches a safe pattern), provider usage scalars, failure category. Never the key, the
+Authorization header, request or response bodies, or session data.
 
-**Refactored (new code, same shape):** the HTTP transport is a new file adapted from
-`typesafe_transport.py`: the closed failure-category set, `Retry-After` parsing, retryable-status
-rule, status-to-category map and the secret-echo guard are carried over near-verbatim; the client
-protocol gained `GET`, request-id capture, a 529 retry and tighter defaults (5 s timeout, 2
-retries, 12 s budget versus 10 s, 3 retries, 30 s). The typed-result and validation pattern from
-`interpretation.py` / `jev.py` was reworked for two questions (Choice and Score) instead of one Noul.
+Public surfaces: `GET /api/v1.1/radar/r-live/{canonical_id}/intelligence` (own router, `no-store`;
+the reviewed six-route public R-LIVE contract is unchanged) and the R-LIVE detail panel.
 
-**Deliberately rejected:** the RWA Reflex state and its old canonical-data assumptions
-(execution impact, effective gap, basis z-score, structural premium, liquidity and depth
-features), the event detector and T+60/T+65 outcome policy, the append-only shadow ledger and
-its SQLite writes, the `likely_transient` Noul, and the experiment's evaluation harness and
-workflow. Current R-LIVE does not provide those inputs, and V1 ships no predictive claim.
+## I. Security and privacy boundary
 
-## 7. Test and acceptance evidence
+Sent to Jev: eleven closed-vocabulary buckets. Never sent: identity, ticker, name, contract,
+wallet, user, workspace, entitlement, any number, timestamp or private data (a test scans the
+outbound request). Exact `canonical_id` only, with the returned evidence's key and uid re-checked;
+tickers, names, case variants, prefixed or padded forms are rejected, and hostile identifiers
+(traversal, script text, null bytes, 5,000 characters, SQL text) are typed rejections that are
+truncated and never reflected as markup. Adversarial provider output is tested: injected extra
+keys and text are ignored and never exposed; HTML in model, choice or legend fails validation;
+NaN, ±Infinity, out-of-range scores, malformed or huge probability objects, over-size responses
+and secret echo all fail closed; usage metadata is capped (16 keys, safe names, short values).
+The panel writes every provider value with `textContent` only (a browser test proves an
+`<img onerror>` payload stays inert text). Result data lives only in process memory.
 
-`tests/test_jev_radar_intelligence.py`: 113 tests covering deterministic features (including
-missing-is-unavailable and fail-closed on stale or unavailable canonical input), exact-identity
-and substitution rejection, transport (redaction, timeout, 408, 429 with `Retry-After`, 5xx,
-auth and malformed no-retry, bounded retries, malformed and secret-echo responses, safe request
-id), response validation (unexpected IDs, out-of-bounds probabilities, legend mismatch, model
-mismatch surfaced), caching (hit, changed bucket, expiry, separate model, failures not cached,
-concurrent coalescing), modes and the flag (OFF makes zero calls, SHADOW default, invalid mode),
-authority (forbidden-import scan, no writes, no engine call, byte-identical real ledger, canonical
-data unchanged on Jev failure), API (OFF/SHADOW/VISIBLE, disclosure, identity) and UI (no panel
-when OFF/SHADOW, Experimental badge, canonical panels retained, no recommendation vocabulary).
+## J. What was reused from PR #119 (design reference only)
 
-Focused acceptance also run: R-LIVE current, ranges/history, landing, collector and public API
-tests (all pass); public repository safety scan (pass); `compileall` (clean). The one Radar
-browser test in that set that errors, `test_radar_n04_browser`, also errors on the base commit in
-this sandbox. Full-suite result: see the PR description and the final report.
+Concepts: Bearer-key handling, bounded timeout/retry/`Retry-After`, sanitized failure categories,
+closed response validation, input fingerprinting, requested-versus-resolved model tracking,
+usage/latency telemetry, feature allowlisting with a hard assertion, no-secret guarantees, and
+strict authority separation. Code: the HTTP transport is a new file adapted from
+`typesafe_transport.py`; the failure-category set, `Retry-After` parsing, retryable-status rule,
+status-to-category map and secret-echo guard are carried over near-verbatim, with a `GET` path,
+request-id capture, 529 retry, size guard and tighter defaults added. Nothing was merged,
+imported or rebased from that branch; #119 remains experimental and undispositioned.
 
-## 8. Known limitations and risks
+## K. What was deliberately not reused
 
-1. Labels are unvalidated (no ground truth); see §4.
-2. Provider contract aligned to the documented System One schema but not validated live; verify with the first SHADOW call.
-3. Latency and cost are unmeasured for this workload; no live call has been made.
-4. The SHADOW trigger is a callable, not wired to a scheduler.
-5. Coarse buckets mean the model sees little information; expect many `UNRESOLVED` and `NORMAL`
-   answers. That is honest but limits usefulness.
-6. The panel drives one live R-LIVE acquisition plus one cached provider call per view; a public
-   unauthenticated route is protected only by the same-observation cache and a process-wide limit
-   (about N × the limit across N workers).
-7. `market_regime` names could be misread as forecasts; mitigated by labelling and disclosure, not
-   eliminated.
+The RWA Reflex state and its old canonical-data assumptions (execution impact, effective gap,
+basis z-score, structural premium, liquidity and depth features), the event detector and
+T+60/T+65 outcome policy, the append-only shadow ledger and its SQLite writes, the
+`likely_transient` Noul, and the experiment's evaluation harness and workflow. Current R-LIVE does
+not provide those inputs and V1 ships no predictive claim.
 
-## 9. How to review quickly
+## L. What remains experimental
 
-1. Read §3 and run the zero-diff command.
-2. Open `features.py` (all arithmetic) and `questions.py` (the only text sent to Jev).
-3. Run `pytest tests/test_jev_radar_intelligence.py`.
-4. Set `FINCO_JEV_INTELLIGENCE_ENABLED=1` and `FINCO_JEV_INTELLIGENCE_MODE=VISIBLE` with a
-   throwaway key in staging only, and inspect one result and the telemetry snapshot.
+All of it: the labels are unvalidated (no ground truth for "regime" or "attention"), the provider
+contract is unvalidated against the live service, latency and cost are unmeasured, and there is no
+scheduler for SHADOW beyond the canonical-read hook. The panel is labelled Experimental and never
+uses prediction, forecast, signal, recommendation or verified language.
 
-## 10. Author assessment against the six review questions
+## M. Known limitations
 
-1. **Is JEV useful?** Unproven. The design is cheap and low risk, but the input is a single
-   premium series reduced to buckets, so the added information over a deterministic rule is likely
-   small. Usefulness needs SHADOW data and a blind comparison against a rule baseline.
-2. **Correctly scoped?** Yes for V1: descriptive labels only, no predictive claim, no data FINCO
-   does not have.
-3. **Contaminates a canonical authority?** No, on the evidence in §3: zero diffs in protected
-   paths, no imports of engine, Verify or persistence code, no writes, no identity in the request.
-4. **Scientifically defensible?** The engineering is; the labels are not yet validated (§4).
+1. **Predictive claims: none ship.** A persistence Noul has no T0, horizon, outcome rule,
+   evaluation window, policy version, deterministic baseline or calibration on the current R-LIVE
+   architecture, so it is `NOT_SHIPPED`. Enabling it needs, before any outcome is collected: exact
+   T0, target horizon, first eligible observation, tolerance window, label rule, an immutable
+   policy version and a same-information baseline.
+2. Descriptive labels cannot be calibrated as they stand. Suggested validation: run SHADOW, have a
+   reviewer label the same buckets blind, and compare with a deterministic rule baseline.
+3. The information Jev sees is small (eleven buckets); expect many `UNRESOLVED` and `NORMAL`
+   answers. Honest, but it limits usefulness.
+4. SHADOW evaluates only observations served by the single-asset canonical read; the landing-page
+   batch stream is not hooked (it would fan out to every approved asset).
+5. The limiter and cache are process-local.
+6. Opening a read-only SQLite handle on a WAL ledger can create empty `-wal`/`-shm` sidecars, as
+   the existing canonical reads already do; ledger content never changes.
+7. A public unauthenticated route relies on the same-observation cache and the process-wide limit
+   for spend control.
+
+## N. Live provider validation status
+
+`LIVE_PROVIDER_SMOKE = SKIPPED_NO_KEY`. No `TYPESAFE_API_KEY` exists in the build environment, so
+no real call was made and nothing is claimed about live behaviour. The request contract follows
+the documented System One schema and is locked by a fixture; it is validated against that schema,
+not against the live service. `tools/jev_live_smoke.py` is the bounded operator check (at most one
+model-discovery request and one synthetic evaluation; prints only the closed summary; never the
+key, headers or payloads; not part of CI). Run it once in SHADOW, then review the printed
+resolved model, latency and usage before any VISIBLE use.
+
+## O. Authority statements
+
+- **JEV ≠ FINCO calculation authority**: every number is computed in `features.py`; Jev receives
+  only buckets; nothing it returns feeds a FINCO number.
+- **JEV ≠ R-LIVE canonical authority**: read-only consumer; the canonical response is identical
+  with JEV off, failing or hanging (tested); no history, price or state write.
+- **JEV ≠ FINCO Verify**: no `app.verified` or persistence import; no VERIFIED status can be
+  produced; output authority is `JEV_INTERPRETATION_NON_CANONICAL`.
+- **JEV ≠ Signed Run**: no run-certificate or Model code; results are never part of any
+  certificate or stored artifact.
+- **JEV ≠ identity authority**: exact reviewed `canonical_id` only, re-verified against the
+  returned evidence; the request carries no identity.
+- **JEV ≠ executable-price authority**: no price or premium value is sent or returned; the
+  disclosure says it is not an executable price.
+- **JEV ≠ investment recommendation**: no BUY/SELL/LONG/SHORT, target, outperformance or advice
+  vocabulary in the package, request or panel (scanned by tests).
+
+Zero-diff evidence against `origin/main` for `financial_engine/**`, `finco_core/**`,
+`app/model_validation/**`, `app/verified/**` and `finco_radar/**`:
+`git diff origin/main --name-only -- financial_engine finco_core app/model_validation app/verified finco_radar`
+(expected output: empty). A forbidden-import scan covers the whole package and the smoke tool.
+
+## P. Test and acceptance evidence
+
+`tests/test_jev_radar_intelligence.py` (core: features, identity, transport, contract, cache,
+modes, authority, API, UI, real read-only ledger), `tests/test_jev_shadow_universe_security.py`
+(SHADOW runtime and isolation, the **current approved R-LIVE universe** built from repository
+authority through the real `format_r_live_result` — every approved asset yields a valid blinded
+request, stale/unavailable evidence fails closed, no asset substitution, no ticker lookup —
+feature contract, adversarial security, call control, configuration, smoke tool, UI safety,
+telemetry) and `tests/test_jev_panel_browser.py` (desktop 1280 and mobile 390: Experimental label,
+canonical data retained, calm failure states, no overflow, inert hostile strings). No universe
+count is hard-coded. Final counts and full-suite and exact-head CI results are in the PR
+description and final report.
+
+## Q. Author assessment against the six review questions
+
+1. **Is JEV useful?** Unproven. Cheap and low risk, but the input is one premium series reduced to
+   buckets, so the gain over a deterministic rule may be small. Usefulness needs SHADOW data and a
+   blind comparison against a rule baseline.
+2. **Correctly scoped?** Yes: descriptive labels only, no predictive claim, no data FINCO lacks.
+3. **Contaminates a canonical authority?** No on the evidence in §O: zero diffs in protected paths,
+   no engine/Verify/persistence imports, no writes, no identity sent, canonical responses unchanged
+   under JEV failure.
+4. **Scientifically defensible?** The engineering is; the labels are not yet validated (§M).
    Nothing predictive is claimed.
-5. **Production characteristics acceptable?** Bounded and fail-closed, default OFF; but latency
-   and cost are unmeasured and the wire format is unverified against vendor docs (§5).
-6. **Recommendation:** **keep experimental.** Merge only as default-OFF code if desired, run
-   SHADOW to measure latency, usage, agreement with a rule baseline and label stability, and
-   decide on VISIBLE afterwards. Remove it if SHADOW shows the labels add nothing over the
-   deterministic buckets.
+5. **Production characteristics acceptable?** Bounded, fail-closed, default OFF, provider failure
+   isolated. Latency, cost and live contract behaviour are unmeasured (§G, §N).
+6. **Recommendation: keep experimental.** Run SHADOW to measure latency, usage, label stability and
+   agreement with a rule baseline, then decide on VISIBLE. Remove it if the labels add nothing
+   over the deterministic buckets.

@@ -869,8 +869,8 @@ def test_ui_visible_panel_is_experimental_and_keeps_canonical_metrics(client, mo
     assert f"/api/v1.1/radar/r-live/" in html and "/intelligence" in html
     panel = html[html.index('id="jev-intelligence"'):html.index("Identity &amp; Deployment")]
     assert not re.search(r"\b(BUY|SELL|LONG|SHORT)\b|target price", panel)
-    assert "Unavailable" not in panel or "unavailable" in html.lower()  # honest state handled in JS
-    assert "jev-status" in html and "Jev intelligence unavailable" in html
+    assert "jev-status" in html and "Interpretation unavailable." in html  # honest typed state in JS
+    assert "not canonical FINCO market data" in panel
 
 
 def test_ui_unapproved_asset_never_renders_panel(client, monkeypatch):

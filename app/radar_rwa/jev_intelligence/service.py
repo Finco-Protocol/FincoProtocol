@@ -5,6 +5,7 @@ Read-only. No history write, no engine/Model/Verify/certificate call, no canonic
 """
 from __future__ import annotations
 
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from .questions import build_request, parse_response
 from .telemetry import TELEMETRY, Telemetry, TelemetryRecord, now_iso
 from .transport import JevHttpConfig, JevTransportError, TypeSafeJevTransport
 
+_USAGE_KEY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 CurrentProvider = Callable[[str], "tuple[str, Mapping[str, object]]"]
 RangesProvider = Callable[[str, datetime], Mapping[str, object]]
 PointsProvider = Callable[[str], list]
@@ -64,6 +66,11 @@ _LIMITER_LOCK = threading.Lock()
 def _limiter(per_minute: int) -> _RateLimiter:
     with _LIMITER_LOCK:
         return _LIMITERS.setdefault(per_minute, _RateLimiter(per_minute))
+
+
+def build_transport(key: str) -> JevTransport:
+    """Lazy provider construction: nothing external is initialised at import or startup."""
+    return TypeSafeJevTransport(key, config=JevHttpConfig())
 
 
 def default_current_provider(canonical_id: str) -> tuple[str, Mapping[str, object]]:
@@ -122,8 +129,9 @@ def _meta(response: Mapping[str, object]) -> tuple[Decimal | None, int | None, s
     if isinstance(usage_raw, Mapping):
         for key in sorted(usage_raw):
             item = usage_raw[key]
-            if isinstance(key, str) and key.strip() and isinstance(item, (str, int, float)) \
-                    and not isinstance(item, bool):
+            if (isinstance(key, str) and _USAGE_KEY_RE.fullmatch(key)
+                    and isinstance(item, (str, int, float)) and not isinstance(item, bool)
+                    and len(str(item)) <= 32 and len(usage) < 16):
                 usage.append((key, str(item)))
     return latency, attempts, request_id, tuple(usage)
 
@@ -131,9 +139,9 @@ def _meta(response: Mapping[str, object]) -> tuple[Decimal | None, int | None, s
 def evaluate_intelligence(
     canonical_id: str, *, config: JevIntelligenceConfig | None = None,
     transport: JevTransport | None = None,
-    current_provider: CurrentProvider = default_current_provider,
-    ranges_provider: RangesProvider = default_ranges_provider,
-    points_provider: PointsProvider = default_points_provider,
+    current_provider: CurrentProvider | None = None,
+    ranges_provider: RangesProvider | None = None,
+    points_provider: PointsProvider | None = None,
     cache: IntelligenceCache | None = None, telemetry: Telemetry | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> IntelligenceResult:
@@ -142,6 +150,10 @@ def evaluate_intelligence(
     telemetry = telemetry or TELEMETRY
     cache = cache or _CACHE
     mode = config.mode
+    # Providers resolve at call time (not definition time) so tests and operators can replace them.
+    current_provider = current_provider or default_current_provider
+    ranges_provider = ranges_provider or default_ranges_provider
+    points_provider = points_provider or default_points_provider
 
     if not config.enabled:  # zero Jev calls, zero canonical reads
         return _result(IntelligenceState.DISABLED, canonical_id, "JEV_INTELLIGENCE_DISABLED",
@@ -196,7 +208,7 @@ def evaluate_intelligence(
                                mode=mode, uid=uid, config=config,
                                observation_digest=features.observation_digest,
                                input_fingerprint=features.input_fingerprint, as_of=features.as_of)
-            jev = TypeSafeJevTransport(key_value, config=JevHttpConfig())
+            jev = build_transport(key_value)
         if not _limiter(config.max_evaluations_per_minute).allow():
             return _result(IntelligenceState.UNAVAILABLE, canonical_id, "JEV_RATE_LIMITED",
                            mode=mode, uid=uid, config=config,
@@ -205,7 +217,8 @@ def evaluate_intelligence(
         common = dict(mode=mode, uid=uid, config=config,
                       observation_digest=features.observation_digest,
                       input_fingerprint=features.input_fingerprint, as_of=features.as_of,
-                      sources=features.sources)
+                      sources=features.sources,
+                      evidence_freshness=features.features.get("market_activity_age"))
         try:
             response = jev.evaluate(build_request(features, model=config.model))
         except Exception as exc:
@@ -237,7 +250,8 @@ def evaluate_intelligence(
             observation_digest=features.observation_digest, input_fingerprint=features.input_fingerprint,
             market_regime=regime, attention=attention, requested_model=config.model,
             resolved_model=resolved, evaluated_at=datetime.now(timezone.utc), as_of=features.as_of,
-            sources=features.sources, mode=mode, diagnostics=diag)
+            sources=features.sources, evidence_freshness=features.features.get("market_activity_age"),
+            mode=mode, diagnostics=diag)
 
     try:
         result, _status = cache.get_or_compute(key, features.ttl_seconds, compute)
