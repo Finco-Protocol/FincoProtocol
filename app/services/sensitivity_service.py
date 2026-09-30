@@ -124,7 +124,9 @@ KPI_DEFS: list[tuple[str, str, str]] = [
     ("total_senior_ds_keur", "Senior DS (kEUR)", "keur"),
     ("total_distribution_keur", "Equity Distribution (kEUR)", "keur"),
     ("project_irr", "Project IRR", "pct"),
-    ("equity_irr", "Equity IRR", "pct"),
+    # H-3 truth: equity_irr is the pure share-capital return (EQUITY_ONLY);
+    # shareholder-loan flows are NOT included in this number.
+    ("equity_irr", "Equity IRR (share capital only)", "pct"),
     ("equity_npv", "Equity NPV (kEUR)", "keur"),
     ("actual_avg_dscr", "Avg DSCR", "x"),
     ("min_dscr", "Min DSCR", "x"),
@@ -295,7 +297,7 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
         # per the Data Center canonical identity (IT MW x occupancy x PUE x
         # 8,760 x price).  Scale the derived Power Expenses schedule; no core
         # TechnicalParams field is invented.
-        new_opex = tuple(
+        opex_new = tuple(
             replace(
                 o,
                 y1_amount_keur=o.y1_amount_keur * factor,

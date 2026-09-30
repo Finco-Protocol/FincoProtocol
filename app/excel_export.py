@@ -464,7 +464,7 @@ def _write_model_notes_sheet(
     rows.extend([
         ("KPI Summary", ""),
         ("Project IRR", f"{result.project_irr * 100:.3f}%" if hasattr(result, "project_irr") else "n/a"),
-        ("Equity IRR", f"{result.equity_irr * 100:.3f}%" if hasattr(result, "equity_irr") else "n/a"),
+        ("Equity IRR (share capital only)", f"{result.equity_irr * 100:.3f}%" if hasattr(result, "equity_irr") else "n/a"),
         ("Avg DSCR", f"{result.actual_avg_dscr:.3f}" if hasattr(result, "actual_avg_dscr") else "n/a"),
         ("Min DSCR", f"{result.actual_min_dscr:.3f}" if hasattr(result, "actual_min_dscr") else "n/a"),
         ("Debt (kEUR)", f"{result.sculpting_result.debt_keur:,.0f}" if (

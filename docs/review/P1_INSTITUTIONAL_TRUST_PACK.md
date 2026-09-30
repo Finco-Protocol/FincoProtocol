@@ -171,7 +171,7 @@ Accordingly the master gate is:
 
 A narrower presentation limitation remains: `app/export/institutional_workbook.py` does not currently bind the already-existing clean C3 statement result into the clean workbook bundle. Its Tax/P&L/PF Cash Flow/Balance Sheet worksheets therefore show unavailable state on that path. That limitation is tracked as:
 
-`XLSX_STATEMENT_TRACE = NOT_AVAILABLE`
+`XLSX_STATEMENT_TRACE = PASS` (closed by P1 Model Completeness: clean C3 statements bound through the app-layer serialization adapter; no new statement maths)
 
 It does not downgrade the clean runtime reconciliation gates and must not be “fixed” with independent spreadsheet maths.
 
@@ -207,7 +207,7 @@ The same-run invariant is already proved in P1.3 for persisted Solar Last Run ev
 
 `XLSX_SAME_RUN_IDENTITY = PASS`
 
-`XLSX_MODEL_RECONCILIATION = PASS` for the current XLSX-supported reconciliation quantities. Clean statement worksheet serialization remains the separately labelled `XLSX_STATEMENT_TRACE = NOT_AVAILABLE` limitation.
+`XLSX_MODEL_RECONCILIATION = PASS` for the current XLSX-supported reconciliation quantities. Clean statement worksheet serialization is now bound (P1 Model Completeness); typed NOT_AVAILABLE rows remain only for quantities the clean runtime does not publish.
 
 ## 13. Browser / Trust Pack discoverability
 

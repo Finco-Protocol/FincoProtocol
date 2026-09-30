@@ -243,13 +243,13 @@ Existing P1.3 coverage performs the required same-project journey:
 
 The master Trust Pack treats this as the authoritative Last Run / Working Copy proof; it does not duplicate the database journey under a new fixture.
 
-## 13. Institutional XLSX statement-surface limitation
+## 13. Institutional XLSX statement-surface binding — CLOSED
 
-`run_clean_production()` already assembles `CleanProductionRun.financial_statements_result` once. However, the current institutional workbook builder does not bind that clean C3 result into its `WorkbookExportBundle`; the XLSX P&L, Tax, Cash Flow and Balance Sheet writers therefore emit unavailable state on the clean path.
+`run_clean_production()` assembles `CleanProductionRun.financial_statements_result` once, and the institutional workbook builder now binds that clean C3 result into its `WorkbookExportBundle` (PR: P1 Model Completeness). The XLSX Tax, P&L, PF Cash Flow and Balance Sheet writers serialize the clean runtime's own statement package through a verbatim field-mapping adapter (`app/export/clean_statements_adapter.py`) — no new statement maths, no balancing plug, typed NOT_AVAILABLE rows where the clean runtime does not publish a quantity.
 
-This is a **presentation/binding limitation**, not a missing runtime statement authority and not a reason to downgrade the already-proven clean runtime Balance Sheet/cash reconciliation. It must be closed later by wiring the existing C3 result through the app-layer exporter, preserving typed unavailable statuses where applicable. No new statement maths or balancing plug belongs in this Trust Pack PR.
+Same-run identity (bound run id + snapshot id) is stamped on every statement sheet; cross-run substitution is structurally detectable.
 
-`XLSX_STATEMENT_TRACE = NOT_AVAILABLE`
+`XLSX_STATEMENT_TRACE = PASS`
 
 ## 14. Reproduction map
 
