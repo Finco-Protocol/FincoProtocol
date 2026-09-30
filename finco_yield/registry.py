@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 import json
 
@@ -12,6 +13,13 @@ from .schema import EvidenceConfidence, YieldObservation
 
 class RegistryError(ValueError):
     pass
+
+
+class YieldSupportState(str, Enum):
+    DISCOVERY_ONLY = "DISCOVERY_ONLY"
+    READ_ONLY_RESEARCH = "READ_ONLY_RESEARCH"
+    EXECUTION_CANDIDATE = "EXECUTION_CANDIDATE"
+    DIRECT_SUPPORTED = "DIRECT_SUPPORTED"
 
 
 @dataclass(frozen=True)
@@ -32,7 +40,7 @@ class CanonicalOpportunity:
     block_number: int | None
     adapter: str
     adapter_version: str
-    support_state: str
+    support_state: YieldSupportState
     snapshot_version: str = "research-y0"
 
     @property
@@ -69,6 +77,14 @@ def _dt(value: str) -> datetime:
     return parsed
 
 
+def _support_state(source_type: EvidenceConfidence) -> YieldSupportState:
+    if source_type == EvidenceConfidence.DIRECT_ONCHAIN:
+        return YieldSupportState.EXECUTION_CANDIDATE
+    if source_type == EvidenceConfidence.NATIVE_ENRICHED:
+        return YieldSupportState.READ_ONLY_RESEARCH
+    return YieldSupportState.DISCOVERY_ONLY
+
+
 def _from_row(row: dict) -> CanonicalOpportunity:
     identity = YieldIdentity(
         chain_id=int(row["chain_id"]),
@@ -79,19 +95,19 @@ def _from_row(row: dict) -> CanonicalOpportunity:
         share_token=canonical_address(str(row["share_token"])),
     )
     from .identity import yield_opportunity_uid
+    canonical = identity.canonical()
     uid = yield_opportunity_uid(identity)
     source_type = EvidenceConfidence(str(row["source_type"]))
-    support_state = "READ_ONLY" if source_type in {EvidenceConfidence.NATIVE_ENRICHED, EvidenceConfidence.DIRECT_ONCHAIN} else "DISCOVERY_ONLY"
     return CanonicalOpportunity(
         uid=uid,
         name=str(row["name"]),
         chain_id=identity.chain_id,
-        protocol=identity.canonical()["protocol"],
-        product_type=identity.canonical()["product_type"],
-        contract_address=identity.canonical()["contract_address"],
+        protocol=canonical["protocol"],
+        product_type=canonical["product_type"],
+        contract_address=canonical["contract_address"],
         underlying_symbol=str(row["underlying_symbol"]),
-        underlying_address=identity.canonical()["underlying_assets"][0],
-        share_token=identity.canonical()["share_token"],
+        underlying_address=canonical["underlying_assets"][0],
+        share_token=canonical["share_token"],
         observation=YieldObservation(
             tvl_usd=_dec(row.get("tvl_usd")),
             apy_total=_dec(row.get("apy_total")),
@@ -106,7 +122,7 @@ def _from_row(row: dict) -> CanonicalOpportunity:
         block_number=int(row["block_number"]) if row.get("block_number") is not None else None,
         adapter=str(row.get("adapter") or "unknown"),
         adapter_version=str(row.get("adapter_version") or "unknown"),
-        support_state=support_state,
+        support_state=_support_state(source_type),
     )
 
 
@@ -129,10 +145,8 @@ class YieldRegistry:
         except KeyError as exc:
             raise RegistryError("unknown yield opportunity uid") from exc
 
-    def execution_binding(self, opportunity_uid: str) -> CanonicalExecutionBinding:
-        opportunity = self.resolve(opportunity_uid)
-        if opportunity.support_state == "DISCOVERY_ONLY":
-            raise RegistryError("opportunity is discovery-only")
+    @staticmethod
+    def _binding(opportunity: CanonicalOpportunity) -> CanonicalExecutionBinding:
         return CanonicalExecutionBinding(
             opportunity_uid=opportunity.uid,
             snapshot_version=opportunity.snapshot_version,
@@ -144,6 +158,31 @@ class YieldRegistry:
             share_token=opportunity.share_token,
             allowed_execution_methods=opportunity.allowed_execution_methods,
         )
+
+    def canonical_binding(self, opportunity_uid: str) -> CanonicalExecutionBinding:
+        """Resolve canonical identity for a direct block-bound revalidation attempt.
+
+        READ_ONLY_RESEARCH may resolve here because this method authorizes no
+        execution by itself. A direct execution plan must additionally pass a
+        fresh explicit block-bound ERC-4626 observation in execution.py.
+        """
+        opportunity = self.resolve(opportunity_uid)
+        if opportunity.support_state == YieldSupportState.DISCOVERY_ONLY:
+            raise RegistryError("opportunity is discovery-only")
+        return self._binding(opportunity)
+
+    def execution_binding(self, opportunity_uid: str) -> CanonicalExecutionBinding:
+        """Resolve a binding already eligible for routed execution planning.
+
+        NATIVE_ENRICHED / READ_ONLY_RESEARCH is intentionally rejected here.
+        """
+        opportunity = self.resolve(opportunity_uid)
+        if opportunity.support_state not in {
+            YieldSupportState.EXECUTION_CANDIDATE,
+            YieldSupportState.DIRECT_SUPPORTED,
+        }:
+            raise RegistryError("opportunity is not an execution candidate")
+        return self._binding(opportunity)
 
 
 def load_bundled_registry() -> YieldRegistry:
