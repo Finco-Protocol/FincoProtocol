@@ -64,3 +64,7 @@ playwright-report/
 test-results/
 __pycache__/
 .pytest_cache/
+
+# Runtime-generated offline verifier artifacts — never commit key documents
+tools/_offline_cert.json
+tools/_offline_keys.json

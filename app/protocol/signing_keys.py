@@ -1,12 +1,10 @@
 """FINCO public signing-key registry — single public trust authority for
 Signed Run Certificate V1 (M-2).
 
-This module is the SINGLE SOURCE OF TRUTH for which Ed25519 public keys are
-recognized FINCO issuer keys.  It is:
-
-  - deterministic (same code/config → same registry);
-  - version-controlled and auditable;
-  - cheap to publish (the discovery endpoint serializes it directly).
+Single source of truth: ``signing_keys_registry.json`` (version-controlled,
+deterministic, auditable).  This module loads that manifest at import time
+and exposes typed lookups.  Runtime registration is available only for
+tests — production trust must NOT depend on process-local registration.
 
 Only PUBLIC key material lives here.  Private signing keys come exclusively
 from deployment configuration (``FINCO_RUN_CERT_SIGNING_KEY``) and are never
@@ -17,69 +15,88 @@ Rotation model (V1):
   VERIFY_ONLY  — retired from issuance; still verifies historical
                  certificates.  Retiring a key must never make historical
                  certificates unverifiable.
-
-``kid`` is the stable public key identifier.  V1 uses the SHA-256/16
-fingerprint of the DER-encoded public key (computed by
-``key_id_for_public_key``) — a cryptographically derived, collision-resistant
-stable field, not an arbitrary label.  Certificates bind ``key_id`` (the
-fingerprint) and ``kid`` (the registry identifier, equal by convention) in
-their signed payload.
 """
 from __future__ import annotations
 
 import base64
+import json
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
 SCHEMA_VERSION = "finco-signing-keys-v1"
 ISSUER = "FINCO Protocol"
 ALGORITHM_ED25519 = "Ed25519"
 PUBLIC_KEY_ENCODING = "DER"
-
 STATUS_ACTIVE = "ACTIVE"
 STATUS_VERIFY_ONLY = "VERIFY_ONLY"
 _VALID_STATUSES = frozenset({STATUS_ACTIVE, STATUS_VERIFY_ONLY})
+
+_REGISTRY_MANIFEST = Path(__file__).parent / "signing_keys_registry.json"
 
 
 @dataclass(frozen=True)
 class SigningKeyRecord:
     """Public trust record for one FINCO Ed25519 signing key.
 
-    ``public_key_der_b64`` is the base64 of the DER-encoded public key.
+    ``public_key_der_b64`` is base64 of the DER-encoded public key.
     No private material is ever stored or transported here.
     """
     kid: str
+    algorithm: str
     public_key_der_b64: str
-    status: str = STATUS_ACTIVE
-    activated_at: str = ""
-    retired_at: str = ""
-    issuer: str = ISSUER
-    schema_version: str = SCHEMA_VERSION
-    algorithm: str = ALGORITHM_ED25519
-    encoding: str = PUBLIC_KEY_ENCODING
+    public_key_encoding: str
+    jwk: dict
+    status: str
+    activated_at: str
+    retired_at: str
+    issuer: str
+    schema_version: str
 
     def public_key_der(self) -> bytes:
         return base64.b64decode(self.public_key_der_b64, validate=True)
 
     def public_key_jwk(self) -> dict:
-        """RFC 8037 JWK representation (kty=OKP, crv=Ed25519)."""
-        der = self.public_key_der()
-        raw_public = der[-32:]  # RFC 8410 Ed25519 DER: 12-byte header + 32-byte key
-        import base64 as _b64
-        x = _b64.urlsafe_b64encode(raw_public).decode("ascii").rstrip("=")
-        return {"kty": "OKP", "crv": "Ed25519", "x": x}
+        return dict(self.jwk)
 
 
-# Process-local registry.  Seeded empty; deployments/tests register public
-# key records explicitly (code/config or test fixtures).  Registration is
-# additive and auditable; duplicate kids replace the record deliberately.
-_REGISTRY: Dict[str, SigningKeyRecord] = {}
+def _load_bundled_registry() -> Dict[str, SigningKeyRecord]:
+    """Load the version-controlled manifest at import time (once)."""
+    try:
+        manifest = json.loads(_REGISTRY_MANIFEST.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    result: Dict[str, SigningKeyRecord] = {}
+    for entry in manifest.get("keys", []):
+        try:
+            result[entry["kid"]] = SigningKeyRecord(
+                kid=entry["kid"],
+                algorithm=entry.get("algorithm", ALGORITHM_ED25519),
+                public_key_der_b64=entry["public_key"],
+                public_key_encoding=entry.get("public_key_encoding", "DER"),
+                jwk=entry.get("jwk", {}),
+                status=entry.get("status", STATUS_ACTIVE),
+                activated_at=entry.get("activated_at", ""),
+                retired_at=entry.get("retired_at") or "",
+                issuer=entry.get("issuer", ISSUER),
+                schema_version=manifest.get("schema_version", SCHEMA_VERSION),
+            )
+        except (KeyError, TypeError):
+            continue
+    return result
+
+
+_BUNDLED = _load_bundled_registry()
+_REGISTRY: Dict[str, SigningKeyRecord] = dict(_BUNDLED)
 
 
 def register_key(record: SigningKeyRecord) -> SigningKeyRecord:
     """Register (or replace) a public signing-key record.
 
-    Validates structure and encoding fail-closed.  Returns the record.
+    Validates structure and Ed25519 key type fail-closed using the
+    cryptographic parser.  Returns the record.  Runtime registration is
+    available for tests only — production trust uses the version-controlled
+    manifest.
     """
     if not record.kid or not record.kid.strip():
         raise ValueError("signing key record: kid is required")
@@ -92,12 +109,17 @@ def register_key(record: SigningKeyRecord) -> SigningKeyRecord:
         raise ValueError(
             f"signing key record {record.kid!r}: invalid status {record.status!r}"
         )
+    # Real Ed25519 key validation — not just base64 decoding.
+    from Crypto.PublicKey import ECC
     try:
-        record.public_key_der()  # fail-closed base64/DER validation
+        der = record.public_key_der()
+        key = ECC.import_key(der)
+        if key.curve != "Ed25519":
+            raise ValueError(f"key is {key.curve}, not Ed25519")
     except Exception as exc:
         raise ValueError(
-            f"signing key record {record.kid!r}: public_key_der_b64 is not "
-            f"valid base64 DER ({type(exc).__name__})"
+            f"signing key record {record.kid!r}: invalid Ed25519 public key "
+            f"({type(exc).__name__}: {exc})"
         ) from exc
     _REGISTRY[record.kid] = record
     return record
@@ -107,21 +129,33 @@ def register_key_values(
     kid: str,
     public_key_der: bytes,
     *,
+    algorithm: str = ALGORITHM_ED25519,
     status: str = STATUS_ACTIVE,
     activated_at: str = "",
+    retired_at: str = "",
+    issuer: str = ISSUER,
 ) -> SigningKeyRecord:
     """Convenience wrapper: register from raw DER bytes."""
     import base64 as _b64
+    der_b64 = _b64.b64encode(public_key_der).decode("ascii")
+    jwk_x = _b64.urlsafe_b64encode(public_key_der[-32:]).decode("ascii").rstrip("=")
+    jwk = {"kty": "OKP", "crv": "Ed25519", "x": jwk_x}
     return register_key(SigningKeyRecord(
         kid=kid,
-        public_key_der_b64=_b64.b64encode(public_key_der).decode("ascii"),
+        algorithm=algorithm,
+        public_key_der_b64=der_b64,
+        public_key_encoding=PUBLIC_KEY_ENCODING,
+        jwk=jwk,
         status=status,
         activated_at=activated_at,
+        retired_at=retired_at,
+        issuer=issuer,
+        schema_version=SCHEMA_VERSION,
     ))
 
 
 def unregister_key(kid: str) -> None:
-    """Remove a record (test/config housekeeping only)."""
+    """Remove a runtime-registered record (test/config housekeeping only)."""
     _REGISTRY.pop(kid, None)
 
 
@@ -162,15 +196,13 @@ def public_keys_document() -> dict:
                 "algorithm": record.algorithm,
                 "status": record.status,
                 "public_key": record.public_key_der_b64,
-                "public_key_encoding": record.encoding,
+                "public_key_encoding": record.public_key_encoding,
                 "jwk": record.public_key_jwk(),
                 "activated_at": record.activated_at,
                 "retired_at": record.retired_at,
                 "issuer": record.issuer,
                 "schema_version": record.schema_version,
-                "certificate_schema_version": (
-                    "finco-run-certificate-v1"
-                ),
+                "certificate_schema_version": "finco-run-certificate-v1",
             }
             for record in all_keys()
         ],

@@ -12,12 +12,10 @@ anchoring.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-
-import base64
-import binascii
-import os
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -25,9 +23,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.protocol.signing_keys import (
-    STATUS_ACTIVE,
-    STATUS_VERIFY_ONLY,
     get_signing_key,
+    is_verify_capable,
     public_keys_document,
 )
 
@@ -62,34 +59,75 @@ STATE_UNSUPPORTED_CERTIFICATE_VERSION = "UNSUPPORTED_CERTIFICATE_VERSION"
 STATE_MALFORMED_CERTIFICATE = "MALFORMED_CERTIFICATE"
 STATE_UNSUPPORTED_ALGORITHM = "UNSUPPORTED_ALGORITHM"
 STATE_VERIFICATION_UNAVAILABLE = "VERIFICATION_UNAVAILABLE"
+STATE_KEY_NOT_VERIFY_CAPABLE = "KEY_NOT_VERIFY_CAPABLE"
+STATE_KEY_NOT_VALID_FOR_CERTIFICATE_TIME = "KEY_NOT_VALID_FOR_CERTIFICATE_TIME"
+STATE_PAYLOAD_DIGEST_MISMATCH = "PAYLOAD_DIGEST_MISMATCH"
 
 SUPPORTED_CERTIFICATE_SCHEMA_VERSION = "finco-run-certificate-v1"
 SUPPORTED_ALGORITHM = "Ed25519"
 
 
+def _parse_iso_utc(value: Any) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp; naive values are interpreted as UTC."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _recompute_payload_digest(certificate: dict) -> str:
+    """Independently recompute the payload digest over the certificate's own
+    fields (everything except ``payload_digest`` and ``signature``) using the
+    same canonical serialization authority as issuance."""
+    from app.services.run_certificate_service import (
+        canonical_certificate_signing_bytes,
+    )
+
+    digest_input = {
+        k: v for k, v in certificate.items()
+        if k not in ("payload_digest", "signature")
+    }
+    return hashlib.sha256(
+        canonical_certificate_signing_bytes(digest_input)
+    ).hexdigest()
+
+
 def verify_certificate_against_registry(certificate: dict) -> dict:
     """Pure registry-backed verification.  No DB, no engine, no mutation.
 
-    Reconstructs the canonical signed bytes with the SAME serialization
-    authority used at issuance (canonical_certificate_signing_bytes), checks
-    structural invariants, resolves the kid from the public key registry and
-    verifies the Ed25519 signature.
+    Checks, in order:
+      1. structural invariants (schema version, algorithm, kid binding);
+      2. kid resolution against the public signing-key registry — the kid is
+         EXPLICIT; there is no fallback to ``key_id`` or any other field;
+      3. key verify capability (ACTIVE / VERIFY_ONLY rotation contract);
+      4. key time validity — the key must have been inside its
+         activated_at/retired_at window at the certificate's issuance time;
+      5. independent payload-digest recompute over the received bytes;
+      6. Ed25519 signature over the canonical signed bytes.
+
+    All failure details are typed and sanitized: no exception text, no
+    traceback, no key material ever leaves this function.
     """
     from app.services.run_certificate_service import (
         canonical_certificate_signing_bytes,
     )
 
-    kid = certificate.get("kid") or certificate.get("key_id")
+    kid = certificate.get("kid") if isinstance(certificate, dict) else None
     result: Dict[str, Any] = {
         "state": None,
         "kid": kid,
-        "algorithm": certificate.get("signature_algorithm"),
+        "algorithm": certificate.get("signature_algorithm") if isinstance(certificate, dict) else None,
         "certificate_schema_version": certificate.get(
             "certificate_schema_version"
-        ),
-        "certificate_digest": certificate.get("payload_digest"),
+        ) if isinstance(certificate, dict) else None,
+        "certificate_digest": certificate.get("payload_digest") if isinstance(certificate, dict) else None,
         "signature_valid": False,
-        "run_at": certificate.get("run_at"),
+        "run_at": certificate.get("run_at") if isinstance(certificate, dict) else None,
         "verification_timestamp": datetime.now(timezone.utc).isoformat(),
         "detail": "",
     }
@@ -105,8 +143,10 @@ def verify_certificate_against_registry(certificate: dict) -> dict:
         return _finish(STATE_MALFORMED_CERTIFICATE, "missing signature")
     if not certificate.get("payload_digest"):
         return _finish(STATE_MALFORMED_CERTIFICATE, "missing payload digest")
-    if not kid:
-        return _finish(STATE_MALFORMED_CERTIFICATE, "missing kid binding")
+    # M-2 Correction A: the kid binding is EXPLICIT.  A legacy ``key_id``
+    # fingerprint alone is NOT a trust anchor — no fallback, no guessing.
+    if not isinstance(kid, str) or not kid.strip():
+        return _finish(STATE_MALFORMED_CERTIFICATE, "missing explicit kid binding")
     if certificate.get("certificate_schema_version") != (
         SUPPORTED_CERTIFICATE_SCHEMA_VERSION
     ):
@@ -125,15 +165,53 @@ def verify_certificate_against_registry(certificate: dict) -> dict:
 
     record = get_signing_key(kid)
     if record is None:
-        return _finish(STATE_UNKNOWN_KEY_ID, f"kid {kid!r} is not a registered FINCO signing key")
-    if not record.status in (STATUS_ACTIVE, STATUS_VERIFY_ONLY):
         return _finish(
-            STATE_MALFORMED_CERTIFICATE,
-            f"registered kid {kid!r} has invalid registry status {record.status!r}",
+            STATE_UNKNOWN_KEY_ID,
+            f"kid {kid!r} is not a registered FINCO signing key",
+        )
+    if not is_verify_capable(record):
+        return _finish(
+            STATE_KEY_NOT_VERIFY_CAPABLE,
+            f"registered kid {kid!r} has status {record.status!r} and cannot "
+            "verify certificates",
         )
 
-    # Registry public key must match the certificate's key_id fingerprint.
-    import hashlib
+    # Key time validity: the signing key must have been inside its validity
+    # window when the certificate was issued (issued_at, falling back to
+    # run_at when issued_at is absent).
+    certificate_time = _parse_iso_utc(
+        certificate.get("issued_at") or certificate.get("run_at")
+    )
+    if certificate_time is None:
+        return _finish(
+            STATE_MALFORMED_CERTIFICATE,
+            "certificate has no parseable issued_at or run_at timestamp",
+        )
+    activated_at = _parse_iso_utc(record.activated_at)
+    retired_at = _parse_iso_utc(record.retired_at)
+    if activated_at is not None and certificate_time < activated_at:
+        return _finish(
+            STATE_KEY_NOT_VALID_FOR_CERTIFICATE_TIME,
+            f"kid {kid!r} was activated after this certificate was issued",
+        )
+    if retired_at is not None and certificate_time > retired_at:
+        return _finish(
+            STATE_KEY_NOT_VALID_FOR_CERTIFICATE_TIME,
+            f"kid {kid!r} was retired before this certificate was issued",
+        )
+
+    # Independent payload-digest recompute: the stated digest must match the
+    # digest recomputed from the received fields themselves.
+    recomputed_digest = _recompute_payload_digest(certificate)
+    if recomputed_digest != certificate.get("payload_digest"):
+        return _finish(
+            STATE_PAYLOAD_DIGEST_MISMATCH,
+            "payload digest does not match the independently recomputed digest "
+            "of the received certificate fields",
+        )
+
+    # Registry public key must match the certificate's key_id fingerprint
+    # when one is carried (integrity crosscheck only — never a trust anchor).
     fingerprint = hashlib.sha256(record.public_key_der()).hexdigest()[:16]
     if certificate.get("key_id") not in (None, fingerprint):
         return _finish(
@@ -142,11 +220,9 @@ def verify_certificate_against_registry(certificate: dict) -> dict:
         )
 
     # Canonical signed bytes: everything except the signature field — the
-    # exact serialization used at issuance.  Digest covers the same payload
-    # minus payload_digest and signature (matching issuance).
-    # Signing bytes = canonical bytes of the certificate minus ONLY the
-    # signature field.  The payload_digest field IS part of the signed
-    # bytes (it was computed over the payload pre-digest at issuance).
+    # exact serialization used at issuance.  The payload_digest field IS part
+    # of the signed bytes (it was computed over the payload pre-digest at
+    # issuance).
     unsigned = {k: v for k, v in certificate.items() if k != "signature"}
     signing_bytes = canonical_certificate_signing_bytes(unsigned)
     signature = certificate.get("signature")
@@ -159,12 +235,12 @@ def verify_certificate_against_registry(certificate: dict) -> dict:
         verifier = eddsa.new(pub, "rfc8032")
         signature_bytes = base64.b64decode(signature, validate=True)
         verifier.verify(signing_bytes, signature_bytes)
-    except Exception as exc:
-        import traceback as _tb
-        _tb.print_exc()
+    except Exception:
+        # Sanitized: no exception text, no traceback, no key material.
         return _finish(
             STATE_INVALID_SIGNATURE,
-            f"Ed25519 signature does not verify: {type(exc).__name__}: {exc}",
+            "Ed25519 signature does not verify against the registered public "
+            "key for this certificate's canonical bytes",
         )
 
     result["signature_valid"] = True

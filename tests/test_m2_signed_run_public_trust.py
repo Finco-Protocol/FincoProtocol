@@ -29,6 +29,8 @@ TEST_SEED = bytes(range(32))
 TEST_KID = "finco-prod-2026-01"
 TEST_PUBLIC_DER = __import__("Crypto.PublicKey.ECC", fromlist=["ECC"]).construct(
     curve="Ed25519", seed=TEST_SEED).public_key().export_key(format="DER")
+TEST_SEED_B64 = base64.b64encode(TEST_SEED).decode()
+TEST_PUBLIC_DER_B64 = base64.b64encode(TEST_PUBLIC_DER).decode()
 
 
 def _stub_ws(**overrides):
@@ -186,17 +188,20 @@ def test_issuance_unknown_kid_fails_closed(m2_env, monkeypatch):
 
 def test_issuance_registry_mismatch_fails_closed(m2_env, monkeypatch):
     """Configured private key whose derived public key does NOT match the
-    registry record for the configured kid → fail closed."""
-    register_key_values(TEST_KID, bytes(range(32)) + bytes(12),
-                        status=reg.STATUS_ACTIVE)
+    registry record for the configured kid → fail closed.  The foreign
+    record is a VALID Ed25519 key (registry validation is real now) — only
+    the binding to the configured private key is wrong."""
+    from Crypto.PublicKey import ECC
+    foreign_der = ECC.construct(
+        curve="Ed25519", seed=bytes(range(1, 33))
+    ).public_key().export_key(format="DER")
+    register_key_values(TEST_KID, foreign_der, status=reg.STATUS_ACTIVE)
     from app.services.run_certificate_service import issue_run_certificate
     ws = _stub_ws()
     with pytest.raises(Exception, match="SIGNING_KEY_REGISTRY_MISMATCH"):
         issue_run_certificate(ws)
     # cleanup: restore the correct test key record
-    register_key_values(TEST_KID, __import__("Crypto.PublicKey.ECC", fromlist=["ECC"])
-                        .construct(curve="Ed25519", seed=TEST_SEED)
-                        .public_key().export_key(format="DER"))
+    register_key_values(TEST_KID, TEST_PUBLIC_DER)
 
 
 # ── Rotation: VERIFY_ONLY verifies historical certificates ──────────────────
@@ -241,15 +246,6 @@ def verify_client(tmp_path, monkeypatch, test_key):
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_debug_public_verify_registry_state(verify_client, m2_env):
-    from app.protocol.signing_keys import get_signing_key, all_keys
-    record = get_signing_key(TEST_KID)
-    print("DEBUG registered kid:", TEST_KID, "| status:", record.status if record else None)
-    print("DEBUG der matches TEST_PUBLIC_DER:", record.public_key_der() == TEST_PUBLIC_DER if record else None)
-    for k in all_keys():
-        print("DEBUG registry:", k.kid, k.status, len(k.public_key_der()))
-
-
 def test_public_verify_valid_certificate(verify_client, m2_env):
     from app.services.run_certificate_service import issue_run_certificate
     ws = _stub_ws()
@@ -267,7 +263,10 @@ def test_public_verify_valid_certificate(verify_client, m2_env):
     assert result["state"] != "FINCO_VERIFIED"
 
 
-def test_public_verify_tampered_payload_invalid_signature(verify_client, m2_env):
+def test_public_verify_tampered_payload_digest_mismatch(verify_client, m2_env):
+    """Any field tampering is caught FIRST by the independent payload-digest
+    recompute — a typed, precise failure before the signature check."""
+    import hashlib
     from app.services.run_certificate_service import issue_run_certificate
     ws = _stub_ws()
     cert = issue_run_certificate(ws)
@@ -275,7 +274,33 @@ def test_public_verify_tampered_payload_invalid_signature(verify_client, m2_env)
     resp = verify_client.post("/api/v1.1/run-certificates/verify",
                               json={"certificate": cert})
     assert resp.status_code == 200
-    assert resp.json()["state"] == "INVALID_SIGNATURE"
+    body = resp.json()
+    assert body["state"] == "PAYLOAD_DIGEST_MISMATCH", (
+        body["state"], body.get("detail"))
+    assert body["signature_valid"] is False
+
+
+def test_public_verify_tampered_payload_consistent_digest_invalid_signature(
+        verify_client, m2_env):
+    """A tamperer who ALSO recomputes the payload digest still fails: the
+    Ed25519 signature covers the canonical signed bytes."""
+    import hashlib
+    from app.services import run_certificate_service as rcs
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    cert["project_id"] = "tampered"
+    digest_input = {k: v for k, v in cert.items()
+                    if k not in ("payload_digest", "signature")}
+    cert["payload_digest"] = hashlib.sha256(
+        rcs.canonical_certificate_signing_bytes(digest_input)).hexdigest()
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "INVALID_SIGNATURE", (
+        body["state"], body.get("detail"))
+    assert body["signature_valid"] is False
 
 
 def test_public_verify_tampered_signature_invalid(verify_client, m2_env):
@@ -348,19 +373,27 @@ def test_public_verifier_no_engine_no_writes(verify_client, m2_env, monkeypatch)
 
 # ── Offline verifier ─────────────────────────────────────────────────────────
 
-def _offline_verify(certificate: dict, keys_document: dict | None):
+def _offline_verify(certificate: dict, keys_document: dict | None, tmp_path=None):
+    """Run the standalone offline verifier in a subprocess.
+
+    Key material files are written to a pytest tmp dir — NEVER into the
+    repository (tools/ stays free of runtime-generated key documents, so no
+    test/production key confusion can be committed).
+    """
     script = Path(__file__).resolve().parents[1] / "tools" / "verify_finco_run_certificate.py"
-    cert_file = script.parent / "_offline_cert.json"
+    work = tmp_path if tmp_path is not None else Path.cwd()
+    cert_file = work / "_offline_cert.json"
     cert_file.write_text(json.dumps(certificate), encoding="utf-8")
     cmd = [sys.executable, str(script), str(cert_file)]
+    keys_file = None
     if keys_document is not None:
-        keys_file = script.parent / "_offline_keys.json"
+        keys_file = work / "_offline_keys.json"
         keys_file.write_text(json.dumps(keys_document), encoding="utf-8")
         cmd += ["--keys", str(keys_file)]
-    result = subprocess.run([sys.executable] + cmd[1:] if False else cmd,
-                            capture_output=True, text=True)
-    if cert_file.exists():
-        cert_file.unlink()
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    for path in (cert_file, keys_file):
+        if path is not None and path.exists():
+            path.unlink()
     payload = {}
     try:
         payload = json.loads(result.stdout)
@@ -376,10 +409,23 @@ def test_offline_verifier_valid(tmp_path, m2_env, test_key):
     keys_document = {"keys": [{"kid": TEST_KID, "algorithm": "Ed25519",
                                "status": "ACTIVE",
                                "public_key": base64.b64encode(TEST_PUBLIC_DER).decode()}]}
-    rc, payload = _offline_verify(cert, keys_document)
+    rc, payload = _offline_verify(cert, keys_document, tmp_path)
     assert rc == 0
     assert payload["state"] == "VALID"
     assert payload["signature_valid"] is True
+    assert payload["kid"] == TEST_KID
+
+
+def test_offline_verifier_valid_with_bundled_registry_trust_root(
+        tmp_path, m2_env, test_key):
+    """Default trust root = the version-controlled registry manifest; no
+    external keys document is needed."""
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    rc, payload = _offline_verify(cert, None, tmp_path)
+    assert rc == 0
+    assert payload["state"] == "VALID", payload.get("detail")
     assert payload["kid"] == TEST_KID
 
 
@@ -391,9 +437,9 @@ def test_offline_verifier_tampered_fails(tmp_path, m2_env, test_key):
     keys_document = {"keys": [{"kid": TEST_KID, "algorithm": "Ed25519",
                                "status": "ACTIVE",
                                "public_key": base64.b64encode(TEST_PUBLIC_DER).decode()}]}
-    rc, payload = _offline_verify(cert, keys_document)
+    rc, payload = _offline_verify(cert, keys_document, tmp_path)
     assert rc != 0
-    assert payload["state"] == "INVALID_SIGNATURE"
+    assert payload["state"] == "PAYLOAD_DIGEST_MISMATCH"
 
 
 def test_offline_verifier_unknown_key_fails(tmp_path, m2_env, test_key):
@@ -401,6 +447,167 @@ def test_offline_verifier_unknown_key_fails(tmp_path, m2_env, test_key):
     ws = _stub_ws()
     cert = issue_run_certificate(ws)
     cert["kid"] = "unknown"
-    rc, payload = _offline_verify(cert, None)
+    rc, payload = _offline_verify(cert, None, tmp_path)
     assert rc != 0
     assert payload["state"] == "UNKNOWN_KEY_ID"
+
+
+# ── M-2 Correction A — security hardening ───────────────────────────────────
+
+def test_public_verify_legacy_key_id_only_certificate_rejected(verify_client):
+    """A certificate carrying ONLY the legacy key_id fingerprint (no explicit
+    kid) is malformed — key_id is never a trust anchor."""
+    cert = {"certificate_schema_version": "finco-run-certificate-v1",
+            "key_id": "0123456789abcdef",
+            "signature_algorithm": "Ed25519",
+            "signature": base64.b64encode(b"x").decode(),
+            "payload_digest": "d", "run_at": None}
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "MALFORMED_CERTIFICATE"
+    assert "kid" in body["detail"]
+
+
+def test_public_verify_key_activated_after_certificate_time(
+        verify_client, m2_env):
+    """A key activated AFTER the certificate issuance time must not verify
+    historical certificates issued before its activation window."""
+    from datetime import datetime, timezone
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)  # issued "now"
+    # re-register the same key material with a FUTURE activation date
+    register_key_values(TEST_KID, TEST_PUBLIC_DER, status=reg.STATUS_ACTIVE,
+                        activated_at="2099-01-01T00:00:00+00:00")
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    body = resp.json()
+    assert body["state"] == "KEY_NOT_VALID_FOR_CERTIFICATE_TIME", (
+        body["state"], body.get("detail"))
+    assert body["signature_valid"] is False
+
+
+def test_public_verify_key_retired_before_certificate_time(
+        verify_client, m2_env):
+    """A key retired BEFORE the certificate issuance time must not verify
+    certificates issued after its retirement."""
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    register_key_values(TEST_KID, TEST_PUBLIC_DER, status=reg.STATUS_VERIFY_ONLY,
+                        retired_at="2020-01-01T00:00:00+00:00")
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    body = resp.json()
+    assert body["state"] == "KEY_NOT_VALID_FOR_CERTIFICATE_TIME", (
+        body["state"], body.get("detail"))
+
+
+def test_public_verify_key_within_window_still_valid(verify_client, m2_env):
+    """A key whose activated_at/retired_at window CONTAINS the certificate
+    issuance time verifies normally."""
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    register_key_values(TEST_KID, TEST_PUBLIC_DER, status=reg.STATUS_ACTIVE,
+                        activated_at="2020-01-01T00:00:00+00:00",
+                        retired_at="2099-01-01T00:00:00+00:00")
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    body = resp.json()
+    assert body["state"] == "VALID", (body["state"], body.get("detail"))
+
+
+def test_public_verify_failures_are_sanitized(verify_client, m2_env):
+    """Typed failure details never leak exception class names, tracebacks,
+    or key material."""
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    cert["signature"] = "not-valid-base64!!!"
+    resp = verify_client.post("/api/v1.1/run-certificates/verify",
+                              json={"certificate": cert})
+    body = resp.json()
+    assert body["state"] == "INVALID_SIGNATURE"
+    forbidden = ("Error", "Exception", "Traceback", "binascii",
+                 "invalid literal", TEST_SEED_B64)
+    for token in forbidden:
+        assert token not in body["detail"], token
+    # key material never appears anywhere in the response
+    assert TEST_PUBLIC_DER_B64 not in json.dumps(body)
+
+
+def test_registry_rejects_non_ed25519_key():
+    """register_key does REAL cryptographic validation — a P-256 key is
+    rejected with a typed error, not accepted as opaque bytes."""
+    from Crypto.PublicKey import ECC
+    foreign = ECC.generate(curve="P-256").public_key().export_key(format="DER")
+    with pytest.raises(ValueError, match="Ed25519"):
+        register_key_values("bad-curve-key", foreign)
+
+
+def test_registry_rejects_garbage_der():
+    with pytest.raises(ValueError, match="Ed25519|invalid"):
+        register_key_values("garbage-key", b"\x00\x01\x02\x03")
+
+
+def test_bundled_manifest_is_the_registry_seed():
+    """The version-controlled manifest seeds the process registry: the
+    canonical kid is present even with NO runtime registration."""
+    import importlib
+    import app.protocol.signing_keys as sk
+    reloaded = importlib.reload(sk)
+    try:
+        record = reloaded.get_signing_key("finco-prod-2026-01")
+        assert record is not None
+        assert record.status == "ACTIVE"
+        assert reloaded.is_issuance_capable(record)
+        # public material only — no private key anywhere in the record
+        assert not hasattr(record, "private_key")
+    finally:
+        importlib.reload(sk)
+
+
+def test_public_keys_document_contains_only_public_material(test_key):
+    doc = reg.public_keys_document()
+    text = json.dumps(doc)
+    assert "private" not in text.lower()
+    assert "seed" not in text.lower()
+    assert TEST_SEED_B64 not in text
+    for key in doc["keys"]:
+        assert key["algorithm"] == "Ed25519"
+        assert key["status"] in ("ACTIVE", "VERIFY_ONLY")
+        assert set(key) <= {
+            "kid", "algorithm", "status", "public_key", "public_key_encoding",
+            "jwk", "activated_at", "retired_at", "issuer", "schema_version",
+            "certificate_schema_version"}
+
+
+def test_discovery_and_api_mirror_share_one_source(well_known_client, test_key):
+    """Well-known discovery and the /protocol/signing-keys API mirror are
+    byte-identical — one registry authority, two surfaces."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.v1_1.run_certificate_public_router import router as pub_router
+    app = FastAPI()
+    app.include_router(pub_router, prefix="/api/v1.1")
+    client = TestClient(app, raise_server_exceptions=False)
+    wk = well_known_client.get("/.well-known/finco/keys.json").text
+    mirror = client.get("/api/v1.1/protocol/signing-keys").text
+    assert wk == mirror
+
+
+def test_offline_verifier_rejects_expired_window(tmp_path, m2_env, test_key):
+    """Offline verifier enforces the same time-validity contract as the API."""
+    from app.services.run_certificate_service import issue_run_certificate
+    ws = _stub_ws()
+    cert = issue_run_certificate(ws)
+    keys_document = {"keys": [{"kid": TEST_KID, "algorithm": "Ed25519",
+                               "status": "ACTIVE",
+                               "public_key": base64.b64encode(TEST_PUBLIC_DER).decode(),
+                               "activated_at": "2099-01-01T00:00:00+00:00"}]}
+    rc, payload = _offline_verify(cert, keys_document, tmp_path)
+    assert rc != 0
+    assert payload["state"] == "KEY_NOT_VALID_FOR_CERTIFICATE_TIME"
