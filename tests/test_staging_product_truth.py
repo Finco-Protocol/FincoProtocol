@@ -207,6 +207,39 @@ class TestStatusVocabulary:
             assert "coming soon" not in _flat(rel).lower(), rel
 
 
+class TestMasterWorkflowInventory:
+    def test_no_coming_soon_in_library(self):
+        assert "coming soon" not in _flat("app/templates/library/project_library_list.html")
+        assert "PREVIEW — working-copy runtime not released" in _read(
+            "app/templates/library/project_library_list.html")
+
+    def test_readme_r_live_freshness_precision(self):
+        readme = _flat("README.md")
+        assert "300-second freshness gate" not in readme
+        assert "300-second TWAP" in readme
+        assert "fail-closed freshness policies" in readme
+
+    def test_roadmap_md_r_live_freshness_precision(self):
+        road = _flat("docs/ROADMAP.md")
+        assert "300-second freshness gate" not in road
+        assert "300-second TWAP" in road
+
+    def test_api_page_documents_r_live(self):
+        api = _flat("app/templates/protocol_api.html")
+        assert "R-LIVE — On-Chain Reference Observations" in api
+        assert "/api/v1.1/radar/r-live/assets" in api
+        assert "Observations are not executable prices" in api
+
+    def test_release_matrix_exists_and_current(self):
+        matrix = _read("docs/review/PRODUCT_TRUTH_RELEASE_MATRIX.md")
+        for feature in ("Run Integrity Checks (H-4b)", "Reference Regression Check (P1.3)",
+                        "Signed Run", "M-2", "R-LIVE V2", "JEV Radar Intelligence V1",
+                        "Wallet identity", "B2.3"):
+            assert feature in matrix, feature
+        assert "PRODUCTION_VERIFIED_ASSET_COUNT = 0" in matrix
+        assert "not merged" in matrix  # JEV / M-2 open-PR rule
+
+
 class TestFrozenAuthorities:
     @pytest.mark.parametrize("frozen", [
         "financial_engine", "finco_core", "finco_radar/authority",
