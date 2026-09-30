@@ -26,7 +26,7 @@ itsdangerous==2.2.0
 jinja2==3.1.6
 numpy==1.26.4
 openpyxl==3.1.5
-pandas==2.2.3
+pandas==2.3.3
 pydantic==2.13.2
 pycryptodome==3.23.0
 pytest==9.0.3
