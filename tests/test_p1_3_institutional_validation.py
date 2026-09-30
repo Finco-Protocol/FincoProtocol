@@ -1692,11 +1692,9 @@ def test_p1_3_frozen_namespace():
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
     changed = r.stdout.strip().splitlines()
-    frozen = [f for f in changed if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"P1.3 must not touch frozen namespaces. Changed: {frozen}"
 
 

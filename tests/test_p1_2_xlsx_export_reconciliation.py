@@ -772,11 +772,9 @@ def test_xlsx_frozen_namespace_no_financial_engine_changes():
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
     changed = result.stdout.strip().splitlines()
-    frozen = [f for f in changed if (
-        f.startswith("financial_engine/") or
-        f.startswith("finco_core/") or
-        f.startswith("finco_radar/")
-    )]
+    # Opus Finance Integrity governance: allow-listed engine modules only.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace files changed: {frozen}"
 
 

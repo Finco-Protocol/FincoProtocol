@@ -342,10 +342,10 @@ METRIC_REGISTRY: tuple[MetricAuthority, ...] = (
         applicable_verticals=("all",),
         production_caller="financial_engine/financing/project.py::run_project_financing_model",
         notes=(
-            "Binding constraint: gearing_capacity_keur = gearing_ratio × total_capex; "
+            "Binding constraint: gearing_capacity_keur = gearing_ratio × Total Project Uses (CAPEX + IDC, lender fees, initial DSRA); "
             "dscr_capacity_keur = sculpted to DSCR covenant. "
-            "Solar Reference: GEARING-bound = 0.75 × 33,000 = 24,750 kEUR. "
-            "DC Reference: DSCR-sculpted ≈ 80,437 kEUR. "
+            "Solar Reference: GEARING-bound = 0.75 × 35,978 (Total Project Uses) = 26,983 kEUR. "
+            "DC Reference: DSCR-sculpted ≈ 58,411 kEUR. "
             "Exposed as kpis['senior_debt_keur'] and WorkbookExportBundle.senior_debt_keur_authority."
         ),
     ),
