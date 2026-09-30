@@ -810,3 +810,99 @@ def test_view_never_serves_evidence_for_unapproved_ids(snapshot_db):
                           collected_at=now)
     view = build_snapshot_view(path=snapshot_db)
     assert all(r["canonical_id"] in _approved_ids() for r in view["rows"])
+
+
+# ── Correction B: lease stays alive during the ENTIRE in-flight cycle ────────
+
+def test_lease_renewal_during_long_active_cycle_blocks_foreign_worker(
+        snapshot_db):
+    """Deterministic clock: a warming cycle that outlasts the nominal lease
+    TTL keeps renewing its lease (heartbeat), so a foreign worker CANNOT
+    take over while the owner is actively collecting."""
+    from app.radar_rwa.r_live_warming import _SnapshotLease
+
+    lease_a = _SnapshotLease(snapshot_db)
+    lease_b = _SnapshotLease(snapshot_db)
+    t0 = datetime.now(timezone.utc)
+    try:
+        # A acquires (ttl 180 s) and starts a long batch
+        assert lease_a.acquire_or_renew(ttl_seconds=180, now=t0) is True
+        # nominal expiry passes at t0+180 while A is STILL collecting...
+        # ...but A's heartbeat renewed at t0+100 and t0+200:
+        assert lease_a.acquire_or_renew(ttl_seconds=180, now=t0 + timedelta(seconds=100)) is True
+        assert lease_a.acquire_or_renew(ttl_seconds=180, now=t0 + timedelta(seconds=200)) is True
+        # foreign worker B attempts after the ORIGINAL nominal expiry:
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=180, now=t0 + timedelta(seconds=190)) is False
+        # B stays blocked while A keeps renewing:
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=180, now=t0 + timedelta(seconds=290)) is False
+        lease_a.release()
+        # after A releases, B may acquire
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=180, now=t0 + timedelta(seconds=300)) is True
+        lease_b.release()
+    finally:
+        lease_a.close()
+        lease_b.close()
+
+
+def test_active_long_cycle_keeps_lease_alive_end_to_end(snapshot_db, monkeypatch):
+    """End-to-end with REAL timing: worker A runs a mocked collection LONGER
+    than the nominal lease TTL; while A is still active a foreign worker B
+    must NOT be able to enter the lease (and therefore never
+    collect_r_live_batch); after A genuinely dies (no release, TTL of the
+    last heartbeat expires) B recovers automatically."""
+    import threading
+    import time as _time
+    from app.radar_rwa import r_live_service
+    from app.radar_rwa.r_live_warming import RLiveSnapshotWarmer, _SnapshotLease
+
+    batch_entered = threading.Event()
+    batch_release = threading.Event()
+
+    def slow_batch(*, rpc_url, **kwargs):
+        batch_entered.set()
+        batch_release.wait(timeout=10)
+        yield _fresh_row(_approved_ids(1)[0])
+
+    monkeypatch.setattr(r_live_service, "collect_r_live_batch", slow_batch)
+
+    # ttl 2 s, heartbeat every 0.4 s, batch 3 s > nominal TTL
+    warmer = RLiveSnapshotWarmer(store_path=snapshot_db, interval_seconds=60,
+                                 lease_ttl_seconds=2,
+                                 heartbeat_period_seconds=0.4)
+    summaries = []
+
+    def cycle():
+        summaries.append(warmer.run_cycle(rpc_url="https://rpc.example"))
+
+    worker = threading.Thread(target=cycle, daemon=True)
+    worker.start()
+    assert batch_entered.wait(timeout=5), "batch never started"
+
+    # past the nominal TTL (2 s) while A is STILL active:
+    _time.sleep(2.5)
+    foreign = _SnapshotLease(snapshot_db)
+    try:
+        assert foreign.acquire_or_renew(ttl_seconds=2) is False, (
+            "foreign worker took the lease while the active owner was "
+            "still collecting")
+    finally:
+        batch_release.set()
+        worker.join(timeout=5)
+    assert summaries and summaries[0]["state"] == "OK"
+
+    # dead-owner recovery: A stops entirely (heartbeat dead); after the last
+    # heartbeat's TTL expires the foreign worker takes over.
+    warmer.stop()
+    deadline = _time.time() + 10
+    acquired = False
+    while _time.time() < deadline:
+        if foreign.acquire_or_renew(ttl_seconds=2):
+            acquired = True
+            foreign.release()
+            break
+        _time.sleep(0.5)
+    assert acquired, "foreign worker could not recover after owner death"
+    foreign.close()

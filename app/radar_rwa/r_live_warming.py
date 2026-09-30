@@ -144,7 +144,8 @@ class _SnapshotLease:
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
-            self.path if self.path == ":memory:" else self.path, timeout=10)
+            self.path if self.path == ":memory:" else self.path, timeout=10,
+            check_same_thread=False)  # serialized by _LEASE_SINGLETON_GUARD
         self._conn.isolation_level = None  # manual transactions (BEGIN IMMEDIATE)
         self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.execute(
@@ -229,42 +230,93 @@ class _SnapshotLease:
 
 
 class RLiveSnapshotWarmer:
-    """The single warming loop. Start via :func:`start_background_warmer`."""
+    """The single warming loop. Start via :func:`start_background_warmer`.
+
+    Lease ownership spans the ENTIRE acquisition cycle: the loop renews the
+    cross-process lease before each cycle AND a bounded heartbeat renews it
+    while ``collect_r_live_batch`` is running, so a slow/degraded batch can
+    never outlive the TTL and let a second worker start an overlapping
+    canonical batch.  A genuinely dead owner still recovers: its lease
+    simply expires and a foreign worker takes over.
+    """
 
     def __init__(self, *, store_path: str | None = None,
-                 interval_seconds: int | None = None) -> None:
+                 interval_seconds: int | None = None,
+                 lease_ttl_seconds: int | None = None,
+                 heartbeat_period_seconds: float | None = None) -> None:
         self.store_path = store_path
         self.interval = interval_seconds or _interval_seconds()
+        self.lease_ttl = lease_ttl_seconds or self.interval * 3
+        # Heartbeat period: bounded well inside the TTL (≤ 1/3 of it).
+        self.heartbeat_period = heartbeat_period_seconds or max(
+            1.0, self.lease_ttl / 3.0)
         self._cycle_lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_summary: dict | None = None
+        self._lease: _SnapshotLease | None = None
+
+    def _lease_or_none(self) -> "_SnapshotLease":
+        if self._lease is None:
+            self._lease = _SnapshotLease(self.store_path)
+        return self._lease
+
+    def _renew_until(self, stop: threading.Event()) -> None:
+        """Renew this warmer's lease while the batch is in flight.
+
+        Keeps lease ownership valid for the entire active cycle even when a
+        single acquisition outlasts the nominal TTL.  Stops promptly when
+        the cycle ends; a crash of the owner simply stops the heartbeat and
+        the lease expires normally (dead-owner recovery unchanged).
+        """
+        lease = self._lease_or_none()
+        while not stop.wait(self.heartbeat_period):
+            if not lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
+                return  # lost ownership (should not happen while admitted)
 
     def run_cycle(self, *, rpc_url: str | None = None) -> dict | None:
-        """One non-overlapping warming cycle (also usable directly in tests)."""
+        """One non-overlapping, lease-guarded warming cycle.
+
+        Returns None when this warmer does not own the cross-process lease
+        (a foreign worker is actively collecting) or when a cycle is already
+        running in this process — in both cases it does NOT enter
+        ``collect_r_live_batch``.
+        """
         if not self._cycle_lock.acquire(blocking=False):
-            return None  # no overlapping batch refreshes, ever
+            return None  # no overlapping batch refreshes in this process
         try:
-            rpc = rpc_url or os.getenv("ROBINHOOD_RPC_URL")
-            if not rpc:
-                summary = {"state": "RPC_NOT_CONFIGURED", "written": 0}
-            else:
-                summary = warm_snapshot_once(rpc, store_path=self.store_path)
-            self.last_summary = summary
-            return summary
+            lease = self._lease_or_none()
+            if not lease.acquire_or_renew(ttl_seconds=self.lease_ttl):
+                return None  # foreign holder owns the lease: never double-collect
+            heartbeat_stop = threading.Event()
+            heartbeat = threading.Thread(
+                target=self._renew_until, args=(heartbeat_stop,), daemon=True,
+                name="finco-r-live-lease-heartbeat")
+            heartbeat.start()
+            try:
+                rpc = rpc_url or os.getenv("ROBINHOOD_RPC_URL")
+                if not rpc:
+                    summary = {"state": "RPC_NOT_CONFIGURED", "written": 0}
+                else:
+                    summary = warm_snapshot_once(rpc, store_path=self.store_path)
+                self.last_summary = summary
+                return summary
+            finally:
+                heartbeat_stop.set()
+                heartbeat.join(timeout=5)
         finally:
             self._cycle_lock.release()
 
     def _loop(self) -> None:
-        lease = _SnapshotLease(self.store_path)
         try:
             while not self._stop.is_set():
-                if lease.acquire_or_renew(ttl_seconds=self.interval * 3):
-                    self.run_cycle()
+                self.run_cycle()  # None when a foreign worker owns the lease
                 self._stop.wait(self.interval)
         finally:
-            lease.release()
-            lease.close()
+            if self._lease is not None:
+                self._lease.release()
+                self._lease.close()
+                self._lease = None
 
     def start(self) -> bool:
         if self._thread is not None and self._thread.is_alive():
