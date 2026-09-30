@@ -258,7 +258,7 @@ class TestTrustPackLabelsAndFailClosed:
             "tp-label-user", "generic_solar_reference", 64.0
         )
         page = client.get(f"/v2/workbook?project={record.project_code}", cookies=cookies)
-        assert "MODEL VALIDATION" in page.text
+        assert "REFERENCE REGRESSION CHECK" in page.text
         assert 'data-testid="trust-pack-validation"' in page.text
 
     def test_trust_pack_verify_label_explicit(self, seeded_db):
@@ -715,7 +715,7 @@ class TestTrustPackBrowserAcceptance:
                     assert panel.locator(f'[data-testid="{marker}"]').count() == 1, marker
 
                 body = panel.inner_text()
-                assert "MODEL VALIDATION" in body
+                assert "REFERENCE REGRESSION CHECK" in body
                 assert "FINCO VERIFY" in body
                 assert "never implies" in body
                 assert "NOT FINCO VERIFY" in body

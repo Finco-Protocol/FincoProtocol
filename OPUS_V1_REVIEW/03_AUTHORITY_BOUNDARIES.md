@@ -88,12 +88,18 @@ on-chain evidence.
 **Invariant:** Certificate issued from persisted Last Run only — never re-runs
 the engine, never accepts Working Copy state.
 
-## 6. MODEL VALIDATION != FINCO VERIFY
+## 6. Reference Regression Check != FINCO VERIFY
 
-**Module:** `app/model_validation/` (Validation), `app/verified/` (Verify)
+**Module:** `app/model_validation/` (Regression Check), `app/verified/` (Verify)
 
-- **Validation** checks model structure and numeric tolerances against the
-  committed Last Run outputs. P1.3 vertical reconciliation.
+- **Reference Regression Check (H-4A)** re-runs canonical reference-model
+  KPIs against pinned expected values (P1.3 vertical reconciliation). It
+  runs against the canonical reference, NOT the user's committed Last Run;
+  it is regression protection for the reference library and does NOT
+  independently validate a user's model or establish accounting/debt/cash
+  integrity of the Last Run. (Historical note: H-2 — the DSCR sculpting
+  false-CONVERGED finding — was CLOSED by PR #144; a regression-check PASS
+  was never evidence of model soundness and still is not.)
 - **Verification** establishes a source-attested market binding. Requires
   explicit on-chain evidence with confirmed `evidence_id`.
 - A "Validated" project has passed structural checks. It has not been verified
