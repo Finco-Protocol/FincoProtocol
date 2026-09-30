@@ -80,7 +80,7 @@ Run.
 - **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical
   identity, premium/execution gap, exact-identity history
 - **R-LIVE V2** (PR #136 / #137) — registry-driven on-chain reference surface.
-  300-second freshness gate. USDG/USD Chainlink conversion. Public API. UX shell.
+  300-second TWAP with fail-closed freshness policies. USDG/USD Chainlink conversion. Public API. UX shell.
   `/radar` → `/radar/r-live`. Exact canonical identity only; no ticker/fuzzy lookup.
 - **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
   collects all approved registry assets serially. STALE/UNAVAILABLE market states

@@ -52,7 +52,7 @@
           <div class="proad-chip-row">
             <span>Solar</span><span>Wind</span><span>Data Center</span><span>EV Charging</span>
           </div>
-          <p class="proad-note">Solar and Wind are mature production modelling workflows. Data Center (A3.1) and EV Charging (A3.2) are implemented and supported modelling workflows. Storage is available as a reference model; working-copy runtime not yet released.</p>
+          <p class="proad-note">Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented and supported. Storage is reference-only (working-copy runtime not released). Product-run trust layers included: construction financing (IDC, commitment/structuring fees, initial DSRA, Sources &amp; Uses), Run Integrity Checks, the Reference Regression Check and DSCR-sculpting fail-closed feasibility.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -60,8 +60,9 @@
           <h3>Multi-Market Radar</h3>
           <p>Company, market and macro context without silently rewriting Model assumptions.</p>
           <div class="proad-chip-row">
-            <span>Stocks</span><span>Crypto</span><span>Economy</span><span>RWA</span><span>Stablecoins</span><span>Derivatives</span>
+            <span>Stocks</span><span>Crypto</span><span>Economy</span><span>R-LIVE</span><span>RWA</span><span>Stablecoins</span><span>Derivatives</span>
           </div>
+          <p class="proad-note">R-LIVE is a first-class Radar domain: exact-identity on-chain reference observations using a 300-second TWAP with fail-closed freshness rules, AVAILABLE/STALE/UNAVAILABLE semantics, 1h/24h ranges and a read-only public API. Observations are not executable prices.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -69,8 +70,47 @@
           <h3>API Beta + Evidence + Verified Assets</h3>
           <p>Programmatic Model and Radar access, deterministic runs, evidence lineage, freshness, verification boundaries and Verified Assets composition.</p>
           <div class="proad-chip-row">
-            <span>Model API</span><span>Radar API</span><span>Verify</span><span>Exports</span><span>Verified Assets</span>
+            <span>Model API</span><span>Radar API</span><span>Run Integrity</span><span>Signed Run</span><span>Exports</span><span>Verified Assets</span><span>Wallet Identity</span><span>Entitlement rail</span><span>B2.3 usage ledger</span>
           </div>
+          <p class="proad-note">Wallet identity/ownership verification is implemented foundation; production token activation is not. Verified Assets currently render MODEL_ONLY (production Verified assets: 0). Signed Run public trust distribution and a public verifier are in development (M-2).</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="proad-section" aria-labelledby="active-heading">
+      <div class="proad-section-head">
+        <div>
+          <p class="proad-kicker">Active now</p>
+          <h2 id="active-heading">In development and experimental work.</h2>
+        </div>
+        <span class="proad-status proad-status--target">ACTIVE</span>
+      </div>
+
+      <div class="proad-baseline-grid">
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">01</span>
+          <h3>JEV Radar Intelligence V1</h3>
+          <p>EXPERIMENTAL — merged (PR #146). Canonical FINCO Radar evidence → deterministic blinded features → typed JEV interpretation. Runtime is default OFF; enabling without an explicit mode runs SHADOW (never silently visible), and VISIBLE requires explicit configuration. Boundary: <strong>JEV interprets. FINCO authorities remain authoritative.</strong> No investment recommendations, no trading signals, no price prediction, no executable-price authority, no Verify or identity authority. External-provider validation has not been demonstrated (live smoke was SKIPPED_NO_KEY at merge).</p>
+        </article>
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">02</span>
+          <h3>Signed Run Public Trust — M-2</h3>
+          <p>IN DEVELOPMENT. Public signing-key discovery, a public verifier, an offline verifier and the key rotation/trust model for Ed25519 Signed Run certificates. Issuance itself is shipped and config-gated; M-2 is not shipped until merged.</p>
+        </article>
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">03</span>
+          <h3>FINCO Yield</h3>
+          <p>IN DEVELOPMENT / EXPERIMENTAL — initial Y0 architecture spike in active development (PR #148, not merged). Isolated <code>finco_yield</code> module: exact canonical opportunity identity, evidence-state semantics, preliminary deterministic underwriting, research fixtures, unsigned transaction planning and provider architecture evaluation. Feature flags default OFF. Non-custodial; no mainnet execution; no FINCO-owned vault; Robinhood Chain support is PARTIAL. Direction: Explore → Underwrite → Evidence → Monitor → Act.</p>
+        </article>
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">04</span>
+          <h3>Model ↔ Market Bridge</h3>
+          <p>NEXT / HIGH PRIORITY. Source-proven binding of a FINCO model asset ↔ economic_asset_uid ↔ canonical market evidence. No ticker, name or fuzzy binding. This is required before production VERIFIED assets can exist (production VERIFIED assets today: 0).</p>
+        </article>
+        <article class="proad-baseline-card">
+          <span class="proad-card-index">05</span>
+          <h3>$FINCO Metered Utility — M-1</h3>
+          <p>NEXT. Concrete metering around useful scarce resources — candidate targets include Signed Run issuance/anchoring, premium intelligence/API throughput and evidence packages. Token economics are not final; token launch is not claimed.</p>
         </article>
       </div>
     </section>
@@ -118,8 +158,8 @@
           </article>
           <article class="proad-feature">
             <span class="proad-feature-tag">Wallet</span>
-            <h3>Wallet Identity</h3>
-            <p>Connect wallet, signed authentication and a verified wallet session without custody or transaction signing by FINCO.</p>
+            <h3>Wallet Identity — foundation shipped</h3>
+            <p>EIP-1193 connect, EIP-191 ownership verification, server-side session binding, balance observation and the token entitlement rail are implemented. Broader wallet intelligence and production token activation remain future work.</p>
           </article>
           <article class="proad-feature">
             <span class="proad-feature-tag">On-chain</span>
@@ -225,19 +265,19 @@
 
       <div class="proad-later-grid">
         <article>
-          <span>Q2 2027</span>
+          <span>LATER</span>
           <h3>Real-World Asset Expansion</h3>
           <p>BESS, real estate and additional infrastructure verticals; deeper operating-driver libraries and reusable project templates.</p>
         </article>
         <article>
-          <span>Q3 2027</span>
+          <span>LATER</span>
           <h3>Portfolio & Institutional Infrastructure</h3>
           <p>Portfolio X-Ray, institutional exports, Financial Passport expansion, SDK/data services and decision-workflow tooling.</p>
         </article>
         <article>
-          <span>Q4 2027</span>
-          <h3>Agentic Financial Infrastructure</h3>
-          <p>Monitoring, investment-committee workflows, digital twins and automation built on FINCO calculation and evidence authority.</p>
+          <span>LATER</span>
+          <h3>L2 / Merkle Anchoring & Agentic Workflows</h3>
+          <p>On-chain anchoring of evidence digests, monitoring, investment-committee workflows, digital twins and automation built on FINCO calculation and evidence authority.</p>
         </article>
       </div>
     </section>
