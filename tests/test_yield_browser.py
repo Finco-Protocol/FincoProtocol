@@ -108,7 +108,7 @@ def test_yield_enabled_explore_detail_evidence_compare_and_execution_off(
     evidence = page.request.get(f"{yield_url}/yield/{first.uid}/evidence.json")
     assert evidence.status == 200
     payload = evidence.json()
-    assert payload["yield_opportunity_uid"] == first.uid
+    assert payload["identity"]["opportunity_uid"] == first.uid
     assert len(payload["canonical_input_hash"]) == 64
     assert len(payload["canonical_output_hash"]) == 64
 
