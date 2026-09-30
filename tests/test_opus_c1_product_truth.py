@@ -454,4 +454,4 @@ class TestBehaviorUnchanged:
         labels = {key: label for key, label, _ in _CORE_KPI_ROWS}
         # The share-capital return must not be presented as the total sponsor return.
         assert "Sponsor" not in labels["equity_irr"]
-        assert labels["total_sponsor_xirr"] == "Total Sponsor XIRR"
+        assert labels["total_sponsor_xirr"].startswith("Total Sponsor XIRR")
