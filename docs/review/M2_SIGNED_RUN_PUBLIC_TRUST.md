@@ -1,6 +1,6 @@
 # FINCO M-2 — Signed Run Public Trust — Review Dossier
 
-Correction B cut (trust-root security hardening). Branch:
+Correction B + final public verifier perimeter (Correction C). Branch:
 `protocol/m2-signed-run-public-trust`. Base: main `77f29ae` (post-#146) +
 merged sync of `7c4655b` (post-#147).
 
@@ -170,6 +170,38 @@ typed `KEYS_DOCUMENT_INVALID` machine-readable failure — never an uncaught
 traceback, never raw exception text, never key material. Malformed
 certificate signature base64 → sanitized `INVALID_SIGNATURE`.
 
+### Public ingress perimeter (Correction C)
+
+The verify endpoint is public and unauthenticated, so the transport
+boundary is hardened BEFORE any JSON parsing / canonicalization /
+verification work:
+
+1. **Hard raw-body byte limit** — `MAX_VERIFY_REQUEST_BYTES` (1 MiB),
+   enforced by **bounded streaming consumption**: the reader stops pulling
+   from the stream the moment the cap is exceeded, so a chunked request
+   cannot push unbounded bytes into the process. A declared
+   `Content-Length` above the cap is rejected up front without reading the
+   body. Oversized input → typed sanitized **413 `REQUEST_TOO_LARGE`**.
+2. **Strict JSON parsing** — malformed bodies → **400
+   `MALFORMED_REQUEST`** (typed, fixed strings).
+3. **Bounded structural limits** — nesting depth (32), total node count
+   (10,000) and per-container size (512 entries), checked ITERATIVELY (no
+   recursion) before canonicalization: pathological structures (deep
+   nesting bombs, wide objects, huge node counts) → **413
+   `REQUEST_TOO_LARGE`** with the shared core never invoked. The shared
+   core's existing 1 MB canonical certificate semantic cap REMAINS in
+   force after admission (proven by direct-core test).
+4. **Bounded in-process admission** — a bounded semaphore (8 concurrent
+   verifications) with non-blocking acquire; excess concurrent requests
+   get a typed **503 `VERIFICATION_BUSY`**. No Redis/Celery/distributed
+   infrastructure.
+
+Adversarial tests prove the core is never invoked for oversized raw
+bodies, chunked bodies, huge declared Content-Length, deep-nesting and
+wide-object payloads (core invocation + canonicalization both spied).
+Zero engine calls / DB writes / wallet-token requirements / Verify
+mutations — unchanged.
+
 ## 6. Surfaces
 
 | Surface | Route / path | Auth | Source |
@@ -226,7 +258,7 @@ Verification (public, private-key-free): fetch
 `/.well-known/finco/keys.json` (or use the bundled manifest) and run the
 offline verifier; or POST the certificate to the public verify endpoint.
 
-## 9. Test coverage (M-2 suite — 60 tests, all green)
+## 9. Test coverage (M-2 suite — 70 tests, all green)
 
 - P0/P7: bundled manifest ships `keys: []` with no seed documentation;
   certificate signed by the known test seed is UNKNOWN_KEY_ID against the
@@ -256,6 +288,14 @@ offline verifier; or POST the certificate to the public verify endpoint.
   offline CLI → typed sanitized `KEYS_DOCUMENT_INVALID` (incl. non-JSON
   file); file-level manifest failures fail closed; valid empty manifest
   loads.
+- Correction C ingress perimeter: oversized raw body 413 before JSON/core
+  (core + canonicalization spied); chunked 2 MB body cannot bypass the
+  cap; bounded reader stops consuming at the cap (deterministic stub);
+  huge declared Content-Length rejected without reading; deep-nesting and
+  wide-object bombs 413 with core never invoked; non-JSON body typed 400;
+  legitimate certificates (envelope + bare) still verify; bounded
+  admission semaphore drains/refuses/releases; core 1 MB semantic cap
+  still enforced via direct core call; ingress 413 sanitized.
 - Registry hardening: real Ed25519 validation rejects P-256 and garbage
   DER; `public_keys_document()` contains no private material.
 

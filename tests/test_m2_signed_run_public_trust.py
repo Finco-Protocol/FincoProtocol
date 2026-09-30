@@ -564,17 +564,19 @@ def test_public_verify_failures_are_sanitized(verify_client, m2_env):
     assert TEST_PUBLIC_DER_B64 not in json.dumps(body)
 
 
-def test_public_verify_huge_certificate_field_malformed(
+def test_public_verify_huge_certificate_field_rejected_at_ingress(
         verify_client, m2_env):
-    """P3 hardening: an oversized junk field is MALFORMED_CERTIFICATE — no
-    unbounded field stress reaches hashing/serialization."""
+    """P3 hardening: an oversized junk field is rejected by the ingress raw
+    cap (413 REQUEST_TOO_LARGE) before any parsing/verification work."""
     cert = _issue_cert()
     cert["junk"] = "x" * 1_100_000
     resp = verify_client.post("/api/v1.1/run-certificates/verify",
                               json={"certificate": cert})
     body = resp.json()
-    assert body["state"] == "MALFORMED_CERTIFICATE", (
+    assert resp.status_code == 413
+    assert body["state"] == "REQUEST_TOO_LARGE", (
         body["state"], body.get("detail"))
+    assert "Traceback" not in json.dumps(body)
 
 
 def test_public_verifier_no_engine_no_writes(verify_client, m2_env, monkeypatch):
@@ -589,6 +591,248 @@ def test_public_verifier_no_engine_no_writes(verify_client, m2_env, monkeypatch)
                               json={"certificate": cert})
     assert resp.status_code == 200
     assert calls == []
+
+
+# ── Correction C: public ingress perimeter (raw cap BEFORE parsing) ─────────
+
+@pytest.fixture()
+def ingress_client(test_key):
+    """Fresh app wired to the real public router (raw-body endpoint)."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.v1_1 import run_certificate_public_router as router_mod
+    app = FastAPI()
+    app.include_router(router_mod.router, prefix="/api/v1.1")
+    return TestClient(app, raise_server_exceptions=False), router_mod
+
+
+def _core_call_recorder(monkeypatch, router_mod):
+    """Record every invocation of the shared core from the router module."""
+    calls = []
+    real = router_mod.verify_certificate
+
+    def spy(certificate, key_records):
+        calls.append(1)
+        return real(certificate, key_records)
+
+    monkeypatch.setattr(router_mod, "verify_certificate", spy)
+    return calls
+
+
+def test_oversized_raw_body_rejected_before_json_and_core(
+        ingress_client, m2_env, monkeypatch):
+    """A >1 MiB raw body is 413-rejected BEFORE JSON parsing and BEFORE the
+    shared verification core / canonicalization is invoked."""
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+    canonical_spy_calls = _canonical_spy(monkeypatch)
+    oversized = b'{"certificate": {"junk": "' + b"x" * (1_048_576 + 64) + b'"}}'
+    resp = client.post(
+        "/api/v1.1/run-certificates/verify",
+        content=oversized,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+    body = resp.json()
+    assert body["state"] == "REQUEST_TOO_LARGE"
+    assert "maximum allowed size" in body["detail"]
+    assert calls == []                       # core never invoked
+    assert canonical_spy_calls == []         # canonicalization never invoked
+    assert TEST_PUBLIC_DER_B64 not in json.dumps(body)  # sanitized
+
+
+def _canonical_spy(monkeypatch):
+    """Record invocations of the canonical serialization authority."""
+    from app.services import run_certificate_service as rcs
+    calls = []
+    real = rcs.canonical_certificate_signing_bytes
+
+    def spy(payload):
+        calls.append(1)
+        return real(payload)
+
+    monkeypatch.setattr(rcs, "canonical_certificate_signing_bytes", spy)
+    return calls
+
+
+def test_oversized_chunked_body_cannot_bypass_cap(ingress_client, m2_env,
+                                                  monkeypatch):
+    """Chunked transfer encoding cannot push more than the raw cap into the
+    verification path: the bounded reader enforces the cap server-side and
+    the shared core is never invoked.  (Bounded STOP-consuming behavior is
+    proven deterministically in
+    test_bounded_reader_stops_consuming_at_cap; the ASGI test transport
+    pre-buffers client-side, so emission counting is not asserted here.)"""
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+    total = 2_000_000
+    chunk_size = 64 * 1024
+
+    def chunk_stream():
+        for offset in range(0, total, chunk_size):
+            yield b'{"certificate": {"junk": "' + b"x" * min(chunk_size, total - offset)
+
+    resp = client.post(
+        "/api/v1.1/run-certificates/verify",
+        content=chunk_stream(),
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["state"] == "REQUEST_TOO_LARGE"
+    assert calls == []
+
+
+def test_bounded_reader_stops_consuming_at_cap():
+    """Deterministic proof of bounded streaming consumption: the raw-body
+    reader stops pulling from the stream the moment the cap is exceeded —
+    an oversized chunked request cannot push unbounded bytes into the
+    process."""
+    import asyncio
+    from app.api.v1_1 import run_certificate_public_router as router_mod
+
+    class _StubRequest:
+        headers = {}
+
+        def __init__(self):
+            self.pulled = 0
+
+        async def stream(self):
+            while True:
+                self.pulled += 64 * 1024
+                yield b"x" * (64 * 1024)
+
+    stub = _StubRequest()
+    result = asyncio.run(
+        router_mod._read_bounded_body(stub,
+                                      router_mod.MAX_VERIFY_REQUEST_BYTES))
+    assert result is None
+    # consumption stopped within one chunk past the cap — not unbounded
+    assert stub.pulled <= router_mod.MAX_VERIFY_REQUEST_BYTES + 64 * 1024
+
+
+def test_huge_declared_content_length_rejected_without_reading(
+        ingress_client, m2_env, monkeypatch):
+    """A declared Content-Length above the raw cap is 413-rejected up front
+    by the bounded reader's fast path — the body stream is never consumed
+    and the core is never invoked."""
+    import asyncio
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+
+    class _StubRequest:
+        headers = {"content-length": str(10_000_000)}
+
+        async def stream(self):  # pragma: no cover — must never be consumed
+            raise AssertionError("body consumed despite oversized "
+                                 "Content-Length")
+            yield b""
+
+    result = asyncio.run(
+        router_mod._read_bounded_body(_StubRequest(),
+                                      router_mod.MAX_VERIFY_REQUEST_BYTES))
+    assert result is None
+    assert calls == []
+
+
+def test_deeply_nested_body_rejected_before_core(ingress_client, m2_env,
+                                                 monkeypatch):
+    """A pathological deep-nesting literal (under the raw byte cap) is
+    rejected by the iterative structure bounds — core never invoked, no
+    recursion bomb reaches canonicalization."""
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+    canonical_calls = _canonical_spy(monkeypatch)
+    deep = "[" * 500 + "]" * 500  # depth 500 > MAX_JSON_DEPTH, only 1 KB
+    body = ('{"certificate": {"junk": ' + deep + "}}").encode()
+    assert len(body) < 1_048_576
+    resp = client.post(
+        "/api/v1.1/run-certificates/verify",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["state"] == "REQUEST_TOO_LARGE"
+    assert calls == []
+    assert canonical_calls == []
+
+
+def test_wide_object_body_rejected_before_core(ingress_client, m2_env,
+                                               monkeypatch):
+    """A small-bytes object with too many fields is rejected by the
+    container-size bound before the core is invoked."""
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+    wide = ",".join(f'"k{i}": 1' for i in range(2000))
+    body = ('{"certificate": {' + wide + "}}").encode()
+    assert len(body) < 1_048_576
+    resp = client.post(
+        "/api/v1.1/run-certificates/verify",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["state"] == "REQUEST_TOO_LARGE"
+    assert calls == []
+
+
+def test_non_json_body_typed_400(ingress_client, m2_env, monkeypatch):
+    client, router_mod = ingress_client
+    calls = _core_call_recorder(monkeypatch, router_mod)
+    resp = client.post(
+        "/api/v1.1/run-certificates/verify",
+        content=b"{definitely not json",
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 400
+    body = resp.json()
+    assert body["state"] == "MALFORMED_REQUEST"
+    assert calls == []
+
+
+def test_ingress_does_not_break_legitimate_certificates(
+        ingress_client, m2_env):
+    """The perimeter admits well-formed certificates — envelope and bare
+    object forms both verify through the shared core."""
+    client, _ = ingress_client
+    cert = _issue_cert()
+    enveloped = client.post("/api/v1.1/run-certificates/verify",
+                            json={"certificate": cert})
+    assert enveloped.status_code == 200
+    assert enveloped.json()["state"] == "VALID"
+    bare = client.post("/api/v1.1/run-certificates/verify", json=cert)
+    assert bare.status_code == 200
+    assert bare.json()["state"] == "VALID"
+
+
+def test_admission_limit_is_bounded_and_typed():
+    """The in-process admission control is a bounded semaphore: exhausting
+    it yields a typed busy state, and release restores admission.  No
+    distributed infrastructure involved."""
+    from app.api.v1_1 import run_certificate_public_router as router_mod
+    sem = router_mod._VERIFIER_ADMISSION
+    # drain
+    acquired = []
+    while sem.acquire(blocking=False):
+        acquired.append(1)
+        if len(acquired) > router_mod.MAX_CONCURRENT_VERIFICATIONS:
+            break
+    assert len(acquired) == router_mod.MAX_CONCURRENT_VERIFICATIONS
+    assert sem.acquire(blocking=False) is False  # bounded: no over-admission
+    for _ in acquired:
+        sem.release()
+
+
+def test_core_semantic_cap_still_enforced_after_ingress(m2_env):
+    """The shared core's 1 MB canonical certificate semantic cap remains in
+    force (requirement: the ingress raw cap REPLACES nothing — it layers on
+    top).  Proven with a direct shared-core call, bypassing ingress."""
+    from app.protocol.run_certificate_verifier import verify_certificate
+    cert = _issue_cert()
+    cert["junk"] = "x" * 1_100_000
+    result = verify_certificate(cert, reg.all_keys())
+    assert result["state"] == "MALFORMED_CERTIFICATE"
+    assert "maximum allowed size" in result["detail"]
+    assert result["signature_valid"] is False
 
 
 # ── P2: API and offline CLI share ONE verification core ─────────────────────
