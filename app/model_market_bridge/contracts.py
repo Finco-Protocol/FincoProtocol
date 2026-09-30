@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
+_HEX = frozenset("0123456789abcdefABCDEF")
+
 BINDING_SCHEMA_VERSION = "MODEL_MARKET_BINDING_V1"
 # Stable schema alias (kept short for serialization surfaces).
 MODEL_MARKET_BINDING_V1 = "model_market_binding_v1"
@@ -86,7 +88,11 @@ class BindingLifecycle(str, Enum):
 
 
 class EvidenceState(str, Enum):
-    """Freshness state of the referenced market evidence."""
+    """Evidence state AS PRODUCED by the canonical market authority.
+
+    The bridge consumes this state; it does not derive it from its own
+    generic production freshness computation.
+    """
 
     FRESH = "FRESH"
     STALE = "STALE"
@@ -98,6 +104,8 @@ class ReasonCode(str, Enum):
 
     OK = "OK"
     MODEL_UID_UNKNOWN = "MODEL_UID_UNKNOWN"
+    # Both sides individually canonical, but not attested as one pairing.
+    PAIRING_MISMATCH = "PAIRING_MISMATCH"
     ECONOMIC_ASSET_UNKNOWN = "ECONOMIC_ASSET_UNKNOWN"
     DEPLOYMENT_UNKNOWN = "DEPLOYMENT_UNKNOWN"
     BINDING_NOT_SOURCE_PROVEN = "BINDING_NOT_SOURCE_PROVEN"
@@ -160,24 +168,35 @@ class EconomicAssetIdentity:
     """Canonical economic identity layer.
 
     ``economic_asset_uid`` must come from existing authority (for example the
-    reviewed R-LIVE / Verify namespace).  The bridge reuses it verbatim and
-    never mints competing economic identities.
+    reviewed R-LIVE / Verify namespace).  The bridge reuses it VERBATIM --
+    no case folding, no normalization; canonical upstream owners define any
+    canonical form.
     """
 
     economic_asset_uid: str
 
     def __post_init__(self) -> None:
-        uid = (self.economic_asset_uid or "").strip()
-        if not uid:
+        if not (self.economic_asset_uid or "").strip():
             raise ValueError("economic_asset_uid is required")
-        object.__setattr__(self, "economic_asset_uid", uid)
+        # stored verbatim -- no normalization
 
 
-def _canonical_address(value: str) -> str:
+def canonical_evm_address(value: str) -> str:
+    """Validate and canonicalize an exact EVM 20-byte address.
+
+    Requires ``0x`` + exactly 40 hexadecimal characters.  Rejects bare
+    ``0x``, short values, long values and non-hex characters.  Canonical
+    form is lower-case (EVM addresses are case-insensitive; the economic
+    uid, by contrast, is kept verbatim).
+    """
     addr = (value or "").strip()
-    if not addr.startswith("0x") or any(c not in "0123456789abcdefABCDEF" for c in addr[2:]):
-        raise ValueError("contract address must be a hex 0x address")
+    if len(addr) != 42 or addr[:2] != "0x" or any(c not in _HEX for c in addr[2:]):
+        raise ValueError("contract address must be 0x followed by exactly 40 hex characters")
     return addr.lower()
+
+
+# Internal alias kept for existing call sites.
+_canonical_address = canonical_evm_address
 
 
 @dataclass(frozen=True)
@@ -215,11 +234,17 @@ def deployment_uid_for(chain_id: int, contract_address: str) -> str:
 
 @dataclass(frozen=True)
 class MarketEvidenceReference:
-    """Reference to canonical market evidence — never a recalculation."""
+    """Reference to canonical market evidence — never a recalculation.
+
+    ``state`` is the evidence state AS PRODUCED by the market authority;
+    the bridge consumes it and never operates its own generic production
+    freshness computation.
+    """
 
     authority: str                    # e.g. the canonical market authority name
     ref: str                          # authority-specific reference/digest
     observed_at: datetime
+    state: "EvidenceState | None" = None
 
     def __post_init__(self) -> None:
         if not self.authority.strip():
@@ -227,6 +252,12 @@ class MarketEvidenceReference:
         if not self.ref.strip():
             raise ValueError("evidence ref is required")
         _require_tzaware("observed_at", self.observed_at)
+        if self.state is None:
+            # The contract requires the market authority's state; constructors
+            # omitting it get UNAVAILABLE and must set it explicitly.
+            object.__setattr__(self, "state", EvidenceState.UNAVAILABLE)
+        elif not isinstance(self.state, EvidenceState):
+            raise ValueError("state must be an EvidenceState")
 
 
 @dataclass(frozen=True)
@@ -281,6 +312,28 @@ class ModelMarketBindingV1:
             schema_version=self.schema_version,
         )
 
+    def _material_fields(self) -> tuple:
+        """Fields whose disagreement between same-UID records is material.
+
+        Two records sharing a binding UID but differing in ANY of these are
+        a fail-closed identity conflict, never a silent overwrite.
+        """
+        return (
+            self.model_asset_uid,
+            self.model_asset_kind.value,
+            self.economic_asset_uid,  # verbatim comparison — no normalization
+            self.deployment.deployment_uid,
+            self.evidence.authority,
+            self.evidence.ref,
+            self.evidence.observed_at,
+            self.evidence.state.value,
+            self.provenance_type.value,
+            self.provenance_ref,
+            self.status.value,
+            self.lifecycle.value,
+            self.supersedes_binding_uid,
+        )
+
 
 def binding_uid_for(
     *,
@@ -293,15 +346,17 @@ def binding_uid_for(
     """Deterministic binding UID.
 
     Canonical JSON serialization of the immutable identity fields only — no
-    display metadata, no timestamps, no statuses.  Same canonical identity →
-    same UID; different deployment → different UID.
+    display metadata, no timestamps, no statuses.  The economic uid enters
+    VERBATIM (no case folding): canonical upstream owners define any
+    canonical form.  Same canonical identity → same UID; different
+    deployment → different UID.
     """
     payload = json.dumps(
         {
             "schema": schema_version,
             "model_asset_uid": model_asset_uid,
             "model_asset_kind": model_asset_kind.value,
-            "economic_asset_uid": economic_asset_uid.strip().lower(),
+            "economic_asset_uid": economic_asset_uid,
             "deployment_uid": deployment_uid,
         },
         sort_keys=True,

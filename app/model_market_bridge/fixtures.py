@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.model_market_bridge import (
     BindingLifecycle,
+    EvidenceState,
     BindingStatus,
     BridgeRegistry,
     DeploymentIdentity,
@@ -24,7 +25,9 @@ from app.model_market_bridge import (
 
 _CHAIN = 4663
 _TOKEN = "0x" + "ab" * 20
+_TOKEN_B = "0x" + "cd" * 20
 _UID = "0x00000000000000000000000000000000" + "aa" * 16
+_UID_B = "0x00000000000000000000000000000000" + "bb" * 16
 _MODEL = "project:11111111-1111-1111-1111-111111111111"
 _NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -44,7 +47,7 @@ def _binding(**overrides) -> ModelMarketBindingV1:
         deployment=_deployment(),
         evidence=MarketEvidenceReference(
             authority="SYNTHETIC_MARKET_AUTHORITY",
-            ref="SYNTHETIC_EVIDENCE_DIGEST_0001", observed_at=_NOW),
+            ref="SYNTHETIC_EVIDENCE_DIGEST_0001", observed_at=_NOW, state=EvidenceState.FRESH),
         provenance_type=ProvenanceType.CANONICAL_REGISTRY_RECORD,
         provenance_ref="synthetic-registry-entry-0001",
         status=BindingStatus.SOURCE_PROVEN,
@@ -55,12 +58,29 @@ def _binding(**overrides) -> ModelMarketBindingV1:
 
 
 def build_fixture_registry() -> BridgeRegistry:
-    """Fixture registry: one ACTIVE SOURCE_PROVEN binding, fresh evidence."""
+    """Fixture registry over one attested (uid, deployment) pairing.
+
+    The pairing authority proves the exact tuple; a different economic uid
+    with this deployment (or vice versa) is PAIRING_MISMATCH even though a
+    second canonical uid/deployment exists in the fixture universe.
+    """
+    attested = {(_UID, _deployment().deployment_uid)}
+    known_uids = {_UID, _UID_B}
+    known_deps = {_deployment().deployment_uid, _deployment(_TOKEN_B).deployment_uid}
+
+    def _pairing(economic_uid: str, deployment) -> ReasonCode:
+        if (economic_uid, deployment.deployment_uid) in attested:
+            return ReasonCode.OK
+        if economic_uid in known_uids and deployment.deployment_uid in known_deps:
+            return ReasonCode.PAIRING_MISMATCH
+        if economic_uid not in known_uids:
+            return ReasonCode.ECONOMIC_ASSET_UNKNOWN
+        return ReasonCode.DEPLOYMENT_UNKNOWN
+
     return BridgeRegistry(
         bindings=[_binding()],
-        deployment_known=(lambda d: d in {_deployment()}),
-        economic_asset_known=(lambda uid: uid in {_UID}),
-        max_evidence_age_seconds=3600,
+        pairing_authority=_pairing,
+        evidence_state_authority=lambda binding: EvidenceState.FRESH,
     )
 
 

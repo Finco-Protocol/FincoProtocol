@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from .contracts import (
     BINDING_SCHEMA_VERSION,
+    canonical_evm_address,
     MODEL_MARKET_BINDING_V1,
     BindingLifecycle,
     BindingStatus,
@@ -44,9 +45,11 @@ from .contracts import (
 )
 from .registry import (
     BridgeRegistry,
-    DeploymentAuthority,
+    EvidenceStateAuthority,
+    PairingAuthority,
     bridge_registry_from_bindings,
-    r_live_deployment_authority,
+    constant_evidence_state_authority,
+    r_live_pairing_authority,
 )
 
 __all__ = [
@@ -56,7 +59,9 @@ __all__ = [
     "BindingStatus",
     "BridgeDecision",
     "BridgeRegistry",
-    "DeploymentAuthority",
+    "canonical_evm_address",
+    "EvidenceStateAuthority",
+    "PairingAuthority",
     "DeploymentIdentity",
     "EconomicAssetIdentity",
     "EvidenceState",
@@ -70,8 +75,9 @@ __all__ = [
     "VerifySeamResult",
     "binding_uid_for",
     "bridge_registry_from_bindings",
+    "constant_evidence_state_authority",
     "deployment_uid_for",
     "model_asset_uid_for_project",
     "model_asset_uid_for_reference",
-    "r_live_deployment_authority",
+    "r_live_pairing_authority",
 ]

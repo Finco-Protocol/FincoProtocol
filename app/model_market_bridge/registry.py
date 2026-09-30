@@ -2,24 +2,29 @@
 
 The registry reuses existing authority instead of replacing it:
 
-- Deployment knowledge is pluggable (:class:`DeploymentAuthority`).  The
-  production adapter (:func:`r_live_deployment_authority`) reads the existing
-  canonical R-LIVE approved registry read-only; tests use synthetic
-  authorities.  A deployment the authority does not know is DEPLOYMENT_UNKNOWN
-  — never guessed.
-- Economic-asset knowledge is the same: the caller supplies the canonical
-  economic identity namespace (for example the reviewed R-LIVE uid set); an
-  unknown uid is ECONOMIC_ASSET_UNKNOWN.
+- **Pairing authority** (required): proves the exact source-proven tuple
+  ``economic_asset_uid ↔ chain_id ↔ canonical contract`` as ONE mapping,
+  read-only over existing canonical authority.  The production adapter
+  (:func:`r_live_pairing_authority`) checks the existing R-LIVE approved
+  policy records verbatim; tests use synthetic pairing sets.  A valid
+  economic UID from asset A paired with a valid deployment from asset B is
+  PAIRING_MISMATCH — never accepted because both sides exist independently.
+- **Evidence state authority** (required): consumes the evidence state AS
+  PRODUCED by the canonical market authority.  The bridge operates no
+  generic production freshness authority of its own; synthetic/test-local
+  freshness remains test-local.
+- **Lifecycle**: ACTIVE / SUPERSEDED / REVOKED.  Corrections supersede;
+  history is retained.  Two records sharing a binding UID but differing in
+  ANY material field fail closed (IDENTITY_CONFLICT) — never a silent
+  overwrite.
 
-Conflicts fail closed.  Two authoritative-looking records that disagree
-about an identity mapping produce typed conflicts (IDENTITY_CONFLICT /
-DEPLOYMENT_CONFLICT), never a priority guess.
+Conflicts fail closed.  Nothing here resolves a conflict by priority guess.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Callable, Mapping, Sequence
+from datetime import datetime
+from typing import Callable, Sequence
 
 from .contracts import (
     BindingLifecycle,
@@ -32,35 +37,59 @@ from .contracts import (
     VerifySeamResult,
 )
 
-# A deployment authority answers: is this exact deployment known/attested?
-# Read-only lookup only — it must never derive identity from display data.
-DeploymentAuthority = Callable[[DeploymentIdentity], bool]
+# Pairing authority: proves the exact tuple (economic_asset_uid, deployment)
+# as one source-proven mapping.  Returns OK when attested, PAIRING_MISMATCH
+# when both sides are individually canonical but not attested together, or
+# ECONOMIC_ASSET_UNKNOWN / DEPLOYMENT_UNKNOWN when a side is unknown.
+PairingAuthority = Callable[[str, DeploymentIdentity], ReasonCode]
 
-# An economic-asset authority answers: is this exact economic_asset_uid known?
-EconomicAssetAuthority = Callable[[str], bool]
+# Evidence-state authority: returns the state the canonical market authority
+# produced for this evidence reference (FRESH / STALE / UNAVAILABLE).
+EvidenceStateAuthority = Callable[[ModelMarketBindingV1], EvidenceState]
 
 
-def r_live_deployment_authority() -> DeploymentAuthority:
-    """Read-only adapter over the existing canonical R-LIVE approved registry.
+def r_live_pairing_authority() -> PairingAuthority:
+    """Read-only adapter over the existing canonical R-LIVE policy records.
 
-    Reuses ``finco_radar.authority.r_live_policy.APPROVED_BY_CANONICAL_ID``
-    verbatim — the bridge never duplicates or alters R-LIVE identity logic,
-    pool selection, freshness or pricing.  Deployment knowledge here means
-    "this exact (chain, contract) deployment is reviewed", nothing more.
+    Proves the exact tuple ``economic_asset_uid ↔ chain_id ↔ contract``
+    against ``APPROVED_BY_CANONICAL_ID`` verbatim.  The bridge never
+    duplicates or alters R-LIVE identity logic, pool selection, freshness
+    or pricing.
     """
 
-    def _known(deployment: DeploymentIdentity) -> bool:
+    def _pairing(economic_asset_uid: str, deployment: DeploymentIdentity) -> ReasonCode:
         from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
 
+        uid_known = False
+        deployment_known = False
+        paired = False
         for policy in APPROVED_BY_CANONICAL_ID.values():
             key = policy.asset_key
-            if key.chain_id == deployment.chain_id and (
-                str(key.contract_address).lower() == deployment.contract_address
-            ):
-                return True
-        return False
+            if policy.economic_asset_uid == economic_asset_uid:
+                uid_known = True
+            if (key.chain_id == deployment.chain_id
+                    and str(key.contract_address).lower() == deployment.contract_address):
+                deployment_known = True
+            if (policy.economic_asset_uid == economic_asset_uid
+                    and key.chain_id == deployment.chain_id
+                    and str(key.contract_address).lower() == deployment.contract_address):
+                paired = True
+        if paired:
+            return ReasonCode.OK
+        if uid_known and deployment_known:
+            # Both sides individually canonical, but the canonical authority
+            # does not attest them as one pairing -> fail closed.
+            return ReasonCode.PAIRING_MISMATCH
+        if not uid_known:
+            return ReasonCode.ECONOMIC_ASSET_UNKNOWN
+        return ReasonCode.DEPLOYMENT_UNKNOWN
 
-    return _known
+    return _pairing
+
+
+def constant_evidence_state_authority(state: EvidenceState) -> EvidenceStateAuthority:
+    """Test-local evidence-state authority (synthetic freshness stays synthetic)."""
+    return lambda binding: state
 
 
 @dataclass(frozen=True)
@@ -68,51 +97,46 @@ class BridgeRegistry:
     """Fail-closed registry over an immutable set of binding records."""
 
     bindings: Sequence[ModelMarketBindingV1]
-    deployment_known: DeploymentAuthority
-    economic_asset_known: EconomicAssetAuthority
-    max_evidence_age_seconds: int = 3600
+    pairing_authority: PairingAuthority
+    evidence_state_authority: EvidenceStateAuthority
     _by_uid: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         index: dict[str, ModelMarketBindingV1] = {}
-        deployments: dict[tuple[str, str], set[str]] = {}
+        deployments: dict[str, set[str]] = {}
         for binding in self.bindings:
             uid = binding.binding_uid
             existing = index.get(uid)
             if existing is not None:
                 # Deterministic identity: the same canonical binding identity
-                # must carry the same payload.  Any disagreement on the
-                # identity fields is an IDENTITY_CONFLICT.
-                if (
-                    existing.economic_asset_uid != binding.economic_asset_uid
-                    or existing.model_asset_uid != binding.model_asset_uid
-                    or existing.deployment.deployment_uid != binding.deployment.deployment_uid
-                ):
+                # must carry the same material payload.  Any material
+                # disagreement (identity, evidence, provenance, status or
+                # lifecycle) fails closed — never a silent overwrite.
+                if existing._material_fields() != binding._material_fields():
                     raise ValueError(
                         f"IDENTITY_CONFLICT: duplicate canonical binding {uid} "
-                        "with differing identity fields"
+                        "with materially conflicting records"
                     )
                 continue
             index[uid] = binding
-            dep_key = (binding.economic_asset_uid, binding.deployment.deployment_uid)
-            deployments.setdefault(dep_key, set()).add(binding.model_asset_uid)
-        # A deployment attested to two different model assets under two
-        # different economic assets is a DEPLOYMENT_CONFLICT — fail closed
-        # rather than picking a winner.  (Several deployments per economic
-        # asset are fine; one deployment silently serving two economic
-        # identities is not.)
-        for (_uid, _dep), models in deployments.items():
-            economic_uids = {
+            deployments.setdefault(binding.deployment.deployment_uid, set()).add(
+                binding.economic_asset_uid)
+        # A deployment source-proven bound to two different economic assets
+        # is a DEPLOYMENT_CONFLICT — fail closed rather than picking a
+        # winner.  (Several deployments per economic asset are fine; one
+        # deployment silently serving two economic identities is not.)
+        for dep_uid, economic_uids in deployments.items():
+            active_uids = {
                 b.economic_asset_uid
                 for b in self.bindings
-                if b.deployment.deployment_uid == _dep
+                if b.deployment.deployment_uid == dep_uid
                 and b.lifecycle is BindingLifecycle.ACTIVE
                 and b.status is BindingStatus.SOURCE_PROVEN
             }
-            if len(economic_uids) > 1:
+            if len(active_uids) > 1:
                 raise ValueError(
-                    f"DEPLOYMENT_CONFLICT: deployment {_dep} is source-proven "
-                    f"bound to multiple economic assets: {sorted(economic_uids)}"
+                    f"DEPLOYMENT_CONFLICT: deployment {dep_uid} is source-proven "
+                    f"bound to multiple economic assets: {sorted(active_uids)}"
                 )
         object.__setattr__(self, "_by_uid", index)
 
@@ -134,9 +158,14 @@ class BridgeRegistry:
         self,
         binding: ModelMarketBindingV1,
         *,
-        now: datetime,
+        now: datetime | None = None,
     ) -> BridgeDecision:
-        """Evaluate one binding candidate.  Fail-closed at every step."""
+        """Evaluate one binding candidate.  Fail-closed at every step.
+
+        ``now`` is accepted for interface compatibility; freshness comes
+        from the evidence-state authority, not from a local age computation.
+        """
+        del now  # freshness authority owns evidence state; no local aging
         uid = binding.binding_uid
         record = self._by_uid.get(uid)
 
@@ -164,7 +193,7 @@ class BridgeRegistry:
             )
 
         # Evidence availability: an absent reference is UNAVAILABLE even
-        # before freshness is considered.
+        # before the market authority's state is consulted.
         if not binding.evidence.ref.strip():
             return BridgeDecision(
                 status=BindingStatus.UNBOUND, reason=ReasonCode.EVIDENCE_UNAVAILABLE,
@@ -172,20 +201,15 @@ class BridgeRegistry:
                 detail="no market evidence reference present",
             )
 
-        # Deployment must be known to the canonical deployment authority.
-        if not self.deployment_known(binding.deployment):
+        # The exact tuple (economic_asset_uid ↔ deployment) must be attested
+        # by the canonical pairing authority as ONE source-proven mapping.
+        pairing = self.pairing_authority(binding.economic_asset_uid, binding.deployment)
+        if pairing is not ReasonCode.OK:
             return BridgeDecision(
-                status=BindingStatus.UNBOUND, reason=ReasonCode.DEPLOYMENT_UNKNOWN,
+                status=BindingStatus.UNBOUND, reason=pairing,
                 binding_uid=uid, lifecycle=binding.lifecycle,
-                detail="deployment is not attested by the canonical deployment authority",
-            )
-
-        # Economic asset must exist in the canonical economic namespace.
-        if not self.economic_asset_known(binding.economic_asset_uid):
-            return BridgeDecision(
-                status=BindingStatus.UNBOUND, reason=ReasonCode.ECONOMIC_ASSET_UNKNOWN,
-                binding_uid=uid, lifecycle=binding.lifecycle,
-                detail="economic_asset_uid is not present in the canonical economic namespace",
+                detail="canonical authority does not attest this economic_asset_uid "
+                       "↔ deployment pairing",
             )
 
         # Provenance must be present and source-proven; a CANDIDATE without
@@ -197,21 +221,22 @@ class BridgeRegistry:
                 detail="binding provenance is not yet source-proven",
             )
 
-        # Freshness last: stale evidence remains evidence of past state and is
-        # typed as STALE — it never silently becomes current authority.
-        age = (now - binding.evidence.observed_at).total_seconds()
-        if age < 0:
+        # Evidence state: consumed from the canonical market authority.
+        state = self.evidence_state_authority(binding)
+        if state is EvidenceState.UNAVAILABLE:
             return BridgeDecision(
-                status=BindingStatus.UNBOUND, reason=ReasonCode.MALFORMED_BINDING,
+                status=BindingStatus.UNBOUND, reason=ReasonCode.EVIDENCE_UNAVAILABLE,
                 binding_uid=uid, lifecycle=binding.lifecycle,
-                detail="evidence observed_at is in the future",
+                evidence_state=state,
+                detail="market authority reports the evidence unavailable",
             )
-        if age > self.max_evidence_age_seconds:
+        if state is EvidenceState.STALE:
             return BridgeDecision(
                 status=BindingStatus.STALE, reason=ReasonCode.EVIDENCE_STALE,
                 binding_uid=uid, lifecycle=binding.lifecycle,
-                evidence_state=EvidenceState.STALE,
-                detail="evidence is past the configured freshness window",
+                evidence_state=state,
+                detail="market authority reports the evidence stale; "
+                       "it remains evidence of past state only",
             )
 
         return BridgeDecision(
@@ -222,16 +247,17 @@ class BridgeRegistry:
         )
 
     def evaluate_for_model_asset(
-        self, model_asset_uid: str, *, now: datetime
+        self, model_asset_uid: str, *, now: datetime | None = None
     ) -> BridgeDecision:
         """Evaluate the active binding(s) of a Model asset.  Fail-closed."""
+        del now  # freshness authority owns evidence state; no local aging
         active = self.bindings_for_model_asset(model_asset_uid)
         if not active:
             return BridgeDecision(
                 status=BindingStatus.UNBOUND, reason=ReasonCode.MODEL_UID_UNKNOWN,
                 detail="no active binding for this model_asset_uid",
             )
-        decisions = [self.evaluate(b, now=now) for b in active]
+        decisions = [self.evaluate(b) for b in active]
         proven = [d for d in decisions if d.ok]
         if len(proven) > 1:
             return BridgeDecision(
@@ -254,7 +280,7 @@ class BridgeRegistry:
     # ── future FINCO Verify seam (designed, never activated) ─────────────
 
     def verify_evaluation_seam(
-        self, binding: ModelMarketBindingV1, *, now: datetime
+        self, binding: ModelMarketBindingV1, *, now: datetime | None = None
     ) -> VerifySeamResult:
         """Bridge-side preconditions for a *future* FINCO Verify evaluation.
 
@@ -280,14 +306,12 @@ class BridgeRegistry:
 def bridge_registry_from_bindings(
     bindings: Sequence[ModelMarketBindingV1],
     *,
-    deployment_known: DeploymentAuthority,
-    economic_asset_known: EconomicAssetAuthority,
-    max_evidence_age_seconds: int = 3600,
+    pairing_authority: PairingAuthority,
+    evidence_state_authority: EvidenceStateAuthority,
 ) -> BridgeRegistry:
     """Convenience constructor."""
     return BridgeRegistry(
         bindings=list(bindings),
-        deployment_known=deployment_known,
-        economic_asset_known=economic_asset_known,
-        max_evidence_age_seconds=max_evidence_age_seconds,
+        pairing_authority=pairing_authority,
+        evidence_state_authority=evidence_state_authority,
     )

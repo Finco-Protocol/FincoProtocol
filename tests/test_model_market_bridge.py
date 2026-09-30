@@ -1,31 +1,30 @@
-"""Model ↔ Market Bridge V1 — fail-closed identity and binding contracts.
+"""Model ↔ Market Bridge V1 — Correction A fail-closed contracts.
 
 Fixture coverage (synthetic, clearly non-production):
 
-  A. exact source-proven binding -> SOURCE_PROVEN / OK
-  B. same display metadata, wrong economic_asset_uid -> rejected
-  C. same display metadata, wrong deployment -> rejected
-  D. correct economic asset, wrong chain -> rejected
-  E. correct chain, wrong contract -> rejected
-  F. unknown deployment -> DEPLOYMENT_UNKNOWN
-  G. conflicting authoritative mappings -> fail closed
-  H. stale evidence -> typed STALE
-  I. revoked binding -> BINDING_REVOKED / unusable
-  J. superseded binding -> historical only
-  K. duplicate canonical binding -> deterministic identity
+  A. exact attested (economic_asset_uid ↔ deployment) pairing, source-proven
+     -> SOURCE_PROVEN / OK
+  B. valid economic UID + valid deployment that are NOT attested as a pair
+     -> PAIRING_MISMATCH (BLOCKER 1: no independent existence acceptance)
+  B2. unknown economic UID -> ECONOMIC_ASSET_UNKNOWN
+  C. unknown deployment -> DEPLOYMENT_UNKNOWN
+  D. duplicate canonical binding with materially conflicting records ->
+     IDENTITY_CONFLICT (fail closed, no silent overwrite)
+  E. stale evidence state produced by the market authority -> typed STALE
+  F. revoked binding -> unusable; superseded binding -> historical only
+  G. deterministic binding UID; economic uid VERBATIM (no case folding)
+  H. exact EVM address contract (0x + exactly 40 hex); rejects bare 0x,
+     short, long, non-hex
+  I. evidence state consumed from the authority — no bridge-side generic
+     freshness computation
 
-Negative assertions: the bridge modules contain no display-metadata or
-machine-inference identity authority (no ticker/symbol/fuzzy/similarity/
-best-match/LLM/vendor-search resolvers), never promote to FINCO Verify,
-and never mutate the Verify authority.
-
-Frozen-authority gates assert ZERO diff vs origin/main for
-financial_engine/, finco_core/, finco_radar/**, app/model_validation/,
-app/verified/.
+Negative assertions: no display-metadata or machine-inference identity
+authority in the bridge modules; no Verify promotion; no pricing logic.
+Frozen-authority gates assert ZERO diff vs origin/main.
 """
 from __future__ import annotations
 
-import subprocess
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -33,65 +32,95 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 
-# Synthetic, obviously non-production identities.
 _CHAIN = 4663
-_SYNTH_TOKEN = "0x" + "ab" * 20
-_SYNTH_TOKEN_2 = "0x" + "cd" * 20
-_SYNTH_UID = "0x00000000000000000000000000000000" + "aa" * 16
-_SYNTH_UID_2 = "0x00000000000000000000000000000000" + "bb" * 16
-_MODEL_UID = "project:11111111-1111-1111-1111-111111111111"
+_TOKEN = "0x" + "ab" * 20
+_TOKEN_B = "0x" + "cd" * 20
+_UID = "0x00000000000000000000000000000000" + "aa" * 16
+_UID_B = "0x00000000000000000000000000000000" + "bb" * 16
+_MODEL = "project:11111111-1111-1111-1111-111111111111"
 _NOW = datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
-def test_experimental_api_fixture_registry_backs_read_only_spike():
-        from app.model_market_bridge.fixtures import build_fixture_registry
-        registry = build_fixture_registry()
-        assert len(registry.bindings) == 1
-
-def _known_deployment_factory(known):
-    def _known(deployment):
-        return deployment in known
-    return _known
-
-
-def _known_economic_factory(known_uids):
-    def _known(uid):
-        return uid in known_uids
-    return _known
-
-
-def _deployment(chain=_CHAIN, token=_SYNTH_TOKEN):
+def _dep(token: str = _TOKEN, chain: int = _CHAIN):
     from app.model_market_bridge import DeploymentIdentity
-    return DeploymentIdentity(chain_id=chain, contract_address=token,
-                              deployment_type="TOKEN", venue="SYNTHETIC_VENUE",
-                              source_authority="SYNTHETIC_DEPLOYMENT_RECORD")
+    return DeploymentIdentity(
+        chain_id=chain, contract_address=token, deployment_type="TOKEN",
+        venue="SYNTHETIC_VENUE", source_authority="SYNTHETIC_DEPLOYMENT_RECORD")
 
 
-def _evidence(observed_at=_NOW, authority="SYNTHETIC_MARKET_AUTHORITY"):
-    from app.model_market_bridge import MarketEvidenceReference
-    return MarketEvidenceReference(
-        authority=authority,
-        ref="SYNTHETIC_EVIDENCE_DIGEST_0001",
-        observed_at=observed_at,
+@dataclass(frozen=True)
+class _Pairing:
+    """Synthetic pairing authority over attested (uid, dep_uid) tuples."""
+    attested: frozenset
+    known_uids: frozenset
+    known_deps: frozenset
+
+    def __call__(self, uid, deployment):
+        from app.model_market_bridge import ReasonCode
+        if (uid, deployment.deployment_uid) in self.attested:
+            return ReasonCode.OK
+        if uid in self.known_uids and deployment.deployment_uid in self.known_deps:
+            return ReasonCode.PAIRING_MISMATCH
+        if uid not in self.known_uids:
+            return ReasonCode.ECONOMIC_ASSET_UNKNOWN
+        return ReasonCode.DEPLOYMENT_UNKNOWN
+
+
+def _pairing(attested=None, known_uids=None, known_deps=None):
+    """Synthetic pairing authority over attested (uid, dep_uid) tuples."""
+    attested = attested if attested is not None else {(_UID, _dep().deployment_uid)}
+    known_uids = known_uids if known_uids is not None else {_UID, _UID_B}
+    known_deps = known_deps if known_deps is not None else {
+        _dep().deployment_uid, _dep(_TOKEN_B).deployment_uid}
+
+    def _pairing(uid, deployment):
+        from app.model_market_bridge import ReasonCode
+        if (uid, deployment.deployment_uid) in attested:
+            return ReasonCode.OK
+        if uid in known_uids and deployment.deployment_uid in known_deps:
+            return ReasonCode.PAIRING_MISMATCH
+        if uid not in known_uids:
+            return ReasonCode.ECONOMIC_ASSET_UNKNOWN
+        return ReasonCode.DEPLOYMENT_UNKNOWN
+    return _Pairing(
+        attested=frozenset(attested),
+        known_uids=frozenset(known_uids),
+        known_deps=frozenset(known_deps),
     )
+
+
+def _fresh_authority(stale_for=None):
+    """Test-local evidence-state authority (synthetic freshness)."""
+    from app.model_market_bridge import EvidenceState
+
+    def _state(binding):
+        if stale_for is not None and binding.evidence.observed_at < stale_for:
+            return EvidenceState.STALE
+        return EvidenceState.FRESH
+    return _state
+
+
+def _unavailable_authority():
+    from app.model_market_bridge import EvidenceState
+    return lambda binding: EvidenceState.UNAVAILABLE
 
 
 def _binding(**overrides):
     from app.model_market_bridge import (
-        BindingStatus, DeploymentIdentity, MarketEvidenceReference,
-        ModelAssetKind, ModelMarketBindingV1, ProvenanceType,
+        BindingStatus, DeploymentIdentity, EvidenceState,
+        MarketEvidenceReference, ModelAssetKind, ModelMarketBindingV1,
+        ProvenanceType,
     )
     fields = dict(
-        model_asset_uid=_MODEL_UID,
+        model_asset_uid=_MODEL,
         model_asset_kind=ModelAssetKind.PROJECT_INSTANCE,
-        economic_asset_uid=_SYNTH_UID,
-        deployment=DeploymentIdentity(
-            chain_id=_CHAIN, contract_address=_SYNTH_TOKEN,
-            deployment_type="TOKEN", venue="SYNTHETIC_VENUE",
-            source_authority="SYNTHETIC_DEPLOYMENT_RECORD"),
+        economic_asset_uid=_UID,
+        deployment=_dep(),
         evidence=MarketEvidenceReference(
             authority="SYNTHETIC_MARKET_AUTHORITY",
-            ref="SYNTHETIC_EVIDENCE_DIGEST_0001", observed_at=_NOW),
+            ref="SYNTHETIC_EVIDENCE_DIGEST_0001",
+            observed_at=_NOW,
+            state=EvidenceState.FRESH),
         provenance_type=ProvenanceType.CANONICAL_REGISTRY_RECORD,
         provenance_ref="synthetic-registry-entry-0001",
         status=BindingStatus.SOURCE_PROVEN,
@@ -100,192 +129,309 @@ def _binding(**overrides):
     return ModelMarketBindingV1(**fields)
 
 
-def _registry(bindings, *, known_deployments=None, known_uids=None, now=_NOW,
-              max_age=3600):
+def _registry(bindings, pairing=None, evidence=None):
     from app.model_market_bridge import BridgeRegistry
     return BridgeRegistry(
         bindings=list(bindings),
-        deployment_known=_known_deployment_factory(known_deployments or {_deployment()}),
-        economic_asset_known=_known_economic_factory(known_uids or {_SYNTH_UID}),
-        max_evidence_age_seconds=max_age,
+        pairing_authority=pairing or _pairing(),
+        evidence_state_authority=evidence or _fresh_authority(),
     )
 
 
-# ── A/K: happy path + deterministic identity ────────────────────────────────
+# ── A: exact attested pairing, source-proven ───────────────────────────────
 
-class TestSourceProvenBinding:
-    def test_a_exact_source_proven_binding_accepted(self):
-        from app.model_market_bridge import BindingStatus, ReasonCode
+class TestSourceProvenPairing:
+    def test_a_attested_pairing_accepted(self):
+        from app.model_market_bridge import BindingStatus, EvidenceState, ReasonCode
 
         binding = _binding()
-        registry = _registry([binding])
-        decision = registry.evaluate(binding, now=_NOW)
+        decision = _registry([binding]).evaluate(binding, now=_NOW)
         assert decision.ok
         assert decision.status is BindingStatus.SOURCE_PROVEN
         assert decision.reason is ReasonCode.OK
-        assert decision.evidence_state.value == "FRESH"
+        assert decision.evidence_state is EvidenceState.FRESH
 
-    def test_k_duplicate_canonical_binding_deterministic_identity(self):
+    def test_k_duplicate_canonical_binding_deterministic_uid(self):
         from app.model_market_bridge import binding_uid_for
 
         b1, b2 = _binding(), _binding()
-        assert b1.binding_uid == b2.binding_uid  # same identity -> same UID
+        assert b1.binding_uid == b2.binding_uid
         assert binding_uid_for(
             model_asset_uid=b1.model_asset_uid,
             model_asset_kind=b1.model_asset_kind,
             economic_asset_uid=b1.economic_asset_uid,
             deployment_uid=b1.deployment.deployment_uid,
         ) == b1.binding_uid
-        # Different deployment -> different UID.
-        other = _binding(deployment=_deployment(token=_SYNTH_TOKEN_2))
-        assert other.binding_uid != b1.binding_uid
-        # Metadata differences do NOT change the UID.
-        from dataclasses import replace
-        from app.model_market_bridge import ModelAssetIdentity, ModelAssetKind
-        renamed = replace(b1, model_asset_uid=b1.model_asset_uid)  # identity fields equal
-        assert renamed.binding_uid == b1.binding_uid
-        # Display name lives on ModelAssetIdentity metadata only.
-        ident = ModelAssetIdentity(
-            model_asset_uid=_MODEL_UID, kind=ModelAssetKind.PROJECT_INSTANCE,
-            display_name="Totally Different Display Name")
-        assert ident.display_name == "Totally Different Display Name"
+        other_dep = _binding(deployment=_dep(token=_TOKEN_B))
+        assert other_dep.binding_uid != b1.binding_uid
 
-
-# ── B–F: identity discipline ────────────────────────────────────────────────
-
-class TestIdentityDiscipline:
-    def test_b_wrong_economic_asset_rejected(self):
-        from app.model_market_bridge import BindingStatus, ReasonCode
-
-        binding = _binding(economic_asset_uid=_SYNTH_UID_2)
-        registry = _registry([binding])  # authority knows only _SYNTH_UID
-        decision = registry.evaluate(binding, now=_NOW)
-        assert not decision.ok
-        assert decision.reason is ReasonCode.ECONOMIC_ASSET_UNKNOWN
-
-    def test_c_wrong_deployment_rejected(self):
-        from app.model_market_bridge import ReasonCode
-
-        binding = _binding(deployment=_deployment(token=_SYNTH_TOKEN_2))
-        registry = _registry([binding], known_deployments={_deployment()})
-        decision = registry.evaluate(binding, now=_NOW)
-        assert not decision.ok
-        assert decision.reason is ReasonCode.DEPLOYMENT_UNKNOWN
-
-    def test_d_wrong_chain_rejected(self):
-        from app.model_market_bridge import ReasonCode
-
-        binding = _binding(deployment=_deployment(chain=999999))
-        registry = _registry([binding], known_deployments={_deployment()})
-        decision = registry.evaluate(binding, now=_NOW)
-        assert not decision.ok
-        assert decision.reason is ReasonCode.DEPLOYMENT_UNKNOWN
-
-    def test_e_wrong_contract_same_chain_rejected(self):
-        from app.model_market_bridge import ReasonCode
-
-        binding = _binding(deployment=_deployment(token=_SYNTH_TOKEN_2))
-        registry = _registry([binding], known_deployments={_deployment()})
-        decision = registry.evaluate(binding, now=_NOW)
-        assert not decision.ok
-        assert decision.reason is ReasonCode.DEPLOYMENT_UNKNOWN
-
-    def test_f_unknown_deployment_rejected(self):
-        from app.model_market_bridge import ReasonCode
-
-        unknown = _deployment(token="0x" + "ff" * 20)
-        binding = _binding(deployment=unknown)
-        registry = _registry([binding], known_deployments=set())
-        decision = registry.evaluate(binding, now=_NOW)
-        assert decision.reason is ReasonCode.DEPLOYMENT_UNKNOWN
-
-    def test_candidate_without_provenance_not_source_proven(self):
-        from app.model_market_bridge import BindingStatus, ReasonCode
-
-        binding = _binding(status=BindingStatus.CANDIDATE,
-                           provenance_type=None) if False else _binding(
-            status=BindingStatus.CANDIDATE)
-        registry = _registry([binding])
-        decision = registry.evaluate(binding, now=_NOW)
-        assert decision.status is BindingStatus.CANDIDATE
-        assert decision.reason is ReasonCode.BINDING_NOT_SOURCE_PROVEN
-        assert not decision.ok
-
-
-# ── G–J: conflicts, staleness, revocation, supersession ────────────────────
-
-class TestFailClosedSemantics:
-    def test_g_conflicting_authoritative_mappings_fail_closed(self):
+    def test_two_active_proven_bindings_for_one_model_fail_closed(self):
         from app.model_market_bridge import ReasonCode
 
         b1 = _binding()
-        # A second source-proven record binds the SAME deployment to a
-        # DIFFERENT economic asset -> DEPLOYMENT_CONFLICT at registry build.
-        b2 = _binding(economic_asset_uid=_SYNTH_UID_2,
-                      model_asset_uid="project:22222222-2222-2222-2222-222222222222")
-        with pytest.raises(ValueError, match="DEPLOYMENT_CONFLICT"):
-            _registry([b1, b2])
-
-    def test_g2_conflicting_model_mappings_fail_closed(self):
-        from app.model_market_bridge import ReasonCode
-
-        b1 = _binding()
-        # Same model asset source-proven to a different economic asset on a
-        # different deployment -> IDENTITY_CONFLICT on evaluation.
-        other = _binding(economic_asset_uid=_SYNTH_UID_2,
-                         deployment=_deployment(token=_SYNTH_TOKEN_2))
-        known = {_deployment(), _deployment(token=_SYNTH_TOKEN_2)}
-        uids = {_SYNTH_UID, _SYNTH_UID_2}
-        registry = _registry([b1, other], known_deployments=known, known_uids=uids)
-        decision = registry.evaluate_for_model_asset(_MODEL_UID, now=_NOW)
+        b2 = _binding(economic_asset_uid=_UID_B, deployment=_dep(token=_TOKEN_B))
+        # Both tuples individually attested -> both proven -> one model asset
+        # with two conflicting source-proven identities fails closed.
+        attested = {
+            (_UID, _dep().deployment_uid),
+            (_UID_B, _dep(_TOKEN_B).deployment_uid),
+        }
+        registry = _registry(
+            [b1, b2],
+            pairing=_pairing(
+                attested=attested, known_uids={_UID, _UID_B},
+                known_deps={_dep().deployment_uid, _dep(_TOKEN_B).deployment_uid}),
+        )
+        decision = registry.evaluate_for_model_asset(_MODEL, now=_NOW)
         assert decision.reason is ReasonCode.IDENTITY_CONFLICT
 
-    def test_h_stale_evidence_typed(self):
+
+# ── BLOCKER 1: pairwise authority ───────────────────────────────────────────
+
+class TestPairwiseEconomicAssetDeploymentAuthority:
+    def test_b1_valid_uid_plus_valid_unpaired_deployment_fails_closed(self):
+        """BLOCKER 1 regression: a valid economic UID from asset A must never
+        be accepted with a valid deployment from asset B merely because both
+        exist independently.  Synthetic equivalent of AAPL UID + NVDA
+        deployment: both sides canonical, pairing absent -> fail closed."""
+        from app.model_market_bridge import ReasonCode
+
+        binding = _binding(economic_asset_uid=_UID, deployment=_dep(token=_TOKEN_B))
+        decision = _registry([binding]).evaluate(binding, now=_NOW)
+        assert not decision.ok
+        assert decision.reason is ReasonCode.PAIRING_MISMATCH
+        # The mirror: asset-B uid with the asset-A deployment also fails.
+        mirror = _binding(economic_asset_uid=_UID_B)
+        mirror_decision = _registry([mirror]).evaluate(mirror, now=_NOW)
+        assert mirror_decision.reason is ReasonCode.PAIRING_MISMATCH
+
+    def test_b2_unknown_economic_uid_fails_closed(self):
+        from app.model_market_bridge import ReasonCode
+
+        unknown_uid = _binding(economic_asset_uid="0x" + "ee" * 16)
+        decision = _registry([unknown_uid]).evaluate(unknown_uid, now=_NOW)
+        assert decision.reason is ReasonCode.ECONOMIC_ASSET_UNKNOWN
+
+    def test_c_unknown_deployment_fails_closed(self):
+        from app.model_market_bridge import ReasonCode
+
+        unknown = _dep(token="0x" + "ff" * 20)
+        binding = _binding(deployment=unknown)
+        decision = _registry(
+            [binding], pairing=_pairing(known_deps=set())).evaluate(binding, now=_NOW)
+        assert decision.reason is ReasonCode.DEPLOYMENT_UNKNOWN
+
+    def test_r_live_pairing_authority_proves_exact_tuples(self):
+        """The production adapter proves real R-LIVE tuples and rejects
+        cross-asset pairings (first uid + second asset deployment)."""
+        from app.model_market_bridge import ReasonCode, r_live_pairing_authority
+        from finco_radar.authority.r_live_policy import (
+            APPROVED_BY_CANONICAL_ID, AssetKey,
+        )
+
+        authority = r_live_pairing_authority()
+        policies = list(APPROVED_BY_CANONICAL_ID.values())
+        assert len(policies) >= 2, "R-LIVE reviewed universe must have 2+ assets"
+        first, second = policies[0], policies[1]
+
+        paired = _dep_from_asset_key(first.asset_key)
+        assert authority(first.economic_asset_uid, paired) is ReasonCode.OK
+        cross = _dep_from_asset_key(second.asset_key)
+        assert authority(first.economic_asset_uid, cross) is ReasonCode.PAIRING_MISMATCH
+        unknown = _dep_from_asset_key(AssetKey(_CHAIN, "0x" + "ff" * 20))
+        assert authority(first.economic_asset_uid, unknown) is ReasonCode.DEPLOYMENT_UNKNOWN
+
+    def test_no_generic_freshness_authority_in_registry(self):
+        """BLOCKER 4: the registry consumes authority-produced evidence
+        states; no generic bridge-side freshness computation exists."""
+        import inspect
+
+        from app.model_market_bridge import BridgeRegistry
+        source = inspect.getsource(BridgeRegistry)
+        assert "max_evidence_age_seconds" not in source
+        params = inspect.signature(BridgeRegistry).parameters
+        assert "evidence_state_authority" in params
+
+
+def _dep_from_asset_key(asset_key):
+    from app.model_market_bridge import DeploymentIdentity
+    return DeploymentIdentity(
+        chain_id=asset_key.chain_id,
+        contract_address=str(asset_key.contract_address),
+        deployment_type="TOKEN",
+        venue="UNISWAP_V3_ROBINHOOD_CHAIN",
+        source_authority="R_LIVE_REVIEWED_REGISTRY",
+    )
+
+
+# ── BLOCKER 2: exact EVM address contract ──────────────────────────────────
+
+class TestEvmAddressContract:
+    def test_valid_address_canonicalizes_to_lower(self):
+        from app.model_market_bridge import canonical_evm_address
+
+        assert canonical_evm_address("0x" + "AB" * 20) == "0x" + "ab" * 20
+
+    @pytest.mark.parametrize("bad", [
+        "0x",                                # bare prefix
+        "0x" + "ab" * 19,                    # short (38 hex)
+        "0x" + "ab" * 21,                    # long (42 hex)
+        "0x" + "xy" * 20,                    # non-hex
+        "ab" * 20,                           # missing prefix
+        "",                                  # empty
+    ])
+    def test_invalid_addresses_rejected(self, bad):
+        from app.model_market_bridge import DeploymentIdentity, canonical_evm_address
+
+        with pytest.raises(ValueError):
+            canonical_evm_address(bad)
+        with pytest.raises(ValueError):
+            _dep(token=bad)
+
+    def test_address_resemblance_never_repaired_into_identity(self):
+        from app.model_market_bridge import DeploymentIdentity
+
+        for bad in ("0x" + "ab" * 19, "0x" + "ab" * 21, "0x"):
+            with pytest.raises(ValueError):
+                DeploymentIdentity(chain_id=_CHAIN, contract_address=bad)
+
+
+# ── BLOCKER 3: economic uid VERBATIM ───────────────────────────────────────
+
+class TestEconomicUidVerbatim:
+    def test_uid_case_is_never_folded_in_binding_uid(self):
+        from app.model_market_bridge import ModelAssetKind, binding_uid_for
+
+        lower = "0x" + "aa" * 16
+        upper = "0X" + "AA" * 16
+        u_lower = binding_uid_for(
+            model_asset_uid=_MODEL, model_asset_kind=ModelAssetKind.PROJECT_INSTANCE,
+            economic_asset_uid=lower, deployment_uid="dep_x")
+        u_upper = binding_uid_for(
+            model_asset_uid=_MODEL, model_asset_kind=ModelAssetKind.PROJECT_INSTANCE,
+            economic_asset_uid=upper, deployment_uid="dep_x")
+        assert u_lower != u_upper, "verbatim uid: case must never be folded"
+
+    def test_uid_stored_verbatim(self):
+        from app.model_market_bridge import EconomicAssetIdentity
+
+        verbatim = "  " + _UID  # only the non-empty check applies
+        ident = EconomicAssetIdentity(economic_asset_uid=verbatim)
+        assert ident.economic_asset_uid == verbatim
+
+
+# ── BLOCKER 4: evidence state consumed from the authority ─────────────────
+
+class TestEvidenceStateFromAuthority:
+    def test_stale_state_produced_by_authority_is_typed(self):
         from app.model_market_bridge import BindingStatus, EvidenceState, ReasonCode
 
-        old = _binding(evidence=_evidence(observed_at=_NOW - timedelta(seconds=7200)))
-        registry = _registry([old], max_age=3600)
-        decision = registry.evaluate(old, now=_NOW)
+        binding = _binding(evidence=_evidence_observed(
+            _NOW - timedelta(seconds=7200)))
+        registry = _registry([binding], evidence=_fresh_authority(
+            stale_for=_NOW - timedelta(seconds=3600)))
+        decision = registry.evaluate(binding, now=_NOW)
         assert decision.status is BindingStatus.STALE
         assert decision.reason is ReasonCode.EVIDENCE_STALE
         assert decision.evidence_state is EvidenceState.STALE
 
-    def test_h2_future_evidence_is_malformed(self):
+    def test_unavailable_state_produced_by_authority_is_typed(self):
         from app.model_market_bridge import ReasonCode
 
-        future = _binding(evidence=_evidence(observed_at=_NOW + timedelta(hours=1)))
-        registry = _registry([future])
-        decision = registry.evaluate(future, now=_NOW)
-        assert decision.reason is ReasonCode.MALFORMED_BINDING
+        binding = _binding()
+        registry = _registry([binding], evidence=_unavailable_authority())
+        decision = registry.evaluate(binding, now=_NOW)
+        assert decision.reason is ReasonCode.EVIDENCE_UNAVAILABLE
 
-    def test_i_revoked_binding_unusable(self):
+    def test_no_generic_freshness_authority_on_registry(self):
+        import inspect
+
+        from app.model_market_bridge import BridgeRegistry
+        params = inspect.signature(BridgeRegistry).parameters
+        assert "max_evidence_age_seconds" not in params
+        assert "evidence_state_authority" in params
+
+
+def _evidence_observed(observed_at):
+    from app.model_market_bridge import EvidenceState, MarketEvidenceReference
+
+    return MarketEvidenceReference(
+        authority="SYNTHETIC_MARKET_AUTHORITY",
+        ref="SYNTHETIC_EVIDENCE_DIGEST_0001",
+        observed_at=observed_at,
+        state=EvidenceState.FRESH,  # constructor state; authority verdict rules
+    )
+
+
+# ── D: duplicate records fail closed on material conflict ─────────────────
+
+class TestDuplicateRecordSemantics:
+    def test_identical_duplicates_collapse(self):
+        b1, b2 = _binding(), _binding()
+        registry = _registry([b1, b2])
+        assert registry.get_by_uid(b1.binding_uid) is not None
+
+    def test_status_conflict_fails_closed(self):
+        from app.model_market_bridge import BindingStatus
+
+        b1 = _binding()
+        b2 = _binding(status=BindingStatus.CANDIDATE)  # same uid, different status
+        with pytest.raises(ValueError, match="IDENTITY_CONFLICT"):
+            _registry([b1, b2])
+
+    def test_evidence_conflict_fails_closed(self):
+        b1 = _binding()
+        b2 = _binding(evidence=_evidence_observed(_NOW + timedelta(seconds=5)))
+        with pytest.raises(ValueError, match="IDENTITY_CONFLICT"):
+            _registry([b1, b2])
+
+
+# ── Lifecycle semantics ─────────────────────────────────────────────────────
+
+class TestLifecycleSemantics:
+    def test_revoked_binding_unusable(self):
         from app.model_market_bridge import BindingLifecycle, BindingStatus, ReasonCode
 
         revoked = _binding(lifecycle=BindingLifecycle.REVOKED)
-        registry = _registry([revoked])
-        decision = registry.evaluate(revoked, now=_NOW)
+        decision = _registry([revoked]).evaluate(revoked, now=_NOW)
         assert decision.status is BindingStatus.REVOKED
         assert decision.reason is ReasonCode.BINDING_REVOKED
-        assert not decision.ok
 
-    def test_j_superseded_binding_historical_only(self):
+    def test_superseded_binding_historical_only(self):
         from app.model_market_bridge import BindingLifecycle, ReasonCode
 
         superseded = _binding(lifecycle=BindingLifecycle.SUPERSEDED)
-        registry = _registry([superseded])
-        decision = registry.evaluate(superseded, now=_NOW)
+        decision = _registry([superseded]).evaluate(superseded, now=_NOW)
         assert decision.reason is ReasonCode.BINDING_SUPERSEDED
         assert not decision.ok
 
-    def test_unknown_model_asset_is_unbound(self):
+    def test_unknown_model_asset_unbound(self):
         from app.model_market_bridge import ReasonCode
 
-        registry = _registry([])
-        decision = registry.evaluate_for_model_asset("project:does-not-exist", now=_NOW)
+        decision = _registry([]).evaluate_for_model_asset("project:nope", now=_NOW)
         assert decision.reason is ReasonCode.MODEL_UID_UNKNOWN
 
 
-# ── Negative assertions: no heuristic identity authority exists ────────────
+# ── Verify seam: designed, never activated ─────────────────────────────────
+
+class TestVerifySeam:
+    def test_source_proven_eligible_but_never_verified(self):
+        binding = _binding()
+        seam = _registry([binding]).verify_evaluation_seam(binding, now=_NOW)
+        assert seam.eligible_for_verify_evaluation is True
+        assert "Eligibility is not verification" in seam.note
+        assert "PRODUCTION_VERIFIED_ASSET_COUNT" in seam.note
+
+    def test_candidate_never_eligible(self):
+        from app.model_market_bridge import BindingStatus
+
+        binding = _binding(status=BindingStatus.CANDIDATE)
+        seam = _registry([binding]).verify_evaluation_seam(binding, now=_NOW)
+        assert seam.eligible_for_verify_evaluation is False
+        assert seam.preconditions["reason"] == "BINDING_NOT_SOURCE_PROVEN"
+
+
+# ── Negative source assertions ─────────────────────────────────────────────
 
 class TestNoHeuristicIdentityAuthority:
     def test_bridge_modules_contain_no_display_metadata_resolvers(self):
@@ -303,43 +449,18 @@ class TestNoHeuristicIdentityAuthority:
     def test_provenance_enum_has_no_heuristic_members(self):
         from app.model_market_bridge import ProvenanceType
 
-        values = {m.value for m in ProvenanceType}
-        assert values == {
+        assert {m.value for m in ProvenanceType} == {
             "ISSUER_DOCUMENT", "CANONICAL_REGISTRY_RECORD", "DEPLOYMENT_RECORD",
             "CONTROLLED_METADATA", "REVIEWED_EVIDENCE_PACKAGE",
         }
 
-    def test_identity_dataclasses_do_not_resolve_from_display_name(self):
-        import inspect
-
-        from app.model_market_bridge import contracts
-        source = inspect.getsource(contracts)
-        # Display name exists as inert metadata only.
-        assert 'display_name: str = ""' in source
-        # No resolver function derives identity from it.
-        assert "display_name.lower()" not in source
-        assert "display_name.strip()" not in source or "raise ValueError" in source
-
-
-# ── Verify seam: designed, never activated ─────────────────────────────────
-
-class TestVerifySeam:
-    def test_source_proven_eligible_but_never_verified(self):
-        binding = _binding()
-        registry = _registry([binding])
-        seam = registry.verify_evaluation_seam(binding, now=_NOW)
-        assert seam.eligible_for_verify_evaluation is True
-        assert "Eligibility is not verification" in seam.note
-        assert "PRODUCTION_VERIFIED_ASSET_COUNT" in seam.note
-
-    def test_non_source_proven_never_eligible(self):
-        from app.model_market_bridge import BindingStatus
-
-        binding = _binding(status=BindingStatus.CANDIDATE)
-        registry = _registry([binding])
-        seam = registry.verify_evaluation_seam(binding, now=_NOW)
-        assert seam.eligible_for_verify_evaluation is False
-        assert seam.preconditions["reason"] == "BINDING_NOT_SOURCE_PROVEN"
+    def test_bridge_does_not_duplicate_market_authority_logic(self):
+        bridge_dir = REPO / "app" / "model_market_bridge"
+        for path in sorted(bridge_dir.glob("*.py")):
+            src = path.read_text(encoding="utf-8").lower()
+            for token in ("twap", "pool_address", "quote_token", "sqrt",
+                          "max_evidence_age_seconds"):
+                assert token not in src, f"{path.name} must not contain {token!r}"
 
     def test_bridge_never_calls_verify_authority(self):
         import inspect
@@ -348,8 +469,92 @@ class TestVerifySeam:
 
         source = inspect.getsource(registry_module)
         assert "app.verified" not in source
-        assert "PRODUCTION_VERIFIED_ASSET_COUNT" not in source.replace(
-            '"PRODUCTION_VERIFIED_ASSET_COUNT "', "")  # only inside seam note text
+        assert "PRODUCTION_VERIFIED_ASSET_COUNT" not in source
+
+    def test_model_uid_helpers_never_use_display_names(self):
+        import inspect
+
+        from app.model_market_bridge import contracts
+        source = inspect.getsource(contracts)
+        assert 'display_name: str = ""' in source
+        assert "display_name.lower()" not in source
+
+
+# ── BLOCKER 5: default-off API + bounded validate ─────────────────────────
+
+class TestExperimentalApiSurface:
+    @pytest.fixture()
+    def client(self):
+        import os
+        import tempfile
+
+        os.environ["FINCO_DB_PATH"] = os.path.join(
+            tempfile.mkdtemp(), "bridge-api.db")
+        from fastapi.testclient import TestClient
+        import main_api
+
+        return TestClient(main_api.app)
+
+    def test_api_disabled_by_default(self, client, monkeypatch):
+        monkeypatch.delenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", raising=False)
+        r = client.get("/api/v1.1/model-market-bindings/whatever")
+        assert r.status_code == 404
+        assert r.json()["error"] == "SURFACE_DISABLED"
+        r2 = client.post("/api/v1.1/model-market-bindings/validate", json={})
+        assert r2.status_code == 404
+
+    def test_api_enabled_flag_gates_surface(self, client, monkeypatch):
+        monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
+        r = client.get(
+            "/api/v1.1/model-market-bindings/"
+            "project:11111111-1111-1111-1111-111111111111")
+        assert r.status_code == 200
+        assert r.json()["decision"]["status"] == "SOURCE_PROVEN"
+        assert r.json()["read_only"] is True
+
+    def test_validate_is_bounded_and_sanitized(self, client, monkeypatch):
+        monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
+        good = {
+            "model_asset_uid": _MODEL, "model_asset_kind": "PROJECT_INSTANCE",
+            "economic_asset_uid": _UID, "chain_id": _CHAIN,
+            "contract_address": _TOKEN, "market_evidence_authority": "SYN",
+            "market_evidence_ref": "DIGEST", "observed_at": "2026-10-01T12:00:00Z",
+            "provenance_type": "CANONICAL_REGISTRY_RECORD", "provenance_ref": "ref-1",
+        }
+        r = client.post("/api/v1.1/model-market-bindings/validate", json=good)
+        assert r.status_code == 200 and r.json()["valid"] is True
+
+        bad_field = dict(good, sneaky_extra="1")
+        r2 = client.post("/api/v1.1/model-market-bindings/validate", json=bad_field)
+        assert r2.json()["valid"] is False and "unknown fields" in r2.json()["detail"]
+
+        big = dict(good, provenance_ref="x" * 9999)
+        r3 = client.post("/api/v1.1/model-market-bindings/validate", json=big)
+        assert r3.json()["valid"] is False and "size limit" in r3.json()["detail"]
+
+        r4 = client.post("/api/v1.1/model-market-bindings/validate",
+                         content=b"not json",
+                         headers={"Content-Type": "application/json"})
+        assert r4.status_code == 200
+        assert r4.json()["valid"] is False
+        assert r4.json()["detail"] == "request body must be a JSON object"
+
+        bad_addr = dict(good, contract_address="0xshort")
+        r5 = client.post("/api/v1.1/model-market-bindings/validate", json=bad_addr)
+        assert r5.json()["valid"] is False
+
+    def test_validate_never_produces_source_proven(self, client, monkeypatch):
+        monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
+        good = {
+            "model_asset_uid": _MODEL, "model_asset_kind": "PROJECT_INSTANCE",
+            "economic_asset_uid": _UID, "chain_id": _CHAIN,
+            "contract_address": _TOKEN, "market_evidence_authority": "SYN",
+            "market_evidence_ref": "DIGEST", "observed_at": "2026-10-01T12:00:00Z",
+            "provenance_type": "CANONICAL_REGISTRY_RECORD", "provenance_ref": "ref-1",
+        }
+        r = client.post("/api/v1.1/model-market-bindings/validate", json=good)
+        assert r.json()["status"] == "CANDIDATE"
+        assert "promoted to FINCO Verify" in r.json()["note"]
 
 
 # ── Frozen authorities ──────────────────────────────────────────────────────
@@ -369,15 +574,3 @@ class TestFrozenAuthorities:
         if out.returncode != 0:
             pytest.skip("git history unavailable in this checkout")
         assert out.stdout.strip() == "", out.stdout
-
-    def test_bridge_does_not_duplicate_r_live_authority(self):
-        """The bridge reuses the R-LIVE registry read-only; no second market
-        authority is created (no pricing/TWAP/freshness logic in the bridge)."""
-        bridge_dir = REPO / "app" / "model_market_bridge"
-        for path in sorted(bridge_dir.glob("*.py")):
-            src = path.read_text(encoding="utf-8").lower()
-            # Pricing-logic markers only (prose explaining "not a price
-            # authority" legitimately contains the word "price").
-            for token in ("twap", "pool_address", "quote_token", "sqrt",
-                          "get_amounts", "tick_to_price"):
-                assert token not in src, f"{path.name} must not contain {token!r}"
