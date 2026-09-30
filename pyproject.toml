@@ -29,13 +29,14 @@ py-modules = ["main_web", "main_api"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "domain*", "financial_engine*", "finco_core*", "finco_radar*", "finco_protocol*", "static*", "utils*"]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "finco_radar*", "finco_yield*", "finco_protocol*", "static*", "utils*"]
 exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
 
 [tool.setuptools.package-data]
 app = ["templates/**/*.html", "templates/**/*.txt", "templates/**/*.css", "templates/**/*.js"]
 static = ["*", "**/*"]
 finco_radar = ["terminal/templates/*.html", "terminal/static/*.css", "terminal/static/*.js"]
+finco_yield = ["data/*.json", "web/templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

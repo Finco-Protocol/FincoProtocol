@@ -1,0 +1,89 @@
+{% extends "yield/base.html" %}
+{% block title %}{{ o.name }} — FINCO Yield{% endblock %}
+{% block content %}
+<p class="k">FINCO Yield · Opportunity Detail</p>
+<h1>{{ o.name }}</h1>
+<p class="sub">{{ o.protocol }} · {{ chain }} · {{ o.underlying_symbol }}</p>
+
+<div class="nav">
+  <a class="a" href="/yield">← Explore</a>
+  {% if source_href %}
+    <a class="a" href="{{ source_href }}" rel="noopener noreferrer">Open official source ↗</a>
+  {% else %}
+    <span class="a muted-link">Official source unavailable</span>
+  {% endif %}
+  <a class="a" href="/yield/{{ o.uid }}/evidence.json">Evidence JSON</a>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <h2>Headline</h2>
+    <p>Total APY: {{ total_apy }}</p>
+    <p>TVL: {{ tvl }}</p>
+    <p>Evidence: {{ o.source_type.value }}</p>
+    <p>Freshness: {{ freshness }}</p>
+  </section>
+
+  <section class="card">
+    <h2>Yield Source</h2>
+    <p>Base: {{ base_apy }}</p>
+    <p>Rewards: {{ rewards_apy }}</p>
+    <p>Reward dependency: {{ reward_dependency }}</p>
+    <p>Reward-Off APY: {{ reward_off_apy }}</p>
+  </section>
+
+  <section class="card">
+    <h2>History</h2>
+    <p>Observations: {{ history.observation_count }}</p>
+    <p>Real span: {{ history.history_days }} days</p>
+    <p>Windows: {% if history.available_windows %}{{ history.available_windows|join(", ") }}{% else %}UNAVAILABLE — no fabricated backfill{% endif %}</p>
+  </section>
+
+  <section class="card">
+    <h2>Exit</h2>
+    <p>Type: {{ exit_type }}</p>
+    <p>Capacity: {{ capacity }}</p>
+    <p>Fee: {{ fee }}</p>
+    <p>Slippage: {{ slippage }}</p>
+  </section>
+
+  <section class="card">
+    <h2>Dependencies / Risk Flags</h2>
+    <p>No inferred dependency graph. FINCO does not use an opaque risk score.</p>
+    <p>Support: {{ support_state }}</p>
+    <p>APY components: {{ component_state }}</p>
+  </section>
+
+  <section class="card">
+    <h2>Scenario</h2>
+    {% for scenario in scenario_rows %}
+      <p><b>{{ scenario.name }}</b>: {{ scenario.result }} · {{ scenario.note }}</p>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Evidence</h2>
+    <p class="hash">Input: {{ evidence.canonical_input_hash }}</p>
+    <p class="hash">Output: {{ evidence.canonical_output_hash }}</p>
+    <p class="mono">{{ o.source_uri }}</p>
+  </section>
+</div>
+
+<section class="card" style="margin-top:14px">
+  <h2>Enter Position</h2>
+  <p>Canonical destination, underlying and share token are resolved from the exact opportunity UID.</p>
+  {% if not execution_enabled %}
+    <button class="btn" disabled data-testid="yield-execution-disabled">Execution flag OFF</button>
+  {% else %}
+    <form class="action-form" method="post" action="/yield/{{ o.uid }}/plan">
+      <label>Amount in underlying base units
+        <input name="amount" type="number" min="1" required>
+      </label>
+      <button class="btn">Review transaction plan</button>
+    </form>
+  {% endif %}
+  <p class="warn">Bare ERC-4626 previewDeposit is an estimate, not a universal min-shares guarantee. Production signing remains disabled until a protected route is approved.</p>
+</section>
+
+<p class="bound">No custody. No server-side signing. No automatic broadcast. No auto-invest or rebalance.</p>
+{% endblock %}
