@@ -95,7 +95,7 @@
               {% endif %}
               <details><summary>Authority detail</summary>
                 <span class="mono rwa-time">Deployment: {{ row.asset_key.canonical_id if row.asset_key else row.deployment_reason }}</span>
-                <span class="mono rwa-time">Robinhood binding: {{ row.canonical_identity.state }} · {{ row.canonical_identity.reason or 'Exact canonical registry evidence' }}</span>
+                <span class="mono rwa-time">Robinhood binding: {{ row.canonical_identity.state }} · {{ row.canonical_identity.authority_source or row.canonical_identity.reason or 'Exact canonical registry evidence' }}{% if row.canonical_identity.observed_at %} · {{ row.canonical_identity.observed_at }}{% endif %}</span>
                 {% if row.canonical_identity.economic_asset_uid %}<span class="mono rwa-time">{{ row.canonical_identity.economic_asset_uid }}</span>{% endif %}
               </details>
             </td>
