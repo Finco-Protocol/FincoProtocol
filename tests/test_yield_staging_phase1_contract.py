@@ -1,7 +1,8 @@
 """Yield Phase 1 staging deployment contract.
 
-These tests validate only the staging isolation/configuration layer. Product
-behaviour remains covered by the existing Yield and browser suites.
+These tests validate the staging isolation/configuration layer. Product behaviour
+remains covered by the existing Yield and browser suites. Existing E5 corporate
+staging invariants are regression-protected while runtime gates move to PR #152.
 """
 from __future__ import annotations
 
@@ -38,6 +39,7 @@ def _valid_env() -> dict[str, str]:
         "FINCO_COOKIE_SECURE": "true",
         "FINCO_COOKIE_SAMESITE": "lax",
         "FINCO_SESSION_HOURS": "4",
+        "FINCO_DEMO_RESET_ALLOWED": "true",
         "FINCO_WEB_HOST": "127.0.0.1",
         "FINCO_WEB_PORT": "8100",
         "FINCO_WEB_WORKERS": "2",
@@ -51,6 +53,7 @@ def _valid_env() -> dict[str, str]:
         "FINCO_STORAGE_PATH": "/opt/finco_staging/exports",
         "RADAR_BNB_INTELLIGENCE_DB_PATH": "/opt/finco_staging/storage/radar.db",
         "FINCO_EQUITY_FUNDAMENTALS_DB_PATH": "/opt/finco_staging/storage/equity.db",
+        "FINCO_EQUITY_FUNDAMENTALS_DB_MODE": "snapshot",
         "FINCO_YIELD_HISTORY_PATH": "",
     }
 
@@ -63,6 +66,8 @@ def test_staging_example_is_current_secure_yield_phase1_contract():
     assert "FINCO_MODEL_EXECUTION_CONCURRENCY=" in text
     assert "FINCO_MODEL_EXECUTION_MODE=process" in text
     assert "FINCO_MAX_CONCURRENT_RUNS=" not in text  # stale pre-PR#152 variable
+    assert "FINCO_DEMO_RESET_ALLOWED=true" in text  # preserve corporate staging contract
+    assert "FINCO_EQUITY_FUNDAMENTALS_DB_MODE=snapshot" in text
     assert "FINCO_YIELD_ENABLED=1" in text
     assert "FINCO_YIELD_EXECUTION_ENABLED=0" in text
     assert "/opt/finco_protocol" not in text
@@ -126,18 +131,33 @@ def test_preflight_accepts_bcrypt_hash_instead_of_plain_password():
     [
         ("FINCO_APP_MODE", "development"),
         ("FINCO_COOKIE_SECURE", "false"),
+        ("FINCO_DEMO_RESET_ALLOWED", "false"),
         ("FINCO_WEB_HOST", "0.0.0.0"),
         ("FINCO_WEB_PORT", "8000"),
         ("FINCO_YIELD_ENABLED", "0"),
         ("FINCO_YIELD_EXECUTION_ENABLED", "1"),
         ("FINCO_MODEL_EXECUTION_MODE", "thread"),
         ("FINCO_DB_PATH", "/opt/finco_protocol/storage/prod.db"),
+        ("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "live"),
     ],
 )
 def test_preflight_fails_closed_on_phase1_or_isolation_violation(key, value):
     preflight = _load_preflight()
     env = _valid_env()
     env[key] = value
+    with pytest.raises(preflight.StagingPreflightError):
+        preflight.validate_staging_env(
+            env,
+            repo_root=Path("/opt/finco_staging"),
+            repo_head=BASELINE_SHA,
+            check_filesystem=False,
+        )
+
+
+def test_preflight_preserves_equity_snapshot_separation():
+    preflight = _load_preflight()
+    env = _valid_env()
+    env["FINCO_EQUITY_FUNDAMENTALS_DB_PATH"] = env["FINCO_DB_PATH"]
     with pytest.raises(preflight.StagingPreflightError):
         preflight.validate_staging_env(
             env,
@@ -174,8 +194,6 @@ def test_direct_erc4626_remains_non_signable_preview_only():
 
 
 def test_phase1_changes_are_deployment_only_not_product_forks():
-    # These authorities must be consumed from the accepted application baseline,
-    # not copied into a staging-specific implementation.
     assert not (ROOT / "finco_yield_staging").exists()
     assert (ROOT / "finco_yield" / "web.py").exists()
     assert (ROOT / "deploy" / "scripts" / "run_web.sh").exists()
