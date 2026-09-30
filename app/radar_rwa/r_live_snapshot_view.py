@@ -149,42 +149,94 @@ def _display_symbol(canonical_id: str | None) -> str | None:
     return policy.symbol if policy is not None else None
 
 
+REASON_SNAPSHOT_NOT_YET_COLLECTED = "SNAPSHOT_NOT_YET_COLLECTED"
+
+
+def _uninitialized_view_row(canonical_id: str, *, now: datetime) -> dict:
+    """Typed presentation row for an approved asset with NO stored snapshot
+    yet (first partial batch / never successfully collected).  The row stays
+    visible with an explicit typed reason; NO numeric field is fabricated —
+    missing data is never zero."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
+    return {
+        "canonical_id": canonical_id,
+        "display_symbol": policy.symbol if policy is not None else None,
+        "state": STATE_UNAVAILABLE,
+        "data": {},  # no evidence exists yet — nothing to show, nothing invented
+        "reason": REASON_SNAPSHOT_NOT_YET_COLLECTED,
+        "source": SNAPSHOT_SOURCE,
+        "snapshot": {
+            "collected_at": None,
+            "re_evaluated_at": now.isoformat(),
+            "evidence_digest": None,
+            "schema_version": None,
+        },
+        "snapshot_age_seconds": None,
+        "read_time_ages": {},
+    }
+
+
 def build_snapshot_view(*, path: str | None = None,
                         now: datetime | None = None) -> dict:
-    """Full snapshot view for the presentation endpoint.
+    """Full-universe snapshot view for the presentation endpoint.
 
-    Cold start (no snapshot yet): typed INITIALIZING — the page renders
-    immediately and never blocks on live acquisition.
+    The R-LIVE terminal always presents the ENTIRE canonical approved
+    universe (``APPROVED_BY_CANONICAL_ID`` — the one and only asset
+    registry).  Canonical approved rows are LEFT JOINed with the latest
+    stored snapshot evidence:
+
+      CASE A  valid stored snapshot       → present, freshness re-evaluated
+                                            at read time;
+      CASE B  no stored snapshot yet      → typed UNAVAILABLE row with
+                                            SNAPSHOT_NOT_YET_COLLECTED —
+                                            the asset is NEVER omitted;
+      CASE C  prior snapshot + failed
+              refresh                     → previous evidence preserved by
+                                            the store, re-evaluated
+                                            normally (eventually STALE).
+
+    Cold start (no stored row at all): top-level typed INITIALIZING while
+    every approved row is still listed.
     """
     from app.radar_rwa.r_live_snapshot_store import read_snapshots_readonly
 
     started = datetime.now(timezone.utc)
     stored_rows = read_snapshots_readonly(path=path)
-    if not stored_rows:
-        return {
-            "state": STATE_INITIALIZING,
-            "reason": "NO_CURRENT_OBSERVATION_COLLECTED",
-            "rows": [],
-            "detail": "No current observation has been collected yet. "
-                      "The background collector fills the snapshot independently.",
-        }
+    stored_by_id = {row["canonical_id"]: row for row in stored_rows}
     current = now or datetime.now(timezone.utc)
-    rows = [reevaluate_snapshot_row(stored, now=current) for stored in stored_rows]
+
+    rows: list[dict] = []
+    for canonical_id in APPROVED_BY_CANONICAL_ID:  # full canonical universe
+        stored = stored_by_id.pop(canonical_id, None)
+        if stored is not None:
+            rows.append(reevaluate_snapshot_row(stored, now=current))
+        else:
+            rows.append(_uninitialized_view_row(canonical_id, now=current))
+    # Evidence for unknown ids is never presented (no second registry).
     rows.sort(key=_view_sort_key)
     counts = {
         "available": sum(1 for r in rows if r["state"] == STATE_AVAILABLE),
         "stale": sum(1 for r in rows if r["state"] == STATE_STALE),
         "unavailable": sum(1 for r in rows if r["state"] == STATE_UNAVAILABLE),
+        "approved_universe": len(APPROVED_BY_CANONICAL_ID),
     }
     finished = datetime.now(timezone.utc)
-    return {
-        "state": "AVAILABLE",
+    # Top level: INITIALIZING only when NO evidence has ever been collected;
+    # a partial universe (some stored, some SNAPSHOT_NOT_YET_COLLECTED) is a
+    # real AVAILABLE projection that lists every approved asset.
+    top_state = (STATE_INITIALIZING if not stored_rows else STATE_AVAILABLE)
+    view = {
+        "state": top_state,
         "rows": rows,
         "counts": counts,
         "read_duration_ms": int((finished - started).total_seconds() * 1000),
-        "detail": "Latest collected observations, freshness re-evaluated at "
-                  "read time against the canonical R-LIVE policy.",
+        "detail": "Full approved R-LIVE universe; latest collected evidence, "
+                  "freshness re-evaluated at read time against the canonical "
+                  "R-LIVE policy.",
     }
+    if top_state == STATE_INITIALIZING:
+        view["reason"] = "NO_CURRENT_OBSERVATION_COLLECTED"
+    return view
 
 
 def _view_sort_key(row: dict):

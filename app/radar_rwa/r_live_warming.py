@@ -127,10 +127,18 @@ class _SnapshotLease:
 
     Exactly ONE warming loop per host holds the lease; the holder renews it
     each cycle.  Other processes/threads skip their cycles while the lease
-    is valid.  A crashed holder's lease simply expires.
+    is valid.  A crashed holder's lease simply expires and may be taken
+    over.
+
+    Holder identity is STABLE for the lifetime of this instance (created
+    once in ``__init__`` as pid + a random discriminator — never the PID
+    alone): ``acquire_or_renew`` from the SAME instance RENEWS the expiry
+    instead of fighting its own lease, so the warming cadence equals the
+    interval regardless of the lease TTL.
     """
 
     def __init__(self, path: str | None) -> None:
+        import uuid
         from app.radar_rwa.r_live_snapshot_store import _db_path
         self.path = _db_path(path)
         if self.path != ":memory:":
@@ -145,21 +153,25 @@ class _SnapshotLease:
             "holder TEXT NOT NULL, expires_at TEXT NOT NULL, "
             "schema_version TEXT NOT NULL)"
         )
+        # Stable per-instance identity: process id + random discriminator.
+        self._holder = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
     def close(self) -> None:
         self._conn.close()
-
-    def _holder_id(self) -> str:
-        import uuid
-        return f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
     @staticmethod
     def _parse(ts: str) -> datetime:
         return datetime.fromisoformat(ts)
 
     def acquire_or_renew(self, *, ttl_seconds: int, now: datetime | None = None) -> bool:
+        """Acquire the lease, or RENEW it when this instance already holds it.
+
+        - no valid lease            → acquire (also covers expired foreign
+                                      leases: takeover);
+        - valid lease, same holder  → renew the expiry (never self-reject);
+        - valid lease, other holder → deny.
+        """
         current = now or datetime.now(timezone.utc)
-        holder = self._holder_id()
         expiry = (current + timedelta(seconds=ttl_seconds)).isoformat()
         with _LEASE_SINGLETON_GUARD:
             try:
@@ -169,6 +181,15 @@ class _SnapshotLease:
                         "SELECT holder, expires_at FROM r_live_warming_lease "
                         "WHERE singleton=1"
                     ).fetchone()
+                    if row is not None and row[0] == self._holder:
+                        # Same instance: RENEW — never reject our own lease.
+                        self._conn.execute(
+                            "UPDATE r_live_warming_lease SET expires_at=?, "
+                            "schema_version=? WHERE singleton=1 AND holder=?",
+                            (expiry, WARMING_SCHEMA_VERSION, self._holder),
+                        )
+                        self._conn.execute("COMMIT")
+                        return True
                     if row is not None:
                         try:
                             held_expiry = self._parse(row[1])
@@ -176,20 +197,20 @@ class _SnapshotLease:
                             held_expiry = None
                         if held_expiry is not None and held_expiry > current:
                             self._conn.execute("ROLLBACK")
-                            return False  # a live holder owns the lease
+                            return False  # a live foreign holder owns the lease
+                    # No lease, or an expired/invalid foreign lease → take over.
                     self._conn.execute(
                         "INSERT INTO r_live_warming_lease "
                         "(singleton,holder,expires_at,schema_version) VALUES (1,?,?,?) "
                         "ON CONFLICT(singleton) DO UPDATE SET holder=excluded.holder, "
                         "expires_at=excluded.expires_at, "
                         "schema_version=excluded.schema_version",
-                        (holder, expiry, WARMING_SCHEMA_VERSION),
+                        (self._holder, expiry, WARMING_SCHEMA_VERSION),
                     )
                 except Exception:
                     self._conn.execute("ROLLBACK")
                     raise
                 self._conn.execute("COMMIT")
-                self._holder = holder
                 return True
             except sqlite3.Error:
                 return False
@@ -200,7 +221,7 @@ class _SnapshotLease:
                 self._conn.execute("BEGIN IMMEDIATE")
                 self._conn.execute(
                     "DELETE FROM r_live_warming_lease WHERE singleton=1 "
-                    "AND holder=?", (getattr(self, "_holder", ""),),
+                    "AND holder=?", (self._holder,),
                 )
                 self._conn.execute("COMMIT")
             except sqlite3.Error:

@@ -33,6 +33,18 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
+def _approved_ids(n: int | None = None) -> list[str]:
+    """Deterministically pick canonical ids from THE one approved registry."""
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+    ids = sorted(APPROVED_BY_CANONICAL_ID)
+    return ids if n is None else ids[:n]
+
+
+def _approved_count() -> int:
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+    return len(APPROVED_BY_CANONICAL_ID)
+
+
 def _fresh_row(canonical_id: str = "4663:0xapple", *, now=None) -> tuple[str, str, dict]:
     """An acquisition row exactly as the canonical batch yields it: all
     evidence timestamps inside their canonical freshness windows."""
@@ -92,13 +104,21 @@ def test_warm_snapshot_endpoint_does_not_call_live_rpc(snapshot_db, no_live_rpc)
     from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
 
     now = datetime.now(timezone.utc)
+    approved = _approved_ids(1)[0]
     with RLiveSnapshotStore(path=snapshot_db) as store:
-        store.write_batch([_fresh_row(now=now)], collected_at=now)
+        store.write_batch([_fresh_row(approved, now=now)], collected_at=now)
     view = build_snapshot_view(path=snapshot_db)
     assert view["state"] == "AVAILABLE"
-    assert len(view["rows"]) == 1
-    assert view["rows"][0]["state"] == "AVAILABLE"
-    assert view["rows"][0]["source"] == "LATEST_SNAPSHOT"
+    # FULL canonical universe, not just the stored rows
+    assert len(view["rows"]) == _approved_count()
+    row = next(r for r in view["rows"] if r["canonical_id"] == approved)
+    assert row["state"] == "AVAILABLE"
+    assert row["source"] == "LATEST_SNAPSHOT"
+    missing = [r for r in view["rows"] if r["canonical_id"] != approved]
+    assert all(r["state"] == "UNAVAILABLE"
+               and r["reason"] == "SNAPSHOT_NOT_YET_COLLECTED"
+               and r["data"] == {}
+               for r in missing)
 
 
 def test_warm_landing_page_does_not_call_live_rpc(snapshot_db, no_live_rpc):
@@ -109,7 +129,8 @@ def test_warm_landing_page_does_not_call_live_rpc(snapshot_db, no_live_rpc):
 
     now = datetime.now(timezone.utc)
     with RLiveSnapshotStore(path=snapshot_db) as store:
-        store.write_batch([_fresh_row(now=now)], collected_at=now)
+        store.write_batch(
+            [_fresh_row(_approved_ids(1)[0], now=now)], collected_at=now)
 
     app = FastAPI()
     app.include_router(router)
@@ -119,6 +140,8 @@ def test_warm_landing_page_does_not_call_live_rpc(snapshot_db, no_live_rpc):
         elapsed_ms = (time.perf_counter() - started) * 1000
     assert response.status_code == 200
     assert "INITIALIZING" not in response.text  # warm: no cold banner
+    # landing renders the FULL canonical approved universe
+    assert response.text.count('data-canonical-id=') == _approved_count()
     assert elapsed_ms < 500, f"warm landing took {elapsed_ms:.0f} ms"
 
 
@@ -131,9 +154,8 @@ def test_snapshot_api_route_is_lightweight_and_never_acquires(
 
     now = datetime.now(timezone.utc)
     with RLiveSnapshotStore(path=snapshot_db) as store:
-        for index in range(13):
-            store.write_batch(
-                [_fresh_row(f"4663:0x{index:04x}", now=now)], collected_at=now)
+        store.write_batch(
+            [_fresh_row(cid, now=now) for cid in _approved_ids()], collected_at=now)
 
     app = FastAPI()
     app.include_router(router, prefix="/api/v1.1")
@@ -144,7 +166,8 @@ def test_snapshot_api_route_is_lightweight_and_never_acquires(
     assert response.status_code == 200
     body = response.json()
     assert body["state"] == "AVAILABLE"
-    assert len(body["data"]["rows"]) == 13
+    assert len(body["data"]["rows"]) == _approved_count()
+    assert all(r["state"] == "AVAILABLE" for r in body["data"]["rows"])
     assert body["data"]["read_duration_ms"] < 500
     assert elapsed_ms < 500, f"snapshot read took {elapsed_ms:.0f} ms"
 
@@ -181,7 +204,11 @@ def test_cold_snapshot_endpoint_returns_typed_initializing(snapshot_db, no_live_
     body = response.json()
     assert body["state"] == "INITIALIZING"
     assert body["data"]["reason"] == "NO_CURRENT_OBSERVATION_COLLECTED"
-    assert body["data"]["rows"] == []
+    assert len(body["data"]["rows"]) == _approved_count()
+    assert all(r["state"] == "UNAVAILABLE"
+               and r["reason"] == "SNAPSHOT_NOT_YET_COLLECTED"
+               and r["data"] == {}
+               for r in body["data"]["rows"])
 
 
 # ── Atomic refresh + failure isolation + last-valid preservation ─────────────
@@ -606,3 +633,180 @@ def client_for_rwa_bnb(monkeypatch, tmp_path):
             return test_client.get(path).text
         yield get
     rwa_router.set_bnb_service(rwa_router.BnbRwaDashboardService())
+
+
+# ── Correction A: stable lease holder + renewal semantics ────────────────────
+
+def test_lease_same_instance_renews_foreign_blocked_expired_takeover(snapshot_db):
+    """A. acquire → renew (same instance, pre-expiry) → foreign denied →
+    renew again → foreign still denied → release → foreign acquires."""
+    from app.radar_rwa.r_live_warming import _SnapshotLease
+
+    lease_a = _SnapshotLease(snapshot_db)
+    lease_b = _SnapshotLease(snapshot_db)
+    t0 = datetime.now(timezone.utc)
+    try:
+        assert lease_a.acquire_or_renew(ttl_seconds=300, now=t0) is True
+        # SAME instance renews before expiry — never self-rejects
+        assert lease_a.acquire_or_renew(
+            ttl_seconds=300, now=t0 + timedelta(seconds=60)) is True
+        # foreign holder is denied while A remains valid/renewed
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=300, now=t0 + timedelta(seconds=90)) is False
+        # A renews again
+        assert lease_a.acquire_or_renew(
+            ttl_seconds=300, now=t0 + timedelta(seconds=120)) is True
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=300, now=t0 + timedelta(seconds=150)) is False
+        # release deletes ONLY A's lease; B can then acquire
+        lease_a.release()
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=300, now=t0 + timedelta(seconds=180)) is True
+        lease_b.release()
+    finally:
+        lease_a.close()
+        lease_b.close()
+
+
+def test_lease_expired_foreign_lease_taken_over(snapshot_db):
+    """B. A stops renewing → after its TTL expires B can acquire."""
+    from app.radar_rwa.r_live_warming import _SnapshotLease
+
+    lease_a = _SnapshotLease(snapshot_db)
+    lease_b = _SnapshotLease(snapshot_db)
+    t0 = datetime.now(timezone.utc)
+    try:
+        assert lease_a.acquire_or_renew(ttl_seconds=60, now=t0) is True
+        # still valid: denied
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=60, now=t0 + timedelta(seconds=59)) is False
+        # TTL expired: takeover allowed
+        assert lease_b.acquire_or_renew(
+            ttl_seconds=60, now=t0 + timedelta(seconds=61)) is True
+        lease_b.release()
+    finally:
+        lease_a.close()
+        lease_b.close()
+
+
+def test_lease_holder_id_is_stable_per_instance(snapshot_db):
+    from app.radar_rwa.r_live_warming import _SnapshotLease
+
+    lease = _SnapshotLease(snapshot_db)
+    try:
+        first = lease._holder
+        lease.acquire_or_renew(ttl_seconds=300)
+        assert lease._holder == first  # stable across calls
+        assert first  # non-empty, contains a random discriminator (not PID alone)
+    finally:
+        lease.release()
+        lease.close()
+
+
+def test_60s_warming_schedule_with_180s_ttl_keeps_60s_cadence(snapshot_db):
+    """C. deterministic clock: a 60-second warming cycle with a 180-second
+    lease TTL renews its own lease every cycle — the effective collection
+    cadence stays 60 s (never degraded to the TTL)."""
+    from app.radar_rwa.r_live_warming import _SnapshotLease
+
+    lease = _SnapshotLease(snapshot_db)
+    t0 = datetime.now(timezone.utc)
+    try:
+        acquired_at = []
+        for tick in range(0, 6):  # 6 cycles at 60 s spacing
+            now = t0 + timedelta(seconds=60 * tick)
+            allowed = lease.acquire_or_renew(ttl_seconds=180, now=now)
+            assert allowed is True, f"cycle {tick} was self-rejected"
+            acquired_at.append(60 * tick)
+        assert acquired_at == [0, 60, 120, 180, 240, 300]  # full 60 s cadence
+        lease.release()
+    finally:
+        lease.close()
+
+
+# ── Correction A: full canonical approved universe presentation ──────────────
+
+def test_partial_snapshot_still_presents_full_approved_universe(
+        snapshot_db, no_live_rpc):
+    """Regression 1: canonical universe = all approved assets; only some
+    stored → API returns the FULL universe and missing assets are typed
+    UNAVAILABLE / SNAPSHOT_NOT_YET_COLLECTED (never omitted, never zero)."""
+    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.v1_1.r_live_public_router import router
+
+    ids = _approved_ids()
+    stored, missing = ids[:9], ids[9:]
+    now = datetime.now(timezone.utc)
+    with RLiveSnapshotStore(path=snapshot_db) as store:
+        store.write_batch([_fresh_row(cid, now=now) for cid in stored],
+                          collected_at=now)
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1.1")
+    with TestClient(app) as client:
+        response = client.get("/api/v1.1/radar/r-live/snapshot")
+    body = response.json()
+    assert body["state"] == "AVAILABLE"  # partial is a real projection
+    rows = {r["canonical_id"]: r for r in body["data"]["rows"]}
+    assert len(rows) == _approved_count()  # FULL universe in the API
+    for cid in stored:
+        assert rows[cid]["state"] == "AVAILABLE"
+        assert rows[cid]["data"]["b1_0_premium"]["value_bps"] is not None
+    for cid in missing:
+        assert rows[cid]["state"] == "UNAVAILABLE"
+        assert rows[cid]["reason"] == "SNAPSHOT_NOT_YET_COLLECTED"
+        assert rows[cid]["data"] == {}  # no fabricated numeric fields
+
+
+def test_partial_snapshot_landing_renders_full_approved_universe(
+        snapshot_db, no_live_rpc):
+    """Regression 1 (landing): the page always renders the canonical
+    approved rows — snapshot evidence is a LEFT JOIN, never the universe."""
+    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.radar_ui.r_live_router import router
+
+    ids = _approved_ids()
+    now = datetime.now(timezone.utc)
+    with RLiveSnapshotStore(path=snapshot_db) as store:
+        store.write_batch([_fresh_row(cid, now=now) for cid in ids[:9]],
+                          collected_at=now)
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        html = client.get("/radar/r-live").text
+    assert html.count('data-canonical-id=') == _approved_count()
+    for cid in ids[9:]:
+        assert cid in html  # missing-evidence assets remain in the DOM
+    assert "INITIALIZING" not in html  # partial is warm: no cold banner
+
+
+def test_never_observed_asset_visible_without_fabricated_numbers(snapshot_db):
+    """Regression 3: an asset that never had a successful observation stays
+    visible and typed — no prices, no premium, no zeros."""
+    from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+    view = build_snapshot_view(path=snapshot_db)
+    assert view["state"] == "INITIALIZING"
+    for row in view["rows"]:
+        assert row["state"] == "UNAVAILABLE"
+        assert row["reason"] == "SNAPSHOT_NOT_YET_COLLECTED"
+        assert row["data"] == {}
+        assert "b1_0_premium" not in row["data"]
+        assert "token_reference" not in row["data"]
+
+
+def test_view_never_serves_evidence_for_unapproved_ids(snapshot_db):
+    """No second registry: stored rows outside the approved universe are
+    never presented."""
+    from app.radar_rwa.r_live_snapshot_store import RLiveSnapshotStore
+    from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+
+    now = datetime.now(timezone.utc)
+    with RLiveSnapshotStore(path=snapshot_db) as store:
+        store.write_batch([_fresh_row("4663:0xnotapproved", now=now)],
+                          collected_at=now)
+    view = build_snapshot_view(path=snapshot_db)
+    assert all(r["canonical_id"] in _approved_ids() for r in view["rows"])
