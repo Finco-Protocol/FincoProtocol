@@ -8,3 +8,27 @@
 .bnb-intelligence-cell details{margin-top:5px;color:var(--radar-muted,#8d98a5)}
 .bnb-intelligence-cell summary{cursor:pointer;font-size:9px}
 .bnb-intelligence-cell .rwa-time{overflow-wrap:anywhere;white-space:normal}
+
+/* Capability chips (instant R-LIVE / RWA UX): compact, muted states —
+   detailed authority reasons stay in row expansion details. */
+.bnb-capabilities{max-width:300px;text-align:left;white-space:normal;overflow-wrap:anywhere}
+.cap-chip{display:inline-flex;align-items:center;margin:2px 4px 2px 0;padding:3px 7px;border-radius:999px;border:1px solid var(--radar-border,#303844);font-size:8px;font-weight:700;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);white-space:nowrap}
+.cap-chip--available{color:#8dc7a0;border-color:rgba(141,199,160,.35)}
+.cap-chip--stale{color:var(--radar-gold,#d7b46a);border-color:rgba(215,180,106,.35)}
+.cap-chip--bound{color:#8dc7a0;border-color:rgba(141,199,160,.35)}
+.cap-chip--unbound{color:var(--radar-muted,#8d98a5)}
+.cap-chip--not_supported,.cap-chip--notsupported{color:var(--radar-muted,#8d98a5);border-style:dashed}
+.cap-chip--unavailable{color:#c9a0a0;border-color:rgba(212,139,139,.25)}
+.bnb-capabilities details{margin-top:5px;color:var(--radar-muted,#8d98a5)}
+.bnb-capabilities summary{cursor:pointer;font-size:9px}
+.bnb-capabilities .rwa-time{display:block;overflow-wrap:anywhere;white-space:normal}
+/* BNB filter bar — exact definitions in title/text; presentation only */
+.bnb-filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:2px 0 8px}
+.bnb-filter{padding:6px 11px;border:1px solid var(--radar-border,#303844);border-radius:7px;background:transparent;color:var(--radar-muted,#8d98a5);font-size:10px;font-weight:700;letter-spacing:.06em;cursor:pointer}
+.bnb-filter:hover{color:var(--radar-text,#f3f6f8)}
+.bnb-filter.is-active{background:rgba(255,255,255,.07);color:var(--radar-text,#f3f6f8);border-color:rgba(255,255,255,.18)}
+.bnb-filter-note{flex-basis:100%;font-size:9px}
+/* RWA overview R-LIVE entry card (replaces the duplicate AAPL premium panel) */
+.rwa-rlive-card strong{font-size:15px}
+.rwa-rlive-link{color:#8dc7a0;text-decoration:none}
+.rwa-rlive-link:hover{text-decoration:underline}

@@ -72,11 +72,17 @@ def test_batch_ranges_are_read_only_registry_driven(monkeypatch):
     assert set(data["assets"]) == set(calls)
 
 
-def test_landing_has_two_fetches_independent_of_registry_size():
+def test_landing_is_snapshot_first_and_never_streams_live_acquisition():
+    """Instant R-LIVE UX: the landing table reads the latest-snapshot
+    endpoint only (plus read-only historical ranges); the live /current
+    streaming acquisition is no longer on the page request path, and
+    polling while cold hits the snapshot endpoint exclusively."""
     js = (ROOT / "static/radar/r_live_table.js").read_text(encoding="utf-8")
     assert js.count("fetch(") == 2
-    assert 'fetch("/api/v1.1/radar/r-live/current"' in js
+    assert 'SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot"' in js
+    assert "fetch(SNAPSHOT_URL" in js
     assert 'fetch("/api/v1.1/radar/r-live/history/ranges"' in js
+    assert 'fetch("/api/v1.1/radar/r-live/current"' not in js
     assert "history?limit=100" not in js
     assert "data-canonical-id" in js
     assert "HISTORICAL · Last available" in js
@@ -87,6 +93,13 @@ def test_landing_has_two_fetches_independent_of_registry_size():
     assert 'snap_state === "UNAVAILABLE" && last' not in js
     assert 'snap_data.b1_0_premium' in js
     assert 'Math.abs(parseFloat(premium_a.value_bps))' in js
+    # cold-start polling reads the snapshot ONLY — never live acquisition
+    assert "INITIALIZING" in js
+    assert "setInterval(refresh_snapshot" in js
+    assert 'SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot"' in js
     sorting = js.split('function sort_rows()', 1)[1].split('fetch("/api/v1.1/radar/r-live/history/ranges"', 1)[0]
     assert 'last.premium_bps' not in sorting
-    assert 'rlive-badge--loading' in (ROOT / "app/templates/radar/r_live_landing.html").read_text(encoding="utf-8")
+    template = (ROOT / "app/templates/radar/r_live_landing.html").read_text(encoding="utf-8")
+    assert 'rlive-badge--loading' in template
+    assert 'data-testid="rlive-initializing"' in template
+    assert "cold_start" in template
