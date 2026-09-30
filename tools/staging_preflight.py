@@ -1,8 +1,18 @@
-"""Fail-closed preflight for FINCO Yield Phase 1 corporate staging.
+"""Fail-closed preflight checks for FINCO corporate staging.
 
-The preflight validates deployment identity, secure-mode configuration, staging
-filesystem isolation, and the Phase 1 feature-flag contract before systemd may
-start the application. Secret values are never printed.
+Preserves the existing P7/E5 staging isolation and Equity Fundamentals snapshot
+contract while updating runtime variables to the PR #152 secure execution
+contract and adding Yield Phase 1 gates. Secret values are never printed.
+
+Exit codes:
+  0 — all checks pass
+  2 — blocked (misconfiguration / isolation violation)
+
+Yield Phase 1 requires:
+  FINCO_YIELD_ENABLED=1
+  FINCO_YIELD_EXECUTION_ENABLED=0
+
+The exact checked-out Git HEAD must equal FINCO_DEPLOY_SHA.
 """
 from __future__ import annotations
 
@@ -28,10 +38,12 @@ PLACEHOLDER_MARKERS = (
 )
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _BCRYPT_RE = re.compile(r"^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$")
+_EQUITY_VALID_MODES = frozenset({"snapshot", "live"})
+_E5_REQUIRED_MODE = "snapshot"
 
 
 class StagingPreflightError(RuntimeError):
-    """Raised when the staging isolation/runtime contract is violated."""
+    """Raised when the corporate staging isolation contract is violated."""
 
 
 def parse_env_file(path: Path) -> dict[str, str]:
@@ -68,13 +80,16 @@ def _require_absolute_under(path_text: str, root: Path, field: str) -> Path:
         raise StagingPreflightError(f"{field} must be an absolute path")
     resolved = path.resolve(strict=False)
     root_resolved = root.resolve(strict=False)
+    production_resolved = PRODUCTION_ROOT.resolve(strict=False)
     try:
         resolved.relative_to(root_resolved)
     except ValueError as exc:
-        raise StagingPreflightError(
-            f"{field} must stay under {root_resolved}"
-        ) from exc
-    if str(resolved).startswith(str(PRODUCTION_ROOT.resolve(strict=False))):
+        raise StagingPreflightError(f"{field} must stay under {root_resolved}") from exc
+    try:
+        resolved.relative_to(production_resolved)
+    except ValueError:
+        pass
+    else:
         raise StagingPreflightError(f"{field} must never use the production root")
     return resolved
 
@@ -89,6 +104,85 @@ def _required_int(env: Mapping[str, str], field: str, low: int, high: int) -> in
     return value
 
 
+def _validate_equity_fundamentals(
+    env: Mapping[str, str],
+    *,
+    staging_root: Path = STAGING_ROOT,
+    production_root: Path = PRODUCTION_ROOT,
+    check_filesystem: bool = False,
+) -> Path:
+    """Preserve the E5 staging snapshot contract for Radar equity fundamentals."""
+    raw_path = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_PATH", "").strip()
+    if not raw_path:
+        raise StagingPreflightError(
+            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: MISSING — required for E1/E2/E3 "
+            "Radar features; without it the Company Terminal degrades to "
+            "SOURCE_UNAVAILABLE"
+        )
+
+    eq_path = Path(raw_path)
+    if not eq_path.is_absolute():
+        raise StagingPreflightError(
+            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must be an absolute path"
+        )
+
+    resolved = eq_path.resolve(strict=False)
+    staging_resolved = staging_root.resolve(strict=False)
+    production_resolved = production_root.resolve(strict=False)
+
+    try:
+        resolved.relative_to(staging_resolved)
+    except ValueError as exc:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must be under {staging_resolved}; "
+            "staging equity DB must be separate from production"
+        ) from exc
+
+    try:
+        resolved.relative_to(production_resolved)
+    except ValueError:
+        pass
+    else:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_PATH: must not be under the "
+            f"production root {production_resolved}"
+        )
+
+    raw_mode = env.get("FINCO_EQUITY_FUNDAMENTALS_DB_MODE", "").strip()
+    if not raw_mode:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: MISSING — must be "
+            f"'{_E5_REQUIRED_MODE}' for E5 staging deployment"
+        )
+    mode = raw_mode.lower()
+    if mode not in _EQUITY_VALID_MODES:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: invalid value {raw_mode!r}; "
+            f"must be one of {sorted(_EQUITY_VALID_MODES)}"
+        )
+    if mode != _E5_REQUIRED_MODE:
+        raise StagingPreflightError(
+            f"FINCO_EQUITY_FUNDAMENTALS_DB_MODE: E5 staging requires "
+            f"'{_E5_REQUIRED_MODE}'"
+        )
+
+    if check_filesystem:
+        if not resolved.exists():
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file not found; transfer the "
+                "versioned equity snapshot before starting staging"
+            )
+        if not resolved.is_file():
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: configured path is not a regular file"
+            )
+        if not os.access(str(resolved), os.R_OK):
+            raise StagingPreflightError(
+                "FINCO_EQUITY_FUNDAMENTALS_DB_PATH: file is not readable by service user"
+            )
+    return resolved
+
+
 def validate_staging_env(
     env: Mapping[str, str],
     *,
@@ -97,6 +191,7 @@ def validate_staging_env(
     check_filesystem: bool = False,
     env_file: Path | None = None,
 ) -> None:
+    """Validate current secure staging + E5 + Yield Phase 1 contracts."""
     required = {
         "FINCO_ENV",
         "FINCO_APP_MODE",
@@ -110,6 +205,7 @@ def validate_staging_env(
         "FINCO_COOKIE_SECURE",
         "FINCO_COOKIE_SAMESITE",
         "FINCO_SESSION_HOURS",
+        "FINCO_DEMO_RESET_ALLOWED",
         "FINCO_WEB_HOST",
         "FINCO_WEB_PORT",
         "FINCO_WEB_WORKERS",
@@ -121,6 +217,8 @@ def validate_staging_env(
         "FINCO_YIELD_EXECUTION_ENABLED",
         "FINCO_DB_PATH",
         "FINCO_STORAGE_PATH",
+        "FINCO_EQUITY_FUNDAMENTALS_DB_PATH",
+        "FINCO_EQUITY_FUNDAMENTALS_DB_MODE",
     }
     missing = sorted(required - set(env))
     if missing:
@@ -136,6 +234,11 @@ def validate_staging_env(
         raise StagingPreflightError("FINCO_COOKIE_SECURE must be true")
     if env["FINCO_COOKIE_SAMESITE"].lower() not in {"lax", "strict"}:
         raise StagingPreflightError("FINCO_COOKIE_SAMESITE must be lax or strict")
+    # Preserve the established corporate-staging demo-reset second factor.
+    if env["FINCO_DEMO_RESET_ALLOWED"].lower() != "true":
+        raise StagingPreflightError(
+            "FINCO_DEMO_RESET_ALLOWED must be true on corporate staging"
+        )
 
     if env["FINCO_STAGING_ROOT"] != str(STAGING_ROOT):
         raise StagingPreflightError(f"FINCO_STAGING_ROOT must be {STAGING_ROOT}")
@@ -148,7 +251,6 @@ def validate_staging_env(
     if env["FINCO_WEB_PORT"] != STAGING_PORT:
         raise StagingPreflightError("FINCO_WEB_PORT must match FINCO_STAGING_PORT")
 
-    # Yield Phase 1 contract: product visible, transaction planning disabled.
     if env["FINCO_YIELD_ENABLED"] != "1":
         raise StagingPreflightError("FINCO_YIELD_ENABLED must be 1 for Phase 1")
     if env["FINCO_YIELD_EXECUTION_ENABLED"] != "0":
@@ -178,9 +280,9 @@ def validate_staging_env(
         raise StagingPreflightError(
             "configure exactly one of FINCO_ADMIN_PASSWORD or FINCO_ADMIN_PASSWORD_HASH"
         )
-    if plain and (len(plain) < 12 or _is_placeholder(plain)):
+    if plain and (len(plain) < 16 or _is_placeholder(plain)):
         raise StagingPreflightError(
-            "FINCO_ADMIN_PASSWORD must be a real staging value >=12 chars"
+            "FINCO_ADMIN_PASSWORD must be a non-placeholder value >=16 chars"
         )
     if password_hash and not _BCRYPT_RE.fullmatch(password_hash):
         raise StagingPreflightError(
@@ -214,30 +316,36 @@ def validate_staging_env(
         env["FINCO_STORAGE_PATH"], STAGING_ROOT, "FINCO_STORAGE_PATH"
     )
     if db_path == storage_path:
+        raise StagingPreflightError("database path and storage path must be distinct")
+
+    equity_path = _validate_equity_fundamentals(
+        env,
+        staging_root=STAGING_ROOT,
+        production_root=PRODUCTION_ROOT,
+        check_filesystem=check_filesystem,
+    )
+    if equity_path == db_path:
         raise StagingPreflightError(
-            "database path and storage path must be distinct"
+            "FINCO_EQUITY_FUNDAMENTALS_DB_PATH must be distinct from FINCO_DB_PATH"
         )
 
-    optional_paths = {}
-    for field in (
-        "RADAR_BNB_INTELLIGENCE_DB_PATH",
-        "FINCO_EQUITY_FUNDAMENTALS_DB_PATH",
-        "FINCO_YIELD_HISTORY_PATH",
-    ):
+    optional_paths: dict[str, Path] = {}
+    for field in ("RADAR_BNB_INTELLIGENCE_DB_PATH", "FINCO_YIELD_HISTORY_PATH"):
         value = env.get(field, "").strip()
         if value:
-            optional_paths[field] = _require_absolute_under(
-                value, STAGING_ROOT, field
-            )
+            path = _require_absolute_under(value, STAGING_ROOT, field)
+            optional_paths[field] = path
+            if path in {db_path, equity_path}:
+                raise StagingPreflightError(
+                    f"{field} must be distinct from application/equity DB paths"
+                )
 
     if repo_root.resolve(strict=False) != STAGING_ROOT.resolve(strict=False):
         raise StagingPreflightError(f"repository must be deployed at {STAGING_ROOT}")
 
     if check_filesystem:
         if env_file is None:
-            raise StagingPreflightError(
-                "env_file is required for filesystem checks"
-            )
+            raise StagingPreflightError("env_file is required for filesystem checks")
         mode = stat.S_IMODE(env_file.stat().st_mode)
         if mode & 0o077:
             raise StagingPreflightError(
@@ -246,7 +354,7 @@ def validate_staging_env(
 
         writable_dirs = {db_path.parent, storage_path}
         for path in optional_paths.values():
-            writable_dirs.add(path if path.suffix == "" else path.parent)
+            writable_dirs.add(path.parent)
         for directory in sorted(writable_dirs, key=str):
             if not directory.exists() or not directory.is_dir():
                 raise StagingPreflightError(
@@ -270,7 +378,7 @@ def _git_head(repo_root: Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate FINCO Yield Phase 1 staging isolation"
+        description="Validate FINCO corporate staging (secure runtime + E5 + Yield Phase 1)"
     )
     parser.add_argument("--env-file", required=True, type=Path)
     parser.add_argument("--repo-root", default=STAGING_ROOT, type=Path)
@@ -292,10 +400,10 @@ def main() -> int:
             env_file=args.env_file,
         )
     except (OSError, subprocess.CalledProcessError, StagingPreflightError) as exc:
-        print(f"YIELD_STAGING_PREFLIGHT_BLOCKED: {exc}")
+        print(f"P7_STAGING_PREFLIGHT_BLOCKED: {exc}")
         return 2
 
-    print("YIELD_STAGING_PREFLIGHT_PASS")
+    print("P7_STAGING_PREFLIGHT_PASS")
     return 0
 
 
