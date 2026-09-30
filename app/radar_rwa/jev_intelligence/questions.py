@@ -39,16 +39,19 @@ def build_request(state: FeatureState, *, model: str) -> dict[str, object]:
             "features": dict(state.features),
         },
         "questions": {
+            # TypeSafe System One request contract: Choice and Score both take ``criteria``
+            # (Choice: mapping label -> description; Score: ordered list of levels). ``options``
+            # and ``legend`` are not request fields (``legend`` is a Score RESPONSE field).
             "market_regime": {
                 "type": "choice",
                 "instructions": "Which market regime best describes the premium series? " + _COMMON,
-                "options": dict(REGIME_DESCRIPTIONS),
+                "criteria": dict(REGIME_DESCRIPTIONS),
             },
             "attention": {
                 "type": "score",
                 "instructions": ("How much analyst attention does the current premium state "
                                  "warrant, relative to a normal state? " + _COMMON),
-                "legend": list(ATTENTION_LEVELS),
+                "criteria": list(ATTENTION_LEVELS),
             },
         },
     }
@@ -66,31 +69,54 @@ def _probability(value: object, name: str) -> Decimal:
     return parsed
 
 
-def _optional_confidence(answer: Mapping[str, object]) -> Decimal | None:
+def _required_confidence(answer: Mapping[str, object]) -> Decimal:
     if "confidence" not in answer or answer["confidence"] is None:
-        return None
+        raise ValueError("CONFIDENCE_MISSING")
     return _probability(answer["confidence"], "CONFIDENCE")
 
 
+def _probability_map(raw: object, allowed: set[str], *, code: str) -> tuple[tuple[str, Decimal], ...]:
+    if not isinstance(raw, Mapping) or not raw or not {str(k) for k in raw} <= allowed:
+        raise ValueError(code)
+    rows = tuple((str(k), _probability(v, "PROBABILITY")) for k, v in raw.items())
+    if sum(v for _, v in rows) > Decimal("1.001"):
+        raise ValueError(f"{code}_EXCEED_ONE")
+    return rows
+
+
 def _parse_regime(answer: object) -> RegimeAnswer:
-    if not isinstance(answer, Mapping) or answer.get("type", "choice") != "choice":
+    if not isinstance(answer, Mapping) or answer.get("type") != "choice":
         raise ValueError("JEV_MARKET_REGIME_ANSWER_INVALID")
     choice = answer.get("choice")
     if choice not in REGIME_OPTIONS:
         raise ValueError("JEV_MARKET_REGIME_CHOICE_UNEXPECTED")
-    raw = answer.get("probabilities")
-    rows: list[tuple[str, Decimal]] = []
-    if raw is not None:
-        if not isinstance(raw, Mapping) or not set(raw) <= set(REGIME_OPTIONS):
-            raise ValueError("JEV_MARKET_REGIME_PROBABILITIES_INVALID")
-        rows = [(key, _probability(raw[key], "PROBABILITY")) for key in REGIME_OPTIONS if key in raw]
-        if sum(v for _, v in rows) > Decimal("1.001"):
-            raise ValueError("JEV_MARKET_REGIME_PROBABILITIES_EXCEED_ONE")
-    return RegimeAnswer(choice=choice, probabilities=tuple(rows), confidence=_optional_confidence(answer))
+    if "probabilities" not in answer:
+        raise ValueError("JEV_MARKET_REGIME_PROBABILITIES_MISSING")
+    rows = _probability_map(answer["probabilities"], set(REGIME_OPTIONS),
+                            code="JEV_MARKET_REGIME_PROBABILITIES_INVALID")
+    ordered = tuple((k, v) for k in REGIME_OPTIONS for kk, v in rows if kk == k)
+    if choice not in {k for k, _ in ordered}:
+        raise ValueError("JEV_MARKET_REGIME_CHOICE_WITHOUT_PROBABILITY")
+    return RegimeAnswer(choice=choice, probabilities=ordered, confidence=_required_confidence(answer))
+
+
+# Score -> level policy (explicit, deterministic): the provider score is a probability-weighted
+# mean of 0-based level indices, so it must lie in [0, len(levels) - 1]. The level is the nearest
+# index with exact .5 boundaries rounded UP (ROUND_HALF_UP, i.e. towards higher attention):
+# 0.4999 -> NORMAL, 0.5 -> ELEVATED, 1.4999 -> ELEVATED, 1.5 -> HIGH, 2.0 -> HIGH.
+SCORE_ROUNDING = "ROUND_HALF_UP"
+_EXPECTED_LEGEND = {str(i): label for i, label in enumerate(ATTENTION_LEVELS)}
+
+
+def score_to_level(score: Decimal) -> str:
+    top = Decimal(len(ATTENTION_LEVELS) - 1)
+    if not score.is_finite() or score < 0 or score > top:
+        raise ValueError("JEV_ATTENTION_SCORE_OUT_OF_RANGE")
+    return ATTENTION_LEVELS[int(score.to_integral_value(rounding=SCORE_ROUNDING))]
 
 
 def _parse_attention(answer: object) -> AttentionAnswer:
-    if not isinstance(answer, Mapping) or answer.get("type", "score") != "score":
+    if not isinstance(answer, Mapping) or answer.get("type") != "score":
         raise ValueError("JEV_ATTENTION_ANSWER_INVALID")
     raw = answer.get("score")
     if isinstance(raw, bool):
@@ -99,26 +125,15 @@ def _parse_attention(answer: object) -> AttentionAnswer:
         score = Decimal(str(raw))
     except (InvalidOperation, ValueError):
         raise ValueError("JEV_ATTENTION_SCORE_NOT_NUMERIC") from None
-    if not score.is_finite():
-        raise ValueError("JEV_ATTENTION_SCORE_NOT_NUMERIC")
-    base = 0
     legend = answer.get("legend")
-    if legend is not None:
-        if not isinstance(legend, Mapping) or not legend:
-            raise ValueError("JEV_ATTENTION_LEGEND_INVALID")
-        try:
-            indexed = sorted((int(k), str(v)) for k, v in legend.items())
-        except (TypeError, ValueError):
-            raise ValueError("JEV_ATTENTION_LEGEND_INVALID") from None
-        if tuple(label for _, label in indexed) != ATTENTION_LEVELS:
-            raise ValueError("JEV_ATTENTION_LEGEND_MISMATCH")
-        base = indexed[0][0]
-    index = int((score - base).to_integral_value(rounding="ROUND_HALF_EVEN"))
-    if not 0 <= index < len(ATTENTION_LEVELS) or not (
-            Decimal(base) - Decimal("0.5") <= score <= Decimal(base + len(ATTENTION_LEVELS) - 1) + Decimal("0.5")):
-        raise ValueError("JEV_ATTENTION_SCORE_OUT_OF_RANGE")
-    return AttentionAnswer(state=ATTENTION_LEVELS[index], score=score,
-                           confidence=_optional_confidence(answer))
+    if not isinstance(legend, Mapping) or {str(k): str(v) for k, v in legend.items()} != _EXPECTED_LEGEND:
+        raise ValueError("JEV_ATTENTION_LEGEND_INVALID")
+    level = score_to_level(score)
+    if "probabilities" not in answer:
+        raise ValueError("JEV_ATTENTION_PROBABILITIES_MISSING")
+    _probability_map(answer["probabilities"], set(_EXPECTED_LEGEND) | set(ATTENTION_LEVELS),
+                     code="JEV_ATTENTION_PROBABILITIES_INVALID")
+    return AttentionAnswer(state=level, score=score, confidence=_required_confidence(answer))
 
 
 def parse_response(response: Mapping[str, object]) -> tuple[RegimeAnswer, AttentionAnswer, str]:

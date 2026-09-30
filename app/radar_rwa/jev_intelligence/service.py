@@ -32,7 +32,11 @@ class JevTransport(Protocol):
 
 
 class _RateLimiter:
-    """Global fixed-window limiter protecting spend from unauthenticated read traffic."""
+    """Process-wide fixed-window limiter protecting spend from unauthenticated read traffic.
+
+    Scope is ONE Python process. It is not host-global: with N web workers the theoretical
+    provider-call ceiling is about N x ``max_evaluations_per_minute`` until a shared limiter exists.
+    """
 
     def __init__(self, per_minute: int, clock: Callable[[], float] = time.monotonic) -> None:
         self._per_minute = per_minute
@@ -180,7 +184,8 @@ def evaluate_intelligence(
     except FeatureUnavailable as exc:
         return fail(exc.reason)
 
-    key = cache_key(uid, features.input_fingerprint, QUESTION_SCHEMA_VERSION, config.model)
+    key = cache_key(uid, features.input_fingerprint, QUESTION_SCHEMA_VERSION, config.model,
+                    features.observation_digest)
 
     def compute() -> IntelligenceResult:
         key_value = api_key(environ)

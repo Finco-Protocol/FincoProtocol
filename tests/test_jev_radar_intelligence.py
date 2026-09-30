@@ -79,10 +79,11 @@ def build(premium="35.5", **kw):
 
 def good_response(model="jev-1.13", regime="MOMENTUM", score=1.0, legend=True, extra=None):
     answers = {
-        "market_regime": {"choice": regime, "confidence": 0.8,
+        "market_regime": {"type": "choice", "choice": regime, "confidence": 0.8,
                           "probabilities": {"MOMENTUM": 0.7, "MEAN_REVERTING": 0.1,
                                             "RANGE_BOUND": 0.15, "UNRESOLVED": 0.05}},
-        "attention": {"score": score, "confidence": 0.7,
+        "attention": {"type": "score", "score": score, "confidence": 0.7,
+                      "probabilities": {"0": 0.2, "1": 0.7, "2": 0.1},
                       **({"legend": {"0": "NORMAL", "1": "ELEVATED", "2": "HIGH"}} if legend else {})},
     }
     answers.update(extra or {})
@@ -247,6 +248,83 @@ def test_request_is_identity_blinded_and_has_no_arithmetic_or_numbers():
     for question in request["questions"].values():
         assert not re.search(r"\b(calculate|compute|percentage change)\b",
                              question["instructions"], re.I)
+
+
+# ══ provider request/response contract (locked to the System One schema) ═════════════
+CONTRACT = json.loads((REPO / "tests/fixtures/typesafe_systemone_contract.json").read_text(encoding="utf-8"))
+
+
+def _validate_request(request: dict) -> list[str]:
+    """Strict, dependency-free validator driven by the locked provider-contract fixture."""
+    errors = [f"missing top-level {k}" for k in CONTRACT["request"]["top_level_required"] if k not in request]
+    for qid, question in request.get("questions", {}).items():
+        spec = CONTRACT["request"]["question_types"].get(question.get("type"))
+        if spec is None:
+            errors.append(f"{qid}: unknown type")
+            continue
+        errors += [f"{qid}: missing {k}" for k in spec["required"] if k not in question]
+        errors += [f"{qid}: forbidden {k}" for k in spec["forbidden"] if k in question]
+        if "criteria" in spec["required"]:
+            want = dict if spec["criteria"] == "mapping" else list
+            if not isinstance(question.get("criteria"), want) or not question.get("criteria"):
+                errors.append(f"{qid}: criteria must be a non-empty {want.__name__}")
+    return errors
+
+
+def test_outbound_request_satisfies_the_locked_provider_contract():
+    request = build_request(build(), model="jev-latest")
+    assert _validate_request(request) == []
+
+
+def test_choice_request_has_criteria_mapping_and_no_options():
+    question = build_request(build(), model="jev-latest")["questions"]["market_regime"]
+    assert question["type"] == "choice"
+    assert "criteria" in question and "options" not in question and "legend" not in question
+    assert isinstance(question["criteria"], dict)
+    assert list(question["criteria"]) == ["MOMENTUM", "MEAN_REVERTING", "RANGE_BOUND", "UNRESOLVED"]
+    assert all(isinstance(v, str) and v for v in question["criteria"].values())
+
+
+def test_score_request_has_ordered_criteria_list_and_no_legend():
+    question = build_request(build(), model="jev-latest")["questions"]["attention"]
+    assert question["type"] == "score"
+    assert "criteria" in question and "legend" not in question and "options" not in question
+    assert isinstance(question["criteria"], list)
+    assert question["criteria"] == ["NORMAL", "ELEVATED", "HIGH"]  # exact order
+
+
+def test_question_ids_stay_exactly_market_regime_and_attention():
+    request = build_request(build(), model="jev-latest")
+    assert list(request["questions"]) == ["market_regime", "attention"]
+    assert not any(q["type"] == "noul" for q in request["questions"].values())  # no predictive Noul
+
+
+def test_contract_validator_actually_rejects_the_old_wrong_shapes():
+    request = build_request(build(), model="jev-latest")
+    wrong = copy.deepcopy(request)
+    wrong["questions"]["market_regime"]["options"] = wrong["questions"]["market_regime"].pop("criteria")
+    wrong["questions"]["attention"]["legend"] = wrong["questions"]["attention"].pop("criteria")
+    errors = _validate_request(wrong)
+    assert any("market_regime: missing criteria" in e for e in errors)
+    assert any("market_regime: forbidden options" in e for e in errors)
+    assert any("attention: missing criteria" in e for e in errors)
+    assert any("attention: forbidden legend" in e for e in errors)
+
+
+def test_provider_sample_response_parses_under_the_strict_response_contract():
+    sample = CONTRACT["sample_valid_response"]
+    for qid, answer in sample["answers"].items():
+        spec = CONTRACT["response"]["answer_types"][answer["type"]]
+        assert all(k in answer for k in spec["required"]), qid
+    regime, attention, model = parse_response(sample)
+    assert (regime.choice, attention.state, model) == ("RANGE_BOUND", "ELEVATED", "jev-1.13")
+
+
+def test_service_sends_exactly_the_contract_request_to_the_transport():
+    transport = FakeTransport()
+    run(Recorder(), transport)
+    assert _validate_request(transport.calls[0]) == []
+    assert transport.calls[0]["model"] == "jev-latest"
 
 
 # ══ identity ═════════════════════════════════════════════════════════════════════════
@@ -417,43 +495,61 @@ def test_valid_response_surfaces_requested_vs_resolved_model():
 
 
 @pytest.mark.parametrize("mutate,reason", [
-    (lambda r: r["answers"].update(extra={}), None),
     (lambda r: r["answers"].__setitem__("bonus", {"noul": 0.5}), "JEV_UNEXPECTED_QUESTION_OUTPUT"),
     (lambda r: r["answers"].pop("attention"), "JEV_UNEXPECTED_QUESTION_OUTPUT"),
+    (lambda r: r["answers"]["market_regime"].pop("type"), "JEV_MARKET_REGIME_ANSWER_INVALID"),
+    (lambda r: r["answers"]["market_regime"].__setitem__("type", "score"), "JEV_MARKET_REGIME_ANSWER_INVALID"),
     (lambda r: r["answers"]["market_regime"].__setitem__("choice", "BULLISH"), "JEV_MARKET_REGIME_CHOICE_UNEXPECTED"),
+    (lambda r: r["answers"]["market_regime"].pop("probabilities"), "JEV_MARKET_REGIME_PROBABILITIES_MISSING"),
+    (lambda r: r["answers"]["market_regime"].pop("confidence"), "CONFIDENCE_MISSING"),
     (lambda r: r["answers"]["market_regime"].__setitem__("confidence", 1.5), "CONFIDENCE_OUT_OF_BOUNDS"),
     (lambda r: r["answers"]["market_regime"].__setitem__("confidence", -0.1), "CONFIDENCE_OUT_OF_BOUNDS"),
     (lambda r: r["answers"]["market_regime"].__setitem__("confidence", True), "CONFIDENCE_NOT_NUMERIC"),
     (lambda r: r["answers"]["market_regime"]["probabilities"].__setitem__("MOMENTUM", 1.4), "PROBABILITY_OUT_OF_BOUNDS"),
     (lambda r: r["answers"]["market_regime"]["probabilities"].__setitem__("MOMENTUM", "nan"), "PROBABILITY_OUT_OF_BOUNDS"),
     (lambda r: r["answers"]["market_regime"]["probabilities"].__setitem__("BUY", 0.1), "JEV_MARKET_REGIME_PROBABILITIES_INVALID"),
-    (lambda r: r["answers"]["market_regime"]["probabilities"].update(MOMENTUM=0.9, RANGE_BOUND=0.9), "JEV_MARKET_REGIME_PROBABILITIES_EXCEED_ONE"),
-    (lambda r: r["answers"]["attention"].__setitem__("score", 7), "JEV_ATTENTION_SCORE_OUT_OF_RANGE"),
-    (lambda r: r["answers"]["attention"].__setitem__("score", "high"), "JEV_ATTENTION_SCORE_NOT_NUMERIC"),
-    (lambda r: r["answers"]["attention"].__setitem__("legend", {"0": "A", "1": "B", "2": "C"}), "JEV_ATTENTION_LEGEND_MISMATCH"),
+    (lambda r: r["answers"]["market_regime"].__setitem__("probabilities", {"UNRESOLVED": 1.0}), "JEV_MARKET_REGIME_CHOICE_WITHOUT_PROBABILITY"),
+    (lambda r: r["answers"]["market_regime"]["probabilities"].update(MOMENTUM=0.9, RANGE_BOUND=0.9), "JEV_MARKET_REGIME_PROBABILITIES_INVALID_EXCEED_ONE"),
+    (lambda r: r["answers"]["attention"].pop("type"), "JEV_ATTENTION_ANSWER_INVALID"),
     (lambda r: r["answers"]["attention"].__setitem__("type", "noul"), "JEV_ATTENTION_ANSWER_INVALID"),
+    (lambda r: r["answers"]["attention"].__setitem__("score", 2.01), "JEV_ATTENTION_SCORE_OUT_OF_RANGE"),
+    (lambda r: r["answers"]["attention"].__setitem__("score", -0.01), "JEV_ATTENTION_SCORE_OUT_OF_RANGE"),
+    (lambda r: r["answers"]["attention"].__setitem__("score", 3), "JEV_ATTENTION_SCORE_OUT_OF_RANGE"),
+    (lambda r: r["answers"]["attention"].__setitem__("score", "high"), "JEV_ATTENTION_SCORE_NOT_NUMERIC"),
+    (lambda r: r["answers"]["attention"].pop("legend"), "JEV_ATTENTION_LEGEND_INVALID"),
+    (lambda r: r["answers"]["attention"].__setitem__("legend", {"0": "A", "1": "B", "2": "C"}), "JEV_ATTENTION_LEGEND_INVALID"),
+    (lambda r: r["answers"]["attention"].__setitem__("legend", {"1": "NORMAL", "2": "ELEVATED", "3": "HIGH"}), "JEV_ATTENTION_LEGEND_INVALID"),
+    (lambda r: r["answers"]["attention"].pop("probabilities"), "JEV_ATTENTION_PROBABILITIES_MISSING"),
+    (lambda r: r["answers"]["attention"].__setitem__("probabilities", {"9": 0.5}), "JEV_ATTENTION_PROBABILITIES_INVALID"),
+    (lambda r: r["answers"]["attention"].pop("confidence"), "CONFIDENCE_MISSING"),
     (lambda r: r.pop("model"), "JEV_RESPONSE_SHAPE_INVALID"),
     (lambda r: r.__setitem__("answers", []), "JEV_RESPONSE_SHAPE_INVALID"),
 ])
 def test_unexpected_or_out_of_bounds_output_fails_closed(mutate, reason):
     response = good_response()
     mutate(response)
-    if reason is None:
-        return
     result = run(transport=FakeTransport(response))
     assert result.state is IntelligenceState.INVALID_RESPONSE and result.reason == reason
     assert result.market_regime is None and result.attention is None
     assert result.to_public_dict()["answers"] is None
 
 
-def test_score_legend_indexing_zero_or_one_based():
-    zero = parse_response(good_response(score=2.0))[1]
-    assert zero.state == "HIGH"
-    one_based = good_response(score=3.0)
-    one_based["answers"]["attention"]["legend"] = {"1": "NORMAL", "2": "ELEVATED", "3": "HIGH"}
-    assert parse_response(one_based)[1].state == "HIGH"
-    no_legend = good_response(score=0.2, legend=False)
-    assert parse_response(no_legend)[1].state == "NORMAL"
+@pytest.mark.parametrize("score,level", [
+    ("0", "NORMAL"), ("0.4999", "NORMAL"), ("0.5", "ELEVATED"), ("1", "ELEVATED"),
+    ("1.4999", "ELEVATED"), ("1.5", "HIGH"), ("2", "HIGH"),
+])
+def test_score_to_level_policy_is_explicit_half_up_with_tested_boundaries(score, level):
+    from app.radar_rwa.jev_intelligence.questions import SCORE_ROUNDING, score_to_level
+    assert SCORE_ROUNDING == "ROUND_HALF_UP"  # never banker's rounding at .5 (0.5 would be NORMAL)
+    assert score_to_level(Decimal(score)) == level
+    assert parse_response(good_response(score=float(score) if "." in score else int(score)))[1].state == level
+
+
+@pytest.mark.parametrize("score", ["-0.0001", "2.0001", "3", "NaN", "Infinity"])
+def test_score_outside_level_index_range_is_rejected_not_rounded(score):
+    from app.radar_rwa.jev_intelligence.questions import score_to_level
+    with pytest.raises(ValueError, match="OUT_OF_RANGE"):
+        score_to_level(Decimal(score))
 
 
 def test_transport_failure_is_unavailable_not_fabricated():
@@ -487,11 +583,39 @@ def test_changed_evidence_bucket_makes_a_new_fingerprint_and_call():
     assert result.input_fingerprint != build().input_fingerprint
 
 
+def test_same_bucket_new_canonical_evidence_never_returns_stale_provenance():
+    """F2: identical feature buckets, different canonical observation -> new call, new provenance."""
+    cache, transport = IntelligenceCache(), FakeTransport()
+    later = NOW + timedelta(minutes=1)
+    rec_a = Recorder(cur=current(premium="35.5", retrieved=NOW))
+    rec_b = Recorder(cur=current(premium="36.0", retrieved=later))
+    fa = F.build_feature_state(current_state="AVAILABLE", current=rec_a.cur[1],
+                               ranges=rec_a.rng, points=rec_a.pts)
+    fb = F.build_feature_state(current_state="AVAILABLE", current=rec_b.cur[1],
+                               ranges=rec_b.rng, points=rec_b.pts)
+    assert fa.input_fingerprint == fb.input_fingerprint          # same buckets
+    assert fa.observation_digest != fb.observation_digest        # different canonical evidence
+
+    a = run(rec_a, transport, cache=cache)
+    b = run(rec_b, transport, cache=cache)
+    assert len(transport.calls) == 2                            # B was NOT served A's cached result
+    assert a.diagnostics.cache_status == "MISS" and b.diagnostics.cache_status == "MISS"
+    assert a.input_fingerprint == b.input_fingerprint
+    assert a.observation_digest == fa.observation_digest and b.observation_digest == fb.observation_digest
+    assert a.as_of == NOW and b.as_of == later
+    assert b.to_public_dict()["provenance"]["as_of"] == later.isoformat()
+    # The exact same observation is still a HIT, with its own (not a neighbour's) provenance.
+    again = run(rec_b, transport, cache=cache)
+    assert again.diagnostics.cache_status == "HIT" and len(transport.calls) == 2
+    assert again.observation_digest == fb.observation_digest and again.as_of == later
+
+
 def test_cache_key_covers_asset_fingerprint_schema_and_model():
-    base = ("u", "f", QUESTION_SCHEMA_VERSION, "m")
-    assert len({cache_key(*base), cache_key("u2", "f", QUESTION_SCHEMA_VERSION, "m"),
-                cache_key("u", "f2", QUESTION_SCHEMA_VERSION, "m"),
-                cache_key("u", "f", "V2", "m"), cache_key("u", "f", QUESTION_SCHEMA_VERSION, "m2")}) == 5
+    base = ("u", "f", QUESTION_SCHEMA_VERSION, "m", "d")
+    assert len({cache_key(*base), cache_key("u2", "f", QUESTION_SCHEMA_VERSION, "m", "d"),
+                cache_key("u", "f2", QUESTION_SCHEMA_VERSION, "m", "d"),
+                cache_key("u", "f", "V2", "m", "d"), cache_key("u", "f", QUESTION_SCHEMA_VERSION, "m2", "d"),
+                cache_key("u", "f", QUESTION_SCHEMA_VERSION, "m", "d2")}) == 6
     cache, transport = IntelligenceCache(), FakeTransport()
     run(Recorder(), transport, cache=cache)
     run(Recorder(), transport, cache=cache, config=JevIntelligenceConfig(mode=JevMode.VISIBLE, model="jev-x"))
@@ -820,3 +944,12 @@ def test_empty_real_ledger_fails_closed_without_a_jev_call(tmp_path, monkeypatch
         cache=IntelligenceCache(), telemetry=Telemetry(), environ={})
     assert result.reason == "INSUFFICIENT_HISTORY" and transport.calls == []
     assert not (tmp_path / "missing.db").exists()  # reading never creates a ledger
+
+
+def test_rate_limit_scope_is_described_as_process_wide_not_host_global():
+    service_src = (PACKAGE / "service.py").read_text(encoding="utf-8")
+    config_src = (PACKAGE / "config.py").read_text(encoding="utf-8")
+    assert "Process-wide" in service_src and "not host-global" in service_src
+    assert "N x" in service_src and "PROCESS" in config_src
+    for source in (service_src, config_src):
+        assert "host-wide limiter" not in source.lower() and "global limiter" not in source.lower()

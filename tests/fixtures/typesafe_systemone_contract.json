@@ -1,0 +1,29 @@
+{
+  "_comment": "Locked outbound/inbound contract for the TypeSafe System One endpoint as used by FINCO JEV V1 (POST /v1/systemone). Request: Choice takes `criteria` (mapping label -> description); Score takes `criteria` (ordered list). `options` is not a Choice request field and `legend` is a Score RESPONSE field, never a request field.",
+  "request": {
+    "top_level_required": ["model", "state", "questions"],
+    "question_types": {
+      "choice": {"required": ["type", "instructions", "criteria"], "criteria": "mapping", "forbidden": ["options", "legend", "levels"]},
+      "score": {"required": ["type", "instructions", "criteria"], "criteria": "ordered_list", "forbidden": ["options", "legend", "levels"]},
+      "noul": {"required": ["type", "instructions"], "forbidden": ["options", "legend"]}
+    }
+  },
+  "response": {
+    "top_level_required": ["model", "answers"],
+    "answer_types": {
+      "choice": {"required": ["type", "choice", "probabilities", "confidence"]},
+      "score": {"required": ["type", "score", "legend", "probabilities", "confidence"]}
+    }
+  },
+  "sample_valid_response": {
+    "model": "jev-1.13",
+    "answers": {
+      "market_regime": {"type": "choice", "choice": "RANGE_BOUND", "confidence": 0.82,
+        "probabilities": {"MOMENTUM": 0.06, "MEAN_REVERTING": 0.08, "RANGE_BOUND": 0.82, "UNRESOLVED": 0.04}},
+      "attention": {"type": "score", "score": 0.6, "confidence": 0.7,
+        "legend": {"0": "NORMAL", "1": "ELEVATED", "2": "HIGH"},
+        "probabilities": {"0": 0.45, "1": 0.45, "2": 0.10}}
+    },
+    "usage": {"input_tokens": 460}
+  }
+}

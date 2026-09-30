@@ -17,8 +17,16 @@ def clamp_ttl(seconds: int) -> int:
 
 
 def cache_key(economic_asset_uid: str, input_fingerprint: str, question_schema_version: str,
-              requested_model: str) -> tuple[str, str, str, str]:
-    return (economic_asset_uid, input_fingerprint, question_schema_version, requested_model)
+              requested_model: str, observation_digest: str) -> tuple[str, str, str, str, str]:
+    """Bind a cached result to the EXACT canonical observation it interprets.
+
+    ``input_fingerprint`` covers only coarse buckets, so different canonical evidence can share
+    it. A result carries the observation digest, as-of time and provenance of the evidence it was
+    computed from; keying on ``observation_digest`` guarantees a cache hit can never return one
+    observation's provenance for a newer observation (evidence correctness over reuse).
+    """
+    return (economic_asset_uid, input_fingerprint, question_schema_version, requested_model,
+            observation_digest)
 
 
 class _Flight:

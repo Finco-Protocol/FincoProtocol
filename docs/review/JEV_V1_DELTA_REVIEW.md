@@ -77,8 +77,13 @@ instructions contain no calculate/compute request.
 Exactly two, in one request (request body about 1.8 KB, roughly 460 input tokens by a
 characters÷4 heuristic; the provider's own count is captured in `usage`, see §6):
 
-1. `market_regime` — **Choice**: `MOMENTUM`, `MEAN_REVERTING`, `RANGE_BOUND`, `UNRESOLVED`.
-2. `attention` — **Score** (ordered legend): `NORMAL`, `ELEVATED`, `HIGH`.
+1. `market_regime` — **Choice**: `criteria` is a mapping of `MOMENTUM`, `MEAN_REVERTING`,
+   `RANGE_BOUND`, `UNRESOLVED` to descriptions.
+2. `attention` — **Score**: `criteria` is the ordered list `NORMAL`, `ELEVATED`, `HIGH`.
+
+Request contract (locked by `tests/fixtures/typesafe_systemone_contract.json` and tests): Choice
+and Score both take `criteria`. `options` is not a Choice request field and `legend` is a Score
+**response** field, never a request field; neither appears in the request.
 
 Both instructions state that the state describes the premium/discount series of an on-chain
 token reference versus a source-bound equity basis, that only the supplied buckets may be
@@ -89,6 +94,15 @@ baseline, see §4) and a movement-quality Choice (FINCO has no wallet-flow or tr
 evidence, so an organic-versus-abrupt distinction would not be evidence-backed).
 
 ### 2.4 Typed outputs
+
+Response contract (strict, no defaults): Choice requires `type = choice`, a valid `choice`,
+`probabilities` (keys within the criteria, each in [0,1], sum ≤ 1.001, containing the chosen
+option) and `confidence`. Score requires `type = score`, `score`, `legend` (exactly
+`{0: NORMAL, 1: ELEVATED, 2: HIGH}`), `probabilities` and `confidence`. A missing `type` is
+invalid, not defaulted. Score is a 0-based level index and must satisfy 0 ≤ score ≤ 2; values
+outside that range are rejected, not rounded into a label. Level policy (`ROUND_HALF_UP`, so a
+tie goes to the higher attention level): 0.4999 → NORMAL, 0.5 → ELEVATED, 1.4999 → ELEVATED,
+1.5 → HIGH, 2.0 → HIGH; the boundaries are tested.
 
 `IntelligenceResult` (`contracts.py`): state (`AVAILABLE`, `DISABLED`, `UNAVAILABLE`,
 `INVALID_RESPONSE`), reason, canonical identity, observation digest, input fingerprint, feature
@@ -114,17 +128,22 @@ request id, usage, failure category) and the disclosure text.
 
 | Behaviour | Value |
 |---|---|
-| Cache key | `(economic_asset_uid, input_fingerprint, question_schema_version, requested_model)` |
+| Cache key | `(economic_asset_uid, input_fingerprint, question_schema_version, requested_model, observation_digest)` |
 | TTL | 30 s if last pool activity ≤5m, 60 s if ≤1h, else 120 s (clamped 30–120) |
 | Coalescing | concurrent identical requests share one in-flight call |
 | What is cached | only `AVAILABLE` results; failures are never replayed as answers |
 | Per-attempt timeout / retries | 5 s / 2 retries (3 attempts); backoff 0.25 s then 0.5 s; total budget 12 s |
 | Retried | 408, 429, 5xx (including 529), timeouts, network errors; `Retry-After` honoured |
 | Not retried | 401/403 (auth), 400/404/422 (invalid request) |
-| Global limit | 30 evaluations per minute per process (env-configurable), then `JEV_RATE_LIMITED` |
+| Rate limit | **process-wide** (one Python process, not host-global): 30 evaluations per minute by default (`FINCO_JEV_MAX_EVALUATIONS_PER_MINUTE`), then `JEV_RATE_LIMITED`. With N web workers the theoretical host ceiling is about N × that value until a shared limiter exists |
 
-Because the fingerprint is over coarse buckets, a repeated read with unchanged buckets is a cache
-hit even if underlying numbers moved slightly; a bucket change forces a new call.
+The fingerprint covers only coarse buckets, and different canonical evidence can share it. A
+result carries the observation digest, evaluation clock and provenance of the evidence it
+interprets, so the key includes `observation_digest`: the same exact observation is a cache hit,
+while any different canonical evidence forces a new evaluation even if the buckets are identical.
+A regression test (same fingerprint, different digest → two provider calls, each with its own
+`observation_digest` and `as_of`) locks this. Evidence correctness is preferred over reuse; a
+consequence is that the cache saves calls only for repeated reads of the same observation.
 
 ### 2.7 Failure modes
 
@@ -202,17 +221,20 @@ are unvalidated model opinions and are presented as such.
 | Caching | see §2.6 |
 | Feature flag | `FINCO_JEV_INTELLIGENCE_ENABLED` (default `0`) |
 | Modes | OFF (default), SHADOW (enabled with no mode; evaluates through the operator function `evaluate_shadow`, telemetry only, not exposed), VISIBLE (`FINCO_JEV_INTELLIGENCE_MODE=VISIBLE`: API and panel). Unknown mode fails closed to OFF. Never silently promoted |
-| Request fan-out | one provider request per cache miss per asset, two questions per request. Panel only on the per-asset detail page, so no landing-page fan-out. Worst case is bounded by TTL (at most 2 per asset per minute) and the global limit (30 per minute per process by default) |
+| Request fan-out | one provider request per cache miss per asset, two questions per request. Panel only on the per-asset detail page, so no landing-page fan-out. Worst case is bounded per process by the process-wide limit (30 per minute by default), so the host ceiling is about N × 30 with N workers; the TTL cache only helps for repeated reads of the same exact observation |
 | Provider usage telemetry | whatever scalar `usage` fields the provider returns are recorded verbatim (closed scalar map); provider request id captured only if it matches a safe pattern |
 | Local telemetry | bounded in-memory ring plus a structured log line: outcome, cache status, latency, requested and resolved model, request id, usage, failure category |
 | Latency | vendor-reported 70–500 ms (secondary sources, **not measured here**). The page path also performs the existing live R-LIVE acquisition, so end-to-end latency is dominated by that, not by Jev |
 | Cost | **not measured**. No provider call has been made with a real key in this work. Request size is about 460 input tokens by heuristic. `telemetry.estimate_request_cost_usd` is an explicit estimate helper using a vendor-published rate that was not verified against vendor documentation; treat any monetary figure derived from it as unsupported until real `usage` data from SHADOW exists |
 
-Caveat that matters for review: the vendor documentation site was unreachable from the build
-environment, so the wire format for Choice and Score questions and answers was taken from a
-public community SDK and the vendor-independent write-ups. The first live call must therefore be
-validated in SHADOW; a format mismatch would surface as `INVALID_RESPONSE` (fail closed), not as
-wrong labels.
+Provider contract status: the vendor documentation site was unreachable from the build
+environment. The first implementation used a community SDK's shape (`options`, `legend`), which
+an independent review found to be wrong; V1 now follows the current System One schema
+(`criteria` for both Choice and Score) and locks it with a fixture and tests. **No live provider
+call has been made** (no `TYPESAFE_API_KEY` in the build environment: `LIVE_PROVIDER_SMOKE =
+SKIPPED_NO_KEY`), so the contract is validated against the documented schema, not against the
+live service. The first live call must be made in SHADOW; a mismatch would surface as
+`INVALID_RESPONSE` or an `INVALID_REQUEST` failure (fail closed), not as wrong labels.
 
 ## 6. Reuse from PR #119 (experimental, remains experimental)
 
@@ -238,7 +260,7 @@ workflow. Current R-LIVE does not provide those inputs, and V1 ships no predicti
 
 ## 7. Test and acceptance evidence
 
-`tests/test_jev_radar_intelligence.py`: 81 tests covering deterministic features (including
+`tests/test_jev_radar_intelligence.py`: 113 tests covering deterministic features (including
 missing-is-unavailable and fail-closed on stale or unavailable canonical input), exact-identity
 and substitution rejection, transport (redaction, timeout, 408, 429 with `Retry-After`, 5xx,
 auth and malformed no-retry, bounded retries, malformed and secret-echo responses, safe request
@@ -257,13 +279,14 @@ this sandbox. Full-suite result: see the PR description and the final report.
 ## 8. Known limitations and risks
 
 1. Labels are unvalidated (no ground truth); see §4.
-2. Wire format taken from a community SDK; verify with the first SHADOW call.
-3. Latency and cost are unmeasured for this workload.
+2. Provider contract aligned to the documented System One schema but not validated live; verify with the first SHADOW call.
+3. Latency and cost are unmeasured for this workload; no live call has been made.
 4. The SHADOW trigger is a callable, not wired to a scheduler.
 5. Coarse buckets mean the model sees little information; expect many `UNRESOLVED` and `NORMAL`
    answers. That is honest but limits usefulness.
 6. The panel drives one live R-LIVE acquisition plus one cached provider call per view; a public
-   unauthenticated route is protected only by the TTL cache and the global limit.
+   unauthenticated route is protected only by the same-observation cache and a process-wide limit
+   (about N × the limit across N workers).
 7. `market_regime` names could be misread as forecasts; mitigated by labelling and disclosure, not
    eliminated.
 
