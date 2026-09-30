@@ -225,7 +225,7 @@ def test_h7_worker_multiplication_is_explicit_and_process_local():
     assert WEB_WORKERS >= 1
     assert EFFECTIVE_HOST_MAX == PROCESS_ACQUISITION_LIMIT * WEB_WORKERS
     assert MAX_COALESCED_CALLERS >= 20
-    assert PER_CLIENT_RATE_LIMIT == "NOT_IMPLEMENTED"
+    assert PER_CLIENT_RATE_LIMIT == "PROCESS_LOCAL"  # P0-B: bounded process-local per-client control
 
 
 def test_h7_public_route_returns_429_service_busy_not_market_unavailable(monkeypatch):

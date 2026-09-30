@@ -49,6 +49,8 @@ no DB writes).
 """
 from __future__ import annotations
 
+from app.runtime.model_execution import ModelExecutionBusy as _ModelBusy, run_model_thread as _run_model_thread
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -265,7 +267,7 @@ async def execute_compare_route(
     results: dict[str, dict] = {}
     for sc in deps.scenarios:
         try:
-            r = deps.run_project(runtime_project_key, sc, project_inputs_override=override)
+            r = await _run_model_thread(deps.run_project, runtime_project_key, sc, project_inputs_override=override)
             results[sc] = {
                 "project_irr": r["kpis"].get("project_irr"),
                 "equity_irr": r["kpis"].get("equity_irr"),
@@ -274,6 +276,8 @@ async def execute_compare_route(
                 "total_revenue_keur": r["kpis"].get("total_revenue_keur"),
                 "total_ebitda_keur": r["kpis"].get("total_ebitda_keur"),
             }
+        except _ModelBusy:  # P0-A: capacity BUSY is not an application error; let the 429 handler answer
+            raise
         except Exception as e:  # noqa: BLE001
             # Soft-error semantics: failing scenario becomes {"error": str(e)}
             # and the loop continues (does not short-circuit).

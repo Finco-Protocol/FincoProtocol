@@ -368,7 +368,17 @@ def get_validation(project_id: str, request: Request):
     if get_project(project_id, user_id) is None:
         return _not_found(project_id)
 
-    state, evidence = _svc.get_institutional_validation(user_id, project_id)
+    # P0-A: reference validation is model work. Same process-wide admission gate; typed 429 when busy.
+    from fastapi.responses import JSONResponse as _JSON
+    from app.runtime.model_execution import (
+        BUSY_CODE, BUSY_MESSAGE, ModelExecutionBusy, get_model_executor,
+    )
+    try:
+        with get_model_executor().admit_inline():
+            state, evidence = _svc.get_institutional_validation(user_id, project_id)
+    except ModelExecutionBusy:
+        return _JSON(status_code=429, headers={"Retry-After": "5"},
+                     content={"state": BUSY_CODE, "message": BUSY_MESSAGE})
     return _envelope(state, {}, project_id=project_id, evidence=evidence)
 
 
@@ -430,7 +440,12 @@ def get_r_live(uid: str):
     UID must be exact canonical_id (chain:address) — no ticker/fuzzy identity.
     User session is NOT required: R-LIVE is a reference surface.
     """
-    state, data = _svc.get_r_live(uid)
+    from app.radar_rwa.r_live_public_acquisition import R_LIVE_SERVICE_BUSY, RLiveServiceBusy
+    try:
+        state, data = _svc.get_r_live(uid)
+    except RLiveServiceBusy:
+        return JSONResponse(status_code=429, headers={"Retry-After": "5", "Cache-Control": "no-store"},
+                            content={"state": "SERVICE_BUSY", "reason": R_LIVE_SERVICE_BUSY})
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(

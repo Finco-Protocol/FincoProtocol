@@ -171,7 +171,10 @@ def evaluate_intelligence(
 
     try:
         current_state, current = current_provider(canonical_id)
-    except Exception:
+    except Exception as exc:
+        # Overload of the shared bounded R-LIVE coordinator is operational, not a market state.
+        if type(exc).__name__ == "RLiveServiceBusy":
+            return fail("R_LIVE_SERVICE_BUSY")
         return fail("CANONICAL_CURRENT_UNAVAILABLE")
     if not isinstance(current, Mapping):
         return fail("CANONICAL_CURRENT_UNAVAILABLE")

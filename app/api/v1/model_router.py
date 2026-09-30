@@ -233,8 +233,29 @@ def post_model_reference_run(
             "Model run capacity currently exhausted. Retry shortly.",
             error="MODEL_RUN_CAPACITY_EXHAUSTED",
         )
+    # P0-A: this is a plain ``def`` route (already off the event loop) but the run is still ~20 s of
+    # CPU. Execute it in the shared bounded model executor so concurrency is one number for the
+    # whole process. Worker failures come back as a picklable envelope (ModelWorkerError).
+    from app.runtime.model_execution import (
+        BUSY_CODE, BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
+        ModelWorkerError, run_model_process_sync,
+    )
     try:
-        data = _run.build_run_response_data(reference_key, capacity_mw)
+        data = run_model_process_sync(_run.build_run_response_data, reference_key, capacity_mw)
+    except ModelExecutionBusy:
+        return JSONResponse(
+            status_code=429, headers={"Retry-After": "5"},
+            content={"api_version": API_VERSION, "error": BUSY_CODE, "detail": BUSY_MESSAGE},
+        )
+    except (ModelExecutionTimeout, ModelExecutionFailed):
+        return _run_unavailable("The calculation could not be completed. Retry shortly.")
+    except ModelWorkerError as exc:
+        detail = exc.detail or exc.message or "Model run unavailable."
+        if exc.error_type == "CleanNotReadyError":
+            return _run_unavailable(detail, error="MODEL_RUN_NOT_READY")
+        if exc.error_type in ("CleanProductionRunUnavailable", "ProductionAuthorityResolutionError"):
+            return _run_unavailable(detail)
+        return _run_unavailable("The calculation could not be completed. Retry shortly.")
     except CleanNotReadyError as exc:
         return _run_unavailable(exc.detail, error="MODEL_RUN_NOT_READY")
     except (CleanProductionRunUnavailable, ProductionAuthorityResolutionError) as exc:

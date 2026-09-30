@@ -82,6 +82,22 @@
   });
 }());
 
+// P0-A: calculation capacity BUSY is a real HTTP 429 (not a calculation failure). HTMX does not
+// swap 4xx responses by default, so swap only a 429 that carries the model-busy marker header;
+// the fragment is a user-safe banner ("Calculation capacity is currently busy. Please retry.").
+(function () {
+  window.v2ShouldSwapModelBusyResponse = function (event) {
+    var xhr = (event && event.detail && event.detail.xhr) || {};
+    return xhr.status === 429 && typeof xhr.getResponseHeader === 'function' &&
+      xhr.getResponseHeader('X-Finco-Model-Busy') === '1';
+  };
+  document.addEventListener('htmx:beforeSwap', function (event) {
+    if (!window.v2ShouldSwapModelBusyResponse(event)) return;
+    event.detail.shouldSwap = true;
+    event.detail.isError = false;
+  });
+}());
+
 // ── Field editor: pending / saving / saved / error state machine ──────────
 (function () {
   if (window.__v2FieldEditorInitialised) return;

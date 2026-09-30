@@ -2279,12 +2279,35 @@ async def v2_workbook_run(
         override = _dc_replace(override, opex=folded_opex)
 
     # ── Step 11: run the engine ────────────────────────────────────────────── #
+    # P0-A: the calculation runs in the bounded model executor (worker process), never on the
+    # event loop. The final CAS (v2_atomic_run_commit, step 12) is unchanged and runs only after
+    # the calculation returns, so a stale calculation still fails closed.
+    from app.runtime.model_execution import (
+        BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
+        run_model_process,
+    )
     try:
-        result = run_project(
+        result = await run_model_process(
+            run_project,
             runtime_project_key,
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
         )
+    except ModelExecutionBusy:
+        # BUSY != CALCULATION_FAILED: nothing ran, nothing changed, safe to retry.
+        if is_htmx:
+            busy = _htmx_error(BUSY_MESSAGE, ws)
+            busy.status_code = 429
+            busy.headers["Retry-After"] = "5"
+            busy.headers["X-Finco-Model-Busy"] = "1"
+            return busy
+        return JSONResponse({"state": "MODEL_EXECUTION_BUSY", "message": BUSY_MESSAGE},
+                            status_code=429, headers={"Retry-After": "5"})
+    except (ModelExecutionTimeout, ModelExecutionFailed):
+        import logging
+        logging.getLogger(__name__).error("v2_workbook_run: executor failure or timeout")
+        msg = "The calculation could not be completed. Nothing was saved; please retry."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
@@ -2647,8 +2670,19 @@ async def v2_trust_validation_fragment(request: Request, project: str):
             "<span class=\"v2-trust-chip v2-trust-chip--unavailable\">UNAVAILABLE</span> "
             "No committed Last Run — validation evidence is unavailable.</div>"
         ))
+    # P0-A: the Reference Regression Check runs the P1.3 reconciliation (model work). Bounded
+    # thread offload behind the shared admission gate; never on the event loop.
+    from app.runtime.model_execution import BUSY_MESSAGE, ModelExecutionBusy, run_model_thread
     try:
-        section = build_validation_fragment(workspace_owner, project_record.project_id)
+        section = await run_model_thread(
+            build_validation_fragment, workspace_owner, project_record.project_id)
+    except ModelExecutionBusy:
+        return HTMLResponse(
+            content=(f"<div class=\"v2-trust-note\" data-testid=\"trust-pack-validation-busy\">"
+                     f"<span class=\"v2-trust-chip v2-trust-chip--unavailable\">UNAVAILABLE</span> "
+                     f"{BUSY_MESSAGE}</div>"),
+            status_code=429, headers={"Retry-After": "5", "X-Finco-Model-Busy": "1"},
+        )
     except Exception:
         section = {"state": "UNAVAILABLE"}
     return _templates.TemplateResponse(
@@ -3456,33 +3490,56 @@ async def v2_scenario_sensitivity_run(
             if folded_opex is not pi_override.opex:
                 pi_override = _dc_replace(pi_override, opex=folded_opex)
 
-            eng_result = run_project(
-                runtime_key,
-                "Base",
-                project_inputs_override=pi_override,
-            )
-            kpis_raw = eng_result.get("kpis", {})
-            # Build canonical OutputMetricProjection for each KPI.
-            step_metrics = {}
-            for _key, _label, _unit, _fmt_code, _src in KPI_CATALOG:
-                step_metrics[_key] = build_output_metric_projection(
-                    _key, kpis_raw.get(_key), freshness="current"
-                )
-            # Compatibility: derived formatted/raw dicts from metrics.
-            formatted_kpis = {k: m.display_value for k, m in step_metrics.items()}
-            results.append({
-                "label": step_label,
-                "status": "OK",
-                "metrics": step_metrics,
-                "kpis": formatted_kpis,
-                "kpis_raw": {k: m.raw_value for k, m in step_metrics.items()},
-            })
+            # P0-A: do not run the engine inline. Queue the point; the whole grid executes as ONE
+            # admitted, ordered task in the model executor (see below).
+            results.append({"label": step_label, "status": "PENDING", "_pi": pi_override})
 
         except Exception as exc:
             _logging.getLogger(__name__).exception(
                 "sensitivity_run: driver=%s step=%s project=%s", driver, step, project
             )
             results.append({"label": step_label, "status": "FAILED", "error": str(exc)[:120], "kpis": {}})
+
+    # ── P0-A: execute the queued points as one bounded task, preserving step order ────────── #
+    from app.runtime.model_execution import (
+        BUSY_MESSAGE as _BUSY_MESSAGE, ModelExecutionBusy as _Busy, run_model_process as _run_proc,
+    )
+    from app.services.sensitivity_execution import (
+        run_sensitivity_points as _run_points, sensitivity_grid_size_error as _grid_error,
+    )
+    _pending = [r for r in results if r.get("status") == "PENDING"]
+    _size_error = _grid_error(len(_pending))
+    if _size_error:
+        return HTMLResponse(content=f"<p>{_size_error}</p>", status_code=422)
+    if _pending:
+        try:
+            _outputs = await _run_proc(_run_points, runtime_key, [r["_pi"] for r in _pending])
+        except _Busy:
+            return HTMLResponse(
+                content=f"<p>{_BUSY_MESSAGE}</p>", status_code=429,
+                headers={"Retry-After": "5", "X-Finco-Model-Busy": "1"},
+            )
+        except Exception:
+            _logging.getLogger(__name__).exception(
+                "sensitivity_run: executor failure driver=%s project=%s", driver, project)
+            _outputs = [{"error": "Calculation could not be completed."}] * len(_pending)
+        for _r, _out in zip(_pending, _outputs):
+            _r.pop("_pi", None)
+            if "error" in _out:
+                _r.update(status="FAILED", error=_out["error"], kpis={})
+                continue
+            kpis_raw = _out.get("kpis", {})
+            step_metrics = {}
+            for _key, _label, _unit, _fmt_code, _src in KPI_CATALOG:
+                step_metrics[_key] = build_output_metric_projection(
+                    _key, kpis_raw.get(_key), freshness="current"
+                )
+            _r.update(
+                status="OK",
+                metrics=step_metrics,
+                kpis={k: m.display_value for k, m in step_metrics.items()},
+                kpis_raw={k: m.raw_value for k, m in step_metrics.items()},
+            )
 
     # Non-destructive proof: pis_base.values must be unchanged by sensitivity execution.
     # If sensitivity accidentally mutated shared state, this will catch it at runtime.
