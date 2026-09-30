@@ -36,8 +36,9 @@ jobs:
       # Synthetic CI-only values. No deployment secrets are used by this workflow.
       FINCO_SECRET_KEY: ci_h6_non_placeholder_secret_key_0123456789abcdef0123456789abcdef
       FINCO_ADMIN_USER: ci-admin
-      FINCO_ADMIN_PASSWORD: ci-h6-password
-      FINCO_COOKIE_SECURE: "false"
+      FINCO_ADMIN_PASSWORD: ci-h6-fixture-9c4e7a1b2d0f
+      FINCO_APP_MODE: pilot
+      FINCO_COOKIE_SECURE: "true"
       FINCO_DB_PATH: /tmp/finco-h6.db
       FINCO_WEB_HOST: 127.0.0.1
       FINCO_WEB_PORT: "8765"
@@ -91,6 +92,31 @@ jobs:
           grep -Fq 'FINCO_SECRET_KEY' /tmp/finco-h6-missing.stderr
           if grep -Fq "$FINCO_SECRET_KEY" /tmp/finco-h6-missing.stderr; then
             echo "ERROR: configuration value leaked to stderr" >&2
+            exit 1
+          fi
+
+      - name: Secure mode is mandatory (P0-C)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for BAD in "" development internal; do
+            set +e
+            FINCO_APP_MODE="$BAD" /bin/bash deploy/scripts/run_web.sh >/tmp/finco-p0c-mode.out 2>/tmp/finco-p0c-mode.err
+            RC=$?
+            set -e
+            test "$RC" -eq 78
+            if grep -Fq "$FINCO_SECRET_KEY" /tmp/finco-p0c-mode.err; then
+              echo "ERROR: configuration value leaked to stderr" >&2
+              exit 1
+            fi
+          done
+          set +e
+          FINCO_ADMIN_PASSWORD='FINCO Model2026!' /bin/bash deploy/scripts/run_web.sh >/tmp/finco-p0c-admin.out 2>/tmp/finco-p0c-admin.err
+          RC=$?
+          set -e
+          test "$RC" -eq 78
+          if grep -Fq 'FINCO Model2026' /tmp/finco-p0c-admin.err; then
+            echo "ERROR: default credential echoed to stderr" >&2
             exit 1
           fi
 

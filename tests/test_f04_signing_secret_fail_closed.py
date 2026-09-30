@@ -155,6 +155,8 @@ def test_unrecognized_mode_with_valid_secret_starts():
     proc = _run_startup({
         "FINCO_APP_MODE": "production",
         "FINCO_SECRET_KEY": VALID_SECRET_A,
+        # P0-C: an unrecognized mode is a secure mode, so a real admin credential is required too.
+        "FINCO_ADMIN_PASSWORD": VALID_OPERATOR_PASSPHRASE,
     })
     _assert_started(proc, "unrecognized mode + valid secret")
     _assert_no_secret_values(proc)

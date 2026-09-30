@@ -16,10 +16,26 @@ for var in "${required_vars[@]}"; do
     fi
 done
 
+# P0-C: production is always the secure app mode. Checked here (not only in app/auth.py) so a
+# misconfiguration exits with a typed status before any worker is spawned. No values are printed.
+if [[ "${FINCO_APP_MODE:-}" != "pilot" ]]; then
+    echo "ERROR: FINCO_APP_MODE must be exactly 'pilot' for the production launcher" >&2
+    exit 78
+fi
+
 if [[ "$FINCO_SECRET_KEY" == "changeme"* ]]; then
     echo "ERROR: FINCO_SECRET_KEY is still a placeholder value" >&2
     exit 78
 fi
+
+if [[ "${FINCO_ADMIN_PASSWORD:-}" == "changeme"* ]]; then
+    echo "ERROR: FINCO_ADMIN_PASSWORD is still a placeholder value" >&2
+    exit 78
+fi
+
+# Application-level startup validation (secrets, admin credential, cookie policy, model execution
+# configuration) runs BEFORE uvicorn forks workers, so a bad configuration fails once and typed.
+# The interpreter is resolved below; this check is repeated after PYTHON_BIN is known.
 
 HOST="${FINCO_WEB_HOST:-127.0.0.1}"
 PORT="${FINCO_WEB_PORT:-8000}"
@@ -52,6 +68,11 @@ if ! "$PYTHON_BIN" -c 'import uvicorn' >/dev/null 2>&1; then
     echo "ERROR: uvicorn is unavailable in the production virtual environment" >&2
     echo "Install the repository-declared dependencies before starting the service" >&2
     exit 70
+fi
+
+if ! "$PYTHON_BIN" -c 'import app.auth' >/dev/null 2>&1; then
+    echo "ERROR: secure startup validation failed (see FINCO_APP_MODE, FINCO_SECRET_KEY, FINCO_ADMIN_*, FINCO_COOKIE_SECURE); values are never printed" >&2
+    exit 78
 fi
 
 exec "$PYTHON_BIN" -m uvicorn main_web:app \

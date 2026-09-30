@@ -11,6 +11,12 @@ WorkingDirectory=/opt/finco_protocol
 # The service manager owns production environment loading. run_web.sh validates
 # mandatory configuration without printing values.
 EnvironmentFile=/opt/finco_protocol/.env
+# P0-C: production is ALWAYS the secure app mode. This is set here, not only in .env, so a
+# forgotten variable can never silently start the development mode. NOTE: systemd applies
+# EnvironmentFile AFTER Environment=, so an .env value would override this line; run_web.sh
+# therefore refuses to start unless the effective FINCO_APP_MODE is exactly "pilot".
+Environment=FINCO_APP_MODE=pilot
+Environment=PYTHONDONTWRITEBYTECODE=1
 Environment="PATH=/opt/finco_protocol/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Canonical repository-provided ASGI command. CI starts this same launcher.
@@ -21,8 +27,38 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45
 
-# Security: no new privileges
+# ── Sandboxing (P0-C) ────────────────────────────────────────────────────────
+# Validate on the host with:  systemd-analyze security finco-web.service
 NoNewPrivileges=true
+UMask=0077
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+# The only writable locations. "-" tolerates a path that does not exist yet.
+# storage/ = SQLite (FINCO_DB_PATH), data/ = app data and SQLite backups,
+# /var/lib/finco = R-LIVE/B1.3 ledger shared with the collector.
+ReadWritePaths=-/opt/finco_protocol/storage -/opt/finco_protocol/data -/var/lib/finco
+
+# Deliberately NOT enabled (documented in docs/review/P0_PUBLIC_BETA_RUNTIME_GATE.md §L):
+#   PrivateDevices    - worker-process pool needs POSIX semaphores in /dev/shm.
+#   MemoryDenyWriteExecute - CPython extension modules (ctypes/libffi, numpy) may need W+X mappings.
+#   SystemCallFilter  - not validated against the full dependency set on the target host.
+#   PrivateNetwork    - the service must reach the network (RPC, market data providers).
+#   ProtectProc/ProcSubset - process pool + diagnostics; low value against the risk of breaking spawn.
 
 [Install]
 WantedBy=multi-user.target
