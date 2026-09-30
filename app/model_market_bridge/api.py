@@ -26,6 +26,12 @@ router = APIRouter()
 _ENABLED_ENV = "FINCO_MODEL_MARKET_BRIDGE_API_ENABLED"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
+# Hard raw-body cap for the validation spike, enforced BEFORE JSON decoding.
+# Justified small value: the contract admits 13 known fields x <=256-char
+# values (< 4 KiB of legitimate input); 64 KiB leaves generous headroom
+# while bounding ingress memory per request.
+_MAX_BODY_BYTES = 64 * 1024
+
 # Bounded-input contract for the validate spike: known keys only, and every
 # value size-capped.  Oversized/unknown input is MALFORMED_BINDING, never an
 # unbounded public body parse.
@@ -41,6 +47,35 @@ _MAX_BODY_KEYS = len(_ALLOWED_KEYS)
 
 def _enabled() -> bool:
     return os.getenv(_ENABLED_ENV, "0").strip().lower() in _TRUTHY
+
+
+async def _read_bounded_body(request: Request, cap: int = _MAX_BODY_BYTES):
+    """Read the raw request body under a hard byte cap.
+
+    Ingress boundary, enforced BEFORE any JSON decoding:
+      1. Content-Length precheck when the header is present;
+      2. bounded streaming for chunked / no-Content-Length bodies —
+         consumption stops as soon as the cap is exceeded.
+
+    Returns ``(body_bytes, too_large)``.  ``too_large`` is True the moment
+    the cap is exceeded; the excess bytes are never consumed.
+    """
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > cap:
+                return b"", True
+        except ValueError:
+            return b"", True  # malformed Content-Length is not admissible
+
+    total = 0
+    chunks: list[bytes] = []
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > cap:
+            return b"", True  # stop consuming immediately
+        chunks.append(chunk)
+    return b"".join(chunks), False
 
 
 def _disabled_response() -> JSONResponse:
@@ -101,11 +136,27 @@ def get_model_market_binding(model_asset_uid: str):
 async def validate_model_market_binding(request: Request):
     """Validate a candidate binding structure against the V1 contract.
 
-    Bounded, read-only structural validation: known keys only, size-capped
-    values, sanitized errors.  Nothing is persisted or promoted.
+    Ingress boundary FIRST: a hard raw-body byte cap (Content-Length
+    precheck + bounded streaming that stops consuming once over the cap) is
+    enforced BEFORE any JSON decoding.  Then bounded, read-only structural
+    validation: known keys only, size-capped values, sanitized errors.
+    Nothing is persisted or promoted.
     """
     if not _enabled():
         return _disabled_response()
+
+    # ── Ingress boundary: raw-body admission BEFORE JSON parsing ─────────
+    # Read cap at call time so tests (and ops) can adjust without rebinding.
+    body, too_large = await _read_bounded_body(request, cap=_MAX_BODY_BYTES)
+    if too_large:
+        # Sanitized 413; the request content is never echoed.
+        return JSONResponse(status_code=413, content={
+            "api_version": "v1.1",
+            "surface": "EXPERIMENTAL_MODEL_MARKET_BRIDGE_V1",
+            "error": "REQUEST_TOO_LARGE",
+            "detail": f"request body exceeds the {_MAX_BODY_BYTES}-byte "
+                      "validation-spike limit",
+        })
 
     from app.model_market_bridge import (
         BindingStatus, DeploymentIdentity, EvidenceState,
@@ -122,8 +173,11 @@ async def validate_model_market_binding(request: Request):
             "detail": detail,
         })
 
+    # ── Parse only AFTER raw-body admission ──────────────────────────────
+    import json as _json
+
     try:
-        candidate = await request.json()
+        candidate = _json.loads(body)
     except Exception:
         return _malformed("request body must be a JSON object")
     if not isinstance(candidate, dict):

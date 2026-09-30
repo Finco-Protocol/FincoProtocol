@@ -543,6 +543,107 @@ class TestExperimentalApiSurface:
         r5 = client.post("/api/v1.1/model-market-bindings/validate", json=bad_addr)
         assert r5.json()["valid"] is False
 
+    def test_oversized_body_rejected_before_binding_construction(self, client, monkeypatch):
+        """CORRECTION B regression: an oversized request must be rejected at
+        the raw-body ingress boundary (413 REQUEST_TOO_LARGE) BEFORE any
+        JSON decoding, and the ModelMarketBindingV1 constructor /
+        structural-evaluation path is never reached."""
+        from app import model_market_bridge as bridge_pkg
+        import app.model_market_bridge.api as bridge_api
+
+        monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
+        # Spy: any attempt to construct a binding fails the test loudly.
+        calls = []
+        real_binding = bridge_pkg.ModelMarketBindingV1
+
+        def _spy(*args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("ModelMarketBindingV1 must not be constructed "
+                                 "for an over-cap request")
+        monkeypatch.setattr(bridge_pkg, "ModelMarketBindingV1", _spy)
+
+        # Valid JSON that is simply too large (> 64 KiB raw body).
+        big = {
+            "model_asset_uid": _MODEL,
+            "padding": "x" * (64 * 1024 + 1),
+        }
+        r = client.post("/api/v1.1/model-market-bindings/validate", json=big)
+        assert r.status_code == 413, r.status_code
+        assert r.json()["error"] == "REQUEST_TOO_LARGE"
+        # Request content is not echoed.
+        assert "xxxx" not in r.text
+        # The binding constructor was never reached.
+        assert calls == []
+
+        # Restore the real constructor, then prove an under-cap body still
+        # parses normally (the spy only guards the over-cap path).
+        monkeypatch.setattr(bridge_pkg, "ModelMarketBindingV1", real_binding)
+        small = {
+            "model_asset_uid": _MODEL, "model_asset_kind": "PROJECT_INSTANCE",
+            "economic_asset_uid": _UID, "chain_id": _CHAIN,
+            "contract_address": _TOKEN, "market_evidence_authority": "SYN",
+            "market_evidence_ref": "DIGEST", "observed_at": "2026-10-01T12:00:00Z",
+            "provenance_type": "CANONICAL_REGISTRY_RECORD", "provenance_ref": "ref-1",
+        }
+        r2 = client.post("/api/v1.1/model-market-bindings/validate", json=small)
+        assert r2.status_code == 200 and r2.json()["valid"] is True
+        assert calls == []  # over-cap request never reached the constructor
+
+    def test_oversized_body_rejected_with_tiny_cap_and_no_content_length(self, client, monkeypatch):
+        """Content-Length precheck plus bounded streaming for bodies without
+        a Content-Length header: consumption stops at the cap."""
+        import inspect
+
+        import app.model_market_bridge.api as bridge_api
+        from app.model_market_bridge import EvidenceState
+
+        monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
+        monkeypatch.setattr(bridge_api, "_MAX_BODY_BYTES", 64)
+
+        body = ("{\"model_asset_uid\": \"" + "x" * 200 + "\"}").encode()
+
+        # 1) Real endpoint over an httpx body (Content-Length present): 413.
+        r = client.post("/api/v1.1/model-market-bindings/validate", content=body,
+                        headers={"Content-Type": "application/json"})
+        assert r.status_code == 413
+        assert r.json()["error"] == "REQUEST_TOO_LARGE"
+
+        # 2) Chunked / no-Content-Length path: drive _read_bounded_body with
+        #    a fake request whose headers omit content-length.
+        import asyncio
+
+        consumed = {"bytes": 0, "chunks": 0}
+
+        class _FakeRequest:
+            headers = {}  # no Content-Length
+
+            def __init__(self, payload):
+                self._chunks = [payload[i:i + 32] for i in range(0, len(payload), 32)]
+
+            async def stream(self):
+                for chunk in self._chunks:
+                    consumed["chunks"] += 1
+                    consumed["bytes"] += len(chunk)
+                    yield chunk
+
+        fake = _FakeRequest(body)
+        body_bytes, too_large = asyncio.run(
+            bridge_api._read_bounded_body(fake, cap=64))
+        assert too_large is True
+        assert body_bytes == b""
+        # Bounded streaming stopped consuming at/just after the cap.
+        assert consumed["bytes"] <= 64 + 32, consumed
+
+        # Under-cap body with no Content-Length is admitted intact.
+        small = b'{"a": 1}'
+        fake_small = _FakeRequest(small)
+        body_bytes, too_large = asyncio.run(
+            bridge_api._read_bounded_body(fake_small, cap=64))
+        assert too_large is False and body_bytes == small
+
+        # EvidenceState import used by the endpoint remains intact.
+        assert EvidenceState is not None
+
     def test_validate_never_produces_source_proven(self, client, monkeypatch):
         monkeypatch.setenv("FINCO_MODEL_MARKET_BRIDGE_API_ENABLED", "1")
         good = {
