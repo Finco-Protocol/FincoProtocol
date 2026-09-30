@@ -64,10 +64,10 @@ _REQUIRED_MARKERS = [
     "75.0%",        # gearing
     "50",           # operating periods
     # Engine-reconciled canonical reference values (not "live engine numbers")
-    "11.56%",       # Project IRR
-    "50.47%",       # Equity IRR (EQUITY_ONLY)
-    "17.90%",       # Total Sponsor XIRR
-    "24,750",       # senior debt kEUR
+    "11.77%",       # Project IRR (Opus H-1 rebaseline)
+    "45.95%",       # Share-capital IRR (equity only)
+    "16.61%",       # Total Sponsor XIRR
+    "26,983",       # senior debt kEUR
     "147,815",      # total EBITDA kEUR
     "123,129",      # total CFADS kEUR
     # Sources & Uses reconciliation
