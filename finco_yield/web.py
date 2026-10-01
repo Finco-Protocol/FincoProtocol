@@ -188,6 +188,7 @@ async def yield_explore(
         context={
             "rows": view_rows,
             "saved_uids": saved_uids,
+            "user": user,
             "csrf_token": generate_csrf_token(),
             "filters": {
                 "chain_id": chain_id,

@@ -25,7 +25,20 @@ ALERTS_INTEGRATION_PENDING = "ALERTS_INTEGRATION_PENDING"
 @dataclass(frozen=True)
 class AlertsSnapshot:
     """Typed alerts state for presentation. ``available`` is False until a
-    real gateway is connected; ``unread_count`` is None when unknown."""
+    real gateway is connected; ``unread_count`` is None when unknown.
+
+    Normalized public item contract (what the Crypto page renders — all
+    fields optional except ``alert_id``; the gateway owns the real shape):
+
+        alert_id            stable alert identifier (required)
+        alert_type          typed alert kind, e.g. YIELD_RATE_CHANGE
+        opportunity_uid     canonical yld_* opportunity identity, if applicable
+        opportunity_display display name for that opportunity, if provided
+        summary             descriptive change summary text
+        value               presentation value string, if provided
+        created_at / observed_at  timestamps, if provided
+        read                True when already read
+    """
 
     available: bool
     reason: str | None
@@ -40,6 +53,13 @@ class AlertsSnapshot:
             "unread_count": self.unread_count,
             "items": list(self.items),
         }
+
+
+def auth_required_snapshot() -> AlertsSnapshot:
+    """Typed state for anonymous users: the gateway is NEVER called with an
+    empty/anonymous identity, and unknown unread is never rendered as zero."""
+    return AlertsSnapshot(available=False, reason="ALERTS_AUTH_REQUIRED",
+                          unread_count=None, items=())
 
 
 class AlertsGateway(Protocol):

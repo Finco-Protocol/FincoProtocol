@@ -93,12 +93,65 @@
 
   <section class="panel" data-testid="crypto-alerts" style="padding:14px;margin-bottom:14px">
     <h2 style="font-size:14px;margin:0 0 8px">Alerts</h2>
-    <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts_state }}</span>
+    <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts.state }}</span>
        <span class="badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
-    <p class="muted small" style="margin:6px 0 0">
-      In-app alert engine: integration pending. External notifications (email, Telegram, Discord,
-      push): NOT SHIPPED. The watchlist above is the foundation alerts will consume — no notification
-      is sent today and nothing on this page implies otherwise.
+    {% if alerts.reason %}<p class="mono small" style="margin:6px 0 0">{{ alerts.reason }}</p>{% endif %}
+
+    {% if alerts.available %}
+    <p class="small" style="margin:8px 0 0">In-app alerts: available</p>
+    {% if alerts['items'] %}
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px">Alert</th>
+        <th style="text-align:left;padding:6px 8px">Opportunity</th>
+        <th style="text-align:left;padding:6px 8px">Summary</th>
+        <th style="text-align:left;padding:6px 8px">Time</th>
+        <th style="text-align:left;padding:6px 8px">State</th>
+      </tr></thead>
+      <tbody>
+      {% for alert in alerts['items'] %}
+        <tr data-testid="alerts-item" style="border-top:1px solid rgba(255,255,255,.08)">
+          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span></td>
+          <td style="padding:8px">{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}
+              {% if alert.opportunity_display %}<br><span class="small">{{ alert.opportunity_display }}</span>{% endif %}</td>
+          <td style="padding:8px">{{ alert.summary or '—' }}
+              {% if alert.value %}<br><span class="mono small">{{ alert.value }}</span>{% endif %}</td>
+          <td style="padding:8px"><span class="mono small">{{ alert.created_at or alert.observed_at or '—' }}</span></td>
+          <td style="padding:8px">
+            <span class="badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
+            {% if not alert.read %}
+            <form method="post" action="/crypto/alerts/{{ alert.alert_id }}/read">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" data-testid="alert-mark-read">Mark read</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if alerts.unread_count %}
+    <form method="post" action="/crypto/alerts/read-all" style="margin-top:8px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" data-testid="alerts-mark-all-read">Mark all read</button>
+    </form>
+    {% endif %}
+    {% else %}
+    <p class="muted small" style="margin:8px 0 0">No alerts for your account yet.</p>
+    {% endif %}
+    {% else %}
+    <p class="small" style="margin:8px 0 0">
+      {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}
+      Sign in to view your alerts.
+      {% else %}
+      In-app alerts: integration pending / unavailable.
+      {% endif %}
+    </p>
+    {% endif %}
+
+    <p class="muted small" style="margin:10px 0 0">
+      In-app alerts: {{ 'available' if alerts.available else 'integration pending / unavailable' }}.
+      External delivery: Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.
     </p>
   </section>
 

@@ -105,6 +105,20 @@ def test_wallet_verified_state(client, monkeypatch):
 
 # ── Resource states: real evaluator, default env ──────────────────────────────
 
+def test_anonymous_resource_truth_basic_public_holder_not_activated(client):
+    """Issue A: anonymous visitors still get canonical authority —
+    yield.basic stays PUBLIC and holder resources stay NOT_ACTIVATED
+    (gating off); nothing degrades to UNAVAILABLE for lack of a session."""
+    html = client.get("/crypto").text
+    basic_row = html.split('data-testid="crypto-access-row-yield.basic"', 1)[1][:400]
+    assert "PUBLIC" in basic_row
+    for key in ("yield.history", "yield.advanced_compare",
+                "yield.execution_preflight"):
+        row = html.split(f'data-testid="crypto-access-row-{key}"', 1)[1][:400]
+        assert "NOT_ACTIVATED" in row, key
+        assert "UNAVAILABLE" not in row, key
+
+
 def test_gating_inactive_by_default_presents_not_activated(client, monkeypatch):
     """Token gating is not active by default: gated capabilities present
     NOT_ACTIVATED (no active gate denied anyone) while Basic Yield is PUBLIC."""
@@ -209,10 +223,14 @@ def test_watchlist_anonymous_zero(client):
 
 # ── Alerts consumption boundary ───────────────────────────────────────────────
 
-def test_alerts_placeholder_integration_pending(client):
+def test_alerts_anonymous_locked_without_gateway_call(client):
+    """Anonymous: typed LOCKED / ALERTS_AUTH_REQUIRED — the gateway is never
+    called with an empty identity, and unknown unread is never zero."""
     html = client.get("/crypto").text
-    assert 'data-testid="alerts-state">NOT_ACTIVATED<' in html
-    assert "integration pending" in html
+    assert 'data-testid="alerts-state">LOCKED<' in html
+    assert "ALERTS_AUTH_REQUIRED" in html
+    assert "Sign in to view your alerts" in html
+    assert "unread —" in html  # unknown, never fabricated zero
     assert "NOT SHIPPED" in html
 
 
@@ -329,3 +347,270 @@ def test_no_hype_copy_and_no_fabricated_quantities(client, monkeypatch, path):
     # thresholds never leak
     assert "minimum_balance" not in html
     assert "threshold" not in lowered
+
+
+# ── Issue B: the alerts gateway is never called with an empty identity ───────
+
+def test_anonymous_crypto_never_calls_alerts_gateway(client, monkeypatch):
+    """A gateway that raises on ANY call: anonymous /crypto must succeed
+    without a single snapshot('') invocation."""
+    from app.crypto_alerts import set_alerts_gateway
+
+    class _RaisingGateway:
+        def snapshot(self, user_id):
+            raise AssertionError(f"gateway called with user_id={user_id!r}")
+
+        def mark_read(self, user_id, alert_id):
+            raise AssertionError("gateway mutation for anonymous user")
+
+        def mark_all_read(self, user_id):
+            raise AssertionError("gateway mutation for anonymous user")
+
+    set_alerts_gateway(_RaisingGateway())
+    page = client.get("/crypto")  # must not raise
+    assert page.status_code == 200
+    assert "ALERTS_AUTH_REQUIRED" in page.text
+
+
+# ── Issue C: canonical yield.alerts server access enforced on routes ─────────
+
+def _yield_access_decision(state="ENTITLEMENT_NOT_SATISFIED", *,
+                           access_allowed=False, gate_active=True,
+                           reason="BALANCE_BELOW_THRESHOLD"):
+    """Crafted through the CANONICAL adapter types — no parallel evaluator."""
+    from finco_yield.access import YieldAccessDecision, YieldAccessState, YieldResource
+    return YieldAccessDecision(
+        resource=YieldResource.ALERTS,
+        state=YieldAccessState(state),
+        access_allowed=access_allowed,
+        token_entitled=access_allowed and gate_active,
+        gate_active=gate_active,
+        reason=reason,
+    )
+
+
+@pytest.fixture()
+def alerts_access_stub(monkeypatch):
+    """Patch the canonical server-access boundary function; record calls."""
+    calls = []
+
+    def _install(state="ENTITLEMENT_NOT_SATISFIED", *, access_allowed=False,
+                 gate_active=True, reason="BALANCE_BELOW_THRESHOLD"):
+        async def fake_resolve(request, resource):
+            calls.append(resource.value)
+            return _yield_access_decision(state, access_allowed=access_allowed,
+                                          gate_active=gate_active, reason=reason)
+        monkeypatch.setattr("finco_yield.access.resolve_yield_access", fake_resolve)
+
+    _install.calls = calls
+    _install.install = _install
+    return _install
+
+
+def test_alerts_json_inactive_gating_proceeds_to_gateway(
+        client, monkeypatch, alerts_access_stub):
+    from app.auth import generate_csrf_token
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway,
+    )
+    calls = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: calls.append(user_id)
+        or AlertsSnapshot(available=False, reason="ALERTS_INTEGRATION_PENDING",
+                          unread_count=None, items=()),
+        mark_read=lambda *a: True, mark_all_read=lambda *a: 0)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state="TOKEN_ENTITLEMENT_FEATURE_INACTIVE",
+                               access_allowed=True, gate_active=False,
+                               reason="TOKEN_GATING_OFF")
+    _session(monkeypatch, "user-1")
+    response = client.get("/crypto/alerts.json")
+    reset_alerts_gateway()
+    assert response.status_code == 200  # INACTIVE proceeds (no active gate)
+    assert alerts_access_stub.calls == ["yield.alerts"]
+    assert calls == ["user-1"]
+
+
+def test_alerts_json_canonical_allow_proceeds(client, monkeypatch,
+                                              alerts_access_stub):
+    from app.auth import generate_csrf_token
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway,
+    )
+    calls = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: calls.append(user_id)
+        or AlertsSnapshot(available=True, reason=None, unread_count=0,
+                          items=()),
+        mark_read=lambda *a: True, mark_all_read=lambda *a: 0)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state="ENTITLED", access_allowed=True,
+                               gate_active=True,
+                               reason="BALANCE_AT_OR_ABOVE_THRESHOLD")
+    _session(monkeypatch, "user-1")
+    response = client.get("/crypto/alerts.json")
+    reset_alerts_gateway()
+    assert response.status_code == 200
+    assert response.json()["available"] is True
+    assert calls == ["user-1"]
+
+
+@pytest.mark.parametrize("state,reason", [
+    ("ENTITLEMENT_NOT_SATISFIED", "BALANCE_BELOW_THRESHOLD"),
+    ("ENTITLEMENT_AUTHORITY_UNAVAILABLE", "RPC_UNAVAILABLE"),
+    ("TOKEN_DEPLOYMENT_NOT_CONFIGURED", "NO_APPROVED_DEPLOYMENT"),
+])
+def test_alerts_json_canonical_deny_fails_closed_before_gateway(
+        client, monkeypatch, alerts_access_stub, state, reason):
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway,
+    )
+    snapshot_calls = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: snapshot_calls.append(user_id)
+        or AlertsSnapshot(available=True, reason=None, unread_count=0, items=()),
+        mark_read=lambda *a: snapshot_calls.append("mutate") or True,
+        mark_all_read=lambda *a: snapshot_calls.append("mutate") or 0)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state=state, access_allowed=False,
+                               gate_active=True, reason=reason)
+    _session(monkeypatch, "user-1")
+    response = client.get("/crypto/alerts.json")
+    reset_alerts_gateway()
+    assert response.status_code == 403
+    body = response.json()
+    assert body["error"] == "YIELD_PREMIUM_REQUIRED"
+    assert body["resource"] == "yield.alerts"
+    assert body["reason"] == reason
+    assert snapshot_calls == []  # DENY happens BEFORE any gateway access
+
+
+def test_crypto_overview_denied_alerts_no_gateway_fetch(client, monkeypatch,
+                                                        alerts_access_stub):
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway,
+    )
+    snapshot_calls = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: snapshot_calls.append(user_id)
+        or AlertsSnapshot(available=True, reason=None, unread_count=1,
+                          items=({"alert_id": "a-1"},)),
+        mark_read=lambda *a: True, mark_all_read=lambda *a: 0)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state="ENTITLEMENT_NOT_SATISFIED",
+                               access_allowed=False, gate_active=True,
+                               reason="BALANCE_BELOW_THRESHOLD")
+    _session(monkeypatch, "user-1")
+    html = client.get("/crypto").text
+    reset_alerts_gateway()
+    assert 'data-testid="alerts-state">LOCKED<' in html
+    assert "BALANCE_BELOW_THRESHOLD" in html
+    assert snapshot_calls == []  # denied → no user-specific alerts payload
+
+
+# ── Mutations: canonical access then CSRF then gateway ───────────────────────
+
+def test_alert_mutations_canonical_deny_403_no_mutation(
+        client, monkeypatch, alerts_access_stub):
+    from app.auth import generate_csrf_token
+    from app.crypto_alerts import set_alerts_gateway, reset_alerts_gateway
+    mutations = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: AlertsSnapshot(
+            available=True, reason=None, unread_count=1,
+            items=({"alert_id": "a-1"},)),
+        mark_read=lambda user_id, alert_id: mutations.append(("read", alert_id)) or True,
+        mark_all_read=lambda user_id: mutations.append(("all",)) or 2)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state="ENTITLEMENT_NOT_SATISFIED",
+                               access_allowed=False, gate_active=True,
+                               reason="BALANCE_BELOW_THRESHOLD")
+    _session(monkeypatch, "user-1")
+    header = {"X-CSRF-Token": generate_csrf_token()}  # valid CSRF still denied
+    read = client.post("/crypto/alerts/a-1/read", headers=header)
+    all_read = client.post("/crypto/alerts/read-all", headers=header)
+    reset_alerts_gateway()
+    assert read.status_code == 403
+    assert all_read.status_code == 403
+    assert mutations == []  # canonical DENY precedes CSRF and gateway
+
+
+def test_alert_mutations_csrf_enforced_after_access_allowed(
+        client, monkeypatch, alerts_access_stub):
+    from app.auth import generate_csrf_token
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway)
+    mutations = []
+    double = SimpleNamespace(
+        snapshot=lambda user_id: AlertsSnapshot(
+            available=True, reason=None, unread_count=1,
+            items=({"alert_id": "a-1"},)),
+        mark_read=lambda user_id, alert_id: mutations.append(("read", alert_id)) or True,
+        mark_all_read=lambda user_id: mutations.append(("all",)) or 2)
+    set_alerts_gateway(double)
+    alerts_access_stub.install(state="ENTITLED", access_allowed=True,
+                               gate_active=True,
+                               reason="BALANCE_AT_OR_ABOVE_THRESHOLD")
+    _session(monkeypatch, "user-1")
+
+    missing = client.post("/crypto/alerts/a-1/read")
+    invalid = client.post("/crypto/alerts/a-1/read",
+                          headers={"X-CSRF-Token": "tampered"})
+    valid = client.post("/crypto/alerts/a-1/read",
+                        headers={"X-CSRF-Token": generate_csrf_token()})
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+    assert valid.status_code == 200
+    assert mutations == [("read", "a-1")]  # only the valid request mutated
+
+    missing_all = client.post("/crypto/alerts/read-all")
+    assert missing_all.status_code == 403
+    valid_all = client.post("/crypto/alerts/read-all",
+                            headers={"X-CSRF-Token": generate_csrf_token()})
+    assert valid_all.status_code == 200
+    reset_alerts_gateway()
+    assert ("all",) in mutations
+
+
+# ── Real alerts UX boundary (available gateway) ──────────────────────────────
+
+def test_available_gateway_renders_full_alerts_ux(client, monkeypatch):
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway)
+    double = SimpleNamespace(
+        snapshot=lambda user_id: AlertsSnapshot(
+            available=True, reason=None, unread_count=2,
+            items=(
+                {"alert_id": "a-1", "alert_type": "YIELD_RATE_CHANGE",
+                 "opportunity_uid": "yld_" + "a" * 32,
+                 "opportunity_display": "Spark USDC Vault",
+                 "summary": "Reported APY changed.",
+                 "value": "3.1% -> 2.9%",
+                 "created_at": "2026-10-01T00:00:00+00:00",
+                 "read": False},
+                {"alert_id": "a-2", "alert_type": "YIELD_RATE_CHANGE",
+                 "opportunity_uid": "yld_" + "b" * 32,
+                 "opportunity_display": "Aave USDC",
+                 "summary": "Reported APY changed.",
+                 "value": "4.0% -> 4.2%",
+                 "created_at": "2026-10-01T01:00:00+00:00",
+                 "read": True},
+            )),
+        mark_read=lambda user_id, alert_id: True,
+        mark_all_read=lambda user_id: 1)
+    set_alerts_gateway(double)
+    _session(monkeypatch, "user-1")
+    html = client.get("/crypto").text
+    assert 'data-testid="alerts-state">AVAILABLE<' in html
+    assert "unread 2" in html
+    assert html.count('data-testid="alerts-item"') == 2
+    assert "YIELD_RATE_CHANGE" in html
+    assert ("yld_" + "a" * 32) in html  # canonical opportunity identity
+    assert "3.1% -&gt; 2.9%" in html    # gateway-provided summary (escaped)
+    assert "2026-10-01T00:00:00+00:00" in html
+    assert html.count('data-testid="alert-mark-read"') == 1  # one unread
+    assert 'data-testid="alerts-mark-all-read"' in html
+    assert "integration pending" not in html  # conditional copy flips
+    assert "In-app alerts: available" in html
+    assert "Email = NOT SHIPPED" in html      # external truth unchanged
+    reset_alerts_gateway()
