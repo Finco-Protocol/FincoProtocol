@@ -52,6 +52,32 @@ def list_r_live_assets():
     )
 
 
+@router.get("/radar/r-live/snapshot")
+def read_r_live_snapshot(request: Request):
+    """Instant read-only latest-snapshot view of all approved R-LIVE assets.
+
+    INSTANT R-LIVE UX: this endpoint reads the persistent latest-snapshot
+    projection written by the background canonical collector. It performs
+    ZERO live acquisition — no Robinhood API, no Robinhood Chain RPC, no
+    Uniswap observe, no Chainlink fetch, no batch collection — so the page
+    never waits on the chain. Freshness is re-evaluated at READ time
+    against the canonical R-LIVE policy: evidence that aged out becomes
+    STALE; incomplete evidence is UNAVAILABLE; timestamps are never
+    rewritten. Cold start returns typed INITIALIZING immediately.
+    """
+    from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+
+    view = build_snapshot_view()
+    return JSONResponse(
+        status_code=200,
+        content=InstitutionalEnvelope(
+            state=view["state"],
+            data={k: v for k, v in view.items() if k != "state"},
+        ).model_dump(),
+        headers=_R_LIVE_CACHE_HEADERS,
+    )
+
+
 @router.get("/radar/r-live/current")
 def stream_r_live_current(request: Request):
     """Stream current approved R-LIVE assets with bounded public acquisition.

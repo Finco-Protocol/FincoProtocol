@@ -1,10 +1,15 @@
 """financial_engine.senior_debt.policy — Immutable senior debt policy contract.
 
-Repayment method is derived from sizing_mode; it cannot be overridden:
+Repayment method is derived from sizing_mode; it cannot be overridden, with ONE explicit,
+typed exception (M-6):
   DSCR_SCULPTED sizing   → DSCR_SCULPTED repayment
-  GEARING_CAP sizing     → LEVEL_PRINCIPAL repayment
+  GEARING_CAP sizing     → LEVEL_PRINCIPAL repayment (DEFAULT)
+                           or DSCR_SCULPTED repayment when the policy explicitly sets
+                           gearing_cap_repayment_method = DSCR_SCULPTED (opt-in). The debt size is
+                           still eligible_project_cost × maximum_gearing; it is never resized.
   COMBINED_MINIMUM sizing→ DSCR_SCULPTED repayment (never switches to level-principal
-                            when gearing binds; sizing and amortisation are separate)
+                            when gearing binds; sizing and amortisation are separate;
+                            gearing_cap_repayment_method has no effect and must stay default)
   EXPLICIT_SCHEDULE sizing→ EXPLICIT repayment
 """
 from __future__ import annotations
@@ -18,6 +23,18 @@ class SeniorDebtSizingMode(str, Enum):
     GEARING_CAP = "GEARING_CAP"
     COMBINED_MINIMUM = "COMBINED_MINIMUM"
     EXPLICIT_SCHEDULE = "EXPLICIT_SCHEDULE"
+
+
+class GearingCapRepaymentMethod(str, Enum):
+    """Repayment method for GEARING_CAP sizing only (M-6).
+
+    LEVEL_PRINCIPAL : straight-line principal over the repayment window (canonical default).
+    DSCR_SCULPTED   : the gearing-sized balance is sculpted over the contractual tenor using the
+                      canonical DSCR primitives. Debt size is NOT resized to DSCR capacity; a
+                      balance the CFADS cannot repay fails closed (DSCR_SCULPTING_INFEASIBLE).
+    """
+    LEVEL_PRINCIPAL = "LEVEL_PRINCIPAL"
+    DSCR_SCULPTED = "DSCR_SCULPTED"
 
 
 class DayCountConvention(str, Enum):
@@ -47,6 +64,9 @@ class SeniorDebtPolicy:
     maximum_iterations           : iteration cap; non-convergence → MAX_ITERATIONS_REACHED
     permit_terminal_balloon      : if False, a non-zero closing balance at maturity is an error
     damping_alpha                : iteration damping factor in (0, 1]; 1.0 = no damping
+    gearing_cap_repayment_method : GEARING_CAP sizing only. Default LEVEL_PRINCIPAL (unchanged
+                                   canonical behaviour). DSCR_SCULPTED is an explicit opt-in.
+                                   Any non-default value with another sizing_mode is invalid.
     """
     policy_id: str
     policy_version: str
@@ -63,3 +83,4 @@ class SeniorDebtPolicy:
     maximum_iterations: int
     permit_terminal_balloon: bool
     damping_alpha: float = 1.0
+    gearing_cap_repayment_method: GearingCapRepaymentMethod = GearingCapRepaymentMethod.LEVEL_PRINCIPAL

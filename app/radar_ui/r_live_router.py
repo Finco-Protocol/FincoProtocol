@@ -46,6 +46,40 @@ def _approved_rows() -> list[dict]:
     return rows
 
 
+def _snapshot_first_rows() -> tuple[list[dict], bool]:
+    """Snapshot-first landing rows: instant read of the latest collected
+    observations, freshness re-evaluated at read time. ZERO live
+    acquisition on this path — the page never waits on the chain.
+
+    Returns (rows, cold_start). With no snapshot yet (fresh deployment) the
+    canonical PENDING_JS placeholders are returned and the template shows
+    the typed INITIALIZING banner; the background collector fills the
+    snapshot independently and lightweight polling updates the table.
+    """
+    try:
+        from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+        view = build_snapshot_view()
+    except Exception:
+        return _approved_rows(), True
+    if view.get("state") != "AVAILABLE":
+        return _approved_rows(), True
+    rows = []
+    for view_row in view.get("rows", []):
+        data = view_row.get("data") or {}
+        premium = data.get("b1_0_premium") or {}
+        rows.append({
+            "canonical_id": view_row.get("canonical_id"),
+            "symbol": view_row.get("display_symbol"),
+            "approved": True,
+            "state": view_row.get("state"),
+            "reason": view_row.get("reason"),
+            "premium_bps": premium.get("value_bps"),
+            "observed_at": data.get("observed_at"),
+            "snapshot_collected_at": (view_row.get("snapshot") or {}).get("collected_at"),
+        })
+    return rows, False
+
+
 @router.get("/radar", response_class=RedirectResponse)
 async def radar_root_redirect():
     """Redirect root /radar to /radar/r-live (R-LIVE is the default domain)."""
@@ -54,17 +88,22 @@ async def radar_root_redirect():
 
 @router.get("/radar/r-live", response_class=HTMLResponse)
 async def radar_r_live_landing(request: Request):
-    """R-LIVE landing table. All approved rows populated client-side via JS.
+    """R-LIVE landing table, snapshot-first: with a warm snapshot the rows
+    render server-side instantly (no live RPC on the request path); cold
+    start renders the typed INITIALIZING state immediately and lightweight
+    polling updates the table from the snapshot endpoint only.
     No numeric values fabricated server-side.
     This handler performs zero history writes and zero authority mutations."""
     from app.auth import resolve_request_session
     user = resolve_request_session(request)
+    rows, cold_start = _snapshot_first_rows()
     return _templates.TemplateResponse(
         request=request,
         name="radar/r_live_landing.html",
         context={
             "radar_domain": "rlive",
-            "rows": _approved_rows(),
+            "rows": rows,
+            "cold_start": cold_start,
             "user": user,
         },
     )

@@ -293,6 +293,27 @@ async def _schedule_demo_cleanup():
     t.start()
 
 
+@app.on_event("startup")
+async def _start_r_live_snapshot_warmer():
+    """Start the ONE background R-LIVE snapshot warming loop (instant R-LIVE UX).
+
+    The warmer runs the canonical ``collect_r_live_batch()`` on a timer and
+    atomically persists the latest observation per approved asset into the
+    snapshot store, so R-LIVE page reads NEVER wait on live chain
+    acquisition. Exactly one loop per host actually collects: a cross-process
+    SQLite lease admits a single holder across all Uvicorn workers. Disabled
+    with FINCO_RLIVE_WARMING_ENABLED=0 (e.g. when the dedicated systemd
+    collector owns warming). The web read path never calls this module.
+    """
+    try:
+        from app.radar_rwa.r_live_warming import start_background_warmer
+        if start_background_warmer():
+            print("startup r_live_snapshot_warmer started", flush=True)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to start R-LIVE snapshot warmer")
+
+
 # -- Template setup -----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))

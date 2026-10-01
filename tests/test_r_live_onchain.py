@@ -499,12 +499,18 @@ def test_radar_live_surface_age_history_and_fail_closed(monkeypatch):
     assert hidden["robinhood_basis"]["price_usd_per_token"] is None
 
     template = Path("app/templates/radar/rwa.html").read_text(encoding="utf-8")
-    script = Path("static/radar/r_live.js").read_text(encoding="utf-8")
-    assert "Direct On-Chain" in template and "not VERIFIED" in template
-    assert "Historical observations only" in template
-    assert "field(\"values\").hidden = true" in script
-    assert "textContent" in script and "innerHTML" not in script
-    assert "BUY" not in template + script and "SELL" not in template + script
+    # Instant R-LIVE UX: the RWA overview no longer duplicates the AAPL
+    # premium panel — the dedicated R-LIVE terminal is the canonical surface;
+    # the overview carries one small informational link card instead.
+    assert "AAPL live premium" not in template
+    assert 'id="r-live-aapl"' not in template
+    assert 'href="/radar/r-live"' in template
+    assert "View R-LIVE" in template
+    assert "r_live.js" not in template
+    # XSS hygiene now lives on the landing-table client (textContent, no innerHTML).
+    landing_script = Path("static/radar/r_live_table.js").read_text(encoding="utf-8")
+    assert "textContent" in landing_script and "innerHTML" not in landing_script
+    assert "BUY" not in template + landing_script and "SELL" not in template + landing_script
 
 
 def test_snapshot_get_and_browser_refresh_never_open_history_writer(monkeypatch):
@@ -553,10 +559,12 @@ def test_snapshot_get_and_browser_refresh_never_open_history_writer(monkeypatch)
     assert first["reference_premium"]["value_bps"]
     assert first["observation_age_seconds"] >= 0
     assert "FAKE_SECRET" not in str(first) + str(second)
-    script = __import__("pathlib").Path("static/radar/r_live.js").read_text(encoding="utf-8")
-    assert "window.setInterval(load, 60000)" in script
-    assert 'fetch("/radar/crypto/rwa/r-live/aapl/snapshot"' in script
-    assert "POST" not in script
+    # Instant R-LIVE UX: the RWA overview panel (and its duplicate refresh
+    # script) is gone; the dedicated R-LIVE terminal is the only surface.
+    template = __import__("pathlib").Path("app/templates/radar/rwa.html").read_text(encoding="utf-8")
+    assert "r_live.js" not in template
+    assert "AAPL live premium" not in template
+    assert not __import__("pathlib").Path("static/radar/r_live.js").exists()
 
 
 def test_read_acquisition_requires_explicit_writer_intent(monkeypatch):

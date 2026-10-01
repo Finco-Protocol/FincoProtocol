@@ -1,4 +1,4 @@
-"""Governance contract for the Opus Finance Integrity stream (H-2 / H-1 / H-3 / H-4b).
+"""Governance contract for the Opus Finance Integrity stream (H-2 / H-1 / H-3 / H-4b) and M-6.
 
 Before this stream every guard asserted "financial_engine/** has ZERO diff from main". The
 stream is an explicitly approved finance correction, so that blanket rule is replaced by
@@ -27,6 +27,12 @@ APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS = frozenset({
     "financial_engine/adapters/project_inputs.py",
     # H-3: typed construction periods carry their canonical dates into sponsor flows
     "financial_engine/shareholder_waterfall/model.py",
+    # M-6 (explicitly approved engine stream): optional full-tenor sculpting for GEARING_CAP debt.
+    # solver.py / models.py are already approved above; these three carry the typed policy option,
+    # its validation, and its (non-default-only) provenance key.
+    "financial_engine/senior_debt/policy.py",
+    "financial_engine/senior_debt/validation.py",
+    "financial_engine/provenance.py",
 })
 
 STRICTLY_FROZEN_PREFIXES = ("finco_core/", "finco_radar/")

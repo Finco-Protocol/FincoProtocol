@@ -68,6 +68,47 @@ def _identity_block(binding: CrossChainIdentityBinding | None, key: AssetKey | N
     }
 
 
+def _capabilities(
+    row_state: AuthorityState,
+    key: AssetKey | None,
+    identity_state: str,
+    intelligence: dict,
+) -> dict:
+    """Compact capability model for presentation (pure field-presence derivation).
+
+    No ticker/symbol/name/fuzzy/provider-ID/LLM inference anywhere: every
+    capability is derived ONLY from evidence fields already resolved by the
+    fail-closed authority layers.
+
+      MARKET DATA        AVAILABLE / STALE / UNAVAILABLE   (observed market row)
+      BNB DEPLOYMENT     AVAILABLE / UNAVAILABLE           (exact chain-56 AssetKey)
+      RH IDENTITY        BOUND / UNBOUND                   (exact source-proven binding)
+      REFERENCE PREMIUM  AVAILABLE / NOT SUPPORTED / UNAVAILABLE
+                         NOT SUPPORTED = capability cannot exist without a bound
+                         Robinhood basis (market-only row); UNAVAILABLE = bound
+                         but evidence currently missing.
+      EXECUTION          AVAILABLE / NOT SUPPORTED / UNAVAILABLE
+                         NOT SUPPORTED = no execution route authority exists for
+                         this row; a BNB contract alone never implies execution.
+    """
+    premium_state = intelligence.get("reference_premium", {}).get("state")
+    execution_state = intelligence.get("execution_gap", {}).get("state")
+    bound = identity_state == "AVAILABLE"
+    premium = ("AVAILABLE" if premium_state == "AVAILABLE"
+               else "NOT_SUPPORTED" if not bound
+               else "UNAVAILABLE")
+    execution = ("AVAILABLE" if execution_state == "AVAILABLE"
+                 else "NOT_SUPPORTED" if not bound
+                 else "UNAVAILABLE")
+    return {
+        "market_data": row_state.value,
+        "bnb_deployment": "AVAILABLE" if key is not None else "UNAVAILABLE",
+        "rh_identity": "BOUND" if bound else "UNBOUND",
+        "reference_premium": premium,
+        "execution": execution,
+    }
+
+
 def _row(
     row: BnbRwaMarketObservation,
     identities: Mapping[AssetKey, CrossChainIdentityBinding],
@@ -76,6 +117,11 @@ def _row(
 ) -> dict:
     key = row.asset_key
     identity = _identity_block(identities.get(key) if key is not None else None, key)
+    intel = intelligence.get(key, unavailable_intelligence(
+        AuthorityState(identity["state"]) if identity["state"] != "AVAILABLE" else AuthorityState.UNAVAILABLE,
+        identity["reason"] or "AUTHORITY_EVIDENCE_UNAVAILABLE",
+    ))
+    capabilities = _capabilities(row.state, key, identity["state"], intel)
     return {
         "provider_id": row.provider_id,
         "symbol": row.symbol,
@@ -88,10 +134,8 @@ def _row(
         "deployment_reason": row.deployment_reason,
         "robinhood_binding": identity["state"],
         "canonical_identity": identity,
-        "intelligence": intelligence.get(key, unavailable_intelligence(
-            AuthorityState(identity["state"]) if identity["state"] != "AVAILABLE" else AuthorityState.UNAVAILABLE,
-            identity["reason"] or "AUTHORITY_EVIDENCE_UNAVAILABLE",
-        )),
+        "intelligence": intel,
+        "capabilities": capabilities,
         "intelligence_history": history.get(key, []),
         "state": row.state.value,
         "observed_at": row.observed_at.isoformat() if row.observed_at else None,

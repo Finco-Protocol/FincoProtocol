@@ -1,15 +1,23 @@
 /**
- * R-LIVE landing table client-side data population.
+ * R-LIVE landing table client-side data population — SNAPSHOT FIRST.
  *
- * One streaming current request plus one read-only historical summary request.
+ * One instant latest-snapshot request (read-only projection; ZERO live
+ * chain acquisition on this path) plus one read-only historical summary
+ * request. While the snapshot is cold (INITIALIZING) the table polls the
+ * snapshot endpoint only — polling never triggers blockchain acquisition;
+ * the background collector fills the snapshot independently.
  * Identity authority is canonical_id from registry-rendered rows, never symbol.
  *
  * Read-only: never writes R-LIVE history, never modifies authority state.
  * STALE/UNAVAILABLE numeric values are suppressed (missing != 0).
- * No raw innerHTML used for API response data.
+ * API response data is only ever assigned via textContent — no raw HTML
+ * injection path exists in this script.
  */
 (function () {
   "use strict";
+
+  var SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot";
+  var POLL_INTERVAL_MS = 15000;
 
   function fmt_age(secs) {
     if (typeof secs !== "number" || !isFinite(secs) || secs < 0) return null;
@@ -71,9 +79,10 @@
     return sign(lo) + " / " + sign(hi) + " bps";
   }
 
-  function populate_row(row_el, snap_data, ranges) {
-    // snap_data is the `data` sub-object from /api/v1.1/radar/r-live/{uid}
-    // ranges are read-only B1.3 summaries and never determine current state.
+  function populate_row(row_el, snap_data, ranges, read_time_ages) {
+    // snap_data is the `data` sub-object of one snapshot row (identical
+    // shape to the /current authority payload); read_time_ages carries the
+    // read-time re-evaluated ages from the snapshot view.
     var snap_state = (snap_data.state || "UNAVAILABLE").toUpperCase();
     set_badge(row_el, snap_state);
 
@@ -109,10 +118,12 @@
     set_cell(row_el, "range_1h", fmt_range(ranges && ranges.range_1h));
     set_cell(row_el, "range_24h", fmt_range(ranges && ranges.range_24h));
 
-    // Market activity and oracle ages are distinct. observed_at is the
-    // conservative oldest evidence timestamp, not market-activity age.
+    // Market activity and oracle ages are distinct. Read-time ages from the
+    // snapshot view are preferred; observed_at is the conservative oldest
+    // evidence timestamp, not market-activity age.
     var freshness_txt = null;
-    var freshness = snap_data.freshness;
+    var freshness = (read_time_ages && read_time_ages.market_activity_age_seconds != null)
+      ? read_time_ages : snap_data.freshness;
     if (freshness) {
       var market = fmt_age(freshness.market_activity_age_seconds);
       var oracle = fmt_age(freshness.quote_feed_age_seconds);
@@ -168,57 +179,50 @@
         });
       }).catch(function() { /* Ranges remain unavailable, never zero. */ });
 
-    fetch("/api/v1.1/radar/r-live/current", {cache: "no-store"})
-      .then(function(response) {
-        if (!response.ok || !response.body) throw new Error("CURRENT_TRANSPORT_ERROR");
-        var reader = response.body.getReader(), decoder = new TextDecoder();
-        var buffer = "";
-        function consume(line) {
-          if (!line.trim()) return;
-          var item = JSON.parse(line);
-          var row = byId[item.canonical_id];
-          if (!row) return;
-          var snap = Object.assign({state: item.state}, item.data || {});
-          snapshots[item.canonical_id] = snap;
-          populate_row(row, snap, history[item.canonical_id]);
-          sort_rows();
-        }
-        function pump() {
-          return reader.read().then(function(chunk) {
-            if (chunk.done) {
-              buffer += decoder.decode();
-              if (buffer.trim()) consume(buffer);
-              Object.keys(byId).forEach(function(key) {
-                if (!snapshots[key]) {
-                  snapshots[key] = {state: "UNAVAILABLE", reason: "CURRENT_RESPONSE_INCOMPLETE"};
-                  populate_row(byId[key], snapshots[key], history[key]);
-                }
-              });
-              sort_rows();
-              return;
-            }
-            buffer += decoder.decode(chunk.value, {stream: true});
-            var newline;
-            while ((newline = buffer.indexOf("\n")) !== -1) {
-              consume(buffer.slice(0, newline));
-              buffer = buffer.slice(newline + 1);
-            }
-            return pump();
-          });
-        }
-        return pump();
-      }).catch(function() {
-        // Loading is neutral until transport actually fails. Current numeric
-        // values are never supplied by historical ranges.
-        Object.keys(byId).forEach(function(key) {
-          if (!snapshots[key]) {
-            snapshots[key] = {state: "UNAVAILABLE", reason: "CURRENT_TRANSPORT_ERROR"};
-            populate_row(byId[key], snapshots[key], history[key]);
-            byId[key].setAttribute("data-transport-error", "CURRENT_TRANSPORT_ERROR");
-          }
-        });
-        sort_rows();
+    // One instant snapshot read; while cold, poll the SNAPSHOT endpoint
+    // only — polling never triggers blockchain acquisition.
+    var poll_timer = null;
+
+    function apply_snapshot(payload) {
+      var rows_data = (payload && payload.rows) || [];
+      rows_data.forEach(function(view_row) {
+        var row = byId[view_row.canonical_id];
+        if (!row) return;
+        var snap = Object.assign({state: view_row.state}, view_row.data || {});
+        snapshots[view_row.canonical_id] = snap;
+        populate_row(row, snap, history[view_row.canonical_id], view_row.read_time_ages);
       });
+      sort_rows();
+    }
+
+    function refresh_snapshot() {
+      return fetch(SNAPSHOT_URL, {cache: "no-store"})
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(env) {
+          if (!env) throw new Error("SNAPSHOT_TRANSPORT_ERROR");
+          if (env.state === "INITIALIZING") {
+            if (!poll_timer) poll_timer = setInterval(refresh_snapshot, POLL_INTERVAL_MS);
+            return; // stay neutral-loading; the collector fills the snapshot
+          }
+          if (poll_timer) { clearInterval(poll_timer); poll_timer = null; }
+          var banner = document.querySelector("[data-testid='rlive-initializing']");
+          if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
+          apply_snapshot(env.data || {});
+        })
+        .catch(function() {
+          // Loading is neutral until transport actually fails. Current numeric
+          // values are never supplied by historical ranges; snapshot retries
+          // continue without ever falling back to a live acquisition.
+          if (!poll_timer) poll_timer = setInterval(refresh_snapshot, POLL_INTERVAL_MS);
+          Object.keys(byId).forEach(function(key) {
+            if (!snapshots[key]) {
+              byId[key].setAttribute("data-transport-error", "SNAPSHOT_TRANSPORT_ERROR");
+            }
+          });
+        });
+    }
+
+    refresh_snapshot();
   }
 
   if (document.readyState === "loading") {
