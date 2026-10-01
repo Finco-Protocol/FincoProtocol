@@ -1,8 +1,9 @@
 """FINCO Yield V1 beta product surface.
 
-Presentation uses FINCO Jinja templates with autoescaping. Global Product Truth
-navigation/status is owned by the merged Product Truth surface; Yield remains
-feature-gated and IN DEVELOPMENT until PR #148 merges.
+Crypto Utility V0 integration keeps one authority chain: Agent A produces
+ResourceAccessDecision; Agent B enforces it server-side; Agent C only presents
+those decisions and owns watchlist UX/CSRF. Token entitlement never changes
+Yield mathematics and never enables execution.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from .access import YieldAccessDecision, YieldResource, denial_payload, resolve_yield_access
 from .evidence_v1 import build_evidence, canonical_json
 from .execution import (
     ExecutionIntent,
@@ -33,6 +35,21 @@ from .onchain import OnchainReadError, read_allowance, read_erc4626, rpc_url_for
 from .registry import RegistryError, load_bundled_registry
 from .schema import SourceReference
 from .underwriting import decompose, run_scenario
+
+
+async def _enforce_premium(request: Request, resource: YieldResource):
+    """Server/API trust boundary for premium Yield resources.
+
+    PUBLIC/ALLOW and canonical INACTIVE proceed.  INACTIVE is not token
+    entitlement: it means token gating is not active, so the existing ungated
+    product remains available. Canonical DENY returns a typed 403 before any
+    protected payload is built or serialized.
+    """
+    decision: YieldAccessDecision = await resolve_yield_access(request, resource)
+    if decision.access_allowed:
+        return None
+    return JSONResponse(status_code=403, content=denial_payload(decision))
+
 
 router = APIRouter(prefix="/yield", tags=["yield-beta"])
 
@@ -66,9 +83,7 @@ def _usd(value) -> str:
 
 
 def _chain(chain_id: int) -> str:
-    return {1: "Ethereum", 8453: "Base", 4663: "Robinhood"}.get(
-        chain_id, str(chain_id)
-    )
+    return {1: "Ethereum", 8453: "Base", 4663: "Robinhood"}.get(chain_id, str(chain_id))
 
 
 def _d(value):
@@ -82,11 +97,7 @@ def _d(value):
 
 def _allowed_source_domains() -> frozenset[str]:
     raw = os.getenv("FINCO_YIELD_SOURCE_DOMAINS", "app.morpho.org")
-    return frozenset(
-        domain.strip().lower()
-        for domain in raw.split(",")
-        if domain.strip()
-    )
+    return frozenset(domain.strip().lower() for domain in raw.split(",") if domain.strip())
 
 
 def _safe_external_href(value: str | None) -> str | None:
@@ -146,31 +157,29 @@ async def yield_explore(
 
     view_rows = []
     for opportunity in rows:
-        view_rows.append(
-            {
-                "uid": opportunity.uid,
-                "name": opportunity.name,
-                "underlying_symbol": opportunity.underlying_symbol,
-                "protocol": opportunity.protocol,
-                "chain": _chain(opportunity.chain_id),
-                "tvl": _usd(opportunity.observation.tvl_usd),
-                "total_apy": _pct(opportunity.observation.apy_total),
-                "base_apy": _pct(opportunity.observation.apy_base),
-                "rewards_apy": _pct(opportunity.observation.apy_rewards),
-                "evidence": opportunity.source_type.value,
-                "exit": (
-                    opportunity.observation.withdrawal_type or "UNKNOWN"
-                ).upper(),
-                "freshness": evaluate_freshness(_source(opportunity)).state,
-                "support_state": opportunity.support_state.value,
-            }
-        )
+        view_rows.append({
+            "uid": opportunity.uid,
+            "name": opportunity.name,
+            "underlying_symbol": opportunity.underlying_symbol,
+            "protocol": opportunity.protocol,
+            "chain": _chain(opportunity.chain_id),
+            "tvl": _usd(opportunity.observation.tvl_usd),
+            "total_apy": _pct(opportunity.observation.apy_total),
+            "base_apy": _pct(opportunity.observation.apy_base),
+            "rewards_apy": _pct(opportunity.observation.apy_rewards),
+            "evidence": opportunity.source_type.value,
+            "exit": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
+            "freshness": evaluate_freshness(_source(opportunity)).state,
+            "support_state": opportunity.support_state.value,
+        })
 
+    from app.auth import generate_csrf_token
     return _templates.TemplateResponse(
         request=request,
         name="yield/explore.html",
         context={
             "rows": view_rows,
+            "csrf_token": generate_csrf_token(),
             "filters": {
                 "chain_id": chain_id,
                 "protocol": protocol or "",
@@ -188,33 +197,25 @@ async def yield_explore(
 @router.get("/compare", response_class=HTMLResponse)
 async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
     _require()
+    denial = await _enforce_premium(request, YieldResource.ADVANCED_COMPARE)
+    if denial is not None:
+        return denial
     try:
         rows = compare(load_bundled_registry(), uid)
     except (ValueError, RegistryError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    columns = [
-        {
-            "uid": row.opportunity_uid,
-            "name": row.name,
-        }
-        for row in rows
-    ]
+    columns = [{"uid": row.opportunity_uid, "name": row.name} for row in rows]
     metrics = [
         ("Chain", [_chain(row.chain_id) for row in rows]),
         ("TVL", [_usd(row.tvl_usd) for row in rows]),
         ("Total APY", [_pct(row.gross_apy) for row in rows]),
         ("Base APY", [_pct(row.base_apy) for row in rows]),
         ("Rewards APY", [_pct(row.rewards_apy) for row in rows]),
-        (
-            "Reward dependency",
-            [
-                "UNAVAILABLE"
-                if row.reward_dependency is None
-                else str(row.reward_dependency)
-                for row in rows
-            ],
-        ),
+        ("Reward dependency", [
+            "UNAVAILABLE" if row.reward_dependency is None else str(row.reward_dependency)
+            for row in rows
+        ]),
         ("Evidence", [row.evidence_confidence for row in rows]),
         ("Freshness", [row.freshness for row in rows]),
         ("Exit", [row.exit_type for row in rows]),
@@ -223,7 +224,6 @@ async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
         ("Exit stress", [row.exit_stress_state for row in rows]),
         ("Gas shock", [row.gas_shock_state for row in rows]),
     ]
-
     return _templates.TemplateResponse(
         request=request,
         name="yield/compare.html",
@@ -231,13 +231,34 @@ async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
     )
 
 
+def _request_user(request: Request):
+    from app.auth import resolve_request_session
+    return resolve_request_session(request)
+
+
+def _wallet_state_for_request(request: Request) -> str:
+    """Wallet presentation state from the existing session/wallet authority."""
+    from app.crypto_access import get_wallet_state
+    user = _request_user(request)
+    state, _ = get_wallet_state(user.user_id if user else None)
+    return state
+
+
+async def _resource_decisions_for_request(request: Request):
+    """Agent D wiring: session -> canonical Agent A wallet -> all decisions."""
+    from app.protocol.entitlement_evaluator import evaluate_all_resources, wallet_context_for_session
+    session = _request_user(request)
+    wallet = wallet_context_for_session(session)
+    return await evaluate_all_resources(wallet)
+
+
 @router.get("/monitor", response_class=HTMLResponse)
 async def yield_monitor(request: Request):
+    """Existing read-only Wallet Monitor. It is NOT yield.alerts."""
     _require()
-    from app.auth import resolve_request_session
     from app.protocol.wallet_auth import get_verified_wallet
 
-    user = resolve_request_session(request)
+    user = _request_user(request)
     if not user:
         return RedirectResponse("/login", 302)
 
@@ -249,15 +270,13 @@ async def yield_monitor(request: Request):
             wallet_address=wallet["wallet_address"],
         )
         for position in positions:
-            positions_view.append(
-                {
-                    "name": position.name,
-                    "balance": str(position.balance),
-                    "observed_apy": _pct(position.observed_apy),
-                    "exit_state": position.exit_state,
-                    "evidence_freshness": position.evidence_freshness,
-                }
-            )
+            positions_view.append({
+                "name": position.name,
+                "balance": str(position.balance),
+                "observed_apy": _pct(position.observed_apy),
+                "exit_state": position.exit_state,
+                "evidence_freshness": position.evidence_freshness,
+            })
 
     if not wallet:
         info = (
@@ -270,6 +289,15 @@ async def yield_monitor(request: Request):
             "read-only context, not signing authority and not $FINCO entitlement."
         )
 
+    from app.auth import generate_csrf_token
+    from app.crypto_access import build_crypto_access_snapshot, get_wallet_state
+    from finco_yield.watchlist import list_watchlist_items
+
+    wallet_state, _ = get_wallet_state(user.user_id)
+    decisions = await _resource_decisions_for_request(request)
+    access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
+    watchlist = list_watchlist_items(user.user_id)
+
     return _templates.TemplateResponse(
         request=request,
         name="yield/monitor.html",
@@ -277,11 +305,13 @@ async def yield_monitor(request: Request):
             "wallet": wallet,
             "info": info,
             "positions": positions_view,
+            "access": access,
+            "watchlist": watchlist,
+            "csrf_token": generate_csrf_token(),
         },
     )
 
 
-# Explicit tombstone before dynamic UID routes: never interpret "prototype" as a UID.
 @router.get("/prototype", include_in_schema=False)
 async def prototype_removed():
     _require()
@@ -291,13 +321,152 @@ async def prototype_removed():
     )
 
 
+# ── Crypto Utility V0: presentation + watchlist, not entitlement authority ──
+
+def _enforce_csrf(request: Request, form) -> JSONResponse | None:
+    """Existing FINCO CSRF primitives for cookie-authenticated mutations."""
+    from app.auth import validate_csrf_token
+    token = form.get("csrf_token") if form is not None else None
+    if not token:
+        token = request.headers.get("x-csrf-token")
+    if not validate_csrf_token(token or ""):
+        return JSONResponse(
+            status_code=403,
+            content={"state": "UNAVAILABLE", "reason": "CSRF_TOKEN_INVALID"},
+        )
+    return None
+
+
+@router.get("/access.json")
+async def yield_access_json(request: Request):
+    """Presentation of actual Agent A resource decisions; no C-side evaluator."""
+    _require()
+    from app.crypto_access import build_crypto_access_snapshot
+
+    wallet_state = _wallet_state_for_request(request)
+    decisions = await _resource_decisions_for_request(request)
+    return JSONResponse(
+        content=build_crypto_access_snapshot(wallet_state, resource_decisions=decisions),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/watchlist.json")
+async def yield_watchlist_json(request: Request):
+    """List the authenticated user's saved canonical Yield opportunities."""
+    _require()
+    from finco_yield.watchlist import list_watchlist_items
+
+    user = _request_user(request)
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"},
+        )
+    items = list_watchlist_items(user.user_id)
+    return JSONResponse(
+        content={
+            "schema_version": "finco-yield-watchlist-v0",
+            "count": len(items),
+            "items": items,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/watchlist/{opportunity_uid}")
+async def yield_watchlist_save(request: Request, opportunity_uid: str):
+    """Save one exact canonical yld_* opportunity with auth + CSRF."""
+    _require()
+    from finco_yield.watchlist import (
+        WatchlistError,
+        WatchlistOpportunityUnknown,
+        save_watchlist_item,
+    )
+
+    user = _request_user(request)
+    content_type = request.headers.get("content-type") or ""
+    is_form = "form" in content_type
+    if not user:
+        if is_form:
+            return RedirectResponse("/login", 302)
+        return JSONResponse(
+            status_code=401,
+            content={"state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"},
+        )
+
+    form = await request.form() if is_form else None
+    csrf_failure = _enforce_csrf(request, form)
+    if csrf_failure is not None:
+        return csrf_failure
+
+    try:
+        result = save_watchlist_item(user.user_id, opportunity_uid)
+    except WatchlistOpportunityUnknown:
+        return JSONResponse(
+            status_code=404,
+            content={"state": "UNAVAILABLE", "reason": "YIELD_OPPORTUNITY_UID_UNKNOWN"},
+        )
+    except WatchlistError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"state": "UNAVAILABLE", "reason": exc.REASON},
+        )
+    if is_form:
+        return RedirectResponse("/yield/monitor", 302)
+    return JSONResponse(
+        status_code=201 if result["created"] else 200,
+        content={"state": "SAVED", **result},
+    )
+
+
+async def _watchlist_remove(request: Request, opportunity_uid: str):
+    _require()
+    from finco_yield.watchlist import WatchlistError, remove_watchlist_item
+
+    user = _request_user(request)
+    content_type = request.headers.get("content-type") or ""
+    is_form = "form" in content_type
+    if not user:
+        if is_form:
+            return RedirectResponse("/login", 302)
+        return JSONResponse(
+            status_code=401,
+            content={"state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"},
+        )
+
+    form = await request.form() if is_form else None
+    csrf_failure = _enforce_csrf(request, form)
+    if csrf_failure is not None:
+        return csrf_failure
+
+    try:
+        removed = remove_watchlist_item(user.user_id, opportunity_uid)
+    except WatchlistError as exc:
+        return JSONResponse(
+            status_code=400,
+            content={"state": "UNAVAILABLE", "reason": exc.REASON},
+        )
+    if is_form:
+        return RedirectResponse("/yield/monitor", 302)
+    return JSONResponse(content={"state": "REMOVED" if removed else "NOT_PRESENT"})
+
+
+@router.delete("/watchlist/{opportunity_uid}")
+async def yield_watchlist_delete(request: Request, opportunity_uid: str):
+    return await _watchlist_remove(request, opportunity_uid)
+
+
+@router.post("/watchlist/{opportunity_uid}/remove")
+async def yield_watchlist_remove_post(request: Request, opportunity_uid: str):
+    return await _watchlist_remove(request, opportunity_uid)
+
+
 @router.get("/{opportunity_uid}/evidence.json")
 async def evidence_json(opportunity_uid: str):
     _require()
     try:
-        evidence = build_evidence(
-            load_bundled_registry().resolve(opportunity_uid)
-        )
+        evidence = build_evidence(load_bundled_registry().resolve(opportunity_uid))
     except RegistryError as exc:
         raise HTTPException(404, "Unknown Yield opportunity") from exc
     payload = json.loads(canonical_json(evidence))
@@ -307,8 +476,11 @@ async def evidence_json(opportunity_uid: str):
 
 
 @router.get("/{opportunity_uid}/history.json")
-async def history_json(opportunity_uid: str):
+async def history_json(opportunity_uid: str, request: Request):
     _require()
+    denial = await _enforce_premium(request, YieldResource.HISTORY)
+    if denial is not None:
+        return denial
     registry = load_bundled_registry()
     try:
         registry.resolve(opportunity_uid)
@@ -345,37 +517,19 @@ async def detail(request: Request, opportunity_uid: str):
     evidence = build_evidence(opportunity)
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
     history = (
-        history_window_summary(
-            YieldHistoryStore(path).for_opportunity(opportunity.uid)
-        )
+        history_window_summary(YieldHistoryStore(path).for_opportunity(opportunity.uid))
         if path
-        else {
-            "observation_count": 0,
-            "history_days": 0,
-            "available_windows": [],
-        }
+        else {"observation_count": 0, "history_days": 0, "available_windows": []}
     )
     scenarios = [
         run_scenario(name, opportunity.observation)
-        for name in (
-            "REWARDS_OFF",
-            "REWARDS_MINUS_50",
-            "EXIT_STRESS",
-            "GAS_SHOCK",
-        )
+        for name in ("REWARDS_OFF", "REWARDS_MINUS_50", "EXIT_STRESS", "GAS_SHOCK")
     ]
-    scenario_rows = [
-        {
-            "name": scenario.name,
-            "result": (
-                str(scenario.apy)
-                if scenario.apy is not None
-                else scenario.state.value
-            ),
-            "note": scenario.note,
-        }
-        for scenario in scenarios
-    ]
+    scenario_rows = [{
+        "name": scenario.name,
+        "result": str(scenario.apy) if scenario.apy is not None else scenario.state.value,
+        "note": scenario.note,
+    } for scenario in scenarios]
 
     return _templates.TemplateResponse(
         request=request,
@@ -400,23 +554,18 @@ async def detail(request: Request, opportunity_uid: str):
             ),
             "freshness": freshness.state,
             "history": history,
-            "exit_type": (
-                opportunity.observation.withdrawal_type or "UNKNOWN"
-            ).upper(),
+            "exit_type": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "capacity": (
                 str(opportunity.observation.capacity_usd)
-                if opportunity.observation.capacity_usd is not None
-                else "UNAVAILABLE"
+                if opportunity.observation.capacity_usd is not None else "UNAVAILABLE"
             ),
             "fee": (
                 str(opportunity.observation.fee_bps)
-                if opportunity.observation.fee_bps is not None
-                else "UNAVAILABLE"
+                if opportunity.observation.fee_bps is not None else "UNAVAILABLE"
             ),
             "slippage": (
                 str(opportunity.observation.slippage_bps)
-                if opportunity.observation.slippage_bps is not None
-                else "UNAVAILABLE"
+                if opportunity.observation.slippage_bps is not None else "UNAVAILABLE"
             ),
             "support_state": opportunity.support_state.value,
             "component_state": decomposition.state.value,
@@ -430,19 +579,19 @@ async def detail(request: Request, opportunity_uid: str):
 @router.post("/{opportunity_uid}/plan")
 async def transaction_plan(request: Request, opportunity_uid: str):
     _require()
+    denial = await _enforce_premium(request, YieldResource.EXECUTION_PREFLIGHT)
+    if denial is not None:
+        return denial
+    # Entitlement never enables execution. This remains the next trust boundary.
     if not execution_enabled():
         return JSONResponse(
-            {
-                "code": "EXECUTION_DISABLED",
-                "error": "Yield execution planning is disabled.",
-            },
+            {"code": "EXECUTION_DISABLED", "error": "Yield execution planning is disabled."},
             409,
         )
 
-    from app.auth import resolve_request_session
     from app.protocol.wallet_auth import get_verified_wallet
 
-    user = resolve_request_session(request)
+    user = _request_user(request)
     if not user:
         return JSONResponse(
             {"code": "UNAUTHENTICATED", "error": "Authentication required."},
@@ -451,10 +600,7 @@ async def transaction_plan(request: Request, opportunity_uid: str):
     wallet = get_verified_wallet(user.user_id)
     if not wallet:
         return JSONResponse(
-            {
-                "code": "WALLET_NOT_VERIFIED",
-                "error": "Verified wallet required.",
-            },
+            {"code": "WALLET_NOT_VERIFIED", "error": "Verified wallet required."},
             409,
         )
 
@@ -462,23 +608,14 @@ async def transaction_plan(request: Request, opportunity_uid: str):
         form = await request.form()
         amount = int(str(form.get("amount", "0")))
         registry = load_bundled_registry()
-        # Canonical identity may be used only to perform the direct block-bound
-        # revalidation. It does not authorize execution by itself.
         binding = registry.canonical_binding(opportunity_uid)
         rpc = rpc_url_for_chain(binding.chain_id)
         if not rpc:
             return JSONResponse(
-                {
-                    "code": "DIRECT_RPC_NOT_CONFIGURED",
-                    "error": "Direct chain read is not configured.",
-                },
+                {"code": "DIRECT_RPC_NOT_CONFIGURED", "error": "Direct chain read is not configured."},
                 503,
             )
-        intent = ExecutionIntent(
-            opportunity_uid,
-            amount,
-            wallet["wallet_address"],
-        )
+        intent = ExecutionIntent(opportunity_uid, amount, wallet["wallet_address"])
         direct = await read_erc4626(
             binding,
             rpc_url=rpc,
@@ -499,40 +636,20 @@ async def transaction_plan(request: Request, opportunity_uid: str):
             allowance_block_number=allowance_block,
         )
         validate_quote(intent, plan, registry=registry)
-        pre = build_pre_trade_evidence(
-            build_evidence(registry.resolve(opportunity_uid)),
-            plan,
-        )
-    except (
-        ValueError,
-        RegistryError,
-        OnchainReadError,
-        ExecutionValidationError,
-    ):
+        pre = build_pre_trade_evidence(build_evidence(registry.resolve(opportunity_uid)), plan)
+    except (ValueError, RegistryError, OnchainReadError, ExecutionValidationError):
         return JSONResponse(
-            {
-                "code": "PLAN_REJECTED",
-                "error": "Execution plan could not be safely constructed.",
-            },
+            {"code": "PLAN_REJECTED", "error": "Execution plan could not be safely constructed."},
             409,
         )
 
-    return JSONResponse(
-        json.loads(
-            canonical_json(
-                {
-                    "schema": "YIELD_TRANSACTION_PLAN_V1",
-                    "plan": plan,
-                    "pre_trade_evidence": pre,
-                    "wallet_handoff": {
-                        "status": "NOT_ACTIVATED",
-                        "requires_explicit_user_wallet_action": True,
-                        "reason": (
-                            "Production mainnet signing/broadcast is not "
-                            "activated in PR #148."
-                        ),
-                    },
-                }
-            )
-        )
-    )
+    return JSONResponse(json.loads(canonical_json({
+        "schema": "YIELD_TRANSACTION_PLAN_V1",
+        "plan": plan,
+        "pre_trade_evidence": pre,
+        "wallet_handoff": {
+            "status": "NOT_ACTIVATED",
+            "requires_explicit_user_wallet_action": True,
+            "reason": "Production mainnet signing/broadcast is not activated in PR #148.",
+        },
+    })))
