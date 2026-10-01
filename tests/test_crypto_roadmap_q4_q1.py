@@ -37,10 +37,17 @@ def test_primary_product_architecture_is_explicit():
 
 
 def test_protocol_layer_is_explicit_and_separate():
-    for rel in ("app/templates/protocol_home.html", "app/templates/protocol_roadmap.html"):
-        text = _flat(rel)
-        assert "VERIFY · API · $FINCO" in text, rel
-        assert "Verified Assets" in text, rel
+    # Manual-QA product-truth correction: the Verified Assets composition
+    # surface is removed from the public home (no user workflow, 0 verified
+    # production assets); FINCO Verify (/verify) is the public VERIFY
+    # surface. The roadmap keeps the historical layer description.
+    home = _flat("app/templates/protocol_home.html")
+    roadmap = _flat("app/templates/protocol_roadmap.html")
+    assert "VERIFY · API · $FINCO" in home, "protocol_home"
+    assert 'href="/verified"' not in home, "home must not link the legacy surface"
+    assert 'href="/verify"' in home, "home links FINCO Verify"
+    assert "VERIFY · API · $FINCO" in roadmap, "protocol_roadmap"
+    assert "Verified Assets" in roadmap, "roadmap keeps the layer description"
 
 
 def test_shared_navigation_exposes_primary_products_and_active_contracts():

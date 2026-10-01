@@ -28,6 +28,7 @@
       {% if wallet_state == "VERIFIED" %}Wallet ownership verified via the existing signed-challenge flow.
       {% elif wallet_state == "UNVERIFIED" %}Signed in, but no verified wallet is linked yet. Verify ownership on the
         <a href="/protocol/finco">$FINCO page</a>. Ownership ≠ entitlement.
+      {% elif wallet_state == "UNAVAILABLE" %}<span data-testid="wallet-unavailable">The wallet store is currently unavailable. No wallet state is inferred and nothing is counted as zero.</span>
       {% else %}No wallet session. Connect and verify a wallet on the
         <a href="/protocol/finco">$FINCO page</a>.{% endif %}
     </p>
@@ -58,7 +59,13 @@
   </section>
 
   <section class="panel" data-testid="crypto-watchlist" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Yield Watchlist <span class="badge" data-testid="watchlist-count">{{ watchlist_count }}</span></h2>
+    <h2 style="font-size:14px;margin:0 0 8px">Yield Watchlist
+      {%- if watchlist_state == 'UNAVAILABLE' %}
+        <span class="badge" data-testid="watchlist-count">—</span>
+        <span class="badge" data-testid="watchlist-unavailable">UNAVAILABLE</span>
+      {%- else %}
+        <span class="badge" data-testid="watchlist-count">{{ watchlist_count }}</span>
+      {%- endif %}</h2>
     {% if watchlist %}
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr><th style="text-align:left;padding:6px 8px">Opportunity</th><th style="text-align:left;padding:6px 8px">Canonical identity</th><th style="text-align:left;padding:6px 8px">Saved</th></tr></thead>
@@ -72,6 +79,8 @@
       {% endfor %}
       </tbody>
     </table>
+    {% elif watchlist_state == 'UNAVAILABLE' %}
+    <p class="muted small" data-testid="watchlist-unavailable-note" style="margin:0">The watchlist store is currently unavailable. Saved opportunities cannot be read right now and are NOT counted as zero.</p>
     {% else %}
     <p class="muted small" data-testid="watchlist-empty" style="margin:0">Nothing saved yet. Save opportunities by their canonical identity from the <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.</p>
     {% endif %}

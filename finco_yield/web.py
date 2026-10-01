@@ -82,6 +82,36 @@ def _usd(value) -> str:
     return "—" if value is None else f"${value:,.0f}"
 
 
+def _last_observed_label(observed_at, *, now=None) -> str:
+    """Human-readable 'Last observed' stamp (age + UTC timestamp).
+
+    Presentation only — it never relabels stale evidence as fresh.  Missing
+    observed_at stays missing (no fabricated timestamp).
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    if observed_at is None:
+        return "UNAVAILABLE"
+    try:
+        moment = _dt.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+    except ValueError:
+        return "UNAVAILABLE"
+    if moment.tzinfo is None:
+        return "UNAVAILABLE"
+    now = now or _dt.now(_tz.utc)
+    age_seconds = int((now.astimezone(_tz.utc) - moment.astimezone(_tz.utc)).total_seconds())
+    if age_seconds < 0:
+        return "timestamp in the future"
+    if age_seconds < 90:
+        age = f"{age_seconds}s ago"
+    elif age_seconds < 5400:
+        age = f"{age_seconds // 60}m ago"
+    elif age_seconds < 129600:
+        age = f"{age_seconds // 3600}h ago"
+    else:
+        age = f"{age_seconds // 86400}d ago"
+    return f"{age} ({moment.astimezone(_tz.utc).strftime('%Y-%m-%d %H:%M UTC')})"
+
+
 def _chain(chain_id: int) -> str:
     return {1: "Ethereum", 8453: "Base", 4663: "Robinhood"}.get(chain_id, str(chain_id))
 
@@ -176,6 +206,7 @@ async def yield_explore(
             "evidence": opportunity.source_type.value,
             "exit": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "freshness": evaluate_freshness(_source(opportunity)).state,
+            "last_observed": _last_observed_label(opportunity.observed_at),
             "support_state": opportunity.support_state.value,
         })
 
@@ -569,6 +600,7 @@ async def detail(request: Request, opportunity_uid: str):
                 else "COMPONENTS_UNAVAILABLE"
             ),
             "freshness": freshness.state,
+            "last_observed": _last_observed_label(opportunity.observed_at),
             "history": history,
             "exit_type": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "capacity": (

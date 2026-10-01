@@ -380,6 +380,7 @@ async def execute_projects_create_route(
             template_source=normalized_source,
             requested_name=clean_name,
             capacity_mw=float(submitted["capacity_mw"]),
+            country_market=submitted.get("country_market"),
         )
         return ProjectsCreateRouteOutcome(
             template_name="partials/new_project_result.html",

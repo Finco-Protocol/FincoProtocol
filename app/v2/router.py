@@ -2065,6 +2065,11 @@ async def v2_workbook_run(
             status_code=303,
         )
 
+    from app.services.run_stage_timing import (
+        log_run_stages, mark as _stage_mark, start_run_stages,
+    )
+    start_run_stages()
+
     from app.persistence.projects_repository import resolve_accessible_project
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
@@ -2075,6 +2080,7 @@ async def v2_workbook_run(
     if ws is None:
         msg = "Workspace not found."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+    _stage_mark("project_workspace_resolved")
 
     # ── Step 2b: unsupported project-type guard ───────────────────────────── #
     # Must come BEFORE the hash check so Storage projects always receive 409
@@ -2265,6 +2271,7 @@ async def v2_workbook_run(
         BUSY_MESSAGE, ModelExecutionBusy, ModelExecutionFailed, ModelExecutionTimeout,
         run_model_process,
     )
+    _stage_mark("model_entered")
     try:
         result = await run_model_process(
             run_project,
@@ -2272,6 +2279,7 @@ async def v2_workbook_run(
             "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
         )
+        _stage_mark("model_completed")
     except ModelExecutionBusy:
         # BUSY != CALCULATION_FAILED: nothing ran, nothing changed, safe to retry.
         if is_htmx:
@@ -2328,6 +2336,7 @@ async def v2_workbook_run(
             last_runtime_scenario_id=active_scenario_id,
             ran_at=ran_at,
         )
+        _stage_mark("persistence_completed")
     except V2RunCommitConflictError:
         msg = (
             "Workbook changed while the engine was running — values refreshed. "
@@ -2479,6 +2488,8 @@ async def v2_workbook_run(
         workspace_owner=workspace_owner,
         rr=rr,
     )
+    _stage_mark("response_generated")
+    log_run_stages(project_type=project_record.project_type, origin="v2_workbook_run")
     return HTMLResponse(content=combined)
 
 

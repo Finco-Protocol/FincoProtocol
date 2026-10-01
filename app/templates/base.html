@@ -251,8 +251,10 @@
                 hx-include="#main-form"
                 hx-target="#model-output-area"
                 hx-swap="innerHTML"
-                hx-indicator="#run-spinner">
-          <span class="ps-action-icon">▶</span> Run
+                hx-indicator="#run-spinner"
+                hx-disabled-elt="this"
+                data-run-label="Run">
+          <span class="ps-action-icon">▶</span><span id="run-btn-label" data-testid="run-btn-label"> Run</span>
           <span id="run-spinner" class="htmx-indicator run-spinner">…</span>
         </button>
         <button class="ps-action-btn"
@@ -349,6 +351,53 @@
   document.body.addEventListener('htmx:afterRequest', function(e) {
     if (e.detail.target) e.detail.target.classList.remove('htmx-loading');
   });
+
+  {# Manual-QA runtime correction: the Run button must visibly enter a
+     RUNNING state immediately, be disabled against duplicate submission,
+     and return to normal on success/failure. hx-disabled-elt disables the
+     button for the request; the label swap below makes the state visible.
+     Completion/failure/busy/timeout all swap a typed response into
+     #model-output-area (or restore the label on transport error). #}
+  (function() {
+    var runBtn = document.getElementById('btn-run-model-sidebar');
+    if (!runBtn) return;
+    function runLabelEl() { return document.getElementById('run-btn-label'); }
+    document.body.addEventListener('htmx:beforeRequest', function(e) {
+      if (e.detail.elt !== runBtn) return;
+      var label = runLabelEl();
+      if (label) label.textContent = ' Running…';
+      runBtn.setAttribute('aria-busy', 'true');
+      runBtn.setAttribute('data-run-state', 'running');
+    });
+    function restoreRunLabel() {
+      var label = runLabelEl();
+      if (label) label.textContent = runBtn.getAttribute('data-run-label') || ' Run';
+      runBtn.removeAttribute('aria-busy');
+      runBtn.removeAttribute('data-run-state');
+    }
+    document.body.addEventListener('htmx:afterRequest', function(e) {
+      if (e.detail.elt !== runBtn) return;
+      restoreRunLabel();
+      if (e.detail.failed && e.detail.xhr && e.detail.xhr.status === 503) {
+        var area = document.getElementById('model-output-area');
+        if (area) area.innerHTML = '<div class="warn" data-testid="run-busy">' +
+          '<strong>Model busy.</strong> All model run slots are in use. ' +
+          'Please wait a moment and try again.</div>';
+      }
+    });
+    document.body.addEventListener('htmx:sendError', function(e) {
+      if (e.detail.elt !== runBtn) return;
+      restoreRunLabel();
+      var area = document.getElementById('model-output-area');
+      if (area) area.innerHTML = '<div class="warn" data-testid="run-error">' +
+        '<strong>Run failed to submit.</strong> The server could not be reached. ' +
+        'Please check your connection and try again.</div>';
+    });
+    document.body.addEventListener('htmx:responseError', function(e) {
+      if (e.detail.elt !== runBtn) return;
+      restoreRunLabel();
+    });
+  })();
 
   document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.input-group-summary').forEach(function(summary) {
