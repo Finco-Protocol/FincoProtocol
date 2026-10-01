@@ -42,11 +42,18 @@ YIELD_EXECUTION_PREFLIGHT = "yield.execution_preflight"
 
 @dataclass(frozen=True)
 class ResourceDisplayMeta:
-    """PRESENTATION METADATA ONLY — never an access-policy authority."""
+    """PRESENTATION METADATA ONLY — never an access-policy authority.
+
+    Every resource — ``yield.alerts`` included — is presented from its
+    canonical ``ResourceAccessDecision`` exactly like the other holder
+    resources.  Alerts BACKEND availability (integration pending /
+    available) is a separate concept owned by the ``AlertsGateway`` and
+    rendered in the dedicated Alerts panel, never mixed in here.
+    """
+
     key: str
     display_name: str
     description: str
-    activated: bool = True
     note: str | None = None
 
 
@@ -69,9 +76,9 @@ RESOURCE_DISPLAY: dict[str, ResourceDisplayMeta] = {
     YIELD_ALERTS: ResourceDisplayMeta(
         key=YIELD_ALERTS,
         display_name="Alerts",
-        description="Saved-opportunity alerting. Foundation (watchlist) is shipped; alert delivery is not.",
-        activated=False,
-        note="Watchlist is available; alert delivery is not shipped yet.",
+        description="In-app alerts for watched Yield opportunities.",
+        note="$FINCO access state only; Alerts service availability is "
+             "shown separately.",
     ),
     YIELD_EXECUTION_PREFLIGHT: ResourceDisplayMeta(
         key=YIELD_EXECUTION_PREFLIGHT,
@@ -93,7 +100,6 @@ RESOURCE_UNLOCKED = "UNLOCKED"
 RESOURCE_NOT_ACTIVATED = "NOT_ACTIVATED"
 
 REASON_NO_SESSION = "WALLET_NOT_CONNECTED"
-REASON_ALERTS_NOT_SHIPPED = "ALERT_DELIVERY_NOT_SHIPPED"
 REASON_DECISION_UNAVAILABLE = "ACCESS_DECISION_UNAVAILABLE"
 
 _UNAVAILABLE_REASONS = frozenset({
@@ -140,9 +146,12 @@ def present_resource(
     *,
     wallet_state: str | None = None,
 ) -> dict:
-    """Deterministically map one authoritative decision to presentation."""
-    if not meta.activated:
-        return _view(meta, RESOURCE_NOT_ACTIVATED, REASON_ALERTS_NOT_SHIPPED)
+    """Deterministically map one authoritative decision to presentation.
+
+    No resource has a presentation-only override: ``yield.alerts`` follows
+    the same canonical decision mapping as every other holder resource.
+    Alerts BACKEND availability is owned by the AlertsGateway panel.
+    """
     if decision is None:
         return _view(meta, RESOURCE_UNAVAILABLE, REASON_DECISION_UNAVAILABLE)
 

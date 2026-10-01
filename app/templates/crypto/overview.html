@@ -57,7 +57,10 @@
     <p class="muted small" style="margin:10px 0 0">
       Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating
       is not active by default, so gated capabilities are not enforced today. States stay distinct:
-      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. Ownership ≠ entitlement; entitlement ≠
+      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means
+      the token gate is not active for that capability — it does not mean the Alerts
+      service is unavailable (service availability is shown in the Alerts panel).
+      Ownership ≠ entitlement; entitlement ≠
       execution, metering, staking, or burns. Execution Preflight shows entitlement status only.
     </p>
   </section>

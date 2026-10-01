@@ -614,3 +614,110 @@ def test_available_gateway_renders_full_alerts_ux(client, monkeypatch):
     assert "In-app alerts: available" in html
     assert "Email = NOT SHIPPED" in html      # external truth unchanged
     reset_alerts_gateway()
+
+
+# ── Final correction: alerts access row follows canonical decision; the
+#    Alerts PANEL independently reports backend availability ──────────────────
+
+@pytest.fixture()
+def installed_alerts_gateway(monkeypatch):
+    from app.crypto_alerts import (
+        AlertsSnapshot, set_alerts_gateway, reset_alerts_gateway,
+    )
+    double = SimpleNamespace(
+        snapshot=lambda user_id: AlertsSnapshot(
+            available=True, reason=None, unread_count=1,
+            items=({"alert_id": "a-1", "alert_type": "YIELD_RATE_CHANGE",
+                   "opportunity_uid": "yld_" + "a" * 32,
+                   "opportunity_display": "Spark USDC Vault",
+                   "summary": "Reported APY changed.", "value": None,
+                   "created_at": "2026-10-01T00:00:00+00:00",
+                   "read": False},)),
+        mark_read=lambda user_id, alert_id: True,
+        mark_all_read=lambda user_id: 1)
+    set_alerts_gateway(double)
+    yield double
+    reset_alerts_gateway()
+
+
+def _patch_alerts_access(monkeypatch, *, decision, reason,
+                         access_allowed, gate_active):
+    """Stub ONE canonical boundary function (no parallel evaluator)."""
+    from finco_yield.access import YieldAccessDecision, YieldAccessState, YieldResource
+    crafted = YieldAccessDecision(
+        resource=YieldResource.ALERTS, state=YieldAccessState(decision),
+        access_allowed=access_allowed, token_entitled=access_allowed and gate_active,
+        gate_active=gate_active, reason=reason)
+
+    async def fake_resolve(request, resource):
+        return crafted
+
+    monkeypatch.setattr("finco_yield.access.resolve_yield_access", fake_resolve)
+
+
+def _craft_all_decisions(alerts_decision):
+    """Full canonical mapping for the access table: basic PUBLIC, alerts as
+    given, other holders INACTIVE (gating off) — exactly what the canonical
+    evaluator emits under the matching production configuration."""
+    from app.crypto_access import (
+        YIELD_ADVANCED_COMPARE, YIELD_ALERTS, YIELD_BASIC, YIELD_EXECUTION_PREFLIGHT,
+        YIELD_HISTORY,
+    )
+    return {
+        YIELD_BASIC: _decision("ALLOW", "PUBLIC_RESOURCE"),
+        YIELD_ALERTS: alerts_decision,
+        YIELD_HISTORY: _decision("INACTIVE", "TOKEN_GATING_OFF"),
+        YIELD_ADVANCED_COMPARE: _decision("INACTIVE", "TOKEN_GATING_OFF"),
+        YIELD_EXECUTION_PREFLIGHT: _decision("INACTIVE", "TOKEN_GATING_OFF"),
+    }
+
+
+def test_alerts_available_plus_allow_panel_and_row_agree(
+        client, monkeypatch, installed_alerts_gateway):
+    """Gateway AVAILABLE + canonical ALLOW: Alerts panel AVAILABLE and the
+    $FINCO access row UNLOCKED — no contradiction, no delivery override."""
+    async def _decisions(wallet):
+        return _craft_all_decisions(_decision(
+            "ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"))
+    monkeypatch.setattr("app.crypto_ui._resource_decisions", _decisions)
+    _patch_alerts_access(monkeypatch, decision="ENTITLED",
+                         reason="BALANCE_AT_OR_ABOVE_THRESHOLD",
+                         access_allowed=True, gate_active=True)
+    _session(monkeypatch, "user-1")
+    html = client.get("/crypto").text
+    assert 'data-testid="alerts-state">AVAILABLE<' in html
+    assert "In-app alerts: available" in html
+    alerts_row = html.split('data-testid="crypto-access-row-yield.alerts"', 1)[1][:400]
+    assert "UNLOCKED" in alerts_row
+    assert "NOT_ACTIVATED" not in alerts_row
+
+
+def test_alerts_available_plus_inactive_gate_is_valid_not_contradictory(
+        client, monkeypatch, installed_alerts_gateway):
+    """Gateway AVAILABLE + canonical INACTIVE: service availability and
+    token-gate state are intentionally separate — panel AVAILABLE while the
+    access row reads NOT_ACTIVATED (the gate is simply off)."""
+    async def _decisions(wallet):
+        return _craft_all_decisions(_decision("INACTIVE", "TOKEN_GATING_OFF"))
+    monkeypatch.setattr("app.crypto_ui._resource_decisions", _decisions)
+    _patch_alerts_access(monkeypatch, decision="TOKEN_ENTITLEMENT_FEATURE_INACTIVE",
+                         reason="TOKEN_GATING_OFF",
+                         access_allowed=True, gate_active=False)
+    _session(monkeypatch, "user-1")
+    html = client.get("/crypto").text
+    assert 'data-testid="alerts-state">AVAILABLE<' in html
+    assert "In-app alerts: available" in html
+    alerts_row = html.split('data-testid="crypto-access-row-yield.alerts"', 1)[1][:900]
+    assert "NOT_ACTIVATED" in alerts_row
+    assert "TOKEN_GATING_OFF" in alerts_row
+    # wording clarifies NOT_ACTIVATED means the gate is off, not the service
+    assert "the token gate is not active" in html
+
+
+def test_alerts_access_row_note_has_no_delivery_claim(client, monkeypatch):
+    _session(monkeypatch, "user-1")
+    html = client.get("/crypto").text
+    row = html.split('data-testid="crypto-access-row-yield.alerts"', 1)[1][:400]
+    assert "shown separately" in row
+    assert "not shipped" not in row.lower()
+    assert "delivery" not in row.lower()

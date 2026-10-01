@@ -141,18 +141,55 @@ def test_inactive_gating_maps_to_not_activated_never_locked(
     assert view["reason"] == reason
 
 
-def test_yield_alerts_not_activated_by_product_delivery(presentation_module):
-    """Watchlist shipped, alert delivery not: NOT_ACTIVATED regardless of
-    any decision, and never relabelled as gated/locked."""
+def test_yield_alerts_follows_canonical_decision_like_other_holders(
+        presentation_module):
+    """``yield.alerts`` has NO presentation-only delivery override: it is
+    mapped from its canonical decision exactly like other holder
+    resources.  Alerts BACKEND availability is a separate, gateway-owned
+    concept rendered in the Alerts panel."""
     from app.crypto_access import (
-        RESOURCE_NOT_ACTIVATED, YIELD_ALERTS,
+        RESOURCE_LOCKED, RESOURCE_NOT_ACTIVATED, RESOURCE_NOT_CONFIGURED,
+        RESOURCE_UNAVAILABLE, RESOURCE_UNLOCKED, YIELD_ALERTS,
     )
-    view = presentation_module.present_resource(
-        presentation_module.RESOURCE_DISPLAY[YIELD_ALERTS],
-        _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"))
+    present = presentation_module.present_resource
+    meta = presentation_module.RESOURCE_DISPLAY[YIELD_ALERTS]
+
+    # canonical INACTIVE (gating off) → NOT_ACTIVATED
+    view = present(meta, _decision("INACTIVE", "TOKEN_GATING_OFF"))
     assert view["state"] == RESOURCE_NOT_ACTIVATED
-    assert view["reason"] == "ALERT_DELIVERY_NOT_SHIPPED"
-    assert "not shipped" in view["note"]
+    assert view["reason"] == "TOKEN_GATING_OFF"
+    # canonical ALLOW → UNLOCKED
+    view = present(meta, _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"))
+    assert view["state"] == RESOURCE_UNLOCKED
+    assert view["reason"] == "BALANCE_AT_OR_ABOVE_THRESHOLD"
+    # canonical DENY below threshold → LOCKED
+    view = present(meta, _decision("DENY", "BALANCE_BELOW_THRESHOLD"))
+    assert view["state"] == RESOURCE_LOCKED
+    # no deployment → NOT_CONFIGURED
+    view = present(meta, _decision("DENY", "NO_APPROVED_DEPLOYMENT"))
+    assert view["state"] == RESOURCE_NOT_CONFIGURED
+    # authority unavailable → UNAVAILABLE
+    view = present(meta, _decision("DENY", "RPC_UNAVAILABLE"))
+    assert view["state"] == RESOURCE_UNAVAILABLE
+    # missing decision → UNAVAILABLE (never guessed)
+    view = present(meta, None)
+    assert view["state"] == RESOURCE_UNAVAILABLE
+    assert view["reason"] == "ACCESS_DECISION_UNAVAILABLE"
+    # neutral access-specific metadata: no delivery claims either way
+    assert "not shipped" not in view["note"].lower()
+    assert "delivery" not in view["note"].lower()
+    assert "shown separately" in view["note"]
+
+
+def test_no_resource_carries_a_delivery_override(presentation_module):
+    """The presentation-only activated override is gone entirely: no
+    display metadata can turn a canonical ALLOW into NOT_ACTIVATED."""
+    import json
+    from app.crypto_access import RESOURCE_DISPLAY
+    assert not hasattr(list(RESOURCE_DISPLAY.values())[0], "activated")
+    for meta in RESOURCE_DISPLAY.values():
+        payload = json.dumps(meta.__dict__)
+        assert "ALERT_DELIVERY_NOT_SHIPPED" not in payload
 
 
 def test_unknown_deny_reason_fails_closed_to_unavailable(presentation_module):
@@ -180,8 +217,9 @@ def test_missing_decisions_present_unavailable_never_guessed(
     assert snapshot["resources"][YIELD_HISTORY]["state"] == RESOURCE_UNAVAILABLE
     assert snapshot["resources"][YIELD_ADVANCED_COMPARE]["state"] == RESOURCE_UNAVAILABLE
     assert snapshot["resources"][YIELD_EXECUTION_PREFLIGHT]["state"] == RESOURCE_UNAVAILABLE
-    # alert delivery state needs no authority
-    assert snapshot["resources"][YIELD_ALERTS]["state"] == RESOURCE_NOT_ACTIVATED
+    # alerts follows canonical authority like every other holder resource
+    assert snapshot["resources"][YIELD_ALERTS]["state"] == RESOURCE_UNAVAILABLE
+    assert snapshot["resources"][YIELD_ALERTS]["reason"] == "ACCESS_DECISION_UNAVAILABLE"
 
 
 def test_snapshot_maps_full_authoritative_bundle(presentation_module):
