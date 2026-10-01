@@ -1,0 +1,80 @@
+{
+ "combined_dscr_binds": {
+  "authoritative": true,
+  "binding": "DSCR",
+  "closing_last": "9.22103845368838e-06",
+  "debt": "57977.86735849688",
+  "interest_mid": "965.3217111243741",
+  "interest_sum": "19646.449937621728",
+  "iterations": 8,
+  "principal_first": "2299.006066408978",
+  "principal_last": "3604.2559810988755",
+  "principal_sum": "57977.867349275824",
+  "termination": "CONVERGED"
+ },
+ "combined_gearing_binds": {
+  "authoritative": true,
+  "binding": "GEARING",
+  "closing_last": "0.0",
+  "debt": "40000.0",
+  "interest_mid": "285.6338083400413",
+  "interest_sum": "8625.198544423754",
+  "iterations": 8,
+  "principal_first": "2731.04320337197",
+  "principal_last": "0.0",
+  "principal_sum": "40000.0",
+  "termination": "CONVERGED"
+ },
+ "dscr_sculpted": {
+  "authoritative": true,
+  "binding": "DSCR",
+  "closing_last": "9.045061233337037e-08",
+  "debt": "57977.86735849688",
+  "interest_mid": "965.3217111241214",
+  "interest_sum": "19646.44993720268",
+  "iterations": 8,
+  "principal_first": "2299.006066408978",
+  "principal_last": "3604.255984461191",
+  "principal_sum": "57977.86735840642",
+  "termination": "CONVERGED"
+ },
+ "explicit_level": {
+  "authoritative": true,
+  "binding": null,
+  "closing_last": "0.0",
+  "debt": "30000.0",
+  "interest_mid": "453.6986301369863",
+  "interest_sum": "4949.260273972603",
+  "iterations": 1,
+  "principal_first": "3000.0",
+  "principal_last": "3000.0",
+  "principal_sum": "30000.0",
+  "termination": "CONVERGED"
+ },
+ "gearing_default": {
+  "authoritative": true,
+  "binding": "GEARING",
+  "closing_last": "0.0",
+  "debt": "60000.0",
+  "interest_mid": "892.6027397260274",
+  "interest_sum": "18904.43835616438",
+  "iterations": 1,
+  "principal_first": "3000.0",
+  "principal_last": "3000.0",
+  "principal_sum": "60000.0",
+  "termination": "CONVERGED"
+ },
+ "gearing_default_short_rising": {
+  "authoritative": true,
+  "binding": "GEARING",
+  "closing_last": "0.0",
+  "debt": "20000.0",
+  "interest_mid": "302.4657534246576",
+  "interest_sum": "2098.6301369863017",
+  "iterations": 1,
+  "principal_first": "3333.3333333333335",
+  "principal_last": "3333.3333333333326",
+  "principal_sum": "20000.0",
+  "termination": "CONVERGED"
+ }
+}

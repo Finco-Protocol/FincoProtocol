@@ -153,6 +153,18 @@ def validate_senior_debt_inputs(
             "at least one source of interest rates is required"
         )
 
+    # --- gearing_cap_repayment_method (M-6): typed, and only meaningful for GEARING_CAP ---
+    from financial_engine.senior_debt.policy import GearingCapRepaymentMethod
+    method = policy.gearing_cap_repayment_method
+    if not isinstance(method, GearingCapRepaymentMethod):
+        errors.append("gearing_cap_repayment_method must be a GearingCapRepaymentMethod")
+    elif (method is not GearingCapRepaymentMethod.LEVEL_PRINCIPAL
+          and policy.sizing_mode != SeniorDebtSizingMode.GEARING_CAP):
+        errors.append(
+            "gearing_cap_repayment_method applies only to sizing_mode=GEARING_CAP; "
+            f"sizing_mode={policy.sizing_mode.value} has a fixed repayment method"
+        )
+
     # --- GEARING_CAP / COMBINED_MINIMUM require maximum_gearing ---
     if policy.sizing_mode in (
         SeniorDebtSizingMode.GEARING_CAP, SeniorDebtSizingMode.COMBINED_MINIMUM

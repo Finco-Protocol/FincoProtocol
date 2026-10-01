@@ -210,6 +210,11 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "maximum_iterations": policy.maximum_iterations,
             "permit_terminal_balloon": policy.permit_terminal_balloon,
             "damping_alpha": policy.damping_alpha,
+            # M-6: only a NON-default repayment method is fingerprinted, so every existing
+            # (default LEVEL_PRINCIPAL) fingerprint stays bit-identical.
+            **({"gearing_cap_repayment_method": str(getattr(_m, "value", _m))}
+               if (_m := getattr(policy, "gearing_cap_repayment_method", None)) is not None
+               and str(getattr(_m, "value", _m)) != "LEVEL_PRINCIPAL" else {}),
         },
         "inputs": {
             "eligible_project_cost_keur": sd.eligible_project_cost_keur,
