@@ -888,9 +888,13 @@ def _statement_run_identity_rows(bundle: WorkbookExportBundle) -> list[tuple]:
     """
     return [
         ("Bound run id", getattr(bundle, "run_id", None) or "NOT_AVAILABLE", "runtime",
-         "Same-run identity: this sheet serializes the exact committed Last Run."),
+         "Bound run identity -- this workbook serializes the financial "
+         "statements from the same clean execution object by construction."),
         ("Bound snapshot id", getattr(bundle, "runtime_snapshot_id", None) or "NOT_AVAILABLE",
-         "runtime", "Cross-run substitution fails; snapshot identity is bound."),
+         "runtime", "Audit label for the committed workbook run."),
+        ("Source-package independent provenance digest", "NOT_AVAILABLE", "review",
+         "NOT_AVAILABLE in V1: no independent statement-package digest exists; "
+         "by-construction same-execution use is the guarantee."),
     ]
 
 

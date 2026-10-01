@@ -249,7 +249,11 @@ The master Trust Pack treats this as the authoritative Last Run / Working Copy p
 
 Same-run identity (bound run id + snapshot id) is stamped on every statement sheet; cross-run substitution is structurally detectable.
 
-`XLSX_STATEMENT_TRACE = PASS`
+`XLSX_STATEMENT_VALUE_TRACE = PASS`
+`XLSX_STATEMENT_RUN_BINDING = BY_CONSTRUCTION`
+`XLSX_CROSS_RUN_SOURCE_PROVENANCE = NOT_AVAILABLE`
+
+(What this proves: statement VALUES are serialized verbatim from the clean runtime's own statement package, and that package is the same clean execution object by construction.  What it does NOT prove: an independent source-package digest/provenance identity — that does not exist in V1 and is not claimed.)
 
 ## 14. Reproduction map
 

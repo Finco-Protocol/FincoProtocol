@@ -41,6 +41,11 @@ DC_SUPPORTED = (
 )
 
 
+def _gen_drivers():
+    from app.data_center_authority import GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+    return GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+
+
 def _dc_project():
     from app.project_factories import create_generic_data_center_reference
     return create_generic_data_center_reference()
@@ -102,7 +107,8 @@ class TestDCShockMappings:
     def test_dc_service_price_scales_curve_and_tariff(self):
         proj = _dc_project()
         base_curve = proj.revenue.market_prices_curve
-        shocked = _apply_shock(proj, "dc_service_price", 10.0)
+        from app.data_center_authority import GENERIC_DATA_CENTER_REFERENCE_DRIVERS as _GEN
+        shocked = _apply_shock(proj, "dc_service_price", 10.0, dc_drivers=_gen_drivers())
         assert shocked.revenue.ppa_base_tariff == pytest.approx(
             proj.revenue.ppa_base_tariff * 1.10)
         scaled = [v * 1.10 for v in base_curve]
@@ -114,7 +120,7 @@ class TestDCShockMappings:
         """BLOCKER 2: occupancy recomputes REVENUE and POWER PROCUREMENT
         through the canonical DC runtime adapter (power = MW x occ x PUE)."""
         proj = _dc_project()
-        shocked = _apply_shock(proj, "dc_occupancy", 10.0)
+        shocked = _apply_shock(proj, "dc_occupancy", 10.0, dc_drivers=_gen_drivers())
         old_curve = proj.revenue.market_prices_curve
         assert all(new == pytest.approx(old * 1.10)
                    for new, old in zip(shocked.revenue.market_prices_curve,
@@ -124,6 +130,18 @@ class TestDCShockMappings:
         assert power_new.y1_amount_keur == pytest.approx(
             power_old.y1_amount_keur * 1.10)
         assert shocked.revenue.market_inflation == proj.revenue.market_inflation
+
+    def test_missing_dc_context_fails_closed(self):
+        """Correction C: dc_* shocks without the resolved driver context
+        fail closed — generic reference defaults are NOT substituted."""
+        from app.project_factories import create_generic_data_center_reference
+        from app.services.sensitivity_service import DCDriverContextRequiredError
+
+        proj = create_generic_data_center_reference()
+        with pytest.raises(DCDriverContextRequiredError, match="dc_service_price"):
+            _apply_shock(proj, "dc_service_price", 10.0, dc_drivers=None)
+        with pytest.raises(DCDriverContextRequiredError, match="dc_pue"):
+            _apply_shock(proj, "dc_pue", 10.0, dc_drivers=None)
 
     def test_dc_pue_scales_power_expense_schedule(self):
         proj = _dc_project()
@@ -135,7 +153,7 @@ class TestDCShockMappings:
         factor = 1.10
         base_power_y1 = power.y1_amount_keur
         base_step3 = dict(power.step_changes)[3] * (1.02 ** 2)
-        shocked = _apply_shock(proj, "dc_pue", 10.0)
+        shocked = _apply_shock(proj, "dc_pue", 10.0, dc_drivers=_gen_drivers())
         power_new = next(o for o in shocked.opex if o.name == "Power Expenses")
         assert power_new.y1_amount_keur == pytest.approx(base_power_y1 * factor)
         assert dict(power_new.step_changes)[1] == pytest.approx(
@@ -149,7 +167,7 @@ class TestDCShockMappings:
 
     def test_dc_electricity_price_scales_power_expense(self):
         proj = _dc_project()
-        shocked = _apply_shock(proj, "dc_electricity_price", -10.0)
+        shocked = _apply_shock(proj, "dc_electricity_price", -10.0, dc_drivers=_gen_drivers())
         power_old = next(o for o in proj.opex if o.name == "Power Expenses")
         power_new = next(o for o in shocked.opex if o.name == "Power Expenses")
         assert power_new.y1_amount_keur == pytest.approx(power_old.y1_amount_keur * 0.90)
@@ -175,7 +193,8 @@ class TestBaseOutputsAndBounds:
         monkeypatch.setattr(ssvc, "_run_once",
                             lambda p: (runs.append(1), real(p))[1])
         result = run_sensitivity(_dc_project(), ["dc_service_price"],
-                                 [-10.0, 0.0, 10.0], vertical="Data Center")
+                                 [-10.0, 0.0, 10.0], vertical="Data Center",
+                                 dc_drivers=_gen_drivers())
         # base + 3 shocks = 4 executions; no unbounded fanout.
         assert len(runs) == 4
         assert len(result["rows"]) == 3

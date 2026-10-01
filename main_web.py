@@ -5061,6 +5061,25 @@ async def scenario_sensitivity_endpoint(
                 f"vertical {_sens_vertical!r}."
             ),
         }, status_code=422)
+    # Correction C: resolve the ACTUAL canonical DC source-driver context
+    # for this project/scenario (scenario snapshot wins over base draft).
+    _dc_drivers = None
+    if _sens_vertical == "data_center":
+        from app.data_center_authority import drivers_from_snapshot
+        _dc_snap = None
+        if scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
+            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
+            if _sc is not None and _sc.snapshot:
+                _dc_snap = dict(_sc.snapshot)
+        elif workspace_state is not None and workspace_state.draft_snapshot:
+            _dc_snap = dict(workspace_state.draft_snapshot)
+        if _dc_snap is None and workspace_state is None:
+            from app.persistence.workspace_repository import get_workspace_state
+            workspace_state = get_workspace_state(
+                user_id=user.user_id, project_id=project_record.project_id)
+        if _dc_snap is not None:
+            _dc_drivers = drivers_from_snapshot(_dc_snap)
     # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
     from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
     _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
@@ -5075,7 +5094,8 @@ async def scenario_sensitivity_endpoint(
     try:
         proj, scenario_name = _resolve_sensitivity_project(user, project, scenario_id)
         sens_result = await _run_model_thread(
-            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical)
+            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
+            _dc_drivers)
         tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
     except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
         raise
@@ -5176,6 +5196,25 @@ async def scenario_sensitivity_export_endpoint(
                 f"vertical {_sens_vertical!r}."
             ),
         }, status_code=422)
+    # Correction C: resolve the ACTUAL canonical DC source-driver context
+    # for this project/scenario (scenario snapshot wins over base draft).
+    _dc_drivers = None
+    if _sens_vertical == "data_center":
+        from app.data_center_authority import drivers_from_snapshot
+        _dc_snap = None
+        if scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
+            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
+            if _sc is not None and _sc.snapshot:
+                _dc_snap = dict(_sc.snapshot)
+        elif workspace_state is not None and workspace_state.draft_snapshot:
+            _dc_snap = dict(workspace_state.draft_snapshot)
+        if _dc_snap is None and workspace_state is None:
+            from app.persistence.workspace_repository import get_workspace_state
+            workspace_state = get_workspace_state(
+                user_id=user.user_id, project_id=project_record.project_id)
+        if _dc_snap is not None:
+            _dc_drivers = drivers_from_snapshot(_dc_snap)
     # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
     from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
     _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
@@ -5185,7 +5224,8 @@ async def scenario_sensitivity_export_endpoint(
     try:
         proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
         sens_result = await _run_model_thread(
-            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical)
+            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
+            _dc_drivers)
     except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
         raise
     except Exception as exc:

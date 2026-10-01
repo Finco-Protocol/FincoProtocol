@@ -229,7 +229,9 @@ def test_p1_master_runtime_statement_pass_is_distinct_from_xlsx_statement_surfac
     for text in (worked, dossier):
         assert "BALANCE_SHEET_RECONCILIATION = PASS" in text
         assert "CASH_RECONCILIATION = PASS" in text
-        assert "XLSX_STATEMENT_TRACE = PASS" in text
+        assert "XLSX_STATEMENT_VALUE_TRACE = PASS" in text
+        assert "XLSX_STATEMENT_RUN_BINDING = BY_CONSTRUCTION" in text
+        assert "XLSX_CROSS_RUN_SOURCE_PROVENANCE = NOT_AVAILABLE" in text
         assert "XLSX_STATEMENT_TRACE = NOT_AVAILABLE" not in text
 
 

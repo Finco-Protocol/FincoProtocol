@@ -57,14 +57,17 @@ asserted unchanged per driver.
 - Same-run identity rows (bound run id + snapshot id) stamped on Tax / P&L /
   PF Cash Flow / Balance Sheet sheets.
 - Balance reconciliation = runtime's own `balance_check_keur` (max residual
-  < 1e-6 asserted). Cross-run substitution structurally detectable via bound
-  project key + statement values.
+  < 1e-6 asserted). Same-run provenance BY CONSTRUCTION (the bundle serializes the clean
+  execution object itself); independent source-package provenance digest
+  NOT_AVAILABLE in V1 (no self-stamped identity claim).
 - Legacy aggregates the clean runtime does not publish (total assets,
   total liabilities+equity, net fixed assets, net dividends) → None → typed
   NOT_AVAILABLE rows (missing != 0).
 - Deterministic output: two builds of the same reference produce identical
   P&L and balance-check series.
-- Status: **XLSX_STATEMENT_TRACE = PASS** (docs updated; typed
+- Status: **XLSX_STATEMENT_VALUE_TRACE = PASS**;
+  **XLSX_STATEMENT_RUN_BINDING = BY_CONSTRUCTION**;
+  **XLSX_CROSS_RUN_SOURCE_PROVENANCE = NOT_AVAILABLE** (typed
   NOT_AVAILABLE rows remain only for unpublished quantities).
 
 ## 11. Terminology corrections (H-3 residual)
@@ -95,7 +98,7 @@ does not imply these structures.
 
 See `docs/review/PRODUCT_TRUTH_RELEASE_MATRIX.md` (kept current by the
 Product Truth stream) plus this dossier's deltas: DC vertical-specific
-sensitivity semantics; XLSX_STATEMENT_TRACE = PASS; early-repayment
+sensitivity semantics; XLSX statement value trace PASS; early-repayment
 limitations. PR #153 (Radar instant snapshot) remains OPEN/DRAFT — **not**
 described as shipped anywhere.
 

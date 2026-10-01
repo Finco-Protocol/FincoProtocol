@@ -10,7 +10,9 @@ Proves:
   4. Balance reconciliation is the runtime's own balance_check_keur.
   5. No balancing plug: clean runtime does not publish pre-aggregated
      totals -> those rows render NOT_AVAILABLE (missing != 0).
-  6. Cross-run substitution is structurally impossible (snapshot id bound).
+  6. Same-run provenance is BY CONSTRUCTION (the bundle serializes the
+     clean execution object itself); an independent source-package digest
+     is NOT_AVAILABLE in V1.
   7. Workbook output is deterministic across two builds.
 """
 from __future__ import annotations

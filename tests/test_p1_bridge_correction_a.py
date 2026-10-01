@@ -38,12 +38,14 @@ class TestDCElectricityPriceFullSchedule:
     def test_y1_and_all_steps_scale_by_same_factor(self):
         from app.project_factories import create_generic_data_center_reference
         from app.services.sensitivity_service import _apply_shock
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS as _GEN)
 
         proj = create_generic_data_center_reference()
         power = next(o for o in proj.opex if o.name == "Power Expenses")
         assert power.step_changes, "canonical DC power schedule must carry steps"
 
-        shocked = _apply_shock(proj, "dc_electricity_price", 25.0)
+        shocked = _apply_shock(proj, "dc_electricity_price", 25.0, dc_drivers=_GEN)
         factor = 1.25
         power_new = next(o for o in shocked.opex if o.name == "Power Expenses")
         assert power_new.y1_amount_keur == pytest.approx(
@@ -57,9 +59,11 @@ class TestDCElectricityPriceFullSchedule:
     def test_non_power_opex_untouched(self):
         from app.project_factories import create_generic_data_center_reference
         from app.services.sensitivity_service import _apply_shock
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS as _GEN)
 
         proj = create_generic_data_center_reference()
-        shocked = _apply_shock(proj, "dc_electricity_price", 25.0)
+        shocked = _apply_shock(proj, "dc_electricity_price", 25.0, dc_drivers=_GEN)
         for old, new in zip(proj.opex, shocked.opex):
             if old.name != "Power Expenses":
                 assert new.y1_amount_keur == old.y1_amount_keur, old.name
@@ -67,9 +71,11 @@ class TestDCElectricityPriceFullSchedule:
     def test_base_case_economics_unchanged(self):
         from app.project_factories import create_generic_data_center_reference
         from app.services.sensitivity_service import _apply_shock
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS as _GEN)
 
         proj = create_generic_data_center_reference()
-        shocked = _apply_shock(proj, "dc_electricity_price", 10.0)
+        shocked = _apply_shock(proj, "dc_electricity_price", 10.0, dc_drivers=_GEN)
         # Revenue-side fields untouched: sensitivity is OPEX-only.
         assert shocked.revenue.market_prices_curve == proj.revenue.market_prices_curve
         assert shocked.capex.total_capex == proj.capex.total_capex

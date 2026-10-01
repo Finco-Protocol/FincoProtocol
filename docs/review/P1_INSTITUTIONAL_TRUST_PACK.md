@@ -171,7 +171,7 @@ Accordingly the master gate is:
 
 A narrower presentation limitation remains: `app/export/institutional_workbook.py` does not currently bind the already-existing clean C3 statement result into the clean workbook bundle. Its Tax/P&L/PF Cash Flow/Balance Sheet worksheets therefore show unavailable state on that path. That limitation is tracked as:
 
-`XLSX_STATEMENT_TRACE = PASS` (closed by P1 Model Completeness: clean C3 statements bound through the app-layer serialization adapter; no new statement maths)
+`XLSX_STATEMENT_VALUE_TRACE = PASS` / `XLSX_STATEMENT_RUN_BINDING = BY_CONSTRUCTION` / `XLSX_CROSS_RUN_SOURCE_PROVENANCE = NOT_AVAILABLE` (closed by P1 Model Completeness: clean C3 statements bound through the app-layer serialization adapter verbatim; same-execution use is by construction; no independent source-package digest exists in V1)
 
 It does not downgrade the clean runtime reconciliation gates and must not be “fixed” with independent spreadsheet maths.
 

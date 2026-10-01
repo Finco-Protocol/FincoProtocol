@@ -38,6 +38,27 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
 DEFAULT_SHOCK_LEVELS = [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0]
 
 
+class DCDriverContextRequiredError(ValueError):
+    """Raised when a dc_* sensitivity shock is requested without the
+    project's resolved canonical DataCenterDrivers context.
+
+    Correction C (PR #155): dc_* shocks must start from the ACTUAL
+    project/scenario source drivers (via ``drivers_from_snapshot`` on the
+    resolved runtime snapshot).  Falling back to the generic reference
+    driver set here would silently replace real user assumptions with
+    reference defaults, so the seam fails closed instead.
+    """
+
+    def __init__(self, shock_type: str):
+        self.shock_type = shock_type
+        super().__init__(
+            f"Sensitivity driver {shock_type!r} requires the resolved "
+            "Data Center source-driver context (dc_drivers) for this "
+            "project/scenario; none was provided. Generic reference "
+            "defaults are NOT substituted silently."
+        )
+
+
 class UnsupportedSensitivityDriverError(ValueError):
     """Raised when a sensitivity driver is not supported for a vertical.
 
@@ -202,7 +223,8 @@ def _extract_kpis(result: Any) -> dict[str, Optional[float]]:
     return kpis
 
 
-def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
+def _apply_shock(proj: Any, shock_type: str, level_pct: float,
+                 dc_drivers: Any | None = None) -> Any:
     """Return a new ProjectInputs with the given shock applied.
 
     level_pct is a signed percentage: +10.0 = +10%, -5.0 = -5%.
@@ -280,17 +302,16 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
 
     elif shock_type in ("dc_service_price", "dc_occupancy", "dc_pue",
                         "dc_electricity_price", "dc_it_mw"):
-        # Correction B: DC source drivers recompute through the CANONICAL
-        # Data Center runtime adapter (app.data_center_authority).  We modify
-        # the canonical source driver and let the adapter recompute every
-        # dependent quantity (revenue curve, B.08 power schedule) -- never
-        # post-adapter proxy manipulation of derived fields.
-        from app.data_center_authority import (
-            GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
-            apply_data_center_runtime_adapter,
-        )
+        # Correction C: DC source drivers recompute through the CANONICAL
+        # Data Center runtime adapter (app.data_center_authority), starting
+        # from the project's ACTUAL resolved drivers (passed in explicitly
+        # by the route/workspace authority).  The generic reference driver
+        # set is NEVER substituted for a user-edited project.
+        if dc_drivers is None:
+            raise DCDriverContextRequiredError(shock_type)
+        from app.data_center_authority import apply_data_center_runtime_adapter
         capacity = proj.technical.capacity_mw
-        drivers = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+        drivers = dc_drivers
         if shock_type == "dc_service_price":
             drivers = replace(drivers,
                               service_price_eur_kw_month=drivers.service_price_eur_kw_month * factor)
@@ -353,6 +374,7 @@ def run_sensitivity(
     shock_types: list[str],
     shock_levels: list[float] | None = None,
     vertical: str | None = None,
+    dc_drivers: Any | None = None,
 ) -> dict[str, Any]:
     """Run full sensitivity matrix.
 
@@ -365,6 +387,11 @@ def run_sensitivity(
     if vertical is not None:
         for shock_type in shock_types:
             assert_driver_supported(vertical, shock_type)
+            if (
+                shock_type.startswith("dc_")
+                and dc_drivers is None
+            ):
+                raise DCDriverContextRequiredError(shock_type)
     """Run full sensitivity matrix.
 
     Returns:
@@ -382,7 +409,7 @@ def run_sensitivity(
     for stype in shock_types:
         for level in shock_levels:
             try:
-                shocked_proj = _apply_shock(proj, stype, level)
+                shocked_proj = _apply_shock(proj, stype, level, dc_drivers)
                 shocked_kpis = _run_once(shocked_proj)
                 deltas = {
                     k: (shocked_kpis[k] - base_kpis[k])
