@@ -1,33 +1,67 @@
-"""Deterministic watchlist alert evaluation for Yield Alerts V1.
+"""Deterministic checkpoint-based alert evaluation for Yield Alerts V1 (Agent A).
 
 ``evaluate_watchlist_alerts`` is the single deterministic callable a later
 scheduler/refresh path invokes.  No scheduler, queue, cron, email, push or
 chat infrastructure lives here.
 
-Pipeline:
-    canonical history/observation rows
-    → deterministic change detection (detect_changes)
-    → watched-opportunity filter (WatchlistStore)
-    → typed alert events
-    → per-user persistence (PerUserAlertStore, deduped)
+Authorities (Correction C — canonical only, no parallel stores):
+
+    watched set        ``finco_yield.watchlist.list_watchlist_items``
+    observations       canonical ``YieldHistoryStore.for_opportunity``
+    freshness          canonical ``finco_yield.freshness.evaluate_freshness``
+                       (CURRENT / STALE / INVALID / FUTURE_TIMESTAMP —
+                       ``AVAILABLE`` is not a freshness state)
+    support state      canonical registry ``resolve(uid).support_state``
+    persistence        SQLite ``yield_alerts`` + ``yield_alert_state``
+
+Pipeline per watched opportunity:
+
+    checkpoint lookup
+    → first evaluation: baseline at latest observation, NO alerts
+    → every UNSEEN observation transition processed in canonical order
+      (not just the last two rows)
+    → freshness re-evaluated canonically at evaluation time even when no
+      new observation arrived (degradation works without new evidence)
+    → typed alerts persisted (deterministic alert_id, deduped)
+    → checkpoint advanced only after the transition is processed
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable
+from decimal import Decimal, InvalidOperation
+from typing import Any, Iterable
 
-from .alerts_types import detect_changes, DetectionContext
+from .alerts_store import create_alerts, get_checkpoint, set_checkpoint
+from .alerts_types import (
+    ALERT_TYPE_LABELS,
+    AlertType,
+    deterministic_alert_id,
+)
 
-__all__ = ["evaluate_watchlist_alerts", "alerts_for_detection"]
+__all__ = ["evaluate_watchlist_alerts"]
 
+# Economic observation fields tracked for change detection, in canonical
+# alert order.  Freshness and support state are appended after these.
+_TRACKED_FIELDS: tuple[str, ...] = ("apy_total", "tvl_usd", "apy_rewards")
+
+_FIELD_ALERT_TYPE: dict[str, AlertType] = {
+    "apy_total": AlertType.APY_CHANGED,
+    "tvl_usd": AlertType.TVL_CHANGED,
+    "apy_rewards": AlertType.REWARD_COMPONENT_CHANGED,
+}
+
+# Freshness states that constitute degradation from CURRENT.
+_DEGRADED_STATES = frozenset({"STALE", "INVALID", "FUTURE_TIMESTAMP"})
+
+
+# ── Row / value helpers ───────────────────────────────────────────────────────
 
 def _row_field(row: dict, field: str):
     """Read one observed value from a history row, honouring missing != zero.
 
-    History rows may carry the observation fields at top level or inside a
-    ``payload`` mapping.  A truly absent key is missing; an explicitly
-    stored ``None`` is also missing (never zero).  An explicit ``0`` is
-    valid observed data.
+    Rows may carry observation fields at top level or inside ``payload``.
+    A truly absent key is missing; an explicitly stored ``None`` is also
+    missing (never zero).  An explicit ``0`` is valid observed data.
     """
     if field in row:
         return row[field]
@@ -37,66 +71,354 @@ def _row_field(row: dict, field: str):
     return None  # missing
 
 
-def alerts_for_detection(ctx: DetectionContext, *,
-                         detected_at: datetime | None = None) -> tuple:
-    """Derive typed alert events from one detection context.
+def _scalar_key(value) -> str | None:
+    """Canonical comparison key.  Numeric strings (canonical JSONL round-trip
+    of Decimal) compare equal to the numbers they denote.  None → None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, Decimal):
+        if value.is_finite():
+            return str(value.normalize())
+        return str(value)
+    if isinstance(value, (int, float)):
+        return str(Decimal(str(value)).normalize())
+    if isinstance(value, str):
+        try:
+            return str(Decimal(value).normalize())
+        except InvalidOperation:
+            return value
+    return str(value)
 
-    Order-stable: APY / TVL / reward component / freshness / support state,
-    in the canonical TRACKED_FIELDS order.
+
+def _values_differ(previous, current) -> bool:
+    """Deterministic inequality; missing (None) is never treated as zero."""
+    prev_key = _scalar_key(previous)
+    curr_key = _scalar_key(current)
+    return prev_key != curr_key
+
+
+def _row_observed_at(row: dict) -> datetime | None:
+    raw = row.get("observed_at")
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _source_ref_from_row(row: dict):
+    """Reconstruct the canonical SourceReference from a history row."""
+    from .schema import EvidenceConfidence, SourceReference
+
+    raw_type = row.get("source_authority")
+    if raw_type is None:
+        return None
+    try:
+        source_type = EvidenceConfidence(str(raw_type))
+    except ValueError:
+        return None
+    observed_at = _row_observed_at(row)
+    if observed_at is None:
+        return None
+    return SourceReference(
+        source_type=source_type,
+        uri=str(row.get("source_uri", "")),
+        observed_at=observed_at,
+        block_number=row.get("block_number"),
+        adapter_version=str(row.get("adapter_version", "y0.1")),
+    )
+
+
+def _row_freshness_state(row: dict, *, now: datetime, policy=None) -> str:
+    """Canonical freshness state of one observation's evidence at ``now``."""
+    from .freshness import evaluate_freshness
+
+    source = _source_ref_from_row(row)
+    if source is None:
+        return "UNKNOWN"
+    return evaluate_freshness(source, now=now, policy=policy).state
+
+
+def _support_state(registry, opportunity_uid: str) -> str | None:
+    """Canonical support state from THE registry (display fields ignored)."""
+    from .registry import RegistryError, YieldSupportState
+
+    try:
+        opportunity = registry.resolve(opportunity_uid)
+    except RegistryError:
+        return None
+    state = opportunity.support_state
+    return state.value if isinstance(state, YieldSupportState) else str(state)
+
+
+def _make_alert(
+    *, user_id: str, opportunity_uid: str, alert_type: AlertType,
+    field: str | None, previous, current,
+    previous_hash: str, current_hash: str, detected_at: str,
+) -> dict[str, Any]:
+    return {
+        "alert_id": deterministic_alert_id(
+            user_id=user_id,
+            opportunity_uid=opportunity_uid,
+            alert_type=alert_type.value,
+            field=field,
+            previous_observation_hash=previous_hash,
+            current_observation_hash=current_hash,
+        ),
+        "opportunity_uid": opportunity_uid,
+        "alert_type": alert_type.value,
+        "label": ALERT_TYPE_LABELS[alert_type],
+        "field": field,
+        "previous": previous,
+        "current": current,
+        "previous_observation_hash": previous_hash,
+        "current_observation_hash": current_hash,
+        "detected_at": detected_at,
+    }
+
+
+# ── History sequencing ────────────────────────────────────────────────────────
+
+def _canon_history(history_store, opportunity_uid: str) -> list[dict]:
+    """Canonical observations in append order, hash-bearing only."""
+    rows = history_store.for_opportunity(opportunity_uid)
+    return [row for row in rows if row.get("observation_hash")]
+
+
+def _unseen_after(history: list[dict], checkpoint_hash: str) -> list[dict] | None:
+    """Rows strictly after the checkpoint hash, in canonical order.
+
+    Returns None when the checkpoint hash is unknown to the history
+    (e.g. pruned) — the caller then re-baselines instead of guessing.
     """
-    from .alerts_detect import events_from_changes
+    for index, row in enumerate(history):
+        if row["observation_hash"] == checkpoint_hash:
+            return history[index + 1:]
+    return None
 
-    return events_from_changes(ctx, detected_at=detected_at)
 
+# ── Evaluation ────────────────────────────────────────────────────────────────
 
 def evaluate_watchlist_alerts(
     *,
     user_id: str,
-    history_rows: Iterable[dict],
-    watchlist: WatchlistStore,
-    alert_store: PerUserAlertStore,
-    detected_at: datetime | None = None,
-) -> list[dict]:
-    """Evaluate deterministic watchlist alerts for one user.
+    history_store,
+    registry,
+    now: datetime | None = None,
+    freshness_policy=None,
+) -> list[dict[str, Any]]:
+    """Deterministic checkpoint-based alert evaluation for ONE user.
 
-    For every watched canonical opportunity with at least two history
-    observations, diff the last two observations in canonical history order
-    and persist the resulting typed alert events (deduped).
+    - Watches exactly the canonical ``finco_yield.watchlist`` items.
+    - First evaluation for an opportunity establishes a baseline at the
+      latest observation and produces NO alerts.
+    - Later evaluations process EVERY unseen observation transition in
+      canonical order (APY / TVL / reward component, freshness, support
+      state), not just the last two rows.
+    - Freshness is evaluated canonically at ``now`` even with no new
+      observation, so degradation and recovery fire over time.
+    - Deterministic alert_id dedupes identical transitions.
 
-    - Non-watched opportunities never produce alerts for this user.
-    - Unwatching stops future alerts; stored alerts are retained.
-    - Missing != zero: absent/None fields never diff against an explicit 0.
-    - A single-observation opportunity produces no change alerts.
-
-    Returns the freshly created alert records (empty list when deduped).
+    Returns the freshly persisted alert dicts (empty when nothing new).
     """
-    detected_at = detected_at or datetime.now(timezone.utc)
-    watched = watchlist.watched_uids(user_id)
+    from .watchlist import list_watchlist_items
 
-    # Group history rows per opportunity in canonical (append) order.
-    by_uid: dict[str, list[dict]] = {}
-    for row in history_rows:
-        uid = row.get("opportunity_uid")
-        if uid in watched:
-            by_uid.setdefault(uid, []).append(row)
+    if now is None:
+        now = datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        raise ValueError("evaluation clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    detected_at = now.isoformat()
 
-    created: list[dict] = []
-    for uid in sorted(by_uid):
-        rows = by_uid[uid]
-        if len(rows) < 2:
-            continue  # need a previous and a current observation
-        previous, current = rows[-2], rows[-1]
-        ctx = DetectionContext(
-            opportunity_uid=uid,
+    watched_uids = [
+        item["opportunity_uid"] for item in list_watchlist_items(user_id)
+    ]
+
+    created: list[dict[str, Any]] = []
+    for opportunity_uid in watched_uids:
+        history = _canon_history(history_store, opportunity_uid)
+        if not history:
+            continue
+        created.extend(_evaluate_one(
+            user_id=user_id,
+            opportunity_uid=opportunity_uid,
+            history=history,
+            registry=registry,
+            now=now,
+            freshness_policy=freshness_policy,
+            detected_at=detected_at,
+        ))
+    return created
+
+
+def _evaluate_one(
+    *, user_id: str, opportunity_uid: str, history: list[dict],
+    registry, now: datetime, freshness_policy, detected_at: str,
+) -> list[dict[str, Any]]:
+    checkpoint = get_checkpoint(user_id, opportunity_uid)
+    latest = history[-1]
+
+    # ── Unknown checkpoint hash (pruned history): re-baseline, no alerts ────
+    if checkpoint is not None and _unseen_after(history, checkpoint["last_processed_observation_hash"]) is None:
+        checkpoint = None
+
+    # ── First evaluation: baseline at latest, NO alerts ─────────────────────
+    if checkpoint is None:
+        set_checkpoint(
+            user_id, opportunity_uid,
+            last_processed_observation_hash=latest["observation_hash"],
+            last_freshness_state=_row_freshness_state(
+                latest, now=now, policy=freshness_policy),
+            last_support_state=_support_state(registry, opportunity_uid),
+        )
+        return []
+
+    alerts: list[dict[str, Any]] = []
+    unseen = _unseen_after(history, checkpoint["last_processed_observation_hash"]) or []
+    previous = _row_at(history, checkpoint["last_processed_observation_hash"])
+    fresh_state = checkpoint.get("last_freshness_state")
+    support_state = checkpoint.get("last_support_state")
+
+    for current in unseen:
+        alerts.extend(_transition_alerts(
+            user_id=user_id,
+            opportunity_uid=opportunity_uid,
             previous=previous,
             current=current,
-            previous_hash=previous.get("observation_hash", ""),
-            current_hash=current.get("observation_hash", ""),
+            previous_hash=previous["observation_hash"],
+            checkpoint_freshness=fresh_state,
+            checkpoint_support=support_state,
+            registry=registry,
+            now=now,
+            freshness_policy=freshness_policy,
+            detected_at=detected_at,
+        ))
+        previous = current
+        fresh_state = _row_freshness_state(
+            current, now=now, policy=freshness_policy)
+        support_state = _support_state(registry, opportunity_uid)
+        set_checkpoint(
+            user_id, opportunity_uid,
+            last_processed_observation_hash=current["observation_hash"],
+            last_freshness_state=fresh_state,
+            last_support_state=support_state,
         )
-        sensor = detect_changes(ctx)
-        if not sensor.changes:
-            continue
-        events = alerts_for_detection(sensor, detected_at=detected_at)
-        created_records = alert_store.create_from_events(user_id, events)
-        created.extend(created_records)
-    return created
+
+    # ── Freshness over time with NO new observation ─────────────────────────
+    current_fresh = _row_freshness_state(
+        previous, now=now, policy=freshness_policy)
+    if current_fresh != fresh_state:
+        if current_fresh in _DEGRADED_STATES:
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.FRESHNESS_DEGRADED,
+                field="freshness_state",
+                previous=fresh_state, current=current_fresh,
+                previous_hash=previous["observation_hash"],
+                current_hash=previous["observation_hash"],
+                detected_at=detected_at,
+            ))
+        elif current_fresh == "CURRENT" and fresh_state in _DEGRADED_STATES:
+            # A still-standing observation re-entered freshness inside its
+            # policy window (e.g. refreshed evidence for the same payload).
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.FRESHNESS_RECOVERED,
+                field="freshness_state",
+                previous=fresh_state, current=current_fresh,
+                previous_hash=previous["observation_hash"],
+                current_hash=previous["observation_hash"],
+                detected_at=detected_at,
+            ))
+        set_checkpoint(
+            user_id, opportunity_uid,
+            last_processed_observation_hash=previous["observation_hash"],
+            last_freshness_state=current_fresh,
+            last_support_state=support_state,
+        )
+
+    return create_alerts(user_id, alerts)
+
+
+def _row_at(history: list[dict], observation_hash: str) -> dict:
+    for row in history:
+        if row["observation_hash"] == observation_hash:
+            return row
+    return history[0]
+
+
+def _transition_alerts(
+    *, user_id: str, opportunity_uid: str,
+    previous: dict, current: dict,
+    previous_hash: str, checkpoint_freshness: str | None,
+    checkpoint_support: str | None,
+    registry, now: datetime, freshness_policy, detected_at: str,
+) -> list[dict[str, Any]]:
+    """Typed alerts for ONE observation transition (prev hash → curr hash)."""
+    current_hash = current["observation_hash"]
+    alerts: list[dict[str, Any]] = []
+
+    # Economic observation fields, canonical order.
+    for field in _TRACKED_FIELDS:
+        previous_value = _row_field(previous, field)
+        current_value = _row_field(current, field)
+        if _values_differ(previous_value, current_value):
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=_FIELD_ALERT_TYPE[field], field=field,
+                previous=previous_value, current=current_value,
+                previous_hash=previous_hash, current_hash=current_hash,
+                detected_at=detected_at,
+            ))
+
+    # Freshness transition, canonical evaluate_freshness at evaluation time.
+    current_fresh = _row_freshness_state(
+        current, now=now, policy=freshness_policy)
+    if checkpoint_freshness and current_fresh != checkpoint_freshness:
+        if current_fresh in _DEGRADED_STATES:
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.FRESHNESS_DEGRADED,
+                field="freshness_state",
+                previous=checkpoint_freshness, current=current_fresh,
+                previous_hash=previous_hash, current_hash=current_hash,
+                detected_at=detected_at,
+            ))
+        elif current_fresh == "CURRENT":
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.FRESHNESS_RECOVERED,
+                field="freshness_state",
+                previous=checkpoint_freshness, current=current_fresh,
+                previous_hash=previous_hash, current_hash=current_hash,
+                detected_at=detected_at,
+            ))
+            # NEW_OBSERVATION: fresh evidence arrived after a stale period.
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.NEW_OBSERVATION,
+                field=None, previous=None, current=None,
+                previous_hash=previous_hash, current_hash=current_hash,
+                detected_at=detected_at,
+            ))
+
+    # Support state, resolved through THE canonical registry.
+    if checkpoint_support is not None:
+        current_support = _support_state(registry, opportunity_uid)
+        if current_support is not None and current_support != checkpoint_support:
+            alerts.append(_make_alert(
+                user_id=user_id, opportunity_uid=opportunity_uid,
+                alert_type=AlertType.SUPPORT_STATE_CHANGED,
+                field="support_state",
+                previous=checkpoint_support, current=current_support,
+                previous_hash=previous_hash, current_hash=current_hash,
+                detected_at=detected_at,
+            ))
+
+    return alerts

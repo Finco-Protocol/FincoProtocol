@@ -1,285 +1,256 @@
-"""Per-user alert persistence and watchlist binding for Yield Alerts V1.
+"""Per-user alert + checkpoint persistence for Yield Alerts V1 (Agent A).
 
-Durable JSONL stores (same conventions as the Yield history store):
+Uses the existing FINCO lazy SQLite-table convention (``FINCO_DB_PATH``).
+Two narrow tables:
 
-- ``WatchlistStore``   — per-user watched canonical opportunity UIDs.
-- ``PerUserAlertStore``— per-user typed alert records with deterministic
-  dedupe, read/unread transitions and unread counts.
+``yield_alerts`` — per-user typed alert records with deterministic
+``alert_id`` PRIMARY KEY (same logical transition → same alert_id →
+exactly one persisted record).
 
-Deterministic alert uniqueness is based on equivalent canonical fields:
-(user_id, opportunity_uid, alert_type, previous observation identity,
-current observation identity).  The same transition can therefore never
-create duplicate alerts.
-
-Removing a watchlist entry stops future alerts; historical alert evidence
-is retained (unwatching never destroys stored alerts).
+``yield_alert_state`` — per-user/per-opportunity evaluation checkpoint
+(last processed observation hash, last freshness state, last support
+state, evaluated_at).
 """
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .alerts_types import AlertEvent
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS yield_alerts (
+    alert_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    opportunity_uid TEXT NOT NULL,
+    alert_type TEXT NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    field TEXT,
+    previous_value_json TEXT,
+    current_value_json TEXT,
+    previous_observation_hash TEXT NOT NULL,
+    current_observation_hash TEXT NOT NULL,
+    detected_at TEXT NOT NULL,
+    read_at TEXT
+)
+"""
+
+_CREATE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_yield_alerts_user_read
+ON yield_alerts (user_id, read_at, detected_at)
+"""
+
+_CHECKPOINT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS yield_alert_state (
+    user_id TEXT NOT NULL,
+    opportunity_uid TEXT NOT NULL,
+    last_processed_observation_hash TEXT NOT NULL,
+    last_freshness_state TEXT,
+    last_support_state TEXT,
+    evaluated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, opportunity_uid)
+)
+"""
 
 
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+def _db_path() -> str:
+    import os
+    return os.getenv("FINCO_DB_PATH",
+                     str(Path(__file__).resolve().parents[1] / "data" / "finco_runs.db"))
 
 
-def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(_db_path(), timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute(_SCHEMA)
+    conn.execute(_CREATE_INDEX)
+    conn.execute(_CHECKPOINT_SCHEMA)
+    conn.commit()
+    return conn
 
 
-# ── Watchlist ────────────────────────────────────────────────────────────────
-
-@dataclass(frozen=True)
-class WatchlistEntry:
-    user_id: str
-    opportunity_uid: str  # exact yld_* canonical UID
-    created_at: str       # ISO-8601 UTC
-
-
-class WatchlistStore:
-    """Per-user watched canonical opportunities (append/remove, history kept)."""
-
-    def __init__(self, path: str | Path):
-        self.path = Path(path)
-
-    def _entries(self) -> list[WatchlistEntry]:
-        out = []
-        for row in _load_jsonl(self.path):
-            out.append(WatchlistEntry(
-                user_id=row["user_id"],
-                opportunity_uid=row["opportunity_uid"],
-                created_at=row.get("created_at", ""),
-            ))
-        return out
-
-    def watch(self, user_id: str, opportunity_uid: str) -> bool:
-        """Watch one canonical opportunity.  Returns True when newly added."""
-        for entry in self._entries():
-            if (entry.user_id == user_id
-                    and entry.opportunity_uid == opportunity_uid):
-                return False  # already watched — idempotent
-        _append_jsonl(self.path, {
-            "user_id": user_id,
-            "opportunity_uid": opportunity_uid,
-            "created_at": _now_iso(),
-        })
-        return True
-
-    def unwatch(self, user_id: str, opportunity_uid: str) -> bool:
-        """Remove a watchlist entry.  Returns True when it existed.
-
-        Historical alerts for that opportunity are retained; only future
-        alerts stop.
-        """
-        entries = self._entries()
-        kept, removed = [], False
-        for entry in entries:
-            if (entry.user_id == user_id
-                    and entry.opportunity_uid == opportunity_uid):
-                removed = True
-                continue
-            kept.append(entry)
-        if removed:
-            self._rewrite(kept)
-        return removed
-
-    def watched_uids(self, user_id: str) -> frozenset[str]:
-        """Canonical opportunity UIDs currently watched by the user."""
-        return frozenset(
-            entry.opportunity_uid for entry in self._entries()
-            if entry.user_id == user_id
-        )
-
-    def is_watched(self, user_id: str, opportunity_uid: str) -> bool:
-        return opportunity_uid in self.watched_uids(user_id)
-
-    def _rewrite(self, entries: list[WatchlistEntry]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as handle:
-            for entry in entries:
-                handle.write(json.dumps(asdict(entry), sort_keys=True) + "\n")
-
-
-def _now_iso() -> str:
+def _utc_iso_now() -> str:
     from datetime import datetime, timezone
-
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── Per-user alerts ──────────────────────────────────────────────────────────
+# ── Alert records ─────────────────────────────────────────────────────────────
 
-@dataclass(frozen=True)
-class AlertRecord:
-    user_id: str
-    opportunity_uid: str
-    alert_type: str
-    field: str | None
-    previous: Any
-    current: Any
-    previous_observation_hash: str
-    current_observation_hash: str
-    detected_at: str        # ISO-8601 UTC
-    read: bool = False
+def create_alerts(user_id: str, alerts: list[dict[str, Any]], *,
+                  dedupe: bool = True) -> list[dict[str, Any]]:
+    """Persist typed alert dicts.  Deterministic dedupe on alert_id.
 
-    @property
-    def dedupe_key(self) -> str:
-        """Deterministic uniqueness from equivalent canonical fields."""
-        import hashlib
-
-        payload = json.dumps({
-            "user_id": self.user_id,
-            "opportunity_uid": self.opportunity_uid,
-            "alert_type": self.alert_type,
-            "previous_observation_hash": self.previous_observation_hash,
-            "current_observation_hash": self.current_observation_hash,
-        }, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-class PerUserAlertStore:
-    """Per-user typed alert records with dedupe and read-state transitions."""
-
-    def __init__(self, path: str | Path):
-        self.path = Path(path)
-
-    def _records(self) -> list[dict[str, Any]]:
-        return _load_jsonl(self.path)
-
-    def _dedupe_index(self, records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        index: dict[str, list[dict[str, Any]]] = {}
-        for row in records:
-            key = AlertRecord(
-                user_id=row["user_id"],
-                opportunity_uid=row["opportunity_uid"],
-                alert_type=row["alert_type"],
-                field=row.get("field"),
-                previous=row.get("previous"),
-                current=row.get("current"),
-                previous_observation_hash=row["previous_observation_hash"],
-                current_observation_hash=row["current_observation_hash"],
-                detected_at=row.get("detected_at", ""),
-            ).dedupe_key
-            index.setdefault(key, []).append(row)
-        return index
-
-    def create_from_events(self, user_id: str, events, *,
-                           dedupe: bool = True) -> list[dict[str, Any]]:
-        """Persist typed alert events for one user.  Returns created records.
-
-        Deterministic dedupe: the same (user, opportunity, alert_type,
-        previous observation identity, current observation identity)
-        transition never creates a second alert.
-        """
-        existing = self._records()
-        existing_keys = set()
-        if dedupe:
-            index = self._dedupe_index(existing)
-            for rows in index.values():
-                for row in rows:
-                    if row["user_id"] == user_id:
-                        existing_keys.add(_event_key(
-                            user_id, row["opportunity_uid"], row["alert_type"],
-                            row["previous_observation_hash"],
-                            row["current_observation_hash"]))
+    Returns the list of newly created alert dicts (deduped ones skipped).
+    """
+    if not alerts:
+        return []
+    conn = _connect()
+    try:
         created: list[dict[str, Any]] = []
-        for event in events:
-            key = _event_key(
-                user_id, event.opportunity_uid, event.alert_type.value,
-                event.previous_observation_hash, event.current_observation_hash)
-            if dedupe and key in existing_keys:
-                continue
-            record = {
-                "user_id": user_id,
-                "opportunity_uid": event.opportunity_uid,
-                "alert_type": event.alert_type.value,
-                "label": event.label,
-                "field": event.field,
-                "previous": event.previous,
-                "current": event.current,
-                "previous_observation_hash": event.previous_observation_hash,
-                "current_observation_hash": event.current_observation_hash,
-                "detected_at": event.detected_at.isoformat(),
-                "read": False,
-            }
-            _append_jsonl(self.path, record)
-            existing_keys.add(key)
-            created.append(record)
+        for alert in alerts:
+            alert_id = alert["alert_id"]
+            if dedupe:
+                exists = conn.execute(
+                    "SELECT 1 FROM yield_alerts WHERE alert_id=?",
+                    (alert_id,)).fetchone()
+                if exists:
+                    continue
+            conn.execute(
+                "INSERT OR IGNORE INTO yield_alerts "
+                "(alert_id, user_id, opportunity_uid, alert_type, label, "
+                " field, previous_value_json, current_value_json, "
+                " previous_observation_hash, current_observation_hash, "
+                " detected_at, read_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)",
+                (alert_id, user_id, alert["opportunity_uid"],
+                 alert["alert_type"], alert.get("label", ""),
+                 alert.get("field"),
+                 json.dumps(alert["previous"]) if alert.get("previous") is not None else None,
+                 json.dumps(alert["current"]) if alert.get("current") is not None else None,
+                 alert["previous_observation_hash"],
+                 alert["current_observation_hash"],
+                 alert["detected_at"]))
+            created.append(alert)
+        conn.commit()
         return created
-
-    def list_alerts(self, user_id: str, *,
-                    unread_only: bool = False) -> list[dict[str, Any]]:
-        out = []
-        for row in self._records():
-            if row["user_id"] != user_id:
-                continue
-            if unread_only and row.get("read"):
-                continue
-            out.append(row)
-        return out
-
-    def mark_read(self, user_id: str, opportunity_uid: str,
-                  alert_type: str) -> int:
-        """Mark matching unread alerts read.  Returns marked count."""
-        records = self._records()
-        marked = 0
-        for row in records:
-            if (row["user_id"] == user_id
-                    and row["opportunity_uid"] == opportunity_uid
-                    and row["alert_type"] == alert_type
-                    and not row.get("read")):
-                row["read"] = True
-                marked += 1
-        if marked:
-            self._rewrite(records)
-        return marked
-
-    def mark_all_read(self, user_id: str) -> int:
-        records = self._records()
-        marked = 0
-        for row in records:
-            if row["user_id"] == user_id and not row.get("read"):
-                row["read"] = True
-                marked += 1
-        if marked:
-            self._rewrite(records)
-        return marked
-
-    def unread_count(self, user_id: str) -> int:
-        return sum(
-            1 for row in self._records()
-            if row["user_id"] == user_id and not row.get("read")
-        )
-
-    def _rewrite(self, records: list[dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("w", encoding="utf-8") as handle:
-            for row in records:
-                handle.write(json.dumps(row, sort_keys=True) + "\n")
+    finally:
+        conn.close()
 
 
-def _event_key(user_id: str, opportunity_uid: str, alert_type: str,
-               previous_hash: str, current_hash: str) -> str:
-    import hashlib
-    import json
+def list_alerts(user_id: str, *, unread_only: bool = False) -> list[dict[str, Any]]:
+    """List the user's alerts (newest first)."""
+    conn = _connect()
+    try:
+        if unread_only:
+            rows = conn.execute(
+                "SELECT * FROM yield_alerts WHERE user_id=? AND read_at IS NULL "
+                "ORDER BY detected_at DESC", (user_id,)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM yield_alerts WHERE user_id=? "
+                "ORDER BY detected_at DESC", (user_id,)).fetchall()
+    finally:
+        conn.close()
+    return [_row_to_dict(row) for row in rows]
 
-    payload = json.dumps({
-        "user_id": user_id,
-        "opportunity_uid": opportunity_uid,
-        "alert_type": alert_type,
-        "previous_observation_hash": previous_hash,
-        "current_observation_hash": current_hash,
-    }, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+def mark_read(user_id: str, alert_id: str) -> bool:
+    """Mark ONE alert read by deterministic alert_id.
+
+    Returns True when the alert exists, belongs to the user, and was
+    previously unread.  Unknown alert_id for that user → False (no mutation).
+    User A can never mutate User B's alert (user_id is in the WHERE clause).
+    """
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            "UPDATE yield_alerts SET read_at=? "
+            "WHERE alert_id=? AND user_id=? AND read_at IS NULL",
+            (_utc_iso_now(), alert_id, user_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def mark_all_read(user_id: str) -> int:
+    """Mark ALL the user's unread alerts read.  Returns marked count."""
+    conn = _connect()
+    try:
+        cursor = conn.execute(
+            "UPDATE yield_alerts SET read_at=? "
+            "WHERE user_id=? AND read_at IS NULL",
+            (_utc_iso_now(), user_id))
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def unread_count(user_id: str) -> int:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM yield_alerts "
+            "WHERE user_id=? AND read_at IS NULL", (user_id,)).fetchone()
+        return row["n"]
+    finally:
+        conn.close()
+
+
+def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    previous = json.loads(row["previous_value_json"]) if row["previous_value_json"] else None
+    current = json.loads(row["current_value_json"]) if row["current_value_json"] else None
+    return {
+        "alert_id": row["alert_id"],
+        "user_id": row["user_id"],
+        "opportunity_uid": row["opportunity_uid"],
+        "alert_type": row["alert_type"],
+        "label": row["label"],
+        "field": row["field"],
+        "previous": previous,
+        "current": current,
+        "previous_observation_hash": row["previous_observation_hash"],
+        "current_observation_hash": row["current_observation_hash"],
+        "detected_at": row["detected_at"],
+        "read": row["read_at"] is not None,
+    }
+
+
+# ── Checkpoint state ─────────────────────────────────────────────────────────
+
+def get_checkpoint(user_id: str, opportunity_uid: str) -> dict[str, Any] | None:
+    """Return the checkpoint for (user, opportunity) or None if absent."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT * FROM yield_alert_state "
+            "WHERE user_id=? AND opportunity_uid=?",
+            (user_id, opportunity_uid)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return {
+        "user_id": row["user_id"],
+        "opportunity_uid": row["opportunity_uid"],
+        "last_processed_observation_hash": row["last_processed_observation_hash"],
+        "last_freshness_state": row["last_freshness_state"],
+        "last_support_state": row["last_support_state"],
+        "evaluated_at": row["evaluated_at"],
+    }
+
+
+def set_checkpoint(user_id: str, opportunity_uid: str, *,
+                   last_processed_observation_hash: str,
+                   last_freshness_state: str | None,
+                   last_support_state: str | None) -> None:
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO yield_alert_state "
+            "(user_id, opportunity_uid, last_processed_observation_hash, "
+            " last_freshness_state, last_support_state, evaluated_at) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT (user_id, opportunity_uid) DO UPDATE SET "
+            "last_processed_observation_hash=excluded.last_processed_observation_hash, "
+            "last_freshness_state=excluded.last_freshness_state, "
+            "last_support_state=excluded.last_support_state, "
+            "evaluated_at=excluded.evaluated_at",
+            (user_id, opportunity_uid, last_processed_observation_hash,
+             last_freshness_state, last_support_state, _utc_iso_now()))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_checkpoint(user_id: str, opportunity_uid: str) -> None:
+    conn = _connect()
+    try:
+        conn.execute(
+            "DELETE FROM yield_alert_state "
+            "WHERE user_id=? AND opportunity_uid=?",
+            (user_id, opportunity_uid))
+        conn.commit()
+    finally:
+        conn.close()
