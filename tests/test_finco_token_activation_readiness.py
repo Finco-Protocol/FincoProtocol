@@ -126,15 +126,179 @@ def test_duplicate_and_conflicting_deployments_fail_closed():
     assert Issue.CONFLICTING_DEPLOYMENT in decimals_conflict.issues
 
 
-def test_ambiguous_active_deployment_needs_explicit_chain_selection():
-    two = [approved(), approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN)]
-    env = {**RPC, f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}": "https://rpc2.example.invalid"}
-    ambiguous = assess(env, two, probe=Probe())
-    assert ambiguous.status is S.CONFIG_INVALID and Issue.AMBIGUOUS_ACTIVE_DEPLOYMENT in ambiguous.issues
-    selected = {key: {"chain_id": CHAIN} for key in ep.RESOURCE_KEYS[1:]}
-    policy_set = ep.load_policy_set({ep.POLICIES_ENV: json.dumps(selected)})
-    resolved = asyncio.run(ar.assess_activation(environ=env, approved=two, probe=Probe(), policy_set=policy_set))
-    assert resolved.status is not S.CONFIG_INVALID
+def policies_env(**resources) -> dict:
+    """{resource_key: {enabled, minimum_balance, chain_id}} -> operator policy env (TEST_ONLY values)."""
+    return {ep.POLICIES_ENV: json.dumps(resources)}
+
+
+A, B, C = CHAIN, OTHER_CHAIN, 99999
+TWO = [approved(), approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN)]
+TWO_RPC = {**RPC, f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}": "https://rpc2.example.invalid", **FRESH}
+
+
+def active_ready(report, env, approved_set, provider_chain_token=None):
+    """Runtime parity: every resource in active_resources reaches token entitlement and can ALLOW."""
+    from datetime import datetime, timezone
+    from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
+    now = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+    results = {}
+    for key in report.active_resources:
+        policy = ep.load_policy_set(env).get(key)
+        deployment = ar.resolve_approved_deployment(policy.chain_id, approved_set).deployment
+        raw = int(policy.minimum_balance.scaleb(deployment.decimals))
+
+        class Provider:
+            async def balance_of(self, token_policy, wallet_address, _d=deployment, _raw=raw):
+                return TokenBalanceEvidence(_d.chain_id, _d.token_address, WALLET, _d.decimals, _raw, now,
+                                            "TEST_ONLY", BalanceEvidenceState.AVAILABLE)
+
+        results[key] = asyncio.run(evaluate_resource_access(
+            key, WalletContext(WALLET, True), approved=approved_set, environ=env, provider=Provider(), now=now))
+    return results
+
+
+def test_single_deployment_resource_may_leave_the_chain_unselected():
+    report = assess(READY_ENV, probe=Probe())
+    assert report.status is S.READY_FOR_ACTIVATION and report.activation_targets == (HOLDER,)
+    assert report.active_resources == ()                                  # nothing is active until gating is on
+
+
+def test_wrong_explicit_chain_with_a_single_approved_deployment_is_never_ready_or_active():
+    env = {**RPC, **FRESH, **GATING, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": C}})}
+    for variant in (env, {k: v for k, v in env.items() if k != ep.GATING_ENABLED_ENV}):
+        report = assess(variant, probe=Probe())
+        assert report.status is S.CONFIG_INVALID and Issue.RESOURCE_CHAIN_NOT_APPROVED in report.issues
+        assert not report.ready_or_active and report.active_resources == ()
+    # the canonical runtime cannot resolve that chain either
+    assert ar.resolve_approved_deployment(C, [approved()]).status is ar.ResolutionStatus.NOT_FOUND
+    runtime = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=[approved()],
+                                                   environ=env))
+    assert runtime.reason_code == "NO_APPROVED_DEPLOYMENT_ON_CHAIN" and not runtime.allowed
+
+
+def test_matching_explicit_chain_with_a_single_deployment_is_fine():
+    env = {**READY_ENV, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": A}})}
+    assert assess(env, probe=Probe()).status is S.READY_FOR_ACTIVATION
+
+
+def test_multi_chain_valid_selection_is_not_broken_by_an_unconfigured_resource_without_a_chain():
+    env = {**TWO_RPC, **policies_env(**{
+        HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": A},
+        ep.YIELD_ALERTS: {"enabled": False, "chain_id": None}})}
+    report = assess(env, TWO, probe=Probe())
+    assert report.status is S.READY_FOR_ACTIVATION and report.activation_targets == (HOLDER,)
+    assert Issue.AMBIGUOUS_ACTIVE_DEPLOYMENT not in report.issues
+    active = assess({**env, **GATING}, TWO, probe=Probe())
+    assert active.status is S.ACTIVE and active.active_resources == (HOLDER,)
+
+
+def test_multi_chain_active_resource_without_a_selector_fails_deterministically():
+    env = {**TWO_RPC, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100"}})}
+    report = assess(env, TWO, probe=Probe())
+    assert report.status is S.CONFIG_INVALID and Issue.AMBIGUOUS_ACTIVE_DEPLOYMENT in report.issues
+    assert assess(env, TWO, probe=Probe()) == report                                     # deterministic
+    runtime = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=TWO,
+                                                   environ={**env, **GATING}))
+    assert runtime.reason_code == "MULTIPLE_APPROVED_CHAINS"                             # runtime agrees
+
+
+def test_multi_chain_nonexistent_selector_fails():
+    env = {**TWO_RPC, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": C}})}
+    report = assess(env, TWO, probe=Probe())
+    assert report.status is S.CONFIG_INVALID and Issue.RESOURCE_CHAIN_NOT_APPROVED in report.issues
+
+
+def test_multi_chain_two_active_resources_on_different_chains_are_both_operable():
+    env = {**TWO_RPC, **GATING, **policies_env(**{
+        HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": A},
+        ep.YIELD_ALERTS: {"enabled": True, "minimum_balance": "5", "chain_id": B}})}
+    report = assess(env, TWO, probe=Probe(chain_id=None))                                # per-chain probe below
+    assert report.status in (S.CHAIN_MISMATCH, S.RPC_UNAVAILABLE)                       # a single fake probe cannot be both
+
+
+class PerChainProbe:
+    def __init__(self, table):
+        self.table, self.calls = table, []
+
+    async def probe(self, rpc_url, contract_address):
+        self.calls.append(contract_address)
+        chain, decimals = self.table[contract_address]
+        return ChainProbeResult(True, chain, decimals)
+
+
+def test_two_active_resources_on_different_chains_with_a_per_chain_probe():
+    env = {**TWO_RPC, **GATING, **policies_env(**{
+        HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": A},
+        ep.YIELD_ALERTS: {"enabled": True, "minimum_balance": "5", "chain_id": B}})}
+    probe = PerChainProbe({TOKEN: (A, DECIMALS), OTHER_TOKEN: (B, DECIMALS)})
+    report = assess(env, TWO, probe=probe)
+    assert report.status is S.ACTIVE and set(report.active_resources) == {HOLDER, ep.YIELD_ALERTS}
+    assert set(probe.calls) == {TOKEN, OTHER_TOKEN}
+
+
+def test_an_unused_approved_deployment_does_not_block_a_valid_resource_on_another_chain():
+    env = {k: v for k, v in TWO_RPC.items() if k != f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}"}      # chain B has no RPC
+    env.update(policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": A}}))
+    probe = PerChainProbe({TOKEN: (A, DECIMALS), OTHER_TOKEN: (B, DECIMALS)})
+    report = assess(env, TWO, probe=probe)
+    assert report.status is S.READY_FOR_ACTIVATION and probe.calls == [TOKEN]               # B never probed
+    # identity validation is NOT weakened: a conflicting or duplicate unused entry still fails
+    bad = TWO + [approved(chain_id=OTHER_CHAIN, token_address=TOKEN)]
+    assert assess(env, bad, probe=probe).status is S.CONFIG_INVALID
+
+
+def test_a_selected_deployment_with_missing_rpc_still_blocks():
+    env = {**{k: v for k, v in TWO_RPC.items() if k != f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}"},
+           **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "100", "chain_id": B}})}
+    report = assess(env, TWO, probe=PerChainProbe({TOKEN: (A, DECIMALS), OTHER_TOKEN: (B, DECIMALS)}))
+    assert report.status is S.RPC_UNAVAILABLE and report.chain_id == B
+
+
+@pytest.mark.parametrize("threshold", ["1", "0.1", "0.000001", "100", "123.456789"])
+def test_thresholds_exactly_representable_in_decimals_are_ready(threshold):
+    env = {**RPC, **FRESH, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": threshold}})}
+    report = assess(env, probe=Probe())
+    assert report.status is S.READY_FOR_ACTIVATION and names(report)["threshold_representable"] is True
+
+
+@pytest.mark.parametrize("threshold", ["0.0000001", "1.0000001", "0.00000000001"])
+def test_thresholds_finer_than_token_decimals_never_reach_ready_or_active(threshold):
+    env = {**RPC, **FRESH, **GATING, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": threshold}})}
+    for variant in (env, {k: v for k, v in env.items() if k != ep.GATING_ENABLED_ENV}):
+        report = assess(variant, probe=Probe())
+        assert report.status is S.CONFIG_INVALID and Issue.THRESHOLD_EXCEEDS_TOKEN_DECIMALS in report.issues
+        assert not report.ready_or_active and report.active_resources == ()      # never rounded into validity
+    runtime = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=[approved()],
+                                                   environ=env))
+    assert runtime.reason_code == "THRESHOLD_EXCEEDS_TOKEN_DECIMALS"              # runtime agrees
+
+
+def test_threshold_precision_uses_the_selected_deployments_own_decimals():
+    two_decimals = [approved(), approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN, decimals=2)]
+    env = {**TWO_RPC, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "0.001", "chain_id": B}})}
+    assert Issue.THRESHOLD_EXCEEDS_TOKEN_DECIMALS in assess(env, two_decimals, probe=Probe()).issues
+    on_a = {**TWO_RPC, **policies_env(**{HOLDER: {"enabled": True, "minimum_balance": "0.001", "chain_id": A}})}
+    assert assess(on_a, two_decimals, probe=PerChainProbe({TOKEN: (A, DECIMALS), OTHER_TOKEN: (B, 2)})).status \
+        is S.READY_FOR_ACTIVATION
+
+
+def test_runtime_parity_every_active_resource_is_operable_under_the_same_configuration():
+    env = {**TWO_RPC, **GATING, **policies_env(**{
+        HOLDER: {"enabled": True, "minimum_balance": "0.000001", "chain_id": A},
+        ep.YIELD_ALERTS: {"enabled": True, "minimum_balance": "5", "chain_id": B},
+        ep.YIELD_ADVANCED_COMPARE: {"enabled": False}})}
+    probe = PerChainProbe({TOKEN: (A, DECIMALS), OTHER_TOKEN: (B, DECIMALS)})
+    report = assess(env, TWO, probe=probe)
+    assert report.status is S.ACTIVE and set(report.active_resources) == {HOLDER, ep.YIELD_ALERTS}
+    results = active_ready(report, env, TWO)
+    assert set(results) == set(report.active_resources)
+    for key, decision in results.items():
+        assert decision.allowed, (key, decision.reason_code)
+        assert decision.reason_code not in {"NO_APPROVED_DEPLOYMENT", "NO_APPROVED_DEPLOYMENT_ON_CHAIN",
+                                            "MULTIPLE_APPROVED_CHAINS", "THRESHOLD_EXCEEDS_TOKEN_DECIMALS",
+                                            "TOKEN_CONFIGURATION_UNAVAILABLE"}
+    single = assess(ACTIVE_ENV, probe=Probe())
+    assert all(d.allowed for d in active_ready(single, ACTIVE_ENV, [approved()]).values())
 
 
 def test_invalid_operator_policy_config_is_config_invalid():

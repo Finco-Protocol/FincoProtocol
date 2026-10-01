@@ -50,14 +50,20 @@ python tools/finco_token_activation_check.py --candidate proposal.json   # valid
 | Status | Meaning |
 |---|---|
 | `NOT_CONFIGURED` | Zero approved deployments (production today). |
-| `CONFIG_INVALID` | Something present is malformed: invalid, duplicate, conflicting or ambiguous deployments, an invalid candidate or approval status, invalid operator policy config, or a failed fail-closed self-check. |
+| `CONFIG_INVALID` | Something present is malformed: invalid, duplicate or conflicting deployments, an invalid candidate or approval status, invalid operator policy config, a failed fail-closed self-check, or an **activation-target** resource whose deployment cannot be resolved (`RESOURCE_CHAIN_NOT_APPROVED`, `AMBIGUOUS_ACTIVE_DEPLOYMENT`) or whose threshold is not exactly representable in the deployment's decimals (`THRESHOLD_EXCEEDS_TOKEN_DECIMALS`, never rounded). |
 | `DEPLOYMENT_UNAPPROVED` | A candidate was given that is not identical to the committed approved record (chain, contract, standard, decimals **and provenance**). A candidate is never authority. |
 | `RPC_UNAVAILABLE` | No RPC configured for an approved chain, or the read-only probe failed or could not prove `decimals()`. |
 | `CHAIN_MISMATCH` | The provider's `eth_chainId` differs from the approved chain. |
 | `DECIMALS_MISMATCH` | On-chain `decimals()` differs from the approved decimals. |
 | `ACTIVATION_INCOMPLETE` | The deployment is verified but a prerequisite is **missing** (not malformed): no enabled holder resource with a `minimum_balance`, and/or no valid `FINCO_ENTITLEMENT_MAX_AGE_SECONDS`. Gating being ON does not change this. |
-| `READY_FOR_ACTIVATION` | Every prerequisite is satisfied — approved + valid deployment, RPC, chain, decimals, at least one enabled holder resource with a threshold, a valid freshness window, fail-closed self-check — and **only** the gating switch is missing. Gating is still OFF. |
-| `ACTIVE` | The same prerequisites **and** `FINCO_TOKEN_GATING_ENABLED` is explicitly on. The report lists exactly which holder resources are active (not necessarily all of them). The runtime evaluator can then operate. |
+| `READY_FOR_ACTIVATION` | Every prerequisite is satisfied — approved + valid deployment, RPC, chain and decimals verified, at least one holder resource enabled with a threshold whose deployment resolves and whose threshold is exact in its decimals, a valid freshness window, fail-closed self-check — and **only** the gating switch is missing. Gating is still OFF; `activation_targets` lists what would become active. |
+| `ACTIVE` | The same prerequisites **and** `FINCO_TOKEN_GATING_ENABLED` is explicitly on. `active_resources` lists exactly the validated resources that the runtime evaluator can operate (not necessarily all holder resources). |
+
+**Activation targets.** Only resources that are `enabled` with a `minimum_balance` take part in deployment selection. With
+several approved chains each target must name a `chain_id` that resolves to exactly one approved deployment; disabled or
+unthresholded resources (for example an unused `yield.alerts`) never create ambiguity. RPC verification covers the
+deployments the targets select (every approved deployment while there is no target yet), so an approved but unused
+deployment does not block a valid resource on another chain; identity validation of the whole approved set is unchanged.
 
 `READY_FOR_ACTIVATION` is a report, not a switch: the tool only makes read-only `eth_chainId` and `decimals()` calls,
 never changes configuration, and prints no RPC URL or secret. It exits non-zero unless the status is

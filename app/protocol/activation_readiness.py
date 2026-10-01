@@ -17,6 +17,13 @@ Authority rules (unchanged by this module)
     at least one holder resource enabled WITH a threshold, a valid ``FINCO_ENTITLEMENT_MAX_AGE_SECONDS`` (the
     canonical runtime freshness window, no default invented), and the fail-closed self-check. ``ACTIVE`` is the same
     plus an explicit ``FINCO_TOKEN_GATING_ENABLED``, so the runtime evaluator can actually operate.
+  * Only resources actually intended for activation (enabled AND a threshold) are activation targets. Each target
+    must resolve to exactly one approved deployment through the SAME ``resolve_approved_deployment`` call the
+    runtime uses, and its threshold must be exactly representable in that deployment's decimals (the runtime's own
+    ``_token_policy`` rule, no rounding). ``active_resources`` lists only such validated, runtime-operable targets.
+    Disabled / unthresholded resources never create deployment ambiguity. RPC verification covers the deployments
+    the targets select (every approved deployment when there is no target yet); an approved but unused deployment
+    does not block activation of a valid resource on another approved chain. Identity validation is unchanged.
   * Missing is not malformed: an incomplete product policy is ACTIVATION_INCOMPLETE, never CONFIG_INVALID.
   * Identity is exact chain + contract. Symbol / name are display-only and never read.
   * No chain, contract, supply, price, threshold, staking, burn, spend, revenue share or vesting is defined here.
@@ -29,9 +36,11 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Protocol
 
 from app.protocol.entitlement_policy import AccessMode, PolicySet, load_policy_set
-from app.protocol.entitlement_evaluator import FRESHNESS_ENV, _freshness_seconds
+from app.protocol.entitlement_evaluator import FRESHNESS_ENV, _freshness_seconds, _token_policy
 from app.protocol.token_config import _validate_hex_address
-from app.protocol.token_deployments import ECONOMIC_TOKEN_UID, approved_deployments
+from app.protocol.token_deployments import (
+    ECONOMIC_TOKEN_UID, ResolutionStatus, approved_deployments, resolve_approved_deployment,
+)
 
 ACTIVATION_STEPS = (
     "approve canonical deployment provenance",
@@ -74,6 +83,8 @@ class Issue(str, Enum):
     DECIMALS_OUT_OF_RANGE = "DECIMALS_OUT_OF_RANGE"
     WRONG_ECONOMIC_TOKEN = "WRONG_ECONOMIC_TOKEN"
     POLICY_CONFIG_INVALID = "POLICY_CONFIG_INVALID"
+    RESOURCE_CHAIN_NOT_APPROVED = "RESOURCE_CHAIN_NOT_APPROVED"      # an activation-target resource names an unapproved chain
+    THRESHOLD_EXCEEDS_TOKEN_DECIMALS = "THRESHOLD_EXCEEDS_TOKEN_DECIMALS"   # same rule as the runtime evaluator
 
 
 @dataclass(frozen=True)
@@ -202,7 +213,8 @@ class ActivationReport:
     issues: tuple[Issue, ...] = ()
     chain_id: int | None = None
     contract_address: str | None = None
-    active_resources: tuple[str, ...] = ()
+    active_resources: tuple[str, ...] = ()       # ONLY when ACTIVE: resources that are on and runtime-operable
+    activation_targets: tuple[str, ...] = ()     # validated resources that WOULD be active once gating is on
     reason: str = ""
 
     @property
@@ -214,11 +226,13 @@ class ActivationReport:
         return {"status": self.status.value, "reason": self.reason, "chain_id": self.chain_id,
                 "contract_address": self.contract_address, "issues": [i.value for i in self.issues],
                 "active_resources": list(self.active_resources),
+                "activation_targets": list(self.activation_targets),
                 "checks": [{"name": c.name, "passed": c.passed, "detail": c.detail} for c in self.checks]}
 
 
 _CHECK_NAMES = ("deployment_approved", "deployment_valid", "rpc_configured", "chain_verified",
-                "decimals_verified", "resource_threshold_configured", "freshness_window_configured",
+                "decimals_verified", "resource_threshold_configured", "resource_deployment_resolved",
+                "threshold_representable", "freshness_window_configured",
                 "gating_explicitly_enabled", "fail_closed_behavior")
 
 
@@ -312,31 +326,54 @@ async def assess_activation(
     if policy_set.config_error:
         issues.append(Issue.POLICY_CONFIG_INVALID)
     holder_policies = [p for p in policy_set.policies.values() if p.access_mode is AccessMode.FINCO_HOLDER]
-    chains = {e.chain_id for e in committed}
-    if len(chains) > 1 and any(p.chain_id is None for p in holder_policies):
-        issues.append(Issue.AMBIGUOUS_ACTIVE_DEPLOYMENT)
+
+    # Activation targets: ONLY resources intended for activation take part in deployment selection.
+    targets: list[tuple] = []                                   # (policy, resolved approved deployment)
+    if not issues:
+        for policy in holder_policies:
+            if not (policy.enabled and policy.minimum_balance is not None):
+                continue
+            resolution = resolve_approved_deployment(policy.chain_id, committed)   # exactly what the runtime calls
+            if not resolution.resolved:
+                issues.append({ResolutionStatus.NOT_FOUND: Issue.RESOURCE_CHAIN_NOT_APPROVED,
+                               ResolutionStatus.AMBIGUOUS: Issue.AMBIGUOUS_ACTIVE_DEPLOYMENT,
+                               ResolutionStatus.CONFLICT: Issue.CONFLICTING_DEPLOYMENT}
+                              .get(resolution.status, Issue.MISSING_DEPLOYMENT))
+            elif _token_policy(resolution.deployment, policy, 1) is None:          # runtime's exact-integer rule
+                issues.append(Issue.THRESHOLD_EXCEEDS_TOKEN_DECIMALS)
+            else:
+                targets.append((policy, resolution.deployment))
     if issues:
         return ActivationReport(ActivationStatus.CONFIG_INVALID,
                                 _checks(deployment_approved=(True, "approved set present"),
-                                        deployment_valid=(False, "structural validation failed")),
+                                        deployment_valid=(False, "structural / resource validation failed")),
                                 tuple(dict.fromkeys(issues)), reason="CONFIG_INVALID")
 
     chosen = validate_candidate(candidate)[0] if candidate is not None else None
-    targets = [e for e in committed if chosen is None or e.chain_id == chosen.chain_id]
+    selected = {(d.chain_id, d.token_address): d for _, d in targets}
+    if chosen is not None:                                      # a pre-commit candidate is verified as well
+        for entry in committed:
+            if entry.chain_id == chosen.chain_id and entry.token_address == chosen.contract_address:
+                selected[(entry.chain_id, entry.token_address)] = entry
+    verify_set = sorted(selected.values() if selected else committed, key=lambda e: (e.chain_id, e.token_address))
     base = {"deployment_approved": (True, "approved set present"), "deployment_valid": (True, "valid")}
-    for deployment in sorted(targets, key=lambda e: (e.chain_id, e.token_address)):
+    for deployment in verify_set:
         failure = await _verify_deployment(deployment, env, probe, dict(base))
         if failure is not None:
             return failure
-    deployment = sorted(targets, key=lambda e: (e.chain_id, e.token_address))[0]
-    base.update({"rpc_configured": (True, "configured on every approved chain"),
+    deployment = verify_set[0]
+    base.update({"rpc_configured": (True, "configured on every verified chain"),
                  "chain_verified": (True, "provider chain matches"),
                  "decimals_verified": (True, "on-chain decimals match")})
-    active = tuple(p.resource_key for p in holder_policies if p.enabled and p.minimum_balance is not None)
-    freshness_ok = _freshness_seconds(env) is not None          # the SAME canonical parser the runtime uses
+    active = tuple(policy.resource_key for policy, _ in targets)      # validated, runtime-operable resources only
+    freshness_ok = _freshness_seconds(env) is not None                # the SAME canonical parser the runtime uses
     gating = policy_set.gating_enabled
     fail_closed = _fail_closed_self_check(policy_set, committed)
     base["resource_threshold_configured"] = (bool(active), f"{len(active)} holder resource(s) enabled with a threshold")
+    base["resource_deployment_resolved"] = (bool(active), "every active resource resolves to one approved deployment"
+                                            if active else "no activation-target resource")
+    base["threshold_representable"] = (bool(active), "every threshold is exact in the deployment decimals"
+                                       if active else "no activation-target resource")
     base["freshness_window_configured"] = (freshness_ok, f"{FRESHNESS_ENV} " + ("valid" if freshness_ok else
                                                                               "missing or not a positive integer"))
     base["gating_explicitly_enabled"] = (gating, "explicit operator opt-in" if gating else "gating OFF")
@@ -348,9 +385,9 @@ async def assess_activation(
                                           ("freshness_window_configured", freshness_ok)) if not ok)
     if missing:       # missing, not malformed: the product policy / runtime config is simply not finished
         return ActivationReport(ActivationStatus.ACTIVATION_INCOMPLETE, _checks(**base),
-                                reason="MISSING_" + "_AND_".join(m.upper() for m in missing), **ident)
+                                activation_targets=active, reason="MISSING_" + "_AND_".join(m.upper() for m in missing), **ident)
     if gating:
         return ActivationReport(ActivationStatus.ACTIVE, _checks(**base), active_resources=active,
-                                reason="GATING_EXPLICITLY_ENABLED", **ident)
-    return ActivationReport(ActivationStatus.READY_FOR_ACTIVATION, _checks(**base),
+                                activation_targets=active, reason="GATING_EXPLICITLY_ENABLED", **ident)
+    return ActivationReport(ActivationStatus.READY_FOR_ACTIVATION, _checks(**base), activation_targets=active,
                             reason="READY_GATING_NOT_ACTIVE", **ident)
