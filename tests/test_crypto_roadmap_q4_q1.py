@@ -21,9 +21,12 @@ def _flat(rel: str) -> str:
     return " ".join(_read(rel).split())
 
 
-def _between(text: str, start: str, end: str) -> str:
-    start_index = text.index(start)
-    end_index = text.index(end, start_index)
+def _section_between(text: str, start_heading: str, end_heading: str) -> str:
+    """Slice rendered roadmap by structural section markers, never copy text."""
+    start_marker = f'aria-labelledby="{start_heading}"'
+    end_marker = f'aria-labelledby="{end_heading}"'
+    start_index = text.index(start_marker)
+    end_index = text.index(end_marker, start_index)
     return text[start_index:end_index]
 
 
@@ -50,6 +53,25 @@ def test_shared_navigation_exposes_primary_products_and_active_contracts():
     assert "proto_active_page == 'crypto'" in nav
     assert 'proto_active_page="yield"' in _flat("app/templates/yield/base.html")
     assert 'proto_active_page="crypto"' in _flat("app/templates/crypto/overview.html")
+
+
+def test_public_yield_route_is_truthful_when_runtime_is_off(monkeypatch):
+    """Primary /yield stays public without turning the Yield runtime on."""
+    monkeypatch.delenv("FINCO_YIELD_ENABLED", raising=False)
+    monkeypatch.delenv("FINCO_YIELD_EXECUTION_ENABLED", raising=False)
+
+    from fastapi.testclient import TestClient
+    import main_web
+
+    response = TestClient(main_web.app, raise_server_exceptions=True).get("/yield")
+    assert response.status_code == 200
+    text = " ".join(response.text.split())
+    assert "FINCO Yield is implemented and feature-gated." in text
+    assert "Yield runtime is not enabled in this environment." in text
+    assert "Yield execution remains OFF." in text
+    assert "No empty opportunity set is inferred" in text
+    assert "data-yield-runtime-state=\"disabled\"" in response.text
+    assert "<table" not in response.text.lower()
 
 
 def test_roadmap_has_live_q4_q1_later_bands():
@@ -106,8 +128,8 @@ def test_infrastructure_expansion_is_nested_under_model_future_coverage():
 
 def test_q4_crypto_native_targets_are_future_not_live():
     road = _flat("app/templates/protocol_roadmap.html")
-    live = _between(road, "LIVE / IMPLEMENTED", "Q4 2026")
-    q4 = _between(road, "Q4 2026", "Q1 2027")
+    live = _section_between(road, "live-heading", "q4-heading")
+    q4 = _section_between(road, "q4-heading", "q1-heading")
     for phrase in (
         "External Trade Center",
         "$FINCO Market Surface",
@@ -126,8 +148,8 @@ def test_q4_crypto_native_targets_are_future_not_live():
 
 def test_q1_programmable_finance_targets_are_future_not_live():
     road = _flat("app/templates/protocol_roadmap.html")
-    live = _between(road, "LIVE / IMPLEMENTED", "Q4 2026")
-    q1 = _between(road, "Q1 2027", "LATER")
+    live = _section_between(road, "live-heading", "q4-heading")
+    q1 = _section_between(road, "q1-heading", "later-heading")
     for phrase in (
         "User-Signed Execution",
         "FINCO Wallet Portfolio",
