@@ -381,7 +381,7 @@
         {# ── Sub-line rows ────────────────────────────────────────── #}
         {% for line in group.lines if line.is_active %}
         <tr class="cx-line-row" id="{{ line.row_id | replace(':', '-') }}">
-          <td class="cx-col-code cx-sticky-col cx-line-indent">{{ line.code }}</td>
+          <td class="cx-col-code cx-sticky-col cx-line-indent" data-canonical-code="{{ line.code }}">{{ line.display_code or line.code }}</td>
           <td class="cx-col-label cx-sticky-col">{{ line.name }}</td>
           <td class="cx-col-amount">
             {% if line.is_editable %}

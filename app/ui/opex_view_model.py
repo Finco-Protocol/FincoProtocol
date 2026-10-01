@@ -181,6 +181,9 @@ class OpexViewModel:
 
     is_user_project: bool
 
+    # B.13 typed percentage authority lineage (period-by-period basis)
+    contingency: "object | None" = None
+
 
 # ---------------------------------------------------------------------------
 # Mutation contract
@@ -317,6 +320,8 @@ def build_opex_view_model(
     is_user_project: bool = False,
     display_years: int = DEFAULT_DISPLAY_YEARS,
     sub_lines: Optional[Sequence["OpexSubLine"]] = None,
+    contingency_pct: Optional[float] = None,
+    contingency_source: str = "reference_amount",
 ) -> OpexViewModel:
     """
     Build an OpexViewModel from ProjectContext.opex_detail_items.
@@ -340,6 +345,11 @@ def build_opex_view_model(
     capacity_mw: float = project_ctx.capacity_mw
     p50_annual_mwh: float = project_ctx.operating_hours_p50 * capacity_mw
     contingency_rate: float = float(getattr(project_ctx, "opex_contingency_pct", 0.0))
+    # Typed B.13 authority (user projects only): overrides the reference rate.
+    # Reference models never carry one, so their rate is untouched.
+    _authority_pct = contingency_pct if is_user_project else None
+    if _authority_pct is not None:
+        contingency_rate = float(_authority_pct)
     project_code: str = project_ctx.code
 
     # Index active custom sub-lines by parent group code for O(1) injection.
@@ -480,6 +490,12 @@ def build_opex_view_model(
         for yr in range(display_years)
     )
 
+    from app.contingency_authority import opex_lineage
+    contingency_lineage = opex_lineage(
+        pct=_authority_pct, source=contingency_source,
+        period_basis_keur=list(total_excl), period_amount_keur=list(contingency_by_year),
+    )
+
     y1_total = total_incl[0] if total_incl else 0.0
     final_year_total = total_incl[-1] if total_incl else 0.0
 
@@ -506,4 +522,5 @@ def build_opex_view_model(
         opex_per_mw_y1=opex_per_mw_y1,
         opex_per_mwh_y1=opex_per_mwh_y1,
         is_user_project=is_user_project,
+        contingency=contingency_lineage,
     )

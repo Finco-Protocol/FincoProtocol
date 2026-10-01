@@ -69,6 +69,10 @@ class ResolvedExportAuthority:
     run_at: str | None = None            # ISO timestamp of last committed run
     # None → "not_applicable" (FACTORY/PREVIEW); True/False → "true"/"false" (CANONICAL only)
     working_changed_since_run: bool | None = None
+    # EFFECTIVE typed contingency authority the exported economics were built
+    # with: {"capex_pct", "capex_source", "opex_pct", "opex_source"} or None.
+    # CANONICAL: captured in the run identity (immutable to later edits).
+    contingency_authority: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -204,6 +208,17 @@ def _apply_capex_opex_folds(project_inputs, project_id, sc_overrides):
     return project_inputs
 
 
+def _live_contingency_authority(project_id, sc_overrides):
+    """Effective contingency authority from live state (preview / legacy runs)."""
+    from app.services.capex_sub_lines_integration import _load_contingency_pct
+
+    cap, cap_src = _load_contingency_pct(project_id, sc_overrides, "capex")
+    opx, opx_src = _load_contingency_pct(project_id, sc_overrides, "opex")
+    if cap is None and opx is None:
+        return None
+    return {"capex_pct": cap, "capex_source": cap_src, "opex_pct": opx, "opex_source": opx_src}
+
+
 def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_dict):
     """Apply run-bound CAPEX/OPEX folds using persisted identity data.
 
@@ -287,6 +302,25 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
         if folded_opex is not project_inputs.opex:
             project_inputs = _dc.replace(project_inputs, opex=folded_opex)
 
+    # Typed contingency authority captured at run commit (None = reference).
+    authority = identity_dict.get("contingency_authority") or {}
+    if authority:
+        from app.contingency_authority import (
+            apply_capex_contingency,
+            apply_opex_contingency,
+        )
+
+        if authority.get("capex_pct") is not None:
+            project_inputs = _dc.replace(
+                project_inputs,
+                capex=apply_capex_contingency(project_inputs.capex, authority["capex_pct"]),
+            )
+        if authority.get("opex_pct") is not None:
+            project_inputs = _dc.replace(
+                project_inputs,
+                opex=apply_opex_contingency(project_inputs.opex, authority["opex_pct"]),
+            )
+
     return project_inputs
 
 
@@ -335,6 +369,7 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
 
     _ri = getattr(ws, "last_runtime_identity", None)
     active_scenario_name = None
+    _cont_auth = None
 
     if _ri is not None:
         # Run-bound path (post-Correction B): use persisted identity — no live DB reads.
@@ -342,6 +377,7 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         project_inputs = _apply_capex_opex_folds_from_identity(
             project_inputs, project_record.project_id, _ri
         )
+        _cont_auth = dict(_ri.get("contingency_authority") or {}) or None
     else:
         # Legacy fallback (pre-Correction B rows without persisted identity):
         # resolve scenario and apply folds using live tables.
@@ -357,6 +393,7 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         project_inputs = _apply_capex_opex_folds(
             project_inputs, project_record.project_id, _sc_overrides
         )
+        _cont_auth = _live_contingency_authority(project_record.project_id, _sc_overrides)
 
     # UI and export share one composite runtime-freshness authority.
     from app.workbook.runtime_authority import resolve_runtime_freshness
@@ -392,6 +429,7 @@ def _resolve_canonical_last_run_path(project_record, user_id, ws) -> "ResolvedEx
         run_id=None,  # truthfully unavailable — no UUID linked to workspace state
         run_at=_run_at,
         working_changed_since_run=_working_changed,
+        contingency_authority=_cont_auth,
     )
 
 
@@ -433,6 +471,8 @@ def _resolve_preview_working_path(project_record, user_id, ws) -> "ResolvedExpor
         run_id=None,         # not_applicable — preview has no committed run identity
         run_at=None,         # not_applicable
         working_changed_since_run=None,  # not_applicable — Preview IS current Working state
+        contingency_authority=_live_contingency_authority(
+            project_record.project_id, _sc_overrides),
     )
 
 
@@ -662,6 +702,7 @@ def build_institutional_workbook_export(
             working_changed_since_run=authority.working_changed_since_run,
             run_id=authority.run_id,
             run_at=authority.run_at,
+            contingency_authority=authority.contingency_authority,
         )
         first_row = bundle.runtime_rows[0]
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
