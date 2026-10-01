@@ -252,6 +252,32 @@
       </span>
     </div>
   </div>
+  {% set ocl = opex_vm.contingency %}
+  {% if ocl and ocl.mode == "percentage" %}
+  <div class="v2-contingency-authority" data-testid="opex-contingency-authority"
+       data-basis-mode="{{ ocl.basis_mode }}" data-status="{{ ocl.status }}" data-source="{{ ocl.source }}">
+    <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Contingency %</span><span class="v2-field-value">{{ "%g"|format(ocl.pct) }}%</span></div>
+    <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Basis</span><span class="v2-field-value">{{ ocl.basis_mode }} (period by period)</span></div>
+    <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Year 1 basis amount</span><span class="v2-field-value">{% if ocl.basis_amount_keur is none %}—{% else %}{{ "%.1f"|format(ocl.basis_amount_keur) }}{% endif %} <small>kEUR</small></span></div>
+    <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Year 1 contingency amount</span><span class="v2-field-value">{% if ocl.amount_keur is none %}—{% else %}{{ "%.1f"|format(ocl.amount_keur) }}{% endif %} <small>kEUR</small></span></div>
+    <details class="v2-contingency-lineage"><summary>Lineage</summary>
+      <p data-testid="opex-contingency-formula">{{ ocl.formula }}</p>
+      <p>Included: {{ ocl.included_categories | join(", ") }}</p>
+      <p>Excluded: {% for c, why in ocl.excluded_categories %}{{ c }} ({{ why }}){% endfor %}</p>
+    </details>
+  </div>
+  {% endif %}
+  {% if project_editable and ocl %}
+  <form class="v2-field-form v2-contingency-form" method="post" action="/v2/capex/contingency" data-testid="opex-contingency-form">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <input type="hidden" name="kind" value="opex">
+    <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+    <input type="hidden" name="content_hash" value="{{ content_hash }}">
+    <label>B.13 Contingency % <input class="v2-field-input" type="number" name="contingency_pct" min="0" max="100" step="0.1" value="{% if ocl.pct is not none %}{{ '%g'|format(ocl.pct) }}{% endif %}" placeholder="reference rule"></label>
+    <span class="v2-field-hint">Applied each year to that year's other OPEX (B.01-B.12). Leave empty to keep the reference rule.</span>
+    <button type="submit" class="v2-field-save">Save</button>
+  </form>
+  {% endif %}
 
   <section class="v2-parent-summary" aria-labelledby="opex-parent-summary-title" data-testid="opex-parent-summary">
     <div class="v2-sheet-section-heading"><span id="opex-parent-summary-title">OPEX parent summary</span><small>Year 1 parent totals and per-line escalation authority</small></div>

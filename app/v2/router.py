@@ -582,7 +582,14 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
             adjusted.append(sl)
         sub_lines = adjusted
 
-    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
+    from app.contingency_authority import resolve_pct as _resolve_cont_pct
+    _cont_pct, _cont_src = _resolve_cont_pct(
+        getattr(project_record, "replay_metadata", None), _scenario_overrides_raw, "capex",
+    )
+    capex_vm = build_capex_view_model(
+        project_ctx, is_user_project=is_user, sub_lines=sub_lines,
+        contingency_pct=_cont_pct, contingency_source=_cont_src,
+    )
 
     # Registry field list for capex; keyed by short name for group mapping
     capex_fields = _build_sheet_fields("capex", pis)
@@ -689,7 +696,14 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     )
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _get_opex_sub_lines
     opex_sub_lines = _get_opex_sub_lines(project_record.project_id)
-    opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines)
+    from app.contingency_authority import resolve_pct as _resolve_cont_pct
+    _ox_pct, _ox_src = _resolve_cont_pct(
+        getattr(project_record, "replay_metadata", None), None, "opex",
+    )
+    opex_vm = build_opex_view_model(
+        project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines,
+        contingency_pct=_ox_pct, contingency_source=_ox_src,
+    )
     opex_fields = _build_sheet_fields("opex", pis)
     opex_sheet_groups = build_opex_sheet_projection(opex_vm, opex_fields)
     # F06 Correction A: escalation display helper for the group rows

@@ -287,6 +287,25 @@ def _apply_capex_opex_folds_from_identity(project_inputs, project_id, identity_d
         if folded_opex is not project_inputs.opex:
             project_inputs = _dc.replace(project_inputs, opex=folded_opex)
 
+    # Typed contingency authority captured at run commit (None = reference).
+    authority = identity_dict.get("contingency_authority") or {}
+    if authority:
+        from app.contingency_authority import (
+            apply_capex_contingency,
+            apply_opex_contingency,
+        )
+
+        if authority.get("capex_pct") is not None:
+            project_inputs = _dc.replace(
+                project_inputs,
+                capex=apply_capex_contingency(project_inputs.capex, authority["capex_pct"]),
+            )
+        if authority.get("opex_pct") is not None:
+            project_inputs = _dc.replace(
+                project_inputs,
+                opex=apply_opex_contingency(project_inputs.opex, authority["opex_pct"]),
+            )
+
     return project_inputs
 
 

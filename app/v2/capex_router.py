@@ -401,3 +401,41 @@ async def capex_line_reorder(
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
         return _render_capex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@capex_router.post("/contingency")
+async def capex_contingency_set(
+    request: Request,
+    project: str = Form(...),
+    kind: str = Form(...),
+    contingency_pct: str = Form(default=""),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Set/clear the typed C.13 (kind=capex) or B.13 (kind=opex) percentage."""
+    from app.v2.capex_commands import set_contingency_percentage
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    try:
+        project_record, ws = _load_project_and_ws(user, project)
+    except LookupError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    raw = contingency_pct.strip()
+    try:
+        pct = None if raw == "" else float(raw)
+        _new_hash = set_contingency_percentage(
+            project_record=project_record, user_id=user.user_id, kind=kind,
+            pct=pct, workbook_version=workbook_version,
+            expected_content_hash=content_hash,
+        )
+    except CapexStaleIdentityError:
+        is_htmx = request.headers.get("HX-Request") == "true"
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
+    except CapexCommandError as exc:
+        return _handle_command_error(exc)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)

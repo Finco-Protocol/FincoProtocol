@@ -23,12 +23,16 @@ Mutation contract:
 
 from __future__ import annotations
 
+import re
+
+import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from app.ui.project_context import ProjectContext
     from app.persistence.capex_sub_lines import CapexSubLine
+    from app.contingency_authority import ContingencyLineage
 
 # Lazy import cache — populated on first call to build_capex_view_model
 _CAPEX_CATEGORY_TO_FIELD: "dict[str, str] | None" = None
@@ -114,6 +118,10 @@ class CapexLineVM:
     # Custom-row identity (empty string for reference rows)
     sub_line_id: str = ""    # UUID from capex_sub_lines table
     row_version: str = ""    # updated_at timestamp — optimistic-lock token
+    # User-facing reference-style code.  ``code`` stays the persisted canonical
+    # identity (e.g. C.01.U001) used for audit/scenario/run/export; only the
+    # on-screen label is renumbered (C.01.05).  Empty = show ``code``.
+    display_code: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +147,8 @@ class CapexGroupVM:
     is_reserve: bool        # True for C.18
     is_alias: bool = False  # True for alias groups (e.g. C.11 shares audit_legal with C.08)
     alias_allows_custom_rows: bool = False  # True when alias group may hold user custom sub-lines (C.11)
+    # C.13 only: typed percentage authority lineage (None on every other group)
+    contingency: "ContingencyLineage | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +177,9 @@ class CapexViewModel:
     derived_total_keur: float   # sum of active lines where is_derived=True
 
     is_user_project: bool
+
+    # C.13 typed contingency authority (always present; mode says whether active)
+    contingency: "ContingencyLineage | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +224,33 @@ class DeactivateCapexLineCommand:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+_CUSTOM_CODE_RE = re.compile(r"^(C\.\d{2})\.U(\d+)$")
+_CANONICAL_CODE_RE = re.compile(r"^C\.\d{2}\.(\d+)$")
+
+
+def derive_custom_display_code(
+    business_code: str, canonical_codes: "Sequence[str]"
+) -> str:
+    """Reference-style display code for a custom row (identity is untouched).
+
+    ``C.01.U001`` with canonical rows C.01.01-C.01.04 displays as ``C.01.05``.
+    The position is ``max(canonical suffix) + <U counter>``: a pure function of
+    the immutable business code and the canonical rows, so it is identical
+    after delete / deactivate / reload and can never collide with a canonical
+    row.  Non-custom codes are returned unchanged.
+    """
+    m = _CUSTOM_CODE_RE.match(business_code or "")
+    if not m:
+        return business_code
+    group, counter = m.group(1), int(m.group(2))
+    canon_max = 0
+    for code in canonical_codes:
+        cm = _CANONICAL_CODE_RE.match(code or "")
+        if cm and code.startswith(group + "."):
+            canon_max = max(canon_max, int(cm.group(1)))
+    return f"{group}.{canon_max + counter:02d}"
+
+
 def _safe_per_mw(amount_keur: float, capacity_mw: float) -> float:
     if capacity_mw > 0:
         return amount_keur / capacity_mw
@@ -236,6 +276,8 @@ def build_capex_view_model(
     project_ctx: "ProjectContext",
     is_user_project: bool = False,
     sub_lines: "Sequence[CapexSubLine] | None" = None,
+    contingency_pct: "float | None" = None,
+    contingency_source: str = "reference_amount",
 ) -> CapexViewModel:
     """
     Build a CapexViewModel from ProjectContext.capex_detail_items.
@@ -368,9 +410,15 @@ def build_capex_view_model(
         # C.11 is a valid persisted parent; alias status only affects base-amount
         # computation, NOT eligibility for custom sub-lines.
         if not group_is_readonly and not group_is_contingency:
+            _canonical_codes = [ln.code for ln in lines if not ln.is_custom] + [
+                sl.business_code for sl in group_sub_lines
+                if not _CUSTOM_CODE_RE.match(sl.business_code or "")
+            ]
             for sl in group_sub_lines:
                 sl_amount = float(sl.amount_keur or 0.0)
                 lines.append(CapexLineVM(
+                    display_code=derive_custom_display_code(
+                        sl.business_code, _canonical_codes),
                     row_id=_make_row_id(project_code, group_code, sl.business_code),
                     code=sl.business_code,
                     parent_code=group_code,
@@ -456,6 +504,41 @@ def build_capex_view_model(
             alias_allows_custom_rows=_alias_allows_custom,
         ))
 
+    # C.13 typed contingency authority (percentage x OTHER_ELIGIBLE_CAPEX).
+    # The basis is the sum of the displayed subtotals of the eligible groups,
+    # which already reconcile to the Run fold (C.08/C.11 share audit_legal and
+    # alias base = 0, so nothing is counted twice).  No authority => the
+    # reference C.13 amount is displayed exactly as before.
+    contingency_lineage = None
+    if any(g.is_contingency for g in groups):
+        from app.contingency_authority import (
+            CAPEX_ELIGIBLE_CATEGORIES, capex_lineage,
+        )
+        _basis = sum(
+            g.subtotal_keur for g in groups if g.code in CAPEX_ELIGIBLE_CATEGORIES
+        )
+        _ref_amount = next(g.subtotal_keur for g in groups if g.is_contingency)
+        contingency_lineage = capex_lineage(
+            basis_keur=_basis, pct=contingency_pct if is_user_project else None, source=contingency_source,
+            reference_amount_keur=_ref_amount,
+        )
+        _patched = []
+        for g in groups:
+            if not g.is_contingency:
+                _patched.append(g)
+                continue
+            if contingency_lineage.mode == "percentage" and contingency_lineage.amount_keur is not None:
+                _amt = contingency_lineage.amount_keur
+                g = dataclasses.replace(
+                    g, lines=(), subtotal_keur=_amt,
+                    subtotal_per_mw=_safe_per_mw(_amt, capacity_mw),
+                    contingency=contingency_lineage,
+                )
+            else:
+                g = dataclasses.replace(g, contingency=contingency_lineage)
+            _patched.append(g)
+        groups = _patched
+
     # Aggregate totals
     # R2: exclude only readonly groups (C.17, C.18) from hard_capex.
     # Alias groups (C.11) are included — their subtotal = 0 base + C.11 custom
@@ -492,4 +575,5 @@ def build_capex_view_model(
         editable_total_keur=editable_total,
         derived_total_keur=derived_total,
         is_user_project=is_user_project,
+        contingency=contingency_lineage,
     )
