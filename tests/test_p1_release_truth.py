@@ -118,11 +118,21 @@ class TestEarlyRepaymentTruth:
         assert not hits, hits
 
 
-class TestPR153NotClaimedShipped:
-    def test_no_radar_snapshot_shipped_claim_in_docs(self):
-        docs = _flat("app/templates/protocol_docs.html")
+class TestPR153And156Truth:
+    def test_pr153_merged_snapshot_first_may_be_described(self):
+        """PR #153 is MERGED: snapshot-first UX is shipped and MAY be
+        described; it must still never be called an executable price."""
         road = _flat("docs/ROADMAP.md")
-        for text in (docs, road):
-            assert "instant snapshot" not in text or \
-                "not shipped" in text or "planned" in text, (
-                "PR #153 must not be described as shipped while OPEN/DRAFT")
+        assert "r-live snapshot-first ux" in road
+        docs = _flat("app/templates/protocol_docs.html")
+        assert "not executable" in docs
+
+    def test_m6_engine_capability_shipped_not_user_exposed(self):
+        road = _flat("docs/ROADMAP.md")
+        assert "m-6 full-tenor gearing sculpting" in road
+        assert "explicit opt-in" in road
+        assert "user-facing configuration not exposed" in road
+        # M-6 must not be blurred into voluntary early repayment.
+        limits = _flat("app/templates/protocol_docs.html")
+        assert "voluntary early repayment" in limits
+        assert "not_supported" in limits

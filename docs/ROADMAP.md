@@ -63,6 +63,15 @@ at render. Explicitly separates Reference Regression Check ≠ FINCO VERIFY ≠
 Signed Run. The Reference Regression Check is regression protection for the
 reference library, not independent validation of a user's Last Run.
 
+### M-6 Full-Tenor Gearing Sculpting (engine capability — shipped, PR #156)
+
+GEARING_CAP sizing + optional DSCR_SCULPTED full-tenor repayment exists as an
+explicit engine policy (default remains GEARING_CAP → LEVEL_PRINCIPAL; the new
+policy is explicit opt-in). NOT exposed through public UI, Working Copy UI,
+public API, MCP, Radar, Yield or Verify — engine capability shipped;
+user-facing configuration not exposed. Distinct from voluntary prepayment,
+refinancing, prepayment penalty and acceleration (see Known Limitations).
+
 ### Run Integrity Checks (shipped — H-4b)
 
 Internal consistency checks against a user's actual committed Last Run,
@@ -82,6 +91,10 @@ Run.
 - **R-LIVE V2** (PR #136 / #137) — registry-driven on-chain reference surface.
   300-second TWAP with fail-closed freshness policies. USDG/USD Chainlink conversion. Public API. UX shell.
   `/radar` → `/radar/r-live`. Exact canonical identity only; no ticker/fuzzy lookup.
+- **R-LIVE snapshot-first UX** (PR #153) — landing/detail render the last
+  valid snapshot immediately; typed INITIALIZING/UNAVAILABLE for cold assets;
+  normal request-path live acquisition = ZERO; failed refresh preserves prior
+  valid evidence; canonical 13-asset approved universe preserved.
 - **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
   collects all approved registry assets serially. STALE/UNAVAILABLE market states
   are not process failures. Staging config contract: `ROBINHOOD_RPC_URL` +
