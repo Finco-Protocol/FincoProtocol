@@ -52,8 +52,7 @@
     <p class="muted small" style="margin:10px 0 0">
       Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating
       is not active by default, so gated capabilities are not enforced today. States stay distinct:
-      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means the token gate is
-      not active for that capability — it does not mean the Alerts backend is unavailable.
+      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means the token gate is not active for that capability — it does not mean the Alerts backend is unavailable.
       Ownership ≠ entitlement; entitlement ≠ execution, metering, staking, or burns.
     </p>
   </section>
@@ -125,7 +124,7 @@
       {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}Sign in to view your alerts.
       {% else %}In-app alerts backend is currently unavailable.{% endif %}
     </p>
-    <p class="muted small" style="margin:5px 0 0">The former integration pending placeholder is retained only as an unavailable fallback/test state; the integrated product uses the real Yield Alerts backend.</p>
+    <p class="muted small" style="margin:5px 0 0">The former integration-pending fallback state is retained only for unavailable/test coverage; the integrated product uses the real Yield Alerts backend.</p>
     {% endif %}
 
     <p class="muted small" style="margin:10px 0 0">In-app Watchlist, alert persistence/read state and manual Refresh are implemented. Background scheduler = NOT SHIPPED · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.</p>
