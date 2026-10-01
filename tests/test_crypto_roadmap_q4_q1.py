@@ -1,8 +1,8 @@
 """Q4 2026 / Q1 2027 public crypto-roadmap Product Truth contracts.
 
-This suite protects the presentation-only roadmap alignment after Yield V1 and
-Crypto Utility V0 merged. It deliberately does not test or modify financial,
-market, Verify, or entitlement authority implementations.
+This suite protects presentation-only roadmap alignment after Yield V1 and
+Crypto Utility V1 integration. It deliberately does not test or modify
+financial, market, Verify, or entitlement authority implementations.
 """
 from __future__ import annotations
 
@@ -66,12 +66,12 @@ def test_finco_activation_truth_is_fail_closed():
         assert "token contract = UNSET" in text or "production token contract = **UNSET**" in text
 
 
-def test_roadmap_does_not_claim_execution_or_alert_delivery_live():
+def test_roadmap_keeps_execution_off_and_external_delivery_unshipped():
     road = _flat("app/templates/protocol_roadmap.html")
-    assert "execution is live" not in road.lower()
-    assert "external alerts are shipped" not in road.lower()
-    assert "external alert delivery is NOT SHIPPED" in road
     assert "Yield execution remains OFF" in road or "Yield execution remains separately OFF" in road
+    assert "Yield execution: ON" not in road
+    assert "external alerts are shipped" not in road.lower()
+    assert "External alert delivery is NOT SHIPPED" in road
 
 
 def test_infrastructure_expansion_is_nested_under_model_future_coverage():
