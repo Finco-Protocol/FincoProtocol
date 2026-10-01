@@ -87,8 +87,15 @@ def mark(stage: str) -> None:
 
 def log_run_stages(*, user_scoped: bool = True, project_type: str | None = None,
                    origin: str | None = None, outcome: str = "ok") -> None:
-    """Emit the single bounded timing summary line for one run."""
+    """Emit the single bounded timing summary line for one run.
+
+    Terminal for that run: the context-local timer is cleared here so a
+    reused execution context can never inherit stage marks from a prior
+    request.  Only stage milliseconds are logged — never secrets or
+    payload values.
+    """
     timer = _current.get()
+    _current.set(None)
     if timer is None:
         return
     breakdown = timer.breakdown()

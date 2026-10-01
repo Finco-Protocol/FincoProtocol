@@ -760,8 +760,11 @@ class TestCryptoFailSoftAuthorities:
         assert "UNAVAILABLE" in page.text
         assert "ACCESS_DECISION_UNAVAILABLE" in page.text
 
-    def test_watchlist_store_outage_renders_empty_not_500(
+    def test_watchlist_store_outage_never_renders_zero(
             self, client, monkeypatch):
+        """unavailable != zero: a store outage must NOT render a factual
+        count of 0 — the badge shows an em-dash plus a typed UNAVAILABLE
+        state (correction C)."""
         import sqlite3
         _session(monkeypatch, "user-1")
 
@@ -771,8 +774,10 @@ class TestCryptoFailSoftAuthorities:
         monkeypatch.setattr("finco_yield.watchlist.list_watchlist_items", boom)
         page = client.get("/crypto")
         assert page.status_code == 200
-        assert 'data-testid="watchlist-count">0<' in page.text
-        assert 'data-testid="watchlist-empty"' in page.text
+        assert 'data-testid="watchlist-count">—<' in page.text
+        assert 'data-testid="watchlist-unavailable"' in page.text
+        assert 'data-testid="watchlist-count">0<' not in page.text
+        assert 'data-testid="watchlist-empty"' not in page.text
 
     def test_alerts_access_outage_renders_unavailable_snapshot(
             self, client, monkeypatch):
@@ -814,9 +819,11 @@ class TestCryptoFailSoftAuthorities:
         assert page.status_code == 200
         assert "UNAVAILABLE" in page.text
         # Missing/unavailable evidence stays missing/unavailable — no zero
-        # fabrication anywhere on the page.
+        # fabrication anywhere on the page.  The unavailable watchlist is
+        # NOT presented as a factual zero count.
         assert "Observed balance" not in page.text
-        assert 'data-testid="watchlist-count">0<' in page.text
+        assert 'data-testid="watchlist-count">—<' in page.text
+        assert 'data-testid="watchlist-unavailable"' in page.text
 
     def test_anonymous_with_all_authorities_down_still_renders(
             self, client, monkeypatch):
@@ -830,3 +837,68 @@ class TestCryptoFailSoftAuthorities:
         page = client.get("/crypto")
         assert page.status_code == 200
         assert "DISCONNECTED" in page.text or "UNAVAILABLE" in page.text
+
+
+class TestRunStageTimingIsolation:
+    """Run-timing instrumentation (correction F): observational only, and
+    context state must never leak between requests — a second run must not
+    inherit stage marks from a prior request."""
+
+    def test_consecutive_runs_do_not_inherit_stage_marks(self):
+        import logging
+
+        from app.services.run_stage_timing import (
+            log_run_stages, start_run_stages,
+        )
+
+        records: list[str] = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        logger = logging.getLogger("finco.run_stages")
+        handler = _Handler()
+        logger.addHandler(handler)
+        previous_level = logger.level
+        logger.setLevel(logging.INFO)
+        try:
+            first = start_run_stages()
+            first.mark("form_parsed")
+            first.mark("model_completed")
+            log_run_stages(project_type="Solar", origin="test")
+            assert len(records) == 1
+            assert "form_parsed" in records[0]
+            assert "model_completed" in records[0]
+
+            # A second run starts a FRESH timer: no inherited marks.
+            records.clear()
+            second = start_run_stages()
+            second.mark("model_entered")
+            log_run_stages(project_type="Wind", origin="test")
+            assert len(records) == 1
+            assert "form_parsed" not in records[0]
+            assert "model_completed" not in records[0]
+            assert "model_entered" in records[0]
+            assert "request_received" in records[0]
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(previous_level)
+
+    def test_marks_without_active_timer_are_noop(self):
+        from app.services import run_stage_timing as timing
+
+        # No active timer in this context: mark() must not raise.
+        timing.mark("form_parsed")
+
+    def test_unknown_and_duplicate_marks_ignored(self):
+        from app.services.run_stage_timing import start_run_stages
+
+        timer = start_run_stages()
+        timer.mark("not_a_real_stage")  # unknown stage ignored
+        first = dict(timer.stages)
+        timer.mark("form_parsed")
+        timer.mark("form_parsed")  # duplicate ignored
+        assert timer.stages["form_parsed"] >= first.get("form_parsed", 0)
+        assert "not_a_real_stage" not in timer.stages
+        assert sum(1 for s in timer.stages if s == "form_parsed") == 1

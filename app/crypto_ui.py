@@ -91,16 +91,25 @@ async def _decisions_fail_soft(wallet) -> dict:
         return {}
 
 
-def _watchlist_fail_soft(user_id) -> list:
-    """Watchlist rows; a watchlist-store outage is an empty list, not a 500."""
+def _watchlist_fail_soft(user_id) -> dict:
+    """Watchlist presentation state — unavailable is NEVER zero.
+
+    Contract (manual-QA correction C):
+      - successful query, no saved items: AVAILABLE, count 0, items []
+      - anonymous session (no user store query, provably nothing saved):
+        AVAILABLE, count 0, items []
+      - store/query outage: UNAVAILABLE, count None, items [] — the UI
+        renders "—", never a fabricated factual zero.
+    """
     if not user_id:
-        return []
+        return {"state": "AVAILABLE", "count": 0, "items": []}
     from finco_yield.watchlist import list_watchlist_items
     try:
-        return list_watchlist_items(user_id)
+        items = list_watchlist_items(user_id)
     except (sqlite3.Error, OSError, ValueError) as exc:
         _fail_soft("yield_watchlist", exc)
-        return []
+        return {"state": "UNAVAILABLE", "count": None, "items": []}
+    return {"state": "AVAILABLE", "count": len(items), "items": items}
 
 
 def _execution_state() -> str:
@@ -180,7 +189,9 @@ async def crypto_overview(request: Request):
     wallet = wallet_context_for_session(user)
     decisions = await _decisions_fail_soft(wallet)
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
-    watchlist = _watchlist_fail_soft(user_id)
+    watchlist_state = _watchlist_fail_soft(user_id)
+    watchlist = watchlist_state["items"]
+    watchlist_count = watchlist_state["count"]
     alerts = await _alerts_presentation(request, user)
     notice_reason = request.query_params.get("alerts_notice")
     alerts_notice = _ALERTS_NOTICE_MESSAGES.get(notice_reason)
@@ -192,7 +203,8 @@ async def crypto_overview(request: Request):
             "wallet_state": wallet_state,
             "access": access,
             "watchlist": watchlist,
-            "watchlist_count": len(watchlist),
+            "watchlist_count": watchlist_count,
+            "watchlist_state": watchlist_state["state"],
             "alerts": alerts,
             "alerts_notice_reason": notice_reason if alerts_notice else None,
             "alerts_notice": alerts_notice,
