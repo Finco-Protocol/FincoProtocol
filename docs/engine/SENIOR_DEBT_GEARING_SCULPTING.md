@@ -29,7 +29,7 @@ bit-identical; `tests/m6_baseline_pre_change.json` pins values captured from the
 `sizing_mode = GEARING_CAP` (any other combination is `INVALID_INPUT`; a raw string is rejected).
 
 - **Debt size is fixed** at `eligible_project_cost × maximum_gearing`. It is never reduced to DSCR capacity.
-- **Full tenor.** The canonical DSCR roll pays *all* the debt service the DSCR allows, which would retire a
+- **Full tenor.** The canonical DSCR roll pays *all* of the DSCR- and availability-constrained debt-service budget, which would retire a
   balance smaller than DSCR capacity early. To spread it over the whole repayment window every period uses the
   same factor `k` on its DSCR- and availability-constrained debt-service budget
   `scaled_budget[p] = max(0, CFADS[p]/DSCR[p]) · availability[p] · k`, with `k` the smallest value in `(0, 1]`
@@ -41,10 +41,11 @@ bit-identical; `tests/m6_baseline_pre_change.json` pins values captured from the
   day count, repayment start and maturity, the tax ↔ CFADS fixed point and the finalisation handshake
   (`_finalise_authoritative`, given the same full-tenor roll).
 - **Handshake:** the interest returned in the schedule is exactly the interest handed to the last tax/CFADS call.
-- **Fails closed.** If CFADS cannot repay the balance inside `CFADS / target_dscr` the result is
+- **Fails closed.** If CFADS cannot repay the balance inside the DSCR- and availability-constrained
+  debt-service budget (`CFADS[p] / target_dscr[p] · availability_fraction[p]` per period) the result is
   `DSCR_SCULPTING_INFEASIBLE` (existing typed reason), `is_authoritative = False`. The solver does not resize the
   debt, capitalise interest, extend maturity, lower the DSCR target, invent CFADS or add sponsor funding.
-  A period whose interest alone exceeds its allowed debt service is infeasible even when a balloon is permitted.
+  A period whose interest alone exceeds that debt-service budget is infeasible even when a balloon is permitted.
 - **`permit_terminal_balloon`** keeps its existing meaning: when `True`, a residual balance at maturity is a
   disclosed balloon (visible in the closing balance) and is authoritative, exactly as for the other sculpted
   modes; when `False`, a residual balance is infeasible.

@@ -73,8 +73,9 @@ A period clipped by the remaining balance (e.g. the final period) may realise a 
 plain DSCR-sculpted roll would instead retire a balance below DSCR capacity EARLY. Because interest
 feeds tax and CFADS and CFADS drives principal, a CFADS fixed point (maximum_iterations,
 deterministic) is solved at fixed D, then the standard finalisation handshake is applied. A balance
-the CFADS cannot repay inside CFADS / target_dscr fails closed as DSCR_SCULPTING_INFEASIBLE (never
-authoritative): no resizing, no capitalisation, no maturity extension, no DSCR relaxation, no
+the CFADS cannot repay inside the DSCR- and availability-constrained debt-service budget
+(CFADS / target_dscr * availability_fraction, per period) fails closed as
+DSCR_SCULPTING_INFEASIBLE (never authoritative): no resizing, no capitalisation, no maturity extension, no DSCR relaxation, no
 invented CFADS.
 
 COMBINED_MINIMUM: run DSCR sizing loop to convergence, then apply gearing cap and
@@ -878,9 +879,9 @@ def _full_tenor_scale(
 ) -> float:
     """Smallest uniform debt-service scale k in (0, 1] that repays D exactly at maturity.
 
-    The canonical DSCR-sculpted roll pays ALL the debt service the DSCR allows, which retires a
-    balance smaller than the DSCR capacity EARLY. Sculpting a gearing-sized balance over the FULL
-    tenor therefore uses a fraction k of the allowed debt service in every period:
+    The canonical DSCR-sculpted roll pays ALL of the DSCR- and availability-constrained debt-service
+    budget, which retires a balance smaller than the DSCR capacity EARLY. Sculpting a gearing-sized
+    balance over the FULL tenor therefore uses a fraction k of that budget in every period:
 
         scaled_ds_budget[p] = max(0, CFADS[p] / DSCR[p]) * availability[p] * k
 
