@@ -128,7 +128,13 @@ async def yield_explore(
     max_reward_dependency: str | None = None,
     evidence: str | None = None,
 ):
-    _require()
+    if not yield_enabled():
+        return _templates.TemplateResponse(
+            request=request,
+            name="yield/disabled.html",
+            context={"user": _request_user(request)},
+        )
+
     registry = load_bundled_registry()
     history_days = {}
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()

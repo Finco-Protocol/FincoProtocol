@@ -263,3 +263,40 @@ def test_crypto_shared_nav_marks_crypto_active(client):
     crypto = nav.split('href="/crypto"', 1)[1].split("</a>", 1)[0]
     assert "proto-nav__link--active" in crypto
     assert 'aria-current="page"' in crypto
+
+
+def test_yield_route_state_is_request_time_and_deep_routes_stay_gated(monkeypatch):
+    """One imported app must honor Yield state changes without route rebuilds."""
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
+
+    import main_web
+    from finco_yield.registry import load_bundled_registry
+
+    client = TestClient(main_web.app, raise_server_exceptions=True)
+
+    enabled = client.get("/yield")
+    assert enabled.status_code == 200
+    assert "Explore" in enabled.text
+
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "0")
+    disabled = client.get("/yield")
+    assert disabled.status_code == 200
+    assert "FINCO Yield is implemented and feature-gated." in disabled.text
+    assert "Yield runtime is not enabled in this environment." in disabled.text
+    assert "Yield execution remains OFF." in disabled.text
+    assert "No empty opportunity set is inferred" in disabled.text
+    assert "<table" not in disabled.text.lower()
+
+    assert client.get("/yield/compare").status_code == 404
+    uid = load_bundled_registry().all()[0].uid
+    assert client.get(f"/yield/{uid}/history.json").status_code == 404
+
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
+    reenabled = client.get("/yield")
+    assert reenabled.status_code == 200
+    assert "Explore" in reenabled.text
+
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "0")
+    redisabled = client.get("/yield")
+    assert redisabled.status_code == 200
+    assert "Yield runtime is not enabled in this environment." in redisabled.text

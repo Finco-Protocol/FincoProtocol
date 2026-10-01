@@ -73,8 +73,14 @@ def test_yield_default_off_browser(yield_url, yield_browser, monkeypatch):
     monkeypatch.delenv("FINCO_YIELD_ENABLED", raising=False)
     page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
     response = page.goto(f"{yield_url}/yield")
-    assert response is not None
-    assert response.status == 404
+    assert response is not None and response.status == 200
+    page.wait_for_load_state("domcontentloaded")
+    text = page.locator("body").inner_text()
+    assert "FINCO Yield is implemented and feature-gated." in text
+    assert "Yield runtime is not enabled in this environment." in text
+    assert "Yield execution remains OFF." in text
+    assert page.locator("table").count() == 0
+    assert _overflow_px(page) <= WIDTH_TOLERANCE
     page.close()
 
 

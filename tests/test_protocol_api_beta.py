@@ -308,7 +308,7 @@ def test_api30_no_token_contract(client):
     assert "market cap" not in html_lower
 
 
-# ── API31: no tokenomics ─────────────────────────────────────────────────────
+# ── API31: no tokenomics / unshipped Yield API claims ────────────────────────
 
 def test_api31_no_tokenomics(client):
     r = client.get("/api")
@@ -316,7 +316,9 @@ def test_api31_no_tokenomics(client):
     assert "tokenomics" not in html_lower
     assert "staking" not in html_lower
     assert "airdrop" not in html_lower
-    assert "yield" not in html_lower
+    # Yield is a primary product navigation item, but no Yield API is shipped here.
+    assert "/api/v1/yield" not in html_lower
+    assert "yield api" not in html_lower
 
 
 # ── API32: no roadmap dates ───────────────────────────────────────────────────
