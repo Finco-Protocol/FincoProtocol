@@ -20,6 +20,7 @@ from app.verified.token_entitlement import ApprovedFincoDeployment
 CHAIN, OTHER_CHAIN = 31337, 31338
 TOKEN, OTHER_TOKEN = "0x" + "ab" * 20, "0x" + "cd" * 20
 DECIMALS = 6
+WALLET = "0x" + "12" * 20                      # TEST_ONLY
 HOLDER = ep.YIELD_HISTORY
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,8 +51,12 @@ class Probe:
 
 
 RPC = {f"FINCO_TOKEN_RPC_URL_{CHAIN}": "https://rpc.example.invalid/key-123"}
-POLICY_ON = {ep.GATING_ENABLED_ENV: "1",
-             ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"}})}   # TEST_ONLY
+FRESH = {ar.FRESHNESS_ENV: "60"}
+THRESHOLD = {ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"}})}   # TEST_ONLY
+GATING = {ep.GATING_ENABLED_ENV: "1"}
+READY_ENV = {**RPC, **FRESH, **THRESHOLD}              # every prerequisite, gating still OFF
+ACTIVE_ENV = {**READY_ENV, **GATING}
+POLICY_ON = {**GATING, **THRESHOLD}
 
 
 def assess(env=None, approved_set=None, **kw):
@@ -87,7 +92,7 @@ def test_a_candidate_is_never_authoritative_until_committed():
     assert pending.status is S.DEPLOYMENT_UNAPPROVED
     other = assess(candidate=candidate(contract_address=OTHER_TOKEN), probe=Probe())
     assert other.status is S.DEPLOYMENT_UNAPPROVED
-    committed = assess(candidate=candidate(), probe=Probe())
+    committed = assess(READY_ENV, candidate=candidate(), probe=Probe())
     assert committed.status is S.READY_FOR_ACTIVATION
 
 
@@ -175,30 +180,137 @@ def test_json_rpc_probe_reads_only_chain_id_and_decimals(monkeypatch):
     assert methods == ["eth_chainId", "eth_call"]                       # nothing that writes
 
 
-# ── ready != active ──────────────────────────────────────────────────────────────────────────────
-def test_explicit_approved_test_only_deployment_is_ready_but_not_active():
-    report = assess(probe=Probe())
+# ── readiness semantics ──────────────────────────────────────────────────────────────────────────
+def names(report):
+    return {c.name: c.passed for c in report.checks}
+
+
+def test_verified_deployment_without_a_threshold_is_incomplete_not_ready_and_not_invalid():
+    report = assess({**RPC, **FRESH}, probe=Probe())
+    assert report.status is S.ACTIVATION_INCOMPLETE and not report.ready_or_active
+    assert report.reason == "MISSING_RESOURCE_THRESHOLD_CONFIGURED" and report.issues == ()
+    assert names(report)["resource_threshold_configured"] is False and names(report)["gating_explicitly_enabled"] is False
+
+
+def test_gating_on_without_a_threshold_is_never_active():
+    report = assess({**RPC, **FRESH, **GATING}, probe=Probe())
+    assert report.status is S.ACTIVATION_INCOMPLETE and report.active_resources == ()
+
+
+def test_a_threshold_on_a_disabled_resource_does_not_count():
+    env = {**RPC, **FRESH, ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": False, "minimum_balance": "100"}})}
+    assert assess(env, probe=Probe()).status is S.ACTIVATION_INCOMPLETE
+    enabled_without_threshold = {**RPC, **FRESH, ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True}})}
+    assert assess(enabled_without_threshold, probe=Probe()).status is S.ACTIVATION_INCOMPLETE
+
+
+def test_threshold_and_gating_but_missing_freshness_is_not_ready_and_not_active():
+    assert assess({**RPC, **THRESHOLD}, probe=Probe()).status is S.ACTIVATION_INCOMPLETE
+    report = assess({**RPC, **THRESHOLD, **GATING}, probe=Probe())
+    assert report.status is S.ACTIVATION_INCOMPLETE and not report.ready_or_active
+    assert report.reason == "MISSING_FRESHNESS_WINDOW_CONFIGURED"
+    assert names(report)["freshness_window_configured"] is False
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "abc", "", "  ", "1.5", "60s", None])
+def test_invalid_or_missing_freshness_prevents_ready_and_active(value):
+    env = {**RPC, **THRESHOLD, **GATING}
+    if value is not None:
+        env[ar.FRESHNESS_ENV] = value
+    report = assess(env, probe=Probe())
+    assert report.status is S.ACTIVATION_INCOMPLETE and not report.ready_or_active
+    assert names(report)["freshness_window_configured"] is False
+    assert assess({k: v for k, v in env.items() if k != ep.GATING_ENABLED_ENV},
+                  probe=Probe()).status is S.ACTIVATION_INCOMPLETE
+
+
+def test_freshness_uses_the_canonical_runtime_env_name_and_parser_no_default_invented():
+    import app.protocol.entitlement_evaluator as ev
+    assert ar.FRESHNESS_ENV == ev.FRESHNESS_ENV == "FINCO_ENTITLEMENT_MAX_AGE_SECONDS"
+    assert ar._freshness_seconds is ev._freshness_seconds           # one semantic, not two
+    assert ev._freshness_seconds({}) is None
+
+
+def test_threshold_and_freshness_with_gating_off_is_ready_for_activation():
+    report = assess(READY_ENV, probe=Probe())
     assert report.status is S.READY_FOR_ACTIVATION and report.reason == "READY_GATING_NOT_ACTIVE"
     assert report.active_resources == () and report.chain_id == CHAIN
-    by_name = {c.name: c.passed for c in report.checks}
-    assert by_name["gating_explicitly_enabled"] is False and by_name["fail_closed_behavior"] is True
-    assert by_name["resource_threshold_configured"] is False
-    # and the runtime really is still inactive: ready never switched anything on
-    decision = asyncio.run(evaluate_resource_access(HOLDER, WalletContext("0x" + "12" * 20, True),
-                                                    approved=[approved()], environ=RPC))
+    checks = names(report)
+    assert all(checks[n] is True for n in checks if n != "gating_explicitly_enabled")
+    assert checks["gating_explicitly_enabled"] is False
+    # ready activated nothing: the runtime is still INACTIVE
+    decision = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=[approved()],
+                                                    environ=READY_ENV))
     assert decision.decision is Decision.INACTIVE and not decision.allowed
 
 
-def test_gating_flag_without_any_threshold_is_still_not_active():
-    report = assess({**RPC, ep.GATING_ENABLED_ENV: "1"}, probe=Probe())
-    assert report.status is S.READY_FOR_ACTIVATION and report.active_resources == ()
-
-
-def test_active_requires_explicit_gating_and_a_configured_threshold():
-    report = assess({**RPC, **POLICY_ON}, probe=Probe())
+def test_all_prerequisites_plus_explicit_gating_is_active_and_reports_exactly_which_resources():
+    report = assess(ACTIVE_ENV, probe=Probe())
     assert report.status is S.ACTIVE and report.active_resources == (HOLDER,)
-    threshold_only = assess({**RPC, ep.POLICIES_ENV: POLICY_ON[ep.POLICIES_ENV]}, probe=Probe())
-    assert threshold_only.status is S.READY_FOR_ACTIVATION                  # no explicit flag -> not active
+    assert ep.YIELD_ALERTS not in report.active_resources            # not "every holder resource"
+    assert all(passed is True for passed in names(report).values())
+    two = {ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"},
+                                        ep.YIELD_ALERTS: {"enabled": True, "minimum_balance": "50"}})}
+    assert assess({**ACTIVE_ENV, **two}, probe=Probe()).active_resources == (HOLDER, ep.YIELD_ALERTS)
+
+
+def test_gating_switch_is_the_only_difference_between_ready_and_active():
+    ready, active = assess(READY_ENV, probe=Probe()), assess(ACTIVE_ENV, probe=Probe())
+    assert (ready.status, active.status) == (S.READY_FOR_ACTIVATION, S.ACTIVE)
+    differing = {n for n in names(ready) if names(ready)[n] != names(active)[n]}
+    assert differing == {"gating_explicitly_enabled"}
+
+
+def test_runtime_coherence_active_report_means_the_canonical_evaluator_can_operate():
+    from datetime import datetime, timezone
+    from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
+    now = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+
+    class Provider:
+        async def balance_of(self, policy, wallet_address):
+            return TokenBalanceEvidence(CHAIN, TOKEN, WALLET, DECIMALS, 200 * 10 ** DECIMALS, now, "TEST_ONLY",
+                                        BalanceEvidenceState.AVAILABLE)
+
+    report = assess(ACTIVE_ENV, probe=Probe())
+    assert report.status is S.ACTIVE
+    decision = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=[approved()],
+                                                    environ=ACTIVE_ENV, provider=Provider(), now=now))
+    assert decision.reason_code != "TOKEN_CONFIGURATION_UNAVAILABLE" and decision.allowed
+    # and without the freshness window the runtime really would fail, which the report refuses to call ACTIVE
+    no_fresh = {k: v for k, v in ACTIVE_ENV.items() if k != ar.FRESHNESS_ENV}
+    broken = asyncio.run(evaluate_resource_access(HOLDER, WalletContext(WALLET, True), approved=[approved()],
+                                                  environ=no_fresh, provider=Provider(), now=now))
+    assert broken.reason_code == "TOKEN_CONFIGURATION_UNAVAILABLE"
+    assert assess(no_fresh, probe=Probe()).status is not S.ACTIVE
+
+
+# ── candidate / provenance / approval status ─────────────────────────────────────────────────────
+def test_different_provenance_does_not_make_a_candidate_the_committed_record():
+    same_identity_other_provenance = candidate(provenance="TEST_ONLY a different attestation")
+    report = assess(READY_ENV, candidate=same_identity_other_provenance, probe=Probe())
+    assert report.status is S.DEPLOYMENT_UNAPPROVED and report.reason == "CANDIDATE_NOT_COMMITTED"
+    assert assess(READY_ENV, candidate=candidate(), probe=Probe()).status is S.READY_FOR_ACTIVATION
+    padded = candidate(provenance="  TEST_ONLY fixture  ")                    # whitespace is not a difference
+    assert assess(READY_ENV, candidate=padded, probe=Probe()).status is S.READY_FOR_ACTIVATION
+
+
+def test_display_fields_and_candidate_approval_label_are_never_authority():
+    labelled = candidate(display_symbol="FINCO", display_name="Finco")
+    assert assess(approved_set=[], candidate=labelled, probe=Probe()).status is S.DEPLOYMENT_UNAPPROVED
+    parsed, _ = ar.validate_candidate(candidate())
+    assert "display_symbol" not in {f for f in ar.ActivationDeployment.__dataclass_fields__ if f == "identity"}
+    assert parsed is not None and parsed.identity == (CHAIN, TOKEN)
+
+
+@pytest.mark.parametrize("label", ["MAYBE", "approved ", "", 5, "REJECTED"])
+def test_unknown_approval_status_has_its_own_issue_not_missing_provenance(label):
+    parsed, issues = ar.validate_candidate(candidate(approval_status=label))
+    if label == "":
+        assert parsed is not None                                   # empty means the default PENDING
+        return
+    assert parsed is None and issues == (Issue.INVALID_APPROVAL_STATUS,)
+    assert Issue.MISSING_PROVENANCE not in issues
+    assert assess(candidate=candidate(approval_status=label), probe=Probe()).status is S.CONFIG_INVALID
 
 
 def test_assessment_is_read_only_and_deterministic(monkeypatch):

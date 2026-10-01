@@ -11,9 +11,13 @@ Authority rules (unchanged by this module)
     APPROVED_FINCO_DEPLOYMENTS`` (empty in production today). A *candidate* proposed here can be validated and
     probed, but it is never authoritative and can never produce READY_FOR_ACTIVATION until it is committed to
     that tuple. Environment values alone never establish production token provenance.
-  * ``READY_FOR_ACTIVATION`` activates NOTHING: this module only reads configuration and makes read-only
-    ``eth_chainId`` / ``eth_call decimals()`` probes. Gating stays OFF until ``FINCO_TOKEN_GATING_ENABLED`` and an
-    enabled resource policy with a threshold are supplied by the operator.
+  * ``READY_FOR_ACTIVATION`` means every prerequisite is satisfied and ONLY the final explicit gating switch is
+    missing; it activates NOTHING. This module only reads configuration and makes read-only ``eth_chainId`` /
+    ``eth_call decimals()`` probes. Prerequisites: approved + valid deployment, RPC, chain and decimals verified,
+    at least one holder resource enabled WITH a threshold, a valid ``FINCO_ENTITLEMENT_MAX_AGE_SECONDS`` (the
+    canonical runtime freshness window, no default invented), and the fail-closed self-check. ``ACTIVE`` is the same
+    plus an explicit ``FINCO_TOKEN_GATING_ENABLED``, so the runtime evaluator can actually operate.
+  * Missing is not malformed: an incomplete product policy is ACTIVATION_INCOMPLETE, never CONFIG_INVALID.
   * Identity is exact chain + contract. Symbol / name are display-only and never read.
   * No chain, contract, supply, price, threshold, staking, burn, spend, revenue share or vesting is defined here.
 """
@@ -25,6 +29,7 @@ from enum import Enum
 from typing import Any, Iterable, Mapping, Protocol
 
 from app.protocol.entitlement_policy import AccessMode, PolicySet, load_policy_set
+from app.protocol.entitlement_evaluator import FRESHNESS_ENV, _freshness_seconds
 from app.protocol.token_config import _validate_hex_address
 from app.protocol.token_deployments import ECONOMIC_TOKEN_UID, approved_deployments
 
@@ -44,11 +49,12 @@ class ActivationStatus(str, Enum):
     NOT_CONFIGURED = "NOT_CONFIGURED"               # zero approved deployments (production today)
     CONFIG_INVALID = "CONFIG_INVALID"               # structural problem in deployments or policy config
     DEPLOYMENT_UNAPPROVED = "DEPLOYMENT_UNAPPROVED"  # a candidate exists that is not in the approved tuple
+    ACTIVATION_INCOMPLETE = "ACTIVATION_INCOMPLETE"  # deployment verified, product prerequisites still missing
     RPC_UNAVAILABLE = "RPC_UNAVAILABLE"             # no RPC configured for the chain, or the probe failed
     CHAIN_MISMATCH = "CHAIN_MISMATCH"               # provider chain id differs from the approved chain id
     DECIMALS_MISMATCH = "DECIMALS_MISMATCH"         # on-chain decimals() differs from the approved decimals
-    READY_FOR_ACTIVATION = "READY_FOR_ACTIVATION"   # verified, but gating is NOT on
-    ACTIVE = "ACTIVE"                               # verified AND gating explicitly on for >= 1 resource
+    READY_FOR_ACTIVATION = "READY_FOR_ACTIVATION"   # every prerequisite met; ONLY the gating switch is missing
+    ACTIVE = "ACTIVE"                               # same + gating explicitly ON for >= 1 enabled holder resource
 
 
 class ApprovalStatus(str, Enum):
@@ -64,6 +70,7 @@ class Issue(str, Enum):
     CONFLICTING_DEPLOYMENT = "CONFLICTING_DEPLOYMENT"
     AMBIGUOUS_ACTIVE_DEPLOYMENT = "AMBIGUOUS_ACTIVE_DEPLOYMENT"
     MISSING_PROVENANCE = "MISSING_PROVENANCE"
+    INVALID_APPROVAL_STATUS = "INVALID_APPROVAL_STATUS"
     DECIMALS_OUT_OF_RANGE = "DECIMALS_OUT_OF_RANGE"
     WRONG_ECONOMIC_TOKEN = "WRONG_ECONOMIC_TOKEN"
     POLICY_CONFIG_INVALID = "POLICY_CONFIG_INVALID"
@@ -113,8 +120,9 @@ def validate_candidate(raw: Any) -> tuple[ActivationDeployment | None, tuple[Iss
     try:
         status = ApprovalStatus(getattr(status, "value", status))
     except ValueError:
-        return None, (Issue.MISSING_PROVENANCE,)          # an unknown approval label is not an approval
-    return ActivationDeployment(ECONOMIC_TOKEN_UID, chain, address, decimals, provenance.strip(), status), ()
+        return None, (Issue.INVALID_APPROVAL_STATUS,)     # a malformed approval label is not an approval
+    return ActivationDeployment(ECONOMIC_TOKEN_UID, chain, address, decimals, provenance.strip(), status,
+                                get("token_standard") or "ERC-20"), ()
 
 
 def validate_deployment_set(entries: Iterable[Any]) -> tuple[Issue, ...]:
@@ -210,8 +218,8 @@ class ActivationReport:
 
 
 _CHECK_NAMES = ("deployment_approved", "deployment_valid", "rpc_configured", "chain_verified",
-                "decimals_verified", "resource_threshold_configured", "gating_explicitly_enabled",
-                "fail_closed_behavior")
+                "decimals_verified", "resource_threshold_configured", "freshness_window_configured",
+                "gating_explicitly_enabled", "fail_closed_behavior")
 
 
 def _checks(**done: tuple[bool | None, str]) -> tuple[ActivationCheck, ...]:
@@ -283,8 +291,12 @@ async def assess_activation(
         if problems:
             return ActivationReport(ActivationStatus.CONFIG_INVALID, _checks(deployment_valid=(False, "candidate invalid")),
                                     problems, reason="CANDIDATE_INVALID")
-        in_committed = any((e.chain_id, e.token_address, e.decimals) == (parsed.chain_id, parsed.contract_address,
-                                                                          parsed.decimals) for e in committed)
+        # Every approval-relevant field must equal the committed record, provenance included. A candidate
+        # that only shares chain + contract + decimals is NOT the approved record. Display fields never count.
+        in_committed = any(
+            (e.chain_id, e.token_address, getattr(e, "standard", "ERC-20"), e.decimals, e.provenance.strip())
+            == (parsed.chain_id, parsed.contract_address, parsed.token_standard, parsed.decimals, parsed.provenance)
+            for e in committed)
         if not in_committed or parsed.approval_status is not ApprovalStatus.APPROVED:
             return ActivationReport(
                 ActivationStatus.DEPLOYMENT_UNAPPROVED,
@@ -321,16 +333,24 @@ async def assess_activation(
                  "chain_verified": (True, "provider chain matches"),
                  "decimals_verified": (True, "on-chain decimals match")})
     active = tuple(p.resource_key for p in holder_policies if p.enabled and p.minimum_balance is not None)
-    base["resource_threshold_configured"] = (bool(active), f"{len(active)} resource(s) with threshold")
+    freshness_ok = _freshness_seconds(env) is not None          # the SAME canonical parser the runtime uses
     gating = policy_set.gating_enabled
-    base["gating_explicitly_enabled"] = (gating and bool(active), "explicit operator opt-in" if gating else "gating OFF")
-    base["fail_closed_behavior"] = (_fail_closed_self_check(policy_set, committed), "no-wallet denied; public stays public")
-    ok = bool(base["fail_closed_behavior"][0])
-    if gating and active and ok:
-        return ActivationReport(ActivationStatus.ACTIVE, _checks(**base), chain_id=deployment.chain_id,
-                                contract_address=deployment.token_address, active_resources=active,
-                                reason="GATING_EXPLICITLY_ENABLED")
-    return ActivationReport(ActivationStatus.READY_FOR_ACTIVATION if ok else ActivationStatus.CONFIG_INVALID,
-                            _checks(**base), chain_id=deployment.chain_id,
-                            contract_address=deployment.token_address,
-                            reason="READY_GATING_NOT_ACTIVE" if ok else "FAIL_CLOSED_CHECK_FAILED")
+    fail_closed = _fail_closed_self_check(policy_set, committed)
+    base["resource_threshold_configured"] = (bool(active), f"{len(active)} holder resource(s) enabled with a threshold")
+    base["freshness_window_configured"] = (freshness_ok, f"{FRESHNESS_ENV} " + ("valid" if freshness_ok else
+                                                                              "missing or not a positive integer"))
+    base["gating_explicitly_enabled"] = (gating, "explicit operator opt-in" if gating else "gating OFF")
+    base["fail_closed_behavior"] = (fail_closed, "no-wallet denied; public stays public")
+    ident = dict(chain_id=deployment.chain_id, contract_address=deployment.token_address)
+    if not fail_closed:
+        return ActivationReport(ActivationStatus.CONFIG_INVALID, _checks(**base), reason="FAIL_CLOSED_CHECK_FAILED", **ident)
+    missing = tuple(name for name, ok in (("resource_threshold_configured", bool(active)),
+                                          ("freshness_window_configured", freshness_ok)) if not ok)
+    if missing:       # missing, not malformed: the product policy / runtime config is simply not finished
+        return ActivationReport(ActivationStatus.ACTIVATION_INCOMPLETE, _checks(**base),
+                                reason="MISSING_" + "_AND_".join(m.upper() for m in missing), **ident)
+    if gating:
+        return ActivationReport(ActivationStatus.ACTIVE, _checks(**base), active_resources=active,
+                                reason="GATING_EXPLICITLY_ENABLED", **ident)
+    return ActivationReport(ActivationStatus.READY_FOR_ACTIVATION, _checks(**base),
+                            reason="READY_GATING_NOT_ACTIVE", **ident)
