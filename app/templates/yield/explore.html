@@ -51,11 +51,17 @@
         <td><span class="badge">{{ row.support_state }}</span></td>
         <td>{{ row.exit }}</td>
         <td><span class="badge">{{ row.freshness }}</span></td>
-        <td>
+        <td data-testid="watchlist-cell-{{ row.uid }}">
+          {% if row.uid in saved_uids %}
+          <span class="badge" data-testid="watchlist-saved">Saved</span>
+          {% elif user %}
           <form method="post" action="/yield/watchlist/{{ row.uid }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
           </form>
+          {% else %}
+          <a href="/login" data-testid="watchlist-signin" class="muted small" title="Sign in to save opportunities to your watchlist">Sign in to save</a>
+          {% endif %}
         </td>
       </tr>
     {% else %}
@@ -65,7 +71,7 @@
   </table>
 </div>
 
-<p class="sub">Save adds the opportunity to your watchlist by its canonical identity. Saving requires a signed-in session.</p>
+<p class="sub">Save adds the opportunity to your watchlist by its canonical identity. Anonymous visitors can sign in to save; saved items never use ticker or name matching.</p>
 
 <p class="bound">Read-only by default. Execution planning is separately gated. FINCO never custodies assets, holds private keys, auto-invests or rebalances.</p>
 {% endblock %}

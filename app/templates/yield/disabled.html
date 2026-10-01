@@ -1,0 +1,13 @@
+{% extends "yield/base.html" %}
+{% block title %}FINCO Yield — Feature-Gated{% endblock %}
+{% block content %}
+  <p class="k">FINCO Yield</p>
+  <h1>FINCO Yield</h1>
+  <section class="card" data-yield-runtime-state="disabled" aria-labelledby="yield-gated-heading">
+    <span class="badge">IMPLEMENTED / FEATURE-GATED</span>
+    <h2 id="yield-gated-heading">Yield runtime is not enabled in this environment.</h2>
+    <p>FINCO Yield is implemented and feature-gated.</p>
+    <p><strong>Yield execution remains OFF.</strong></p>
+    <p class="sub">Opportunity data is not loaded while <span class="mono">FINCO_YIELD_ENABLED=0</span>. No empty opportunity set is inferred from the disabled runtime state.</p>
+  </section>
+{% endblock %}

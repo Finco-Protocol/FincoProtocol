@@ -189,6 +189,7 @@ async def model_methodology(request: Request):
 async def protocol_roadmap(request: Request):
     """FINCO public product roadmap. Public — no auth required."""
     from app.auth import resolve_request_session
+    from app.product_capability import live_vertical_names
     user = resolve_request_session(request)
     return _templates.TemplateResponse(
         request=request,
@@ -196,6 +197,7 @@ async def protocol_roadmap(request: Request):
         context={
             "user": user,
             "proto_active_page": "roadmap",
+            "live_vertical_names": live_vertical_names(),
         },
     )
 

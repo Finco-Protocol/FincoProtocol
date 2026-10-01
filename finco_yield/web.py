@@ -128,7 +128,13 @@ async def yield_explore(
     max_reward_dependency: str | None = None,
     evidence: str | None = None,
 ):
-    _require()
+    if not yield_enabled():
+        return _templates.TemplateResponse(
+            request=request,
+            name="yield/disabled.html",
+            context={"user": _request_user(request)},
+        )
+
     registry = load_bundled_registry()
     history_days = {}
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
@@ -174,11 +180,21 @@ async def yield_explore(
         })
 
     from app.auth import generate_csrf_token
+    from app.crypto_access import get_wallet_state
+    from finco_yield.watchlist import list_watchlist_items
+
+    user = _request_user(request)
+    saved_uids = (set(watchlist_item["opportunity_uid"]
+                      for watchlist_item in list_watchlist_items(user.user_id))
+                  if user else set())
+
     return _templates.TemplateResponse(
         request=request,
         name="yield/explore.html",
         context={
             "rows": view_rows,
+            "saved_uids": saved_uids,
+            "user": user,
             "csrf_token": generate_csrf_token(),
             "filters": {
                 "chain_id": chain_id,
