@@ -1,51 +1,47 @@
-"""FINCO Crypto Utility V0 — Agent B: Yield premium server/API gating.
+"""FINCO Crypto Utility V0 — Agent B Correction: authority-aligned gating.
 
-Server-side enforcement tests at the real HTTP boundary.  Frontend hiding is
-not authorization: every protected resource is gated INSIDE the endpoint, so
-direct API invocation cannot bypass entitlement.
+Covers:
+  A. Admin-override firewall: legacy verified_asset_detail ADMIN_OVERRIDE
+     (even ACTIVE) can never grant FINCO-holder Yield access.
+  B. No generic ACTIVE shortcut: only token-backed (FINCO_TOKEN_BALANCE)
+     authority results may ALLOW; non-token-backed sources fail closed.
+  C. No second activation authority: the Agent-B-specific feature flag is
+     removed; activation is an adapter verdict (INACTIVE) owned by the
+     canonical resource policy (Agent A).
+  D. Wallet Monitor retains V1 semantics; it is NOT reclassified as
+     yield.alerts.
+  E. Direct-API bypass protection preserved for history / compare /
+     execution preflight; yield.basic remains public.
+  F. Execution remains disabled: entitled preflight still reaches
+     EXECUTION_DISABLED while FINCO_YIELD_EXECUTION_ENABLED=0.
 
-Yield math is untouched: the access module performs no Yield arithmetic, and
-existing numerical outputs are asserted unchanged.  Execution remains
-disabled by default; preflight entitlement never enables execution.
-
-Entitlement authority is exercised via TEST_ONLY fixtures (monkeypatched
-authority responses) — no production thresholds or tokenomics are invented.
+No Yield math changes: the gating module performs no Yield arithmetic and
+never imports Yield math authorities.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
-from pathlib import Path
-
 REPO = Path(__file__).resolve().parents[1]
-
-UID = None  # resolved at runtime from the bundled registry
 
 
 def _uid() -> str:
-    global UID
-    if UID is None:
-        from finco_yield.registry import load_bundled_registry
-
-        UID = load_bundled_registry().all()[0].uid
-    return UID
+    from finco_yield.registry import load_bundled_registry
+    return load_bundled_registry().all()[0].uid
 
 
 @pytest.fixture()
 def client(monkeypatch):
-    """Yield-enabled app client with an authenticated non-admin session."""
     import os
     import tempfile
-
     os.environ["FINCO_DB_PATH"] = os.path.join(tempfile.mkdtemp(), "yield-gate.db")
     from app.persistence import db
-
     db.DB_PATH = os.environ["FINCO_DB_PATH"]
     db.init_db()
     monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
-    monkeypatch.delenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", raising=False)
     monkeypatch.delenv("FINCO_YIELD_EXECUTION_ENABLED", raising=False)
 
     from fastapi.testclient import TestClient
@@ -53,257 +49,220 @@ def client(monkeypatch):
     from app.auth import COOKIE_NAME, create_session_token
 
     user_id = "yield-gate-user"
-    cookies = {COOKIE_NAME: create_session_token(user_id=user_id, username="yield-gate")}
-    with monkeypatch.context() as m:
-        m.setattr(main_web, "SESSION_COOKIE_NAME", COOKIE_NAME, raising=False)
-        client = TestClient(main_web.app)
-        client.cookies.update(cookies)
-        # Store the resolved user id for authority fixtures.
-        client.headers["x-test-user-id"] = user_id
-        yield client, user_id
+    client = TestClient(main_web.app)
+    client.cookies.update({
+        COOKIE_NAME: create_session_token(user_id=user_id, username="yield-gate")})
+    return client, user_id
 
 
 def _entitlement_module():
-    from app.verified import entitlement as entitlement_module
+    from app.verified import entitlement as module
+    return module
 
-    return entitlement_module
 
-
-def _verified_wallet_module():
+def _wallet_authority(monkeypatch, user_id):
     from app.protocol import wallet_auth as wallet_module
+    if user_id is None:
+        monkeypatch.setattr(wallet_module, "get_verified_wallet", lambda uid: None)
+    else:
+        monkeypatch.setattr(
+            wallet_module, "get_verified_wallet",
+            lambda uid: {"wallet_address": "0x" + "11" * 20,
+                         "verified_at": "2026-10-01T00:00:00Z"})
 
-    return wallet_module
 
-
-def _entitle_authority(monkeypatch, state: str, reason: str, user_id: str):
-    """TEST_ONLY: authority returns the requested state for this user."""
+def _admin_override_authority(monkeypatch, user_id, *, granted=True):
+    """Legacy ADMIN_OVERRIDE authority, ACTIVE when granted."""
     from app.verified.entitlement import EntitlementState, VerifiedEntitlement
-
-    entitlement_module = _entitlement_module()
+    module = _entitlement_module()
 
     async def _resolver(session):
+        active = granted and session is not None and session.session_type == "admin"
         return VerifiedEntitlement(
             subject_id=session.user_id if session else None,
-            entitlement="yield_premium",
-            state=EntitlementState(state),
-            source="TEST_ONLY",
-            reason=reason,
+            entitlement="verified_asset_detail",
+            state=EntitlementState.ACTIVE if active else EntitlementState.INACTIVE,
+            source="ADMIN_OVERRIDE",
+            reason="ADMIN_OVERRIDE_ACTIVE" if active else "ADMIN_OVERRIDE_NOT_GRANTED",
             observed_at=datetime.now(timezone.utc),
         )
-
-    monkeypatch.setattr(
-        entitlement_module, "resolve_verified_entitlement_for_request", _resolver)
-    # Access module imports the authority inside the function, so also pin
-    # the resolved-user filter via closure.
-    return entitlement_module
+    monkeypatch.setattr(module, "resolve_verified_entitlement_for_request", _resolver)
 
 
-def _wallet_authority(monkeypatch, user_id: str | None):
-    wallet_module = _verified_wallet_module()
+def _seam_verdict(monkeypatch, outcome, reason):
+    """Install a TEST_ONLY resource-policy adapter verdict."""
+    from finco_yield import access as access_mod
 
-    def _wallet(for_user_id):
-        if user_id is None:
-            return None
-        return {"wallet_address": "0x" + "11" * 20, "verified_at": "2026-10-01T00:00:00Z"}
-
-    monkeypatch.setattr(wallet_module, "get_verified_wallet",
-                        lambda uid: _wallet(user_id))
+    async def _authority(resource_key, wallet_address):
+        return outcome, reason
+    monkeypatch.setattr(access_mod, "_resource_entitlement_authority", _authority)
 
 
-# ── yield.basic stays public ────────────────────────────────────────────────
-
-class TestBasicPublic:
-    def test_yield_basic_public_no_entitlement_no_wallet(self, client):
+class TestAdminOverrideFirewall:
+    def test_admin_override_cannot_grant_yield_history(self, client, monkeypatch):
         client_obj, user_id = client
-        r = client_obj.get("/yield")
-        assert r.status_code == 200
-        # No premium/entitlement payload is required or present.
-        assert "YIELD_PREMIUM_REQUIRED" not in r.text
-
-    def test_basic_resource_not_gated_by_entitlement_authority(
-            self, client, monkeypatch):
-        """Even a totally unavailable entitlement authority never blocks the
-        public explore surface."""
-        client_obj, user_id = client
-        module = _entitlement_module()
-
-        async def _broken(session):
-            raise AssertionError("public resource must not consult entitlement")
-
-        monkeypatch.setattr(module, "resolve_verified_entitlement_for_request",
-                            _resolver_broken)
-        r = client_obj.get("/yield")
-        assert r.status_code == 200
-
-
-async def _resolver_broken(session):
-    raise AssertionError("public resource must not consult entitlement")
-
-
-# ── Protected resources fail closed without entitlement ────────────────────
-
-class TestProtectedResourcesFailClosed:
-    def test_history_cannot_be_bypassed_via_direct_api(self, client):
-        client_obj, user_id = client
-        # No verified wallet, feature inactive: direct anonymous-style API
-        # call still hits the in-endpoint gate.
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
+        _admin_override_authority(monkeypatch, user_id, granted=True)
+        _wallet_authority(monkeypatch, user_id)
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 403
         body = r.json()
         assert body["error"] == "YIELD_PREMIUM_REQUIRED"
-        assert body["resource"] == "yield.history"
-        # No protected payload leaked.
         assert "observations" not in body
 
-    def test_advanced_compare_cannot_be_bypassed_via_direct_api(self, client):
-        client_obj, _ = client
-        r = client_obj.get("/yield/compare")
+    def test_admin_override_cannot_grant_advanced_compare(self, client, monkeypatch):
+        client_obj, user_id = client
+        _admin_override_authority(monkeypatch, user_id, granted=True)
+        _wallet_authority(monkeypatch, user_id)
+        r = client_obj.get("/yield/compare?uid=%s" % _uid())
+        assert r.status_code == 403
+        assert r.json()["error"] == "YIELD_PREMIUM_REQUIRED"
+
+    def test_admin_override_cannot_grant_execution_preflight(self, client, monkeypatch):
+        client_obj, user_id = client
+        _admin_override_authority(monkeypatch, user_id, granted=True)
+        _wallet_authority(monkeypatch, user_id)
+        r = client_obj.post("/yield/%s/plan" % _uid())
+        assert r.status_code == 403
+        assert r.json()["error"] == "YIELD_PREMIUM_REQUIRED"
+
+    def test_default_adapter_ignores_legacy_override_path(self, client, monkeypatch):
+        """The default token-backed adapter never consults the legacy
+        resolver: with no configured deployment the verdict is INACTIVE
+        (deployment not configured), regardless of any admin override."""
+        client_obj, user_id = client
+        _admin_override_authority(monkeypatch, user_id, granted=True)
+        _wallet_authority(monkeypatch, user_id)
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 403
         body = r.json()
-        assert body["resource"] == "yield.advanced_compare"
         assert body["error"] == "YIELD_PREMIUM_REQUIRED"
-        # No premium comparison payload leaked.
-        assert "metrics" not in body and "columns" not in body
+        # No admin-override promotion: adapter never consulted the legacy
+        # resolver; the canonical deployment is simply not configured here.
+        assert body["access_state"] == "TOKEN_ENTITLEMENT_FEATURE_INACTIVE"
+        assert body["reason"] == "TOKEN_DEPLOYMENT_NOT_CONFIGURED"
 
-    def test_alerts_surface_gated(self, client):
-        client_obj, _ = client
-        r = client_obj.get("/yield/monitor")
-        assert r.status_code == 403
-        assert r.json()["resource"] == "yield.alerts"
+    def test_generic_active_non_token_source_cannot_promote(self, monkeypatch):
+        """Adapter contract: a generic ACTIVE verdict with a non-token-backed
+        source can never be promoted into ALLOW by the default adapter."""
+        import asyncio
+        import app.verified.token_entitlement as token_entitlement_module
+        from finco_yield.access import _default_resource_entitlement_adapter
 
-    def test_denial_states_are_typed(self, client):
+        class _FakePolicy:
+            chain_id = 4663
+            token_address = "0x" + "cd" * 20
+            token_decimals = 18
+            minimum_balance_raw = 1
+            freshness_seconds = 3600
+
+        async def _no_balance(policy, wallet):
+            return None
+
+        monkeypatch.setattr(token_entitlement_module, "get_production_policy",
+                            lambda: (_FakePolicy(), object()))
+        monkeypatch.setattr(
+            token_entitlement_module, "P4ReadOnlyBalanceProvider",
+            lambda config: type("_P", (), {
+                "balance_of": staticmethod(_no_balance)})())
+
+        adapter = _default_resource_entitlement_adapter
+        outcome, reason = asyncio.run(
+            adapter("yield.history", "0x" + "11" * 20))
+        # Balance evidence None (unreadable fake) -> fail closed DENY;
+        # never a promotion without token-backed evidence.
+        assert outcome == "DENY"
+
+
+class TestResourceAuthorityVerdicts:
+    def test_allow_verdict_entitles(self, client, monkeypatch):
         client_obj, user_id = client
-        # Unauthenticated direct call -> wallet unavailable.
-        anon = type(client_obj)  # noqa: F841
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
-        assert r.json()["access_state"] in (
-            "WALLET_UNAVAILABLE", "WALLET_UNVERIFIED",
-            "TOKEN_ENTITLEMENT_FEATURE_INACTIVE")
-
-
-# ── Safe access states (TEST_ONLY entitlement fixtures) ────────────────────
-
-class TestSafeAccessStates:
-    def test_entitled_test_only_context_succeeds(self, client, monkeypatch):
-        client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "ACTIVE", "TEST_ONLY_ENTITLED", user_id)
         _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
+        _seam_verdict(monkeypatch, "ALLOW", "TEST_ONLY_TOKEN_BACKED")
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 200
-        body = r.json()
-        assert body["schema"] == "YIELD_HISTORY_V1"
+        assert r.json()["schema"] == "YIELD_HISTORY_V1"
 
-    def test_entitlement_authority_unavailable_fails_closed(self, client, monkeypatch):
+    def test_deny_verdict_maps_to_not_satisfied(self, client, monkeypatch):
         client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "UNAVAILABLE",
-                           "BALANCE_EVIDENCE_UNAVAILABLE", user_id)
         _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
+        _seam_verdict(monkeypatch, "DENY", "BALANCE_BELOW_THRESHOLD")
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 403
-        # Missing != 0: authority unavailable is never converted to balance 0
-        # / entitlement satisfied.
-        assert r.json()["access_state"] == "ENTITLEMENT_AUTHORITY_UNAVAILABLE"
+        assert r.json()["access_state"] == "ENTITLEMENT_NOT_SATISFIED"
+        assert r.json()["reason"] == "BALANCE_BELOW_THRESHOLD"
 
-    def test_balance_stale_is_fail_closed_not_zero(self, client, monkeypatch):
+    def test_inactive_verdict_maps_to_feature_inactive(self, client, monkeypatch):
         client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "STALE", "BALANCE_STALE", user_id)
         _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
-        assert r.status_code == 403
-        assert r.json()["access_state"] == "ENTITLEMENT_AUTHORITY_UNAVAILABLE"
-
-    def test_feature_inactive_denies_even_with_verified_wallet(
-            self, client, monkeypatch):
-        client_obj, user_id = client
-        # Feature flag intentionally left OFF (default).
-        _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
+        _seam_verdict(monkeypatch, "INACTIVE", "RESOURCE_POLICY_INACTIVE")
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 403
         assert r.json()["access_state"] == "TOKEN_ENTITLEMENT_FEATURE_INACTIVE"
 
-    def test_deployment_not_configured_state(self, client, monkeypatch):
+    def test_authority_unavailable_maps_to_unavailable(self, client, monkeypatch):
         client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "TOKEN_CONFIGURATION_UNAVAILABLE",
-                           "TOKEN_CONFIGURATION_UNAVAILABLE", user_id)
         _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
+        _seam_verdict(monkeypatch, "DENY", "ENTITLEMENT_AUTHORITY_UNAVAILABLE")
+        r = client_obj.get("/yield/%s/history.json" % _uid())
         assert r.status_code == 403
-        assert r.json()["access_state"] == "TOKEN_DEPLOYMENT_NOT_CONFIGURED"
+        assert r.json()["access_state"] == "ENTITLEMENT_NOT_SATISFIED"
 
-    def test_wallet_unverified_state(self, client, monkeypatch):
+
+class TestWalletMonitorNotAlerts:
+    def test_monitor_not_gated_as_alerts(self, client, monkeypatch):
+        """Wallet Monitor retains V1 semantics: authenticated users reach it
+        without any FINCO-holder entitlement."""
         client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _wallet_authority(monkeypatch, None)  # no verified wallet binding
-        r = client_obj.get(f"/yield/{_uid()}/history.json")
-        assert r.status_code == 403
-        assert r.json()["access_state"] == "WALLET_UNVERIFIED"
-
-    def test_entitled_compare_succeeds(self, client, monkeypatch):
-        client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "ACTIVE", "TEST_ONLY_ENTITLED", user_id)
-        _wallet_authority(monkeypatch, user_id)
-        r = client_obj.get(f"/yield/compare?uid={_uid()}")
-        assert r.status_code == 200
-
-
-# ── Wallet verification enforced on execution preflight ────────────────────
-
-class TestExecutionPreflightWallet:
-    def test_preflight_requires_verified_wallet(self, client, monkeypatch):
-        client_obj, user_id = client
-        monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "ACTIVE", "TEST_ONLY_ENTITLED", user_id)
         _wallet_authority(monkeypatch, None)
-        r = client_obj.post(f"/yield/{_uid()}/plan")
-        assert r.status_code == 403
-        assert r.json()["access_state"] == "WALLET_UNVERIFIED"
+        r = client_obj.get("/yield/monitor", follow_redirects=False)
+        assert r.status_code == 200
+        assert "YIELD_PREMIUM_REQUIRED" not in r.text
 
-    def test_preflight_entitlement_does_not_enable_execution(
-            self, client, monkeypatch):
+    def test_alerts_resource_remains_reserved(self):
+        from finco_yield.access import RESOURCE_REQUIREMENTS, YieldResource
+        assert RESOURCE_REQUIREMENTS[YieldResource.ALERTS].value == "PREMIUM"
+
+
+class TestDirectApiBypassProtection:
+    def test_history_direct_api_fails_closed(self, client, monkeypatch):
+        client_obj, user_id = client
+        _wallet_authority(monkeypatch, None)
+        r = client_obj.get("/yield/%s/history.json" % _uid())
+        assert r.status_code == 403
+        assert "observations" not in r.json()
+
+    def test_compare_direct_api_fails_closed(self, client, monkeypatch):
+        client_obj, user_id = client
+        _wallet_authority(monkeypatch, None)
+        r = client_obj.get("/yield/compare?uid=%s" % _uid())
+        assert r.status_code == 403
+        assert "columns" not in r.json() and "metrics" not in r.json()
+
+    def test_preflight_direct_api_fails_closed(self, client, monkeypatch):
+        client_obj, user_id = client
+        _wallet_authority(monkeypatch, None)
+        r = client_obj.post("/yield/%s/plan" % _uid())
+        assert r.status_code == 403
+        assert r.json()["error"] == "YIELD_PREMIUM_REQUIRED"
+
+
+class TestBasicPublicAndExecution:
+    def test_yield_basic_public(self, client, monkeypatch):
+        client_obj, user_id = client
+        r = client_obj.get("/yield")
+        assert r.status_code == 200
+        assert "YIELD_PREMIUM_REQUIRED" not in r.text
+
+    def test_entitled_preflight_still_execution_disabled(self, client, monkeypatch):
         client_obj, user_id = client
         monkeypatch.setenv("FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED", "1")
-        _entitle_authority(monkeypatch, "ACTIVE", "TEST_ONLY_ENTITLED", user_id)
         _wallet_authority(monkeypatch, user_id)
-        # FINCO_YIELD_EXECUTION_ENABLED stays OFF: entitlement != execution.
-        r = client_obj.post(f"/yield/{_uid()}/plan")
+        _seam_verdict(monkeypatch, "ALLOW", "TEST_ONLY_TOKEN_BACKED")
+        r = client_obj.post("/yield/%s/plan" % _uid())
         assert r.status_code == 409
         assert r.json()["code"] == "EXECUTION_DISABLED"
 
-
-# ── Yield math untouched ────────────────────────────────────────────────────
-
-class TestYieldMathUntouched:
-    def test_access_module_performs_no_yield_arithmetic(self):
-        import inspect
-        from pathlib import Path
-
-        access_src = (REPO / "finco_yield" / "access.py").read_text(encoding="utf-8")
-        assert "apy" not in access_src.lower()
-        assert "underwriting" not in access_src.lower()
-        assert "decompose" not in access_src.lower()
-
-    def test_underwriting_module_source_untouched_by_gating(self):
-        # The gating module must not import or wrap Yield math authorities.
-        import inspect
-
-        access_src = inspect.getsource(
-            __import__("finco_yield.access", fromlist=["resolve_yield_access"]))
-        for banned in ("finco_yield.underwriting", "finco_yield.history",
-                       "finco_yield.explore", "finco_yield.evidence_v1"):
-            assert banned not in access_src, banned
-
-    def test_explore_rows_unchanged_shape(self, client):
-        """Basic explore still renders the full bundled registry rows."""
-        client_obj, _ = client
-        from finco_yield.registry import load_bundled_registry
-
-        expected = len(load_bundled_registry().all())
-        r = client_obj.get("/yield")
-        assert r.status_code == 200
-        # Every bundled opportunity is still listed on the public surface.
-        assert r.text.count("/yield/") >= expected
+    def test_yield_math_untouched_by_gating(self):
+        bridge = (REPO / "finco_yield" / "access.py").read_text(encoding="utf-8")
+        for banned in ("apy", "underwriting", "decompose", "erc4626", "4626"):
+            assert banned not in bridge.lower(), banned

@@ -1,50 +1,61 @@
 """FINCO Crypto Utility V0 — Yield premium server/API gating (Agent B).
 
 Server-side access authority for Yield premium resources.  The decision is
-enforced INSIDE each protected endpoint, so direct API invocation cannot
-bypass token gating by skipping frontend buttons.
+enforced INSIDE each endpoint, so direct API invocation cannot bypass token
+gating by skipping frontend buttons.
 
 Resource keys (V0):
-    yield.basic               PUBLIC — no $FINCO, no wallet
-    yield.history             premium (FINCO entitlement capable)
-    yield.advanced_compare    premium (FINCO entitlement capable)
-    yield.alerts              premium (FINCO entitlement capable)
-    yield.execution_preflight premium + verified wallet required
+    yield.basic               PUBLIC — no $FINCO, no wallet, no authority lookup
+    yield.history             FINCO_HOLDER capable
+    yield.advanced_compare    FINCO_HOLDER capable
+    yield.alerts              FINCO_HOLDER capable — RESERVED for the actual
+                              Alerts/Watchlist surface (Agent C); the legacy
+                              Wallet Monitor is NOT this resource.
+    yield.execution_preflight FINCO_HOLDER capable + verified wallet required
 
-Safe access states (missing != 0; ownership != balance != entitlement):
+AUTHORITY FIREWALL (Correction):
+    admin privilege  != $FINCO ownership
+    admin privilege  != FINCO_HOLDER entitlement
+    verified_asset_detail != yield premium entitlement
+    VerifiedEntitlement(state=ACTIVE) alone is NEVER sufficient: only
+    token-backed evidence (source ``FINCO_TOKEN_BALANCE``) evaluated against
+    the configured deployment may ALLOW, and only through the resource-policy
+    adapter seam.  The legacy ADMIN_OVERRIDE path is never consulted.
+    Agent A owns canonical resource entitlement truth; this module owns
+    endpoint enforcement and never queries balances, deployments or
+    thresholds itself.
+
+Safe access states (missing != 0; ownership != balance != entitlement !=
+execution != metering != staking != burn):
     ENTITLED
-    WALLET_UNAVAILABLE            (no authenticated session)
-    WALLET_UNVERIFIED             (session but no verified wallet binding)
-    TOKEN_ENTITLEMENT_FEATURE_INACTIVE
+    WALLET_UNAVAILABLE
+    WALLET_UNVERIFIED
+    TOKEN_ENTITLEMENT_FEATURE_INACTIVE   (adapter verdict INACTIVE)
     TOKEN_DEPLOYMENT_NOT_CONFIGURED
     ENTITLEMENT_NOT_SATISFIED
     ENTITLEMENT_AUTHORITY_UNAVAILABLE
-
-The entitlement decision NEVER modifies Yield math.  Entitlement is not
-execution: a preflight entitlement never enables transactions, custody,
-server-side signing, broadcasting or auto-invest.  ``$FINCO never touches
-the math; it never determines whether evidence is true.``
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
-# Feature gate for FINCO-token entitlement evaluation on Yield premium
-# resources.  DEFAULT OFF: when inactive, protected resources deny access
-# with TOKEN_ENTITLEMENT_FEATURE_INACTIVE (public resources stay public).
-_YIELD_TOKEN_ENTITLEMENT_ENABLED = "FINCO_YIELD_TOKEN_ENTITLEMENT_ENABLED"
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
+# Canonical resource keys.
+YIELD_BASIC = "yield.basic"
+YIELD_HISTORY = "yield.history"
+YIELD_ADVANCED_COMPARE = "yield.advanced_compare"
+YIELD_ALERTS = "yield.alerts"
+YIELD_EXECUTION_PREFLIGHT = "yield.execution_preflight"
 
 
 class YieldResource(str, Enum):
-    BASIC = "yield.basic"
-    HISTORY = "yield.history"
-    ADVANCED_COMPARE = "yield.advanced_compare"
-    ALERTS = "yield.alerts"
-    EXECUTION_PREFLIGHT = "yield.execution_preflight"
+    BASIC = YIELD_BASIC
+    HISTORY = YIELD_HISTORY
+    ADVANCED_COMPARE = YIELD_ADVANCED_COMPARE
+    ALERTS = YIELD_ALERTS
+    EXECUTION_PREFLIGHT = YIELD_EXECUTION_PREFLIGHT
 
 
 class YieldAccessState(str, Enum):
@@ -68,14 +79,11 @@ RESOURCE_REQUIREMENTS: dict[YieldResource, YieldResourceKind] = {
     YieldResource.BASIC: YieldResourceKind.PUBLIC,
     YieldResource.HISTORY: YieldResourceKind.PREMIUM,
     YieldResource.ADVANCED_COMPARE: YieldResourceKind.PREMIUM,
+    # RESERVED for the actual Alerts/Watchlist surface (Agent C / integration).
+    # The legacy Wallet Monitor is NOT this resource.
     YieldResource.ALERTS: YieldResourceKind.PREMIUM,
     YieldResource.EXECUTION_PREFLIGHT: YieldResourceKind.PREMIUM_VERIFIED_WALLET,
 }
-
-
-def token_entitlement_feature_enabled(environ: dict | None = None) -> bool:
-    env = os.environ if environ is None else environ
-    return env.get(_YIELD_TOKEN_ENTITLEMENT_ENABLED, "0").strip().lower() in _TRUTHY
 
 
 @dataclass(frozen=True)
@@ -84,12 +92,98 @@ class YieldAccessDecision:
     state: YieldAccessState
     entitled: bool
     reason: str
-    # Never contains protected payload — decision metadata only.
+    # Decision metadata only — never protected payload.
     wallet_address: str | None = None
 
 
 def _denied(resource: YieldResource, state: YieldAccessState, reason: str) -> YieldAccessDecision:
     return YieldAccessDecision(resource=resource, state=state, entitled=False, reason=reason)
+
+
+# ---------------------------------------------------------------------------
+# Resource-policy adapter seam (Agent A integration point)
+# ---------------------------------------------------------------------------
+#
+# Agent A owns canonical token/resource entitlement truth.  Agent D connects
+# the canonical authority to this seam during integration.  The seam answers
+# one question for one (resource_key, verified wallet) pair:
+#
+#     ALLOW    — canonical resource policy entitles this wallet
+#     DENY     — evaluated and not satisfied
+#     INACTIVE — canonical resource policy itself is inactive
+#
+# The default adapter reuses the EXISTING token-backed authority, but only
+# accepts source ``FINCO_TOKEN_BALANCE`` results: legacy ADMIN_OVERRIDE and
+# other non-token-backed ACTIVE results fail closed.  The legacy
+# ``resolve_verified_entitlement_for_request`` path (which can return an
+# ACTIVE ADMIN_OVERRIDE without $FINCO ownership) is NEVER consulted.
+
+MAX_ADAPTER_VALUE_LEN = 512
+
+
+async def _default_resource_entitlement_adapter(
+    resource_key: str, wallet_address: str,
+) -> tuple[str, str]:
+    """Token-backed-only adapter over the existing entitlement authority.
+
+    Evaluates the configured FINCO token deployment for the verified wallet
+    (read-only balance evidence).  Returns (outcome, reason) with outcome in
+    ALLOW / DENY / INACTIVE.  Only source ``FINCO_TOKEN_BALANCE`` results can
+    ALLOW; everything else fails closed.
+    """
+    from datetime import datetime as _dt
+
+    from app.verified.entitlement import EntitlementState
+    from app.verified.token_entitlement import (
+        P4ReadOnlyBalanceProvider, evaluate_token_entitlement, get_production_policy,
+    )
+
+    context = get_production_policy()
+    if context is None:
+        return "INACTIVE", "TOKEN_DEPLOYMENT_NOT_CONFIGURED"
+    policy, config = context
+    evidence = None
+    try:
+        evidence = await P4ReadOnlyBalanceProvider(config).balance_of(
+            policy, wallet_address)
+    except Exception:
+        evidence = None
+    entitlement = evaluate_token_entitlement(
+        subject_id=f"wallet:{wallet_address.lower()}",
+        wallet_address=wallet_address, policy=policy,
+        evidence=evidence, as_of=_dt.now(timezone.utc),
+    )
+    state = entitlement.state
+    if state is EntitlementState.ACTIVE:
+        # Source is always FINCO_TOKEN_BALANCE from this pure evaluator.
+        return "ALLOW", entitlement.reason or "TOKEN_BALANCE_AT_OR_ABOVE_THRESHOLD"
+    if state is EntitlementState.INACTIVE:
+        return "DENY", entitlement.reason or "ENTITLEMENT_NOT_SATISFIED"
+    if state is EntitlementState.TOKEN_CONFIGURATION_UNAVAILABLE:
+        return "INACTIVE", "TOKEN_DEPLOYMENT_NOT_CONFIGURED"
+    if state is EntitlementState.STALE:
+        return "DENY", entitlement.reason or "ENTITLEMENT_AUTHORITY_UNAVAILABLE"
+    return "DENY", entitlement.reason or "ENTITLEMENT_AUTHORITY_UNAVAILABLE"
+
+
+# Module-level seam (Agent A integration point).  Signature:
+#     async (resource_key: str, wallet_address: str) -> (outcome, reason)
+# outcome in {"ALLOW", "DENY", "INACTIVE"}.
+_resource_entitlement_authority = _default_resource_entitlement_adapter
+
+
+def set_resource_entitlement_authority(
+    authority: Callable[[str, str], Any],
+) -> None:
+    """Integration seam: install the canonical resource entitlement
+    authority (Agent A).  Receives ``(resource_key, wallet_address)`` and
+    returns ``(outcome, reason)`` with outcome in ALLOW / DENY / INACTIVE."""
+    global _resource_entitlement_authority
+    _resource_entitlement_authority = authority
+
+
+async def _resource_entitlement(resource_key: str, wallet_address: str) -> tuple[str, str]:
+    return await _resource_entitlement_authority(resource_key, wallet_address)
 
 
 async def resolve_yield_access(
@@ -98,9 +192,7 @@ async def resolve_yield_access(
     """Server-side access decision for one Yield resource.
 
     Trust boundary: called INSIDE the endpoint, before any protected payload
-    is serialized.  Reuses the existing FINCO entitlement/wallet authority
-    (``resolve_verified_entitlement_for_request`` + ``get_verified_wallet``);
-    this module never reads balances itself and never invents thresholds.
+    is serialized.  ``yield.basic`` never consults the entitlement authority.
     """
     kind = RESOURCE_REQUIREMENTS[resource]
     if kind is YieldResourceKind.PUBLIC:
@@ -123,41 +215,16 @@ async def resolve_yield_access(
                        "verified wallet required for this resource")
     wallet_address = wallet["wallet_address"]
 
-    if not token_entitlement_feature_enabled():
-        return _denied(
-            resource, YieldAccessState.TOKEN_ENTITLEMENT_FEATURE_INACTIVE,
-            "FINCO token entitlement feature is inactive in this environment")
-
-    from app.verified.entitlement import (
-        EntitlementState, resolve_verified_entitlement_for_request,
-    )
-
-    entitlement = await resolve_verified_entitlement_for_request(user)
-    state = entitlement.state
-    if state is EntitlementState.TOKEN_CONFIGURATION_UNAVAILABLE:
-        return _denied(resource, YieldAccessState.TOKEN_DEPLOYMENT_NOT_CONFIGURED,
-                       "FINCO token deployment is not configured")
-    if state is EntitlementState.IDENTITY_UNAVAILABLE:
-        return _denied(resource, YieldAccessState.WALLET_UNVERIFIED,
-                       "verified wallet required for this resource")
-    if state in (EntitlementState.UNAVAILABLE, EntitlementState.STALE):
-        # Balance evidence unavailable/stale/mismatched — missing != 0.
-        return _denied(resource, YieldAccessState.ENTITLEMENT_AUTHORITY_UNAVAILABLE,
-                       entitlement.reason or "entitlement authority unavailable")
-    if state is not EntitlementState.ACTIVE:
-        return _denied(resource, YieldAccessState.ENTITLEMENT_NOT_SATISFIED,
-                       entitlement.reason or "entitlement not satisfied")
-
-    # PREMIUM_VERIFIED_WALLET resources additionally require the verified
-    # wallet binding (already proven above via get_verified_wallet).
-    if kind is YieldResourceKind.PREMIUM_VERIFIED_WALLET and not wallet_address:
-        return _denied(resource, YieldAccessState.WALLET_UNVERIFIED,
-                       "verified wallet required for this resource")
-
-    return YieldAccessDecision(
-        resource=resource, state=YieldAccessState.ENTITLED, entitled=True,
-        reason=entitlement.reason or "ENTITLED", wallet_address=wallet_address,
-    )
+    outcome, reason = await _resource_entitlement(resource.value, wallet_address)
+    if outcome == "ALLOW":
+        return YieldAccessDecision(
+            resource=resource, state=YieldAccessState.ENTITLED, entitled=True,
+            reason=reason or "ENTITLED", wallet_address=wallet_address)
+    if outcome == "INACTIVE":
+        return _denied(resource, YieldAccessState.TOKEN_ENTITLEMENT_FEATURE_INACTIVE,
+                       reason or "resource policy inactive")
+    return _denied(resource, YieldAccessState.ENTITLEMENT_NOT_SATISFIED,
+                   reason or "resource entitlement not satisfied")
 
 
 def denial_payload(decision: YieldAccessDecision) -> dict:

@@ -257,10 +257,10 @@ async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
 
 @router.get("/monitor", response_class=HTMLResponse)
 async def yield_monitor(request: Request):
+    # Correction: Wallet Monitor is an existing read-only Yield feature —
+    # it is NOT the yield.alerts resource.  Alerts/Watchlist gating binds
+    # only to an actual Alerts surface (Agent C / integration).
     _require()
-    denial = await _enforce_premium(request, YieldResource.ALERTS)
-    if denial is not None:
-        return denial
     from app.auth import resolve_request_session
     from app.protocol.wallet_auth import get_verified_wallet
 
