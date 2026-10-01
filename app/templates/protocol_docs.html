@@ -412,6 +412,18 @@
           capability output — rather than in a centralized limitations catalog.
           See the <a href="#product-map">Product map</a> for per-surface scope.
         </p>
+        <div class="pdocs-callout">
+          <div class="pdocs-callout__label">Known limitations — debt repayment semantics</div>
+          <ul>
+            <li><strong>Mandatory cash sweep (SHL and senior post-sculpt)</strong> — SUPPORTED: the modelling convention sweeps available post-senior cash per period.</li>
+            <li><strong>Terminal balloon at senior maturity</strong> — PARTIAL: the sculpting policy can permit or reject a terminal balance per configuration; there is no standalone balloon-repayment structure.</li>
+            <li><strong>Voluntary early repayment</strong> — NOT_SUPPORTED.</li>
+            <li><strong>Refinancing</strong> — NOT_SUPPORTED.</li>
+            <li><strong>Prepayment penalty</strong> — NOT_SUPPORTED.</li>
+            <li><strong>Debt acceleration</strong> — NOT_SUPPORTED.</li>
+          </ul>
+          <p>Generic debt-schedule functionality does not imply these structures are modelled.</p>
+        </div>
       </section>
 
       <footer class="pdocs-footer">

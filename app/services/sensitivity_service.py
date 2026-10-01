@@ -20,6 +20,12 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
     "availability": ("Availability", "%"),
     "interest_rate": ("Interest Rate", "bps"),
     "tax_rate": ("Tax Rate", "%"),
+    # Data Center native drivers (Opus NEW-M-1) — vertical-gated; never
+    # accepted for Solar/Wind/EV.
+    "dc_service_price": ("DC Service Price (EUR/kW/month)", "%"),
+    "dc_occupancy": ("DC Occupancy", "%"),
+    "dc_pue": ("DC PUE", "%"),
+    "dc_electricity_price": ("DC Electricity Price", "%"),
     # V4-7 BESS shocks
     "bess_arbitrage_spread": ("BESS Arbitrage Spread", "%"),
     "bess_cycles": ("BESS Cycles/Year", "%"),
@@ -31,6 +37,111 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
 # Default shock levels (percentage points applied as multipliers for % shocks)
 DEFAULT_SHOCK_LEVELS = [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0]
 
+
+class DCDriverContextRequiredError(ValueError):
+    """Raised when a dc_* sensitivity shock is requested without the
+    project's resolved canonical DataCenterDrivers context.
+
+    Correction C (PR #155): dc_* shocks must start from the ACTUAL
+    project/scenario source drivers (via ``drivers_from_snapshot`` on the
+    resolved runtime snapshot).  Falling back to the generic reference
+    driver set here would silently replace real user assumptions with
+    reference defaults, so the seam fails closed instead.
+    """
+
+    def __init__(self, shock_type: str):
+        self.shock_type = shock_type
+        super().__init__(
+            f"Sensitivity driver {shock_type!r} requires the resolved "
+            "Data Center source-driver context (dc_drivers) for this "
+            "project/scenario; none was provided. Generic reference "
+            "defaults are NOT substituted silently."
+        )
+
+
+class UnsupportedSensitivityDriverError(ValueError):
+    """Raised when a sensitivity driver is not supported for a vertical.
+
+    Fail-closed per Opus finding NEW-M-1: an unsupported driver is never
+    silently ignored, converted to another driver, or returned as a valid
+    no-op result.  ``vertical`` and ``shock_type`` identify the exact
+    rejected combination.
+    """
+
+    def __init__(self, vertical: str, shock_type: str):
+        self.vertical = vertical
+        self.shock_type = shock_type
+        super().__init__(
+            f"Sensitivity driver {shock_type!r} is not supported for "
+            f"vertical {vertical!r}."
+        )
+
+
+# Vertical-specific driver capability (Opus NEW-M-1).
+#
+# Canonicity of each mapping: every driver key corresponds to exactly one
+# existing canonical input path in _apply_shock.
+#   - Data Center drivers map to the Data Center input contract introduced
+#     with the Generic Data Center Reference (service price in
+#     revenue.service_price_eur_kw_month lineage; occupancy as the
+#     utilisation authority; PUE; purchased-electricity cost).  Renewable
+#     revenue semantics (PPA price, merchant price, yield/P50 hours) are
+#     economically meaningless for an IT-load capacity business and are
+#     FORBIDDEN for Data Center.
+#   - Solar/Wind/EV Charging keep their existing driver sets unchanged.
+#   - EV Charging shares the renewable driver set (its revenue model is
+#     energy-throughput based on the same technical fields).
+_VERTICAL_SENSITIVITY_DRIVERS: dict[str, frozenset[str]] = {
+    "solar": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+    "wind": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+    # Data Center: occupancy / IT MW / PUE / electricity price / service
+    # price / CAPEX / OPEX-style maintenance cost drivers.
+    "data_center": frozenset({
+        "capex", "opex", "dc_service_price", "dc_occupancy", "dc_it_mw",
+        "dc_pue", "dc_electricity_price", "interest_rate", "tax_rate",
+    }),
+    # EV Charging: energy-throughput revenue on the same technical fields.
+    "ev_charging": frozenset({
+        "capex", "opex", "ppa_price", "merchant_price", "yield",
+        "availability", "interest_rate", "tax_rate",
+    }),
+}
+
+# Aliases accepted as vertical keys (project_type strings seen at runtime).
+_VERTICAL_ALIASES: dict[str, str] = {
+    "solar": "solar", "solar_pv": "solar",
+    "wind": "wind", "wind_onshore": "wind",
+    "data center": "data_center", "data_center": "data_center",
+    "datacenter": "data_center",
+    "ev charging": "ev_charging", "ev_charging": "ev_charging",
+    "ev": "ev_charging",
+}
+
+
+def resolve_vertical(vertical: str | None) -> str:
+    """Normalize a vertical key; unknown values resolve to themselves so the
+    capability lookup fails closed rather than matching a real vertical."""
+    key = (vertical or "").strip().lower()
+    return _VERTICAL_ALIASES.get(key, key)
+
+
+def supported_sensitivity_drivers(vertical: str | None) -> frozenset[str]:
+    """Return the supported sensitivity driver set for a vertical."""
+    return _VERTICAL_SENSITIVITY_DRIVERS.get(resolve_vertical(vertical), frozenset())
+
+
+def assert_driver_supported(vertical: str | None, shock_type: str) -> None:
+    """Fail closed when a driver is unsupported for the vertical."""
+    if shock_type not in supported_sensitivity_drivers(vertical):
+        raise UnsupportedSensitivityDriverError(
+            resolve_vertical(vertical), shock_type)
+
 # KPI definitions: (attr_on_WaterfallResult, display_label, format_hint)
 KPI_DEFS: list[tuple[str, str, str]] = [
     ("total_revenue_keur", "Revenue (kEUR)", "keur"),
@@ -40,7 +151,9 @@ KPI_DEFS: list[tuple[str, str, str]] = [
     ("total_senior_ds_keur", "Senior DS (kEUR)", "keur"),
     ("total_distribution_keur", "Equity Distribution (kEUR)", "keur"),
     ("project_irr", "Project IRR", "pct"),
-    ("equity_irr", "Equity IRR", "pct"),
+    # H-3 truth: equity_irr is the pure share-capital return (EQUITY_ONLY);
+    # shareholder-loan flows are NOT included in this number.
+    ("equity_irr", "Equity IRR (share capital only)", "pct"),
     ("equity_npv", "Equity NPV (kEUR)", "keur"),
     ("actual_avg_dscr", "Avg DSCR", "x"),
     ("min_dscr", "Min DSCR", "x"),
@@ -110,7 +223,8 @@ def _extract_kpis(result: Any) -> dict[str, Optional[float]]:
     return kpis
 
 
-def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
+def _apply_shock(proj: Any, shock_type: str, level_pct: float,
+                 dc_drivers: Any | None = None) -> Any:
     """Return a new ProjectInputs with the given shock applied.
 
     level_pct is a signed percentage: +10.0 = +10%, -5.0 = -5%.
@@ -186,6 +300,40 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
             tax=replace(proj.tax, corporate_rate=new_rate),
         )
 
+    elif shock_type in ("dc_service_price", "dc_occupancy", "dc_pue",
+                        "dc_electricity_price", "dc_it_mw"):
+        # Correction C: DC source drivers recompute through the CANONICAL
+        # Data Center runtime adapter (app.data_center_authority), starting
+        # from the project's ACTUAL resolved drivers (passed in explicitly
+        # by the route/workspace authority).  The generic reference driver
+        # set is NEVER substituted for a user-edited project.
+        if dc_drivers is None:
+            raise DCDriverContextRequiredError(shock_type)
+        from app.data_center_authority import apply_data_center_runtime_adapter
+        capacity = proj.technical.capacity_mw
+        drivers = dc_drivers
+        if shock_type == "dc_service_price":
+            drivers = replace(drivers,
+                              service_price_eur_kw_month=drivers.service_price_eur_kw_month * factor)
+        elif shock_type == "dc_occupancy":
+            drivers = replace(drivers,
+                              occupancy_y1=min(1.0, drivers.occupancy_y1 * factor),
+                              occupancy_y2=min(1.0, drivers.occupancy_y2 * factor),
+                              stabilized_occupancy=min(1.0, drivers.stabilized_occupancy * factor))
+        elif shock_type == "dc_pue":
+            drivers = replace(drivers, pue=drivers.pue * factor)
+        elif shock_type == "dc_electricity_price":
+            drivers = replace(drivers,
+                              electricity_price_eur_mwh=drivers.electricity_price_eur_mwh * factor)
+        elif shock_type == "dc_it_mw":
+            capacity = capacity * factor
+
+        shocked = apply_data_center_runtime_adapter(
+            replace(proj, technical=replace(proj.technical, capacity_mw=capacity)),
+            drivers,
+        )
+        return shocked
+
     elif shock_type in ("bess_arbitrage_spread", "bess_cycles", "bess_rte",
                         "bess_ancillary_price", "bess_capacity_price"):
         bess = getattr(proj.technical, "bess", None)
@@ -225,7 +373,25 @@ def run_sensitivity(
     proj: Any,
     shock_types: list[str],
     shock_levels: list[float] | None = None,
+    vertical: str | None = None,
+    dc_drivers: Any | None = None,
 ) -> dict[str, Any]:
+    """Run full sensitivity matrix.
+
+    ``vertical`` gates the driver set (Opus NEW-M-1): when provided, every
+    requested shock type must be supported for that vertical or
+    UnsupportedSensitivityDriverError is raised BEFORE any model execution.
+    Existing callers that omit ``vertical`` keep the legacy un-gated
+    behaviour.
+    """
+    if vertical is not None:
+        for shock_type in shock_types:
+            assert_driver_supported(vertical, shock_type)
+            if (
+                shock_type.startswith("dc_")
+                and dc_drivers is None
+            ):
+                raise DCDriverContextRequiredError(shock_type)
     """Run full sensitivity matrix.
 
     Returns:
@@ -243,7 +409,7 @@ def run_sensitivity(
     for stype in shock_types:
         for level in shock_levels:
             try:
-                shocked_proj = _apply_shock(proj, stype, level)
+                shocked_proj = _apply_shock(proj, stype, level, dc_drivers)
                 shocked_kpis = _run_once(shocked_proj)
                 deltas = {
                     k: (shocked_kpis[k] - base_kpis[k])

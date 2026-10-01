@@ -215,7 +215,9 @@ def build_returns_table(result) -> pd.DataFrame:
             return "n/a"
         return f"{val:,.0f} kEUR"
 
-    labels = ["Project IRR", "Equity IRR", "Sponsor IRR", "Project NPV", "Equity NPV"]
+    # H-3 truth: equity_irr is the share-capital-only return; Sponsor IRR
+    # includes shareholder-loan flows.  Labels must not blur them.
+    labels = ["Project IRR", "Equity IRR (share capital only)", "Sponsor IRR", "Project NPV", "Equity NPV"]
     values = [
         _fmt_irr_pct(project_irr),
         _fmt_irr_pct(equity_irr),

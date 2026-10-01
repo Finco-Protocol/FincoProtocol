@@ -5050,7 +5050,8 @@ async def scenario_sensitivity_endpoint(
         _current_project_workspace(user, project_record)
     )
 
-    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or _SENSITIVITY_DEFAULT_SHOCKS
+    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or [
+        s for s in _SENSITIVITY_DEFAULT_SHOCKS if s in SHOCK_REGISTRY]
     shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
     shock_levels = []
     if levels:
@@ -5061,6 +5062,45 @@ async def scenario_sensitivity_endpoint(
                 pass
     if not shock_levels:
         shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+    # Opus NEW-M-1: derive the vertical from CANONICAL project authority
+    # (never a user-supplied string) and fail closed on unsupported drivers.
+    from app.services.sensitivity_service import (
+        resolve_vertical as _resolve_vertical,
+        supported_sensitivity_drivers as _supported_drivers,
+        UnsupportedSensitivityDriverError as _UnsupportedDriver,
+    )
+    _sens_project_type = (project_record.project_type
+                          or _project_identity_from_template_source(project)[1])
+    _sens_vertical = _resolve_vertical(_sens_project_type)
+    _allowed = _supported_drivers(_sens_vertical)
+    _rejected = [s for s in shock_types if s not in _allowed]
+    if _rejected:
+        return JSONResponse({
+            "state": "SENSITIVITY_DRIVER_UNSUPPORTED",
+            "message": (
+                f"Sensitivity driver(s) {_rejected} are not supported for "
+                f"vertical {_sens_vertical!r}."
+            ),
+        }, status_code=422)
+    # Correction C: resolve the ACTUAL canonical DC source-driver context
+    # for this project/scenario (scenario snapshot wins over base draft).
+    _dc_drivers = None
+    if _sens_vertical == "data_center":
+        from app.data_center_authority import drivers_from_snapshot
+        _dc_snap = None
+        if scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
+            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
+            if _sc is not None and _sc.snapshot:
+                _dc_snap = dict(_sc.snapshot)
+        elif workspace_state is not None and workspace_state.draft_snapshot:
+            _dc_snap = dict(workspace_state.draft_snapshot)
+        if _dc_snap is None and workspace_state is None:
+            from app.persistence.workspace_repository import get_workspace_state
+            workspace_state = get_workspace_state(
+                user_id=user.user_id, project_id=project_record.project_id)
+        if _dc_snap is not None:
+            _dc_drivers = drivers_from_snapshot(_dc_snap)
     # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
     from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
     _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
@@ -5074,7 +5114,9 @@ async def scenario_sensitivity_endpoint(
 
     try:
         proj, scenario_name = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = await _run_model_thread(run_sensitivity, proj, shock_types, shock_levels)
+        sens_result = await _run_model_thread(
+            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
+            _dc_drivers)
         tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
     except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
         raise
@@ -5143,7 +5185,8 @@ async def scenario_sensitivity_export_endpoint(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or _SENSITIVITY_DEFAULT_SHOCKS
+    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or [
+        s for s in _SENSITIVITY_DEFAULT_SHOCKS if s in SHOCK_REGISTRY]
     shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
     shock_levels = []
     if levels:
@@ -5154,6 +5197,45 @@ async def scenario_sensitivity_export_endpoint(
                 pass
     if not shock_levels:
         shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+    # Opus NEW-M-1: derive the vertical from CANONICAL project authority
+    # (never a user-supplied string) and fail closed on unsupported drivers.
+    from app.services.sensitivity_service import (
+        resolve_vertical as _resolve_vertical,
+        supported_sensitivity_drivers as _supported_drivers,
+        UnsupportedSensitivityDriverError as _UnsupportedDriver,
+    )
+    _sens_project_type = (project_record.project_type
+                          or _project_identity_from_template_source(project)[1])
+    _sens_vertical = _resolve_vertical(_sens_project_type)
+    _allowed = _supported_drivers(_sens_vertical)
+    _rejected = [s for s in shock_types if s not in _allowed]
+    if _rejected:
+        return JSONResponse({
+            "state": "SENSITIVITY_DRIVER_UNSUPPORTED",
+            "message": (
+                f"Sensitivity driver(s) {_rejected} are not supported for "
+                f"vertical {_sens_vertical!r}."
+            ),
+        }, status_code=422)
+    # Correction C: resolve the ACTUAL canonical DC source-driver context
+    # for this project/scenario (scenario snapshot wins over base draft).
+    _dc_drivers = None
+    if _sens_vertical == "data_center":
+        from app.data_center_authority import drivers_from_snapshot
+        _dc_snap = None
+        if scenario_id:
+            from app.persistence.scenarios_repository import get_scenario
+            _sc = get_scenario(scenario_id=scenario_id, user_id=user.user_id)
+            if _sc is not None and _sc.snapshot:
+                _dc_snap = dict(_sc.snapshot)
+        elif workspace_state is not None and workspace_state.draft_snapshot:
+            _dc_snap = dict(workspace_state.draft_snapshot)
+        if _dc_snap is None and workspace_state is None:
+            from app.persistence.workspace_repository import get_workspace_state
+            workspace_state = get_workspace_state(
+                user_id=user.user_id, project_id=project_record.project_id)
+        if _dc_snap is not None:
+            _dc_drivers = drivers_from_snapshot(_dc_snap)
     # P0-A: bound total model evaluations (shocks x levels + base) before any work is admitted.
     from app.services.sensitivity_execution import sensitivity_grid_size_error as _grid_size_error
     _grid_error = _grid_size_error(len(shock_types) * len(shock_levels) + 1)
@@ -5162,7 +5244,9 @@ async def scenario_sensitivity_export_endpoint(
 
     try:
         proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
-        sens_result = await _run_model_thread(run_sensitivity, proj, shock_types, shock_levels)
+        sens_result = await _run_model_thread(
+            run_sensitivity, proj, shock_types, shock_levels, _sens_vertical,
+            _dc_drivers)
     except _ModelBusy:  # P0-A: BUSY is not a calculation error; the 429 handler answers
         raise
     except Exception as exc:

@@ -217,15 +217,22 @@ def test_p1_master_runtime_statement_pass_is_distinct_from_xlsx_statement_surfac
     assert "P1_3_BALANCE_SHEET_IDENTITY_SOLAR" in p13
     assert "P1_3_CASH_WATERFALL_IDENTITY" in p13
 
-    # Current institutional export does not serialize clean C3 statements.
-    assert "statements = None" in workbook_source
+    # P1 completeness (PR #155): the institutional export now serializes
+    # the clean C3 statements via the verbatim field-mapping adapter --
+    # still no second statement engine, same run identity.
+    assert "serialize_clean_statements" in workbook_source
+    assert "financial_statements_result" in workbook_source
+    assert "statements = None" not in workbook_source
 
     worked = WORKED_SOLAR_DOC.read_text(encoding="utf-8")
     dossier = REVIEW_DOSSIER.read_text(encoding="utf-8")
     for text in (worked, dossier):
         assert "BALANCE_SHEET_RECONCILIATION = PASS" in text
         assert "CASH_RECONCILIATION = PASS" in text
-        assert "XLSX_STATEMENT_TRACE = NOT_AVAILABLE" in text
+        assert "XLSX_STATEMENT_VALUE_TRACE = PASS" in text
+        assert "XLSX_STATEMENT_RUN_BINDING = BY_CONSTRUCTION" in text
+        assert "XLSX_CROSS_RUN_SOURCE_PROVENANCE = NOT_AVAILABLE" in text
+        assert "XLSX_STATEMENT_TRACE = NOT_AVAILABLE" not in text
 
 
 def test_p1_master_docs_cover_required_institutional_topics():
