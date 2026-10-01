@@ -33,6 +33,27 @@ from .onchain import OnchainReadError, read_allowance, read_erc4626, rpc_url_for
 from .registry import RegistryError, load_bundled_registry
 from .schema import SourceReference
 from .underwriting import decompose, run_scenario
+from .access import (
+    YieldAccessDecision,
+    YieldAccessState,
+    YieldResource,
+    denial_payload,
+    resolve_yield_access,
+)
+
+
+async def _enforce_premium(request: Request, resource: YieldResource):
+    """Server-side trust boundary for premium Yield resources.
+
+    Returns a typed denial response when access is not ENTITLED; returns
+    None when entitled.  Direct API invocation cannot bypass this: the
+    decision is made inside the endpoint before any protected payload is
+    built or serialized.
+    """
+    decision: YieldAccessDecision = await resolve_yield_access(request, resource)
+    if decision.entitled:
+        return None
+    return JSONResponse(status_code=403, content=denial_payload(decision))
 
 router = APIRouter(prefix="/yield", tags=["yield-beta"])
 
@@ -188,6 +209,9 @@ async def yield_explore(
 @router.get("/compare", response_class=HTMLResponse)
 async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
     _require()
+    denial = await _enforce_premium(request, YieldResource.ADVANCED_COMPARE)
+    if denial is not None:
+        return denial
     try:
         rows = compare(load_bundled_registry(), uid)
     except (ValueError, RegistryError) as exc:
@@ -234,6 +258,9 @@ async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
 @router.get("/monitor", response_class=HTMLResponse)
 async def yield_monitor(request: Request):
     _require()
+    denial = await _enforce_premium(request, YieldResource.ALERTS)
+    if denial is not None:
+        return denial
     from app.auth import resolve_request_session
     from app.protocol.wallet_auth import get_verified_wallet
 
@@ -307,8 +334,11 @@ async def evidence_json(opportunity_uid: str):
 
 
 @router.get("/{opportunity_uid}/history.json")
-async def history_json(opportunity_uid: str):
+async def history_json(opportunity_uid: str, request: Request):
     _require()
+    denial = await _enforce_premium(request, YieldResource.HISTORY)
+    if denial is not None:
+        return denial
     registry = load_bundled_registry()
     try:
         registry.resolve(opportunity_uid)
@@ -430,6 +460,12 @@ async def detail(request: Request, opportunity_uid: str):
 @router.post("/{opportunity_uid}/plan")
 async def transaction_plan(request: Request, opportunity_uid: str):
     _require()
+    # execution_preflight is a premium + verified-wallet resource.  The
+    # entitlement gate does NOT enable execution (the EXECUTION_DISABLED
+    # contract below still applies afterwards).
+    denial = await _enforce_premium(request, YieldResource.EXECUTION_PREFLIGHT)
+    if denial is not None:
+        return denial
     if not execution_enabled():
         return JSONResponse(
             {
