@@ -252,6 +252,7 @@
       </span>
     </div>
   </div>
+  {% if opex_scenario_error %}<div class="v2-scenario-error" role="alert" data-testid="opex-scenario-error">⚠ Scenario OPEX unavailable — {{ opex_scenario_error }}</div>{% endif %}
   {% set ocl = opex_vm.contingency %}
   {% if ocl and ocl.mode == "percentage" %}
   <div class="v2-contingency-authority" data-testid="opex-contingency-authority"

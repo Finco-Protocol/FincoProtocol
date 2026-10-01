@@ -515,48 +515,10 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
     # must still render — but it MUST NOT silently show Base economics when a
     # scenario is active and resolution fails.  Instead we surface an explicit
     # capex_scenario_error that the template renders as a visible warning.
-    _scenario_overrides_raw = None
-    capex_scenario_error: str = ""
-
-    if ws is not None and getattr(ws, "active_scenario_id", None):
-        _effective_owner = workspace_owner or project_record.project_code
-        _active_scenario_id = ws.active_scenario_id
-        try:
-            from app.persistence.scenarios_repository import get_scenario as _get_sc
-            _sc_rec = _get_sc(scenario_id=_active_scenario_id, user_id=_effective_owner)
-            if _sc_rec is None:
-                capex_scenario_error = (
-                    f"Active scenario could not be found (id={_active_scenario_id!r}). "
-                    "Re-select a scenario to see scenario economics."
-                )
-            elif _sc_rec.archived:
-                capex_scenario_error = (
-                    "Active scenario has been archived. "
-                    "Re-select a scenario to see scenario economics."
-                )
-            elif _sc_rec.project_id != project_record.project_id:
-                import logging as _log
-                _log.getLogger(__name__).warning(
-                    "_build_capex_vm_ctx: scenario project_id mismatch "
-                    "scenario=%s scenario.project_id=%s expected=%s",
-                    _active_scenario_id, _sc_rec.project_id, project_record.project_id,
-                )
-                capex_scenario_error = (
-                    "Active scenario does not belong to this project. "
-                    "Re-select a scenario to see scenario economics."
-                )
-            else:
-                _scenario_overrides_raw = _sc_rec.overrides
-        except Exception:
-            import logging as _log
-            _log.getLogger(__name__).exception(
-                "_build_capex_vm_ctx: scenario repository lookup failed scenario=%s",
-                _active_scenario_id,
-            )
-            capex_scenario_error = (
-                "Scenario data could not be loaded. "
-                "Re-select a scenario or reload the page."
-            )
+    from app.workbook.scenario_authority import resolve_active_scenario_overrides
+    _scenario_overrides_raw, capex_scenario_error = resolve_active_scenario_overrides(
+        project_record, ws, workspace_owner,
+    )
 
     from app.services.capex_sub_lines_integration import SubLineOverrideNonFiniteError
     try:
@@ -652,7 +614,7 @@ def _render_capex_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-def _build_opex_vm_ctx(project_record, pis) -> dict:
+def _build_opex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") -> dict:
     """Build OpexViewModel context for the OPEX sheet.
 
     Delegates B.01–B.13 canonical structure to build_opex_sheet_projection()
@@ -697,8 +659,10 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _get_opex_sub_lines
     opex_sub_lines = _get_opex_sub_lines(project_record.project_id)
     from app.contingency_authority import resolve_pct as _resolve_cont_pct
+    from app.workbook.scenario_authority import resolve_active_scenario_overrides
+    _ox_overrides, _ox_err = resolve_active_scenario_overrides(project_record, ws, workspace_owner)
     _ox_pct, _ox_src = _resolve_cont_pct(
-        getattr(project_record, "replay_metadata", None), None, "opex",
+        getattr(project_record, "replay_metadata", None), _ox_overrides, "opex",
     )
     opex_vm = build_opex_view_model(
         project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines,
@@ -752,6 +716,7 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
         _esc_label = "varies by line — per-line rates are authoritative"
 
     return {
+        "opex_scenario_error": _ox_err,
         "opex_vm": opex_vm,
         "opex_sheet_groups": opex_sheet_groups,
         "opex_escalation_displays": opex_escalation_displays,
@@ -773,7 +738,7 @@ def _render_opex_htmx_sheet(
 ) -> HTMLResponse:
     """Render the OPEX sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx.update(_build_opex_vm_ctx(project_record, pis))
+    ctx.update(_build_opex_vm_ctx(project_record, pis, ws=ws))
     sheet_html = _templates.get_template("partials/sheet_opex.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -1531,7 +1496,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
             "methodology": {"state": _TUP, "rows": [], "page_url": "/model/methodology"},
         }
     context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
-    context.update(_build_opex_vm_ctx(project_record, pis))
+    context.update(_build_opex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     _rr = WorkbookService.get_runtime_result(ws)

@@ -210,6 +210,11 @@ class CompositeWorkbookIdentity:
     opex_rows: tuple[CanonicalOpexRow, ...]
     scenario: CanonicalScenarioState
     composite_hash: str                   # SHA-256 of the full payload
+    # Engine-effective project-level contingency authority ONLY (never the
+    # whole replay_metadata blob): {"capex_pct": float|None, "opex_pct": float|None}.
+    # Contributes to the hash only when at least one value is set, so
+    # workbooks without an authority keep their pre-existing hash.
+    contingency_authority: Optional[Mapping[str, Optional[float]]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +238,7 @@ def _compute_composite_hash(
     capex_rows: Sequence[CanonicalCapexRow],
     opex_rows: Sequence[CanonicalOpexRow],
     scenario: CanonicalScenarioState,
+    contingency_authority: Optional[Mapping[str, Optional[float]]] = None,
 ) -> str:
     """Deterministic SHA-256 over the full composite workbook state.
 
@@ -271,6 +277,14 @@ def _compute_composite_hash(
         ],
         "scenario": scenario.to_payload(),
     }
+    _ca = contingency_authority or {}
+    if any(_ca.get(k) is not None for k in ("capex_pct", "opex_pct")):
+        payload["project_authorities"] = {
+            "contingency": {
+                "capex_pct": _ca.get("capex_pct"),
+                "opex_pct": _ca.get("opex_pct"),
+            }
+        }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -388,6 +402,29 @@ def _canonical_scenario(
 # Public assembly entry points
 # ---------------------------------------------------------------------------
 
+def _normalise_contingency(raw: Any) -> dict:
+    ca = raw or {}
+    return {"capex_pct": ca.get("capex_pct"), "opex_pct": ca.get("opex_pct")}
+
+
+def _contingency_from_replay_json(replay_json: Optional[str]) -> dict:
+    """Engine-effective project contingency authority from a replay blob.
+
+    Fail-closed: a malformed stored value raises WorkbookIdentityError rather
+    than silently becoming "no authority".
+    """
+    import json as _json
+    from app.contingency_authority import read_authority
+    try:
+        meta = _json.loads(replay_json or "{}")
+        return {
+            "capex_pct": read_authority(meta, "capex"),
+            "opex_pct": read_authority(meta, "opex"),
+        }
+    except Exception as exc:
+        raise WorkbookIdentityError(f"Invalid contingency authority: {exc}") from exc
+
+
 def assemble_from_parts(
     scalar_snapshot: Mapping[str, str],
     template_source: str,
@@ -396,6 +433,7 @@ def assemble_from_parts(
     capex_rows: Sequence[CanonicalCapexRow],
     opex_rows: Sequence[CanonicalOpexRow],
     scenario: CanonicalScenarioState,
+    contingency_authority: Optional[Mapping[str, Optional[float]]] = None,
 ) -> CompositeWorkbookIdentity:
     """Build a ``CompositeWorkbookIdentity`` from pre-loaded parts.
 
@@ -409,6 +447,7 @@ def assemble_from_parts(
         capex_rows=capex_rows,
         opex_rows=opex_rows,
         scenario=scenario,
+        contingency_authority=contingency_authority,
     )
     return CompositeWorkbookIdentity(
         workbook_version=workbook_version,
@@ -419,6 +458,7 @@ def assemble_from_parts(
         opex_rows=tuple(sorted(opex_rows)),
         scenario=scenario,
         composite_hash=h,
+        contingency_authority=_normalise_contingency(contingency_authority),
     )
 
 
@@ -512,6 +552,14 @@ def assemble_for_workspace(
         user_id=user_id,
     )
 
+    from app.persistence.db import get_connection
+    _c = get_connection()
+    try:
+        _r = _c.execute(
+            "SELECT replay_metadata_json FROM projects WHERE project_id=?", (project_id,)
+        ).fetchone()
+    finally:
+        _c.close()
     return assemble_from_parts(
         scalar_snapshot=scalar_snapshot,
         template_source=template_source,
@@ -520,6 +568,8 @@ def assemble_for_workspace(
         capex_rows=capex_rows,
         opex_rows=opex_rows,
         scenario=scenario,
+        contingency_authority=_contingency_from_replay_json(
+            _r["replay_metadata_json"] if _r else None),
     )
 
 
@@ -643,6 +693,21 @@ def assemble_transactional(
         overrides=scenario_overrides,
     )
 
+    # --- Project-level contingency authority (inside the same transaction) ---
+    try:
+        cursor.execute(
+            "SELECT replay_metadata_json FROM projects WHERE project_id=?",
+            (project_id,),
+        )
+        _prow = cursor.fetchone()
+    except Exception as exc:
+        raise WorkbookIdentityError(
+            f"Project authority read failed inside transaction for project {project_id!r}: {exc}"
+        ) from exc
+    contingency = _contingency_from_replay_json(
+        _prow["replay_metadata_json"] if _prow else None
+    )
+
     return assemble_from_parts(
         scalar_snapshot=scalar_snapshot,
         template_source=template_source,
@@ -651,4 +716,5 @@ def assemble_transactional(
         capex_rows=capex_rows,
         opex_rows=opex_rows,
         scenario=scenario,
+        contingency_authority=contingency,
     )

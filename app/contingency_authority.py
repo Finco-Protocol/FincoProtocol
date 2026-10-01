@@ -180,14 +180,47 @@ def capex_lineage(
         **common)
 
 
+def _basis_weighted_spending(capex: Any) -> tuple[float, tuple[float, ...]]:
+    """(y0_share, spending_profile) of the eligible basis, amount-weighted.
+
+    Contingency has no timing of its own: it is spent pro rata to the CAPEX it
+    covers.  Only used when the existing contingency item carries no valid
+    spending profile (the zero-amount reference placeholder), because the
+    engine fails closed on a non-zero item whose shares do not sum to 1.
+    """
+    items = [getattr(capex, f) for f in CAPEX_ELIGIBLE_FIELDS]
+    items = [i for i in items if float(i.amount_keur) > 0]
+    total = sum(float(i.amount_keur) for i in items)
+    if total <= 0:
+        return 1.0, ()
+    width = max((len(i.spending_profile) for i in items), default=0)
+    y0 = sum(float(i.amount_keur) * float(i.y0_share) for i in items) / total
+    prof = [
+        sum(
+            float(i.amount_keur) * (float(i.spending_profile[k]) if k < len(i.spending_profile) else 0.0)
+            for i in items
+        ) / total
+        for k in range(width)
+    ]
+    norm = y0 + sum(prof)
+    if norm <= 0:
+        return 1.0, ()
+    return y0 / norm, tuple(p / norm for p in prof)
+
+
 def apply_capex_contingency(capex: Any, pct: Optional[float]) -> Any:
     """Set ``contingencies`` = pct% x eligible basis.  ``None`` = unchanged."""
     if pct is None:
         return capex
     pct = validate_pct(pct)
     amount = pct / 100.0 * capex_basis_keur(capex)
-    item = _dc_replace(capex.contingencies, amount_keur=amount)
-    return _dc_replace(capex, contingencies=item)
+    item = capex.contingencies
+    changes: dict[str, Any] = {"amount_keur": amount}
+    shares = float(item.y0_share) + sum(item.spending_profile)
+    if amount > 0 and abs(shares - 1.0) > 0.001:
+        y0, prof = _basis_weighted_spending(capex)
+        changes.update(y0_share=y0, spending_profile=prof)
+    return _dc_replace(capex, contingencies=_dc_replace(item, **changes))
 
 
 # ---------------------------------------------------------------------- OPEX
