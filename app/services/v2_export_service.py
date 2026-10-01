@@ -206,6 +206,7 @@ def _build_persisted_bundle(
     snapshot_id: str,
     runtime_timestamp: "str | None" = None,
     ws: "Any | None" = None,
+    contingency_authority: "dict | None" = None,
 ) -> Any:  # WorkbookExportBundle
     from app.export.institutional_workbook import WorkbookExportBundle
     from app.export.runtime_summary import build_runtime_summary_rows
@@ -302,6 +303,7 @@ def _build_persisted_bundle(
         runtime_rows=runtime_rows,
         statements=statements_adapter,
         authority_metadata={},
+        contingency_authority=dict(contingency_authority) if contingency_authority else None,
         export_authority=export_authority,
         working_changed_since_run=runtime_rows[0]["working_changed_since_run"],
         run_id=runtime_rows[0]["run_id"],
@@ -420,6 +422,7 @@ def build_canonical_last_run_institutional_workbook_export(
             snapshot_id=rr.snapshot_id,
             runtime_timestamp=getattr(rr, "ran_at", None),  # F08: persisted run time
             ws=ws,  # Correction B: pass workspace for composite hash
+            contingency_authority=authority.contingency_authority,
         )
 
         from app.export.institutional_workbook import export_institutional_workbook_from_bundle

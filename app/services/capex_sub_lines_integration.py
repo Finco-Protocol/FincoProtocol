@@ -456,7 +456,7 @@ def persist_sub_line_form_edits(project_id: str, form: Any) -> None:
     # get_cursor() commits on context-manager exit.
 
 
-def apply_user_sub_lines_replacing_base(
+def _fold_user_sub_lines_replacing_base(
     capex: Any,
     *,
     project_id: str,
@@ -526,3 +526,38 @@ def apply_user_sub_lines_replacing_base(
             )
 
     return folded
+
+
+def _load_contingency_pct(project_id: str, scenario_overrides, kind: str):
+    """Effective (pct, source) for the typed contingency authority."""
+    from app.contingency_authority import resolve_pct
+    from app.persistence.projects_repository import get_project_by_id
+
+    record = get_project_by_id(project_id)
+    replay = getattr(record, "replay_metadata", None) if record else None
+    return resolve_pct(replay, scenario_overrides, kind)
+
+
+def apply_user_sub_lines_replacing_base(
+    capex: Any,
+    *,
+    project_id: str,
+    scenario_overrides: Optional[Mapping[str, Any]] = None,
+) -> Any:
+    """Fold custom sub-lines (REPLACE semantics), then apply C.13 authority.
+
+    The typed contingency percentage (if any) is applied LAST so its basis
+    includes custom rows.  No authority => the C.13 amount is untouched, which
+    keeps protected/reference models numerically identical.
+    """
+    from app.contingency_authority import apply_capex_contingency
+
+    folded = _fold_user_sub_lines_replacing_base(
+        capex, project_id=project_id, scenario_overrides=scenario_overrides,
+    )
+    if not project_id:
+        return folded
+    pct, _source = _load_contingency_pct(project_id, scenario_overrides, "capex")
+    if pct is None:
+        return folded
+    return apply_capex_contingency(folded, pct)

@@ -5,7 +5,7 @@ Scope:
 - Homepage evidence claim is bounded (not blanket "every value")
 - README reflects current vertical and protocol state
 - No standalone Known Limitations catalog
-- Brand bar includes Verified navigation
+- Brand bar does not promote the retired Verified Assets surface
 
 These tests enforce the Opus A1 remediation contract. They do NOT test
 financial engine semantics, which are frozen.
@@ -80,10 +80,18 @@ def test_a1_06_docs_no_p2_in_product_copy():
 
 # ── Brand bar / library shell ───────────────────────────────────────────────
 
-def test_a1_07_brand_bar_includes_verified_link():
-    """Brand bar (workbook shell) must include a link to /verified."""
+def test_a1_07_brand_bar_does_not_promote_verified_assets():
+    """Brand bar must NOT promote the retired public Verified Assets surface.
+
+    Superseded contract (PR #162): until source-proven model-to-market
+    records exist, /verified renders only reference model records
+    (0 VERIFIED), so it is not promoted anywhere.  Direct /verified visits
+    redirect (302) to the canonical FINCO Verify route (/verify); FINCO
+    Verify remains the public trust/verification surface and the Verified
+    Assets authority + JSON contracts stay intact behind the redirect.
+    """
     brand = (REPO / "app/templates/partials/_brand_bar.html").read_text()
-    assert 'href="/verified"' in brand
+    assert 'href="/verified"' not in brand
 
 
 def test_a1_08_brand_bar_still_has_finco_placeholder():

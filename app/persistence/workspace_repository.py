@@ -615,6 +615,30 @@ def v2_atomic_run_commit(
             "scenario_name": identity.scenario.scenario_name,
             "composite_hash": identity.composite_hash,
         }
+        # Typed contingency authority (C.13 / B.13): capture the EFFECTIVE pct
+        # (scenario override beats project value) so canonical export replays the
+        # same economics even if the authority is edited after the run.
+        try:
+            from app.contingency_authority import resolve_pct as _resolve_cont_pct
+            cur.execute(
+                "SELECT replay_metadata_json FROM projects WHERE project_id=?",
+                (project_id,),
+            )
+            _prow = cur.fetchone()
+            _proj_meta = _json.loads((_prow["replay_metadata_json"] if _prow else "{}") or "{}")
+            _cap_pct, _cap_src = _resolve_cont_pct(_proj_meta, identity.scenario.overrides, "capex")
+            _ox_pct, _ox_src = _resolve_cont_pct(_proj_meta, identity.scenario.overrides, "opex")
+            if _cap_pct is not None or _ox_pct is not None:
+                _identity_payload["contingency_authority"] = {
+                    "capex_pct": _cap_pct, "capex_source": _cap_src,
+                    "opex_pct": _ox_pct, "opex_source": _ox_src,
+                }
+        except Exception as _exc:  # fail closed: never silently drop an authority
+            conn.execute("ROLLBACK")
+            raise V2RunCommitConflictError(
+                f"Contingency authority could not be captured for run identity: {_exc}"
+            ) from _exc
+
         # Correction C: persist engine version at run commit time so the XLSX export
         # reads the version that CREATED this run, not the current export-time version.
         try:

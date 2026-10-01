@@ -78,6 +78,8 @@ class WorkbookExportBundle:
     revenue_table: object
     debt_table: object
     authority_metadata: dict = field(default_factory=dict)
+    # Effective typed contingency authority captured with the run (None = reference rule).
+    contingency_authority: dict | None = None
     export_authority: str = "FACTORY_REFERENCE"
     working_changed_since_run: str = "not_applicable"
     run_id: str = "not_applicable"
@@ -370,6 +372,7 @@ def _build_export_bundle(
     working_changed_since_run: bool | None = None,
     run_id: str | None = None,
     run_at: str | None = None,
+    contingency_authority: "dict | None" = None,
 ) -> WorkbookExportBundle:
     project_key = (project or "generic_wind_reference").strip().lower()
     # PR-8 correction pass: the institutional workbook obeys PROJECT-LEVEL
@@ -518,6 +521,7 @@ def _build_export_bundle(
         runtime_rows=runtime_rows,
         statements=statements,
         authority_metadata=dict(authority_metadata or {}),
+        contingency_authority=dict(contingency_authority) if contingency_authority else None,
         export_authority=runtime_rows[0]["export_authority"],
         working_changed_since_run=runtime_rows[0]["working_changed_since_run"],
         run_id=runtime_rows[0]["run_id"],
@@ -712,13 +716,27 @@ def _write_construction_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_key_value_section(sheet, 6, "Construction summary", rows, include_format=True)
 
 
+def _opex_contingency_pct_row(bundle: "WorkbookExportBundle") -> tuple:
+    """B.13 percentage row.  The run-captured authority wins over the template."""
+    ca = bundle.contingency_authority or {}
+    if ca.get("opex_pct") is not None:
+        return (
+            "Contingency percent", float(ca["opex_pct"]) / 100.0,
+            f"run authority ({ca.get('opex_source', 'project')})",
+            "Typed B.13 percentage captured in the run identity; basis SAME_PERIOD_OTHER_OPEX "
+            "(applied each year to that year's B.01-B.12).", RATIO_FORMAT,
+        )
+    return ("Contingency percent", bundle.context.opex_contingency_pct / 100.0,
+            "template assumption", "Read-only project context.", RATIO_FORMAT)
+
+
 def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
     rows = [
         ("Runtime total OPEX", bundle.runtime_result.total_opex_keur, "runtime", "Existing runtime output.", K_EUR_FORMAT),
         ("Template Y1 total OPEX", bundle.context.opex_y1_total_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
         ("Contingency method", bundle.context.opex_contingency_method, "template assumption", "Read-only project context."),
-        ("Contingency percent", bundle.context.opex_contingency_pct / 100.0, "template assumption", "Read-only project context.", RATIO_FORMAT),
+        _opex_contingency_pct_row(bundle),
         ("Runtime/evidence boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
@@ -750,6 +768,9 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     )
 
 
+from app.contingency_authority import CAPEX_BASIS_OTHER_ELIGIBLE, CAPEX_ELIGIBLE_FIELDS
+
+
 def _write_capex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "template + runtime")
     financing = bundle.project_inputs.financing
@@ -767,6 +788,23 @@ def _write_capex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Share premium", share_premium, "template assumption", "Existing financing input.", K_EUR_FORMAT),
         ("Implied funding remainder", implied_gap, "review", "Residual shown for workbook transparency only.", K_EUR_FORMAT),
     ]
+    _ca = bundle.contingency_authority or {}
+    if _ca.get("capex_pct") is not None:
+        _basis = sum(
+            float(getattr(bundle.project_inputs.capex, f).amount_keur)
+            for f in CAPEX_ELIGIBLE_FIELDS
+        )
+        rows += [
+            ("C.13 contingency percent", float(_ca["capex_pct"]) / 100.0,
+             f"run authority ({_ca.get('capex_source', 'project')})",
+             "Typed C.13 percentage captured in the run identity.", RATIO_FORMAT),
+            ("C.13 basis mode", CAPEX_BASIS_OTHER_ELIGIBLE, "run authority",
+             "Excludes C.13 (self), C.17 financing and C.18 reserves."),
+            ("C.13 calculated basis amount", _basis, "derived", "Sum of eligible CAPEX categories.", K_EUR_FORMAT),
+            ("C.13 calculated contingency amount",
+             bundle.project_inputs.capex.contingencies.amount_keur, "derived",
+             "pct x basis; equals the CAPEX contingency used by the run.", K_EUR_FORMAT),
+        ]
     next_row = _write_key_value_section(sheet, 6, "CAPEX and funding summary", rows, include_format=True)
 
     capex_rows = [

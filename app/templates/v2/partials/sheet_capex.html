@@ -67,7 +67,7 @@
 {# Macro: sub-line detail row #}
 {% macro subline_row(line) %}
 <div class="v2-capex-subline{% if not line.is_active %} v2-capex-inactive{% endif %}">
-  <span class="v2-capex-subline-code">{{ line.code }}</span>
+  <span class="v2-capex-subline-code">{{ line.display_code or line.code }}</span>
   <span class="v2-capex-subline-name">{{ line.name }}</span>
   <span class="v2-capex-subline-amount">{{ grouped_keur(line.amount_keur) }}</span>
   <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
@@ -81,7 +81,7 @@
      data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
      data-fc-row>
   <summary class="v2-capex-compact-edit-row">
-    <span class="v2-capex-custom-code">{{ line.code }}</span>
+    <span class="v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ line.display_code or line.code }}</span>
     <span class="v2-capex-custom-label-ro">{{ line.name }}</span>
     <span class="v2-capex-custom-amount-ro v2-capex-amount-cell">{{ grouped_keur(line.amount_keur) }}</span>
     <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
@@ -97,7 +97,7 @@
     <input type="hidden" name="row_version" value="{{ line.row_version }}">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
     <input type="hidden" name="content_hash" value="{{ content_hash }}">
-    <span class="v2-capex-custom-code">{{ line.code }}</span>
+    <span class="v2-capex-custom-code" data-canonical-code="{{ line.code }}">{{ line.display_code or line.code }}</span>
     <span class="v2-fc-cell-wrap"
           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
           data-fc-editable="true" data-fc-kind="text">
@@ -120,7 +120,7 @@
              type="text" name="notes" value="{{ line.notes }}"
              placeholder="Notes" aria-label="Notes">
     </span>
-    <button type="submit" class="v2-field-save" aria-label="Save {{ line.code }}">Save</button>
+    <button type="submit" class="v2-field-save" aria-label="Save {{ line.display_code or line.code }}">Save</button>
   </form>
   <form class="v2-capex-deactivate-form"
         hx-post="/v2/capex/line/deactivate"
@@ -131,7 +131,7 @@
     <input type="hidden" name="row_version" value="{{ line.row_version }}">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
     <button type="submit" class="v2-capex-deactivate-btn"
-            aria-label="Deactivate {{ line.code }}"
+            aria-label="Deactivate {{ line.display_code or line.code }}"
             data-testid="deactivate-{{ line.code }}">×</button>
   </form>
   {% endif %}
@@ -222,7 +222,7 @@
     <div class="v2-parent-summary-scroll"><table class="v2-parent-summary-table">
       <thead><tr><th>Code</th><th>Parent category</th><th class="v2-num">kEUR</th><th class="v2-num">kEUR/MW</th></tr></thead>
       <tbody>{% for group in capex_vm.groups %}<tr data-testid="capex-parent-summary-{{ group.code }}">
-        <td>{{ group.code }}</td><td>{{ group.name }}{% if group.is_alias %} <span class="v2-binding-badge v2-capex-badge-shared">Shared / non-owning</span>{% endif %}</td>
+        <td>{{ group.code }}</td><td>{{ group.name }}{% if group.is_alias %} <span class="v2-binding-badge v2-capex-badge-shared" title="Linked to Audit &amp; Legal; this reference amount is not counted twice.">Linked</span>{% endif %}</td>
         <td class="v2-num">{{ grouped_keur(group.subtotal_keur) }}</td><td class="v2-num">{{ "%.1f"|format(group.subtotal_per_mw) }}</td>
       </tr>{% endfor %}</tbody>
     </table></div>
@@ -262,7 +262,7 @@
           {%- elif group.is_contingency -%}
             <span class="v2-binding-badge v2-capex-badge-calc v2-binding-display-only" data-binding="derived">Calculated</span>
           {%- elif alias -%}
-            <span class="v2-binding-badge v2-capex-badge-shared" data-binding="shared">Shared</span>
+            <span class="v2-binding-badge v2-capex-badge-shared" data-binding="linked" data-testid="capex-linked-badge" title="Linked to Audit &amp; Legal; this reference amount is not counted twice.">Linked</span>
           {%- elif gf and gf.binding_label == "bound" -%}
             <span class="v2-binding-badge v2-capex-badge-edit" data-binding="bound">Editable</span>
           {%- endif -%}
@@ -274,6 +274,7 @@
         {# Alias group (e.g. C.11 shares capex.D.audit_legal with C.08):
            render a read-only SHARED FIELD row; the editable form lives in the owner group. #}
         {% if alias %}
+          <p class="v2-capex-linked-note" data-testid="capex-linked-note">Linked to Audit &amp; Legal; this reference amount is not counted twice.</p>
           {{ shared_field_row(alias.field.label if alias.field else group.name,
                               alias.field.value if alias.field else none,
                               alias.owner) }}
@@ -292,8 +293,33 @@
 
         {# C.13 — Contingencies: derived, read-only #}
         {% elif group.is_contingency %}
-          {% if gf %}
+          {% set cl = group.contingency %}
+          {% if cl and cl.mode == "percentage" %}
+            <div class="v2-contingency-authority" data-testid="capex-contingency-authority"
+                 data-basis-mode="{{ cl.basis_mode }}" data-status="{{ cl.status }}" data-source="{{ cl.source }}">
+              <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Contingency %</span><span class="v2-field-value">{{ "%g"|format(cl.pct) }}%</span></div>
+              <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Basis</span><span class="v2-field-value">{{ cl.basis_mode }}</span></div>
+              <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Calculated basis amount</span><span class="v2-field-value">{% if cl.basis_amount_keur is none %}—{% else %}{{ grouped_keur(cl.basis_amount_keur) }}{% endif %} <small>kEUR</small></span></div>
+              <div class="v2-field-row v2-field-readonly"><span class="v2-field-label">Calculated contingency amount</span><span class="v2-field-value">{% if cl.amount_keur is none %}—{% else %}{{ grouped_keur(cl.amount_keur) }}{% endif %} <small>kEUR</small></span></div>
+              <details class="v2-contingency-lineage"><summary>Lineage</summary>
+                <p data-testid="capex-contingency-formula">{{ cl.formula }}</p>
+                <p>Included: {{ cl.included_categories | join(", ") }}</p>
+                <p>Excluded: {% for c, why in cl.excluded_categories %}{{ c }} ({{ why }}){% if not loop.last %}; {% endif %}{% endfor %}</p>
+              </details>
+            </div>
+          {% elif gf %}
             {{ engine_row(gf.label, gf.value, badge="DERIVED") }}
+          {% endif %}
+          {% if project_editable and cl %}
+            <form class="v2-field-form v2-contingency-form" method="post" action="/v2/capex/contingency" data-testid="capex-contingency-form">
+              <input type="hidden" name="project" value="{{ project_code }}">
+              <input type="hidden" name="kind" value="capex">
+              <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+              <input type="hidden" name="content_hash" value="{{ content_hash }}">
+              <label>Contingency % <input class="v2-field-input" type="number" name="contingency_pct" min="0" max="100" step="0.1" value="{% if cl.pct is not none %}{{ '%g'|format(cl.pct) }}{% endif %}" placeholder="reference amount"></label>
+              <span class="v2-field-hint">Basis: OTHER_ELIGIBLE_CAPEX (excludes C.13, C.17, C.18). Leave empty to keep the reference amount.</span>
+              <button type="submit" class="v2-field-save">Save</button>
+            </form>
           {% endif %}
 
         {# Standard groups: single registry field (BOUND or DISPLAY_ONLY) #}

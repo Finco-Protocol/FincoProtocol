@@ -147,9 +147,14 @@ class TestHomepagePostP5:
     """PUBLIC_HOMEPAGE_POST_P5_ALIGNED — homepage reflects P3+P4+P5 capabilities."""
 
     def test_homepage_mentions_verified_assets(self):
-        """Homepage must reference Verified Assets (P5 surface). PUBLIC_HOMEPAGE_POST_P5_ALIGNED"""
+        """Homepage still truthfully references Verified Assets in trust
+        context, but must NOT present it as a currently usable public
+        product (no product card, no View Verified Assets CTA). Superseded
+        promotion contract (PR #162)."""
         text = _home_template_text()
         assert "Verified" in text, "Homepage must mention Verified Assets"
+        assert "View Verified Assets" not in text
+        assert 'href="/verified"' not in text
 
     def test_homepage_trust_chain_present(self):
         """Homepage must include the NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION chain."""
@@ -247,10 +252,17 @@ class TestVerifiedAssetsAligned:
             "Verified Assets must appear in the Roadmap Shipped section"
         )
 
-    def test_verified_nav_link_in_protocol_nav(self):
-        """Protocol nav must include a Verified link. PUBLIC_NAV_NO_STALE_PLACEHOLDERS"""
+    def test_verified_nav_not_promoted_in_protocol_nav(self):
+        """Superseded (PR #162): the protocol nav must NOT promote /verified.
+
+        The Verified Assets collection is retired from public promotion —
+        it contains only reference model records (0 VERIFIED) until
+        source-proven model-to-market records exist.  Backward compatibility
+        is kept as a redirect on the public protocol_ui router (see
+        test_verified_redirect_backward_compatible)."""
         text = (REPO / "app/templates/partials/_protocol_nav.html").read_text()
-        assert '/verified' in text, "Protocol nav must include /verified link"
+        assert 'href="/verified"' not in text, (
+            "Protocol nav must not promote /verified")
 
     def test_verified_route_returns_200_for_authenticated_user(self):
         """GET /verified must be reachable by authenticated users."""
@@ -424,12 +436,11 @@ class TestNavNoStalePlaceholders:
                 f"Nav link {href!r} returned 404"
             )
 
-    def test_nav_verified_link_absent_and_verify_present(self):
-        """Manual-QA product-truth correction: the Verified Assets screen is
-        removed from primary public navigation; FINCO Verify stays."""
+    def test_nav_verified_link_absent(self):
+        """Superseded (PR #162): the P5-era /verified nav link is retired —
+        the nav must NOT promote the reference-records-only surface."""
         text = (REPO / "app/templates/partials/_protocol_nav.html").read_text()
         assert 'href="/verified"' not in text
-        assert 'href="/crypto"' in text
 
 
 # ---------------------------------------------------------------------------
@@ -595,9 +606,17 @@ def test_finco_public_product_truth_sync_complete():
     # At least 4 live production verticals
     assert len(LIVE_CAPABILITIES) >= 4
 
-    # Protocol nav has Verified link
+    # Superseded (PR #162): nav must NOT promote /verified; FINCO Verify
+    # stays the public trust surface and the redirect keeps /verified alive.
     nav_text = (REPO / "app/templates/partials/_protocol_nav.html").read_text()
-    assert '/verified' in nav_text
+    assert 'href="/verified"' not in nav_text
+    # FINCO Verify stays the public trust surface: homepage promotes it on
+    # the canonical route and the /verified redirect targets it
+    home_text = (REPO / "app/templates/protocol_home.html").read_text()
+    assert 'href="/verify"' in home_text
+    protocol_ui_text = (
+        REPO / "app/protocol_ui/router.py").read_text()
+    assert "/verified" in protocol_ui_text and "/verify" in protocol_ui_text
 
     # Trust chain is in docs
     docs_text = (REPO / "app/templates/protocol_docs.html").read_text()

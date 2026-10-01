@@ -1,9 +1,9 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across FINCO Protocol surfaces:
-   Home · Model · Radar · Yield · Crypto · Verified · API · Docs · Roadmap · $FINCO
+   Home · Model · Radar · Yield · Crypto · API · Docs · Roadmap · $FINCO
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "yield" | "crypto" | "verified" | "api" | "docs" | "roadmap" | "finco"
+     proto_active_page : str  — "home" | "model" | "radar" | "yield" | "crypto" | "api" | "docs" | "roadmap" | "finco"
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -44,11 +44,9 @@
          {% if proto_active_page == 'crypto' %}aria-current="page"{% endif %}>
         Crypto
       </a>
-      {# Manual-QA product-truth correction: the Verified Assets surface (0
-         verified production assets, no user workflow) is removed from the
-         primary public navigation. FINCO Verify (/verify) remains the
-         user-facing verification/trust surface; the internal /verified
-         route redirects there. #}
+      {# Verified Assets is retired from the public surface (PR #162):
+         no primary-nav promotion; /verified redirects to canonical
+         FINCO Verify (/verify). #}
       <a href="/api"
          class="proto-nav__link{% if proto_active_page == 'api' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'api' %}aria-current="page"{% endif %}>
