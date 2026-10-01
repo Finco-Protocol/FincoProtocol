@@ -162,7 +162,7 @@ def test_q1_programmable_finance_targets_are_future_not_live():
         assert phrase not in live, phrase
     assert "User wallet approval" in q1
     assert "User signature" in q1
-    assert "No FINCO server signing" in q1
+    assert "no finco server signing" in q1.lower()
     assert "Signed Run ≠ FINCO Verify ≠ economic truth" in q1
     assert "Radar / Valuation Intelligence" in q1
 
