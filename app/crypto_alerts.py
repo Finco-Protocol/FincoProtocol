@@ -1,16 +1,8 @@
-"""FINCO crypto alerts consumption boundary (utility UX V1, Agent C).
+"""FINCO Crypto alerts consumption boundary.
 
-UI/API consumption contract for the future in-app alert engine
-(unread count / alert list / mark read / mark all read).  This module is
-the BOUNDARY ONLY — it is NOT an alert scheduler, delivery platform, or
-notification service.  The real alerts backend is built separately; Agent
-D connects it here via :func:`set_alerts_gateway`.
-
-Until a real gateway is installed the default gateway is an honest typed
-placeholder: ``available=False``, reason ``ALERTS_INTEGRATION_PENDING``.
-Nothing fabricates alerts, unread counts, or delivery claims — and
-``/yield/monitor`` remains the Wallet Monitor, never a relabelled alerts
-surface.
+The presentation contract remains deliberately smaller than the Yield Alerts
+domain. Production resolves the concrete Yield gateway lazily; tests and
+other bounded consumers may still inject a gateway explicitly.
 """
 from __future__ import annotations
 
@@ -18,27 +10,12 @@ from dataclasses import dataclass
 from typing import Optional, Protocol
 
 ALERTS_SCHEMA_VERSION = "finco-crypto-alerts-boundary-v0"
-
 ALERTS_INTEGRATION_PENDING = "ALERTS_INTEGRATION_PENDING"
 
 
 @dataclass(frozen=True)
 class AlertsSnapshot:
-    """Typed alerts state for presentation. ``available`` is False until a
-    real gateway is connected; ``unread_count`` is None when unknown.
-
-    Normalized public item contract (what the Crypto page renders — all
-    fields optional except ``alert_id``; the gateway owns the real shape):
-
-        alert_id            stable alert identifier (required)
-        alert_type          typed alert kind, e.g. YIELD_RATE_CHANGE
-        opportunity_uid     canonical yld_* opportunity identity, if applicable
-        opportunity_display display name for that opportunity, if provided
-        summary             descriptive change summary text
-        value               presentation value string, if provided
-        created_at / observed_at  timestamps, if provided
-        read                True when already read
-    """
+    """Typed alerts state for presentation."""
 
     available: bool
     reason: str | None
@@ -56,14 +33,17 @@ class AlertsSnapshot:
 
 
 def auth_required_snapshot() -> AlertsSnapshot:
-    """Typed state for anonymous users: the gateway is NEVER called with an
-    empty/anonymous identity, and unknown unread is never rendered as zero."""
-    return AlertsSnapshot(available=False, reason="ALERTS_AUTH_REQUIRED",
-                          unread_count=None, items=())
+    """Anonymous identity never reaches the user-scoped alert backend."""
+    return AlertsSnapshot(
+        available=False,
+        reason="ALERTS_AUTH_REQUIRED",
+        unread_count=None,
+        items=(),
+    )
 
 
 class AlertsGateway(Protocol):
-    """Interface the real alerts backend implements (Agent A / Agent D)."""
+    """Presentation interface implemented by the Yield Alerts adapter."""
 
     def snapshot(self, user_id: str) -> AlertsSnapshot: ...
 
@@ -73,11 +53,15 @@ class AlertsGateway(Protocol):
 
 
 class IntegrationPendingGateway:
-    """Honest placeholder: no alert engine is shipped yet."""
+    """Explicit placeholder retained for bounded tests/fallbacks."""
 
     def snapshot(self, user_id: str) -> AlertsSnapshot:
-        return AlertsSnapshot(available=False, reason=ALERTS_INTEGRATION_PENDING,
-                              unread_count=None, items=())
+        return AlertsSnapshot(
+            available=False,
+            reason=ALERTS_INTEGRATION_PENDING,
+            unread_count=None,
+            items=(),
+        )
 
     def mark_read(self, user_id: str, alert_id: str) -> bool:
         return False
@@ -86,21 +70,33 @@ class IntegrationPendingGateway:
         return 0
 
 
-_GATEWAY: AlertsGateway = IntegrationPendingGateway()
+# None means production has not resolved the concrete adapter yet. Resolution
+# is lazy to avoid import cycles: YieldAlertsGateway imports AlertsSnapshot.
+_GATEWAY: AlertsGateway | None = None
 
 
 def get_alerts_gateway() -> AlertsGateway:
-    """The installed alerts gateway (integration-pending placeholder by default)."""
+    global _GATEWAY
+    if _GATEWAY is None:
+        from app.yield_alerts_gateway import YieldAlertsGateway
+        _GATEWAY = YieldAlertsGateway()
     return _GATEWAY
 
 
 def set_alerts_gateway(gateway: AlertsGateway) -> None:
-    """Install a real alerts gateway (integration point — not used in prod yet)."""
+    """Install an explicit gateway (primarily an integration/test seam)."""
     global _GATEWAY
     _GATEWAY = gateway
 
 
-def reset_alerts_gateway() -> None:
-    """Restore the integration-pending placeholder (test housekeeping)."""
+def reset_alerts_gateway(*, pending: bool = True) -> None:
+    """Reset the seam for tests or bounded integration checks.
+
+    The historical C-suite contract expects a reset to restore its explicit
+    pending placeholder. Production never needs this helper: module startup
+    begins with ``_GATEWAY = None`` and lazily resolves the real Yield gateway.
+    Pass ``pending=False`` when a test intentionally wants production-style
+    lazy resolution.
+    """
     global _GATEWAY
-    _GATEWAY = IntegrationPendingGateway()
+    _GATEWAY = IntegrationPendingGateway() if pending else None

@@ -7,7 +7,7 @@ The public product architecture is intentionally simple:
 - **MODEL** — deterministic asset and project-finance economics;
 - **RADAR** — source-aware market, company, macro and tokenized-asset intelligence;
 - **YIELD** — read-only yield discovery, underwriting, evidence, history and monitoring;
-- **CRYPTO** — verified-wallet identity, entitlement and protocol-access foundations.
+- **CRYPTO** — verified-wallet/access presentation, canonical Yield Watchlist and in-app Yield Alerts.
 
 The protocol layer is **VERIFY · API · $FINCO**. These layers expose evidence, machine access and optional service-entitlement infrastructure; they do not replace the financial, market or identity authorities underneath them.
 
@@ -55,23 +55,34 @@ Implemented scope:
 - Explore / Detail / Compare / Evidence / immutable History;
 - read-only Wallet Monitor reusing the existing verified FINCO wallet identity;
 - canonical unsigned transaction-plan construction and provider-normalization boundaries;
-- Yield watchlist foundation with per-user canonical opportunity identity.
+- canonical per-user Yield Watchlist;
+- deterministic in-app Yield Alerts using canonical Watchlist, History, freshness and support-state authority;
+- deterministic alert IDs, atomic alert/checkpoint persistence and persisted read state;
+- explicit authenticated manual alert Refresh; first evaluation establishes a baseline and does not replay historical changes.
 
 Operational boundaries:
 
 - `FINCO_YIELD_ENABLED=0` by default;
 - `FINCO_YIELD_EXECUTION_ENABLED=0` by default;
 - no private-key access;
-- no server-side signing;
+- no server signing;
 - no automatic broadcast;
 - no custody;
 - no FINCO-owned vault, allocator or pooled-funds product;
 - no production mainnet money movement in the current workflow;
-- external alert delivery is **NOT SHIPPED**.
+- external alert delivery is **NOT SHIPPED**;
+- background alert scheduling is **NOT SHIPPED**;
+- Email, Telegram, Discord and Push alert delivery are **NOT SHIPPED**.
 
-### FINCO Crypto / Wallet & Entitlement Foundation
+Explore → Underwrite → Evidence → Monitor → Act remains the product direction, but “Act” is not a claim that Yield execution is live.
 
-Crypto Utility V0 is merged and implements the authority chain from authenticated session → verified wallet → approved deployment resolution → read-only balance evidence → token entitlement → resource policy → typed `ResourceAccessDecision` → server enforcement/presentation.
+### FINCO Crypto / Wallet, Entitlement & Alerts
+
+The integrated `/crypto` surface provides verified-wallet/access presentation, the canonical Yield Watchlist and the in-app Yield Alerts read model with manual Refresh, mark-read and mark-all-read behavior.
+
+The entitlement runtime remains the canonical authority chain from authenticated session → verified wallet → approved deployment resolution → read-only balance evidence → token entitlement → resource policy → typed `ResourceAccessDecision` → server enforcement/presentation. Alerts do not implement a second token evaluator.
+
+Production activation-readiness infrastructure is implemented as an operator/readiness validation layer around that runtime. It does not activate a token and does not select token economics.
 
 Current production truth:
 
@@ -83,7 +94,7 @@ Current production truth:
 - wallet ownership ≠ balance ≠ entitlement ≠ execution/metering;
 - missing/unavailable/stale balance evidence ≠ zero;
 - `INACTIVE` preserves existing ungated behaviour and is not entitlement;
-- active-gate `DENY` fails closed;
+- active-gate `DENY` fails closed before protected Alerts/evaluator/store access;
 - Yield execution remains independently OFF even if entitlement preflight succeeds;
 - no tokenomics, staking, burn, token spending, custody, server signing or automatic broadcast is activated.
 
@@ -101,7 +112,7 @@ Production VERIFIED assets remain **0**. `MODEL_ONLY` never means VERIFIED.
 
 **API** provides read-only public Model/Radar access and R-LIVE routes. API availability does not imply execution authority.
 
-**$FINCO** is the service-entitlement/access layer. Its infrastructure is implemented, but no production deployment, chain, contract, threshold or final token economics is claimed.
+**$FINCO** is the service-entitlement/access layer. Entitlement and activation-readiness infrastructure are implemented, but no production deployment, chain, contract, threshold or final token economics is claimed.
 
 ### Experimental but merged
 
@@ -131,17 +142,26 @@ Infrastructure vertical expansion remains under the **Model / future asset cover
 - FINCO Signals with evidence-backed persistence/history and explicit trigger context;
 - continue R-LIVE operational hardening without changing canonical identity authority.
 
-### Yield
+### Yield — Alert Automation & External Delivery
 
-- harden the read-only evidence and monitoring workflow;
-- build from the shipped watchlist foundation toward typed external alert delivery;
-- external alert delivery remains NOT SHIPPED until a separate implementation proves it;
-- keep execution independently gated and OFF unless a later reviewed activation changes that contract.
+The in-app Alerts engine, canonical Watchlist, persistence/read state and manual Refresh are already implemented. Future work moves to automation and delivery rather than rebuilding the Alerts economic/domain authority:
+
+- scheduled monitoring/background evaluation;
+- Telegram delivery;
+- Discord delivery;
+- browser/mobile Push;
+- Email and other external delivery paths.
+
+All external delivery remains **NOT SHIPPED** until a separate implementation proves it. Yield execution remains independently gated and OFF unless a later reviewed activation changes that contract.
 
 ### Crypto / $FINCO activation readiness
 
-- production deployment-provenance and explicit configuration path;
-- entitlement observability and fail-closed activation controls;
+Activation-readiness infrastructure is implemented. Q4 may harden operator workflow and observability while preserving these boundaries:
+
+- canonical deployment provenance and explicit configuration;
+- resource-specific policy/chain resolution;
+- RPC chain/decimals checks and exact threshold precision validation;
+- fail-closed activation controls;
 - no roadmap step itself chooses a chain, contract or threshold;
 - no final tokenomics are defined by this roadmap;
 - no staking, burn or token spending is introduced by this phase.

@@ -11,14 +11,13 @@
 {% with proto_active_page="crypto" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 
 <main class="radar-main" style="padding:24px;max-width:960px;margin:0 auto">
-
   <header style="margin-bottom:20px">
     <p class="muted small" style="margin:0">FINCO PROTOCOL / CRYPTO</p>
     <h1 style="font-size:20px;font-weight:700;margin:4px 0 6px">FINCO Crypto</h1>
     <p class="muted small" style="margin:0;max-width:680px">
-      Wallet state, $FINCO access state, and saved Yield opportunities in one place.
-      States come from FINCO's authoritative backend decisions — this page never
-      derives access from a frontend balance, and missing evidence is never shown as zero.
+      Wallet state, $FINCO access state, saved Yield opportunities and in-app Yield Alerts in one place.
+      States come from FINCO's authoritative backend decisions — this page never derives access from a
+      frontend balance, and missing evidence is never shown as zero.
     </p>
   </header>
 
@@ -57,11 +56,9 @@
     <p class="muted small" style="margin:10px 0 0">
       Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating
       is not active by default, so gated capabilities are not enforced today. States stay distinct:
-      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means
-      the token gate is not active for that capability — it does not mean the Alerts
-      service is unavailable (service availability is shown in the Alerts panel).
-      Ownership ≠ entitlement; entitlement ≠
-      execution, metering, staking, or burns. Execution Preflight shows entitlement status only.
+      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means the token gate is
+      not active for that capability — it does not mean the Alerts backend is unavailable.
+      Ownership ≠ entitlement; entitlement ≠ execution, metering, staking, or burns.
     </p>
   </section>
 
@@ -88,38 +85,48 @@
     {% else %}
     <p class="muted small" data-testid="watchlist-empty" style="margin:0">
       Nothing saved yet. Save opportunities by their canonical identity from the
-      <a href="/yield">Yield table</a>. Watchlist feeds future alerts.
+      <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.
     </p>
     {% endif %}
     <p class="muted small" style="margin:10px 0 0">Manage saved items on the <a href="/yield/monitor">Wallet Monitor</a>.</p>
   </section>
 
   <section class="panel" data-testid="crypto-alerts" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Alerts</h2>
+    <h2 style="font-size:14px;margin:0 0 8px">Yield Alerts</h2>
     <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts.state }}</span>
        <span class="badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
     {% if alerts.reason %}<p class="mono small" style="margin:6px 0 0">{{ alerts.reason }}</p>{% endif %}
 
     {% if alerts.available %}
-    <p class="small" style="margin:8px 0 0">In-app alerts: available</p>
+    <p class="small" style="margin:8px 0 0">In-app alerts engine: available</p>
+    {% if alerts.can_refresh %}
+    <form method="post" action="/crypto/alerts/refresh" style="margin-top:8px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" data-testid="alerts-refresh">Refresh alerts</button>
+    </form>
+    <p class="muted small" style="margin:5px 0 0">First refresh establishes a baseline and does not replay historical changes.</p>
+    {% endif %}
+
     {% if alerts['items'] %}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
       <thead><tr>
         <th style="text-align:left;padding:6px 8px">Alert</th>
         <th style="text-align:left;padding:6px 8px">Opportunity</th>
-        <th style="text-align:left;padding:6px 8px">Summary</th>
-        <th style="text-align:left;padding:6px 8px">Time</th>
+        <th style="text-align:left;padding:6px 8px">Observed change</th>
+        <th style="text-align:left;padding:6px 8px">Detected</th>
         <th style="text-align:left;padding:6px 8px">State</th>
       </tr></thead>
       <tbody>
       {% for alert in alerts['items'] %}
         <tr data-testid="alerts-item" style="border-top:1px solid rgba(255,255,255,.08)">
-          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span></td>
+          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span><br><span class="small">{{ alert.label or '—' }}</span></td>
           <td style="padding:8px">{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}
               {% if alert.opportunity_display %}<br><span class="small">{{ alert.opportunity_display }}</span>{% endif %}</td>
-          <td style="padding:8px">{{ alert.summary or '—' }}
-              {% if alert.value %}<br><span class="mono small">{{ alert.value }}</span>{% endif %}</td>
-          <td style="padding:8px"><span class="mono small">{{ alert.created_at or alert.observed_at or '—' }}</span></td>
+          <td style="padding:8px">
+            {% if alert.field %}<span class="mono small">{{ alert.field }}</span><br>{% endif %}
+            <span class="small">{{ alert.previous if alert.previous is not none else 'missing' }} → {{ alert.current if alert.current is not none else 'missing' }}</span>
+          </td>
+          <td style="padding:8px"><span class="mono small">{{ alert.detected_at or '—' }}</span></td>
           <td style="padding:8px">
             <span class="badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
             {% if not alert.read %}
@@ -144,17 +151,15 @@
     {% endif %}
     {% else %}
     <p class="small" style="margin:8px 0 0">
-      {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}
-      Sign in to view your alerts.
-      {% else %}
-      In-app alerts: integration pending / unavailable.
-      {% endif %}
+      {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}Sign in to view your alerts.
+      {% else %}In-app alerts backend is currently unavailable.{% endif %}
     </p>
     {% endif %}
 
     <p class="muted small" style="margin:10px 0 0">
-      In-app alerts: {{ 'available' if alerts.available else 'integration pending / unavailable' }}.
-      External delivery: Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.
+      In-app Watchlist, alert persistence/read state and manual Refresh are implemented.
+      The former integration pending placeholder is retired; this surface now uses the real Yield Alerts backend.
+      Background scheduler = NOT SHIPPED · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.
     </p>
   </section>
 
