@@ -38,6 +38,9 @@ def _decision(decision="DENY", reason="BALANCE_BELOW_THRESHOLD", *,
 @pytest.fixture(autouse=True)
 def _isolated_db(tmp_path, monkeypatch):
     monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "test.db"))
+    # get_connection reads the frozen module constant — patch both
+    import app.persistence.db as _db
+    monkeypatch.setattr(_db, "DB_PATH", str(tmp_path / "test.db"))
 
 
 @pytest.fixture()

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Crypto</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="protocol">
+{% with proto_active_page="crypto" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+
+<main class="radar-main" style="padding:24px;max-width:960px;margin:0 auto">
+
+  <header style="margin-bottom:20px">
+    <p class="muted small" style="margin:0">FINCO PROTOCOL / CRYPTO</p>
+    <h1 style="font-size:20px;font-weight:700;margin:4px 0 6px">FINCO Crypto</h1>
+    <p class="muted small" style="margin:0;max-width:680px">
+      Wallet state, $FINCO access state, and saved Yield opportunities in one place.
+      States come from FINCO's authoritative backend decisions — this page never
+      derives access from a frontend balance, and missing evidence is never shown as zero.
+    </p>
+  </header>
+
+  <section class="panel" data-testid="crypto-wallet" style="padding:14px;margin-bottom:14px">
+    <h2 style="font-size:14px;margin:0 0 8px">Wallet</h2>
+    <p style="margin:0">State: <span class="badge">{{ wallet_state }}</span></p>
+    <p class="muted small" style="margin:6px 0 0">
+      {% if wallet_state == "VERIFIED" %}Wallet ownership verified via the existing signed-challenge flow.
+      {% elif wallet_state == "UNVERIFIED" %}Signed in, but no verified wallet is linked yet. Verify ownership on the
+        <a href="/protocol/finco">$FINCO page</a>. Ownership ≠ entitlement.
+      {% else %}No wallet session. Connect and verify a wallet on the
+        <a href="/protocol/finco">$FINCO page</a>.{% endif %}
+    </p>
+  </section>
+
+  <section class="panel" data-testid="crypto-access" style="padding:14px;margin-bottom:14px">
+    <h2 style="font-size:14px;margin:0 0 8px">$FINCO access state</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px">Capability</th>
+        <th style="text-align:left;padding:6px 8px">State</th>
+        <th style="text-align:left;padding:6px 8px">Why</th>
+      </tr></thead>
+      <tbody>
+      {% for key, resource in access.resources.items() %}
+        <tr data-testid="crypto-access-row-{{ key }}" style="border-top:1px solid rgba(255,255,255,.08)">
+          <td style="padding:8px"><strong>{{ resource.display_name }}</strong><br><span class="muted small mono">{{ key }}</span></td>
+          <td style="padding:8px"><span class="badge">{{ resource.state }}</span>
+            {% if resource.balance %}<br><span class="mono small">Observed balance {{ resource.balance.observed_balance }} (chain {{ resource.balance.chain_id }})</span>{% endif %}
+            {% if resource.note %}<br><span class="muted small">{{ resource.note }}</span>{% endif %}</td>
+          <td style="padding:8px"><span class="mono small">{{ resource.reason or '—' }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small" style="margin:10px 0 0">
+      Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating
+      is not active by default, so gated capabilities are not enforced today. States stay distinct:
+      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. Ownership ≠ entitlement; entitlement ≠
+      execution, metering, staking, or burns. Execution Preflight shows entitlement status only.
+    </p>
+  </section>
+
+  <section class="panel" data-testid="crypto-watchlist" style="padding:14px;margin-bottom:14px">
+    <h2 style="font-size:14px;margin:0 0 8px">Yield Watchlist <span class="badge" data-testid="watchlist-count">{{ watchlist_count }}</span></h2>
+    {% if watchlist %}
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px">Opportunity</th>
+        <th style="text-align:left;padding:6px 8px">Canonical identity</th>
+        <th style="text-align:left;padding:6px 8px">Saved</th>
+      </tr></thead>
+      <tbody>
+      {% for item in watchlist %}
+        <tr data-testid="crypto-watchlist-row" style="border-top:1px solid rgba(255,255,255,.08)">
+          <td style="padding:8px">{{ item.display_name }}</td>
+          <td style="padding:8px"><span class="mono small">{{ item.opportunity_uid }}</span><br>
+              <span class="muted small">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
+          <td style="padding:8px"><span class="mono small">{{ item.saved_at }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small" data-testid="watchlist-empty" style="margin:0">
+      Nothing saved yet. Save opportunities by their canonical identity from the
+      <a href="/yield">Yield table</a>. Watchlist feeds future alerts.
+    </p>
+    {% endif %}
+    <p class="muted small" style="margin:10px 0 0">Manage saved items on the <a href="/yield/monitor">Wallet Monitor</a>.</p>
+  </section>
+
+  <section class="panel" data-testid="crypto-alerts" style="padding:14px;margin-bottom:14px">
+    <h2 style="font-size:14px;margin:0 0 8px">Alerts</h2>
+    <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts_state }}</span>
+       <span class="badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
+    <p class="muted small" style="margin:6px 0 0">
+      In-app alert engine: integration pending. External notifications (email, Telegram, Discord,
+      push): NOT SHIPPED. The watchlist above is the foundation alerts will consume — no notification
+      is sent today and nothing on this page implies otherwise.
+    </p>
+  </section>
+
+  <section class="panel" data-testid="crypto-execution" style="padding:14px;margin-bottom:14px">
+    <h2 style="font-size:14px;margin:0 0 8px">Execution</h2>
+    <p style="margin:0">Yield execution: <span class="badge">{{ execution_state }}</span></p>
+    <p class="muted small" style="margin:6px 0 0">
+      Execution planning is a separately gated capability and is OFF by default. This surface shows
+      status only — it never signs, custodies, or broadcasts, and no buy/swap action exists here.
+    </p>
+  </section>
+
+  <footer class="muted small" style="padding:8px 0 20px">
+    Factual status surface. No yield promises, guarantees, or purchase solicitations.
+    <a href="/yield">Yield</a> · <a href="/yield/monitor">Wallet Monitor</a> · <a href="/protocol/finco">$FINCO</a>
+  </footer>
+</main>
+</body>
+</html>

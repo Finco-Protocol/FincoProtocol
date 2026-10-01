@@ -51,11 +51,15 @@
         <td><span class="badge">{{ row.support_state }}</span></td>
         <td>{{ row.exit }}</td>
         <td><span class="badge">{{ row.freshness }}</span></td>
-        <td>
+        <td data-testid="watchlist-cell-{{ row.uid }}">
+          {% if row.uid in saved_uids %}
+          <span class="badge" data-testid="watchlist-saved">Saved</span>
+          {% else %}
           <form method="post" action="/yield/watchlist/{{ row.uid }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
           </form>
+          {% endif %}
         </td>
       </tr>
     {% else %}
