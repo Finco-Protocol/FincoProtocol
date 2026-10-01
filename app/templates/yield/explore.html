@@ -36,10 +36,10 @@
 
 <div class="scroll" data-testid="yield-opportunities-scroll">
   <table>
-    <thead><tr><th>Opportunity</th><th>Protocol</th><th>Chain</th><th>TVL</th><th>Total APY</th><th>Base APY</th><th>Rewards APY</th><th>Evidence</th><th>Support</th><th>Exit</th><th>Freshness</th></tr></thead>
+    <thead><tr><th>Opportunity</th><th>Protocol</th><th>Chain</th><th>TVL</th><th>Total APY</th><th>Base APY</th><th>Rewards APY</th><th>Evidence</th><th>Support</th><th>Exit</th><th>Freshness</th><th>Watchlist</th></tr></thead>
     <tbody>
     {% for row in rows %}
-      <tr>
+      <tr data-opportunity-uid="{{ row.uid }}">
         <td><a href="/yield/{{ row.uid }}">{{ row.name }}</a><br><small>{{ row.underlying_symbol }}</small></td>
         <td>{{ row.protocol }}</td>
         <td>{{ row.chain }}</td>
@@ -51,13 +51,20 @@
         <td><span class="badge">{{ row.support_state }}</span></td>
         <td>{{ row.exit }}</td>
         <td><span class="badge">{{ row.freshness }}</span></td>
+        <td>
+          <form method="post" action="/yield/watchlist/{{ row.uid }}">
+            <button type="submit" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
+          </form>
+        </td>
       </tr>
     {% else %}
-      <tr><td colspan="11">No exact matches.</td></tr>
+      <tr><td colspan="12">No exact matches.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+<p class="sub">Save adds the opportunity to your watchlist by its canonical identity. Saving requires a signed-in session.</p>
 
 <p class="bound">Read-only by default. Execution planning is separately gated. FINCO never custodies assets, holds private keys, auto-invests or rebalances.</p>
 {% endblock %}

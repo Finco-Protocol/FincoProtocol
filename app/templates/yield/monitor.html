@@ -6,6 +6,55 @@
 <div class="nav"><a class="a" href="/yield">← Explore</a></div>
 <p class="sub">{{ info }}</p>
 
+<section class="card" data-testid="finco-access-panel">
+  <h2>FINCO access</h2>
+  <p>Wallet: <span class="badge">{{ access.wallet.state }}</span>
+     {% if access.wallet.wallet_address %}<span class="mono">{{ access.wallet.wallet_address }}</span>{% endif %}</p>
+  <p>$FINCO token: <span class="badge">{{ access.token.state or 'NOT_CONFIGURED' }}</span>
+     {% if access.token.reason %}<span class="mono">{{ access.token.reason }}</span>{% endif %}</p>
+  <p class="sub">States are distinct on purpose: NOT CONFIGURED means the production $FINCO deployment does not exist yet; UNAVAILABLE means an authoritative input could not be read; LOCKED means gating applies and access is not granted; UNLOCKED means the authoritative evaluator granted access. Missing evidence is never shown as a balance of zero, and no thresholds or token amounts are displayed.</p>
+  <table>
+    <thead><tr><th>Capability</th><th>State</th><th>Why</th></tr></thead>
+    <tbody>
+    {% for key, resource in access.resources.items() %}
+      <tr data-testid="access-row-{{ key }}">
+        <td><strong>{{ resource.display_name }}</strong><br><span class="mono">{{ key }}</span></td>
+        <td><span class="badge">{{ resource.state }}</span>
+            {% if resource.note %}<br><span class="sub">{{ resource.note }}</span>{% endif %}</td>
+        <td><span class="mono">{{ resource.reason or '—' }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="sub">Ownership ≠ entitlement · entitlement ≠ execution · entitlement ≠ metering. Execution Preflight shows entitlement status only; execution is not enabled. No staking, burns, rewards, revenue sharing, or token payments exist.</p>
+</section>
+
+<section class="card" data-testid="yield-watchlist">
+  <h2>Watchlist</h2>
+  {% if watchlist %}
+  <table>
+    <thead><tr><th>Opportunity</th><th>Identity</th><th>Saved</th><th></th></tr></thead>
+    <tbody>
+    {% for item in watchlist %}
+      <tr data-testid="watchlist-row">
+        <td>{{ item.display_name }}</td>
+        <td><span class="mono">{{ item.opportunity_uid }}</span><br>
+            <span class="mono">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
+        <td><span class="mono">{{ item.saved_at }}</span></td>
+        <td>
+          <form method="post" action="/yield/watchlist/{{ item.opportunity_uid }}/remove">
+            <button type="submit" data-testid="watchlist-remove">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p data-testid="watchlist-empty">No saved opportunities yet. Save one from the <a class="a" href="/yield">Explore</a> table; saved items reference the canonical opportunity identity.</p>
+  {% endif %}
+</section>
+
 <div class="grid">
   {% for position in positions %}
   <section class="card">

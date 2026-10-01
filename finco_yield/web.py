@@ -270,6 +270,15 @@ async def yield_monitor(request: Request):
             "read-only context, not signing authority and not $FINCO entitlement."
         )
 
+    # Crypto utility V0: authoritative wallet/access presentation states
+    # (no balance observation on this path — missing stays typed, never 0)
+    # plus this user's canonical watchlist.
+    from app.crypto_access import get_crypto_access_snapshot
+    from finco_yield.watchlist import list_watchlist_items
+
+    access = get_crypto_access_snapshot(user.user_id)
+    watchlist = list_watchlist_items(user.user_id)
+
     return _templates.TemplateResponse(
         request=request,
         name="yield/monitor.html",
@@ -277,6 +286,8 @@ async def yield_monitor(request: Request):
             "wallet": wallet,
             "info": info,
             "positions": positions_view,
+            "access": access,
+            "watchlist": watchlist,
         },
     )
 
@@ -289,6 +300,121 @@ async def prototype_removed():
         "FINCO Yield prototype route was removed; use /yield.",
         status_code=410,
     )
+
+
+# ── Crypto utility V0 (Agent C): wallet/access presentation + watchlist ─────
+
+def _request_user(request: Request):
+    from app.auth import resolve_request_session
+    return resolve_request_session(request)
+
+
+@router.get("/access.json")
+async def yield_access_json(request: Request):
+    """Authoritative wallet/$FINCO access PRESENTATION states.
+
+    Backend/domain authority → presentation state; this endpoint never
+    decides entitlement from a frontend balance and never exposes balances,
+    thresholds, or tokenomics.  Wallet states: DISCONNECTED / UNVERIFIED /
+    VERIFIED; resource states: PUBLIC / NOT_CONFIGURED / LOCKED /
+    UNAVAILABLE / UNLOCKED / NOT_ACTIVATED.  Balance evidence is NOT fetched
+    here (no RPC on this path); with a configured deployment the token state
+    is honestly UNAVAILABLE until an authoritative observation exists.
+    """
+    _require()
+    from app.crypto_access import get_crypto_access_snapshot
+
+    user = _request_user(request)
+    return JSONResponse(
+        content=get_crypto_access_snapshot(user.user_id if user else None),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/watchlist.json")
+async def yield_watchlist_json(request: Request):
+    """List the authenticated user's saved canonical Yield opportunities."""
+    _require()
+    from finco_yield.watchlist import list_watchlist_items
+
+    user = _request_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={
+            "state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"})
+    items = list_watchlist_items(user.user_id)
+    return JSONResponse(
+        content={
+            "schema_version": "finco-yield-watchlist-v0",
+            "count": len(items),
+            "items": items,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/watchlist/{opportunity_uid}")
+async def yield_watchlist_save(request: Request, opportunity_uid: str):
+    """Save ONE canonical Yield opportunity (exact yld_* uid only).
+
+    Requires an authenticated session (401 otherwise).  Deterministic on
+    duplicates (idempotent no-op).  Unknown uids are a typed 404 — identity
+    is never taken from tickers, names, or free text.
+    """
+    _require()
+    from finco_yield.watchlist import (
+        WatchlistError, WatchlistOpportunityUnknown, save_watchlist_item,
+    )
+
+    user = _request_user(request)
+    content_type = request.headers.get("content-type") or ""
+    if not user:
+        if "form" in content_type:
+            return RedirectResponse("/login", 302)
+        return JSONResponse(status_code=401, content={
+            "state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"})
+    try:
+        result = save_watchlist_item(user.user_id, opportunity_uid)
+    except WatchlistOpportunityUnknown:
+        return JSONResponse(status_code=404, content={
+            "state": "UNAVAILABLE", "reason": "YIELD_OPPORTUNITY_UID_UNKNOWN"})
+    except WatchlistError as exc:
+        return JSONResponse(status_code=400, content={
+            "state": "UNAVAILABLE", "reason": exc.REASON})
+    if "form" in content_type:
+        return RedirectResponse("/yield/monitor", 302)
+    return JSONResponse(status_code=201 if result["created"] else 200,
+                        content={"state": "SAVED", **result})
+
+
+async def _watchlist_remove(request: Request, opportunity_uid: str):
+    _require()
+    from finco_yield.watchlist import WatchlistError, remove_watchlist_item
+
+    user = _request_user(request)
+    content_type = request.headers.get("content-type") or ""
+    if not user:
+        if "form" in content_type:
+            return RedirectResponse("/login", 302)
+        return JSONResponse(status_code=401, content={
+            "state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"})
+    try:
+        removed = remove_watchlist_item(user.user_id, opportunity_uid)
+    except WatchlistError as exc:
+        return JSONResponse(status_code=400, content={
+            "state": "UNAVAILABLE", "reason": exc.REASON})
+    if "form" in content_type:
+        return RedirectResponse("/yield/monitor", 302)
+    return JSONResponse(content={"state": "REMOVED" if removed else "NOT_PRESENT"})
+
+
+@router.delete("/watchlist/{opportunity_uid}")
+async def yield_watchlist_delete(request: Request, opportunity_uid: str):
+    return await _watchlist_remove(request, opportunity_uid)
+
+
+@router.post("/watchlist/{opportunity_uid}/remove")
+async def yield_watchlist_remove_post(request: Request, opportunity_uid: str):
+    return await _watchlist_remove(request, opportunity_uid)
 
 
 @router.get("/{opportunity_uid}/evidence.json")
