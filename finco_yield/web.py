@@ -166,11 +166,13 @@ async def yield_explore(
             }
         )
 
+    from app.auth import generate_csrf_token
     return _templates.TemplateResponse(
         request=request,
         name="yield/explore.html",
         context={
             "rows": view_rows,
+            "csrf_token": generate_csrf_token(),
             "filters": {
                 "chain_id": chain_id,
                 "protocol": protocol or "",
@@ -270,13 +272,19 @@ async def yield_monitor(request: Request):
             "read-only context, not signing authority and not $FINCO entitlement."
         )
 
-    # Crypto utility V0: authoritative wallet/access presentation states
-    # (no balance observation on this path — missing stays typed, never 0)
-    # plus this user's canonical watchlist.
-    from app.crypto_access import get_crypto_access_snapshot
+    # Crypto utility V0: authoritative wallet presentation state + per-resource
+    # presentation mapping.  Resource decisions come from the entitlement
+    # authority at integration (Agent D); until then authority-dependent
+    # resources present typed UNAVAILABLE — never guessed access, never a
+    # fabricated balance.
+    from app.auth import generate_csrf_token
+    from app.crypto_access import (
+        build_crypto_access_snapshot, get_wallet_state,
+    )
     from finco_yield.watchlist import list_watchlist_items
 
-    access = get_crypto_access_snapshot(user.user_id)
+    wallet_state, _ = get_wallet_state(user.user_id)
+    access = build_crypto_access_snapshot(wallet_state)
     watchlist = list_watchlist_items(user.user_id)
 
     return _templates.TemplateResponse(
@@ -288,6 +296,7 @@ async def yield_monitor(request: Request):
             "positions": positions_view,
             "access": access,
             "watchlist": watchlist,
+            "csrf_token": generate_csrf_token(),
         },
     )
 
@@ -309,24 +318,48 @@ def _request_user(request: Request):
     return resolve_request_session(request)
 
 
+def _wallet_state_for_request(request: Request) -> str:
+    """Wallet presentation state from the existing session/wallet authority."""
+    from app.crypto_access import get_wallet_state
+    user = _request_user(request)
+    state, _ = get_wallet_state(user.user_id if user else None)
+    return state
+
+
+def _enforce_csrf(request: Request, form) -> JSONResponse | None:
+    """Existing FINCO CSRF convention for cookie-authenticated mutations.
+
+    Form flows carry ``csrf_token`` in the form; JSON/API flows carry it in
+    the ``X-CSRF-Token`` header.  Missing or invalid → typed 403, no
+    mutation occurs; the token value is never echoed into logs or errors.
+    """
+    from app.auth import validate_csrf_token
+    token = form.get("csrf_token") if form is not None else None
+    if not token:
+        token = request.headers.get("x-csrf-token")
+    if not validate_csrf_token(token or ""):
+        return JSONResponse(status_code=403, content={
+            "state": "UNAVAILABLE", "reason": "CSRF_TOKEN_INVALID"})
+    return None
+
+
 @router.get("/access.json")
 async def yield_access_json(request: Request):
     """Authoritative wallet/$FINCO access PRESENTATION states.
 
-    Backend/domain authority → presentation state; this endpoint never
-    decides entitlement from a frontend balance and never exposes balances,
-    thresholds, or tokenomics.  Wallet states: DISCONNECTED / UNVERIFIED /
-    VERIFIED; resource states: PUBLIC / NOT_CONFIGURED / LOCKED /
-    UNAVAILABLE / UNLOCKED / NOT_ACTIVATED.  Balance evidence is NOT fetched
-    here (no RPC on this path); with a configured deployment the token state
-    is honestly UNAVAILABLE until an authoritative observation exists.
+    Presentation ONLY: wallet state comes from the existing session/wallet
+    authority; resource states are a deterministic mapping of Agent A's
+    authoritative ResourceAccessDecision objects.  This branch does not
+    invoke the entitlement evaluator itself — until Agent D connects the
+    evaluator, authority-dependent resources present typed UNAVAILABLE
+    (never guessed access, never a fabricated balance).
     """
     _require()
-    from app.crypto_access import get_crypto_access_snapshot
+    from app.crypto_access import build_crypto_access_snapshot
 
-    user = _request_user(request)
+    wallet_state = _wallet_state_for_request(request)
     return JSONResponse(
-        content=get_crypto_access_snapshot(user.user_id if user else None),
+        content=build_crypto_access_snapshot(wallet_state),
         headers={"Cache-Control": "no-store"},
     )
 
@@ -356,9 +389,10 @@ async def yield_watchlist_json(request: Request):
 async def yield_watchlist_save(request: Request, opportunity_uid: str):
     """Save ONE canonical Yield opportunity (exact yld_* uid only).
 
-    Requires an authenticated session (401 otherwise).  Deterministic on
-    duplicates (idempotent no-op).  Unknown uids are a typed 404 — identity
-    is never taken from tickers, names, or free text.
+    Requires an authenticated session (401 otherwise) and the existing FINCO
+    CSRF token (403 on missing/invalid — fail closed, no mutation).
+    Deterministic on duplicates (idempotent no-op).  Unknown uids are a
+    typed 404 — identity is never taken from tickers, names, or free text.
     """
     _require()
     from finco_yield.watchlist import (
@@ -367,11 +401,18 @@ async def yield_watchlist_save(request: Request, opportunity_uid: str):
 
     user = _request_user(request)
     content_type = request.headers.get("content-type") or ""
+    is_form = "form" in content_type
     if not user:
-        if "form" in content_type:
+        if is_form:
             return RedirectResponse("/login", 302)
         return JSONResponse(status_code=401, content={
             "state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"})
+
+    form = await request.form() if is_form else None
+    csrf_failure = _enforce_csrf(request, form)
+    if csrf_failure is not None:
+        return csrf_failure
+
     try:
         result = save_watchlist_item(user.user_id, opportunity_uid)
     except WatchlistOpportunityUnknown:
@@ -380,7 +421,7 @@ async def yield_watchlist_save(request: Request, opportunity_uid: str):
     except WatchlistError as exc:
         return JSONResponse(status_code=400, content={
             "state": "UNAVAILABLE", "reason": exc.REASON})
-    if "form" in content_type:
+    if is_form:
         return RedirectResponse("/yield/monitor", 302)
     return JSONResponse(status_code=201 if result["created"] else 200,
                         content={"state": "SAVED", **result})
@@ -392,17 +433,24 @@ async def _watchlist_remove(request: Request, opportunity_uid: str):
 
     user = _request_user(request)
     content_type = request.headers.get("content-type") or ""
+    is_form = "form" in content_type
     if not user:
-        if "form" in content_type:
+        if is_form:
             return RedirectResponse("/login", 302)
         return JSONResponse(status_code=401, content={
             "state": "UNAVAILABLE", "reason": "WATCHLIST_AUTH_REQUIRED"})
+
+    form = await request.form() if is_form else None
+    csrf_failure = _enforce_csrf(request, form)
+    if csrf_failure is not None:
+        return csrf_failure
+
     try:
         removed = remove_watchlist_item(user.user_id, opportunity_uid)
     except WatchlistError as exc:
         return JSONResponse(status_code=400, content={
             "state": "UNAVAILABLE", "reason": exc.REASON})
-    if "form" in content_type:
+    if is_form:
         return RedirectResponse("/yield/monitor", 302)
     return JSONResponse(content={"state": "REMOVED" if removed else "NOT_PRESENT"})
 

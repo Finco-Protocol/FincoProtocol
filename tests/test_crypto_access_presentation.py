@@ -1,22 +1,38 @@
-"""Crypto utility V0 (Agent C) — wallet/$FINCO access presentation states.
+"""Crypto utility V0 (Agent C) — wallet/$FINCO access PRESENTATION mapping.
 
-Proves the typed, DISTINCT presentation contract and the MISSING ≠ ZERO
-rule: no state ever fabricates a balance number; unavailable evidence is a
-typed state with a reason code; an explicit zero appears only as the
-outcome of a successful authoritative observation (driving LOCKED, never
-"0 FINCO available").
+Agent C is a thin, deterministic presentation adapter over AUTHORITATIVE
+Agent A resource decisions (``ResourceAccessDecision``-shaped objects —
+duck-typed here).  These tests prove the mapping and its invariants:
+
+  - presentation maps authority; it never computes authority (no
+    policy/entitlement/evaluation primitives are imported or called);
+  - every Agent A decision/reason maps to exactly one typed state
+    (PUBLIC / UNLOCKED / LOCKED / UNAVAILABLE / NOT_CONFIGURED /
+    NOT_ACTIVATED) and they are never collapsed;
+  - MISSING ≠ ZERO: a balance number appears ONLY when the authority
+    actually observed one (explicit zero included); unavailable/stale/
+    missing/deployment-less states carry no number and no threshold;
+  - absent decisions are honest typed UNAVAILABLE — access is never guessed.
 """
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 
-
 TEST_TOKEN_ADDRESS = "0x" + "ab" * 20
 TEST_WALLET = "0x" + "cd" * 20
+
+
+def _decision(decision="DENY", reason="BALANCE_BELOW_THRESHOLD", *,
+              observed_balance=None, chain_id=None, token_address=None):
+    """Agent A ResourceAccessDecision stand-in (duck-typed fields only)."""
+    return SimpleNamespace(
+        decision=decision, reason_code=reason,
+        observed_balance=observed_balance, chain_id=chain_id,
+        token_address=token_address,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -25,44 +41,244 @@ def _isolated_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def test_policy(monkeypatch):
-    """TEST_ONLY fixture policy — never a production value or threshold."""
-    from app.verified.token_entitlement import FincoEntitlementPolicy
+def presentation_module():
+    """The presentation module must not import forbidden authority.
 
-    policy = FincoEntitlementPolicy(
-        chain_id=8453,
-        token_address=TEST_TOKEN_ADDRESS,
-        token_decimals=18,
-        minimum_balance_raw=10 ** 18,      # TEST_ONLY fixture value
-        freshness_seconds=300,
-        provenance="TEST_ONLY_FIXTURE",
+    Prove-the-negative: policy/entitlement/evaluation primitives appear
+    nowhere in the presentation adapter — it only maps decisions.
+    """
+    import inspect
+    from app import crypto_access
+    source = inspect.getsource(crypto_access)
+    for banned in ("get_production_policy", "evaluate_token_entitlement",
+                   "EntitlementState", "TokenBalanceEvidence",
+                   "FincoEntitlementPolicy", "TokenConfig"):
+        assert banned not in source, banned
+    return crypto_access
+
+
+# ── Mapping: Agent A decision/reason → presentation state ─────────────────────
+
+def test_allow_public_resource_maps_to_public(presentation_module):
+    from app.crypto_access import RESOURCE_PUBLIC, YIELD_BASIC
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_BASIC],
+        _decision("ALLOW", "PUBLIC_RESOURCE"))
+    assert view["state"] == RESOURCE_PUBLIC
+    assert view["reason"] == "PUBLIC_RESOURCE"
+
+
+def test_allow_at_threshold_maps_to_unlocked(presentation_module):
+    from app.crypto_access import RESOURCE_UNLOCKED, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"))
+    assert view["state"] == RESOURCE_UNLOCKED
+    assert view["reason"] == "BALANCE_AT_OR_ABOVE_THRESHOLD"
+
+
+def test_deny_below_threshold_maps_to_locked(presentation_module):
+    from app.crypto_access import RESOURCE_LOCKED, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", "BALANCE_BELOW_THRESHOLD"))
+    assert view["state"] == RESOURCE_LOCKED
+    assert view["reason"] == "BALANCE_BELOW_THRESHOLD"
+
+
+@pytest.mark.parametrize("reason", [
+    "WALLET_NOT_CONNECTED", "WALLET_NOT_VERIFIED", "WALLET_IDENTITY_UNAVAILABLE",
+])
+def test_deny_wallet_reasons_map_to_locked(presentation_module, reason):
+    from app.crypto_access import RESOURCE_LOCKED, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", reason))
+    assert view["state"] == RESOURCE_LOCKED
+    assert view["reason"] == reason  # exact safe typed reason retained
+
+
+@pytest.mark.parametrize("reason", [
+    "RPC_UNAVAILABLE", "BALANCE_EVIDENCE_UNAVAILABLE",
+    "BALANCE_STALE", "BALANCE_IDENTITY_MISMATCH",
+])
+def test_deny_authority_unavailable_maps_to_unavailable(
+        presentation_module, reason):
+    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", reason))
+    assert view["state"] == RESOURCE_UNAVAILABLE
+    assert view["reason"] == reason
+
+
+@pytest.mark.parametrize("reason", [
+    "NO_APPROVED_DEPLOYMENT", "NO_APPROVED_DEPLOYMENT_ON_CHAIN",
+    "TOKEN_CONFIGURATION_UNAVAILABLE",
+])
+def test_deny_no_deployment_maps_to_not_configured(presentation_module, reason):
+    from app.crypto_access import RESOURCE_NOT_CONFIGURED, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", reason))
+    assert view["state"] == RESOURCE_NOT_CONFIGURED
+    assert view["reason"] == reason
+
+
+@pytest.mark.parametrize("reason", ["TOKEN_GATING_OFF", "POLICY_DISABLED"])
+def test_inactive_gating_maps_to_not_activated_never_locked(
+        presentation_module, reason):
+    """No active token gate denied the user — inactive gating is presented
+    as NOT_ACTIVATED, never as LOCKED."""
+    from app.crypto_access import RESOURCE_NOT_ACTIVATED, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("INACTIVE", reason))
+    assert view["state"] == RESOURCE_NOT_ACTIVATED
+    assert view["reason"] == reason
+
+
+def test_yield_alerts_not_activated_by_product_delivery(presentation_module):
+    """Watchlist shipped, alert delivery not: NOT_ACTIVATED regardless of
+    any decision, and never relabelled as gated/locked."""
+    from app.crypto_access import (
+        RESOURCE_NOT_ACTIVATED, YIELD_ALERTS,
     )
-    monkeypatch.setattr(
-        "app.verified.token_entitlement.get_production_policy",
-        lambda: (policy, object()),
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_ALERTS],
+        _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"))
+    assert view["state"] == RESOURCE_NOT_ACTIVATED
+    assert view["reason"] == "ALERT_DELIVERY_NOT_SHIPPED"
+    assert "not shipped" in view["note"]
+
+
+def test_unknown_deny_reason_fails_closed_to_unavailable(presentation_module):
+    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", "SOME_FUTURE_REASON"))
+    assert view["state"] == RESOURCE_UNAVAILABLE
+
+
+# ── Snapshot assembly: absent decisions are honest UNAVAILABLE ────────────────
+
+def test_missing_decisions_present_unavailable_never_guessed(
+        presentation_module):
+    from app.crypto_access import (
+        RESOURCE_NOT_ACTIVATED, RESOURCE_UNAVAILABLE, YIELD_ADVANCED_COMPARE,
+        YIELD_ALERTS, YIELD_BASIC, YIELD_EXECUTION_PREFLIGHT, YIELD_HISTORY,
+        WALLET_DISCONNECTED, build_crypto_access_snapshot,
     )
-    return policy
+    snapshot = build_crypto_access_snapshot(WALLET_DISCONNECTED)
+    assert snapshot["wallet"]["state"] == WALLET_DISCONNECTED
+    assert snapshot["schema_version"] == "FINCO_CRYPTO_ACCESS_PRESENTATION_V0"
+    assert snapshot["resources"][YIELD_BASIC]["state"] == RESOURCE_UNAVAILABLE
+    assert snapshot["resources"][YIELD_BASIC]["reason"] == "ACCESS_DECISION_UNAVAILABLE"
+    assert snapshot["resources"][YIELD_HISTORY]["state"] == RESOURCE_UNAVAILABLE
+    assert snapshot["resources"][YIELD_ADVANCED_COMPARE]["state"] == RESOURCE_UNAVAILABLE
+    assert snapshot["resources"][YIELD_EXECUTION_PREFLIGHT]["state"] == RESOURCE_UNAVAILABLE
+    # alert delivery state needs no authority
+    assert snapshot["resources"][YIELD_ALERTS]["state"] == RESOURCE_NOT_ACTIVATED
 
 
-def _evidence(balance_raw, *, state="AVAILABLE", observed_delta_s=5):
-    from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
-
-    now = datetime.now(timezone.utc)
-    return TokenBalanceEvidence(
-        chain_id=8453,
-        token_address=TEST_TOKEN_ADDRESS,
-        wallet_address=TEST_WALLET,
-        token_decimals=18,
-        balance_raw=balance_raw,
-        observed_at=now - timedelta(seconds=observed_delta_s),
-        source="TEST_ONLY",
-        state=BalanceEvidenceState(state),
-        reason=None if state == "AVAILABLE" else state,
+def test_snapshot_maps_full_authoritative_bundle(presentation_module):
+    from app.crypto_access import (
+        RESOURCE_NOT_ACTIVATED, RESOURCE_PUBLIC, RESOURCE_UNLOCKED,
+        YIELD_ADVANCED_COMPARE, YIELD_ALERTS, YIELD_BASIC, YIELD_HISTORY,
+        WALLET_VERIFIED, build_crypto_access_snapshot,
     )
+    decisions = {
+        YIELD_BASIC: _decision("ALLOW", "PUBLIC_RESOURCE"),
+        YIELD_HISTORY: _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD"),
+        YIELD_ADVANCED_COMPARE: _decision("DENY", "BALANCE_BELOW_THRESHOLD"),
+        YIELD_ALERTS: _decision("INACTIVE", "TOKEN_GATING_OFF"),
+    }
+    snapshot = build_crypto_access_snapshot(WALLET_VERIFIED,
+                                            resource_decisions=decisions)
+    assert snapshot["resources"][YIELD_BASIC]["state"] == RESOURCE_PUBLIC
+    assert snapshot["resources"][YIELD_HISTORY]["state"] == RESOURCE_UNLOCKED
+    assert snapshot["resources"][YIELD_ADVANCED_COMPARE]["state"] == "LOCKED"
+    assert snapshot["resources"][YIELD_ALERTS]["state"] == RESOURCE_NOT_ACTIVATED
 
 
-def _verified_wallet(user_id="user-1"):
-    """Insert a verified-wallet row exactly like the EIP-191 verify path binds."""
+# ── Balance presentation: MISSING ≠ ZERO ──────────────────────────────────────
+
+def test_no_observed_balance_means_no_number(presentation_module):
+    from app.crypto_access import YIELD_HISTORY
+    for decision in (_decision("DENY", "BALANCE_BELOW_THRESHOLD"),
+                     _decision("DENY", "BALANCE_EVIDENCE_UNAVAILABLE"),
+                     _decision("DENY", "BALANCE_STALE"),
+                     _decision("ALLOW", "PUBLIC_RESOURCE"),
+                     None):
+        view = presentation_module.present_resource(
+            presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY], decision)
+        assert view["balance"] is None  # no number, ever, without observation
+
+
+def test_explicit_observed_zero_is_shown_exactly_as_zero(presentation_module):
+    """Authoritative observation of zero → the number 0 may be displayed —
+    with explicit chain/deployment identity."""
+    from app.crypto_access import YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("DENY", "BALANCE_BELOW_THRESHOLD", observed_balance=Decimal(0),
+                  chain_id=8453, token_address=TEST_TOKEN_ADDRESS))
+    assert view["balance"] is not None
+    assert view["balance"]["observed_balance"] == "0"
+    assert view["balance"]["chain_id"] == 8453
+    assert view["balance"]["token_address"] == TEST_TOKEN_ADDRESS
+
+
+def test_positive_observed_balance_shown_with_identity(presentation_module):
+    from app.crypto_access import YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD",
+                  observed_balance=Decimal("12.5"), chain_id=8453,
+                  token_address=TEST_TOKEN_ADDRESS))
+    assert view["balance"]["observed_balance"] == "12.5"
+
+
+def test_balance_without_explicit_identity_not_shown(presentation_module):
+    """A number without chain/deployment identity is never displayed bare."""
+    from app.crypto_access import YIELD_HISTORY
+    view = presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY],
+        _decision("ALLOW", "BALANCE_AT_OR_ABOVE_THRESHOLD",
+                  observed_balance=Decimal("5")))
+    assert view["balance"] is None
+
+
+def test_threshold_never_leaks_into_presentation(presentation_module):
+    """minimum_balance / thresholds / tokenomics never appear in any view."""
+    from app.crypto_access import YIELD_HISTORY
+    decision = SimpleNamespace(
+        decision="DENY", reason_code="BALANCE_BELOW_THRESHOLD",
+        observed_balance=Decimal("1"), minimum_balance=Decimal("1000"),
+        chain_id=8453, token_address=TEST_TOKEN_ADDRESS)
+    import json
+    payload = json.dumps(presentation_module.present_resource(
+        presentation_module.RESOURCE_DISPLAY[YIELD_HISTORY], decision))
+    assert "minimum" not in payload.lower()
+    assert "1000" not in payload  # the fixture threshold value never leaks
+    # the observed number IS the authority's, never a threshold echo
+    assert '"observed_balance": "1"' in payload
+    assert "to unlock" not in payload.lower()
+    assert "Hold" not in payload
+
+
+# ── Wallet presentation state (existing session/wallet authority) ─────────────
+
+def test_wallet_states_from_existing_authority():
+    from app.crypto_access import (
+        WALLET_DISCONNECTED, WALLET_UNVERIFIED, get_wallet_state,
+    )
+    assert get_wallet_state(None)[0] == WALLET_DISCONNECTED
+    assert get_wallet_state("user-1")[0] == WALLET_UNVERIFIED
+
+
+def test_wallet_verified_state_from_existing_store():
+    from app.crypto_access import WALLET_VERIFIED, get_wallet_state
     from app.persistence.db import get_connection
     from app.protocol.wallet_auth import _ensure_wallet_table
     conn = get_connection()
@@ -71,191 +287,10 @@ def _verified_wallet(user_id="user-1"):
         with conn:
             conn.execute(
                 "INSERT INTO user_wallets (user_id, wallet_address, verified_at) "
-                "VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET "
-                "wallet_address=excluded.wallet_address, verified_at=excluded.verified_at",
-                (user_id, TEST_WALLET, datetime.now(timezone.utc).isoformat()),
-            )
+                "VALUES ('user-1', ?, ?)",
+                (TEST_WALLET, "2026-01-01T00:00:00+00:00"))
     finally:
         conn.close()
-
-
-# ── Wallet states ─────────────────────────────────────────────────────────────
-
-def test_wallet_disconnected_without_session():
-    from app.crypto_access import WALLET_DISCONNECTED, get_crypto_access_snapshot
-    snapshot = get_crypto_access_snapshot(None)
-    assert snapshot["wallet"]["state"] == WALLET_DISCONNECTED
-    assert snapshot["wallet"]["wallet_address"] is None
-
-
-def test_wallet_unverified_session_without_verified_wallet():
-    from app.crypto_access import WALLET_UNVERIFIED, get_crypto_access_snapshot
-    snapshot = get_crypto_access_snapshot("user-1")
-    assert snapshot["wallet"]["state"] == WALLET_UNVERIFIED
-
-
-def test_wallet_verified_with_store_row():
-    from app.crypto_access import WALLET_VERIFIED, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot("user-1")
-    assert snapshot["wallet"]["state"] == WALLET_VERIFIED
-    assert snapshot["wallet"]["wallet_address"] == TEST_WALLET
-    assert snapshot["wallet"]["verified_at"]
-
-
-# ── Resource states: distinct, never collapsed ────────────────────────────────
-
-def test_production_default_premium_not_configured_basic_public():
-    """Today's production truth: no approved deployment → every premium
-    resource is NOT_CONFIGURED while Basic Yield stays PUBLIC."""
-    from app.crypto_access import (
-        RESOURCE_NOT_CONFIGURED, RESOURCE_NOT_ACTIVATED, RESOURCE_PUBLIC,
-        YIELD_ADVANCED_COMPARE, YIELD_ALERTS, YIELD_BASIC, YIELD_EXECUTION_PREFLIGHT,
-        YIELD_HISTORY, get_crypto_access_snapshot,
-    )
-    snapshot = get_crypto_access_snapshot(None)
-    resources = snapshot["resources"]
-    assert resources[YIELD_BASIC]["state"] == RESOURCE_PUBLIC
-    for key in (YIELD_HISTORY, YIELD_ADVANCED_COMPARE, YIELD_ALERTS,
-                YIELD_EXECUTION_PREFLIGHT):
-        assert resources[key]["state"] in (RESOURCE_NOT_CONFIGURED,
-                                           RESOURCE_NOT_ACTIVATED)
-    assert resources[YIELD_HISTORY]["state"] == RESOURCE_NOT_CONFIGURED
-    assert resources[YIELD_HISTORY]["reason"] == "TOKEN_CONFIGURATION_UNAVAILABLE"
-    assert resources[YIELD_ALERTS]["state"] == RESOURCE_NOT_ACTIVATED
-    # execution preflight never implies execution is enabled
-    assert "execution itself is not enabled" in resources[YIELD_EXECUTION_PREFLIGHT]["note"]
-
-
-def test_registry_has_exact_canonical_resource_keys():
-    from app.crypto_access import (
-        YIELD_ADVANCED_COMPARE, YIELD_ALERTS, YIELD_BASIC, YIELD_EXECUTION_PREFLIGHT,
-        YIELD_HISTORY, YIELD_RESOURCE_REGISTRY,
-    )
-    assert set(YIELD_RESOURCE_REGISTRY) == {
-        YIELD_BASIC, YIELD_HISTORY, YIELD_ADVANCED_COMPARE, YIELD_ALERTS,
-        YIELD_EXECUTION_PREFLIGHT,
-    }
-
-
-def test_locked_when_verified_wallet_below_threshold(test_policy):
-    from app.crypto_access import (
-        RESOURCE_LOCKED, YIELD_HISTORY, get_crypto_access_snapshot,
-    )
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot(
-        "user-1", evidence=_evidence(1))  # successful observation, below fixture threshold
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_LOCKED
-    assert row["reason"] == "BALANCE_BELOW_THRESHOLD"
-    assert snapshot["token"]["state"] == "INACTIVE"
-
-
-def test_unlocked_under_test_only_fixture(test_policy):
-    from app.crypto_access import RESOURCE_UNLOCKED, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot(
-        "user-1", evidence=_evidence(10 ** 18))  # at fixture threshold
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_UNLOCKED
-    assert row["reason"] == "BALANCE_AT_OR_ABOVE_THRESHOLD"
-    assert snapshot["token"]["state"] == "ACTIVE"
-
-
-def test_unavailable_when_evidence_not_obtained(test_policy):
-    """Configured + verified wallet but NO authoritative observation →
-    typed UNAVAILABLE — never a fabricated zero."""
-    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot("user-1", evidence=None)
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_UNAVAILABLE
-    assert row["reason"] == "BALANCE_EVIDENCE_UNAVAILABLE"
-    assert snapshot["token"]["state"] == "UNAVAILABLE"
-
-
-def test_unavailable_when_evidence_rpc_unavailable_not_zero(test_policy):
-    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot(
-        "user-1", evidence=_evidence(None, state="UNAVAILABLE"))
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_UNAVAILABLE
-    assert row["reason"] == "UNAVAILABLE"
-
-
-def test_explicit_zero_observation_is_real_state_not_missing(test_policy):
-    """A successful observation explicitly returning zero drives LOCKED
-    (below threshold) — it is real observed data, never rendered as missing,
-    and never rendered as an available balance."""
-    from app.crypto_access import RESOURCE_LOCKED, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot("user-1", evidence=_evidence(0))
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_LOCKED
-    assert row["reason"] == "BALANCE_BELOW_THRESHOLD"
-
-
-def test_stale_evidence_is_unavailable_not_current(test_policy):
-    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot(
-        "user-1", evidence=_evidence(10 ** 18, observed_delta_s=10_000))
-    row = snapshot["resources"][YIELD_HISTORY]
-    assert row["state"] == RESOURCE_UNAVAILABLE
-    assert row["reason"] == "BALANCE_STALE"
-
-
-# ── MISSING ≠ ZERO at the output contract level ──────────────────────────────
-
-@pytest.mark.parametrize("user_id,evidence", [
-    (None, None),
-    ("user-1", None),
-])
-def test_snapshot_never_contains_balance_numbers(user_id, evidence, test_policy):
-    """The presentation payload contains NO balance/amount numbers in any
-    state — unavailable/locked states are typed, not numeric."""
-    from app.crypto_access import get_crypto_access_snapshot
-    if user_id == "user-1":
-        _verified_wallet()
-    snapshot = get_crypto_access_snapshot(user_id, evidence=evidence)
-    payload = json.dumps(snapshot)
-    # no balance VALUE anywhere: the only "balance" occurrences are typed
-    # reason codes, never a numeric field or amount
-    assert "normalized_balance" not in payload
-    assert not any("balance" in key.lower() for key in snapshot["token"])
-    assert snapshot["token"].get("balance") is None
-    assert "0 FINCO" not in payload
-    assert "FINCO to unlock" not in payload
-    assert "Hold" not in payload
-
-
-def test_no_threshold_copy_in_any_state(test_policy):
-    from app.crypto_access import get_crypto_access_snapshot
-    _verified_wallet()
-    for evidence in (None, _evidence(1), _evidence(10 ** 18)):
-        payload = json.dumps(
-            get_crypto_access_snapshot("user-1", evidence=evidence))
-        # TEST_ONLY fixture values must never leak into presentation output
-        assert "1000000000000000000" not in payload
-        assert "to unlock" not in payload.lower()
-
-
-# ── Ownership ≠ entitlement invariants ────────────────────────────────────────
-
-def test_verified_wallet_alone_does_not_unlock(test_policy):
-    """Ownership verification is necessary but never sufficient: a verified
-    wallet without an authoritative ACTIVE entitlement stays locked."""
-    from app.crypto_access import RESOURCE_UNAVAILABLE, YIELD_HISTORY, get_crypto_access_snapshot
-    _verified_wallet()
-    snapshot = get_crypto_access_snapshot("user-1")  # no evidence at all
-    assert snapshot["wallet"]["state"] == "VERIFIED"
-    # verified ownership alone NEVER unlocks: honest typed state instead
-    assert snapshot["resources"][YIELD_HISTORY]["state"] == RESOURCE_UNAVAILABLE
-    assert snapshot["resources"][YIELD_HISTORY]["reason"] == "BALANCE_EVIDENCE_UNAVAILABLE"
-
-
-def test_snapshot_schema_version_present():
-    from app.crypto_access import get_crypto_access_snapshot
-    snapshot = get_crypto_access_snapshot(None)
-    assert snapshot["schema_version"] == "FINCO_CRYPTO_ACCESS_PRESENTATION_V0"
+    state, record = get_wallet_state("user-1")
+    assert state == WALLET_VERIFIED
+    assert record["wallet_address"] == TEST_WALLET

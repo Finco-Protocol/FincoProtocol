@@ -53,6 +53,7 @@
         <td><span class="badge">{{ row.freshness }}</span></td>
         <td>
           <form method="post" action="/yield/watchlist/{{ row.uid }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
           </form>
         </td>

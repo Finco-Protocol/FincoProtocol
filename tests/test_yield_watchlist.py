@@ -162,12 +162,14 @@ def test_route_form_save_redirects_to_login_when_unauthenticated(
 
 def test_route_save_list_remove_authenticated(
         yield_client, fake_session, first_uid):
-    saved = yield_client.post(f"/yield/watchlist/{first_uid}")
+    header = {"X-CSRF-Token": __import__(
+        "app.auth", fromlist=["generate_csrf_token"]).generate_csrf_token()}
+    saved = yield_client.post(f"/yield/watchlist/{first_uid}", headers=header)
     assert saved.status_code == 201
     assert saved.json()["state"] == "SAVED"
     assert saved.json()["created"] is True
 
-    duplicate = yield_client.post(f"/yield/watchlist/{first_uid}")
+    duplicate = yield_client.post(f"/yield/watchlist/{first_uid}", headers=header)
     assert duplicate.status_code == 200  # deterministic idempotent no-op
     assert duplicate.json()["created"] is False
 
@@ -177,7 +179,7 @@ def test_route_save_list_remove_authenticated(
     assert body["count"] == 1
     assert body["items"][0]["opportunity_uid"] == first_uid
 
-    removed = yield_client.delete(f"/yield/watchlist/{first_uid}")
+    removed = yield_client.delete(f"/yield/watchlist/{first_uid}", headers=header)
     assert removed.status_code == 200
     assert removed.json()["state"] == "REMOVED"
 
@@ -186,13 +188,19 @@ def test_route_save_list_remove_authenticated(
 
 
 def test_route_unknown_uid_typed_404(yield_client, fake_session):
-    response = yield_client.post("/yield/watchlist/" + "yld_" + "b" * 32)
+    from app.auth import generate_csrf_token
+    response = yield_client.post(
+        "/yield/watchlist/" + "yld_" + "b" * 32,
+        headers={"X-CSRF-Token": generate_csrf_token()})
     assert response.status_code == 404
     assert response.json()["reason"] == "YIELD_OPPORTUNITY_UID_UNKNOWN"
 
 
 def test_route_malformed_uid_typed_400(yield_client, fake_session):
-    response = yield_client.post("/yield/watchlist/APPL")
+    from app.auth import generate_csrf_token
+    response = yield_client.post(
+        "/yield/watchlist/APPL",
+        headers={"X-CSRF-Token": generate_csrf_token()})
     assert response.status_code == 400
     assert response.json()["reason"] == "YIELD_OPPORTUNITY_UID_MALFORMED"
 
@@ -214,9 +222,11 @@ def test_route_access_json_public_states(yield_client):
         "yield.basic", "yield.history", "yield.advanced_compare",
         "yield.alerts", "yield.execution_preflight",
     }
-    payload = response.text
-    assert "balance" not in payload.lower()
-    assert "0 FINCO" not in payload
+    # balance presentation exists but carries NO number without authority
+    for resource in body["resources"].values():
+        assert resource["balance"] is None
+        assert "observed_balance" not in resource
+    assert "0 FINCO" not in response.text
 
 
 # ── Monitor page carries the access panel + watchlist ─────────────────────────
@@ -252,3 +262,125 @@ def test_monitor_page_renders_access_panel_and_watchlist(
     assert 'data-testid="watchlist-row"' in html
     assert first_uid in html  # canonical identity rendered, not display ticker
     assert "0 FINCO" not in html
+
+
+# ── CSRF protection on cookie-authenticated mutations (existing primitives) ──
+
+def test_save_missing_csrf_rejected(yield_client, fake_session, first_uid):
+    from finco_yield.watchlist import watchlist_contains
+    response = yield_client.post(f"/yield/watchlist/{first_uid}")
+    assert response.status_code == 403
+    assert response.json()["reason"] == "CSRF_TOKEN_INVALID"
+    assert not watchlist_contains(fake_session.user_id, first_uid)  # no mutation
+
+
+def test_save_invalid_csrf_rejected(yield_client, fake_session, first_uid):
+    from finco_yield.watchlist import watchlist_contains
+    response = yield_client.post(
+        f"/yield/watchlist/{first_uid}", headers={"X-CSRF-Token": "tampered"})
+    assert response.status_code == 403
+    assert response.json()["reason"] == "CSRF_TOKEN_INVALID"
+    assert not watchlist_contains(fake_session.user_id, first_uid)  # no mutation
+
+
+def test_save_valid_csrf_succeeds(yield_client, fake_session, first_uid):
+    from app.auth import generate_csrf_token
+    from finco_yield.watchlist import watchlist_contains
+    response = yield_client.post(
+        f"/yield/watchlist/{first_uid}",
+        headers={"X-CSRF-Token": generate_csrf_token()})
+    assert response.status_code == 201
+    assert watchlist_contains(fake_session.user_id, first_uid)
+
+
+def test_remove_missing_csrf_rejected(yield_client, fake_session, first_uid):
+    from finco_yield.watchlist import save_watchlist_item, watchlist_contains
+    save_watchlist_item(fake_session.user_id, first_uid)
+    response = yield_client.delete(f"/yield/watchlist/{first_uid}")
+    assert response.status_code == 403
+    assert response.json()["reason"] == "CSRF_TOKEN_INVALID"
+    assert watchlist_contains(fake_session.user_id, first_uid)  # no mutation
+
+
+def test_remove_invalid_csrf_rejected(yield_client, fake_session, first_uid):
+    from finco_yield.watchlist import save_watchlist_item, watchlist_contains
+    save_watchlist_item(fake_session.user_id, first_uid)
+    response = yield_client.delete(
+        f"/yield/watchlist/{first_uid}",
+        headers={"X-CSRF-Token": "not-a-token"})
+    assert response.status_code == 403
+    assert watchlist_contains(fake_session.user_id, first_uid)  # no mutation
+
+
+def test_remove_valid_csrf_succeeds(yield_client, fake_session, first_uid):
+    from app.auth import generate_csrf_token
+    from finco_yield.watchlist import save_watchlist_item, watchlist_contains
+    save_watchlist_item(fake_session.user_id, first_uid)
+    response = yield_client.delete(
+        f"/yield/watchlist/{first_uid}",
+        headers={"X-CSRF-Token": generate_csrf_token()})
+    assert response.status_code == 200
+    assert not watchlist_contains(fake_session.user_id, first_uid)
+
+
+def test_csrf_failure_does_not_echo_token(yield_client, fake_session, first_uid):
+    secret = "supposedly-secret-token-value"
+    response = yield_client.post(
+        f"/yield/watchlist/{first_uid}", headers={"X-CSRF-Token": secret})
+    body = response.text
+    assert response.status_code == 403
+    assert secret not in body  # the invalid token is never echoed
+
+
+def test_forms_carry_csrf_field(monkeypatch, tmp_path, first_uid):
+    """Server-rendered mutation forms embed the FINCO CSRF token."""
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from finco_yield.web import router
+    from finco_yield.watchlist import save_watchlist_item, watchlist_contains
+
+    session = SimpleNamespace(user_id="user-1", username="demo",
+                              login_at=None, session_type="demo")
+    monkeypatch.setattr("app.auth.resolve_request_session",
+                        lambda request: session)
+    monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet",
+                        lambda user_id: None)
+
+    save_watchlist_item("user-1", first_uid)  # non-empty → remove form renders
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False,
+                        follow_redirects=False)
+    monitor = client.get("/yield/monitor")
+    assert 'name="csrf_token"' in monitor.text  # remove form carries the token
+    # a form post WITH the page-issued token mutates and redirects
+    import re
+    match = re.search(r'name="csrf_token" value="([^"]+)"', monitor.text)
+    saved = client.post(
+        f"/yield/watchlist/{first_uid}",
+        content=f"csrf_token={match.group(1)}",
+        headers={"content-type": "application/x-www-form-urlencoded"})
+    assert saved.status_code in (302, 303)
+    assert saved.headers["location"] == "/yield/monitor"
+    # tampered token on the remove form fails closed
+    tampered = client.post(
+        f"/yield/watchlist/{first_uid}/remove",
+        content="csrf_token=tampered",
+        headers={"content-type": "application/x-www-form-urlencoded"})
+    assert tampered.status_code == 403
+    assert watchlist_contains("user-1", first_uid)
+
+
+def test_other_users_watchlist_is_isolated_at_routes(
+        yield_client, fake_session, first_uid):
+    """Mutations and reads act ONLY on the authenticated user's rows."""
+    from finco_yield.watchlist import list_watchlist_items, save_watchlist_item
+    from app.auth import generate_csrf_token
+    save_watchlist_item("user-2", first_uid)  # another user's row
+    header = {"X-CSRF-Token": generate_csrf_token()}
+    listing = yield_client.get("/yield/watchlist.json")
+    assert listing.json()["count"] == 0  # user-2's rows are not user-1's
+    yield_client.delete(f"/yield/watchlist/{first_uid}", headers=header)
+    assert len(list_watchlist_items("user-2")) == 1  # untouched
