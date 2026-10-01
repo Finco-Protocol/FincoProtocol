@@ -353,6 +353,10 @@ app.include_router(_protocol_router)
 from app.protocol.router import router as _finco_utility_router
 app.include_router(_finco_utility_router)
 
+# -- FINCO Crypto surface (wallet / access / watchlist / alerts boundary) ------
+from app.crypto_ui import router as _crypto_ui_router
+app.include_router(_crypto_ui_router)
+
 # -- FINCO Verify — Run Certificate (contextual, no primary nav entry) ---------
 from app.verify.router import router as _verify_router
 app.include_router(_verify_router)
