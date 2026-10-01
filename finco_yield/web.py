@@ -33,6 +33,14 @@ from .history import YieldHistoryStore, history_window_summary
 from .monitor import detect_positions
 from .onchain import OnchainReadError, read_allowance, read_erc4626, rpc_url_for_chain
 from .registry import RegistryError, load_bundled_registry
+from .snapshot import (
+    ORIGIN_REFERENCE_FIXTURE,
+    RegistrySourceStatus,
+    displayed_freshness,
+    load_active_registry,
+    origin_label,
+    snapshot_path_from_env,
+)
 from .schema import SourceReference
 from .underwriting import decompose, run_scenario
 
@@ -61,6 +69,21 @@ _templates.env.autoescape = True
 def _require() -> None:
     if not yield_enabled():
         raise HTTPException(404, "FINCO Yield is not enabled.")
+
+
+def _active():
+    """(registry, RegistrySourceStatus) for READ surfaces.
+
+    Without a configured snapshot this is exactly the bundled reference sample
+    (labelled REFERENCE_FIXTURE).  Execution planning keeps using the bundled
+    registry directly: an observation is never an executable quote.
+    """
+    if snapshot_path_from_env() is None:
+        registry = load_bundled_registry()
+        return registry, RegistrySourceStatus(
+            ORIGIN_REFERENCE_FIXTURE, "SNAPSHOT_NOT_CONFIGURED", None,
+            0, len(registry.all()), 0)
+    return load_active_registry()
 
 
 def _source(opportunity):
@@ -165,7 +188,7 @@ async def yield_explore(
             context={"user": _request_user(request)},
         )
 
-    registry = load_bundled_registry()
+    registry, source_status = _active()
     history_days = {}
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
     if path:
@@ -205,8 +228,11 @@ async def yield_explore(
             "rewards_apy": _pct(opportunity.observation.apy_rewards),
             "evidence": opportunity.source_type.value,
             "exit": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
-            "freshness": evaluate_freshness(_source(opportunity)).state,
+            "freshness": displayed_freshness(
+                opportunity, evaluate_freshness(_source(opportunity)).state),
             "last_observed": _last_observed_label(opportunity.observed_at),
+            "origin": origin_label(opportunity),
+            "provider": opportunity.provider or "—",
             "support_state": opportunity.support_state.value,
         })
 
@@ -227,6 +253,7 @@ async def yield_explore(
             "saved_uids": saved_uids,
             "user": user,
             "csrf_token": generate_csrf_token(),
+            "source_status": source_status,
             "filters": {
                 "chain_id": chain_id,
                 "protocol": protocol or "",
@@ -248,7 +275,7 @@ async def yield_compare(request: Request, uid: list[str] = Query(default=[])):
     if denial is not None:
         return denial
     try:
-        rows = compare(load_bundled_registry(), uid)
+        rows = compare(_active()[0], uid)
     except (ValueError, RegistryError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -313,7 +340,7 @@ async def yield_monitor(request: Request):
     positions_view = []
     if wallet:
         positions = await detect_positions(
-            load_bundled_registry(),
+            _active()[0],
             wallet_address=wallet["wallet_address"],
         )
         for position in positions:
@@ -513,7 +540,7 @@ async def yield_watchlist_remove_post(request: Request, opportunity_uid: str):
 async def evidence_json(opportunity_uid: str):
     _require()
     try:
-        evidence = build_evidence(load_bundled_registry().resolve(opportunity_uid))
+        evidence = build_evidence(_active()[0].resolve(opportunity_uid))
     except RegistryError as exc:
         raise HTTPException(404, "Unknown Yield opportunity") from exc
     payload = json.loads(canonical_json(evidence))
@@ -528,7 +555,7 @@ async def history_json(opportunity_uid: str, request: Request):
     denial = await _enforce_premium(request, YieldResource.HISTORY)
     if denial is not None:
         return denial
-    registry = load_bundled_registry()
+    registry = _active()[0]
     try:
         registry.resolve(opportunity_uid)
     except RegistryError as exc:
@@ -553,7 +580,7 @@ async def history_json(opportunity_uid: str, request: Request):
 @router.get("/{opportunity_uid}", response_class=HTMLResponse)
 async def detail(request: Request, opportunity_uid: str):
     _require()
-    registry = load_bundled_registry()
+    registry, source_status = _active()
     try:
         opportunity = registry.resolve(opportunity_uid)
     except RegistryError as exc:
@@ -561,6 +588,7 @@ async def detail(request: Request, opportunity_uid: str):
 
     decomposition = decompose(opportunity.observation)
     freshness = evaluate_freshness(_source(opportunity))
+    shown_freshness = displayed_freshness(opportunity, freshness.state)
     evidence = build_evidence(opportunity)
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
     history = (
@@ -599,8 +627,12 @@ async def detail(request: Request, opportunity_uid: str):
                 if decomposition.reward_off_apy is not None
                 else "COMPONENTS_UNAVAILABLE"
             ),
-            "freshness": freshness.state,
+            "freshness": shown_freshness,
             "last_observed": _last_observed_label(opportunity.observed_at),
+            "origin": origin_label(opportunity),
+            "provider": opportunity.provider or "—",
+            "fetched": _last_observed_label(opportunity.fetched_at),
+            "source_status": source_status,
             "history": history,
             "exit_type": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "capacity": (

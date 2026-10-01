@@ -22,6 +22,7 @@
     <p>TVL: {{ tvl }}</p>
     <p>Evidence: {{ o.source_type.value }}</p>
     <p>Freshness: {{ freshness }} <span data-testid="last-observed-detail">· Last observed: {{ last_observed }}</span></p>
+    <p data-testid="data-origin-detail">Data origin: {{ origin }}{% if provider != "—" %} · Provider: {{ provider }}{% endif %}{% if o.fetched_at %} · Fetched: {{ fetched }}{% endif %}</p>
   </section>
 
   <section class="card">

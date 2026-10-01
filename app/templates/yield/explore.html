@@ -4,6 +4,17 @@
 <p class="k">FINCO Yield · V1 Beta</p>
 <h1>Explore</h1>
 <p class="sub">Evidence-backed DeFi opportunities. Source confidence and freshness stay visible; FINCO does not rank a winner.</p>
+{% if source_status %}
+<p class="sub" data-testid="yield-source-status" data-origin="{{ source_status.origin }}">
+  {% if source_status.origin == "SNAPSHOT" and source_status.live_rows %}
+    Source-observed snapshot generated {{ source_status.generated_at }} · {{ source_status.live_rows }} live row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only row(s) with no live observation{% endif %}. Each row shows its own freshness.
+  {% elif source_status.origin == "REFERENCE_FALLBACK" %}
+    Live snapshot unavailable ({{ source_status.reason }}). Showing the bundled reference sample — not live data.
+  {% else %}
+    Showing the bundled reference sample — not live data. No live collection is configured.
+  {% endif %}
+</p>
+{% endif %}
 <div class="nav">
   <a class="a" href="/">FINCO</a>
   <a class="a" href="/yield/monitor">Wallet Monitor</a>
@@ -51,7 +62,8 @@
         <td><span class="badge">{{ row.support_state }}</span></td>
         <td>{{ row.exit }}</td>
         <td><span class="badge">{{ row.freshness }}</span>
-            <br><small data-testid="last-observed-{{ row.uid }}">{{ row.last_observed }}</small></td>
+            <br><small data-testid="last-observed-{{ row.uid }}">{{ row.last_observed }}</small>
+            <br><small data-testid="origin-{{ row.uid }}">{{ row.origin }}{% if row.provider != "—" %} · {{ row.provider }}{% endif %}</small></td>
         <td data-testid="watchlist-cell-{{ row.uid }}">
           {% if row.uid in saved_uids %}
           <span class="badge" data-testid="watchlist-saved">Saved</span>
