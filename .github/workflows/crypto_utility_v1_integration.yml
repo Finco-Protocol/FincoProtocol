@@ -6,6 +6,8 @@ on:
       - "app/crypto_*.py"
       - "app/yield_alerts_gateway.py"
       - "app/protocol/**"
+      - "app/protocol_ui/**"
+      - "app/templates/partials/_protocol_nav.html"
       - "app/templates/crypto/**"
       - "app/templates/protocol_home.html"
       - "app/templates/protocol_roadmap.html"
@@ -14,6 +16,13 @@ on:
       - "docs/ROADMAP.md"
       - "docs/FINCO_TOKEN_ACTIVATION_RUNBOOK.md"
       - "main_web.py"
+      - "tests/test_correction_b_home_claims.py"
+      - "tests/test_opus_a1_public_truth.py"
+      - "tests/test_opus_c1_product_truth.py"
+      - "tests/test_p1_release_truth.py"
+      - "tests/test_product_capability_consistency.py"
+      - "tests/test_protocol_roadmap.py"
+      - "tests/test_public_product_truth_sync.py"
       - "tests/test_yield_alerts_core.py"
       - "tests/test_yield_watchlist.py"
       - "tests/test_crypto_ux_v1.py"
@@ -23,6 +32,7 @@ on:
       - "tests/test_crypto_roadmap_q4_q1.py"
       - "tests/test_staging_product_truth.py"
       - "tests/test_crypto_utility_v1_integration.py"
+      - "tests/test_crypto_productization_final.py"
       - ".github/workflows/crypto_utility_v1_integration.yml"
       - "requirements.txt"
       - "constraints.txt"
@@ -56,6 +66,19 @@ jobs:
           pip install -r requirements.txt -c constraints.txt
           python -m pip check
 
+      - name: Run inherited Product Truth regression set
+        run: |
+          pytest -q \
+            tests/test_correction_b_home_claims.py \
+            tests/test_opus_a1_public_truth.py \
+            tests/test_opus_c1_product_truth.py \
+            tests/test_p1_release_truth.py \
+            tests/test_product_capability_consistency.py \
+            tests/test_protocol_roadmap.py \
+            tests/test_public_product_truth_sync.py \
+            tests/test_staging_product_truth.py \
+            tests/test_crypto_roadmap_q4_q1.py
+
       - name: Run Crypto Utility V1 focused suites
         run: |
           pytest -q \
@@ -67,4 +90,5 @@ jobs:
             tests/test_finco_token_activation_readiness.py \
             tests/test_crypto_roadmap_q4_q1.py \
             tests/test_staging_product_truth.py \
-            tests/test_crypto_utility_v1_integration.py
+            tests/test_crypto_utility_v1_integration.py \
+            tests/test_crypto_productization_final.py

@@ -48,10 +48,10 @@
       <div class="proad-baseline-grid">
         <article class="proad-baseline-card">
           <span class="proad-card-index">01</span>
-          <h3>FINCO Model</h3>
+          <h3>FINCO Model — Infrastructure Model</h3>
           <p>Deterministic project-finance modelling, controlled scenarios, committed runs, institutional export and evidence-aware review.</p>
-          <div class="proad-chip-row"><span>Solar</span><span>Wind</span><span>Data Center</span><span>EV Charging</span></div>
-          <p class="proad-note">Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented and supported. Storage is reference-only (working-copy runtime not released). Product-run trust layers include construction financing, Run Integrity, the Reference Regression Check and DSCR-sculpting fail-closed feasibility.</p>
+          <div class="proad-chip-row">{% for name in live_vertical_names %}<span>{{ name }}</span>{% endfor %}</div>
+          <p class="proad-note">Canonical live Model verticals are Solar, Wind, Data Center and EV Charging. Solar and Wind are mature production modelling workflows; Data Center and EV Charging are implemented and supported. Storage is PREVIEW / reference scope and its working-copy runtime is not released. Product-run trust layers include construction financing, Run Integrity, the Reference Regression Check and DSCR-sculpting fail-closed feasibility.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -59,7 +59,7 @@
           <h3>FINCO Radar</h3>
           <p>Company, market, crypto/RWA and macro context without silently rewriting Model assumptions.</p>
           <div class="proad-chip-row"><span>Stocks</span><span>Crypto</span><span>Economy</span><span>R-LIVE</span><span>RWA</span><span>Stablecoins</span><span>Derivatives</span></div>
-          <p class="proad-note">R-LIVE is a first-class Radar domain: exact-identity on-chain reference observations using a 300-second TWAP with fail-closed freshness rules, AVAILABLE/STALE/UNAVAILABLE semantics, 1h/24h ranges and a read-only public API. Observations are not executable prices.</p>
+          <p class="proad-note">R-LIVE is a first-class Radar domain: exact-identity on-chain reference observations using a 300-second TWAP with fail-closed freshness rules, AVAILABLE/STALE/UNAVAILABLE semantics, 1h/24h ranges and a read-only public API. R-LIVE snapshot-first UX is shipped. Reference observations are evidence, not executable prices.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -67,7 +67,7 @@
           <h3>FINCO Yield</h3>
           <p>Read-only opportunity exploration and deterministic evidence/underwriting surfaces from the merged Yield V1 stream.</p>
           <div class="proad-chip-row"><span>Explore</span><span>Detail</span><span>Compare</span><span>Evidence</span><span>History</span><span>Wallet Monitor</span><span>Watchlist</span></div>
-          <p class="proad-note">IMPLEMENTED / FEATURE-GATED. Exact canonical opportunity identity, source-aware freshness, deterministic underwriting, immutable history, unsigned transaction planning and read-only wallet monitoring are implemented. <strong>FINCO_YIELD_ENABLED defaults OFF.</strong> <strong>FINCO_YIELD_EXECUTION_ENABLED defaults OFF.</strong> Non-custodial; no server signing; no automatic broadcast; no FINCO-owned vault; no production mainnet money movement. Explore → Underwrite → Evidence → Monitor → Act remains the product direction, but “Act” is not a claim that execution is live.</p>
+          <p class="proad-note">IMPLEMENTED / FEATURE-GATED. Exact canonical opportunity identity, source-aware freshness, deterministic underwriting, immutable history, unsigned transaction planning and read-only wallet monitoring are implemented. <strong>FINCO_YIELD_ENABLED defaults OFF.</strong> <strong>FINCO_YIELD_EXECUTION_ENABLED defaults OFF.</strong> Non-custodial; no private-key access; no server signing; no automatic broadcast; no FINCO-owned vault; no production mainnet money movement. Explore → Underwrite → Evidence → Monitor → Act remains the product direction, but “Act” does not mean Yield execution is enabled.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -75,7 +75,7 @@
           <h3>FINCO Crypto / Wallet &amp; Entitlement</h3>
           <p>Verified-wallet identity, canonical entitlement authority, resource-level access decisions, canonical Yield Watchlist and the integrated in-app Yield Alerts runtime at <a href="/crypto">/crypto</a>.</p>
           <div class="proad-chip-row"><span>Wallet identity</span><span>Entitlement rail</span><span>Resource policy</span><span>Watchlist</span><span>In-app alerts</span><span>Manual Refresh</span></div>
-          <p class="proad-note"><strong>Wallet Identity — foundation shipped.</strong> EIP-1193 connect, EIP-191 ownership verification, session binding and canonical entitlement infrastructure are implemented. <strong>In-app Yield Alerts — implemented.</strong> Canonical Watchlist consumption, deterministic alert IDs, persisted read state, explicit manual Refresh and canonical <span class="mono">yield.alerts</span> server gating are integrated. First refresh establishes a baseline rather than replaying historical changes. Production token activation is not configured: production FINCO deployment count = 0, token gating default = OFF, chain = UNSET, token contract = UNSET, production threshold = UNSET. External alert delivery is NOT SHIPPED; Email, Telegram, Discord and Push are NOT SHIPPED; background monitoring/scheduler is NOT SHIPPED.</p>
+          <p class="proad-note"><strong>Wallet Identity — foundation shipped.</strong> EIP-1193 connect, EIP-191 ownership verification, session binding and canonical entitlement infrastructure are implemented. <strong>In-app Yield Alerts — implemented.</strong> Canonical Watchlist consumption, deterministic alert IDs, persisted read state, explicit manual Refresh and canonical <span class="mono">yield.alerts</span> server gating are integrated. First refresh establishes a baseline rather than replaying historical changes. <strong>production token activation is not configured.</strong> Production FINCO deployment count = 0, token gating default = OFF, chain = UNSET, token contract = UNSET, production threshold = UNSET. External alert delivery is NOT SHIPPED; Email, Telegram, Discord and Push are NOT SHIPPED; background monitoring/scheduler is NOT SHIPPED.</p>
         </article>
 
         <article class="proad-baseline-card">
@@ -83,7 +83,7 @@
           <h3>VERIFY · API · $FINCO</h3>
           <p>Protocol-layer services that connect calculation, evidence, machine access and optional future service entitlement without becoming economic authority.</p>
           <div class="proad-chip-row"><span>Run Integrity</span><span>Reference Regression</span><span>Signed Run</span><span>Verified Assets</span><span>Model API</span><span>Radar API</span><span>$FINCO access infrastructure</span></div>
-          <p class="proad-note">Verified Assets composition is shipped but production Verified assets: 0. Signed Run issuance is implemented/config-gated; public trust distribution and the public verifier remain M-2 work. $FINCO entitlement infrastructure and production activation-readiness validation are implemented, but production activation is not configured. $FINCO never changes Model, Radar, Yield or Verify truth.</p>
+          <p class="proad-note">Verified Assets composition is shipped but production Verified assets: 0. Signed Run issuance is implemented/config-gated; public trust distribution and the public verifier remain M-2 work. $FINCO entitlement infrastructure and production activation-readiness validation are implemented, but production token activation is not configured. $FINCO never changes Model, Radar, Yield or Verify truth.</p>
         </article>
       </div>
     </section>
@@ -120,10 +120,10 @@
     <section class="proad-section" aria-labelledby="q4-heading">
       <div class="proad-quarter proad-quarter--primary">
         <div class="proad-quarter-head">
-          <div><p class="proad-kicker">Q4 2026</p><h2 id="q4-heading">Product Cohesion &amp; Activation Readiness</h2></div>
+          <div><p class="proad-kicker">Q4 2026</p><h2 id="q4-heading">Onchain Markets &amp; Utility</h2></div>
           <span class="proad-status proad-status--target">Target</span>
         </div>
-        <p class="proad-quarter-lead">Make the four primary products feel like one system, harden the read-only Yield workflow, and prepare token-gated service activation without inventing a production token deployment or enabling execution.</p>
+        <p class="proad-quarter-lead">Connect FINCO evidence, Yield and Crypto into a more useful onchain workflow while keeping execution user-authorized, external-provider based and separate from FINCO calculation authority.</p>
 
         <div class="proad-model-track">
           <div class="proad-model-track__head">
@@ -141,11 +141,15 @@
 
         <div class="proad-feature-grid">
           <article class="proad-feature proad-feature--hero"><span class="proad-feature-tag">Core product</span><h3>FINCO Terminal 1.0</h3><p>One coherent shell across Model, Radar, Yield and Crypto, with Verify/API/$FINCO kept as protocol-layer services.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Markets</span><h3>External Trade Center</h3><p>Target Buy / Sell / Swap routing through explicitly third-party or user-wallet rails. FINCO analyzes, prepares and routes; a third-party provider or the user wallet executes. No custody, no server signing, and no provider is canonical until separately selected.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">$FINCO</span><h3>$FINCO Market Surface</h3><p>Future market surface only after a canonical production token deployment and pool exist. Target source-proven contract, chain, price, liquidity, 24h volume, FDV/market cap where supported, pool, explorer, wallet balance and utility/access state. Production deployment remains 0 today; no chain, contract, supply, price or pool is invented.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">RWA</span><h3>RWA Basis / Tokenized Market Monitor</h3><p>Exact-identity monitoring of the underlying/reference market versus its tokenized representation: observed premium/discount, liquidity, volume, freshness, market state and source. No ticker/name/fuzzy binding. A reference observation is not an executable price.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Yield</span><h3>DeFi + RWA Yield</h3><p>Extend evidence-first Yield research toward stablecoin yield, lending, ERC-4626 vaults, tokenized Treasury / money-market RWA yield and source-proven RWA credit opportunities. These are targets, not current integrations.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Yield</span><h3>Alert Automation &amp; External Delivery</h3><p>In-app Alerts = implemented and manual Refresh = implemented. Scheduled/background monitoring, Telegram, Discord, Push and Email are targets and remain NOT SHIPPED until separately implemented.</p></article>
           <article class="proad-feature"><span class="proad-feature-tag">Intelligence</span><h3>FINCO Signals</h3><p>Evidence-backed events across Stocks, Crypto and Economy, with persistence, history and “why this fired” context.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Yield</span><h3>Alert Automation &amp; External Delivery</h3><p>Build on the implemented in-app Alerts engine with scheduled monitoring and optional external delivery. Telegram, Discord, browser/mobile Push and Email remain future work until a separate delivery path is implemented.</p></article>
           <article class="proad-feature"><span class="proad-feature-tag">Crypto</span><h3>Token-Gated Access Readiness</h3><p>Production activation-readiness infrastructure is implemented. Q4 may harden deployment provenance, explicit configuration, entitlement observability and activation controls. No production chain, FINCO contract or threshold is selected by this roadmap; current gating remains OFF.</p></article>
           <article class="proad-feature"><span class="proad-feature-tag">Wallet</span><h3>Wallet Intelligence</h3><p>Read-only holdings mapped into FINCO asset identity, tokenized-equity context and Radar; ownership remains separate from entitlement and execution.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Verification</span><h3>On-chain Verify</h3><p>Research and prepare optional evidence anchoring while keeping financial calculation authority off-chain. No anchoring is claimed live.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Verification</span><h3>On-chain Verify</h3><p>Research and prepare optional evidence anchoring while keeping financial calculation authority off-chain. No anchoring is currently implemented.</p></article>
           <article class="proad-feature"><span class="proad-feature-tag">Developer</span><h3>FINCO API v1</h3><p>Stable Model and Radar contracts, usage controls and production-oriented developer access without turning API availability into execution authority.</p></article>
           <article class="proad-feature"><span class="proad-feature-tag">Protocol</span><h3>$FINCO Access</h3><p>Token-linked service entitlement only after a canonical production deployment and explicit policy activation exist. Current gating remains OFF.</p></article>
         </div>
@@ -154,15 +158,26 @@
 
     <section class="proad-section" aria-labelledby="q1-heading">
       <div class="proad-quarter proad-quarter--dark">
-        <div class="proad-quarter-head"><div><p class="proad-kicker">Q1 2027</p><h2 id="q1-heading">Valuation &amp; Protocol Intelligence</h2></div><span class="proad-status proad-status--target">Target</span></div>
-        <p class="proad-quarter-lead">Move from “what is happening?” to explicit valuation and tokenized-market evidence, while keeping calculations, market observations and protocol access as separate authorities.</p>
+        <div class="proad-quarter-head"><div><p class="proad-kicker">Q1 2027</p><h2 id="q1-heading">Programmable Finance</h2></div><span class="proad-status proad-status--target">Target</span></div>
+        <p class="proad-quarter-lead">Move from evidence and monitoring toward user-authorized programmable workflows. Wallet approval and user signature remain the execution boundary; FINCO does not become custody, signing, price, identity or entitlement authority.</p>
         <div class="proad-feature-grid">
-          <article class="proad-feature proad-feature--hero"><span class="proad-feature-tag">Valuation</span><h3>FINCO Fair Value</h3><p>Normalized fundamentals, explicit assumptions and scenario-based company valuation with a traceable calculation path.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Signal</span><h3>Fundamental Gap</h3><p>FINCO Fair Value versus the underlying market price, tracked as a defined metric rather than a generic score.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Tokenized markets</span><h3>Tokenization Premium</h3><p>Tokenized-market reference and execution context versus the underlying security.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Discovery</span><h3>Valuation &amp; Tokenized Equity Screener</h3><p>Screen by valuation gap, token premium, liquidity, financial quality and evidence state.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Portfolio</span><h3>Portfolio Intelligence Preview</h3><p>Holdings, sector exposure, valuation exposure, tokenized exposure and signal concentration.</p></article>
-          <article class="proad-feature"><span class="proad-feature-tag">Identity</span><h3>Financial Passport</h3><p>Asset identity, model version, valuation snapshot, market snapshot, evidence digest and verification state in one object.</p></article>
+          <article class="proad-feature proad-feature--hero"><span class="proad-feature-tag">Execution</span><h3>User-Signed Execution</h3><p>Target flow: Research → Evidence → Preflight → Transaction preparation → User wallet approval → User signature. No custody, no FINCO server signing and no autonomous discretionary trading.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Portfolio</span><h3>FINCO Wallet Portfolio</h3><p>Future source-proven wallet intelligence for stablecoins, DeFi positions, RWA tokens, tokenized stocks, Yield positions, $FINCO, chain/protocol allocation, yield earned and evidence/freshness state. Canonical identity only.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Agent</span><h3>FINCO Agent</h3><p>FINCO Agent Alpha direction: observe → analyze → alert → prepare → human approve. It may explain evidence, monitor user-defined conditions, compare canonical Yield opportunities, explain wallet changes and prepare an execution route; it never becomes price, identity, calculation or entitlement authority.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">RWA</span><h3>RWA Collateral & Composability</h3><p>Future exact-identity intelligence for tradable/transferable state, supported collateral venues, observed LTV parameters, borrowable assets and related lending/yield opportunities. Source-proven identity only.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Proof</span><h3>FINCO Proof / Onchain Attestation</h3><p>Target flow: Model / Evidence → Evidence Digest → Signed Run → Onchain Attestation → public commitment/timestamp. The chain does not validate economic truth; it only proves the committed digest/attestation existed under the defined mechanism. Signed Run ≠ FINCO Verify ≠ economic truth.</p></article>
+          <article class="proad-feature"><span class="proad-feature-tag">Routing</span><h3>Cross-Chain Routing</h3><p>Future user-authorized routing across supported networks. No provider is canonical yet; no bridge or transaction-execution implementation is included in the current product.</p></article>
+        </div>
+
+        <div class="proad-model-track">
+          <div class="proad-model-track__head"><span>Secondary track · Radar / Valuation Intelligence</span><strong>Valuation remains useful without dominating Programmable Finance.</strong><p>These remain target analytical surfaces, separate from execution and market-price authority.</p></div>
+          <div class="proad-model-track__grid">
+            <article><h3>FINCO Fair Value</h3><p>Normalized fundamentals, explicit assumptions and scenario-based company valuation with a traceable calculation path.</p></article>
+            <article><h3>Fundamental Gap</h3><p>FINCO Fair Value versus the underlying market price, tracked as a defined metric rather than a generic score.</p></article>
+            <article><h3>Tokenization Premium</h3><p>Tokenized-market reference and execution context versus the underlying security.</p></article>
+            <article><h3>Valuation & Tokenized Equity Screener</h3><p>Screen by valuation gap, token premium, liquidity, financial quality and evidence state.</p></article>
+            <article><h3>Financial Passport</h3><p>Asset identity, model version, valuation snapshot, market snapshot, evidence digest and verification state in one object.</p></article>
+          </div>
         </div>
       </div>
     </section>
@@ -172,16 +187,16 @@
       <div class="proad-model-track">
         <div class="proad-model-track__head"><span>Model future platform · Enterprise Modelling Platform</span><strong>Broader team, portfolio and governance workflows stay after the nearer product-cohesion work.</strong><p>These are not current Q4 priorities and do not redefine FINCO around enterprise workflow software.</p></div>
         <div class="proad-model-track__grid">
-          <article><h3>Team Workspaces &amp; Approvals</h3><p>Shared projects, role-aware review and controlled approval workflows for modelling teams.</p></article>
+          <article><h3>Team Workspaces & Approvals</h3><p>Shared projects, role-aware review and controlled approval workflows for modelling teams.</p></article>
           <article><h3>Portfolio Modelling</h3><p>Compare projects and aggregate returns, leverage, debt coverage and exposure across an infrastructure portfolio.</p></article>
           <article><h3>Advanced Financing Structures</h3><p>Broader facility, refinancing, covenant and distribution structures for more complex project-finance cases.</p></article>
-          <article><h3>Audit &amp; Model Governance</h3><p>Model/run history, audit trails and enterprise integrations designed for repeatable review and control.</p></article>
+          <article><h3>Audit & Model Governance</h3><p>Model/run history, audit trails and enterprise integrations designed for repeatable review and control.</p></article>
         </div>
       </div>
       <div class="proad-feature-grid">
-        <article class="proad-feature"><span class="proad-feature-tag">Model</span><h3>Future Asset Coverage</h3><p>Storage/hybrid depth and additional infrastructure modules such as transport, real estate, hospitality, water, ports/logistics, telecom and industrial assets — all under Model, reusing the common financial core.</p></article>
+        <article class="proad-feature"><span class="proad-feature-tag">Model — Future Asset Coverage</span><h3>Real-World Asset Expansion</h3><p>Storage/hybrid depth and additional infrastructure modules such as transport, real estate, hospitality, water, ports/logistics, telecom and industrial assets — all under Model, reusing the common financial core.</p></article>
         <article class="proad-feature"><span class="proad-feature-tag">Verification</span><h3>L2 / Merkle Anchoring</h3><p>Optional proof distribution/anchoring research after public Signed Run trust distribution is complete. No blockchain anchoring is implemented today.</p></article>
-        <article class="proad-feature"><span class="proad-feature-tag">Agent</span><h3>FINCO Agent Alpha</h3><p>Research toward agent-assisted workflows where AI interprets typed FINCO evidence but never becomes calculation, identity, market-price or entitlement authority.</p></article>
+        <article class="proad-feature"><span class="proad-feature-tag">Agent research</span><h3>Agent Extensions</h3><p>Additional agent-assisted workflows may build on FINCO Agent Alpha while AI continues to interpret typed FINCO evidence without becoming calculation, identity, market-price or entitlement authority.</p></article>
       </div>
     </section>
 

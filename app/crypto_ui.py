@@ -12,11 +12,22 @@ for mutations -> gateway/domain. GET routes are read-only. Explicit
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 router = APIRouter()
 _REPO_ROOT = None
+
+_FORM_CONTENT_TYPES = frozenset({
+    "application/x-www-form-urlencoded",
+    "multipart/form-data",
+})
+
+_ALERTS_NOTICE_MESSAGES = {
+    "YIELD_HISTORY_UNAVAILABLE": "Yield history is currently unavailable. Existing alerts remain readable.",
+    "YIELD_REGISTRY_UNAVAILABLE": "Yield registry evidence is currently unavailable. No alert evaluation was applied.",
+    "ALERT_EVALUATION_UNAVAILABLE": "Alert evaluation is currently unavailable. Please retry after the evidence service recovers.",
+}
 
 
 def _templates() -> Jinja2Templates:
@@ -102,6 +113,8 @@ async def crypto_overview(request: Request):
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
     watchlist = list_watchlist_items(user_id) if user_id else []
     alerts = await _alerts_presentation(request, user)
+    notice_reason = request.query_params.get("alerts_notice")
+    alerts_notice = _ALERTS_NOTICE_MESSAGES.get(notice_reason)
 
     return _templates().TemplateResponse(
         request=request,
@@ -112,6 +125,8 @@ async def crypto_overview(request: Request):
             "watchlist": watchlist,
             "watchlist_count": len(watchlist),
             "alerts": alerts,
+            "alerts_notice_reason": notice_reason if alerts_notice else None,
+            "alerts_notice": alerts_notice,
             "execution_state": _execution_state(),
             "csrf_token": generate_csrf_token(),
             "user": user,
@@ -138,10 +153,22 @@ def _csrf_failure(request: Request, form) -> JSONResponse | None:
     return None
 
 
+def _is_form_request(request: Request) -> bool:
+    media_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    return media_type in _FORM_CONTENT_TYPES
+
+
 async def _mutation_form_and_csrf(request: Request):
-    content_type = request.headers.get("content-type") or ""
-    form = await request.form() if "form" in content_type else None
-    return form, _csrf_failure(request, form)
+    is_form = _is_form_request(request)
+    form = await request.form() if is_form else None
+    return form, is_form, _csrf_failure(request, form)
+
+
+def _crypto_redirect(*, notice_reason: str | None = None) -> RedirectResponse:
+    if notice_reason in _ALERTS_NOTICE_MESSAGES:
+        return RedirectResponse(
+            url=f"/crypto?alerts_notice={notice_reason}", status_code=303)
+    return RedirectResponse(url="/crypto", status_code=303)
 
 
 def _alerts_backend_failure(snapshot) -> JSONResponse:
@@ -187,7 +214,7 @@ async def crypto_alerts_refresh(request: Request):
     decision = await resolve_yield_access(request, YieldResource.ALERTS)
     if decision.gate_active and not decision.access_allowed:
         return JSONResponse(status_code=403, content=denial_payload(decision))
-    _form, csrf_failure = await _mutation_form_and_csrf(request)
+    _form, is_form, csrf_failure = await _mutation_form_and_csrf(request)
     if csrf_failure is not None:
         return csrf_failure
 
@@ -197,6 +224,10 @@ async def crypto_alerts_refresh(request: Request):
         return JSONResponse(status_code=501, content={
             "state": "UNAVAILABLE", "reason": "ALERTS_REFRESH_NOT_AVAILABLE"})
     result = refresh(user.user_id)
+    if result.available and is_form:
+        return _crypto_redirect()
+    if not result.available and is_form and result.reason in _ALERTS_NOTICE_MESSAGES:
+        return _crypto_redirect(notice_reason=result.reason)
     return JSONResponse(
         status_code=200 if result.available else 503,
         content=result.public_dict(),
@@ -216,7 +247,7 @@ async def crypto_alert_mark_read(request: Request, alert_id: str):
     decision = await resolve_yield_access(request, YieldResource.ALERTS)
     if decision.gate_active and not decision.access_allowed:
         return JSONResponse(status_code=403, content=denial_payload(decision))
-    _form, csrf_failure = await _mutation_form_and_csrf(request)
+    _form, is_form, csrf_failure = await _mutation_form_and_csrf(request)
     if csrf_failure is not None:
         return csrf_failure
     gateway = get_alerts_gateway()
@@ -224,6 +255,8 @@ async def crypto_alert_mark_read(request: Request, alert_id: str):
     if not snapshot.available:
         return _alerts_backend_failure(snapshot)
     marked = gateway.mark_read(user.user_id, alert_id)
+    if is_form:
+        return _crypto_redirect()
     return JSONResponse(content={"state": "MARKED" if marked else "NOT_PRESENT"})
 
 
@@ -239,7 +272,7 @@ async def crypto_alert_mark_all_read(request: Request):
     decision = await resolve_yield_access(request, YieldResource.ALERTS)
     if decision.gate_active and not decision.access_allowed:
         return JSONResponse(status_code=403, content=denial_payload(decision))
-    _form, csrf_failure = await _mutation_form_and_csrf(request)
+    _form, is_form, csrf_failure = await _mutation_form_and_csrf(request)
     if csrf_failure is not None:
         return csrf_failure
     gateway = get_alerts_gateway()
@@ -247,4 +280,6 @@ async def crypto_alert_mark_all_read(request: Request):
     if not snapshot.available:
         return _alerts_backend_failure(snapshot)
     marked = gateway.mark_all_read(user.user_id)
+    if is_form:
+        return _crypto_redirect()
     return JSONResponse(content={"state": "MARKED", "count": marked})

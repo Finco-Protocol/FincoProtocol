@@ -1,9 +1,9 @@
 {# ── Protocol Shell Navigation  (_protocol_nav.html)
    Shared across FINCO Protocol surfaces:
-   Home · Model (library/workbook) · Radar · API · Docs · Roadmap · $FINCO
+   Home · Model · Radar · Yield · Crypto · Verified · API · Docs · Roadmap · $FINCO
 
    Context variables used (all optional — nav degrades gracefully):
-     proto_active_page : str  — "home" | "model" | "radar" | "api" | "docs" | "roadmap" | "finco"
+     proto_active_page : str  — "home" | "model" | "radar" | "yield" | "crypto" | "verified" | "api" | "docs" | "roadmap" | "finco"
      user              : obj  — the authenticated user (F05 session)
 
    This partial loads protocol-shell.css; the calling page must also
@@ -34,6 +34,21 @@
          {% if proto_active_page == 'radar' %}aria-current="page"{% endif %}>
         Radar
       </a>
+      <a href="/yield"
+         class="proto-nav__link{% if proto_active_page == 'yield' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'yield' %}aria-current="page"{% endif %}>
+        Yield
+      </a>
+      <a href="/crypto"
+         class="proto-nav__link{% if proto_active_page == 'crypto' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'crypto' %}aria-current="page"{% endif %}>
+        Crypto
+      </a>
+      <a href="/verified"
+         class="proto-nav__link{% if proto_active_page == 'verified' %} proto-nav__link--active{% endif %}"
+         {% if proto_active_page == 'verified' %}aria-current="page"{% endif %}>
+        Verified
+      </a>
       <a href="/api"
          class="proto-nav__link{% if proto_active_page == 'api' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'api' %}aria-current="page"{% endif %}>
@@ -48,11 +63,6 @@
          class="proto-nav__link{% if proto_active_page == 'roadmap' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'roadmap' %}aria-current="page"{% endif %}>
         Roadmap
-      </a>
-      <a href="/verified"
-         class="proto-nav__link{% if proto_active_page == 'verified' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'verified' %}aria-current="page"{% endif %}>
-        Verified
       </a>
       <a href="/protocol/finco"
          class="proto-nav__link{% if proto_active_page == 'finco' %} proto-nav__link--active{% endif %}"

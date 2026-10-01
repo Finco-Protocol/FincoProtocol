@@ -80,6 +80,12 @@
 
   <section class="panel" data-testid="crypto-alerts" style="padding:14px;margin-bottom:14px">
     <h2 style="font-size:14px;margin:0 0 8px">Yield Alerts</h2>
+    {% if alerts_notice %}
+    <div class="warn" data-testid="alerts-notice" style="margin:0 0 8px">
+      <strong>Refresh not applied.</strong> {{ alerts_notice }}
+      <span class="mono small" data-testid="alerts-notice-reason">{{ alerts_notice_reason }}</span>
+    </div>
+    {% endif %}
     <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts.state }}</span>
        <span class="badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
     {% if alerts.reason %}<p class="mono small" style="margin:6px 0 0">{{ alerts.reason }}</p>{% endif %}
