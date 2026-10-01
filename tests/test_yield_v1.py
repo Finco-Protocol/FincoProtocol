@@ -559,7 +559,18 @@ def test_web_feature_flags_and_prototype_tombstone(monkeypatch):
     client = TestClient(app)
 
     monkeypatch.delenv("FINCO_YIELD_ENABLED", raising=False)
-    assert client.get("/yield").status_code == 404
+    # V1 contract: with the runtime OFF the primary /yield entry is a truthful, data-free disabled shell
+    # (evaluated at request time); no opportunity/registry data is served and every data route stays 404.
+    uid = _registry().all()[0].uid
+    off = client.get("/yield")
+    assert off.status_code == 200
+    assert 'data-yield-runtime-state="disabled"' in off.text
+    assert "Evidence-backed DeFi opportunities" not in off.text
+    assert uid not in off.text
+    for path in ("/yield/compare", "/yield/monitor", "/yield/access.json", "/yield/watchlist.json",
+                 f"/yield/{uid}", f"/yield/{uid}/history.json", f"/yield/{uid}/evidence.json"):
+        assert client.get(path).status_code == 404, path
+    assert client.post(f"/yield/{uid}/plan", data={"amount": "1"}).status_code == 404
 
     monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
     response = client.get("/yield")
