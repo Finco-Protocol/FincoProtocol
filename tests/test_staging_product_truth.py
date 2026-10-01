@@ -1,20 +1,8 @@
-"""Staging Product Truth & Roadmap Refresh — contract tests.
+"""Staging Product Truth & Roadmap contract tests.
 
-Proves the public staging surfaces (/docs, /roadmap, /verify, /protocol/finco)
-state the current post-#143 product truth:
-
-  - FINCO Trust Stack present with the five separate authorities;
-  - Reference Regression Check terminology (no generic MODEL VALIDATION label);
-  - Run Integrity shipped with its implemented scope;
-  - Signed Run ≠ FINCO Verify ≠ economic truth; M-2 in development;
-  - FINCO Verify production boundary (Verified production assets: 0);
-  - R-LIVE documented as a first-class domain (not executable price);
-  - Wallet identity implemented-foundation vs future split;
-  - JEV not claimed shipped (EXPERIMENTAL / IN DEVELOPMENT only);
-  - token launch not claimed.
-
-Presentation-only stream: no financial_engine / finco_core / Radar authority /
-model_validation / verified changes.
+Public surfaces (/docs, /roadmap, /verify, /protocol/finco) must describe the
+current merged product truth without promoting feature-gated or experimental
+work into production-active capability.
 """
 from __future__ import annotations
 
@@ -99,47 +87,49 @@ class TestDocsTrustStack:
 
 
 class TestRoadmapTruth:
+    def test_roadmap_primary_architecture_and_bands(self):
+        road = _flat("app/templates/protocol_roadmap.html")
+        assert "MODEL · RADAR · YIELD · CRYPTO" in road
+        assert "VERIFY · API · $FINCO" in road
+        for status in ("LIVE / IMPLEMENTED", "Q4 2026", "Q1 2027", "LATER"):
+            assert status in road
+
     def test_roadmap_active_section(self):
         road = _flat("app/templates/protocol_roadmap.html")
         assert "Active now" in road
         assert "JEV Radar Intelligence V1" in road
 
     def test_roadmap_jev_merged_experimental_truth(self):
-        """PR #146 merged: JEV is EXPERIMENTAL with exact runtime semantics —
-        never described as IN DEVELOPMENT, and never production-validated."""
         road = _flat("app/templates/protocol_roadmap.html")
         jev_card = road[road.index("JEV Radar Intelligence V1"):]
         jev_card = jev_card[:jev_card.index("Signed Run Public Trust")]
         assert "EXPERIMENTAL — merged (PR #146)" in jev_card
         assert "IN DEVELOPMENT" not in jev_card
         assert "not shipped" not in jev_card
-        # Runtime semantics: default OFF, SHADOW-not-silent, VISIBLE explicit.
         assert "default OFF" in jev_card
         assert "SHADOW" in jev_card and "VISIBLE" in jev_card
         assert "SKIPPED_NO_KEY" in jev_card
-        # Boundaries retained.
         assert "JEV interprets. FINCO authorities remain authoritative." in jev_card
-        for banned in ("investment recommendation", "trading signal", "price prediction"):
-            assert banned in jev_card.split("No investment recommendations")[1] or                 f"No {banned}s" in jev_card, banned
+        assert "No investment recommendations" in jev_card
+        assert "no trading signals" in jev_card
+        assert "no price prediction" in jev_card
         assert "no Verify or identity authority" in jev_card
 
     def test_jev_module_matches_public_truth(self):
-        """The public EXPERIMENTAL framing matches the merged module contract."""
         from app.radar_rwa.jev_intelligence.config import JevIntelligenceConfig
         from app.radar_rwa.jev_intelligence.contracts import JevMode
         cfg = JevIntelligenceConfig()
-        assert cfg.mode is JevMode.OFF          # default OFF
+        assert cfg.mode is JevMode.OFF
         assert cfg.enabled is False
         assert cfg.visible is False
-        shadow = JevIntelligenceConfig.from_env({
-            "FINCO_JEV_INTELLIGENCE_ENABLED": "1"
-        })
-        assert shadow.mode is JevMode.SHADOW    # enabled without mode = SHADOW
-        assert shadow.visible is False          # never silently promoted
+        shadow = JevIntelligenceConfig.from_env({"FINCO_JEV_INTELLIGENCE_ENABLED": "1"})
+        assert shadow.mode is JevMode.SHADOW
+        assert shadow.visible is False
         explicit = JevIntelligenceConfig.from_env({
-            "FINCO_JEV_INTELLIGENCE_ENABLED": "1", "FINCO_JEV_INTELLIGENCE_MODE": "VISIBLE"
+            "FINCO_JEV_INTELLIGENCE_ENABLED": "1",
+            "FINCO_JEV_INTELLIGENCE_MODE": "VISIBLE",
         })
-        assert explicit.mode is JevMode.VISIBLE  # VISIBLE requires explicit config
+        assert explicit.mode is JevMode.VISIBLE
 
     def test_roadmap_m2_in_development(self):
         road = _flat("app/templates/protocol_roadmap.html")
@@ -148,31 +138,36 @@ class TestRoadmapTruth:
         assert "M-2 is not shipped until merged" in road
 
     def test_m2_state_matches_merged_main(self):
-        """M-2 must reflect actual merged main: at this release cut it is
-        deferred (no M-2 trust surface merged), so public wording stays
-        IN DEVELOPMENT and no verifier capability may be claimed."""
         import subprocess
         probe = subprocess.run(
             ["git", "grep", "-l", "public_verifier", "origin/main", "--", "app/services/"],
             cwd=REPO, capture_output=True, text=True,
         )
-        # If a public verifier ever merges, this test must be updated to the
-        # exact merged surface; until then no such module may exist.
         assert probe.stdout.strip() == "", probe.stdout
 
-    def test_roadmap_yield_active_development_truth(self):
-        """PR #148 is an open active-development spike: never 'not started',
-        never shipped, never custody/execution claims."""
+    def test_roadmap_yield_merged_but_execution_inactive_truth(self):
         road = _flat("app/templates/protocol_roadmap.html")
         assert "FINCO Yield" in road
-        assert "IN DEVELOPMENT / EXPERIMENTAL" in road
-        assert "not started" not in road
-        assert "PR #148, not merged" in road
-        assert "flags default OFF" in road
+        assert "IMPLEMENTED / FEATURE-GATED" in road
+        assert "PR #148, not merged" not in road
+        assert "FINCO_YIELD_ENABLED defaults OFF" in road
+        assert "FINCO_YIELD_EXECUTION_ENABLED defaults OFF" in road
         assert "Non-custodial" in road
-        assert "no mainnet execution" in road
+        assert "no server signing" in road
+        assert "no automatic broadcast" in road
         assert "no FINCO-owned vault" in road
+        assert "no production mainnet money movement" in road
+        assert "External alert delivery is NOT SHIPPED" in road
         assert "Explore → Underwrite → Evidence → Monitor → Act" in road
+
+    def test_roadmap_crypto_utility_not_production_active(self):
+        road = _flat("app/templates/protocol_roadmap.html")
+        assert "production FINCO deployment count = 0" in road
+        assert "token gating default = OFF" in road
+        assert "chain = UNSET" in road
+        assert "token contract = UNSET" in road
+        assert "production threshold = UNSET" in road
+        assert "production token activation is not configured" in road
 
     def test_roadmap_model_market_bridge(self):
         road = _flat("app/templates/protocol_roadmap.html")
@@ -201,8 +196,6 @@ class TestRoadmapTruth:
         assert "production Verified assets: 0" in road
 
     def test_roadmap_r_live_no_generic_300s_freshness_claim(self):
-        """F1: R-LIVE freshness is a TWAP window plus fail-closed rules — never
-        a single collapsed '300-second freshness' SLA on the public roadmap."""
         road = _flat("app/templates/protocol_roadmap.html")
         assert "300-second freshness" not in road
         assert "300-second TWAP" in road
@@ -231,7 +224,6 @@ class TestVerifyTrustSurface:
         assert "Signed Run is not FINCO Verify and not economic truth" in verify
 
     def test_verify_no_unsupported_evidence_id_claim(self):
-        """F2: the public Verify page must not invent an evidence_id contract."""
         verify = _flat("app/templates/protocol_verify.html")
         assert "confirmed evidence_id" not in verify
         assert "source-proven model↔market binding" in verify
@@ -262,18 +254,17 @@ class TestFincoPageTruth:
 
 class TestStatusVocabulary:
     def test_no_ambiguous_coming_soon(self):
-        for rel in ("app/templates/protocol_docs.html",
-                    "app/templates/protocol_roadmap.html",
-                    "app/templates/protocol_verify.html"):
+        for rel in (
+            "app/templates/protocol_docs.html",
+            "app/templates/protocol_roadmap.html",
+            "app/templates/protocol_verify.html",
+        ):
             assert "coming soon" not in _flat(rel).lower(), rel
 
 
 class TestMasterWorkflowInventory:
     def test_library_storage_clone_copy_pinned(self):
-        """Storage clone button copy is pinned by existing library contracts;
-        the status vocabulary exception applies to this established phrase."""
-        assert "Working-copy runtime coming soon" in _read(
-            "app/templates/library/project_library_list.html")
+        assert "Working-copy runtime coming soon" in _read("app/templates/library/project_library_list.html")
 
     def test_readme_r_live_freshness_precision(self):
         readme = _flat("README.md")
@@ -294,12 +285,19 @@ class TestMasterWorkflowInventory:
 
     def test_release_matrix_exists_and_current(self):
         matrix = _read("docs/review/PRODUCT_TRUTH_RELEASE_MATRIX.md")
-        for feature in ("Run Integrity Checks (H-4b)", "Reference Regression Check (P1.3)",
-                        "Signed Run", "M-2", "R-LIVE V2", "JEV Radar Intelligence V1",
-                        "Wallet identity", "B2.3"):
+        for feature in (
+            "Run Integrity Checks (H-4b)",
+            "Reference Regression Check (P1.3)",
+            "Signed Run",
+            "M-2",
+            "R-LIVE V2",
+            "JEV Radar Intelligence V1",
+            "Wallet identity",
+            "B2.3",
+        ):
             assert feature in matrix, feature
         assert "PRODUCTION_VERIFIED_ASSET_COUNT = 0" in matrix
-        assert "not merged" in matrix  # JEV / M-2 open-PR rule
+        assert "not merged" in matrix
 
 
 class TestFrozenAuthorities:

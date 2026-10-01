@@ -1,231 +1,208 @@
 # FINCO Protocol Roadmap
 
-FINCO is being developed as deterministic infrastructure for **RWA modelling,
-market intelligence, and verification**.
+FINCO is being developed as deterministic financial-intelligence infrastructure for real-world assets.
 
-The modelling strategy is vertical: begin with a deeply modelled infrastructure
-category, preserve a common financial / verification core, then add asset-specific
-operating modules without duplicating the underlying engine.
+The public product architecture is intentionally simple:
 
----
+- **MODEL** — deterministic asset and project-finance economics;
+- **RADAR** — source-aware market, company, macro and tokenized-asset intelligence;
+- **YIELD** — read-only yield discovery, underwriting, evidence, history and monitoring;
+- **CRYPTO** — verified-wallet identity, entitlement and protocol-access foundations.
 
-## SHIPPED
+The protocol layer is **VERIFY · API · $FINCO**. These layers expose evidence, machine access and optional service-entitlement infrastructure; they do not replace the financial, market or identity authorities underneath them.
 
-### FINCO Model — RWA infrastructure modelling
-
-Current production modelling verticals:
-
-- **Solar** — mature production modelling workflow
-- **Wind** — mature production modelling workflow
-- **Data Center** — implemented modelling workflow whose canonical reference passed the A3.1 vertical regression check
-- **EV Charging** — implemented modelling workflow (A3.2, P0.3 canonical reference)
-- **Storage** — PREVIEW (reference viewable; working-copy runtime not released)
-
-Shared engine capabilities shipped:
-
-- physical and operating assumptions,
-- production and revenue structures,
-- CAPEX and construction schedules,
-- operating expenditure,
-- debt financing and amortization,
-- DSCR and credit metrics,
-- shareholder funding,
-- tax and depreciation,
-- reserves and cash waterfalls,
-- financial statements,
-- distributions,
-- project / equity / sponsor returns,
-- scenarios, sensitivities, reporting, and controlled exports.
-
-Institutional output capabilities:
-
-- Canonical Last Run (committed snapshot — unchanged by Working Copy edits;
-  replaced only by a subsequent committed run)
-- Institutional XLSX Export (P1.2) — reads committed Last Run only
-- Reference Regression Check (P1.3) — re-runs canonical reference-model KPIs
-  against pinned expected values; regression protection for the reference
-  library. Does NOT independently validate a user's Last Run (H-4A).
-- EV Institutional Reconciliation (P1.4)
-- Institutional Trust Pack (P1.1) — methodology HTML, DSCR, XIRR ACT/365F
-
-### Signed Run Certificate V1 (PR #132)
-
-Ed25519 asymmetric signed certificate issued from committed Last Run only.
-Requires `FINCO_RUN_CERT_SIGNING_KEY`. Fails closed without it. Signature
-verification works when the relying party independently holds the trusted
-FINCO public key; public trust-key distribution and a public verifier are
-not yet complete. Proves computational integrity — not economic truth.
-
-### Model Trust Pack UX V1 (PR #133)
-
-Seven-section read-only evidence surface in the V2 workbook. Zero engine calls
-at render. Explicitly separates Reference Regression Check ≠ FINCO VERIFY ≠
-Signed Run. The Reference Regression Check is regression protection for the
-reference library, not independent validation of a user's Last Run.
-
-### M-6 Full-Tenor Gearing Sculpting (engine capability — shipped, PR #156)
-
-GEARING_CAP sizing + optional DSCR_SCULPTED full-tenor repayment exists as an
-explicit engine policy (default remains GEARING_CAP → LEVEL_PRINCIPAL; the new
-policy is explicit opt-in). NOT exposed through public UI, Working Copy UI,
-public API, MCP, Radar, Yield or Verify — engine capability shipped;
-user-facing configuration not exposed. Distinct from voluntary prepayment,
-refinancing, prepayment penalty and acceleration (see Known Limitations).
-
-### Run Integrity Checks (shipped — H-4b)
-
-Internal consistency checks against a user's actual committed Last Run,
-recorded at run commit: Sources & Uses, balance-sheet reconciliation,
-senior debt rollforward, debt-service/interest consistency, CFADS/DSCR
-integrity, unfunded-cash deficit, DSCR sculpting feasibility, and
-sponsor-return/XIRR input consistency. Recomputed from evidence recorded
-at commit; they do not re-run the model. Distinct from the Reference
-Regression Check (P1.3), which re-runs canonical reference models against
-pinned expected values. Run Integrity does not validate external
-assumptions, establish economic truth, or equal FINCO VERIFY or Signed
-Run.
-### Radar / R-LIVE
-
-- **Radar B1.1–B1.3** — BNB RWA market intelligence, cross-chain canonical
-  identity, premium/execution gap, exact-identity history
-- **R-LIVE V2** (PR #136 / #137) — registry-driven on-chain reference surface.
-  300-second TWAP with fail-closed freshness policies. USDG/USD Chainlink conversion. Public API. UX shell.
-  `/radar` → `/radar/r-live`. Exact canonical identity only; no ticker/fuzzy lookup.
-- **R-LIVE snapshot-first UX** (PR #153) — landing/detail render the last
-  valid snapshot immediately; typed INITIALIZING/UNAVAILABLE for cold assets;
-  normal request-path live acquisition = ZERO; failed refresh preserves prior
-  valid evidence; canonical 13-asset approved universe preserved.
-- **R-LIVE multi-asset collector** (PR #139) — no-arg `python -m app.radar_rwa.r_live_collect`
-  collects all approved registry assets serially. STALE/UNAVAILABLE market states
-  are not process failures. Staging config contract: `ROBINHOOD_RPC_URL` +
-  `RADAR_BNB_INTELLIGENCE_DB_PATH`; staging/production ledgers must be separate files.
-- **R-LIVE V2 freshness/history/13-asset expansion** (PR #140, merged 2026-09-29) —
-  13 source-proven approved assets: AAPL, NVDA, AMZN, GOOGL, TSLA, AVGO, NFLX, AMD,
-  DELL, SNAP, INTC, MSFT, META. Source-component freshness clocks (market activity age,
-  oracle age, block age, `effective_evidence_at`, `collected_at`). `collected_at` ≠
-  `effective_evidence_at`. 1h/24h ranges: collection-timestamp-selected, HISTORICAL,
-  >=2 points, no interpolation. STALE last-available UX (explicit HISTORICAL label;
-  STALE badge stays STALE). Landing batch: 2 requests total (not 16). 6 public R-LIVE
-  API routes (up from 3). SCAN_COMPLETE = NO (environment-blocked; no standards
-  weakened; 13 admitted = source-proven).
-  Full suite at exact head: 4703 passed, 38 skipped, 0 failed; 6/6 workflows SUCCESS.
-
-### API / MCP
-
-- **API v1.1** (PR #125) — thin read-only institutional surface over canonical authorities
-- **MCP V1** (PR #129) — read-only institutional agent interface (9 tools; signed session identity)
-- **R-LIVE public API** (PR #137 / #140) — 6 unauthenticated read-only routes
-
-### Token / Access / Metering
-
-- **B2.1 FINCO Verify** — fail-closed Verified provenance gate and dossier entitlement
-- **B2.2 Token Entitlement** — fail-closed FINCO token entitlement for Verified dossiers
-- **B2.3 Usage Metering** (PR #128, #135) — append-only off-chain ledger; subject-scoped
-  idempotency; concurrent duplicate fix (PR #135)
-
-### Documentation / Release Integrity
-
-- V1 Product Truth Freeze (PR #130)
-- Opus Handoff Pack V1 (PR #131)
-- Post-PR137 Product Truth Refresh (PR #138, earlier)
-- Post-PR140 Final Docs / Review Package Refresh (PR #138, this revision)
+Roadmap status is separated into **LIVE / IMPLEMENTED**, **Q4 2026**, **Q1 2027** and **LATER**. A merged implementation can still be feature-gated or not production-active; those states are stated explicitly below.
 
 ---
 
-## CURRENT / OPERATIONAL
+## LIVE / IMPLEMENTED
 
-These capabilities are implemented and code-complete. The following operational
-activities are underway or required before full production deployment:
+### FINCO Model
 
-- **R-LIVE canonical history accumulation** — collector active; accumulating 13-asset
-  canonical history on production VPS; requires `ROBINHOOD_RPC_URL` + `RADAR_BNB_INTELLIGENCE_DB_PATH`
-  (identical path for web and collector; staging/production separate)
-- **R-LIVE wide admission scan** — blocked by review environment egress policy
-  (HTTP 403 on api.robinhood.com and rpc.mainnet.chain.robinhood.com);
-  SCAN_COMPLETE = NO; additional asset admission possible when environment permits
-- **Staging performance observation** — observe real staging R-LIVE performance
-  with 13-asset surface; validate 1h/24h range accumulation
-- **Signed Run Certificate** — requires `FINCO_RUN_CERT_SIGNING_KEY` in deployment configuration
-- **MCP V1** — requires `FINCO_SESSION_TOKEN` deployment configuration;
-  server-session isolation review for multi-user shared deployments
-- **B2.3 metering coverage** — MCP tool-call hook wiring not confirmed for all production paths
-- **Final docs / review package** — this PR (PR #138 post-PR140 revision)
-- **Final Release Integrity Audit** — pending
+Current modelling verticals:
+
+- **Solar** — mature production modelling workflow;
+- **Wind** — mature production modelling workflow;
+- **Data Center** — implemented and supported; canonical reference passed the A3.1 vertical regression check;
+- **EV Charging** — implemented and supported; A3.2 / P0.3 canonical reference;
+- **Storage** — PREVIEW / reference scope; working-copy runtime not released.
+
+Shared engine/product capabilities include operating assumptions, revenue, CAPEX, OPEX, construction financing, debt, DSCR/credit metrics, shareholder funding, tax/depreciation, reserves/cash waterfalls, financial statements, distributions, project/equity/sponsor returns, scenarios, sensitivities and controlled exports.
+
+Trust/output layers already implemented include Canonical Last Run, Institutional XLSX Export, Run Integrity Checks, the Reference Regression Check and config-gated Ed25519 Signed Run issuance. Signed Run public trust-key discovery/public verification remains separate M-2 work.
+
+### FINCO Radar
+
+- BNB RWA market intelligence, cross-chain canonical identity and execution/premium-gap surfaces;
+- R-LIVE exact-identity on-chain reference observations;
+- **300-second TWAP with fail-closed freshness policies** — not a collapsed freshness SLA;
+- AVAILABLE / STALE / UNAVAILABLE evidence states and 1h/24h historical ranges;
+- snapshot-first UX and multi-asset collection;
+- public read-only Radar/R-LIVE API;
+- R-LIVE observations are reference evidence, **not executable prices**.
+
+### FINCO Yield
+
+PR #148 is merged. The read-only FINCO Yield V1 product is implemented, but production execution is not activated.
+
+Implemented scope:
+
+- exact canonical opportunity identity;
+- Ethereum/Base Morpho research observations and generic ERC-4626 authority path;
+- source-aware freshness and typed evidence states;
+- deterministic underwriting, component reconciliation, Organic Share, Reward Dependency and Reward-Off APY;
+- amount/horizon-aware Net APY only when explicit costs exist;
+- Explore / Detail / Compare / Evidence / immutable History;
+- read-only Wallet Monitor reusing the existing verified FINCO wallet identity;
+- canonical unsigned transaction-plan construction and provider-normalization boundaries;
+- Yield watchlist foundation with per-user canonical opportunity identity.
+
+Operational boundaries:
+
+- `FINCO_YIELD_ENABLED=0` by default;
+- `FINCO_YIELD_EXECUTION_ENABLED=0` by default;
+- no private-key access;
+- no server-side signing;
+- no automatic broadcast;
+- no custody;
+- no FINCO-owned vault, allocator or pooled-funds product;
+- no production mainnet money movement in the current workflow;
+- external alert delivery is **NOT SHIPPED**.
+
+### FINCO Crypto / Wallet & Entitlement Foundation
+
+Crypto Utility V0 is merged and implements the authority chain from authenticated session → verified wallet → approved deployment resolution → read-only balance evidence → token entitlement → resource policy → typed `ResourceAccessDecision` → server enforcement/presentation.
+
+Current production truth:
+
+- production approved `$FINCO` deployment count = **0**;
+- token gating default = **OFF**;
+- production chain = **UNSET**;
+- production token contract = **UNSET**;
+- production threshold = **UNSET**;
+- wallet ownership ≠ balance ≠ entitlement ≠ execution/metering;
+- missing/unavailable/stale balance evidence ≠ zero;
+- `INACTIVE` preserves existing ungated behaviour and is not entitlement;
+- active-gate `DENY` fails closed;
+- Yield execution remains independently OFF even if entitlement preflight succeeds;
+- no tokenomics, staking, burn, token spending, custody, server signing or automatic broadcast is activated.
+
+### VERIFY · API · $FINCO
+
+**VERIFY** currently combines distinct authorities rather than one cumulative certification:
+
+- Run Integrity Checks;
+- Reference Regression Check;
+- Signed Run evidence;
+- FINCO Verify binding state;
+- Verified Assets composition.
+
+Production VERIFIED assets remain **0**. `MODEL_ONLY` never means VERIFIED.
+
+**API** provides read-only public Model/Radar access and R-LIVE routes. API availability does not imply execution authority.
+
+**$FINCO** is the service-entitlement/access layer. Its infrastructure is implemented, but no production deployment, chain, contract, threshold or final token economics is claimed.
+
+### Experimental but merged
+
+**JEV Radar Intelligence V1** is EXPERIMENTAL. Runtime defaults OFF; enabled-without-mode is SHADOW; VISIBLE requires explicit configuration. JEV interprets FINCO evidence but never replaces Model, Radar, Verify, identity or entitlement authority.
 
 ---
 
-## NEXT
+## Q4 2026
 
-- **Clean-room Opus review** — independent security and authority review from
-  this docs PR snapshot (post-PR#140 product truth)
-- **Corrections from independent review** — apply findings
+### Product cohesion
 
-### Expand the model
+- **FINCO Terminal 1.0** — coherent navigation/workflow across Model, Radar, Yield and Crypto;
+- preserve VERIFY · API · $FINCO as protocol-layer services rather than separate primary products;
+- align public Product Truth surfaces so feature-gated/implemented/not-production-active states are explicit.
 
-- richer merchant and contracted revenue structures,
-- additional storage / hybrid-asset logic,
-- portfolio-level renewable analysis,
-- broader scenario and sensitivity tooling.
+### Model — Institutional Modelling
 
-### Add first non-renewable RWA infrastructure modules
+- Institutional Model Runs;
+- Advanced Project Finance;
+- Scenario Control;
+- Institutional Reporting and evidence lineage.
 
-Priority candidates:
+Infrastructure vertical expansion remains under the **Model / future asset coverage** track rather than dominating the protocol roadmap.
 
-- **Transport infrastructure** — toll roads, highways, concessions;
-- **Real estate** — commercial and residential buildings;
-- **Hospitality** — hotels and operating real-estate assets;
-- **Water infrastructure** — desalination, water treatment, wastewater.
+### Radar / intelligence
 
-These modules reuse the common financing, tax, cash-flow, financial-statement,
-return, and verification layers while adding vertical-specific operating assumptions.
+- FINCO Signals with evidence-backed persistence/history and explicit trigger context;
+- continue R-LIVE operational hardening without changing canonical identity authority.
 
-### Market and verification layers
+### Yield
 
-- stronger model / market evidence linkage,
-- richer deterministic signals,
-- cross-market reference reconciliation,
-- execution-aware simulation,
-- model integrity / audit diagnostics,
-- portfolio intelligence.
+- harden the read-only evidence and monitoring workflow;
+- build from the shipped watchlist foundation toward typed external alert delivery;
+- external alert delivery remains NOT SHIPPED until a separate implementation proves it;
+- keep execution independently gated and OFF unless a later reviewed activation changes that contract.
+
+### Crypto / $FINCO activation readiness
+
+- production deployment-provenance and explicit configuration path;
+- entitlement observability and fail-closed activation controls;
+- no roadmap step itself chooses a chain, contract or threshold;
+- no final tokenomics are defined by this roadmap;
+- no staking, burn or token spending is introduced by this phase.
+
+### Verification / Model ↔ Market
+
+- source-proven Model ↔ `economic_asset_uid` ↔ canonical market evidence binding;
+- public Signed Run trust distribution / verifier completion (M-2);
+- optional On-chain Verify design work may continue, but no anchoring is claimed live.
+
+### Metered Utility — M-1
+
+Define metering only around useful scarce resources after production activation prerequisites are explicit. **Token economics are not final; token launch is not claimed.**
+
+---
+
+## Q1 2027
+
+### Valuation & Protocol Intelligence
+
+- **FINCO Fair Value** — normalized fundamentals, explicit assumptions and traceable scenario-based valuation;
+- **Fundamental Gap** — defined Fair Value versus underlying-market-price metric;
+- **Tokenization Premium** — tokenized-market reference/execution context versus the underlying security;
+- Valuation & Tokenized Equity Screener;
+- Portfolio Intelligence Preview;
+- Financial Passport combining asset identity, model version, valuation snapshot, market snapshot, evidence digest and verification state.
+
+These are targets, not current capabilities. They do not grant investment recommendations, guaranteed outcomes or execution authority.
 
 ---
 
 ## LATER
 
-Additional infrastructure verticals may include:
+### Model future asset coverage
 
-- energy storage and utilities,
-- ports and logistics infrastructure,
-- telecom infrastructure,
-- industrial and process facilities,
-- district heating / cooling,
-- other long-duration contracted or regulated infrastructure.
+Additional operating modules may include deeper Storage/hybrid assets, transport infrastructure, real estate, hospitality, water infrastructure, ports/logistics, telecom, industrial/process facilities and other long-duration contracted or regulated assets.
 
-Longer-term platform capabilities include:
+These remain **Model** verticals that reuse the common financing, tax, cash-flow, statements, returns and verification core.
 
-- live infrastructure financial digital twins,
-- machine-readable due diligence,
-- infrastructure asset knowledge graphs,
-- capital-structure and refinancing optimization,
-- global relative-value analysis,
-- autonomous model-maintenance agents.
+### Enterprise Modelling Platform
+
+Not a current Q4 priority:
+
+- Team Workspaces & Approvals;
+- Portfolio Modelling;
+- Advanced Financing Structures;
+- Audit & Model Governance;
+- broader enterprise integrations and collaboration controls.
+
+### Verification / research
+
+- **L2 / Merkle Anchoring** after the public Signed Run trust model is complete;
+- cryptographic proof-of-model / proof-of-valuation research;
+- zero-knowledge financial proofs;
+- on-chain financial attestations;
+- FINCO Agent Alpha and other agent-assisted workflows where AI explains typed FINCO evidence but never becomes calculation, identity, price or entitlement authority.
 
 ---
 
-## EXPERIMENTAL
+## Roadmap boundary
 
-- **Jev / Reflex** (issue #119) — experimental shadow; explicitly NOT V1 scope;
-  not merged to main; not a supported capability.
+**Targets are sequencing, not guarantees.** A roadmap target does not mean a token, financial product, investment return or launch date is guaranteed. FINCO evidence and verification labels do not imply bank, audit or third-party certification unless explicitly stated.
 
----
-
-## Research
-
-- cryptographic proof-of-model and proof-of-valuation,
-- zero-knowledge financial proofs,
-- on-chain financial attestations,
-- counterfactual market simulation,
-- autonomous capital-allocation research.
-
-Research items and future infrastructure verticals are exploratory roadmap targets
-and are not delivery commitments until separately implemented and validated.
+No roadmap item by itself activates custody, server signing, automatic broadcast, staking, burn, token spending, production token gating or Yield execution.
