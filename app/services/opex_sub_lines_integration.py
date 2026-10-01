@@ -152,7 +152,7 @@ def fold_sub_lines_into_opex(
 # Public entry point for run_service
 # ---------------------------------------------------------------------------
 
-def apply_user_sub_lines_to_opex(
+def _fold_user_sub_lines_to_opex(
     opex: Any,
     *,
     project_id: str,
@@ -225,3 +225,28 @@ def apply_user_sub_lines_to_opex(
             )
 
     return result
+
+
+def apply_user_sub_lines_to_opex(
+    opex: Any,
+    *,
+    project_id: str,
+    scenario_overrides: Optional[Mapping[str, Any]] = None,
+) -> Any:
+    """Fold custom OPEX sub-lines, then apply the typed B.13 percentage.
+
+    The percentage is evaluated by the engine period-by-period over the other
+    OPEX groups; no authority => reference contingency rule untouched.
+    """
+    from app.contingency_authority import apply_opex_contingency
+    from app.services.capex_sub_lines_integration import _load_contingency_pct
+
+    folded = _fold_user_sub_lines_to_opex(
+        opex, project_id=project_id, scenario_overrides=scenario_overrides,
+    )
+    if not project_id:
+        return folded
+    pct, _source = _load_contingency_pct(project_id, scenario_overrides, "opex")
+    if pct is None:
+        return folded
+    return apply_opex_contingency(folded, pct)

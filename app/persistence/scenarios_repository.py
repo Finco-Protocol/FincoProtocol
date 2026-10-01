@@ -588,8 +588,22 @@ def update_scenario_overrides(
     # sub-line per-scenario amounts without that data being
     # dropped on the floor.
     _RESERVED_OVERRIDE_KEYS = frozenset(
-        {"_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata"}
+        {"_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata",
+         "_contingency_pct_overrides"}
     )
+
+    # Typed contingency authority override: {"capex": pct|None, "opex": pct|None}.
+    # Validated strictly (0-100, finite) so malformed state can never reach Run.
+    if "_contingency_pct_overrides" in overrides:
+        from app.contingency_authority import validate_pct
+        raw_cont = overrides["_contingency_pct_overrides"]
+        if not isinstance(raw_cont, dict) or set(raw_cont) - {"capex", "opex"}:
+            raise ValueError(
+                "_contingency_pct_overrides must be a mapping with only 'capex'/'opex' keys"
+            )
+        for _k, _v in raw_cont.items():
+            if _v is not None:
+                validate_pct(_v)
 
     # R3/F05 — Validate _capex_sub_line_overrides before persistence.
     # Each amount value in the map must be a finite float.  NaN / +Inf / -Inf

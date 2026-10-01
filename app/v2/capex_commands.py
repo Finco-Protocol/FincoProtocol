@@ -498,3 +498,55 @@ def reorder_capex_lines(
             raise CapexConcurrentEditError(str(exc)) from exc
 
     return result_holder[0], hash_out.value
+
+
+def set_contingency_percentage(
+    *,
+    project_record: Any,
+    user_id: str,
+    kind: str,
+    pct: Optional[float],
+    workbook_version: str,
+    expected_content_hash: str,
+) -> str:
+    """Set (or clear with ``None``) the typed C.13 / B.13 percentage authority.
+
+    ``kind`` is ``"capex"`` (C.13) or ``"opex"`` (B.13).  Protected reference
+    projects are rejected, so reference contingency authority stays locked.
+    Persisted in ``projects.replay_metadata_json`` inside the same exclusive,
+    hash-CAS transaction as every other workbook mutation.  Returns the new
+    composite hash.
+    """
+    import json as _json
+
+    from app.contingency_authority import validate_pct, write_authority
+
+    if kind not in ("capex", "opex"):
+        raise CapexCommandError(f"Unknown contingency kind {kind!r}.")
+    _check_project_allows(project_record)
+    _check_workbook_version(workbook_version)
+    try:
+        clean = None if pct is None else validate_pct(pct)
+    except ValueError as exc:
+        raise CapexInvalidAmountError(str(exc)) from exc
+
+    project_id: str = project_record.project_id
+    hash_out = _HashOut()
+    with _exclusive_tx(
+        user_id, project_id,
+        expected_content_hash=expected_content_hash, hash_out=hash_out,
+    ) as cur:
+        cur.execute(
+            "SELECT replay_metadata_json FROM projects WHERE project_id=?",
+            (project_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise CapexCommandError("Project row is missing.")
+        current = _json.loads(row["replay_metadata_json"] or "{}")
+        updated = write_authority(current, kind, clean)
+        cur.execute(
+            "UPDATE projects SET replay_metadata_json=?, updated_at=? WHERE project_id=?",
+            (_json.dumps(updated, sort_keys=True), _now_utc_iso(), project_id),
+        )
+    return hash_out.value

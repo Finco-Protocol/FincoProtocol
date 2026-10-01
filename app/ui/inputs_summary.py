@@ -60,10 +60,25 @@ def build_inputs_summary(project_record: Any, pis: Any, ws: Any) -> dict[str, An
     # Load active user sub-lines so Inputs summary matches CAPEX and OPEX detail sheets.
     from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
     sub_lines = get_active_sub_lines_for_project(project_record.project_id)
-    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
+    from app.contingency_authority import resolve_pct as _resolve_cont_pct
+    from app.workbook.scenario_authority import resolve_active_scenario_overrides
+    _sc_overrides, _sc_err = resolve_active_scenario_overrides(project_record, ws)
+    _cont_pct, _cont_src = _resolve_cont_pct(
+        getattr(project_record, "replay_metadata", None), _sc_overrides, "capex",
+    )
+    capex_vm = build_capex_view_model(
+        project_ctx, is_user_project=is_user, sub_lines=sub_lines,
+        contingency_pct=_cont_pct, contingency_source=_cont_src,
+    )
     from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _get_opex_sub_lines
     opex_sub_lines = _get_opex_sub_lines(project_record.project_id)
-    opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines)
+    _ox_pct, _ox_src = _resolve_cont_pct(
+        getattr(project_record, "replay_metadata", None), _sc_overrides, "opex",
+    )
+    opex_vm = build_opex_view_model(
+        project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines,
+        contingency_pct=_ox_pct, contingency_source=_ox_src,
+    )
 
     return {
         "capex_hard_keur": capex_vm.hard_capex_keur,
