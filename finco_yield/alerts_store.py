@@ -9,7 +9,15 @@ exactly one persisted record).
 
 ``yield_alert_state`` — per-user/per-opportunity evaluation checkpoint
 (last processed observation hash, last freshness state, last support
-state, evaluated_at).
+state, the watch lifecycle stamp, evaluated_at).
+
+Persistence guarantee (final correction): ``commit_alert_state`` is THE
+one narrow transactional operation for evaluation — it inserts alert
+records AND advances the checkpoint in a SINGLE SQLite transaction.
+A checkpoint can therefore never advance past an alert event that has
+not been durably persisted: any failure inside the transaction rolls
+the whole unit back (alerts + checkpoint together), and a retry
+re-derives the same transitions with the same deterministic alert_ids.
 """
 from __future__ import annotations
 
@@ -47,6 +55,7 @@ CREATE TABLE IF NOT EXISTS yield_alert_state (
     last_processed_observation_hash TEXT NOT NULL,
     last_freshness_state TEXT,
     last_support_state TEXT,
+    watch_saved_at TEXT,
     evaluated_at TEXT NOT NULL,
     PRIMARY KEY (user_id, opportunity_uid)
 )
@@ -59,12 +68,23 @@ def _db_path() -> str:
                      str(Path(__file__).resolve().parents[1] / "data" / "finco_runs.db"))
 
 
+def _ensure_checkpoint_columns(conn: sqlite3.Connection) -> None:
+    """Lazy migration for checkpoints created by earlier builds."""
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(yield_alert_state)").fetchall()
+    }
+    if "watch_saved_at" not in columns:
+        conn.execute("ALTER TABLE yield_alert_state ADD COLUMN watch_saved_at TEXT")
+
+
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_db_path(), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute(_SCHEMA)
     conn.execute(_CREATE_INDEX)
     conn.execute(_CHECKPOINT_SCHEMA)
+    _ensure_checkpoint_columns(conn)
     conn.commit()
     return conn
 
@@ -74,44 +94,99 @@ def _utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── Alert records ─────────────────────────────────────────────────────────────
+_ALERT_COLUMNS = (
+    "alert_id, user_id, opportunity_uid, alert_type, label, field, "
+    "previous_value_json, current_value_json, previous_observation_hash, "
+    "current_observation_hash, detected_at, read_at"
+)
+
+
+def _insert_alert(conn: sqlite3.Connection, user_id: str, alert: dict[str, Any]) -> bool:
+    """Insert ONE alert if its deterministic id is new. True when inserted."""
+    alert_id = alert["alert_id"]
+    already = conn.execute(
+        "SELECT 1 FROM yield_alerts WHERE alert_id=?", (alert_id,)).fetchone()
+    if already is not None:
+        return False
+    conn.execute(
+        f"INSERT INTO yield_alerts ({_ALERT_COLUMNS}) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)",
+        (alert_id, user_id, alert["opportunity_uid"],
+         alert["alert_type"], alert.get("label", ""),
+         alert.get("field"),
+         json.dumps(alert["previous"]) if alert.get("previous") is not None else None,
+         json.dumps(alert["current"]) if alert.get("current") is not None else None,
+         alert["previous_observation_hash"],
+         alert["current_observation_hash"],
+         alert["detected_at"]))
+    return True
+
+
+# ── Transactional evaluation commit ───────────────────────────────────────────
+
+def commit_alert_state(
+    user_id: str, opportunity_uid: str, alerts: list[dict[str, Any]], *,
+    last_processed_observation_hash: str,
+    last_freshness_state: str | None,
+    last_support_state: str | None,
+    watch_saved_at: str | None = None,
+) -> list[dict[str, Any]]:
+    """Persist alert inserts AND advance the checkpoint ATOMICALLY.
+
+    One SQLite transaction: every alert insert plus the checkpoint
+    upsert commit together or roll back together.  If any statement
+    fails, no alert is durable and the checkpoint keeps its previous
+    value — it can never advance past unpersisted alert events.
+
+    Deterministic ``alert_id`` makes retries safe: an already-committed
+    alert is skipped (not duplicated) while the checkpoint still advances.
+
+    Returns the list of newly inserted alert dicts (deduped ones skipped).
+    """
+    conn = _connect()
+    try:
+        with conn:
+            created: list[dict[str, Any]] = []
+            for alert in alerts:
+                if _insert_alert(conn, user_id, alert):
+                    created.append(alert)
+            conn.execute(
+                "INSERT INTO yield_alert_state "
+                "(user_id, opportunity_uid, last_processed_observation_hash, "
+                " last_freshness_state, last_support_state, watch_saved_at, "
+                " evaluated_at) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT (user_id, opportunity_uid) DO UPDATE SET "
+                "last_processed_observation_hash=excluded.last_processed_observation_hash, "
+                "last_freshness_state=excluded.last_freshness_state, "
+                "last_support_state=excluded.last_support_state, "
+                "watch_saved_at=excluded.watch_saved_at, "
+                "evaluated_at=excluded.evaluated_at",
+                (user_id, opportunity_uid, last_processed_observation_hash,
+                 last_freshness_state, last_support_state, watch_saved_at,
+                 _utc_iso_now()))
+        return created
+    finally:
+        conn.close()
+
+
+# ── Alert records (plain inserts; evaluation uses commit_alert_state) ─────────
 
 def create_alerts(user_id: str, alerts: list[dict[str, Any]], *,
                   dedupe: bool = True) -> list[dict[str, Any]]:
-    """Persist typed alert dicts.  Deterministic dedupe on alert_id.
+    """Persist typed alert dicts WITHOUT touching the checkpoint.
 
-    Returns the list of newly created alert dicts (deduped ones skipped).
+    Deterministic dedupe on alert_id.  Returns newly created alert dicts.
     """
     if not alerts:
         return []
     conn = _connect()
     try:
-        created: list[dict[str, Any]] = []
-        for alert in alerts:
-            alert_id = alert["alert_id"]
-            if dedupe:
-                exists = conn.execute(
-                    "SELECT 1 FROM yield_alerts WHERE alert_id=?",
-                    (alert_id,)).fetchone()
-                if exists:
-                    continue
-            conn.execute(
-                "INSERT OR IGNORE INTO yield_alerts "
-                "(alert_id, user_id, opportunity_uid, alert_type, label, "
-                " field, previous_value_json, current_value_json, "
-                " previous_observation_hash, current_observation_hash, "
-                " detected_at, read_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL)",
-                (alert_id, user_id, alert["opportunity_uid"],
-                 alert["alert_type"], alert.get("label", ""),
-                 alert.get("field"),
-                 json.dumps(alert["previous"]) if alert.get("previous") is not None else None,
-                 json.dumps(alert["current"]) if alert.get("current") is not None else None,
-                 alert["previous_observation_hash"],
-                 alert["current_observation_hash"],
-                 alert["detected_at"]))
-            created.append(alert)
-        conn.commit()
+        with conn:
+            created: list[dict[str, Any]] = []
+            for alert in alerts:
+                if not dedupe or _insert_alert(conn, user_id, alert):
+                    created.append(alert)
         return created
     finally:
         conn.close()
@@ -217,6 +292,7 @@ def get_checkpoint(user_id: str, opportunity_uid: str) -> dict[str, Any] | None:
         "last_processed_observation_hash": row["last_processed_observation_hash"],
         "last_freshness_state": row["last_freshness_state"],
         "last_support_state": row["last_support_state"],
+        "watch_saved_at": row["watch_saved_at"],
         "evaluated_at": row["evaluated_at"],
     }
 
@@ -224,24 +300,19 @@ def get_checkpoint(user_id: str, opportunity_uid: str) -> dict[str, Any] | None:
 def set_checkpoint(user_id: str, opportunity_uid: str, *,
                    last_processed_observation_hash: str,
                    last_freshness_state: str | None,
-                   last_support_state: str | None) -> None:
-    conn = _connect()
-    try:
-        conn.execute(
-            "INSERT INTO yield_alert_state "
-            "(user_id, opportunity_uid, last_processed_observation_hash, "
-            " last_freshness_state, last_support_state, evaluated_at) "
-            "VALUES (?,?,?,?,?,?) "
-            "ON CONFLICT (user_id, opportunity_uid) DO UPDATE SET "
-            "last_processed_observation_hash=excluded.last_processed_observation_hash, "
-            "last_freshness_state=excluded.last_freshness_state, "
-            "last_support_state=excluded.last_support_state, "
-            "evaluated_at=excluded.evaluated_at",
-            (user_id, opportunity_uid, last_processed_observation_hash,
-             last_freshness_state, last_support_state, _utc_iso_now()))
-        conn.commit()
-    finally:
-        conn.close()
+                   last_support_state: str | None,
+                   watch_saved_at: str | None = None) -> None:
+    """Upsert the checkpoint alone (baseline / re-watch lifecycle reset).
+
+    Baselines carry no alert inserts, so a single atomic upsert preserves
+    the persistence guarantee.
+    """
+    return commit_alert_state(
+        user_id, opportunity_uid, [],
+        last_processed_observation_hash=last_processed_observation_hash,
+        last_freshness_state=last_freshness_state,
+        last_support_state=last_support_state,
+        watch_saved_at=watch_saved_at)
 
 
 def remove_checkpoint(user_id: str, opportunity_uid: str) -> None:

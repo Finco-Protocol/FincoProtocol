@@ -1,25 +1,34 @@
 """Yield Alerts V1 domain tests — checkpoint-based deterministic evaluation
-over CANONICAL authorities (Agent A scope, Correction C).
+over CANONICAL authorities (Agent A scope, final correction).
 
 Proves:
   - watched set comes from THE canonical ``finco_yield.watchlist``;
   - observations come from THE canonical ``YieldHistoryStore`` (JSONL);
   - first evaluation is a baseline: checkpoint set, NO alerts;
   - EVERY unseen observation transition is processed (not just last two);
-  - deterministic alert_id: identical transition → one record (dedupe);
+  - PERSISTENCE ATOMICITY: alert inserts + checkpoint advance commit in
+    ONE transaction; a forced persistence failure leaves the checkpoint
+    untouched (fail closed) and a retry recreates the lost transition
+    exactly once via deterministic alert_ids;
+  - registry support state changes alert WITHOUT any new history
+    observation, exactly once per transition (A→B, then B→C distinct);
+  - RE-WATCH: unwatch → observations → re-add baselines at the latest
+    canonical observation and never replays the unwatched period;
   - canonical freshness (evaluate_freshness): degrade WITHOUT a new
-    observation, recover + NEW_OBSERVATION when fresh evidence arrives
-    after a stale period (CURRENT/STALE — never ``AVAILABLE``);
-  - support state resolved through THE canonical registry;
-  - missing != zero (None never diffs against 0; explicit 0 is data);
+    observation; FRESHNESS_RECOVERED + NEW_OBSERVATION only for canonical
+    DEGRADED (STALE/INVALID/FUTURE_TIMESTAMP) → CURRENT on a NEW hash;
+    UNKNOWN → CURRENT never claims recovery; CURRENT → CURRENT is silent;
+  - missing-vs-zero contract (V1): MISSING is never numerically
+    interpreted as zero, but a MISSING ↔ explicit-0 availability change
+    is a descriptive field-change alert carrying verbatim values;
   - per-user isolation (alerts, checkpoints, read-marking);
-  - unwatching stops future alerts, retains history;
   - alerts_snapshot read-model for the presentation layer.
 
 Alerts are descriptive only — no BUY/SELL/ENTER/EXIT vocabulary.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -41,8 +50,9 @@ SOURCE_URI = "https://evidence.test/vault"
 @pytest.fixture()
 def db(tmp_path, monkeypatch):
     """One SQLite database per test for watchlist + alerts + checkpoints."""
-    monkeypatch.setenv("FINCO_DB_PATH", str(tmp_path / "finco.db"))
-    return tmp_path / "finco.db"
+    path = tmp_path / "finco.db"
+    monkeypatch.setenv("FINCO_DB_PATH", str(path))
+    return path
 
 
 @pytest.fixture()
@@ -76,32 +86,32 @@ class StubRegistry:
 
 def _observe(history_store, uid, at, **fields) -> str:
     """Append ONE canonical observation; payload values canonicalise through
-    the same JSONL round-trip production uses (Decimal → normalized str)."""
+    the same JSONL round-trip production uses (Decimal → normalized str).
+    Returns the canonical observation hash."""
     from finco_yield.history import ImmutableObservationRecord
 
-    payload = {k: v for k, v in fields.items()}
     record = ImmutableObservationRecord(
         opportunity_uid=uid,
         observed_at=at,
-        source_authority="NATIVE_ENRICHED",
-        source_uri=SOURCE_URI,
-        adapter_version="y0.1",
-        payload=payload,
+        source_authority=fields.pop("source_authority", "NATIVE_ENRICHED"),
+        source_uri=fields.pop("source_uri", SOURCE_URI),
+        adapter_version=fields.pop("adapter_version", "y0.1"),
+        payload=dict(fields),
     )
     return history_store.append(record)
 
 
-def _evaluate(user, history_store, registry, *, now, db=None):
+def _evaluate(user, history_store, registry, *, now):
     from finco_yield.alerts_eval import evaluate_watchlist_alerts
 
     return evaluate_watchlist_alerts(
         user_id=user, history_store=history_store, registry=registry, now=now)
 
 
-def _watch(user, uid):
+def _watch(user, uid, *, at=None):
     from finco_yield.watchlist import save_watchlist_item
 
-    return save_watchlist_item(user, uid)
+    return save_watchlist_item(user, uid, now=at or datetime.now(timezone.utc))
 
 
 def _unwatch(user, uid):
@@ -124,6 +134,31 @@ def _alerts(user):
 
 def _minutes(n):
     return BASE + timedelta(minutes=n)
+
+
+def _fail_checkpoint_updates(db_path, user, uid):
+    """Force the checkpoint UPDATE inside commit_alert_state's transaction
+    to fail (SQLite RAISE(ABORT)) — the whole unit must roll back."""
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "CREATE TRIGGER fail_checkpoint_update "
+            "BEFORE UPDATE ON yield_alert_state "
+            f"WHEN NEW.user_id = '{user}' AND NEW.opportunity_uid = '{uid}' "
+            "BEGIN SELECT RAISE(ABORT, 'simulated persistence failure'); END"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _restore_checkpoint_updates(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("DROP TRIGGER IF EXISTS fail_checkpoint_update")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── Canonical identity ────────────────────────────────────────────────────────
@@ -160,7 +195,7 @@ class TestBaseline:
     def test_first_evaluation_baselines_without_alerts(
             self, db, history_store, real_uids):
         uid = real_uids[0]
-        _watch(USER, uid)
+        saved = _watch(USER, uid)
         _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(10))
@@ -170,6 +205,7 @@ class TestBaseline:
         assert checkpoint is not None
         assert checkpoint["last_freshness_state"] == "CURRENT"
         assert checkpoint["last_support_state"] == "SUPPORTED"
+        assert checkpoint["watch_saved_at"] == saved["saved_at"]
 
     def test_baseline_freshness_uses_canonical_states_only(
             self, db, history_store, real_uids):
@@ -190,12 +226,12 @@ class TestTransitions:
             self, db, history_store, real_uids):
         uid = real_uids[0]
         _watch(USER, uid)
-        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        h1 = _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
         assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                          now=_minutes(10)) == []
 
-        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.07"))
-        _observe(history_store, uid, _minutes(30), apy_total=Decimal("0.09"))
+        h2 = _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.07"))
+        h3 = _observe(history_store, uid, _minutes(30), apy_total=Decimal("0.09"))
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(31))
 
@@ -204,8 +240,8 @@ class TestTransitions:
         assert apy_alerts[0]["previous"] != apy_alerts[1]["previous"]
         assert apy_alerts[0]["alert_id"] != apy_alerts[1]["alert_id"]
         checkpoint = _checkpoint(USER, uid)
-        assert checkpoint["last_processed_observation_hash"] == (
-            history_store.for_opportunity(uid)[-1]["observation_hash"])
+        assert checkpoint["last_processed_observation_hash"] == h3
+        assert h1 != h2 != h3
 
     def test_multiple_field_types_in_one_transition(
             self, db, history_store, real_uids):
@@ -239,6 +275,94 @@ class TestTransitions:
                             now=_minutes(21))
         assert created == []
         assert _alerts(USER) == []
+
+
+# ── Persistence atomicity (final correction) ─────────────────────────────────
+
+class TestPersistenceAtomicity:
+    def test_failure_cannot_advance_checkpoint_past_missing_alerts(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        h1 = _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+
+        h2 = _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.09"))
+        _fail_checkpoint_updates(db, USER, uid)
+        with pytest.raises(sqlite3.IntegrityError):
+            _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                      now=_minutes(21))
+        # Fail closed: checkpoint unchanged, zero alerts durable.
+        checkpoint = _checkpoint(USER, uid)
+        assert checkpoint["last_processed_observation_hash"] == h1
+        assert _alerts(USER) == []
+
+        _restore_checkpoint_updates(db)
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(22))
+        assert [a["alert_type"] for a in created] == ["APY_CHANGED"]
+        assert created[0]["previous_observation_hash"] == h1
+        assert created[0]["current_observation_hash"] == h2
+        assert _checkpoint(USER, uid)["last_processed_observation_hash"] == h2
+        assert len(_alerts(USER)) == 1
+
+    def test_retry_replays_every_uncommitted_transition_exactly_once(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        h1 = _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+
+        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.07"))
+        _observe(history_store, uid, _minutes(30), apy_total=Decimal("0.09"))
+        _fail_checkpoint_updates(db, USER, uid)
+        with pytest.raises(sqlite3.IntegrityError):
+            _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                      now=_minutes(31))
+        # Neither transition committed: checkpoint still h1, no alerts.
+        assert _checkpoint(USER, uid)["last_processed_observation_hash"] == h1
+        assert _alerts(USER) == []
+
+        _restore_checkpoint_updates(db)
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(32))
+        apy = [a for a in created if a["alert_type"] == "APY_CHANGED"]
+        assert len(apy) == 2, "both lost transitions must be recreated"
+        ids = {a["alert_id"] for a in created}
+        assert len(ids) == 2
+        # Deterministic retry: re-evaluation adds nothing, duplicates nothing.
+        again = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                          now=_minutes(33))
+        assert again == []
+        assert len(_alerts(USER)) == 2
+        assert _checkpoint(USER, uid)["last_processed_observation_hash"] == (
+            history_store.for_opportunity(uid)[-1]["observation_hash"])
+
+    def test_failure_during_state_only_update_keeps_checkpoint(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        h1 = _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+
+        # Support state changes with NO new observation; persistence fails.
+        _fail_checkpoint_updates(db, USER, uid)
+        with pytest.raises(sqlite3.IntegrityError):
+            _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                      now=_minutes(20))
+        checkpoint = _checkpoint(USER, uid)
+        assert checkpoint["last_support_state"] == "SUPPORTED"
+        assert checkpoint["last_processed_observation_hash"] == h1
+        assert _alerts(USER) == []
+
+        _restore_checkpoint_updates(db)
+        created = _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                            now=_minutes(21))
+        assert [a["alert_type"] for a in created] == ["SUPPORT_STATE_CHANGED"]
+        assert _checkpoint(USER, uid)["last_support_state"] == "DISCOVERY_ONLY"
 
 
 # ── Deterministic identity + dedupe ──────────────────────────────────────────
@@ -294,6 +418,148 @@ class TestDeterministicAlertId:
         assert created1[0]["alert_id"] != created2[0]["alert_id"]
 
 
+# ── Support state WITHOUT new history (final correction) ─────────────────────
+
+class TestSupportStateWithoutNewHistory:
+    def test_support_change_alerts_with_no_new_observation(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+
+        # Registry support state flips; NO new history arrives at all.
+        created = _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                            now=_minutes(15))
+        support = [a for a in created
+                   if a["alert_type"] == "SUPPORT_STATE_CHANGED"]
+        assert len(support) == 1
+        assert support[0]["previous"] == "SUPPORTED"
+        assert support[0]["current"] == "DISCOVERY_ONLY"
+        # State-only transition: observation hash pair legitimately fixed.
+        assert (support[0]["previous_observation_hash"]
+                == support[0]["current_observation_hash"])
+        assert _checkpoint(USER, uid)["last_support_state"] == "DISCOVERY_ONLY"
+
+    def test_repeated_support_state_does_not_duplicate(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        assert _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                         now=_minutes(15))
+        assert _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                         now=_minutes(20)) == []
+        assert len(_alerts(USER)) == 1
+
+    def test_chained_support_transitions_are_distinct_alerts(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        first = _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                          now=_minutes(15))
+        second = _evaluate(USER, history_store,
+                           StubRegistry("READ_ONLY_RESEARCH"), now=_minutes(20))
+        assert len(first) == len(second) == 1
+        assert second[0]["previous"] == "DISCOVERY_ONLY"
+        assert second[0]["current"] == "READ_ONLY_RESEARCH"
+        # Same observation hash, different state transition → different id.
+        assert first[0]["alert_id"] != second[0]["alert_id"]
+        assert len(_alerts(USER)) == 2
+
+    def test_support_change_with_new_observation_still_alerts_once(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid)
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.05"))
+        created = _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+                            now=_minutes(21))
+        support = [a for a in created
+                   if a["alert_type"] == "SUPPORT_STATE_CHANGED"]
+        assert len(support) == 1
+        assert _checkpoint(USER, uid)["last_support_state"] == "DISCOVERY_ONLY"
+
+
+# ── Re-watch lifecycle (final correction) ────────────────────────────────────
+
+class TestRewatchLifecycle:
+    def test_readd_baselines_at_latest_and_never_replays(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid, at=_minutes(0))
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.07"))
+        assert len(_evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                             now=_minutes(21))) == 1
+        historical = len(_alerts(USER))
+        assert historical == 1
+
+        _unwatch(USER, uid)
+        h3 = _observe(history_store, uid, _minutes(30), apy_total=Decimal("0.09"))
+        h4 = _observe(history_store, uid, _minutes(40), apy_total=Decimal("0.11"))
+        readded = _watch(USER, uid, at=_minutes(50))
+
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(51))
+        assert created == [], "unwatched period must never replay"
+        assert len(_alerts(USER)) == historical  # history intact
+        checkpoint = _checkpoint(USER, uid)
+        assert checkpoint["last_processed_observation_hash"] == h4
+        assert checkpoint["watch_saved_at"] == readded["saved_at"]
+
+        _observe(history_store, uid, _minutes(60), apy_total=Decimal("0.13"))
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(61))
+        assert [a["alert_type"] for a in created] == ["APY_CHANGED"]
+        assert created[0]["previous"] == "0.11"  # from h4, not older
+        assert created[0]["current"] == "0.13"
+        assert len(_alerts(USER)) == historical + 1
+
+    def test_rewatch_without_intervening_observations_rebaselines(
+            self, db, history_store, real_uids):
+        uid = real_uids[0]
+        _watch(USER, uid, at=_minutes(0))
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        _unwatch(USER, uid)
+        _watch(USER, uid, at=_minutes(20))
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(21))
+        assert created == []
+        checkpoint = _checkpoint(USER, uid)
+        assert checkpoint["watch_saved_at"] != None  # lifecycle stamp moved
+        assert checkpoint["last_processed_observation_hash"] == (
+            history_store.for_opportunity(uid)[-1]["observation_hash"])
+
+    def test_continuous_watch_does_not_rebaseline(
+            self, db, history_store, real_uids):
+        """Re-saving an entry that is still on the watchlist is idempotent
+        (canonical ON CONFLICT DO NOTHING) — the lifecycle must NOT reset."""
+        uid = real_uids[0]
+        first = _watch(USER, uid, at=_minutes(0))
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
+        assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                         now=_minutes(10)) == []
+        _watch(USER, uid, at=_minutes(15))  # idempotent re-save
+        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.09"))
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(21))
+        assert [a["alert_type"] for a in created] == ["APY_CHANGED"]
+        assert _checkpoint(USER, uid)["watch_saved_at"] == first["saved_at"]
+
+
 # ── Canonical freshness ───────────────────────────────────────────────────────
 
 class TestFreshness:
@@ -342,8 +608,7 @@ class TestFreshness:
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=BASE + timedelta(hours=2, minutes=20))
         types = [a["alert_type"] for a in created]
-        assert "FRESHNESS_RECOVERED" in types
-        assert "NEW_OBSERVATION" in types
+        assert types == ["FRESHNESS_RECOVERED", "NEW_OBSERVATION"]
         assert "APY_CHANGED" not in types  # economics unchanged
         recovered = next(a for a in created
                          if a["alert_type"] == "FRESHNESS_RECOVERED")
@@ -372,45 +637,67 @@ class TestFreshness:
         assert "NEW_OBSERVATION" not in types
         assert "APY_CHANGED" in types  # economics still diffed
 
+    def test_unknown_to_current_is_not_recovery(
+            self, db, history_store, real_uids):
+        """UNKNOWN freshness recovering to CURRENT is handled conservatively:
+        checkpoint updates, but no recovery claim and no NEW_OBSERVATION."""
+        uid = real_uids[0]
+        _watch(USER, uid)
+        # Unresolvable source authority → canonical UNKNOWN baseline state.
+        _observe(history_store, uid, BASE, apy_total=Decimal("0.05"),
+                 source_authority="WEIRD_AUTHORITY")
+        checkpoint = None
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        checkpoint = _checkpoint(USER, uid)
+        assert checkpoint["last_freshness_state"] == "UNKNOWN"
 
-# ── Support state (canonical registry authority) ─────────────────────────────
+        _observe(history_store, uid, _minutes(15),
+                 apy_total=Decimal("0.05"))  # same economics, fresh evidence
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                            now=_minutes(20))
+        assert created == []
+        types = {a["alert_type"] for a in _alerts(USER)}
+        assert "FRESHNESS_RECOVERED" not in types
+        assert "NEW_OBSERVATION" not in types
+        assert _checkpoint(USER, uid)["last_freshness_state"] == "CURRENT"
 
-class TestSupportState:
-    def test_support_state_change_alerts(self, db, history_store, real_uids):
+    def test_current_to_current_new_observation_is_silent(
+            self, db, history_store, real_uids):
+        """Routine CURRENT → CURRENT observations generate no
+        NEW_OBSERVATION noise."""
         uid = real_uids[0]
         _watch(USER, uid)
         _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
         assert _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                          now=_minutes(10)) == []
-
-        # Same economics, registry support state changed.
-        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.05"))
-        created = _evaluate(USER, history_store, StubRegistry("DISCOVERY_ONLY"),
+        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.09"))
+        created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(21))
-        support = [a for a in created
-                   if a["alert_type"] == "SUPPORT_STATE_CHANGED"]
-        assert len(support) == 1
-        assert support[0]["previous"] == "SUPPORTED"
-        assert support[0]["current"] == "DISCOVERY_ONLY"
-        assert _checkpoint(USER, uid)["last_support_state"] == "DISCOVERY_ONLY"
+        assert [a["alert_type"] for a in created] == ["APY_CHANGED"]
 
-    def test_unchanged_support_state_does_not_realert(
+    def test_recovery_requires_degraded_state_not_unknown_checkpoint(
             self, db, history_store, real_uids):
+        """An absent/unknown checkpoint freshness never yields a recovery
+        claim when the first evaluated observation is CURRENT."""
         uid = real_uids[0]
         _watch(USER, uid)
         _observe(history_store, uid, BASE, apy_total=Decimal("0.05"))
-        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
-                  now=_minutes(10))
-        _observe(history_store, uid, _minutes(20), apy_total=Decimal("0.05"))
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
-                            now=_minutes(21))
-        assert created == []
+                            now=_minutes(10))
+        assert created == []  # baseline: no recovery on first sight
 
 
-# ── Missing != zero ───────────────────────────────────────────────────────────
+# ── Missing vs zero (V1 contract) ────────────────────────────────────────────
 
-class TestMissingIsNotZero:
-    def test_none_to_zero_is_a_change(self, db, history_store, real_uids):
+class TestMissingVsZeroContract:
+    """V1 contract: MISSING (None/absent) is never numerically interpreted
+    as zero — no delta or magnitude is computed from it and persisted
+    alerts carry verbatim values.  A MISSING ↔ explicit-0 transition is a
+    descriptive availability-state change and emits the field alert."""
+
+    def test_none_to_zero_is_a_descriptive_change(
+            self, db, history_store, real_uids):
         uid = real_uids[0]
         _watch(USER, uid)
         _observe(history_store, uid, BASE, tvl_usd=None)
@@ -420,10 +707,12 @@ class TestMissingIsNotZero:
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(21))
         assert [a["alert_type"] for a in created] == ["TVL_CHANGED"]
+        # Values preserved verbatim — None is never rewritten to 0.
         assert created[0]["previous"] is None
         assert created[0]["current"] == 0
 
-    def test_zero_to_none_is_a_change(self, db, history_store, real_uids):
+    def test_zero_to_none_is_a_descriptive_change(
+            self, db, history_store, real_uids):
         uid = real_uids[0]
         _watch(USER, uid)
         _observe(history_store, uid, BASE, tvl_usd=0)
@@ -433,6 +722,7 @@ class TestMissingIsNotZero:
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(21))
         assert [a["alert_type"] for a in created] == ["TVL_CHANGED"]
+        assert created[0]["previous"] == 0
         assert created[0]["current"] is None
 
     def test_none_to_none_and_zero_to_zero_are_not_changes(
@@ -460,7 +750,24 @@ class TestMissingIsNotZero:
         created = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
                             now=_minutes(21))
         assert [a["alert_type"] for a in created] == ["TVL_CHANGED"]
-        assert created[0]["previous"] is None  # missing, not fabricated zero
+        assert created[0]["previous"] is None  # MISSING, not fabricated zero
+        assert created[0]["current"] == 0
+
+    def test_deterministic_ids_of_inverse_directions_differ(
+            self, db, history_store, real_uids):
+        """None→0 and 0→None on the same hash pair would be distinct
+        transitions only via their verbatim values; the alert identity is
+        hash-pair based, so the value asymmetry is preserved in the record
+        while identity stays deterministic."""
+        uid = real_uids[0]
+        _watch(USER, uid)
+        _observe(history_store, uid, BASE, tvl_usd=None)
+        _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                  now=_minutes(10))
+        _observe(history_store, uid, _minutes(20), tvl_usd=0)
+        first = _evaluate(USER, history_store, StubRegistry("SUPPORTED"),
+                          now=_minutes(21))
+        assert first[0]["previous"] is None and first[0]["current"] == 0
 
 
 # ── Per-user scoping ──────────────────────────────────────────────────────────
@@ -608,6 +915,38 @@ class TestDescriptiveOnly:
 
         for name in core.__all__:
             assert hasattr(core, name), name
+
+    def test_state_only_identity_covers_state_alert_types(self):
+        from finco_yield.alerts_types import (
+            STATE_ONLY_ALERT_TYPES,
+            deterministic_alert_id,
+        )
+
+        kwargs = dict(
+            user_id=USER, opportunity_uid=UID, field="support_state",
+            previous_observation_hash="h1", current_observation_hash="h1")
+        ab = deterministic_alert_id(
+            alert_type="SUPPORT_STATE_CHANGED", state_from="A",
+            state_to="B", **kwargs)
+        bc = deterministic_alert_id(
+            alert_type="SUPPORT_STATE_CHANGED", state_from="B",
+            state_to="C", **kwargs)
+        assert ab != bc, "chained state transitions must not share an id"
+        ab_again = deterministic_alert_id(
+            alert_type="SUPPORT_STATE_CHANGED", state_from="A",
+            state_to="B", **kwargs)
+        assert ab == ab_again, "same transition must stay deterministic"
+        # Economic-transition IDs are not affected by state fields.
+        econ = deterministic_alert_id(
+            alert_type="APY_CHANGED", field="apy_total",
+            previous_observation_hash="h1", current_observation_hash="h2",
+            user_id=USER, opportunity_uid=UID,
+            state_from="A", state_to="B")
+        econ_plain = deterministic_alert_id(
+            alert_type="APY_CHANGED", field="apy_total",
+            previous_observation_hash="h1", current_observation_hash="h2",
+            user_id=USER, opportunity_uid=UID)
+        assert econ == econ_plain
 
 
 # ── Frozen authorities ────────────────────────────────────────────────────────

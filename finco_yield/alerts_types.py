@@ -45,6 +45,17 @@ ALERT_TYPE_LABELS: dict[AlertType, str] = {
     AlertType.NEW_OBSERVATION: "Fresh evidence arrived after a stale period",
 }
 
+# Alerts whose transition happens in registry/evaluator STATE while the
+# economic observation (and therefore its hash) stays fixed.  Their
+# deterministic identity includes the canonical previous/current state
+# values so repeated legitimate transitions on one observation hash
+# remain distinct.
+STATE_ONLY_ALERT_TYPES: frozenset[AlertType] = frozenset({
+    AlertType.FRESHNESS_DEGRADED,
+    AlertType.FRESHNESS_RECOVERED,
+    AlertType.SUPPORT_STATE_CHANGED,
+})
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -69,13 +80,20 @@ def deterministic_alert_id(
     *, user_id: str, opportunity_uid: str, alert_type: str,
     field: str | None, previous_observation_hash: str,
     current_observation_hash: str,
+    state_from: str | None = None, state_to: str | None = None,
 ) -> str:
     """Deterministic alert ID from canonical identity fields.
 
     Same logical transition → same alert_id → exactly one persisted record.
     Different transition → different alert_id.
+
+    Economic-transition IDs hash exactly the observation-hash pair (never
+    weakened).  For STATE_ONLY alert types the canonical previous/current
+    state values are added to the hashed identity, because those
+    transitions legitimately occur on an unchanged observation hash.
+    No randomness anywhere.
     """
-    payload = json.dumps({
+    payload: dict[str, object] = {
         "schema": ALERTS_SCHEMA_VERSION,
         "user_id": user_id,
         "opportunity_uid": opportunity_uid,
@@ -83,5 +101,10 @@ def deterministic_alert_id(
         "field": field or "",
         "previous_observation_hash": previous_observation_hash,
         "current_observation_hash": current_observation_hash,
-    }, sort_keys=True, separators=(",", ":"))
-    return "yalt_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:40]
+    }
+    if (alert_type in {t.value for t in STATE_ONLY_ALERT_TYPES}
+            and state_from is not None and state_to is not None):
+        payload["state_from"] = state_from
+        payload["state_to"] = state_to
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return "yalt_" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:40]

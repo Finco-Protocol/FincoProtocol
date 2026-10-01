@@ -14,8 +14,11 @@ DESCRIPTIVE ONLY: they state that a value or evidence state changed.  They
 are never BUY / SELL / ENTER / EXIT / BEST / SAFE / UNSAFE and never a
 forecast.
 
-Missing != zero: a ``None`` observation field is MISSING (no change can be
-computed against it) while an explicit ``0`` is valid data and can change.
+Missing vs zero (V1 contract): MISSING (``None``/absent) observation
+fields are never numerically interpreted as zero — no delta or economic
+magnitude is computed from a missing value and persisted alerts keep
+previous/current verbatim.  A MISSING ↔ explicit-``0`` transition is a
+descriptive availability-state change and emits the field-change alert.
 """
 from __future__ import annotations
 
@@ -34,6 +37,7 @@ from .alerts_store import (
 from .alerts_types import (
     ALERTS_SCHEMA_VERSION,
     ALERT_TYPE_LABELS,
+    STATE_ONLY_ALERT_TYPES,
     TRACKED_ECONOMIC_FIELDS,
     AlertType,
     YieldAlertEvent,
@@ -44,6 +48,7 @@ from .alerts_eval import evaluate_watchlist_alerts
 __all__ = [
     "ALERTS_SCHEMA_VERSION",
     "ALERT_TYPE_LABELS",
+    "STATE_ONLY_ALERT_TYPES",
     "TRACKED_ECONOMIC_FIELDS",
     "AlertType",
     "YieldAlertEvent",
