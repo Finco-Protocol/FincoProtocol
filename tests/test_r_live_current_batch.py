@@ -386,13 +386,15 @@ def test_current_endpoint_no_cache_header(monkeypatch):
     assert response.headers["cache-control"] == "no-store"
 
 
-# L. Route set remains exactly the six PR #141 public families.
-def test_L_exactly_six_route_families():
+# L. Route set remains the PR #141 public families plus the instant-UX
+# snapshot read family (read-only projection; never triggers acquisition).
+def test_L_exactly_seven_route_families():
     from app.api.v1_1.r_live_public_router import router
     paths = {route.path for route in router.routes}
     assert paths == {
         "/radar/r-live/assets",
         "/radar/r-live/current",
+        "/radar/r-live/snapshot",
         "/radar/r-live/history/ranges",
         "/radar/r-live/{uid}/history",
         "/radar/r-live/{uid}/history/ranges",

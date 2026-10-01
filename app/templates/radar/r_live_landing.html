@@ -28,6 +28,17 @@
     </p>
   </header>
 
+  {% if cold_start %}
+  <div class="rlive-initializing" data-testid="rlive-initializing" role="status"
+       style="margin:0 0 20px;padding:14px 16px;border:1px solid var(--radar-border,#252b33);border-radius:8px;background:rgba(255,255,255,.03)">
+    <strong style="font-size:13px;letter-spacing:.04em">INITIALIZING</strong>
+    <p class="muted small" style="margin:6px 0 0">
+      No current observation has been collected yet. The background collector fills this table
+      automatically — this page never blocks on live chain acquisition.
+    </p>
+  </div>
+  {% endif %}
+
   <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
   <table class="rlive-table" data-testid="rlive-table"
          style="width:100%;border-collapse:collapse;font-size:13px">
