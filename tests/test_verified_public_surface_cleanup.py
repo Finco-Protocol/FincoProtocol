@@ -23,7 +23,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE_MAIN = "origin/main"
 
 
 def _public_ui_client() -> TestClient:
@@ -63,7 +62,7 @@ def test_homepage_no_longer_promotes_verified_assets():
     assert 'class="proto-arch__product-name">Verified Assets<' not in home
     # FINCO Verify remains the promoted verification/trust surface, now on
     # the canonical route
-    assert 'href="/protocol/verify"' in home
+    assert 'href="/verify"' in home
     assert "<strong>VERIFY</strong>" in home
 
 
@@ -73,7 +72,7 @@ def test_get_verified_redirects_to_canonical_verify():
     client = _public_ui_client()
     response = client.get("/verified")
     assert response.status_code == 302
-    assert response.headers["location"] == "/protocol/verify"
+    assert response.headers["location"] == "/verify"
 
 
 def test_canonical_finco_verify_route_registered():
@@ -97,19 +96,74 @@ def test_verified_redirect_wins_over_verified_router():
     client = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
     response = client.get("/verified")
     assert response.status_code == 302
-    assert response.headers["location"] == "/protocol/verify"
+    assert response.headers["location"] == "/verify"
 
 
 # ── app/verified/** frozen ────────────────────────────────────────────────────
 
 def test_app_verified_package_has_zero_diff_vs_main():
     """app/verified/** — verification authority, registry, composer, status
-    display and the verified router module — is byte-identical to main."""
+    display and the verified router module — is byte-identical to main.
+
+    Compares HEAD against its first parent: on a PR checkout HEAD is the
+    merge commit, so the diff shows exactly what this branch introduces on
+    top of main (no dependence on remote refs existing in CI checkouts)."""
     result = subprocess.run(
-        ["git", "diff", BASELINE_MAIN, "--", "app/verified/"],
+        ["git", "diff", "HEAD~1", "HEAD", "--", "app/verified/"],
         cwd=ROOT, capture_output=True, text=True)
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "", result.stdout
+
+
+def test_get_verified_real_app_redirect_follow_reaches_verify():
+    """Real-app integration regression on the actual main_web.app mount
+    order (protocol_ui router before the app.verified router):
+
+      - GET /verified returns the intended 302 redirect to /verify;
+      - following the redirect reaches the canonical FINCO Verify route
+        contract (the deterministic public validation corpus page) and
+        never a 404;
+      - /verify keeps its existing canonical auth contract (unauthenticated
+        request redirects to /login — unchanged by this cleanup);
+      - no duplicate Verify route is registered.
+    """
+    import main_web
+    client = TestClient(main_web.app, raise_server_exceptions=False,
+                        follow_redirects=False)
+
+    redirect = client.get("/verified")
+    assert redirect.status_code == 302
+    assert redirect.headers["location"] == "/verify"
+
+    # topology: exactly ONE canonical Verify route; /verified appears on
+    # BOTH routers (public redirect first, original authority route second)
+    # but the FIRST match — what a request hits — is the redirect handler.
+    live_routes = [r for r in main_web.app.routes
+                   if getattr(r, "path", "") in ("/verified", "/verify")]
+    verify_routes = [r for r in live_routes if r.path == "/verify"]
+    verified_routes = [r for r in live_routes if r.path == "/verified"]
+    assert len(verify_routes) == 1  # no duplicate Verify route invented
+    assert len(verified_routes) == 2
+    assert verified_routes[0].endpoint.__name__ == "verified_assets_redirect"
+    assert verified_routes[1].endpoint.__name__ == "verified_index"  # intact
+    assert "/protocol/verify" not in {
+        getattr(r, "path", None) for r in main_web.app.routes}
+
+    # follow the redirect in the REAL app: unauthenticated /verify keeps its
+    # canonical contract (redirect to /login), never a 404
+    verify_resp = client.get("/verify")
+    assert verify_resp.status_code != 404
+    assert verify_resp.status_code in (200, 302)
+    if verify_resp.status_code == 302:
+        assert verify_resp.headers["location"] == "/login"
+
+    # and following through with an authenticated session reaches the real
+    # Verify page contract (200 with the deterministic corpus surface)
+    from app.auth import COOKIE_NAME, create_session_token, make_session_cookie
+    admin_cookie = make_session_cookie(create_session_token())["value"]
+    page = client.get("/verify", cookies={COOKIE_NAME: admin_cookie})
+    assert page.status_code == 200
+    assert "FINCO" in page.text
 
 
 def test_verified_router_module_still_present_with_all_contracts():
