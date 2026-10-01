@@ -8,6 +8,7 @@ GET /api/docs    — self-hosted Swagger UI for the public developer API.
 GET /api/openapi.json — filtered public OpenAPI schema (/api/v1/** only).
 GET /docs        — FINCO product documentation (no auth required).
 GET /docs/start  — permanent redirect to /docs (backward-compatibility alias).
+GET /verified    — 302 to /verify (retired public Verified Assets surface).
 GET /roadmap     — FINCO public product roadmap (no auth required).
 
 /api/docs serves swagger-ui from self-hosted static assets so that FINCO's
@@ -33,6 +34,25 @@ router = APIRouter()
 
 _APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _templates = Jinja2Templates(directory=os.path.join(_APP_DIR, "templates"))
+
+
+@router.get("/verified", response_class=HTMLResponse)
+async def verified_assets_redirect(request: Request):
+    """Redirect the retired public Verified Assets surface to FINCO Verify.
+
+    Until source-proven model-to-market records exist, /verified renders only
+    reference model records (0 VERIFIED), which reads as a verification claim
+    it is not.  FINCO Verify stays the public verification and trust surface,
+    so direct /verified visits redirect to the CANONICAL Verify route
+    (``/verify`` — the existing handler below; main_web mounts this router
+    without a prefix, so there is no /protocol/verify namespace).  This route
+    is registered BEFORE the app.verified router in main_web.py, so it wins
+    first-match; the verified router module itself (and all verification
+    authority inside app/verified/**) stays intact — FINCO_VERIFIED_ASSET_V1
+    contracts, JSON endpoints and PRODUCTION_VERIFIED_ASSET_COUNT = 0 are
+    unchanged.
+    """
+    return RedirectResponse(url="/verify", status_code=302)
 
 
 @router.get("/verify", response_class=HTMLResponse)
