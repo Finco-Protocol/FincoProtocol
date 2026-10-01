@@ -7,7 +7,7 @@
 {% if source_status %}
 <p class="sub" data-testid="yield-source-status" data-origin="{{ source_status.origin }}">
   {% if source_status.origin == "SNAPSHOT" and source_status.live_rows %}
-    Source-observed snapshot generated {{ source_status.generated_at }} · {{ source_status.live_rows }} live row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only row(s) with no live observation{% endif %}. Each row shows its own freshness.
+    Source-observed snapshot generated {{ source_status.generated_at }} · {{ source_status.live_rows }} source-observed row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only row(s) with no source observation{% endif %}. A source-observed row may still be STALE; each row shows its own freshness.
   {% elif source_status.origin == "REFERENCE_FALLBACK" %}
     Live snapshot unavailable ({{ source_status.reason }}). Showing the bundled reference sample — not live data.
   {% else %}

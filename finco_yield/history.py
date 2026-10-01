@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 from typing import Any, Iterator
 
+from .durable_io import write_all
 from .evidence_v1 import canonical_hash, canonical_json
 
 @dataclass(frozen=True)
@@ -104,7 +105,17 @@ class YieldHistoryStore:
             line=(canonical_json(payload)+"\n").encode("utf-8")
             fd=os.open(self.path,os.O_WRONLY|os.O_APPEND|os.O_CREAT,0o640)
             try:
-                os.write(fd,line); os.fsync(fd)
+                start=os.fstat(fd).st_size
+                try:
+                    write_all(fd,line)      # full line or failure; never a deliberate partial
+                    os.fsync(fd)
+                except BaseException:
+                    # We hold the exclusive lock: restore the pre-append size so a
+                    # failed write cannot leave a torn canonical JSONL record.
+                    try:
+                        os.ftruncate(fd,start); os.fsync(fd)
+                    except OSError: pass
+                    raise
             finally: os.close(fd)
         return digest,True
 

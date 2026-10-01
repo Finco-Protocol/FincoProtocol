@@ -85,7 +85,21 @@ bundled provenance).
 `finco_yield/snapshot.py` — `FINCO_YIELD_SNAPSHOT_PATH`, schema
 `YIELD_CURRENT_SNAPSHOT_V1`, rows sorted by uid, `content_hash` over the rows.
 
-* **Atomic**: temp file in the same directory + `fsync` + `os.replace`; a failed
+* **History-backed (authority rule)**: append-only history is the canonical
+  audit trail and the snapshot is derived from it. An observation advances the
+  snapshot **only** when a valid canonical history hash (64 lower-case hex)
+  covers it: newly appended, an exact duplicate already present, or an unchanged
+  re-observation covered by an existing hashed history row. A history
+  failure (append/read/corruption) means the UID is **not promoted**: its
+  previous snapshot row is preserved, or it stays reference-only. If no
+  observation is history-backed the snapshot is not rewritten (byte-identical)
+  and the run is FAILED; if only some are, only those advance and the run is
+  PARTIAL. `snapshot_row()` refuses a missing/invalid hash and the registry
+  overlay never presents a row without a valid `history_observation_hash` as
+  source-observed.
+* **Atomic and durable**: temp file in the same directory, the **complete**
+  payload written via `durable_io.write_all` (loops over short writes; zero
+  progress fails closed), then `fsync`, and only then `os.replace`; a failed
   write leaves the previous file byte-identical and removes the temp file.
 * **Merged**: every previous row is carried forward; a new row replaces its
   predecessor only if it is not older. Nothing is ever removed, so a provider
@@ -104,7 +118,7 @@ Existing `YieldHistoryStore`, extended (`append` is unchanged):
 
 | Method | Contract |
 |---|---|
-| `append_idempotent(record) -> (hash, appended)` | exact-retry dedupe by `observation_hash`; cross-process `flock`; one fsync'd `O_APPEND` write; refuses a non-newline-terminated (torn) file |
+| `append_idempotent(record) -> (hash, appended)` | exact-retry dedupe by `observation_hash`; cross-process `flock`; the full line written via `write_all` then `fsync`; on any write failure the file is truncated back to its pre-append size so no torn canonical line is left; refuses a non-newline-terminated (torn) file |
 | `latest(uid)` | newest observation for `uid` or `None` |
 | `prior(uid, before=, limit=)` | up to `limit` observations strictly before a time |
 | `window(uid, since=, until=)` | inclusive time window, ordered by `observed_at` then file order |
@@ -132,8 +146,9 @@ Alerts track; absent metrics are stored as `null`, which alerts treat as MISSING
 * Every row carries `data_origin`: `SOURCE_OBSERVED` or `REFERENCE_FIXTURE`.
   A reference fixture is **never displayed as CURRENT** (it shows `REFERENCE`;
   STALE passes through unchanged).
-* The explorer shows a banner: source-observed snapshot (timestamp, live vs
-  reference row counts), **reference fallback** (typed reason), or
+* The explorer shows a banner: source-observed snapshot (timestamp, count of
+  **source-observed** vs reference-only rows; a source-observed row may still be
+  STALE and shows its own freshness), **reference fallback** (typed reason), or
   **reference sample — not live data**. Rows show origin and provider; the
   detail page shows origin, provider and fetch time.
 * Execution planning still binds to the bundled registry only; an observation is
@@ -174,7 +189,7 @@ Staging wiring (prepared, **not deployed**): `deploy/yield_collector_v1/`
   host with egress is the real integration check; a GraphQL schema difference
   would surface as `SOURCE_GRAPHQL_ERROR` / `SOURCE_SCHEMA_REJECTED` per target
   (never as zeros).
-* `apy_base` / `apy_rewards` / `apy_intrinsic` stay UNAVAILABLE for live rows.
+* `apy_base` / `apy_rewards` / `apy_intrinsic` stay UNAVAILABLE for source-observed rows.
 * `observed_at` is the fetch time (`FETCHED_AT`), not a source timestamp.
 * Universe is the 14 bundled vaults; no discovery of new vaults.
 * The bundled JSON remains a REFERENCE / FALLBACK / development fixture.

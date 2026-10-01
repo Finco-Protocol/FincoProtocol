@@ -23,6 +23,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
+from .durable_io import write_all
 from .evidence_v1 import canonical_hash, canonical_json
 from .observation import (
     DATA_ORIGIN_REFERENCE_FIXTURE,
@@ -104,6 +105,12 @@ def _decimal_text(value) -> str | None:
     return "0" if value == 0 else format(value.normalize(), "f")
 
 
+def is_valid_observation_hash(value) -> bool:
+    """Canonical history observation hash: 64 lower-case hex characters."""
+    return (isinstance(value, str) and len(value) == 64
+            and all(c in "0123456789abcdef" for c in value))
+
+
 # ── building rows ───────────────────────────────────────────────────────────
 
 def snapshot_row(
@@ -112,6 +119,9 @@ def snapshot_row(
     """Bundled-schema-compatible row for ``observation`` on top of its
     reference identity row.  Absent metrics are ``None`` (UNAVAILABLE) and
     deliberately do NOT fall back to the reference value."""
+    if not is_valid_observation_hash(history_hash):
+        # Authority rule: the current snapshot is derived from canonical history.
+        raise ValueError("a snapshot row requires a valid canonical history observation hash")
     row = dict(base_row)
     row.update({
         "opportunity_uid": observation.uid,
@@ -180,11 +190,11 @@ def write_snapshot_atomic(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
         try:
-            os.write(fd, data)
-            os.fsync(fd)
+            write_all(fd, data)       # complete payload first ...
+            os.fsync(fd)              # ... then fsync ...
         finally:
             os.close(fd)
-        os.chmod(tmp_name, 0o640)
+        os.chmod(tmp_name, 0o640)     # ... and only then rename over the previous snapshot
         os.replace(tmp_name, path)
         tmp_name = None
         try:  # make the rename itself durable where supported
@@ -263,6 +273,10 @@ def load_active_registry(env: dict[str, str] | None = None) -> tuple[YieldRegist
     for snap_row in snapshot.rows:
         base_row = by_uid.get(snap_row["opportunity_uid"])
         if base_row is None:      # not in the FINCO universe: ignored, counted
+            rejected += 1
+            continue
+        if not is_valid_observation_hash(snap_row.get("history_observation_hash")):
+            # Not backed by canonical history: never presented as source-observed.
             rejected += 1
             continue
         merged = dict(base_row)

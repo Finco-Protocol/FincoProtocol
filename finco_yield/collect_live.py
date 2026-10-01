@@ -50,6 +50,7 @@ from .snapshot import (
     SnapshotError,
     SnapshotWriteError,
     build_snapshot_payload,
+    is_valid_observation_hash,
     merge_rows,
     read_snapshot,
     snapshot_path_from_env,
@@ -99,6 +100,7 @@ def _append_history(
             record = obs.to_history_record()
             latest = store.latest(obs.uid)
             if (latest is not None
+                    and is_valid_observation_hash(latest.get("observation_hash"))
                     and _content(latest.get("payload") or {}) == _content(record.payload)
                     and timedelta(0) <= obs.observed_at - datetime.fromisoformat(
                         str(latest["observed_at"]).replace("Z", "+00:00"))
@@ -107,6 +109,8 @@ def _append_history(
                 counts["skipped_unchanged"] += 1
                 continue
             digest, appended = store.append_idempotent(record)
+            if not is_valid_observation_hash(digest):
+                raise ValueError("invalid observation hash")
             covering[obs.uid] = digest
             counts["appended" if appended else "skipped_duplicate"] += 1
         except (HistoryCorruptionError, OSError, ValueError, KeyError, TypeError):
@@ -166,8 +170,20 @@ def run_collection(
     covering, history = _append_history(store, ordered, min_interval) if ordered else ({}, {
         "appended": 0, "skipped_duplicate": 0, "skipped_unchanged": 0, "failed": 0, "result": "SKIPPED"})
 
-    snapshot_update: dict[str, Any] = {"result": "SKIPPED", "rows": None, "previous_preserved": True, "reason": None}
-    if ordered:
+    # AUTHORITY RULE: append-only history is the canonical audit trail; the
+    # current snapshot is derived from it.  An observation may advance the
+    # snapshot ONLY when a valid canonical history hash covers it (newly
+    # appended, exact duplicate already present, or unchanged-within-interval
+    # existing observation).  History-failed observations are never promoted:
+    # their previous row (if any) is preserved, otherwise the opportunity stays
+    # reference-only.
+    backed = [o for o in ordered if is_valid_observation_hash(covering.get(o.uid))]
+    not_promoted = len(ordered) - len(backed)
+
+    snapshot_update: dict[str, Any] = {
+        "result": "SKIPPED", "rows": None, "previous_preserved": True, "reason": None,
+        "promoted": 0, "not_promoted_history_failed": not_promoted}
+    if backed:
         previous_rows: tuple[dict[str, Any], ...] = ()
         try:
             previous_rows = read_snapshot(snapshot_path).rows
@@ -177,24 +193,25 @@ def run_collection(
                     shutil.copy2(snapshot_path, snapshot_path.with_name(snapshot_path.name + ".corrupt"))
                 except OSError:
                     pass
-        new_rows = [snapshot_row(base_by_uid[o.uid], o, covering.get(o.uid)) for o in ordered]
+        new_rows = [snapshot_row(base_by_uid[o.uid], o, covering[o.uid]) for o in backed]
         try:
             payload = build_snapshot_payload(merge_rows(previous_rows, new_rows), now())
             write_snapshot_atomic(snapshot_path, payload)
-            snapshot_update = {"result": "UPDATED", "rows": len(payload["rows"]),
-                               "previous_preserved": False, "reason": None}
+            snapshot_update.update(result="UPDATED", rows=len(payload["rows"]),
+                                   previous_preserved=False, promoted=len(backed))
         except (SnapshotWriteError, ValueError, KeyError):
-            snapshot_update = {"result": "FAILED", "rows": None, "previous_preserved": True,
-                               "reason": "SNAPSHOT_WRITE_FAILED"}
+            snapshot_update.update(result="FAILED", rows=None, previous_preserved=True,
+                                   reason="SNAPSHOT_WRITE_FAILED")
     else:
-        snapshot_update["reason"] = "NO_ACCEPTED_OBSERVATIONS"
+        snapshot_update["reason"] = (
+            "NO_ACCEPTED_OBSERVATIONS" if not ordered else "NO_HISTORY_BACKED_OBSERVATIONS")
 
     any_failure = (
         rejected > 0
         or any(d["failures"] or d["status"] != "SUCCEEDED" for d in provider_detail.values())
         or history["failed"] > 0
     )
-    if not ordered or snapshot_update["result"] == "FAILED":
+    if not backed or snapshot_update["result"] == "FAILED":
         status, code = "FAILED", EXIT_FAILED
     elif any_failure:
         status, code = "PARTIAL", EXIT_PARTIAL
@@ -215,6 +232,7 @@ def run_collection(
         "observations_fetched": len(ordered) + rejected + in_run_duplicates,
         "observations_accepted": len(ordered),
         "observations_rejected": rejected,
+        "observations_not_promoted": not_promoted,
         "duplicates_skipped": (
             in_run_duplicates + history["skipped_duplicate"] + history["skipped_unchanged"]),
         "history_append": history,

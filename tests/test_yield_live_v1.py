@@ -540,16 +540,6 @@ class TestCollector:
         assert report["snapshot_update"]["previous_preserved"] is True
         assert snap_path.read_bytes() == before
 
-    def test_history_failure_does_not_block_current_snapshot(self, tmp_path):
-        hist = Path(_env(tmp_path)["FINCO_YIELD_HISTORY_PATH"])
-        hist.parent.mkdir(parents=True)
-        hist.write_bytes(b'{"opportunity_uid":"x","observed_at":"2026-10-02T11:00:00Z"}\n{"torn"')
-        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok)))
-        assert code == 3
-        assert report["history_append"]["failed"] == 14
-        assert report["snapshot_update"]["result"] == "UPDATED"
-        assert hist.read_bytes().endswith(b'{"torn"')                                # history untouched
-
     def test_corrupt_previous_snapshot_is_preserved_as_evidence_then_replaced(self, tmp_path):
         snap_path = Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])
         snap_path.parent.mkdir(parents=True)
@@ -566,6 +556,330 @@ class TestCollector:
         assert _row_field(row, "apy_total") == "0.0412"
         assert _row_field(row, "apy_rewards") is None                              # MISSING, not 0
         assert row["source_authority"] == "NATIVE_ENRICHED" and row["observation_hash"]
+
+
+# ── 6b. AUTHORITY: current snapshot is derived from canonical history ──────────
+
+_HEX64 = __import__("re").compile(r"^[0-9a-f]{64}$")
+
+
+def _fail_history_for(monkeypatch, uids):
+    """append_idempotent raises OSError for the given opportunity UIDs only."""
+    real = YieldHistoryStore.append_idempotent
+
+    def selective(self, record):
+        if record.opportunity_uid in uids:
+            raise OSError("history write failed")
+        return real(self, record)
+    monkeypatch.setattr(YieldHistoryStore, "append_idempotent", selective)
+
+
+class TestHistoryBackedPromotion:
+    def test_every_snapshot_row_carries_a_valid_hash_that_exists_in_history(self, tmp_path):
+        _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        env = _env(tmp_path)
+        snap = read_snapshot(Path(env["FINCO_YIELD_SNAPSHOT_PATH"]))
+        known = {r["observation_hash"] for r in YieldHistoryStore(env["FINCO_YIELD_HISTORY_PATH"]).read_all()}
+        assert len(snap.rows) == 14
+        for row in snap.rows:
+            assert _HEX64.match(row["history_observation_hash"])
+            assert row["history_observation_hash"] in known
+
+    def test_all_history_failures_do_not_advance_snapshot_and_are_not_clean(self, tmp_path, monkeypatch):
+        clock = FakeClock()
+        _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        snap_path = Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])
+        before = snap_path.read_bytes()
+        clock.advance(minutes=30)
+        _fail_history_for(monkeypatch, {o.uid for o in _reference()})
+        code, report = _run(tmp_path, _adapter(_by_address({}, lambda t, r: _ok(_vault(t, net_apy=0.09))), clock), clock)
+        assert code == 2 and report["status"] == "FAILED"
+        assert report["history_append"]["failed"] == 14 and report["history_append"]["result"] == "FAILED"
+        assert report["snapshot_update"]["result"] == "SKIPPED"
+        assert report["snapshot_update"]["reason"] == "NO_HISTORY_BACKED_OBSERVATIONS"
+        assert report["snapshot_update"]["previous_preserved"] is True
+        assert report["observations_not_promoted"] == 14
+        assert snap_path.read_bytes() == before                            # byte-identical
+
+    def test_all_history_failures_with_no_previous_snapshot_create_none(self, tmp_path, monkeypatch):
+        _fail_history_for(monkeypatch, {o.uid for o in _reference()})
+        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        assert code == 2
+        assert not Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"]).exists()   # nothing fabricated
+        reg, status = load_active_registry(_env(tmp_path))
+        assert status.origin == "REFERENCE_FALLBACK"
+        assert {o.data_origin for o in reg.all()} == {"REFERENCE_FIXTURE"}
+
+    def test_partial_history_failure_promotes_only_backed_uids(self, tmp_path, monkeypatch):
+        clock = FakeClock()
+        _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        clock.advance(minutes=30)
+        failed = {_targets()[0].uid, _targets()[5].uid}
+        _fail_history_for(monkeypatch, failed)
+        code, report = _run(tmp_path, _adapter(_by_address({}, lambda t, r: _ok(_vault(t, net_apy=0.0777))), clock), clock)
+        assert code == 3 and report["status"] == "PARTIAL"
+        assert report["history_append"]["failed"] == 2 and report["history_append"]["result"] == "PARTIAL"
+        assert report["snapshot_update"]["promoted"] == 12 and report["observations_not_promoted"] == 2
+        rows = {r["opportunity_uid"]: r for r in read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows}
+        for uid, row in rows.items():
+            if uid in failed:                                  # previous row preserved, not advanced
+                assert row["apy_total"] == "0.0412" and row["fetched_at"] == "2026-10-02T12:00:00Z"
+            else:
+                assert row["apy_total"] == "0.0777" and row["fetched_at"] == "2026-10-02T12:30:00Z"
+            assert _HEX64.match(row["history_observation_hash"])
+
+    def test_history_failed_uid_without_previous_row_stays_reference_only(self, tmp_path, monkeypatch):
+        failed = {_targets()[3].uid}
+        _fail_history_for(monkeypatch, failed)
+        code, _ = _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        assert code == 3
+        snap = read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"]))
+        assert failed.isdisjoint({r["opportunity_uid"] for r in snap.rows}) and len(snap.rows) == 13
+        reg, status = load_active_registry(_env(tmp_path))
+        by_uid = {o.uid: o for o in reg.all()}
+        assert by_uid[next(iter(failed))].data_origin == "REFERENCE_FIXTURE"
+        assert status.live_rows == 13 and status.reference_rows == 1
+
+    def test_exact_duplicate_already_in_history_is_promoted(self, tmp_path):
+        clock = FakeClock()
+        _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"]).unlink()      # snapshot lost, history intact
+        # interval 0 disables the unchanged-skip so the EXACT-duplicate path is what covers it
+        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock,
+                            FINCO_YIELD_HISTORY_MIN_INTERVAL_SECONDS="0")   # identical observation
+        assert code == 0
+        assert report["history_append"]["skipped_duplicate"] == 14 and report["history_append"]["appended"] == 0
+        assert len(read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows) == 14
+
+    def test_unchanged_heartbeat_skip_is_covered_by_the_existing_hash(self, tmp_path):
+        clock = FakeClock()
+        _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        first = {r["opportunity_uid"]: r["history_observation_hash"]
+                 for r in read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows}
+        clock.advance(minutes=5)
+        _, report = _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        assert report["history_append"]["skipped_unchanged"] == 14
+        second = {r["opportunity_uid"]: r for r in read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows}
+        assert {u: r["history_observation_hash"] for u, r in second.items()} == first
+        assert all(r["fetched_at"] == "2026-10-02T12:05:00Z" for r in second.values())
+
+    def test_legacy_history_row_without_hash_cannot_cover_an_observation(self, tmp_path):
+        clock = FakeClock()
+        _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        hist = Path(_env(tmp_path)["FINCO_YIELD_HISTORY_PATH"])
+        lines = [json.loads(l) for l in hist.read_text().splitlines()]
+        for row in lines:
+            row.pop("observation_hash")                                   # legacy-style rows
+        hist.write_text("".join(json.dumps(r) + "\n" for r in lines))
+        clock.advance(minutes=5)
+        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
+        # not treated as an unchanged skip: a hashed canonical record is appended instead
+        assert report["history_append"]["skipped_unchanged"] == 0 and report["history_append"]["appended"] == 14
+        assert all(_HEX64.match(r["history_observation_hash"])
+                   for r in read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows)
+
+    def test_snapshot_row_without_valid_hash_cannot_be_built(self):
+        from finco_yield.snapshot import snapshot_row
+        obs = _adapter(_by_address({}, _all_ok)).fetch(_targets()).observations[0]
+        base = bundled_reference_rows()[0]
+        for bad in (None, "", "abc", "Z" * 64, 123):
+            with pytest.raises(ValueError):
+                snapshot_row(base, obs, bad)
+
+    def test_overlay_never_presents_an_unbacked_row_as_source_observed(self, tmp_path):
+        env = _env(tmp_path)
+        _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        p = Path(env["FINCO_YIELD_SNAPSHOT_PATH"])
+        payload = json.loads(p.read_text())
+        payload["rows"][0].pop("history_observation_hash")
+        payload["rows"][1]["history_observation_hash"] = None
+        payload["content_hash"] = __import__("finco_yield.evidence_v1", fromlist=["x"]).canonical_hash(payload["rows"])
+        p.write_text(json.dumps(payload))
+        reg, status = load_active_registry(env)
+        assert status.live_rows == 12 and status.reference_rows == 2 and status.rejected_rows == 2
+        assert sorted(o.data_origin for o in reg.all()).count("REFERENCE_FIXTURE") == 2
+
+
+# ── 6c. short-write durability ──────────────────────────────────────────────
+
+def _limited_write(monkeypatch, per_call):
+    """Make every durable write consume at most ``per_call`` bytes."""
+    from finco_yield import durable_io
+    real = os.write
+    calls = []
+
+    def short(fd, data):
+        n = real(fd, bytes(data)[:per_call])
+        calls.append(n)
+        return n
+    monkeypatch.setattr(durable_io, "_write", short)
+    return calls
+
+
+class TestShortWriteDurability:
+    def test_write_all_loops_until_complete(self, tmp_path, monkeypatch):
+        from finco_yield.durable_io import write_all
+        calls = _limited_write(monkeypatch, 3)
+        data = bytes(range(256)) * 3
+        fd = os.open(tmp_path / "f", os.O_WRONLY | os.O_CREAT)
+        try:
+            write_all(fd, data)
+        finally:
+            os.close(fd)
+        assert (tmp_path / "f").read_bytes() == data
+        assert len(calls) == -(-len(data) // 3) and sum(calls) == len(data)
+
+    def test_zero_progress_fails_closed(self, tmp_path, monkeypatch):
+        from finco_yield import durable_io
+        monkeypatch.setattr(durable_io, "_write", lambda fd, data: 0)
+        fd = os.open(tmp_path / "f", os.O_WRONLY | os.O_CREAT)
+        try:
+            with pytest.raises(durable_io.DurableWriteError):
+                durable_io.write_all(fd, b"payload")
+        finally:
+            os.close(fd)
+
+    def test_overreporting_write_fails_closed(self, tmp_path, monkeypatch):
+        from finco_yield import durable_io
+        monkeypatch.setattr(durable_io, "_write", lambda fd, data: len(data) + 5)
+        fd = os.open(tmp_path / "f", os.O_WRONLY | os.O_CREAT)
+        try:
+            with pytest.raises(durable_io.DurableWriteError):
+                durable_io.write_all(fd, b"payload")
+        finally:
+            os.close(fd)
+
+    def test_snapshot_multiple_short_writes_produce_exact_complete_file(self, tmp_path, monkeypatch):
+        from finco_yield.evidence_v1 import canonical_json
+        payload = _snapshot_with([{"opportunity_uid": f"u{i}", "observed_at": "2026-10-02T12:00:00Z", "pad": "x" * 40}
+                                  for i in range(5)])
+        calls = _limited_write(monkeypatch, 7)
+        path = tmp_path / "current.json"
+        write_snapshot_atomic(path, payload)
+        expected = (canonical_json(payload) + "\n").encode("utf-8")
+        assert path.read_bytes() == expected and len(calls) > 10             # genuinely many short writes
+        assert read_snapshot(path).content_hash == payload["content_hash"]
+
+    def test_snapshot_fsync_only_after_complete_write_and_rename_only_after_fsync(self, tmp_path, monkeypatch):
+        events = []
+        from finco_yield import durable_io
+        real_write, real_fsync, real_replace = os.write, os.fsync, os.replace
+
+        def short(fd, data):
+            n = real_write(fd, bytes(data)[:9]); events.append(("write", n)); return n
+        monkeypatch.setattr(durable_io, "_write", short)
+        monkeypatch.setattr(os, "fsync", lambda fd: (events.append(("fsync",)), real_fsync(fd))[1])
+        monkeypatch.setattr(os, "replace", lambda a, b: (events.append(("replace",)), real_replace(a, b))[1])
+        payload = _snapshot_with([{"opportunity_uid": "a", "observed_at": "2026-10-02T12:00:00Z", "pad": "y" * 60}])
+        path = tmp_path / "current.json"
+        write_snapshot_atomic(path, payload)
+        kinds = [e[0] for e in events]
+        first_fsync, replace_at = kinds.index("fsync"), kinds.index("replace")
+        assert all(k == "write" for k in kinds[:first_fsync]) and first_fsync > 3
+        assert first_fsync < replace_at
+        assert sum(e[1] for e in events if e[0] == "write") == path.stat().st_size
+
+    def test_write_failure_before_completion_does_not_replace_previous_snapshot(self, tmp_path, monkeypatch):
+        path = tmp_path / "current.json"
+        write_snapshot_atomic(path, _snapshot_with([{"opportunity_uid": "a", "observed_at": "2026-10-02T12:00:00Z"}]))
+        before = path.read_bytes()
+        from finco_yield import durable_io
+        real = os.write
+        state = {"n": 0}
+
+        def flaky(fd, data):
+            state["n"] += 1
+            if state["n"] >= 3:
+                raise OSError("device error mid-write")
+            return real(fd, bytes(data)[:5])
+        monkeypatch.setattr(durable_io, "_write", flaky)
+        with pytest.raises(SnapshotWriteError):
+            write_snapshot_atomic(path, _snapshot_with([{"opportunity_uid": "z", "observed_at": "2026-10-02T13:00:00Z"}]))
+        assert path.read_bytes() == before
+        assert [p.name for p in tmp_path.iterdir()] == ["current.json"]
+
+    def test_zero_progress_snapshot_write_never_replaces_previous(self, tmp_path, monkeypatch):
+        path = tmp_path / "current.json"
+        write_snapshot_atomic(path, _snapshot_with([{"opportunity_uid": "a", "observed_at": "2026-10-02T12:00:00Z"}]))
+        before = path.read_bytes()
+        from finco_yield import durable_io
+        monkeypatch.setattr(durable_io, "_write", lambda fd, data: 0)
+        with pytest.raises(SnapshotWriteError):
+            write_snapshot_atomic(path, _snapshot_with([{"opportunity_uid": "z", "observed_at": "2026-10-02T13:00:00Z"}]))
+        assert path.read_bytes() == before and [p.name for p in tmp_path.iterdir()] == ["current.json"]
+
+    def test_history_multiple_short_writes_produce_exact_complete_line(self, tmp_path, monkeypatch):
+        from finco_yield.evidence_v1 import canonical_json
+        calls = _limited_write(monkeypatch, 4)
+        path = tmp_path / "h.jsonl"
+        record = _record(apy_total="0.0412", pad="z" * 50)
+        digest, appended = YieldHistoryStore(path).append_idempotent(record)
+        assert appended and len(calls) > 20
+        raw = path.read_bytes()
+        assert raw.endswith(b"\n") and raw.count(b"\n") == 1
+        row = json.loads(raw)
+        assert row["observation_hash"] == digest and row["payload"]["pad"] == "z" * 50
+        expected = dict(row)
+        assert raw == (canonical_json(expected) + "\n").encode("utf-8")
+
+    def test_history_failed_write_rolls_back_to_the_previous_bytes(self, tmp_path, monkeypatch):
+        path = tmp_path / "h.jsonl"
+        store = YieldHistoryStore(path)
+        store.append_idempotent(_record())
+        before = path.read_bytes()
+        from finco_yield import durable_io
+        real = os.write
+        state = {"n": 0}
+
+        def flaky(fd, data):
+            state["n"] += 1
+            if state["n"] >= 3:
+                raise OSError("disk error mid-append")
+            return real(fd, bytes(data)[:6])
+        monkeypatch.setattr(durable_io, "_write", flaky)
+        with pytest.raises(OSError):
+            store.append_idempotent(_record(at=T0 + timedelta(hours=1), apy_total="0.09"))
+        monkeypatch.undo()
+        assert path.read_bytes() == before                                  # no torn canonical line
+        assert store.append_idempotent(_record(at=T0 + timedelta(hours=1), apy_total="0.09"))[1] is True
+
+    def test_history_zero_progress_is_surfaced_and_leaves_no_partial_line(self, tmp_path, monkeypatch):
+        path = tmp_path / "h.jsonl"
+        store = YieldHistoryStore(path)
+        store.append_idempotent(_record())
+        before = path.read_bytes()
+        from finco_yield import durable_io
+        monkeypatch.setattr(durable_io, "_write", lambda fd, data: 0)
+        with pytest.raises(durable_io.DurableWriteError):
+            store.append_idempotent(_record(at=T0 + timedelta(hours=1)))
+        assert path.read_bytes() == before
+
+    def test_history_write_failure_makes_observation_ineligible_for_promotion(self, tmp_path, monkeypatch):
+        """End to end through the real write primitive: history lines fail, the
+        snapshot (written by the same primitive) must NOT be promoted."""
+        from finco_yield import durable_io
+        real = os.write
+
+        def selective(fd, data):
+            buf = bytes(data)
+            if buf.startswith(b'{"adapter_version"'):          # a history JSONL line
+                raise OSError("history device error")
+            return real(fd, buf)
+        monkeypatch.setattr(durable_io, "_write", selective)
+        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        assert code == 2 and report["history_append"]["failed"] == 14
+        assert report["snapshot_update"]["result"] == "SKIPPED"
+        assert not Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"]).exists()
+        hist = Path(_env(tmp_path)["FINCO_YIELD_HISTORY_PATH"])
+        assert not hist.exists() or hist.read_bytes() == b""                # no torn history either
+
+    def test_collector_works_end_to_end_under_short_writes(self, tmp_path, monkeypatch):
+        _limited_write(monkeypatch, 11)
+        code, report = _run(tmp_path, _adapter(_by_address({}, _all_ok)))
+        assert code == 0 and report["history_append"]["appended"] == 14
+        hist = YieldHistoryStore(_env(tmp_path)["FINCO_YIELD_HISTORY_PATH"]).read_all()
+        assert len(hist) == 14 and all(r["observation_hash"] for r in hist)
+        assert len(read_snapshot(Path(_env(tmp_path)["FINCO_YIELD_SNAPSHOT_PATH"])).rows) == 14
 
 
 class TestExitCodePolicy:
@@ -748,6 +1062,7 @@ class TestWebProvenance:
         page = client.get("/yield").text
         assert 'data-origin="SNAPSHOT"' in page
         assert "Source-observed" in page and "morpho_graphql" in page
+        assert "14 source-observed row(s)" in page and "live row" not in page.lower()
         assert "4.12%" in page                                                # netApy 0.0412
         assert "CURRENT" in page
         assert "Reference fixture — not live" not in page
@@ -760,6 +1075,8 @@ class TestWebProvenance:
         mp.setenv("FINCO_YIELD_SNAPSHOT_PATH", env["FINCO_YIELD_SNAPSHOT_PATH"])
         page = client.get("/yield").text
         assert "STALE" in page and "4.12%" in page and "Source-observed" in page
+        assert "14 source-observed row(s)" in page and "may still be STALE" in page
+        assert "live row" not in page.lower()
         assert "UNAVAILABLE" not in page.split("<tbody>")[1].split("</tbody>")[0].replace("Last observed", "")
 
     def test_unavailable_snapshot_falls_back_with_visible_reason(self, web, tmp_path):
