@@ -8,8 +8,17 @@ Authorities remain separated:
 Alert route order is authentication -> canonical yield.alerts access -> CSRF
 for mutations -> gateway/domain. GET routes are read-only. Explicit
 ``POST /crypto/alerts/refresh`` is the only V1 evaluation trigger.
+
+Fail-soft contract (manual-QA runtime correction): the /crypto page composes
+OPTIONAL authorities (wallet store, entitlement evaluator, Yield watchlist
+and alerts).  Any single authority being unavailable must render a typed
+DISCONNECTED / NOT_CONFIGURED / NOT_ACTIVATED / LOCKED / UNAVAILABLE / OFF
+presentation state — never HTTP 500 and never a fabricated value
+(missing/unavailable is never converted into zero).
 """
 from __future__ import annotations
+
+import sqlite3
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -50,6 +59,50 @@ async def _resource_decisions(wallet):
     return await evaluate_all_resources(wallet)
 
 
+def _fail_soft(resource_description: str, exc: Exception) -> None:
+    """Single audit point for optional-authority degradation on /crypto.
+
+    Logs the exact exception (type + message only — never secrets or user
+    input) so staging diagnostics can identify the unavailable authority.
+    """
+    import logging
+    logging.getLogger("finco.crypto").warning(
+        "CRYPTO_AUTHORITY_UNAVAILABLE authority=%s error=%s:%s",
+        resource_description, type(exc).__name__, exc,
+    )
+
+
+def _wallet_state_fail_soft(user_id) -> tuple[str, dict | None]:
+    """Wallet presentation state; a wallet-store outage is UNAVAILABLE, not a 500."""
+    from app.crypto_access import get_wallet_state
+    try:
+        return get_wallet_state(user_id)
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        _fail_soft("wallet_store", exc)
+        return "UNAVAILABLE", None
+
+
+async def _decisions_fail_soft(wallet) -> dict:
+    """Entitlement decisions; an evaluator outage renders every resource UNAVAILABLE."""
+    try:
+        return dict(await _resource_decisions(wallet))
+    except Exception as exc:  # noqa: BLE001 — optional authority, fail soft
+        _fail_soft("entitlement_evaluator", exc)
+        return {}
+
+
+def _watchlist_fail_soft(user_id) -> list:
+    """Watchlist rows; a watchlist-store outage is an empty list, not a 500."""
+    if not user_id:
+        return []
+    from finco_yield.watchlist import list_watchlist_items
+    try:
+        return list_watchlist_items(user_id)
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        _fail_soft("yield_watchlist", exc)
+        return []
+
+
 def _execution_state() -> str:
     from finco_yield.flags import execution_enabled
     return "ON" if execution_enabled() else "OFF"
@@ -65,17 +118,34 @@ _ALERTS_STATE_BY_DENIAL = {
 
 
 async def _alerts_presentation(request: Request, user) -> dict:
-    """Canonical yield.alerts access decision -> typed read-only snapshot."""
+    """Canonical yield.alerts access decision -> typed read-only snapshot.
+
+    Fail-soft: an access-resolution outage renders a typed UNAVAILABLE
+    snapshot; it never raises into a 500 and never fabricates counts.
+    """
     from finco_yield.access import denial_payload, resolve_yield_access, YieldResource
 
-    if user is None:
-        from app.crypto_alerts import auth_required_snapshot
-        snapshot = auth_required_snapshot().public_dict()
-        snapshot.update({"state": "LOCKED", "access_state": None,
-                         "can_refresh": False})
-        return snapshot
+    try:
+        if user is None:
+            from app.crypto_alerts import auth_required_snapshot
+            snapshot = auth_required_snapshot().public_dict()
+            snapshot.update({"state": "LOCKED", "access_state": None,
+                             "can_refresh": False})
+            return snapshot
 
-    decision = await resolve_yield_access(request, YieldResource.ALERTS)
+        decision = await resolve_yield_access(request, YieldResource.ALERTS)
+    except Exception as exc:  # noqa: BLE001 — optional authority, fail soft
+        _fail_soft("yield_alerts_access", exc)
+        return {
+            "available": False,
+            "state": "UNAVAILABLE",
+            "access_state": None,
+            "reason": "ALERT_EVALUATION_UNAVAILABLE",
+            "unread_count": None,
+            "items": [],
+            "can_refresh": False,
+        }
+
     if decision.gate_active and not decision.access_allowed:
         denial = denial_payload(decision)
         return {
@@ -101,17 +171,16 @@ async def _alerts_presentation(request: Request, user) -> dict:
 @router.get("/crypto", response_class=HTMLResponse)
 async def crypto_overview(request: Request):
     from app.auth import generate_csrf_token
-    from app.crypto_access import build_crypto_access_snapshot, get_wallet_state
-    from finco_yield.watchlist import list_watchlist_items
+    from app.crypto_access import build_crypto_access_snapshot
     from app.protocol.entitlement_evaluator import wallet_context_for_session
 
     user = _request_user(request)
     user_id = user.user_id if user else None
-    wallet_state, _ = get_wallet_state(user_id)
+    wallet_state, _ = _wallet_state_fail_soft(user_id)
     wallet = wallet_context_for_session(user)
-    decisions = await _resource_decisions(wallet)
+    decisions = await _decisions_fail_soft(wallet)
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
-    watchlist = list_watchlist_items(user_id) if user_id else []
+    watchlist = _watchlist_fail_soft(user_id)
     alerts = await _alerts_presentation(request, user)
     notice_reason = request.query_params.get("alerts_notice")
     alerts_notice = _ALERTS_NOTICE_MESSAGES.get(notice_reason)

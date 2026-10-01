@@ -251,9 +251,17 @@ def _data_center_driver_block(pi) -> dict:
 
 
 def create_reference_seeded_project(
-    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float
+    *, user_id: str, template_source: str, requested_name: str, capacity_mw: float,
+    country_market: str | None = None,
 ):
-    """Clone and scale a canonical cloneable reference into a working copy."""
+    """Clone and scale a canonical cloneable reference into a working copy.
+
+    ``country_market`` is real project-location metadata selected from the
+    canonical country catalogue.  It is normalised to the canonical code and
+    persisted in the working-copy snapshot together with the single
+    Generic-Tax-Template provenance label — country-specific tax rules do
+    not exist; tax authority is unchanged by country selection.
+    """
     if template_source not in CLONEABLE_SEED_TEMPLATE_SOURCES:
         raise ValueError(
             "Reference-driven creation supports Solar, Wind, Data Center and EV Charging only."
@@ -286,6 +294,15 @@ def create_reference_seeded_project(
         "opex_y1_keur": _scaled(sum(float(x.y1_amount_keur) for x in pi.opex), ratio),
         "_reference_seed_profile": _seed_profile(template_source, reference, capacity_mw, pi),
     })
+    # Country = project-location metadata only.  Every country resolves to
+    # the SAME Generic Tax Template (provenance persisted alongside); no
+    # tariff, merchant curve, inflation, power price or tax rate changes.
+    if country_market is not None and str(country_market).strip():
+        from app.workbook.country_options import (
+            GENERIC_TAX_TEMPLATE_LABEL, normalize_country_code,
+        )
+        snapshot["country_market"] = normalize_country_code(str(country_market))
+        snapshot["tax_template"] = GENERIC_TAX_TEMPLATE_LABEL
     if template_source == "generic_data_center_reference":
         # Data Center drivers are part of the seeded working-copy authority:
         # the runtime adapter derives revenue, the occupancy ramp and the

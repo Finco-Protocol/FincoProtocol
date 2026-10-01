@@ -28,6 +28,7 @@
       {% if wallet_state == "VERIFIED" %}Wallet ownership verified via the existing signed-challenge flow.
       {% elif wallet_state == "UNVERIFIED" %}Signed in, but no verified wallet is linked yet. Verify ownership on the
         <a href="/protocol/finco">$FINCO page</a>. Ownership ≠ entitlement.
+      {% elif wallet_state == "UNAVAILABLE" %}<span data-testid="wallet-unavailable">The wallet store is currently unavailable. No wallet state is inferred and nothing is counted as zero.</span>
       {% else %}No wallet session. Connect and verify a wallet on the
         <a href="/protocol/finco">$FINCO page</a>.{% endif %}
     </p>

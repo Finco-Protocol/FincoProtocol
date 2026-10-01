@@ -44,11 +44,11 @@
          {% if proto_active_page == 'crypto' %}aria-current="page"{% endif %}>
         Crypto
       </a>
-      <a href="/verified"
-         class="proto-nav__link{% if proto_active_page == 'verified' %} proto-nav__link--active{% endif %}"
-         {% if proto_active_page == 'verified' %}aria-current="page"{% endif %}>
-        Verified
-      </a>
+      {# Manual-QA product-truth correction: the Verified Assets surface (0
+         verified production assets, no user workflow) is removed from the
+         primary public navigation. FINCO Verify (/verify) remains the
+         user-facing verification/trust surface; the internal /verified
+         route redirects there. #}
       <a href="/api"
          class="proto-nav__link{% if proto_active_page == 'api' %} proto-nav__link--active{% endif %}"
          {% if proto_active_page == 'api' %}aria-current="page"{% endif %}>

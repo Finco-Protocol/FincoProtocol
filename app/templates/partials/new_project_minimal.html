@@ -45,11 +45,22 @@
     <input class="create-form-input" type="text" name="project_name" id="npm-project_name" value="{{ submitted.project_name or '' }}" required placeholder="Project name" />
   </label>
   <label class="create-form-label">
-    IT Capacity (MW)
-    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0.001" value="{{ submitted.capacity_mw or '' }}" required placeholder="Capacity in MW" />
+    <span id="capacity-label" data-testid="capacity-label">{{ submitted.capacity_label or 'Installed Capacity (MW)' }}</span>
+    <input class="create-form-input" type="number" name="capacity_mw" id="npm-capacity_mw" step="any" min="0.001" value="{{ submitted.capacity_mw or '' }}" required placeholder="{{ submitted.capacity_label or 'Installed Capacity (MW)' }}" />
+  </label>
+  <label class="create-form-label">
+    Country
+    <select class="create-form-input" name="country_market" id="npm-country_market" data-testid="country-market">
+      {% for code, label in country_options %}
+      <option value="{{ code }}" {% if (submitted.country_market or 'XA') == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <small class="create-form-desc" data-testid="country-tax-note">
+      Country identifies project location. Country-specific tax templates are not yet active;
+      new projects currently use the FINCO {{ tax_template_label or 'Generic Tax Template' }}.
+    </small>
   </label>
   <input type="hidden" name="project_type" value="Wind" data-project-type-from-reference />
-  <input type="hidden" name="country_market" value="Generic Market A" />
   <div id="new-project-result"></div>
   <div class="create-form-actions">
     <button class="btn btn-primary" type="submit">Create project</button>
@@ -57,9 +68,26 @@
   </div>
 </form>
 <script>
+  // Manual-QA product-truth correction: the capacity label/placeholder is
+  // technology-specific and updates immediately when the reference radio
+  // selection changes. The submitted backend field remains capacity_mw.
+  var CAPACITY_LABELS = {
+    generic_solar_reference: 'Installed Capacity (MW)',
+    generic_wind_reference: 'Installed Capacity (MW)',
+    generic_data_center_reference: 'IT Capacity (MW)',
+    generic_ev_charging_reference: 'Charging Capacity (MW)'
+  };
+  function applyCapacityLabel(templateSource) {
+    var label = CAPACITY_LABELS[templateSource] || 'Installed Capacity (MW)';
+    var labelEl = document.getElementById('capacity-label');
+    var inputEl = document.getElementById('npm-capacity_mw');
+    if (labelEl) labelEl.textContent = label;
+    if (inputEl) inputEl.placeholder = label;
+  }
   document.querySelectorAll('#new-project-minimal-form input[name="template_source"]').forEach(function (radio) {
     radio.addEventListener('change', function () {
       var value = radio.value;
+      applyCapacityLabel(value);
       var projectType = 'Wind';
       if (value.indexOf('solar') !== -1) { projectType = 'Solar'; }
       else if (value.indexOf('data_center') !== -1) { projectType = 'Data Center'; }
@@ -67,4 +95,8 @@
       document.querySelector('[data-project-type-from-reference]').value = projectType;
     });
   });
+  (function () {
+    var checked = document.querySelector('#new-project-minimal-form input[name="template_source"]:checked');
+    if (checked) applyCapacityLabel(checked.value);
+  })();
 </script>

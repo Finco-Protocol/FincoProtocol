@@ -19,6 +19,7 @@ COUNTRY_OPTIONS: tuple[tuple[str, str], ...] = (
     ("XB", "Generic / World — Wind (XB)"),
     ("XC", "Generic / World — Storage (XC)"),
     ("XD", "Generic / World — Data Center (XD)"),
+    ("XE", "Generic / World — EV Charging (XE)"),
     ("AT", "Austria (AT)"),
     ("BE", "Belgium (BE)"),
     ("BG", "Bulgaria (BG)"),
@@ -122,3 +123,10 @@ def normalize_country_code(value: str) -> str:
         return _LEGACY_ALIASES[lower]
     candidate = upper[:2]
     return candidate if len(candidate) == 2 else "XA"
+
+
+# Single tax-template provenance label for the current phase: every country
+# (generic code or real ISO code) resolves to the SAME FINCO Generic Tax
+# Template. Country-specific tax rules do not exist anywhere yet; when they
+# are introduced they must replace this single-source constant, not fork it.
+GENERIC_TAX_TEMPLATE_LABEL = "Generic Tax Template"

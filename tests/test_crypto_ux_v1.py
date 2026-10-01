@@ -721,3 +721,112 @@ def test_alerts_access_row_note_has_no_delivery_claim(client, monkeypatch):
     assert "shown separately" in row
     assert "not shipped" not in row.lower()
     assert "delivery" not in row.lower()
+
+
+# ── Fail-soft runtime (manual-QA correction): /crypto never 500s ─────────────
+
+class TestCryptoFailSoftAuthorities:
+    """GET /crypto composes OPTIONAL authorities.  Any single authority
+    outage (wallet store, entitlement evaluator, Yield watchlist, alerts
+    access) must render a typed fail-soft state — never HTTP 500 and never
+    a fabricated value.  Regression for the staging HTTP-500 QA report."""
+
+    def test_wallet_store_outage_renders_unavailable(self, client, monkeypatch):
+        import sqlite3
+        _session(monkeypatch, "user-1")
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("unable to open database file")
+
+        monkeypatch.setattr("app.crypto_access.get_wallet_state", boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert 'data-testid="crypto-wallet"' in page.text
+        assert "UNAVAILABLE" in page.text
+        assert 'data-testid="wallet-unavailable"' in page.text
+
+    def test_entitlement_evaluator_outage_renders_unavailable_rows(
+            self, client, monkeypatch):
+        _session(monkeypatch, "user-1")
+
+        async def boom(wallet):
+            raise RuntimeError("RPC transport failed")
+
+        monkeypatch.setattr("app.crypto_ui._resource_decisions", boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert 'data-testid="crypto-access"' in page.text
+        # Every resource row degrades to the typed UNAVAILABLE presentation.
+        assert "UNAVAILABLE" in page.text
+        assert "ACCESS_DECISION_UNAVAILABLE" in page.text
+
+    def test_watchlist_store_outage_renders_empty_not_500(
+            self, client, monkeypatch):
+        import sqlite3
+        _session(monkeypatch, "user-1")
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("no such table: yield_watchlist")
+
+        monkeypatch.setattr("finco_yield.watchlist.list_watchlist_items", boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert 'data-testid="watchlist-count">0<' in page.text
+        assert 'data-testid="watchlist-empty"' in page.text
+
+    def test_alerts_access_outage_renders_unavailable_snapshot(
+            self, client, monkeypatch):
+        _session(monkeypatch, "user-1")
+
+        async def boom(request, resource):
+            raise RuntimeError("entitlement authority unreachable")
+
+        from finco_yield import access as access_mod
+        monkeypatch.setattr(access_mod, "resolve_yield_access", boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert 'data-testid="alerts-state">UNAVAILABLE<' in page.text
+        assert "ALERT_EVALUATION_UNAVAILABLE" in page.text
+
+    def test_all_optional_authorities_down_still_renders_page(
+            self, client, monkeypatch):
+        """Staging-equivalent worst case: every optional authority fails at
+        once.  The page must render with typed states, never 500."""
+        import sqlite3
+        _session(monkeypatch, "user-1")
+
+        def db_boom(*a, **k):
+            raise sqlite3.OperationalError("database is locked")
+
+        async def evaluator_boom(wallet):
+            raise RuntimeError("evaluator down")
+
+        async def access_boom(request, resource):
+            raise RuntimeError("access authority down")
+
+        monkeypatch.setattr("app.crypto_access.get_wallet_state", db_boom)
+        monkeypatch.setattr("app.crypto_ui._resource_decisions", evaluator_boom)
+        monkeypatch.setattr("finco_yield.watchlist.list_watchlist_items", db_boom)
+        from finco_yield import access as access_mod
+        monkeypatch.setattr(access_mod, "resolve_yield_access", access_boom)
+
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert "UNAVAILABLE" in page.text
+        # Missing/unavailable evidence stays missing/unavailable — no zero
+        # fabrication anywhere on the page.
+        assert "Observed balance" not in page.text
+        assert 'data-testid="watchlist-count">0<' in page.text
+
+    def test_anonymous_with_all_authorities_down_still_renders(
+            self, client, monkeypatch):
+        import sqlite3
+
+        def db_boom(*a, **k):
+            raise sqlite3.OperationalError("unable to open database file")
+
+        monkeypatch.setattr("app.crypto_access.get_wallet_state", db_boom)
+        monkeypatch.setattr("finco_yield.watchlist.list_watchlist_items", db_boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert "DISCONNECTED" in page.text or "UNAVAILABLE" in page.text

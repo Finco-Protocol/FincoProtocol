@@ -424,10 +424,12 @@ class TestNavNoStalePlaceholders:
                 f"Nav link {href!r} returned 404"
             )
 
-    def test_nav_verified_link_present(self):
-        """Protocol nav must include the /verified link added in P5."""
+    def test_nav_verified_link_absent_and_verify_present(self):
+        """Manual-QA product-truth correction: the Verified Assets screen is
+        removed from primary public navigation; FINCO Verify stays."""
         text = (REPO / "app/templates/partials/_protocol_nav.html").read_text()
-        assert 'href="/verified"' in text
+        assert 'href="/verified"' not in text
+        assert 'href="/crypto"' in text
 
 
 # ---------------------------------------------------------------------------

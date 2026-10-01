@@ -366,6 +366,17 @@ from app.verify.public_reference_router import router as _public_ref_router
 app.include_router(_public_ref_router)
 
 # -- FINCO Verified Assets V1 --------------------------------------------------
+# Manual-QA product-truth correction: GET /verified is a legacy composition
+# surface with no user workflow (production verified-asset count remains 0).
+# The public entry point now redirects to FINCO Verify (/verify), the
+# user-facing verification/trust surface. Registered BEFORE the verified
+# router so the redirect wins route order while every other /verified/*
+# contract in app/verified keeps serving unchanged — app/verified/** itself
+# remains untouched (internal verification/token-entitlement authorities).
+@app.get("/verified", include_in_schema=False)
+async def _verified_public_redirect():
+    return RedirectResponse(url="/verify", status_code=302)
+
 from app.verified.router import router as _verified_router
 app.include_router(_verified_router)
 
@@ -1067,6 +1078,35 @@ def _submitted_new_project_defaults() -> dict[str, str]:
     }
 
 
+def _generic_tax_template_label() -> str:
+    from app.workbook.country_options import GENERIC_TAX_TEMPLATE_LABEL
+    return GENERIC_TAX_TEMPLATE_LABEL
+
+
+def _country_options_for_create():
+    """Canonical country/market catalogue from app.workbook.country_options.
+
+    Single source of truth — this surface must never duplicate the list.
+    """
+    from app.workbook.country_options import COUNTRY_OPTIONS
+    return COUNTRY_OPTIONS
+
+
+def _capacity_label_for_template_source(template_source: str) -> str:
+    """Technology-specific capacity label for the Create Project surface.
+
+    Solar/Wind use installed capacity; Data Center uses IT capacity; EV
+    Charging uses charging capacity.  The submitted backend field remains
+    ``capacity_mw`` — this is presentation truth only.
+    """
+    source = (template_source or "").strip().lower()
+    if "data_center" in source:
+        return "IT Capacity (MW)"
+    if "ev_charging" in source:
+        return "Charging Capacity (MW)"
+    return "Installed Capacity (MW)"
+
+
 def _minimal_submitted_new_project_defaults() -> dict[str, str]:
     """Phase P2-FIX-1: minimal submitted defaults.
 
@@ -1080,8 +1120,12 @@ def _minimal_submitted_new_project_defaults() -> dict[str, str]:
         "project_name": "",
         "project_type": "Wind",
         "template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
-        "country_market": "Generic Market A",
+        # Canonical country code (was the legacy free-text "Generic Market A";
+        # normalize_country_code maps that legacy label to XA).
+        "country_market": "XA",
         "capacity_mw": "",
+        # Technology-specific capacity label (manual-QA product-truth fix).
+        "capacity_label": _capacity_label_for_template_source(P2_MIN_DEFAULT_TEMPLATE_SOURCE),
     }
 
 
@@ -1346,6 +1390,8 @@ def _new_project_minimal_validation_error_context(submitted: dict[str, str], val
         "validation_errors": validation_errors,
         "submitted": _minimal_submitted_new_project_defaults() | dict(submitted),
         "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
+        "country_options": _country_options_for_create(),
+        "tax_template_label": _generic_tax_template_label(),
     }
 
 
@@ -3340,7 +3386,12 @@ async def run(request: Request):
     _run_start = _time.monotonic()
     _run_started_logged = False
     try:
+        from app.services.run_stage_timing import (
+            log_run_stages, mark as _run_stage_mark, start_run_stages,
+        )
+        _run_stage_timer = start_run_stages()
         form = await request.form()
+        _run_stage_mark("form_parsed")
 
         deps = RunRouteDeps(
             collect_form_snapshot=_collect_form_snapshot,
@@ -3390,6 +3441,9 @@ async def run(request: Request):
 
     # Plain errors.html path: just render the template (no prepend_html).
     if not outcome.prepend_html:
+        _run_stage_mark("response_generated")
+        log_run_stages(project_type=form.get("project_type") or None,
+                       origin=outcome.template_name)
         return templates.TemplateResponse(
             request=request,
             name=outcome.template_name,
@@ -3519,6 +3573,9 @@ async def run(request: Request):
                             repr(exc),
                         )
 
+    _run_stage_mark("response_generated")
+    log_run_stages(project_type=form.get("project_type") or None,
+                   origin=outcome.template_name)
     return HTMLResponse(content=body_str, status_code=rendered.status_code)
 
 
@@ -3924,6 +3981,9 @@ async def new_project_form(request: Request):
             "validation_errors": [],
             "submitted": _minimal_submitted_new_project_defaults(),
             "default_template_source": P2_MIN_DEFAULT_TEMPLATE_SOURCE,
+            # Canonical country catalogue — imported, never duplicated.
+            "country_options": _country_options_for_create(),
+            "tax_template_label": _generic_tax_template_label(),
         },
     )
 

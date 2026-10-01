@@ -98,8 +98,10 @@ async def execute_run_route(
     tenor_years = form.get("tenor_years", "")
 
     # ── 2. Snapshot + project/workspace resolution ───────────────────────
+    from app.services.run_stage_timing import mark as _stage_mark
     snapshot = deps.collect_form_snapshot(form)
     project_record, workspace_state = deps.project_workspace_from_snapshot(user, snapshot)
+    _stage_mark("project_workspace_resolved")
     project_code = project_record.project_code
     project_name = project_record.project_name
 
@@ -213,6 +215,7 @@ async def execute_run_route(
 
     # ── 3. Runtime guard ────────────────────────────────────────────────
     allow_run, runtime_origin, guard_message = deps.check_runtime_allowed(workspace_state, snapshot)
+    _stage_mark("runtime_guard")
     if not allow_run:
         return RunRouteOutcome(
             template_name="partials/errors.html",
@@ -234,6 +237,7 @@ async def execute_run_route(
             deps.resolve_runtime_snapshot_source(
                 user, project_record, workspace_state, runtime_origin,
             )
+    _stage_mark("runtime_snapshot_resolved")
 
     # ── 5. Three execution paths ────────────────────────────────────────
     # Phase 51B: order and bodies preserved exactly from the original
@@ -441,7 +445,9 @@ async def _execute_user_created_path(
             (runtime_snapshot.get("project_type") if runtime_snapshot else None)
             or project_record.project_type  # type: ignore[union-attr]
         )
+        _stage_mark("model_entered")
         result = await _run_model_thread(deps.run_project, runtime_project_key, scenario_name, project_inputs_override=override)
+        _stage_mark("model_completed")
         kpis = deps.format_kpis(result["kpis"])
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
         runtime_snapshot_id = _utc_now_iso_compact()
@@ -482,6 +488,7 @@ async def _execute_user_created_path(
             distribution_schedule=result.get("distribution_schedule"),
             sponsor_schedule=result.get("sponsor_schedule"),
         )
+        _stage_mark("persistence_completed")
         if effective_runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
                 project_record.project_code,
@@ -582,7 +589,9 @@ async def _execute_template_seeded_path(
                 override = _build_seeded(schema, _seed_base)
             else:
                 override = deps.build_projectinputs(schema)
+        _stage_mark("model_entered")
         result = await _run_model_thread(deps.run_project, project_key, scenario_name, project_inputs_override=override)
+        _stage_mark("model_completed")
         kpis = deps.format_kpis(result["kpis"])
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
         runtime_snapshot_id = _utc_now_iso_compact()
@@ -622,6 +631,7 @@ async def _execute_template_seeded_path(
             distribution_schedule=result.get("distribution_schedule"),
             sponsor_schedule=result.get("sponsor_schedule"),
         )
+        _stage_mark("persistence_completed")
         if runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
                 project_record.project_code,
@@ -722,7 +732,9 @@ async def _execute_generic_path(
         runtime_project_key = _runtime_project_key(
             deps.canonical_project_type(effective_project_type)
         )
+        _stage_mark("model_entered")
         result = await _run_model_thread(deps.run_project, runtime_project_key, scenario_name, project_inputs_override=override)
+        _stage_mark("model_completed")
         kpis = deps.format_kpis(result["kpis"])
         # STAB-7: compute runtime_summary so dashboard OOB refresh works for generic projects.
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
@@ -763,6 +775,7 @@ async def _execute_generic_path(
             distribution_schedule=result.get("distribution_schedule"),
             sponsor_schedule=result.get("sponsor_schedule"),
         )
+        _stage_mark("persistence_completed")
         if runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
                 project_record.project_code,
