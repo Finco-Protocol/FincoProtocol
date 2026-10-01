@@ -65,8 +65,11 @@ GEARING_CAP + gearing_cap_repayment_method=DSCR_SCULPTED (M-6, explicit opt-in):
 D is STILL eligible_project_cost × maximum_gearing and is never resized to DSCR capacity (that
 would be COMBINED_MINIMUM). The fixed balance is sculpted over the FULL repayment tenor with the
 canonical DSCR primitives (per-period DSCR targets, debt-service availability, rolling-balance
-interest, day count): every period uses the same fraction k of the DSCR-allowed debt service, with
-k the smallest value that repays the balance exactly at maturity (achieved DSCR = target / k). The
+interest, day count): every period uses the same fraction k of the DSCR- and availability-
+constrained debt-service budget, with k the smallest value that repays the balance exactly at
+maturity. Where that scaled budget is fully consumed, realised DSCR equals
+target_dscr / (availability_fraction * k); with full availability this reduces to target_dscr / k.
+A period clipped by the remaining balance (e.g. the final period) may realise a higher DSCR. The
 plain DSCR-sculpted roll would instead retire a balance below DSCR capacity EARLY. Because interest
 feeds tax and CFADS and CFADS drives principal, a CFADS fixed point (maximum_iterations,
 deterministic) is solved at fixed D, then the standard finalisation handshake is applied. A balance
@@ -879,7 +882,11 @@ def _full_tenor_scale(
     balance smaller than the DSCR capacity EARLY. Sculpting a gearing-sized balance over the FULL
     tenor therefore uses a fraction k of the allowed debt service in every period:
 
-        allowed_ds[p] = max(0, CFADS[p] / DSCR[p]) * availability[p] * k      (achieved DSCR = target / k)
+        scaled_ds_budget[p] = max(0, CFADS[p] / DSCR[p]) * availability[p] * k
+
+    Where the budget is fully consumed, realised DSCR[p] = DSCR[p] / (availability[p] * k)
+    (= DSCR[p] / k at full availability); a period whose debt service is clipped by the remaining
+    balance may realise a higher DSCR.
 
     Maturity balance is non-increasing in k (more service never leaves more debt), so the smallest k
     that clears the balance is found by a fixed-length bisection — deterministic, no tolerance loop.

@@ -139,7 +139,35 @@ def test_repayment_uses_dscr_target_and_debt_service_availability_per_period():
         assert result.senior_debt_service_keur[i] <= limit + 1e-6
         if result.senior_debt_service_keur[i] > 0:
             assert result.senior_dscr[i] >= tmap.get(idx, sc.TARGET) - 1e-9
-    assert result.senior_dscr[0] == pytest.approx(1.6 / ratios[0], rel=1e-6)  # achieved = target / k
+    # period 1 has full availability, so realised DSCR = target / k there (see the dedicated
+    # availability < 1 relationship test below for the general formula)
+    assert result.senior_dscr[0] == pytest.approx(1.6 / ratios[0], rel=1e-6)
+
+
+def test_realised_dscr_is_target_over_availability_times_k_where_the_budget_is_consumed():
+    """Wording-truth test: with availability < 1 and k < 1, a period that consumes its scaled budget
+    has debt_service = CFADS / target * availability * k, hence CFADS / debt_service =
+    target / (availability * k). A period clipped by the remaining balance is excluded."""
+    targets, availability = ((5, 1.5), (6, 1.5)), ((3, 0.8), (4, 0.8), (5, 0.7), (6, 0.9))
+    result, fn = sculpted(20, gearing=0.2, dscr_targets=targets, availability=availability)
+    assert result.diagnostics.termination_reason == "CONVERGED"
+    cfads, _ = fn(dict(zip(result.period_indices, result.senior_interest_keur)))
+    tmap, amap = dict(targets), dict(availability)
+    k = max(_utilisation(result, cfads, targets, availability).values())  # utilisation of the allowed budget
+    assert 0.0 < k < 1.0 and any(a < 1.0 for a in amap.values())
+    checked = 0
+    for i, idx in enumerate(result.period_indices):
+        if not (result.senior_principal_keur[i] > 1e-9 and result.senior_debt_closing_keur[i] > 1e-9):
+            continue                                   # clipped / terminal periods are not asserted
+        target, avail = tmap.get(idx, sc.TARGET), amap.get(idx, 1.0)
+        assert result.senior_debt_service_keur[i] == pytest.approx(
+            cfads[idx] / target * avail * k, rel=1e-6)
+        assert cfads[idx] / result.senior_debt_service_keur[i] == pytest.approx(
+            target / (avail * k), rel=1e-6)
+        checked += 1
+    assert checked >= 10
+    final = result.senior_debt_service_keur[-1]        # the clipped final period realises MORE than budget
+    assert final <= cfads[20] / sc.TARGET * k + 1e-6
 
 
 def test_gearing_at_dscr_capacity_reproduces_the_dscr_sculpted_schedule():

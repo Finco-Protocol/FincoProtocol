@@ -31,9 +31,12 @@ bit-identical; `tests/m6_baseline_pre_change.json` pins values captured from the
 - **Debt size is fixed** at `eligible_project_cost × maximum_gearing`. It is never reduced to DSCR capacity.
 - **Full tenor.** The canonical DSCR roll pays *all* the debt service the DSCR allows, which would retire a
   balance smaller than DSCR capacity early. To spread it over the whole repayment window every period uses the
-  same fraction `k` of the allowed debt service
-  `allowed_ds[p] = max(0, CFADS[p]/DSCR[p]) · availability[p] · k` (achieved DSCR = target / k), with `k` the
-  smallest value in `(0, 1]` that repays the balance exactly at maturity (fixed-length bisection; deterministic).
+  same factor `k` on its DSCR- and availability-constrained debt-service budget
+  `scaled_budget[p] = max(0, CFADS[p]/DSCR[p]) · availability[p] · k`, with `k` the smallest value in `(0, 1]`
+  that repays the balance exactly at maturity (fixed-length bisection; deterministic).
+  Where that scaled budget is fully consumed, realised DSCR equals
+  `target_dscr[p] / (availability_fraction[p] · k)`; with full availability this reduces to `target_dscr / k`.
+  A period clipped by the remaining balance (typically the final period) may realise a higher DSCR.
 - Reused canonical primitives: per-period DSCR targets, debt-service availability, rolling-balance interest,
   day count, repayment start and maturity, the tax ↔ CFADS fixed point and the finalisation handshake
   (`_finalise_authoritative`, given the same full-tenor roll).
