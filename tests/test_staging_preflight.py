@@ -52,22 +52,33 @@ HEAD = "a" * 40
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _env() -> dict[str, str]:
-    """Minimal fully-valid staging environment (no filesystem access needed)."""
+    """Minimal fully-valid current staging environment (no filesystem access needed)."""
     return {
         "FINCO_ENV": "staging",
         "FINCO_APP_MODE": "pilot",
         "FINCO_SECRET_KEY": "s" * 128,
+        "FINCO_CSRF_SECRET": "c" * 128,
         "FINCO_ADMIN_USER": "staging_admin",
         "FINCO_ADMIN_PASSWORD": "strong-staging-password-123",
         "FINCO_COOKIE_SECURE": "true",
+        "FINCO_COOKIE_SAMESITE": "lax",
+        "FINCO_SESSION_HOURS": "4",
         "FINCO_DB_PATH": "/opt/finco_staging/storage/finco_staging.db",
         "FINCO_STORAGE_PATH": "/opt/finco_staging/storage/exports",
-        "FINCO_MAX_CONCURRENT_RUNS": "3",
         "FINCO_DEMO_RESET_ALLOWED": "true",
         "FINCO_STAGING_ROOT": "/opt/finco_staging",
         "FINCO_STAGING_PORT": "8100",
         "FINCO_STAGING_HOST": "staging.finco.one",
         "FINCO_DEPLOY_SHA": HEAD,
+        "FINCO_WEB_HOST": "127.0.0.1",
+        "FINCO_WEB_PORT": "8100",
+        "FINCO_WEB_WORKERS": "2",
+        "FINCO_WEB_GRACEFUL_SHUTDOWN_SECONDS": "30",
+        "FINCO_MODEL_EXECUTION_CONCURRENCY": "2",
+        "FINCO_MODEL_EXECUTION_MODE": "process",
+        "FINCO_MODEL_EXECUTION_TIMEOUT_SECONDS": "180",
+        "FINCO_YIELD_ENABLED": "1",
+        "FINCO_YIELD_EXECUTION_ENABLED": "0",
         "FINCO_EQUITY_FUNDAMENTALS_DB_PATH": "/opt/finco_staging/storage/equity_fundamentals.db",
         "FINCO_EQUITY_FUNDAMENTALS_DB_MODE": "snapshot",
     }
@@ -215,8 +226,8 @@ def test_actual_repo_root_must_equal_staging_root() -> None:
 @pytest.mark.parametrize("value", ["not-an-int", "0", "9"])
 def test_concurrency_must_be_integer_within_bounds(value: str) -> None:
     env = _env()
-    env["FINCO_MAX_CONCURRENT_RUNS"] = value
-    with pytest.raises(StagingPreflightError, match="FINCO_MAX_CONCURRENT_RUNS"):
+    env["FINCO_MODEL_EXECUTION_CONCURRENCY"] = value
+    with pytest.raises(StagingPreflightError, match="FINCO_MODEL_EXECUTION_CONCURRENCY"):
         _validate(env)
 
 
