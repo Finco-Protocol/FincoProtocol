@@ -36,11 +36,7 @@
   <section class="panel" data-testid="crypto-access" style="padding:14px;margin-bottom:14px">
     <h2 style="font-size:14px;margin:0 0 8px">$FINCO access state</h2>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 8px">Capability</th>
-        <th style="text-align:left;padding:6px 8px">State</th>
-        <th style="text-align:left;padding:6px 8px">Why</th>
-      </tr></thead>
+      <thead><tr><th style="text-align:left;padding:6px 8px">Capability</th><th style="text-align:left;padding:6px 8px">State</th><th style="text-align:left;padding:6px 8px">Why</th></tr></thead>
       <tbody>
       {% for key, resource in access.resources.items() %}
         <tr data-testid="crypto-access-row-{{ key }}" style="border-top:1px solid rgba(255,255,255,.08)">
@@ -66,27 +62,19 @@
     <h2 style="font-size:14px;margin:0 0 8px">Yield Watchlist <span class="badge" data-testid="watchlist-count">{{ watchlist_count }}</span></h2>
     {% if watchlist %}
     <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 8px">Opportunity</th>
-        <th style="text-align:left;padding:6px 8px">Canonical identity</th>
-        <th style="text-align:left;padding:6px 8px">Saved</th>
-      </tr></thead>
+      <thead><tr><th style="text-align:left;padding:6px 8px">Opportunity</th><th style="text-align:left;padding:6px 8px">Canonical identity</th><th style="text-align:left;padding:6px 8px">Saved</th></tr></thead>
       <tbody>
       {% for item in watchlist %}
         <tr data-testid="crypto-watchlist-row" style="border-top:1px solid rgba(255,255,255,.08)">
           <td style="padding:8px">{{ item.display_name }}</td>
-          <td style="padding:8px"><span class="mono small">{{ item.opportunity_uid }}</span><br>
-              <span class="muted small">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
+          <td style="padding:8px"><span class="mono small">{{ item.opportunity_uid }}</span><br><span class="muted small">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
           <td style="padding:8px"><span class="mono small">{{ item.saved_at }}</span></td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <p class="muted small" data-testid="watchlist-empty" style="margin:0">
-      Nothing saved yet. Save opportunities by their canonical identity from the
-      <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.
-    </p>
+    <p class="muted small" data-testid="watchlist-empty" style="margin:0">Nothing saved yet. Save opportunities by their canonical identity from the <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.</p>
     {% endif %}
     <p class="muted small" style="margin:10px 0 0">Manage saved items on the <a href="/yield/monitor">Wallet Monitor</a>.</p>
   </section>
@@ -98,7 +86,7 @@
     {% if alerts.reason %}<p class="mono small" style="margin:6px 0 0">{{ alerts.reason }}</p>{% endif %}
 
     {% if alerts.available %}
-    <p class="small" style="margin:8px 0 0">In-app alerts engine: available</p>
+    <p class="small" style="margin:8px 0 0">In-app alerts: available</p>
     {% if alerts.can_refresh %}
     <form method="post" action="/crypto/alerts/refresh" style="margin-top:8px">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -109,43 +97,26 @@
 
     {% if alerts['items'] %}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 8px">Alert</th>
-        <th style="text-align:left;padding:6px 8px">Opportunity</th>
-        <th style="text-align:left;padding:6px 8px">Observed change</th>
-        <th style="text-align:left;padding:6px 8px">Detected</th>
-        <th style="text-align:left;padding:6px 8px">State</th>
-      </tr></thead>
+      <thead><tr><th style="text-align:left;padding:6px 8px">Alert</th><th style="text-align:left;padding:6px 8px">Opportunity</th><th style="text-align:left;padding:6px 8px">Observed change</th><th style="text-align:left;padding:6px 8px">Detected</th><th style="text-align:left;padding:6px 8px">State</th></tr></thead>
       <tbody>
       {% for alert in alerts['items'] %}
         <tr data-testid="alerts-item" style="border-top:1px solid rgba(255,255,255,.08)">
-          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span><br><span class="small">{{ alert.label or '—' }}</span></td>
-          <td style="padding:8px">{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}
-              {% if alert.opportunity_display %}<br><span class="small">{{ alert.opportunity_display }}</span>{% endif %}</td>
+          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span><br><span class="small">{{ alert.label or alert.summary or '—' }}</span></td>
+          <td style="padding:8px">{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}{% if alert.opportunity_display %}<br><span class="small">{{ alert.opportunity_display }}</span>{% endif %}</td>
           <td style="padding:8px">
-            {% if alert.field %}<span class="mono small">{{ alert.field }}</span><br>{% endif %}
-            <span class="small">{{ alert.previous if alert.previous is not none else 'missing' }} → {{ alert.current if alert.current is not none else 'missing' }}</span>
+            {% if alert.field %}<span class="mono small">{{ alert.field }}</span><br><span class="small">{{ alert.previous if alert.previous is not none else 'missing' }} → {{ alert.current if alert.current is not none else 'missing' }}</span>
+            {% elif alert.value %}<span class="small">{{ alert.value }}</span>
+            {% else %}<span class="small">—</span>{% endif %}
           </td>
-          <td style="padding:8px"><span class="mono small">{{ alert.detected_at or '—' }}</span></td>
-          <td style="padding:8px">
-            <span class="badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
-            {% if not alert.read %}
-            <form method="post" action="/crypto/alerts/{{ alert.alert_id }}/read">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-              <button type="submit" data-testid="alert-mark-read">Mark read</button>
-            </form>
-            {% endif %}
+          <td style="padding:8px"><span class="mono small">{{ alert.detected_at or alert.created_at or alert.observed_at or '—' }}</span></td>
+          <td style="padding:8px"><span class="badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
+            {% if not alert.read %}<form method="post" action="/crypto/alerts/{{ alert.alert_id }}/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" data-testid="alert-mark-read">Mark read</button></form>{% endif %}
           </td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
-    {% if alerts.unread_count %}
-    <form method="post" action="/crypto/alerts/read-all" style="margin-top:8px">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" data-testid="alerts-mark-all-read">Mark all read</button>
-    </form>
-    {% endif %}
+    {% if alerts.unread_count %}<form method="post" action="/crypto/alerts/read-all" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" data-testid="alerts-mark-all-read">Mark all read</button></form>{% endif %}
     {% else %}
     <p class="muted small" style="margin:8px 0 0">No alerts for your account yet.</p>
     {% endif %}
@@ -154,28 +125,19 @@
       {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}Sign in to view your alerts.
       {% else %}In-app alerts backend is currently unavailable.{% endif %}
     </p>
+    <p class="muted small" style="margin:5px 0 0">The former integration pending placeholder is retained only as an unavailable fallback/test state; the integrated product uses the real Yield Alerts backend.</p>
     {% endif %}
 
-    <p class="muted small" style="margin:10px 0 0">
-      In-app Watchlist, alert persistence/read state and manual Refresh are implemented.
-      The former integration pending placeholder is retired; this surface now uses the real Yield Alerts backend.
-      Background scheduler = NOT SHIPPED · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.
-    </p>
+    <p class="muted small" style="margin:10px 0 0">In-app Watchlist, alert persistence/read state and manual Refresh are implemented. Background scheduler = NOT SHIPPED · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.</p>
   </section>
 
   <section class="panel" data-testid="crypto-execution" style="padding:14px;margin-bottom:14px">
     <h2 style="font-size:14px;margin:0 0 8px">Execution</h2>
     <p style="margin:0">Yield execution: <span class="badge">{{ execution_state }}</span></p>
-    <p class="muted small" style="margin:6px 0 0">
-      Execution planning is a separately gated capability and is OFF by default. This surface shows
-      status only — it never signs, custodies, or broadcasts, and no buy/swap action exists here.
-    </p>
+    <p class="muted small" style="margin:6px 0 0">Execution planning is a separately gated capability and is OFF by default. This surface shows status only — it never signs, custodies, or broadcasts, and no buy/swap action exists here.</p>
   </section>
 
-  <footer class="muted small" style="padding:8px 0 20px">
-    Factual status surface. No yield promises, guarantees, or purchase solicitations.
-    <a href="/yield">Yield</a> · <a href="/yield/monitor">Wallet Monitor</a> · <a href="/protocol/finco">$FINCO</a>
-  </footer>
+  <footer class="muted small" style="padding:8px 0 20px">Factual status surface. No yield promises, guarantees, or purchase solicitations. <a href="/yield">Yield</a> · <a href="/yield/monitor">Wallet Monitor</a> · <a href="/protocol/finco">$FINCO</a></footer>
 </main>
 </body>
 </html>
