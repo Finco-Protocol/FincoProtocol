@@ -67,37 +67,51 @@
   <section class="rwa-section" aria-label="BNB tokenized-asset observations">
     <div class="rwa-section__heading"><div><h2>Observed assets</h2><p class="muted small">Market data, BNB deployment, and Robinhood economic identity are separate evidence layers. No ticker or provider-ID mapping is inferred.</p></div></div>
     {% if dashboard.observations %}
+    <div class="bnb-filter-bar" role="toolbar" aria-label="Observation filters" data-testid="bnb-filter-bar">
+      <button type="button" class="bnb-filter is-active" data-filter="all" data-testid="bnb-filter-all">ALL OBSERVED</button>
+      <button type="button" class="bnb-filter" data-filter="bound" data-testid="bnb-filter-bound"
+              title="Rows with an exact source-proven economic identity binding to the canonical registry">BOUND</button>
+      <button type="button" class="bnb-filter" data-filter="actionable" data-testid="bnb-filter-actionable"
+              title="Rows with an actually available execution route capability — a BNB contract alone never implies execution">ACTIONABLE</button>
+      <span class="muted small bnb-filter-note">ALL OBSERVED = valid observed RWA market rows · BOUND = exact source-proven identity binding · ACTIONABLE = execution capability actually exists</span>
+    </div>
     <div class="rwa-table-wrap panel bnb-table-wrap">
-      <table class="rwa-table bnb-rwa-table">
-        <thead><tr><th>Asset / provider ID</th><th>BNB deployment</th><th>Asset-level price</th><th>Asset-level mcap</th><th>Asset-level 24h volume</th><th>24h</th><th>Freshness / source</th><th>Robinhood binding</th><th>Reference premium</th><th>Execution gap</th></tr></thead>
+      <table class="rwa-table bnb-rwa-table" data-testid="bnb-rwa-table">
+        <thead><tr><th>Asset / provider ID</th><th>Capabilities</th><th>Asset-level price</th><th>Asset-level mcap</th><th>Asset-level 24h volume</th><th>24h</th><th>Freshness / source</th><th>Reference premium</th><th>Execution gap</th></tr></thead>
         <tbody>
         {% for row in dashboard.observations %}
-          <tr data-provider-id="{{ row.provider_id }}" data-state="{{ row.state }}">
+          {% set caps = row.capabilities %}
+          <tr data-provider-id="{{ row.provider_id }}" data-state="{{ row.state }}"
+              data-cap-bound="{{ '1' if caps.rh_identity == 'BOUND' else '0' }}"
+              data-cap-actionable="{{ '1' if caps.execution == 'AVAILABLE' else '0' }}">
             <td data-label="Asset"><strong>{{ row.name }}</strong><span class="mono rwa-symbol">{{ row.symbol }} · {{ row.provider_id }}</span></td>
-            <td data-label="BNB deployment" class="bnb-deployment">{% if row.asset_key %}<span class="mono">{{ row.asset_key.canonical_id }}</span>{% else %}<span class="state-unavailable">Unavailable</span><span class="mono rwa-time">{{ row.deployment_reason }}</span>{% endif %}</td>
+            <td data-label="Capabilities" class="bnb-capabilities" data-testid="bnb-capabilities">
+              <span class="cap-chip cap-chip--{{ caps.market_data|lower }}" title="Market data (observed)">MARKET {{ caps.market_data }}</span>
+              <span class="cap-chip cap-chip--{{ 'available' if caps.bnb_deployment == 'AVAILABLE' else 'unavailable' }}" title="Exact BNB deployment (chain 56 + contract)">DEPLOYMENT {{ 'AVAILABLE' if caps.bnb_deployment == 'AVAILABLE' else 'UNAVAILABLE' }}</span>
+              <span class="cap-chip cap-chip--{{ 'bound' if caps.rh_identity == 'BOUND' else 'unbound' }}" title="Robinhood economic identity binding">RH IDENTITY {{ caps.rh_identity }}</span>
+              {% if caps.reference_premium != 'NOT_SUPPORTED' or caps.execution != 'NOT_SUPPORTED' %}
+              <span class="cap-chip cap-chip--{{ caps.reference_premium|lower }}" title="Reference premium (requires bound Robinhood basis)">PREMIUM {{ caps.reference_premium }}</span>
+              <span class="cap-chip cap-chip--{{ caps.execution|lower }}" title="Execution route capability">EXECUTION {{ caps.execution }}</span>
+              {% endif %}
+              <details><summary>Authority detail</summary>
+                <span class="mono rwa-time">Deployment: {{ row.asset_key.canonical_id if row.asset_key else row.deployment_reason }}</span>
+                <span class="mono rwa-time">Robinhood binding: {{ row.canonical_identity.state }} · {{ row.canonical_identity.authority_source or row.canonical_identity.reason or 'Exact canonical registry evidence' }}{% if row.canonical_identity.observed_at %} · {{ row.canonical_identity.observed_at }}{% endif %}</span>
+                {% if row.canonical_identity.economic_asset_uid %}<span class="mono rwa-time">{{ row.canonical_identity.economic_asset_uid }}</span>{% endif %}
+              </details>
+            </td>
             <td data-label="Asset-level price">{{ row.price_display }}</td>
             <td data-label="Asset-level mcap">{{ row.market_cap_display }}</td>
             <td data-label="Asset-level 24h volume">{{ row.volume_display }}</td>
             <td data-label="24h change">{{ row.change_display }}</td>
             <td data-label="Freshness / source"><span class="rwa-state rwa-state--{{ row.state|lower }}">{{ row.state }}</span><span class="mono rwa-time">{{ row.observed_at or 'Timestamp unavailable' }}</span><span class="mono rwa-time">{{ row.source }} · {{ row.market_endpoint }}</span></td>
-            <td data-label="Robinhood binding" class="bnb-identity-cell">
-              {% if row.canonical_identity.state == 'AVAILABLE' %}
-                <span class="rwa-state rwa-state--available">AVAILABLE</span>
-                <span class="mono rwa-time bnb-identity-uid">{{ row.canonical_identity.economic_asset_uid }}</span>
-                <span class="mono rwa-time">{{ row.canonical_identity.authority_source }} · {{ row.canonical_identity.observed_at }}</span>
-              {% else %}
-                <span class="state-unavailable">Unavailable</span>
-                <span class="mono rwa-time">{{ row.canonical_identity.state }} · {{ row.canonical_identity.reason }}</span>
-              {% endif %}
-            </td>
             <td data-label="Reference premium" class="bnb-intelligence-cell">
-              {% if row.intelligence.reference_premium.state == 'AVAILABLE' %}
+              {% if caps.reference_premium == 'AVAILABLE' %}
                 <strong class="mono">{{ row.intelligence.reference_premium.value_bps }} bps</strong>
               {% else %}
-                <span class="state-unavailable">Unavailable</span>
+                <span class="cap-chip cap-chip--{{ caps.reference_premium|lower }}">{{ caps.reference_premium }}</span>
               {% endif %}
-              <span class="mono rwa-time">{{ row.intelligence.reference_premium.state }} · {{ row.intelligence.reference_premium.reason or 'Current evidence' }}</span>
               <details><summary>Price evidence</summary>
+                <span class="mono rwa-time">{{ row.intelligence.reference_premium.state }} · {{ row.intelligence.reference_premium.reason or 'Current evidence' }}</span>
                 <span class="mono rwa-time">Robinhood basis: {{ row.intelligence.robinhood_basis.price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.robinhood_basis.state }} · {{ row.intelligence.robinhood_basis.source or row.intelligence.robinhood_basis.reason or 'Unavailable' }} · {{ row.intelligence.robinhood_basis.observed_at or 'Timestamp unavailable' }}</span>
                 <span class="mono rwa-time">Independent token reference: {{ row.intelligence.independent_token_reference.price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.independent_token_reference.state }} · {{ row.intelligence.independent_token_reference.source or row.intelligence.independent_token_reference.reason or 'Unavailable' }} · {{ row.intelligence.independent_token_reference.observed_at or 'Timestamp unavailable' }}</span>
                 <span class="mono rwa-time">Formula: {{ row.intelligence.reference_premium.formula or 'Unavailable' }}</span>
@@ -105,14 +119,14 @@
               </details>
             </td>
             <td data-label="Execution gap" class="bnb-intelligence-cell">
-              {% if row.intelligence.execution_gap.state == 'AVAILABLE' %}
+              {% if caps.execution == 'AVAILABLE' %}
                 <strong class="mono">{{ row.intelligence.execution_gap.effective_gap_bps }} bps</strong>
                 <span class="mono rwa-time">Execution impact {{ row.intelligence.execution_gap.execution_impact_bps }} bps</span>
               {% else %}
-                <span class="state-unavailable">Unavailable</span>
+                <span class="cap-chip cap-chip--{{ caps.execution|lower }}">{{ caps.execution }}</span>
               {% endif %}
-              <span class="mono rwa-time">{{ row.intelligence.execution_gap.state }} · {{ row.intelligence.execution_gap.reason or 'Current evidence' }}</span>
               <details><summary>Execution and history</summary>
+                <span class="mono rwa-time">{{ row.intelligence.execution_gap.state }} · {{ row.intelligence.execution_gap.reason or 'Current evidence' }}</span>
                 <span class="mono rwa-time">Effective price: {{ row.intelligence.execution.effective_price_usd_per_token or 'Unavailable' }} USD/token · {{ row.intelligence.execution.provider or row.intelligence.execution.reason or 'Unavailable' }}</span>
                 <span class="mono rwa-time">Notional: {{ row.intelligence.execution.requested_notional_usd or 'Unavailable' }} USD · route: {{ row.intelligence.execution.route or 'Unavailable' }} · {{ row.intelligence.execution.observed_at or 'Timestamp unavailable' }}</span>
                 <span class="mono rwa-time">Fee {{ row.intelligence.execution.fee_cost_usd or 'Unavailable' }} · gas {{ row.intelligence.execution.gas_cost_usd or 'Unavailable' }} (evidence only; inclusion unresolved)</span>
@@ -133,5 +147,6 @@
 
   <footer class="rwa-footnote"><span>Read-only market intelligence. No trading, custody, economic-equivalence claim, or execution authority.</span></footer>
 </main>
+<script src="/static/radar/rwa_bnb_filters.js" defer></script>
 </body>
 </html>
