@@ -1,345 +1,351 @@
-"""Crypto Utility V0 / Agent A — token identity, balance observation, entitlement policy and decision.
+"""Crypto Utility V0 / Agent A — resource policy layer over the canonical token-entitlement authority.
 
-Every amount, address and chain id below is TEST_ONLY. None of them is, or may become, a production
-default: production ships with zero deployments, gating OFF and no thresholds.
+Authority chain under test:
+  wallet binding -> approved deployment (app.verified.token_entitlement) -> read-only balance evidence
+  (P4ReadOnlyBalanceProvider / TokenBalanceEvidence) -> canonical evaluate_token_entitlement
+  -> resource policy -> ALLOW / DENY / INACTIVE.
+
+Every amount, address and chain id here is TEST_ONLY. None is, or may become, a production default:
+production ships with ZERO approved deployments, gating OFF and no thresholds.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 
+import app.verified.token_entitlement as canon
 from app.protocol import entitlement_policy as ep
-from app.protocol.balance_observation import (
-    JsonRpcTokenBalanceReader, ObservationStatus, RawBalance, observe_finco_balance,
-)
 from app.protocol.entitlement_evaluator import (
-    NO_WALLET, Decision, WalletContext, decide_resource_access, evaluate_all_resources,
+    FRESHNESS_ENV, NO_WALLET, Decision, WalletContext, decide_resource_access, evaluate_all_resources,
     evaluate_resource_access,
 )
-from app.protocol.token_deployments import (
-    DEPLOYMENTS_ENV, DeploymentRegistry, DeploymentStatus, ResolutionStatus, TokenDeployment,
-)
+from app.protocol.token_deployments import ResolutionStatus, resolve_approved_deployment
+from app.verified.token_entitlement import ApprovedFincoDeployment, BalanceEvidenceState, TokenBalanceEvidence
 
 NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
-TEST_ONLY_CHAIN = 31337
-TEST_ONLY_OTHER_CHAIN = 31338
-TEST_ONLY_TOKEN = "0x" + "ab" * 20
-TEST_ONLY_OTHER_TOKEN = "0x" + "cd" * 20
-TEST_ONLY_WALLET = "0x" + "12" * 20
-TEST_ONLY_DECIMALS = 6
-TEST_ONLY_THRESHOLD = Decimal("100")           # TEST_ONLY — never a production value
-RAW_THRESHOLD = 100 * 10 ** TEST_ONLY_DECIMALS
+CHAIN, OTHER_CHAIN = 31337, 31338
+TOKEN, OTHER_TOKEN = "0x" + "ab" * 20, "0x" + "cd" * 20
+WALLET, OTHER_WALLET = "0x" + "12" * 20, "0x" + "99" * 20
+DECIMALS = 6
+THRESHOLD = Decimal("100")                     # TEST_ONLY — never a production value
+RAW = 100 * 10 ** DECIMALS
+ENV = {FRESHNESS_ENV: "60"}
+HOLDER = ep.YIELD_HISTORY
+VERIFIED = WalletContext(WALLET, True, "user-1")
 
 
-def deployment(**kw) -> TokenDeployment:
-    base = dict(chain_id=TEST_ONLY_CHAIN, contract_address=TEST_ONLY_TOKEN, decimals=TEST_ONLY_DECIMALS,
+def approved(**kw) -> ApprovedFincoDeployment:
+    base = dict(chain_id=CHAIN, token_address=TOKEN, standard="ERC-20", decimals=DECIMALS,
                 provenance="TEST_ONLY fixture")
     base.update(kw)
-    return TokenDeployment(**base)
+    return ApprovedFincoDeployment(**base)
 
 
-def registry(*entries) -> DeploymentRegistry:
-    return DeploymentRegistry(entries or (deployment(),))
-
-
-def policies(*, enabled=True, minimum=TEST_ONLY_THRESHOLD, gating=True, chain_id=None, keys=None):
+def policies(*, enabled=True, minimum=THRESHOLD, gating=True, chain_id=None):
     table = ep.default_policies()
-    for key in keys or [k for k, p in table.items() if p.access_mode is ep.AccessMode.FINCO_HOLDER]:
-        table[key] = ep.EntitlementPolicy(key, ep.AccessMode.FINCO_HOLDER, minimum, True, enabled, chain_id)
+    for key, policy in list(table.items()):
+        if policy.access_mode is ep.AccessMode.FINCO_HOLDER:
+            table[key] = ep.EntitlementPolicy(key, ep.AccessMode.FINCO_HOLDER, minimum, True, enabled, chain_id)
     return ep.PolicySet(table, gating_enabled=gating)
 
 
-class FakeReader:
-    def __init__(self, balance=RAW_THRESHOLD, status=ObservationStatus.OBSERVED, age=0, raises=False):
-        self.balance, self.status, self.age, self.raises = balance, status, age, raises
-        self.calls: list[tuple] = []
+def evidence(raw=RAW, *, state=BalanceEvidenceState.AVAILABLE, age=0, **kw) -> TokenBalanceEvidence:
+    base = dict(chain_id=CHAIN, token_address=TOKEN, wallet_address=WALLET, token_decimals=DECIMALS,
+                balance_raw=None if state is not BalanceEvidenceState.AVAILABLE else raw,
+                observed_at=NOW - timedelta(seconds=age), source="TEST_ONLY", state=state,
+                reason=None if state is BalanceEvidenceState.AVAILABLE else "RPC_UNAVAILABLE")
+    base.update(kw)
+    return TokenBalanceEvidence(**base)
 
-    async def get_balance(self, chain_id, contract_address, wallet_address):
-        self.calls.append((chain_id, contract_address, wallet_address))
+
+class FakeProvider:
+    """A canonical TokenBalanceProvider test double (the real one is P4ReadOnlyBalanceProvider)."""
+
+    def __init__(self, value=None, raises=False):
+        self.value, self.raises, self.calls = value if value is not None else evidence(), raises, []
+
+    async def balance_of(self, policy, wallet_address):
+        self.calls.append((policy.chain_id, policy.token_address, wallet_address))
         if self.raises:
             raise RuntimeError("provider exploded https://secret.example/key")
-        if self.status is not ObservationStatus.OBSERVED:
-            return RawBalance(self.status, reason="TEST_ONLY")
-        return RawBalance(ObservationStatus.OBSERVED, self.balance, 123, NOW - timedelta(seconds=self.age))
+        return self.value
 
 
-def run(resource, wallet=WalletContext(TEST_ONLY_WALLET, True), *, policy_set=None, reg=None, reader=None):
+def run(resource=HOLDER, wallet=VERIFIED, *, policy_set=None, provider=None, deployments=None, env=ENV):
     return asyncio.run(evaluate_resource_access(
-        resource, wallet, policy_set=policy_set or policies(), registry=reg or registry(),
-        reader=reader or FakeReader(), now=NOW))
+        resource, wallet, policy_set=policy_set or policies(),
+        provider=provider or FakeProvider(), approved=[approved()] if deployments is None else deployments,
+        environ=env, now=NOW))
 
 
-HOLDER = ep.YIELD_HISTORY
-VERIFIED = WalletContext(TEST_ONLY_WALLET, True)
-
-
-# ── production defaults: nothing is active ───────────────────────────────────────────────────────
-def test_production_defaults_are_unconfigured_off_and_unthresholded():
-    assert DeploymentRegistry.from_environment({}).deployments == ()
+# ── existing authority preservation ──────────────────────────────────────────────────────────────
+def test_production_authority_is_unchanged_zero_approved_deployments_gating_off_no_thresholds():
+    assert canon.APPROVED_FINCO_DEPLOYMENTS == ()
+    assert canon.get_production_policy() is None
+    assert resolve_approved_deployment().status is ResolutionStatus.NOT_CONFIGURED
     policy_set = ep.load_policy_set({})
     assert policy_set.gating_enabled is False and policy_set.config_error is False
-    for key, policy in policy_set.policies.items():
+    for policy in policy_set.policies.values():
         if policy.access_mode is ep.AccessMode.FINCO_HOLDER:
-            assert (policy.enabled, policy.minimum_balance) == (False, None), key
-    assert set(policy_set.policies) == set(ep.RESOURCE_KEYS)
-    decision = run(HOLDER, policy_set=policy_set, reg=DeploymentRegistry.from_environment({}))
-    assert decision.decision is Decision.INACTIVE and not decision.allowed
+            assert (policy.enabled, policy.minimum_balance) == (False, None)
+    d = asyncio.run(evaluate_resource_access(HOLDER, VERIFIED, environ={}, now=NOW))
+    assert d.decision is Decision.INACTIVE and not d.allowed       # nothing is granted merely by existing
 
 
-# ── public resource ──────────────────────────────────────────────────────────────────────────────
-def test_public_resource_is_public_for_everyone_even_with_no_deployment_and_no_wallet():
-    for wallet in (NO_WALLET, WalletContext(TEST_ONLY_WALLET, False), VERIFIED):
-        d = run(ep.YIELD_BASIC, wallet, reg=DeploymentRegistry(()), policy_set=ep.load_policy_set({}))
-        assert d.decision is Decision.ALLOW and d.reason_code == "PUBLIC_RESOURCE"
+def test_environment_configuration_alone_cannot_create_a_deployment_authority(monkeypatch):
+    env = {"FINCO_TOKEN_DEPLOYMENTS_JSON": json.dumps([{"chain_id": CHAIN, "contract_address": TOKEN,
+                                                        "decimals": 6, "provenance": "TEST_ONLY"}]),
+           "FINCO_TOKEN_CHAIN_ID": str(CHAIN), "FINCO_TOKEN_ADDRESS": TOKEN, "FINCO_TOKEN_DECIMALS": "6",
+           "FINCO_TOKEN_RPC_URL": "https://rpc.example.invalid", f"FINCO_TOKEN_RPC_URL_{CHAIN}": "https://x.invalid",
+           "FINCO_ACCESS_MIN_BALANCE": "100", FRESHNESS_ENV: "60", ep.GATING_ENABLED_ENV: "1",
+           ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"}})}
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    assert canon.get_production_policy() is None                  # the existing B2.2 guarantee still holds
+    assert resolve_approved_deployment().status is ResolutionStatus.NOT_CONFIGURED
+    d = asyncio.run(evaluate_resource_access(HOLDER, VERIFIED, provider=FakeProvider(), now=NOW))
+    assert (d.decision, d.reason_code) == (Decision.DENY, "NO_APPROVED_DEPLOYMENT") and not d.allowed
 
 
-# ── wallet states ────────────────────────────────────────────────────────────────────────────────
-def test_no_wallet_and_unverified_wallet_are_denied_without_any_balance_read():
-    reader = FakeReader()
-    assert run(HOLDER, NO_WALLET, reader=reader).reason_code == "WALLET_NOT_CONNECTED"
-    d = run(HOLDER, WalletContext(TEST_ONLY_WALLET, False), reader=reader)
-    assert (d.decision, d.reason_code) == (Decision.DENY, "WALLET_NOT_VERIFIED")
-    assert reader.calls == []                                   # an unverified wallet is never even queried
+def test_only_the_approved_tuple_supplies_identity_the_modules_have_no_env_deployment_parsing():
+    import app.protocol.entitlement_evaluator as ev
+    import app.protocol.entitlement_policy as pol
+    import app.protocol.token_deployments as td
+    for module in (ev, pol, td):
+        source = open(module.__file__, encoding="utf-8").read()
+        assert "DEPLOYMENTS_JSON" not in source and not re.findall(r"0x[0-9a-fA-F]{40}", source)
+        assert "eth_call" not in source and "httpx" not in source      # no second JSON-RPC stack
 
 
-def test_execution_preflight_requires_a_verified_wallet():
-    p = ep.default_policies()[ep.YIELD_EXECUTION_PREFLIGHT]
-    assert p.wallet_verified_required and p.access_mode is ep.AccessMode.FINCO_HOLDER
+def test_no_signing_keys_transactions_or_execution_in_the_new_modules():
+    import app.protocol.entitlement_evaluator as ev
+    import app.protocol.entitlement_policy as pol
+    import app.protocol.token_deployments as td
+    banned = ("eth_sendTransaction", "eth_sign", "private_key", "personal_sign", "sendRawTransaction",
+              "financial_engine", "finco_core", "finco_radar", "app.run_integrity")
+    for module in (ev, pol, td):
+        source = open(module.__file__, encoding="utf-8").read()
+        imports = [ln for ln in source.splitlines() if ln.lstrip().startswith(("import ", "from "))]
+        assert not [ln for ln in imports if any(b in ln for b in banned)], module.__name__
+        for needle in ("eth_sendTransaction", "eth_sign", "private_key", "sendRawTransaction"):
+            assert needle not in source
+
+
+# ── deployment selection (multi-chain over the approved set) ─────────────────────────────────────
+def test_zero_one_and_many_approved_deployments():
+    assert resolve_approved_deployment(approved=[]).status is ResolutionStatus.NOT_CONFIGURED
+    one = resolve_approved_deployment(approved=[approved()])
+    assert one.resolved and one.deployment.token_address == TOKEN
+    many = [approved(), approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN)]
+    assert resolve_approved_deployment(approved=many).status is ResolutionStatus.AMBIGUOUS
+    chosen = resolve_approved_deployment(OTHER_CHAIN, many)
+    assert chosen.resolved and chosen.deployment.token_address == OTHER_TOKEN
+    assert resolve_approved_deployment(999, many).status is ResolutionStatus.NOT_FOUND
+
+
+def test_conflicting_approved_deployments_fail_safely():
+    conflict = [approved(), approved(token_address=OTHER_TOKEN)]
+    assert resolve_approved_deployment(approved=conflict).status is ResolutionStatus.CONFLICT
+    assert resolve_approved_deployment(CHAIN, conflict).status is ResolutionStatus.CONFLICT
+    assert resolve_approved_deployment(approved=[approved(), approved(decimals=18)]).status \
+        is ResolutionStatus.CONFLICT
+    assert run(deployments=conflict).reason_code == "CONFLICTING_DEPLOYMENTS"
+    assert resolve_approved_deployment(approved=[approved(), approved()]).resolved   # identical duplicate
+
+
+def test_explicit_chain_selection_in_the_policy_picks_the_right_contract():
+    many = [approved(), approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN)]
+    assert run(deployments=many).reason_code == "MULTIPLE_APPROVED_CHAINS"
+    provider = FakeProvider(evidence(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN))
+    d = run(deployments=many, policy_set=policies(chain_id=OTHER_CHAIN), provider=provider)
+    assert d.allowed and (d.chain_id, d.token_address) == (OTHER_CHAIN, OTHER_TOKEN)
+
+
+def test_malformed_deployment_cannot_even_be_constructed_in_the_canonical_authority():
+    for bad in (dict(token_address="0x1234"), dict(chain_id=0), dict(decimals=78), dict(provenance=" "),
+                dict(standard="ERC-721")):
+        with pytest.raises(ValueError):
+            approved(**bad)
+
+
+# ── resource policy ──────────────────────────────────────────────────────────────────────────────
+def test_public_resource_is_public_for_everyone_with_no_deployment_and_no_wallet():
+    for wallet in (NO_WALLET, WalletContext(WALLET, False), VERIFIED):
+        d = run(ep.YIELD_BASIC, wallet, deployments=[], policy_set=ep.load_policy_set({}))
+        assert (d.decision, d.reason_code) == (Decision.ALLOW, "PUBLIC_RESOURCE")
+
+
+def test_resource_keys_and_default_modes():
+    table = ep.default_policies()
+    assert set(table) == set(ep.RESOURCE_KEYS) == {
+        "yield.basic", "yield.history", "yield.advanced_compare", "yield.alerts", "yield.execution_preflight"}
+    assert table[ep.YIELD_BASIC].access_mode is ep.AccessMode.PUBLIC
+    for key in ep.RESOURCE_KEYS[1:]:
+        assert table[key].access_mode is ep.AccessMode.FINCO_HOLDER and table[key].wallet_verified_required
     with pytest.raises(ValueError):
         ep.EntitlementPolicy("x", ep.AccessMode.FINCO_HOLDER, None, False, True)
 
 
-# ── deployment identity ──────────────────────────────────────────────────────────────────────────
-def test_no_deployment_configured_denies():
-    d = run(HOLDER, reg=DeploymentRegistry(()))
-    assert (d.decision, d.reason_code) == (Decision.DENY, "NO_ACTIVE_DEPLOYMENT")
+def test_gating_off_or_policy_disabled_is_inactive_and_never_reads_a_balance():
+    provider = FakeProvider()
+    assert run(policy_set=policies(gating=False), provider=provider).reason_code == "TOKEN_GATING_OFF"
+    assert run(policy_set=policies(enabled=False), provider=provider).reason_code == "POLICY_DISABLED"
+    assert provider.calls == []
 
 
-@pytest.mark.parametrize("bad", [
-    dict(contract_address="0x1234"), dict(contract_address="not-an-address"), dict(chain_id=0),
-    dict(chain_id="1"), dict(decimals=-1), dict(decimals=78), dict(provenance=" "),
-    dict(token_standard="ERC-721"),
-])
-def test_malformed_deployment_is_rejected_and_poisons_the_registry(bad):
-    raw = dict(chain_id=TEST_ONLY_CHAIN, contract_address=TEST_ONLY_TOKEN, decimals=TEST_ONLY_DECIMALS,
-               provenance="TEST_ONLY")
-    raw.update(bad)
-    reg = DeploymentRegistry([raw])
-    assert reg.resolve().status is ResolutionStatus.MALFORMED
-    d = run(HOLDER, reg=reg)
-    assert (d.decision, d.reason_code) == (Decision.DENY, "DEPLOYMENT_CONFIG_MALFORMED")
+def test_enabled_policy_without_threshold_or_freshness_config_fails_closed():
+    assert run(policy_set=policies(minimum=None)).reason_code == "POLICY_THRESHOLD_UNSET"
+    d = run(env={})
+    assert (d.decision, d.reason_code) == (Decision.DENY, "TOKEN_CONFIGURATION_UNAVAILABLE")
 
 
-def test_env_deployment_without_provenance_cannot_activate_access():
-    env = {DEPLOYMENTS_ENV: json.dumps([{"chain_id": TEST_ONLY_CHAIN, "contract_address": TEST_ONLY_TOKEN,
-                                         "decimals": 6}])}
-    assert DeploymentRegistry.from_environment(env).resolve().status is ResolutionStatus.MALFORMED
-    assert DeploymentRegistry.from_environment({DEPLOYMENTS_ENV: "{not json"}).resolve().status \
-        is ResolutionStatus.MALFORMED
-
-
-def test_unsupported_chain_has_no_provider_and_denies():
-    reader = JsonRpcTokenBalanceReader({TEST_ONLY_OTHER_CHAIN: "https://rpc.example.invalid"})
-    obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), reader))
-    assert obs.status is ObservationStatus.UNSUPPORTED_CHAIN and obs.balance_raw is None
-    d = run(HOLDER, reader=reader)
-    assert d.decision is Decision.DENY and d.reason_code == "UNSUPPORTED_CHAIN"
-
-
-def test_conflicting_deployments_fail_safely():
-    reg = registry(deployment(), deployment(contract_address=TEST_ONLY_OTHER_TOKEN))
-    assert reg.resolve().status is ResolutionStatus.CONFLICT
-    assert reg.resolve(TEST_ONLY_CHAIN).status is ResolutionStatus.CONFLICT
-    assert run(HOLDER, reg=reg).reason_code == "CONFLICTING_DEPLOYMENTS"
-    same_chain_decimals = registry(deployment(), deployment(decimals=18))
-    assert same_chain_decimals.resolve().status is ResolutionStatus.CONFLICT
-
-
-def test_identical_duplicate_entries_are_not_a_conflict():
-    assert registry(deployment(), deployment()).resolve().resolved
-
-
-def test_multiple_chains_need_an_explicit_selection():
-    reg = registry(deployment(), deployment(chain_id=TEST_ONLY_OTHER_CHAIN, contract_address=TEST_ONLY_OTHER_TOKEN))
-    assert reg.resolve().status is ResolutionStatus.AMBIGUOUS
-    assert run(HOLDER, reg=reg).reason_code == "MULTIPLE_ACTIVE_CHAINS"
-    selected = run(HOLDER, reg=reg, policy_set=policies(chain_id=TEST_ONLY_OTHER_CHAIN),
-                   reader=FakeReader())
-    assert selected.decision is Decision.ALLOW and selected.chain_id == TEST_ONLY_OTHER_CHAIN
-    assert selected.contract_address == TEST_ONLY_OTHER_TOKEN
-    assert reg.resolve(999).status is ResolutionStatus.NOT_FOUND
-
-
-def test_inactive_deployment_is_not_used():
-    reg = registry(deployment(status=DeploymentStatus.INACTIVE))
-    assert reg.resolve().status is ResolutionStatus.NOT_CONFIGURED
-
-
-def test_ticker_and_name_never_define_identity():
-    a = deployment(display_symbol="FINCO", display_name="Finco")
-    b = deployment(display_symbol="TOTALLY-DIFFERENT", display_name="x")
-    assert a == b and a.identity == b.identity
-    impostor = deployment(contract_address=TEST_ONLY_OTHER_TOKEN, display_symbol="FINCO", display_name="FINCO")
-    assert impostor != a
-    # a token that merely CALLS itself FINCO at another contract is not the configured deployment
-    obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(a), FakeReader()))
-    spoofed = type(obs)(**{**obs.__dict__, "contract_address": impostor.contract_address})
-    d = decide_resource_access(HOLDER, VERIFIED, policies(), registry(a), spoofed, now=NOW)
-    assert (d.decision, d.reason_code) == (Decision.DENY, "OBSERVATION_IDENTITY_MISMATCH")
-
-
-def test_wrong_contract_or_chain_or_wallet_or_decimals_observation_cannot_grant_access():
-    good = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), FakeReader(balance=10 ** 12)))
-    assert decide_resource_access(HOLDER, VERIFIED, policies(), registry(), good, now=NOW).allowed
-    for change in (dict(contract_address=TEST_ONLY_OTHER_TOKEN), dict(chain_id=TEST_ONLY_OTHER_CHAIN),
-                   dict(wallet_address="0x" + "99" * 20), dict(decimals=18)):
-        bad = type(good)(**{**good.__dict__, **change})
-        d = decide_resource_access(HOLDER, VERIFIED, policies(), registry(), bad, now=NOW)
-        assert (d.decision, d.reason_code) == (Decision.DENY, "OBSERVATION_IDENTITY_MISMATCH"), change
-
-
-# ── balance observation semantics ────────────────────────────────────────────────────────────────
-def test_observed_zero_is_distinct_from_unavailable():
-    zero = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), FakeReader(balance=0)))
-    assert zero.observed and zero.observed_zero
-    assert (zero.balance_raw, zero.normalized_balance) == (0, Decimal(0))
-    for status in (ObservationStatus.RPC_UNAVAILABLE, ObservationStatus.BALANCE_UNAVAILABLE,
-                   ObservationStatus.CHAIN_ID_MISMATCH):
-        obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), FakeReader(status=status)))
-        assert not obs.observed and obs.balance_raw is None and obs.normalized_balance is None
-        assert obs.status is status
-
-
-def test_unconfigured_missing_and_raising_reader_never_become_zero():
-    for reg in (DeploymentRegistry(()), DeploymentRegistry([{"chain_id": 0}])):
-        obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, reg, FakeReader()))
-        assert obs.balance_raw is None and obs.normalized_balance is None and not obs.observed
-    raised = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), FakeReader(raises=True)))
-    assert raised.status is ObservationStatus.RPC_UNAVAILABLE and raised.balance_raw is None
-    assert "secret.example" not in repr(raised)
-    bad_wallet = asyncio.run(observe_finco_balance("nope", registry(), FakeReader()))
-    assert bad_wallet.status is ObservationStatus.WALLET_MALFORMED and bad_wallet.balance_raw is None
-
-
-def test_a_reader_claiming_success_without_proof_is_not_observed():
-    class Liar:
-        async def get_balance(self, *a):
-            return RawBalance(ObservationStatus.OBSERVED, None, None, None)
-
-    obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, registry(), Liar()))
-    assert not obs.observed and obs.status is ObservationStatus.BALANCE_UNAVAILABLE
-
-
-@pytest.mark.parametrize("decimals,raw,expected", [(6, 1_500_000, "1.5"), (18, 10 ** 18, "1"), (0, 7, "7"),
-                                                   (8, 1, "1E-8")])
-def test_decimals_normalisation_uses_the_canonical_deployment_decimals(decimals, raw, expected):
-    reg = registry(deployment(decimals=decimals))
-    obs = asyncio.run(observe_finco_balance(TEST_ONLY_WALLET, reg, FakeReader(balance=raw)))
-    assert obs.normalized_balance == Decimal(expected) and obs.decimals == decimals
-
-
-def test_json_rpc_reader_distinguishes_empty_answer_from_zero(monkeypatch):
-    import app.protocol.balance_observation as bo
-
-    async def fake_rpc(_client, _url, method, _params):
-        return {"eth_chainId": hex(TEST_ONLY_CHAIN), "eth_call": "0x", "eth_blockNumber": "0x1"}[method]
-
-    monkeypatch.setattr(bo, "_rpc_call", fake_rpc)
-    reader = JsonRpcTokenBalanceReader({TEST_ONLY_CHAIN: "https://rpc.example.invalid"})
-    raw = asyncio.run(reader.get_balance(TEST_ONLY_CHAIN, TEST_ONLY_TOKEN, TEST_ONLY_WALLET))
-    assert raw.status is ObservationStatus.BALANCE_UNAVAILABLE and raw.balance_raw is None
-
-    async def zero_rpc(_c, _u, method, _p):
-        return {"eth_chainId": hex(TEST_ONLY_CHAIN), "eth_call": "0x" + "0" * 64, "eth_blockNumber": "0x1"}[method]
-
-    monkeypatch.setattr(bo, "_rpc_call", zero_rpc)
-    zero = asyncio.run(reader.get_balance(TEST_ONLY_CHAIN, TEST_ONLY_TOKEN, TEST_ONLY_WALLET))
-    assert zero.status is ObservationStatus.OBSERVED and zero.balance_raw == 0
-
-    async def wrong_chain(_c, _u, method, _p):
-        return hex(1) if method == "eth_chainId" else "0x" + "0" * 64
-
-    monkeypatch.setattr(bo, "_rpc_call", wrong_chain)
-    mismatch = asyncio.run(reader.get_balance(TEST_ONLY_CHAIN, TEST_ONLY_TOKEN, TEST_ONLY_WALLET))
-    assert mismatch.status is ObservationStatus.CHAIN_ID_MISMATCH and mismatch.balance_raw is None
-
-
-# ── threshold decisions (TEST_ONLY thresholds) ───────────────────────────────────────────────────
 def test_below_exactly_and_above_threshold():
-    below = run(HOLDER, reader=FakeReader(balance=RAW_THRESHOLD - 1))
-    assert (below.decision, below.reason_code) == (Decision.DENY, "BALANCE_BELOW_THRESHOLD")
-    exact = run(HOLDER, reader=FakeReader(balance=RAW_THRESHOLD))
-    assert (exact.decision, exact.reason_code) == (Decision.ALLOW, "BALANCE_AT_OR_ABOVE_THRESHOLD")
-    above = run(HOLDER, reader=FakeReader(balance=RAW_THRESHOLD + 1))
+    below = run(provider=FakeProvider(evidence(RAW - 1)))
+    assert (below.decision, below.reason_code, below.entitlement_state) == (
+        Decision.DENY, "BALANCE_BELOW_THRESHOLD", "INACTIVE")
+    exact = run(provider=FakeProvider(evidence(RAW)))
+    assert (exact.decision, exact.entitlement_state) == (Decision.ALLOW, "ACTIVE")
+    above = run(provider=FakeProvider(evidence(RAW + 1)))
     assert above.allowed and above.observed_balance == Decimal("100.000001")
 
 
-def test_observed_zero_is_denied_below_threshold_not_treated_as_missing():
-    d = run(HOLDER, reader=FakeReader(balance=0))
-    assert (d.decision, d.reason_code, d.observed_balance) == (Decision.DENY, "BALANCE_BELOW_THRESHOLD", Decimal(0))
-
-
-def test_protected_resource_fails_closed_when_balance_cannot_be_proven():
-    for status in (ObservationStatus.RPC_UNAVAILABLE, ObservationStatus.BALANCE_UNAVAILABLE,
-                   ObservationStatus.CHAIN_ID_MISMATCH):
-        d = run(HOLDER, reader=FakeReader(status=status))
-        assert d.decision is Decision.DENY and d.reason_code == status.value and not d.allowed
-    assert run(HOLDER, reader=FakeReader(raises=True)).reason_code == "RPC_UNAVAILABLE"
-    assert decide_resource_access(HOLDER, VERIFIED, policies(), registry(), None, now=NOW).reason_code \
-        == "BALANCE_NOT_OBSERVED"
-
-
-def test_stale_observation_is_denied():
-    d = run(HOLDER, reader=FakeReader(age=10_000))
-    assert (d.decision, d.reason_code) == (Decision.DENY, "BALANCE_STALE")
+def test_entitled_wallet_reaches_every_gated_resource_and_the_public_one():
+    decisions = asyncio.run(evaluate_all_resources(
+        VERIFIED, policy_set=policies(), provider=FakeProvider(), approved=[approved()],
+        environ=ENV, now=NOW))
+    assert all(decisions[key].allowed for key in ep.RESOURCE_KEYS)
 
 
 def test_threshold_finer_than_token_decimals_is_misconfiguration_not_rounding():
-    d = run(HOLDER, policy_set=policies(minimum=Decimal("0.0000001")), reader=FakeReader())
+    d = run(policy_set=policies(minimum=Decimal("0.0000001")))
     assert (d.decision, d.reason_code) == (Decision.DENY, "THRESHOLD_EXCEEDS_TOKEN_DECIMALS")
 
 
-# ── activation / configuration ───────────────────────────────────────────────────────────────────
-def test_gating_off_or_policy_disabled_is_inactive_and_never_reads_a_balance():
-    reader = FakeReader()
-    assert run(HOLDER, policy_set=policies(gating=False), reader=reader).reason_code == "TOKEN_GATING_OFF"
-    assert run(HOLDER, policy_set=policies(enabled=False), reader=reader).reason_code == "POLICY_DISABLED"
-    assert reader.calls == []
+@pytest.mark.parametrize("decimals,raw_value,minimum", [(18, 10 ** 18, "1"), (0, 7, "7"), (8, 150_000_000, "1.5")])
+def test_decimals_normalisation_uses_the_approved_deployment_decimals(decimals, raw_value, minimum):
+    d = run(deployments=[approved(decimals=decimals)], policy_set=policies(minimum=Decimal(minimum)),
+            provider=FakeProvider(evidence(raw_value, token_decimals=decimals)))
+    assert d.allowed and d.observed_balance == Decimal(raw_value).scaleb(-decimals)
 
 
-def test_enabled_policy_without_threshold_fails_closed():
-    d = run(HOLDER, policy_set=policies(minimum=None))
-    assert (d.decision, d.reason_code) == (Decision.DENY, "POLICY_THRESHOLD_UNSET")
+# ── identity ─────────────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("change", [dict(chain_id=OTHER_CHAIN), dict(token_address=OTHER_TOKEN),
+                                    dict(wallet_address=OTHER_WALLET), dict(token_decimals=18)])
+def test_wrong_chain_contract_wallet_or_decimals_evidence_is_denied(change):
+    d = run(provider=FakeProvider(evidence(**change)))
+    assert (d.decision, d.reason_code) == (Decision.DENY, "BALANCE_IDENTITY_MISMATCH") and not d.allowed
 
 
-def test_operator_override_activates_without_code_changes():
-    env = {ep.GATING_ENABLED_ENV: "1",
-           ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"}})}
-    policy_set = ep.load_policy_set(env)
-    assert policy_set.policies[HOLDER].minimum_balance == TEST_ONLY_THRESHOLD
-    assert policy_set.policies[ep.YIELD_ALERTS].enabled is False        # untouched resources stay inactive
-    reg = DeploymentRegistry.from_environment({DEPLOYMENTS_ENV: json.dumps([
-        {"chain_id": TEST_ONLY_CHAIN, "contract_address": TEST_ONLY_TOKEN, "decimals": 6,
-         "provenance": "TEST_ONLY"}])})
-    assert run(HOLDER, policy_set=policy_set, reg=reg, reader=FakeReader(balance=RAW_THRESHOLD)).allowed
+def test_ticker_and_name_cannot_grant_access():
+    # identity is the exact (chain, contract); the approved type has no symbol/name field at all
+    assert not {"symbol", "name", "ticker", "display_symbol"} & set(ApprovedFincoDeployment.__dataclass_fields__)
+    impostor = FakeProvider(evidence(token_address=OTHER_TOKEN))          # a token that calls itself FINCO
+    assert run(provider=impostor).reason_code == "BALANCE_IDENTITY_MISMATCH"
+
+
+# ── evidence semantics ───────────────────────────────────────────────────────────────────────────
+def test_explicit_observed_zero_stays_zero_and_is_below_threshold():
+    d = run(provider=FakeProvider(evidence(0)))
+    assert (d.decision, d.reason_code, d.observed_balance) == (Decision.DENY, "BALANCE_BELOW_THRESHOLD", Decimal(0))
+
+
+def test_unavailable_evidence_stays_unavailable_never_zero():
+    d = run(provider=FakeProvider(evidence(state=BalanceEvidenceState.UNAVAILABLE)))
+    assert (d.decision, d.reason_code, d.observed_balance) == (Decision.DENY, "RPC_UNAVAILABLE", None)
+    assert d.entitlement_state == "UNAVAILABLE"
+
+
+def test_missing_evidence_or_a_raising_provider_never_becomes_zero():
+    missing = run(provider=FakeProvider(raises=True))
+    assert missing.decision is Decision.DENY and missing.observed_balance is None
+    assert missing.entitlement_state == "UNAVAILABLE" and "secret.example" not in repr(missing)
+    none = decide_resource_access(HOLDER, VERIFIED, policies(), resolve_approved_deployment(approved=[approved()]),
+                                  None, freshness_seconds=60, now=NOW)
+    assert none.decision is Decision.DENY and none.observed_balance is None
+
+
+def test_stale_evidence_is_stale():
+    assert run(provider=FakeProvider(evidence(age=61))).reason_code == "BALANCE_STALE"
+    assert run(provider=FakeProvider(evidence(age=60))).allowed                     # boundary matches B2.2
+    assert run(provider=FakeProvider(evidence(state=BalanceEvidenceState.STALE))).reason_code == "BALANCE_STALE"
+
+
+def test_protected_resource_fails_closed_when_token_authority_is_unavailable():
+    assert run(deployments=[]).decision is Decision.DENY
+    assert run(provider=FakeProvider(raises=True)).decision is Decision.DENY
+    assert run(env={}).decision is Decision.DENY
+
+
+# ── wallet ───────────────────────────────────────────────────────────────────────────────────────
+def test_no_wallet_and_unverified_wallet_are_denied_without_any_balance_read():
+    provider = FakeProvider()
+    assert run(wallet=NO_WALLET, provider=provider).reason_code == "WALLET_NOT_CONNECTED"
+    d = run(wallet=WalletContext(WALLET, False), provider=provider)
+    assert (d.decision, d.reason_code) == (Decision.DENY, "WALLET_NOT_VERIFIED")
+    assert provider.calls == []
+
+
+def test_verified_wallet_is_evaluated_through_the_canonical_provider():
+    provider = FakeProvider()
+    assert run(provider=provider).allowed
+    assert provider.calls == [(CHAIN, TOKEN, WALLET)]
+
+
+# ── the real read path is the EXISTING P4 reader (no second JSON-RPC stack) ───────────────────────
+def test_default_provider_uses_the_existing_p4_reader_and_keeps_zero_and_unavailable_distinct(monkeypatch):
+    import app.protocol.token_balance as tb
+
+    async def fake_read(wallet_address, config):
+        assert (config.chain_id, config.token_address, config.decimals_override) == (CHAIN, TOKEN, DECIMALS)
+        return fake_read.result
+
+    monkeypatch.setattr(tb, "read_token_balance", fake_read)
+    env = {**ENV, f"FINCO_TOKEN_RPC_URL_{CHAIN}": "https://rpc.example.invalid"}
+
+    def observation(status, raw=None):
+        return tb.TokenObservation(WALLET, CHAIN, TOKEN, raw, DECIMALS,
+                                   None if raw is None else Decimal(raw).scaleb(-DECIMALS), 1, NOW, status)
+
+    def go():
+        return asyncio.run(evaluate_resource_access(HOLDER, VERIFIED, policy_set=policies(), approved=[approved()],
+                                                    environ=env, now=NOW))
+
+    fake_read.result = observation(tb.STATUS_ENTITLED, RAW)
+    assert go().allowed
+    fake_read.result = observation(tb.STATUS_INSUFFICIENT, 0)
+    zero = go()
+    assert (zero.decision, zero.observed_balance, zero.reason_code) == (Decision.DENY, Decimal(0), "BALANCE_BELOW_THRESHOLD")
+    fake_read.result = observation(tb.STATUS_RPC_UNAVAILABLE)
+    down = go()
+    assert (down.decision, down.observed_balance, down.reason_code) == (Decision.DENY, None, tb.STATUS_RPC_UNAVAILABLE)
+    no_rpc = asyncio.run(evaluate_resource_access(HOLDER, VERIFIED, policy_set=policies(), approved=[approved()],
+                                                  environ=ENV, now=NOW))
+    assert no_rpc.decision is Decision.DENY and no_rpc.entitlement_state == "UNAVAILABLE"
+
+
+# ── operator policy configuration ────────────────────────────────────────────────────────────────
+def test_operator_policy_override_activates_thresholds_without_code_changes():
+    policy_set = ep.load_policy_set({ep.GATING_ENABLED_ENV: "1",
+                                     ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100"}})})
+    assert policy_set.policies[HOLDER].minimum_balance == THRESHOLD
+    assert policy_set.policies[ep.YIELD_ALERTS].enabled is False
+    assert run(policy_set=policy_set).allowed
 
 
 @pytest.mark.parametrize("override", [
-    {"yield.basic": {"enabled": False}},                       # public resources are not configurable
-    {"yield.unknown": {"enabled": True}},
-    {HOLDER: {"access_mode": "PUBLIC"}},                       # access mode is not operator-configurable
-    {HOLDER: {"enabled": "yes"}},
-    {HOLDER: {"minimum_balance": "-1"}},
-    {HOLDER: {"minimum_balance": "NaN"}},
+    {"yield.basic": {"enabled": False}}, {"yield.unknown": {"enabled": True}},
+    {HOLDER: {"access_mode": "PUBLIC"}}, {HOLDER: {"enabled": "yes"}},
+    {HOLDER: {"minimum_balance": "-1"}}, {HOLDER: {"minimum_balance": "NaN"}},
 ])
-def test_invalid_operator_policy_config_fails_gated_resources_closed_but_not_public(override):
+def test_invalid_operator_policy_fails_gated_resources_closed_but_not_public(override):
     policy_set = ep.load_policy_set({ep.GATING_ENABLED_ENV: "1", ep.POLICIES_ENV: json.dumps(override)})
     assert policy_set.config_error
-    assert run(HOLDER, policy_set=policy_set).reason_code == "POLICY_CONFIG_INVALID"
+    assert run(policy_set=policy_set).reason_code == "POLICY_CONFIG_INVALID"
     assert run(ep.YIELD_BASIC, policy_set=policy_set).allowed
 
 
@@ -347,31 +353,20 @@ def test_unknown_resource_is_denied():
     assert run("yield.nope").reason_code == "UNKNOWN_RESOURCE"
 
 
-# ── boundaries ───────────────────────────────────────────────────────────────────────────────────
-def test_evaluate_all_resources_reads_the_balance_once_per_gated_resource_and_keeps_basic_public():
-    decisions = asyncio.run(evaluate_all_resources(
-        VERIFIED, policy_set=policies(), registry=registry(), reader=FakeReader(), now=NOW))
-    assert decisions[ep.YIELD_BASIC].allowed
-    assert all(decisions[k].allowed for k in ep.RESOURCE_KEYS)
-
-
-def test_entitlement_modules_are_isolated_from_the_math_and_from_signing():
-    import app.protocol.balance_observation as bo
-    import app.protocol.entitlement_evaluator as ev
-    import app.protocol.entitlement_policy as pol
-    import app.protocol.token_deployments as td
-    forbidden = ("financial_engine", "finco_core", "finco_radar", "app.verified", "app.run_integrity",
-                 "eth_sendTransaction", "eth_sign", "private_key", "personal_sign")
-    for module in (bo, ev, pol, td):
-        source = open(module.__file__, encoding="utf-8").read()
-        for needle in forbidden:
-            lines = [ln for ln in source.splitlines() if needle in ln and not ln.lstrip().startswith(("#", '"'))]
-            assert not [ln for ln in lines if "import" in ln], (module.__name__, needle)
-
-
-def test_no_production_token_identity_is_committed():
-    import app.protocol.token_deployments as td
-    src = open(td.__file__, encoding="utf-8").read()
-    import re
-    assert not re.findall(r"0x[0-9a-fA-F]{40}", src)
-    assert DeploymentRegistry().deployments == ()
+# ── state mapping is explicit ────────────────────────────────────────────────────────────────────
+def test_canonical_entitlement_states_map_to_exactly_one_resource_decision_each():
+    from app.verified.entitlement import EntitlementState
+    seen = {
+        EntitlementState.ACTIVE: run(provider=FakeProvider(evidence(RAW))),
+        EntitlementState.INACTIVE: run(provider=FakeProvider(evidence(RAW - 1))),
+        EntitlementState.STALE: run(provider=FakeProvider(evidence(age=999))),
+        EntitlementState.UNAVAILABLE: run(provider=FakeProvider(evidence(state=BalanceEvidenceState.UNAVAILABLE))),
+        EntitlementState.TOKEN_CONFIGURATION_UNAVAILABLE: run(env={}),
+    }
+    assert seen[EntitlementState.ACTIVE].decision is Decision.ALLOW
+    for state in (EntitlementState.INACTIVE, EntitlementState.STALE, EntitlementState.UNAVAILABLE):
+        assert seen[state].decision is Decision.DENY and seen[state].entitlement_state == state.value
+    assert seen[EntitlementState.TOKEN_CONFIGURATION_UNAVAILABLE].decision is Decision.DENY
+    # resource-level INACTIVE means "gate off, nothing evaluated" and carries NO entitlement state
+    off = run(policy_set=policies(gating=False))
+    assert off.decision is Decision.INACTIVE and off.entitlement_state is None
