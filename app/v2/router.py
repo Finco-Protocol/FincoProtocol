@@ -3330,6 +3330,36 @@ async def v2_scenario_sensitivity_run(
             "mode": "absolute_add",
             "dc_only": True,
         },
+        # Correction B: IT MW / PUE / electricity price are canonical BOUND
+        # source drivers — each modifies ONE source input and the existing DC
+        # runtime adapter recomputes dependent revenue/OPEX.
+        "dc_it_mw": {
+            "label": "IT Load Capacity",
+            "field_id": "project_setup.technical.capacity_mw",
+            "snapshot_key": "capacity_mw",
+            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
+            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
+            "mode": "pct_multiplier",
+            "dc_only": True,
+        },
+        "dc_pue": {
+            "label": "PUE",
+            "field_id": "revenue.data_center.pue",
+            "snapshot_key": "dc_pue",
+            "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
+            "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
+            "mode": "pct_multiplier",
+            "dc_only": True,
+        },
+        "dc_electricity_price": {
+            "label": "Electricity Price",
+            "field_id": "revenue.data_center.electricity_price",
+            "snapshot_key": "dc_electricity_price_eur_mwh",
+            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
+            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
+            "mode": "pct_multiplier",
+            "dc_only": True,
+        },
         # capex_total (capex.summary.total) and opex_total (opex.summary.total_y1) are
         # derived_display / source_of_truth=derived_ui — not writable via with_value().
         # Removed from MVP sensitivity catalog per spec: "do not fake support".

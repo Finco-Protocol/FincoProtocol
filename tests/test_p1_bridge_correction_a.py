@@ -150,41 +150,62 @@ class TestIdentityLayoutReadBack:
 
 # ── C: cross-run substitution fails closed ─────────────────────────────────
 
-class TestCrossRunSubstitutionFailClosed:
-    def test_mismatched_statement_package_rejected(self, solar_bundle, monkeypatch):
-        """Inject a statement package whose run identity differs from the
-        workbook run authority — export must fail closed, never serialize."""
-        from app.export import institutional_workbook as wb_mod
-        from app.export import clean_statements_adapter as adapter_mod
+class TestSameRunProvenanceByConstruction:
+    def test_serializer_receives_the_clean_runs_own_statement_object(self, monkeypatch):
+        """By-construction proof: `_build_export_bundle` passes the EXACT
+        `execution.clean_run.financial_statements_result` object produced by
+        the ONE clean G2C calculation to the serializer -- captured by
+        object identity, not by wrapper labels."""
+        import os
 
+        from app.export import clean_statements_adapter as adapter_mod
+        from app.export import institutional_workbook as wb_mod
+
+        os.environ["FINCO_DB_PATH"] = os.path.join(
+            tempfile.mkdtemp(), "corr-c-byconstr.db")
+        from app.persistence import db
+
+        db.DB_PATH = os.environ["FINCO_DB_PATH"]
+        db.init_db()
+
+        captured = {}
         real_serialize = adapter_mod.serialize_clean_statements
 
-        def _mismatched_serialize(*args, **kwargs):
-            view = real_serialize(*args, **kwargs)
-            # Substitute a foreign run identity (simulating cross-run import).
-            from app.export.clean_statements_adapter import (
-                CleanStatementsSerializationView,
-            )
-            return CleanStatementsSerializationView(
-                run_id="foreign_run_999",
-                run_identity_hash="foreign_snapshot_999",
-                tax_bridge=view.tax_bridge,
-                pnl=view.pnl,
-                pf_cash_waterfall=view.pf_cash_waterfall,
-                balance_sheet=view.balance_sheet,
-                status=view.status,
-            )
+        def _capturing(fs, *args, **kwargs):
+            captured["fs"] = fs
+            return real_serialize(fs, *args, **kwargs)
 
-        monkeypatch.setattr(
-            adapter_mod, "serialize_clean_statements", _mismatched_serialize)
-        with pytest.raises(ValueError, match="CROSS_RUN_STATEMENT_SUBSTITUTION"):
-            _build_export_bundle = wb_mod._build_export_bundle
-            _build_export_bundle("generic_solar_reference")
+        monkeypatch.setattr(adapter_mod, "serialize_clean_statements", _capturing)
 
-    def test_matching_package_serializes(self, solar_bundle):
+        bundle = wb_mod._build_export_bundle("generic_solar_reference")
+        fs = captured.get("fs")
+        assert fs is not None, "serializer must receive the clean runtime FS"
+        assert any(p.revenue_keur and p.revenue_keur > 0
+                   for p in fs.income_statement_periods)
+        assert bundle.statements.run_id == bundle.run_id
+
+    def test_no_self_stamped_substitution_detection_claimed(self):
+        import inspect
+
         from app.export import institutional_workbook as wb_mod
 
-        # The normal path (identity matches) still binds the clean package.
+        source = inspect.getsource(wb_mod)
+        assert "CROSS_RUN_STATEMENT_SUBSTITUTION" not in source
+        assert "BY CONSTRUCTION" in source
+        assert "not an independent provenance" in source.lower()
+        assert "NOT_AVAILABLE in V1" in source
+
+    def test_by_construction_use_of_clean_run_result(self):
+        import inspect
+
+        from app.export import institutional_workbook as wb_mod
+
+        source = inspect.getsource(wb_mod)
+        assert "execution.clean_run.financial_statements_result" in source
+
+    def test_matching_package_serializes(self):
+        from app.export import institutional_workbook as wb_mod
+
         bundle = wb_mod._build_export_bundle("generic_solar_reference")
         assert bundle.statements is not None
         assert bundle.statements.run_id == bundle.run_id

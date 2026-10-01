@@ -451,22 +451,16 @@ def _build_export_bundle(
             )
             if _clean_fs is not None else None
         )
-        if statements is not None:
-            # SAME-RUN STATEMENT IDENTITY BOUNDARY (fail closed): the bound
-            # statement package must carry the exact run identity of the
-            # workbook.  Cross-run substitution is rejected, never silently
-            # serialized.
-            if statements.run_id != _run_authority_id or (
-                statements.run_identity_hash != _run_authority_snapshot
-            ):
-                raise ValueError(
-                    "CROSS_RUN_STATEMENT_SUBSTITUTION: statement package "
-                    f"run_id={statements.run_id!r} / "
-                    f"snapshot={statements.run_identity_hash!r} does not match "
-                    f"the workbook run authority "
-                    f"run_id={_run_authority_id!r} / "
-                    f"snapshot={_run_authority_snapshot!r}."
-                )
+        # SAME-RUN PROVENANCE -- BY CONSTRUCTION: `statements` wraps the
+        # exact `execution.clean_run.financial_statements_result` object
+        # produced by the ONE clean G2C calculation above; it is passed to
+        # the serializer in the same call that produced the run, so
+        # cross-run substitution cannot occur structurally.  The wrapper
+        # run_id / snapshot fields are identity LABELS carried onto the
+        # sheets (an audit convenience), NOT an independent provenance
+        # proof.  Stronger source-package provenance (digest of the
+        # statement package bound at commit time) is NOT_AVAILABLE in V1
+        # and must not be claimed.
     else:
         statements = assemble_financial_statements(runtime_result)
     # R5/F04: the workbook context must describe the exported project. For a

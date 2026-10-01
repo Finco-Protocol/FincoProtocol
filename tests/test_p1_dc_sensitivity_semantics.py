@@ -36,7 +36,7 @@ FORBIDDEN_DC_DRIVERS = (
 )
 
 DC_SUPPORTED = (
-    "capex", "opex", "dc_service_price", "dc_occupancy",
+    "capex", "opex", "dc_service_price", "dc_occupancy", "dc_it_mw",
     "dc_pue", "dc_electricity_price", "interest_rate", "tax_rate",
 )
 
@@ -105,13 +105,24 @@ class TestDCShockMappings:
         shocked = _apply_shock(proj, "dc_service_price", 10.0)
         assert shocked.revenue.ppa_base_tariff == pytest.approx(
             proj.revenue.ppa_base_tariff * 1.10)
-        assert tuple(v * 1.10 for v in base_curve) == shocked.revenue.market_prices_curve
+        scaled = [v * 1.10 for v in base_curve]
+        assert all(new == pytest.approx(expected)
+                   for new, expected in zip(shocked.revenue.market_prices_curve,
+                                            scaled))
 
-    def test_dc_occupancy_scales_curve_only(self):
+    def test_dc_occupancy_scales_curve_and_power(self):
+        """BLOCKER 2: occupancy recomputes REVENUE and POWER PROCUREMENT
+        through the canonical DC runtime adapter (power = MW x occ x PUE)."""
         proj = _dc_project()
         shocked = _apply_shock(proj, "dc_occupancy", 10.0)
-        assert tuple(v * 1.10 for v in proj.revenue.market_prices_curve) \
-            == shocked.revenue.market_prices_curve
+        old_curve = proj.revenue.market_prices_curve
+        assert all(new == pytest.approx(old * 1.10)
+                   for new, old in zip(shocked.revenue.market_prices_curve,
+                                       old_curve))
+        power_old = next(o for o in proj.opex if o.name == "Power Expenses")
+        power_new = next(o for o in shocked.opex if o.name == "Power Expenses")
+        assert power_new.y1_amount_keur == pytest.approx(
+            power_old.y1_amount_keur * 1.10)
         assert shocked.revenue.market_inflation == proj.revenue.market_inflation
 
     def test_dc_pue_scales_power_expense_schedule(self):

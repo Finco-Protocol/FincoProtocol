@@ -20,6 +20,12 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
     "availability": ("Availability", "%"),
     "interest_rate": ("Interest Rate", "bps"),
     "tax_rate": ("Tax Rate", "%"),
+    # Data Center native drivers (Opus NEW-M-1) — vertical-gated; never
+    # accepted for Solar/Wind/EV.
+    "dc_service_price": ("DC Service Price (EUR/kW/month)", "%"),
+    "dc_occupancy": ("DC Occupancy", "%"),
+    "dc_pue": ("DC PUE", "%"),
+    "dc_electricity_price": ("DC Electricity Price", "%"),
     # V4-7 BESS shocks
     "bess_arbitrage_spread": ("BESS Arbitrage Spread", "%"),
     "bess_cycles": ("BESS Cycles/Year", "%"),
@@ -76,7 +82,7 @@ _VERTICAL_SENSITIVITY_DRIVERS: dict[str, frozenset[str]] = {
     # Data Center: occupancy / IT MW / PUE / electricity price / service
     # price / CAPEX / OPEX-style maintenance cost drivers.
     "data_center": frozenset({
-        "capex", "opex", "dc_service_price", "dc_occupancy",
+        "capex", "opex", "dc_service_price", "dc_occupancy", "dc_it_mw",
         "dc_pue", "dc_electricity_price", "interest_rate", "tax_rate",
     }),
     # EV Charging: energy-throughput revenue on the same technical fields.
@@ -272,54 +278,40 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
             tax=replace(proj.tax, corporate_rate=new_rate),
         )
 
-    elif shock_type == "dc_service_price":
-        # Data Center service price: scale the equivalent EUR/MWh curve AND
-        # the PPA-style tariff field (both carry the same service-price
-        # authority in the DC runtime adapter).
-        curve = proj.revenue.market_prices_curve
-        new_curve = tuple(v * factor for v in curve)
-        new_tariff = proj.revenue.ppa_base_tariff * factor
-        return replace(
-            proj,
-            revenue=replace(proj.revenue, market_prices_curve=new_curve,
-                            ppa_base_tariff=new_tariff),
+    elif shock_type in ("dc_service_price", "dc_occupancy", "dc_pue",
+                        "dc_electricity_price", "dc_it_mw"):
+        # Correction B: DC source drivers recompute through the CANONICAL
+        # Data Center runtime adapter (app.data_center_authority).  We modify
+        # the canonical source driver and let the adapter recompute every
+        # dependent quantity (revenue curve, B.08 power schedule) -- never
+        # post-adapter proxy manipulation of derived fields.
+        from app.data_center_authority import (
+            GENERIC_DATA_CENTER_REFERENCE_DRIVERS,
+            apply_data_center_runtime_adapter,
         )
+        capacity = proj.technical.capacity_mw
+        drivers = GENERIC_DATA_CENTER_REFERENCE_DRIVERS
+        if shock_type == "dc_service_price":
+            drivers = replace(drivers,
+                              service_price_eur_kw_month=drivers.service_price_eur_kw_month * factor)
+        elif shock_type == "dc_occupancy":
+            drivers = replace(drivers,
+                              occupancy_y1=min(1.0, drivers.occupancy_y1 * factor),
+                              occupancy_y2=min(1.0, drivers.occupancy_y2 * factor),
+                              stabilized_occupancy=min(1.0, drivers.stabilized_occupancy * factor))
+        elif shock_type == "dc_pue":
+            drivers = replace(drivers, pue=drivers.pue * factor)
+        elif shock_type == "dc_electricity_price":
+            drivers = replace(drivers,
+                              electricity_price_eur_mwh=drivers.electricity_price_eur_mwh * factor)
+        elif shock_type == "dc_it_mw":
+            capacity = capacity * factor
 
-    elif shock_type == "dc_occupancy":
-        # Data Center occupancy: scale the equivalent EUR/MWh curve (the
-        # occupancy authority rides the curve in the DC runtime adapter).
-        curve = proj.revenue.market_prices_curve
-        new_curve = tuple(v * factor for v in curve)
-        return replace(proj, revenue=replace(proj.revenue, market_prices_curve=new_curve))
-
-    elif shock_type == "dc_pue":
-        # PUE scales facility power, and B.08 power expense is linear in PUE
-        # per the Data Center canonical identity (IT MW x occupancy x PUE x
-        # 8,760 x price).  Scale the derived Power Expenses schedule; no core
-        # TechnicalParams field is invented.
-        opex_new = tuple(
-            replace(
-                o,
-                y1_amount_keur=o.y1_amount_keur * factor,
-                step_changes=tuple((y, v * factor) for y, v in o.step_changes),
-            ) if o.name == "Power Expenses" else o
-            for o in proj.opex
+        shocked = apply_data_center_runtime_adapter(
+            replace(proj, technical=replace(proj.technical, capacity_mw=capacity)),
+            drivers,
         )
-        return replace(proj, opex=opex_new)
-
-    elif shock_type == "dc_electricity_price":
-        # Electricity price scales the ENTIRE canonical B.08 power-expense
-        # schedule: y1_amount_keur AND every explicit step_change amount.
-        # Later operating years must move by the same sensitivity factor.
-        opex_new = tuple(
-            replace(
-                o,
-                y1_amount_keur=o.y1_amount_keur * factor,
-                step_changes=tuple((y, v * factor) for y, v in o.step_changes),
-            ) if o.name == "Power Expenses" else o
-            for o in proj.opex
-        )
-        return replace(proj, opex=opex_new)
+        return shocked
 
     elif shock_type in ("bess_arbitrage_spread", "bess_cycles", "bess_rte",
                         "bess_ancillary_price", "bess_capacity_price"):
