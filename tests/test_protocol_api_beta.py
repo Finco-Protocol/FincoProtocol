@@ -353,13 +353,23 @@ def test_api34_home_links_to_api(client):
 # ── API35: home describes the two product surfaces ───────────────────────────
 
 def test_api35_home_product_surfaces(client):
+    """Superseded by the merged PR #162 product contract: the primary
+    product surfaces are FINCO Model and FINCO Radar, and the canonical
+    verification/trust surface is FINCO Verify at /verify.  The retired
+    Verified Assets surface is NOT a primary product surface and /verified
+    is not promoted anywhere on the homepage (it redirects to /verify)."""
     r = client.get("/")
+    assert r.status_code == 200
     html = r.text
     html_lower = html.lower()
-    # Three primary product surfaces: Model, Radar, Verified Assets
+    # FINCO Model remains present.
     assert "finco model" in html_lower or "model library" in html_lower
+    # FINCO Radar remains present.
     assert "finco radar" in html_lower or "open radar" in html_lower
-    assert "verified assets" in html_lower
+    # Canonical FINCO Verify trust surface is represented via /verify.
+    assert 'href="/verify"' in html
+    # /verified is not promoted as a primary product surface.
+    assert 'href="/verified"' not in html
 
 
 # ── API36: Model existing nav still works ────────────────────────────────────

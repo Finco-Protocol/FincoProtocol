@@ -366,17 +366,10 @@ from app.verify.public_reference_router import router as _public_ref_router
 app.include_router(_public_ref_router)
 
 # -- FINCO Verified Assets V1 --------------------------------------------------
-# Manual-QA product-truth correction: GET /verified is a legacy composition
-# surface with no user workflow (production verified-asset count remains 0).
-# The public entry point now redirects to FINCO Verify (/verify), the
-# user-facing verification/trust surface. Registered BEFORE the verified
-# router so the redirect wins route order while every other /verified/*
-# contract in app/verified keeps serving unchanged — app/verified/** itself
-# remains untouched (internal verification/token-entitlement authorities).
-@app.get("/verified", include_in_schema=False)
-async def _verified_public_redirect():
-    return RedirectResponse(url="/verify", status_code=302)
-
+# GET /verified → 302 /verify is owned by the merged PR #162 contract
+# (app.protocol_ui.router, mounted above, wins first-match ahead of this
+# router). No duplicate registration here. app/verified/** authority stays
+# untouched; production verified-asset count remains 0.
 from app.verified.router import router as _verified_router
 app.include_router(_verified_router)
 
