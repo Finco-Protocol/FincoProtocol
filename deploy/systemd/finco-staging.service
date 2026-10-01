@@ -1,0 +1,66 @@
+[Unit]
+Description=FINCO Protocol — Yield Phase 1 Staging
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=finco-staging
+Group=finco-staging
+WorkingDirectory=/opt/finco_staging
+EnvironmentFile=/opt/finco_staging/.env.staging
+Environment=FINCO_APP_MODE=pilot
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment="PATH=/opt/finco_staging/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Fail closed before startup if identity, secure mode, staging paths, Yield flags,
+# secrets or checked-out Git SHA do not satisfy the reviewed Phase 1 contract.
+ExecStartPre=/opt/finco_staging/.venv/bin/python /opt/finco_staging/tools/staging_preflight.py --env-file /opt/finco_staging/.env.staging --repo-root /opt/finco_staging
+
+# Reuse the canonical secure ASGI launcher introduced by the current runtime baseline.
+# FINCO_WEB_HOST/PORT/WORKERS are loaded from the staging-only env file and are
+# independently validated by staging_preflight.py.
+ExecStart=/bin/bash /opt/finco_staging/deploy/scripts/run_web.sh
+
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+TimeoutStopSec=45
+
+# Separate runtime identity/path from production.
+RuntimeDirectory=finco-staging
+RuntimeDirectoryMode=0750
+
+# ── Sandboxing: mirror the current secure runtime contract ──────────────────
+NoNewPrivileges=true
+UMask=0077
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Only staging-owned state may be written. No production path is writable.
+ReadWritePaths=-/opt/finco_staging/storage -/opt/finco_staging/data -/opt/finco_staging/exports
+
+# Intentionally NOT enabled, matching the current production hardening rationale:
+# PrivateDevices: model worker processes require POSIX semaphores in /dev/shm.
+# MemoryDenyWriteExecute: CPython extensions may require W+X mappings.
+# SystemCallFilter: not validated against the complete dependency set.
+# PrivateNetwork: app requires outbound market/RPC access.
+# ProtectProc/ProcSubset: process pool and diagnostics compatibility.
+
+[Install]
+WantedBy=multi-user.target
