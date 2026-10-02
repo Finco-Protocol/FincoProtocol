@@ -22,6 +22,8 @@ fabricated fallback.
 from __future__ import annotations
 
 import os
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
@@ -74,12 +76,29 @@ def configured_sources() -> "tuple[str, ...]":
 # fetch_robinhood_asset_universe and composition_radar_source.
 _registry_factory_override: "Callable[[], Any] | None" = None
 
+# Local TTL cache for the default universe discovery path: repeated page
+# views within the window reuse one registry fetch instead of hitting the
+# Robinhood registry per request. Small and local by design; only SUCCESSFUL
+# fetches are cached (failures keep the exact prior fail-through behavior),
+# and any factory-override change resets it so injected test fakes never
+# observe a stale universe.
+_UNIVERSE_CACHE_TTL_SECONDS = 60.0
+_universe_cache_lock = threading.Lock()
+_universe_fetch_lock = threading.Lock()
+_universe_cache: dict = {"at": None, "chain_id": None, "value": None}
+
+
+def reset_universe_cache() -> None:
+    with _universe_cache_lock:
+        _universe_cache.update({"at": None, "chain_id": None, "value": None})
+
 
 def set_registry_factory(factory: "Callable[[], Any] | None") -> None:
     """Test seam: inject a fake registry factory for offline universe
     discovery and reference resolution.  Pass None to clear."""
     global _registry_factory_override
     _registry_factory_override = factory
+    reset_universe_cache()
 
 
 class TokenDecimalsUnavailable(RuntimeContractError):
@@ -198,7 +217,45 @@ def fetch_robinhood_asset_universe(
     tokenDecimals in its raw registry evidence.
 
     Fails with a plain exception (caller wraps in try/except) if the
-    registry is unavailable."""
+    registry is unavailable.
+
+    The default path (no explicit factory, no factory override) is
+    TTL-cached and single-flight: concurrent page views within the window
+    share one registry fetch. Explicit-factory calls and override-installed
+    factories (tests/diagnostics) always bypass the cache.
+    """
+    if registry_factory is not None or _registry_factory_override is not None:
+        return _fetch_robinhood_asset_universe_uncached(
+            registry_factory, target_chain_id=target_chain_id)
+
+    now = time.monotonic()
+    with _universe_cache_lock:
+        at = _universe_cache["at"]
+        if (at is not None and _universe_cache["value"] is not None
+                and _universe_cache["chain_id"] == target_chain_id
+                and (now - at) < _UNIVERSE_CACHE_TTL_SECONDS):
+            return _universe_cache["value"]
+    with _universe_fetch_lock:
+        now = time.monotonic()
+        with _universe_cache_lock:
+            at = _universe_cache["at"]
+            if (at is not None and _universe_cache["value"] is not None
+                    and _universe_cache["chain_id"] == target_chain_id
+                    and (now - at) < _UNIVERSE_CACHE_TTL_SECONDS):
+                return _universe_cache["value"]
+        result = _fetch_robinhood_asset_universe_uncached(
+            None, target_chain_id=target_chain_id)
+        with _universe_cache_lock:
+            _universe_cache.update({"at": now, "chain_id": target_chain_id,
+                                    "value": result})
+        return result
+
+
+def _fetch_robinhood_asset_universe_uncached(
+    registry_factory: "Callable[[], Any] | None",
+    *,
+    target_chain_id: int,
+) -> "list[SelectedAsset]":
     from finco_radar.assets.adapters.robinhood import (
         RobinhoodAssetRegistryAdapter,
     )

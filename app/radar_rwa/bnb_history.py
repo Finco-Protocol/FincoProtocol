@@ -46,41 +46,15 @@ def _range_result(values: list[Decimal]) -> dict:
             "observation_count": len(values)}
 
 
-def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
-                                       as_of: datetime | None = None,
-                                       path: str | None = None) -> dict:
-    """Complete bounded 24h B1.3 summary without opening a history writer."""
-    if key.chain_id != 4663:
-        raise ValueError("exact Robinhood key required")
-    identity = normalize_asset_uid(uid)
-    now = as_of or datetime.now(timezone.utc)
-    if now.tzinfo is None or now.utcoffset() is None:
-        raise ValueError("range clock must be timezone-aware")
-    now = now.astimezone(timezone.utc)
-    empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
-             "last_available": None}
-    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
-    if location == ":memory:" or not Path(location).is_file():
-        return empty
-    cutoff = (now - timedelta(hours=24)).isoformat()
-    with sqlite3.connect(Path(location).resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
-        rows = conn.execute(
-            "SELECT digest, payload FROM bnb_intelligence_history "
-            "WHERE economic_asset_uid = ? AND asset_key = ? "
-            "AND json_extract(payload, '$.collected_at') >= ? "
-            "AND json_extract(payload, '$.collected_at') <= ? "
-            "ORDER BY json_extract(payload, '$.collected_at') DESC LIMIT ?",
-            (identity, key.canonical_id, cutoff, now.isoformat(), MAX_RLIVE_RANGE_POINTS + 1),
-        ).fetchall()
-        latest = conn.execute(
-            "SELECT digest, payload FROM bnb_intelligence_history "
-            "WHERE economic_asset_uid = ? AND asset_key = ? "
-            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
-            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), "
-            "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
-            "observed_at) DESC LIMIT 1",
-            (identity, key.canonical_id),
-        ).fetchone()
+def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
+    """Pure post-processing for B1.3 range summaries.
+
+    ``rows`` are the bounded (digest, payload) window rows newest-first for
+    ONE exact identity pair; ``latest`` is that pair's newest AVAILABLE row
+    (or None). Digest verification, canonical timestamps and filters are
+    identical to the per-asset read path — this helper exists so the batch
+    read produces byte-identical summaries.
+    """
     last_available = None
     if latest is not None:
         latest_digest, latest_payload = latest
@@ -132,6 +106,135 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
             one_hour.append(value)
     return {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
             "last_available": last_available}
+
+
+_RANGE_WINDOW_SQL = (
+    "SELECT economic_asset_uid, asset_key, digest, payload "
+    "FROM bnb_intelligence_history "
+    "WHERE ({pairs}) "
+    "AND json_extract(payload, '$.collected_at') >= ? "
+    "AND json_extract(payload, '$.collected_at') <= ? "
+    "ORDER BY json_extract(payload, '$.collected_at') DESC"
+)
+
+_RANGE_LATEST_SQL = (
+    "SELECT economic_asset_uid, asset_key, "
+    "MAX(COALESCE(json_extract(payload, '$.collected_at'), "
+    "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
+    "observed_at)) AS clock, digest, payload "
+    "FROM bnb_intelligence_history "
+    "WHERE ({pairs}) "
+    "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+    "GROUP BY economic_asset_uid, asset_key"
+)
+
+
+def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
+                                       as_of: datetime | None = None,
+                                       path: str | None = None) -> dict:
+    """Complete bounded 24h B1.3 summary without opening a history writer."""
+    if key.chain_id != 4663:
+        raise ValueError("exact Robinhood key required")
+    identity = normalize_asset_uid(uid)
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("range clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
+             "last_available": None}
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:" or not Path(location).is_file():
+        return empty
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    with sqlite3.connect(Path(location).resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
+        rows = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.collected_at') >= ? "
+            "AND json_extract(payload, '$.collected_at') <= ? "
+            "ORDER BY json_extract(payload, '$.collected_at') DESC LIMIT ?",
+            (identity, key.canonical_id, cutoff, now.isoformat(), MAX_RLIVE_RANGE_POINTS + 1),
+        ).fetchall()
+        latest = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), "
+            "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
+            "observed_at) DESC LIMIT 1",
+            (identity, key.canonical_id),
+        ).fetchone()
+    return _range_summary_from_rows(rows, latest, now=now)
+
+
+def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
+                                      path: str | None = None) -> dict:
+    """Single-pass read-only 24h range summaries for MANY exact pairs.
+
+    One store open and two grouped queries replace the per-asset store reads
+    on the all-assets landing surface. Row selection, ordering, digest
+    verification and filtering are identical to
+    ``read_r_live_range_summary_readonly``: each pair's window rows are the
+    newest-first bounded set that pair's own LIMIT query would return, and
+    each pair's latest row is that pair's newest AVAILABLE point.
+
+    Returns ``{canonical_id: summary}``. Per-pair computation failures map
+    to ``{"reason": "HISTORY_UNAVAILABLE"}`` exactly like the router-level
+    per-asset try/except on the single read.
+    """
+    checked: list[tuple[str, str]] = []
+    for uid, key in pairs:
+        if key.chain_id != 4663:
+            raise ValueError("exact Robinhood key required")
+        checked.append((normalize_asset_uid(uid), key.canonical_id))
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("range clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
+             "last_available": None}
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if not checked:
+        return {}
+    if location == ":memory:" or not Path(location).is_file():
+        return {canonical_id: dict(empty) for _, canonical_id in checked}
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    pair_clause = " OR ".join(
+        "(economic_asset_uid = ? AND asset_key = ?)" for _ in checked)
+    pair_params = [value for pair in checked for value in pair]
+
+    windows: dict[tuple[str, str], list] = {pair: [] for pair in checked}
+    latest: dict[tuple[str, str], tuple] = {}
+    with sqlite3.connect(Path(location).resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
+        # Newest-first across all requested pairs; per-pair newest-first order
+        # is preserved, so slicing per pair reproduces each pair's LIMIT query.
+        for uid, asset_key, digest, payload in conn.execute(
+                _RANGE_WINDOW_SQL.format(pairs=pair_clause),
+                [*pair_params, cutoff, now.isoformat()]):
+            rows = windows.get((uid, asset_key))
+            if rows is not None:
+                rows.append((digest, payload))
+        # One grouped query returns each pair's newest AVAILABLE row (SQLite
+        # bare columns with MAX() come from the max-clock row), matching the
+        # per-pair ORDER BY clock DESC LIMIT 1.
+        for uid, asset_key, _clock, digest, payload in conn.execute(
+                _RANGE_LATEST_SQL.format(pairs=pair_clause), pair_params):
+            if (uid, asset_key) in windows:
+                latest[(uid, asset_key)] = (digest, payload)
+
+    # Enforce the per-pair window cap after grouping (same bound as the
+    # per-pair SQL LIMIT MAX_RLIVE_RANGE_POINTS + 1).
+    for rows in windows.values():
+        del rows[MAX_RLIVE_RANGE_POINTS + 1:]
+
+    out: dict[str, dict] = {}
+    for pair in checked:
+        try:
+            out[pair[1]] = _range_summary_from_rows(
+                windows.get(pair, []), latest.get(pair), now=now)
+        except Exception:
+            out[pair[1]] = {"reason": "HISTORY_UNAVAILABLE"}
+    return out
 
 
 

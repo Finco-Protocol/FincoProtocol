@@ -57,11 +57,23 @@
       <dd id="detail-oracle" data-field="oracle">—</dd>
       <dt>Effective evidence</dt>
       <dd id="detail-effective-evidence" data-field="effective_evidence_at">—</dd>
+      <dt>Sources</dt>
+      <dd id="detail-sources" data-field="sources">—</dd>
     </dl>
     <p class="muted small" style="margin-top:10px">
       Reference observation only — not a tradeable or executable price.
       Numeric values are suppressed when STALE or UNAVAILABLE.
     </p>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button type="button" id="detail-refresh-now" data-testid="detail-refresh-now"
+              style="font:inherit;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;
+                     background:rgba(255,255,255,.06);color:var(--radar-text,#f3f6f8);
+                     border:1px solid var(--radar-border,#3a424d)">
+        Refresh now
+      </button>
+      <span class="muted small" id="detail-refresh-status" data-testid="detail-refresh-status"
+            style="margin:0">Showing latest canonical snapshot · polling for updates.</span>
+    </div>
   </section>
   {% else %}
   <section style="margin-bottom:28px">
@@ -156,6 +168,7 @@
   text-transform: uppercase;
 }
 .rlive-badge--loading { background: rgba(255,255,255,.07); color: var(--radar-muted,#8d98a5); }
+.rlive-badge--initializing { background: rgba(255,255,255,.07); color: var(--radar-muted,#8d98a5); }
 .rlive-badge--available { background: rgba(34,197,94,.13); color: #22c55e; }
 .rlive-badge--stale { background: rgba(234,179,8,.13); color: #eab308; }
 .rlive-badge--unavailable { background: rgba(255,255,255,.06); color: var(--radar-muted,#8d98a5); }
@@ -217,12 +230,22 @@
 {% if row.approved %}
 <script>
 (function() {
-  // Read-only: fetches snapshot and history. Never writes R-LIVE history.
-  // No raw innerHTML for API response data — uses textContent/createElement.
+  // SNAPSHOT FIRST, CONTINUOUSLY FRESH, READ-ONLY.
+  //
+  // The first meaningful render always comes from the canonical network-free
+  // snapshot projection (/radar/r-live/snapshot). Live acquisition is NEVER
+  // performed on page load — it happens only through the explicit
+  // "Refresh now" control, which calls the rate-limited, coalescing live
+  // endpoint and fails closed. The snapshot poll continues while the page is
+  // active regardless of state (AVAILABLE / STALE / UNAVAILABLE): state
+  // controls presentation only, never whether the browser keeps checking.
+  // No raw innerHTML for API response data — textContent/createElement only.
   var CANONICAL_ID = {{ row.canonical_id | tojson }};
-  var BASE = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
-  var SNAP_URL = BASE;
-  var HIST_URL = BASE + "/history?limit=30";
+  var SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot";
+  var LIVE_URL = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
+  var HIST_URL = LIVE_URL + "/history?limit=30";
+  var POLL_INTERVAL_MS = 20000;
+  var NOT_COLLECTED = "SNAPSHOT_NOT_YET_COLLECTED";
 
   function fmt_age(secs) {
     if (secs == null) return "—";
@@ -249,9 +272,14 @@
     if (el) el.textContent = (val != null) ? val : "—";
   }
 
-  function populate(env) {
-    var state = (env.state || "UNAVAILABLE").toUpperCase();
-    var data = env.data || {};
+  function set_status(msg) {
+    var el = document.getElementById("detail-refresh-status");
+    if (el) el.textContent = msg;
+  }
+
+  function populate(state, data, read_time_ages) {
+    state = (state || "UNAVAILABLE").toUpperCase();
+    data = data || {};
     set_badge(state);
 
     var is_current = (state === "AVAILABLE");
@@ -272,16 +300,143 @@
     set_text("detail-basis-price", basis_txt);
     set_text("detail-premium", prem_txt);
 
+    // Read-time re-evaluated ages from the snapshot view are preferred;
+    // collection-time ages inside data.freshness are the fallback. State is
+    // always the canonical typed state — never derived from page-load time.
     var fresh = data.freshness || {};
+    var ages = read_time_ages || {};
+    var market_age = (ages.market_activity_age_seconds != null)
+      ? ages.market_activity_age_seconds : fresh.market_activity_age_seconds;
+    var quote_age = (ages.quote_feed_age_seconds != null)
+      ? ages.quote_feed_age_seconds : fresh.quote_feed_age_seconds;
     set_text("detail-collected-at", fresh.retrieved_at);
     set_text("detail-market-activity", fresh.last_pool_activity_at &&
-      fresh.market_activity_age_seconds != null
-      ? fresh.last_pool_activity_at + " · " + fmt_age(fresh.market_activity_age_seconds) : null);
+      market_age != null
+      ? fresh.last_pool_activity_at + " · " + fmt_age(market_age) : null);
     set_text("detail-oracle", fresh.quote_updated_at &&
-      fresh.quote_feed_age_seconds != null
-      ? fresh.quote_updated_at + " · " + fmt_age(fresh.quote_feed_age_seconds) : null);
+      quote_age != null
+      ? fresh.quote_updated_at + " · " + fmt_age(quote_age) : null);
     set_text("detail-effective-evidence", fresh.effective_evidence_at);
+    // Source provenance: canonical per-observation source labels, shown only
+    // when the payload actually carries them — never invented.
+    var rb_source = (data.robinhood_basis && data.robinhood_basis.source) || null;
+    var tok_source = (data.token_reference && data.token_reference.source) || null;
+    var sources_txt = null;
+    if (rb_source && tok_source) sources_txt = rb_source + " · " + tok_source;
+    else if (rb_source || tok_source) sources_txt = rb_source || tok_source;
+    set_text("detail-sources", sources_txt);
   }
+
+  // ── Snapshot-first render + continuous snapshot polling ──────────────────
+  var poll_timer = null;
+  var saw_snapshot_row = false;
+
+  function poll_tick() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    refresh_snapshot();
+  }
+
+  function ensure_polling() {
+    if (!poll_timer) poll_timer = setInterval(poll_tick, POLL_INTERVAL_MS);
+  }
+
+  function render_absent_snapshot(reason) {
+    // No canonical persisted snapshot for this exact identity yet: typed
+    // INITIALIZING presentation — never a hidden blocking live acquisition.
+    saw_snapshot_row = false;
+    set_badge("INITIALIZING");
+    set_status(reason === NOT_COLLECTED
+      ? "Canonical snapshot has not been collected for this identity yet. "
+        + "The background collector fills it independently — no live request was made."
+      : "Canonical snapshot is initializing. No live request was made.");
+  }
+
+  function apply_snapshot(env) {
+    var rows = (env && env.data && env.data.rows) || [];
+    var row = null;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].canonical_id === CANONICAL_ID) { row = rows[i]; break; }
+    }
+    if (env && env.state === "INITIALIZING") {
+      render_absent_snapshot("SNAPSHOT_STORE_INITIALIZING");
+      ensure_polling();
+      return;
+    }
+    if (!row) {
+      render_absent_snapshot(NOT_COLLECTED);
+      ensure_polling();
+      return;
+    }
+    saw_snapshot_row = true;
+    populate(row.state, row.data, row.read_time_ages);
+    if (!row.data || !row.data.freshness) {
+      set_status("No canonical observation collected yet for this identity. "
+        + "Use Refresh now for an explicit live acquisition.");
+    } else {
+      set_status("Showing latest canonical snapshot · polling for updates.");
+    }
+    ensure_polling(); // continuous freshness — never stops once warm
+  }
+
+  function refresh_snapshot() {
+    return fetch(SNAPSHOT_URL, {cache: "no-store"})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(env) {
+        if (!env) throw new Error("SNAPSHOT_TRANSPORT_ERROR");
+        apply_snapshot(env);
+      })
+      .catch(function() {
+        // Transport failure never triggers a live acquisition and never
+        // erases an already-rendered canonical observation.
+        ensure_polling();
+        if (!saw_snapshot_row) set_status("Canonical snapshot temporarily unavailable — retrying.");
+      });
+  }
+
+  // ── Explicit Refresh now — the only path to live acquisition ────────────
+  var refresh_in_flight = false;
+
+  function refresh_now() {
+    if (refresh_in_flight) return;
+    var button = document.getElementById("detail-refresh-now");
+    refresh_in_flight = true;
+    if (button) { button.disabled = true; button.textContent = "Refreshing…"; }
+    set_status("Requesting one explicit live observation…");
+    fetch(LIVE_URL, {cache: "no-store"})
+      .then(function(r) {
+        if (r.status === 429) throw new Error("REFRESH_RATE_LIMITED");
+        if (!r.ok) throw new Error("HTTP_" + r.status);
+        return r.json();
+      })
+      .then(function(env) {
+        var state = (env && env.state || "UNAVAILABLE").toUpperCase();
+        // Observation timestamps inside env.data remain authoritative; a
+        // completed request never rewrites them into "new" data.
+        populate(state, (env && env.data) || {}, null);
+        set_status(state === "AVAILABLE"
+          ? "Live observation acquired · timestamps above are canonical."
+          : "Live request completed — canonical state is " + state
+            + ". Previous values were never overwritten.");
+      })
+      .catch(function(err) {
+        // Fail closed: the prior canonical render stays exactly as it was.
+        var reason = (err && err.message) || "REFRESH_FAILED";
+        set_status(reason === "REFRESH_RATE_LIMITED"
+          ? "Refresh paused to limit provider load — try again shortly. "
+            + "Previous canonical observation preserved."
+          : "Refresh failed (" + reason + ") — previous canonical "
+            + "observation preserved.");
+      })
+      .finally(function() {
+        refresh_in_flight = false;
+        if (button) { button.disabled = false; button.textContent = "Refresh now"; }
+      });
+  }
+
+  var refresh_button = document.getElementById("detail-refresh-now");
+  if (refresh_button) refresh_button.addEventListener("click", refresh_now);
+
+  refresh_snapshot();
 
   function build_history_table(points) {
     // Safe DOM construction — no raw innerHTML for history data.
@@ -340,18 +495,6 @@
     block.textContent = "";
     block.appendChild(table);
   }
-
-  fetch(SNAP_URL)
-    .then(function(r) {
-      if (!r.ok) {
-        var badge = document.getElementById("detail-status-badge");
-        if (badge) { badge.setAttribute("data-transport-error", "HTTP_" + r.status); }
-        throw new Error("TRANSPORT_ERROR_" + r.status);
-      }
-      return r.json();
-    })
-    .then(populate)
-    .catch(function() { set_badge("UNAVAILABLE"); });
 
   fetch(HIST_URL)
     .then(function(r) {

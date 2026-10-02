@@ -432,7 +432,8 @@ def test_M_uid_history_ranges_returns_available_for_approved():
     assert response.json()["data"]["history_kind"] == "HISTORICAL"
 
 
-# N. Bulk history range stays on canonical collected_at authority.
+# N. Bulk history range stays on canonical collected_at authority; the
+# single-pass batch read must cover every approved identity.
 def test_N_bulk_ranges_delegates_to_canonical_read_r_live_ranges():
     calls: list[str] = []
     canonical = {
@@ -443,19 +444,22 @@ def test_N_bulk_ranges_delegates_to_canonical_read_r_live_ranges():
         "last_available": None,
     }
 
-    def read(canonical_id, **kwargs):
-        calls.append(canonical_id)
-        return canonical
+    def read(pairs, **kwargs):
+        for uid, key in pairs:
+            calls.append(key.canonical_id)
+        return {key.canonical_id: dict(canonical) for _uid, key in pairs}
 
     from fastapi.testclient import TestClient
-    with patch("app.radar_rwa.r_live_service.read_r_live_ranges", side_effect=read):
+    with patch("app.radar_rwa.bnb_history.read_r_live_ranges_batch_readonly",
+               side_effect=read):
         response = TestClient(_make_test_app()).get("/radar/r-live/history/ranges")
     assert set(calls) == set(_APPROVED_IDS)
     assert response.json()["state"] == "AVAILABLE"
     assert response.headers["cache-control"] == "no-store"
 
 
-# O. Per-asset and bulk ranges call the same canonical service function.
+# O. Per-asset ranges call the per-asset canonical function; bulk ranges call
+# the single-pass canonical batch read (one store read for all identities).
 def test_O_per_asset_and_bulk_ranges_use_same_function():
     canonical = {"range_1h": None, "range_24h": None, "last_available": None}
     from fastapi.testclient import TestClient
@@ -464,9 +468,10 @@ def test_O_per_asset_and_bulk_ranges_use_same_function():
             f"/radar/r-live/{_APPROVED_IDS[0]}/history/ranges"
         )
         assert one.call_count == 1
-    with patch("app.radar_rwa.r_live_service.read_r_live_ranges", return_value=canonical) as bulk:
+    with patch("app.radar_rwa.bnb_history.read_r_live_ranges_batch_readonly",
+               return_value={cid: canonical for cid in _APPROVED_IDS}) as bulk:
         TestClient(_make_test_app()).get("/radar/r-live/history/ranges")
-        assert bulk.call_count == _APPROVED_COUNT
+        assert bulk.call_count == 1
 
 
 # P. Presentation exposes freshness fields without changing source clocks.
