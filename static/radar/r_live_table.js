@@ -1,11 +1,16 @@
 /**
- * R-LIVE landing table client-side data population — SNAPSHOT FIRST.
+ * R-LIVE landing table client-side data population — SNAPSHOT FIRST,
+ * CONTINUOUSLY FRESH.
  *
  * One instant latest-snapshot request (read-only projection; ZERO live
  * chain acquisition on this path) plus one read-only historical summary
- * request. While the snapshot is cold (INITIALIZING) the table polls the
- * snapshot endpoint only — polling never triggers blockchain acquisition;
- * the background collector fills the snapshot independently.
+ * request. The table then keeps polling the SNAPSHOT endpoint at a fixed
+ * cadence for as long as the page is active — regardless of whether the
+ * current state is AVAILABLE, STALE or UNAVAILABLE. A stale or
+ * unavailable row can become AVAILABLE after a later background-collector
+ * cycle; state controls presentation only, never whether the browser
+ * keeps checking the canonical snapshot. Polling never triggers
+ * blockchain acquisition.
  * Identity authority is canonical_id from registry-rendered rows, never symbol.
  *
  * Read-only: never writes R-LIVE history, never modifies authority state.
@@ -17,7 +22,7 @@
   "use strict";
 
   var SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot";
-  var POLL_INTERVAL_MS = 15000;
+  var POLL_INTERVAL_MS = 20000;
 
   function fmt_age(secs) {
     if (typeof secs !== "number" || !isFinite(secs) || secs < 0) return null;
@@ -179,9 +184,24 @@
         });
       }).catch(function() { /* Ranges remain unavailable, never zero. */ });
 
-    // One instant snapshot read; while cold, poll the SNAPSHOT endpoint
-    // only — polling never triggers blockchain acquisition.
+    // One instant snapshot read, then CONTINUOUS snapshot polling while the
+    // page is active. Polling is state-independent: it continues through
+    // AVAILABLE, STALE and UNAVAILABLE and never stops once warm. The
+    // snapshot endpoint is a network-free canonical read — polling never
+    // triggers blockchain acquisition; the background collector is the only
+    // source-refresh path.
     var poll_timer = null;
+
+    function poll_tick() {
+      // Skip only when the page is not visible; the cadence continues for
+      // as long as the page is active.
+      if (typeof document !== "undefined" && document.hidden) return;
+      refresh_snapshot();
+    }
+
+    function ensure_polling() {
+      if (!poll_timer) poll_timer = setInterval(poll_tick, POLL_INTERVAL_MS);
+    }
 
     function apply_snapshot(payload) {
       var rows_data = (payload && payload.rows) || [];
@@ -201,19 +221,19 @@
         .then(function(env) {
           if (!env) throw new Error("SNAPSHOT_TRANSPORT_ERROR");
           if (env.state === "INITIALIZING") {
-            if (!poll_timer) poll_timer = setInterval(refresh_snapshot, POLL_INTERVAL_MS);
+            ensure_polling();
             return; // stay neutral-loading; the collector fills the snapshot
           }
-          if (poll_timer) { clearInterval(poll_timer); poll_timer = null; }
           var banner = document.querySelector("[data-testid='rlive-initializing']");
           if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
           apply_snapshot(env.data || {});
+          ensure_polling(); // continuous freshness — never stop once warm
         })
         .catch(function() {
           // Loading is neutral until transport actually fails. Current numeric
           // values are never supplied by historical ranges; snapshot retries
           // continue without ever falling back to a live acquisition.
-          if (!poll_timer) poll_timer = setInterval(refresh_snapshot, POLL_INTERVAL_MS);
+          ensure_polling();
           Object.keys(byId).forEach(function(key) {
             if (!snapshots[key]) {
               byId[key].setAttribute("data-transport-error", "SNAPSHOT_TRANSPORT_ERROR");

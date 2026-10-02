@@ -24,6 +24,9 @@
     </div>
     <div class="economy-health" data-state="{{ dashboard.state }}">
       <span class="economy-health__state">{{ dashboard.state }}</span>
+      {% if dashboard.last_known_good %}
+      <span class="muted small" data-lkg-fallback="true">Last-known-good fallback — refresh is currently failing; the preserved observation is shown as STALE.</span>
+      {% endif %}
       <span>{{ dashboard.fresh_count }} fresh · {{ dashboard.stale_count }} stale · {{ dashboard.unavailable_count }} unavailable</span>
     </div>
   </header>

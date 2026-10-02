@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
+import threading
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -23,7 +24,62 @@ _templates = Jinja2Templates(directory="app/templates")
 _rwa_service = RwaDashboardService()
 _bnb_service = BnbRwaDashboardService()
 
+# Local TTL caches: repeated page views within the window reuse one provider
+# fan-out instead of re-reading CoinGecko/Robinhood per request (the BNB
+# payload additionally persists one history point per compute, so caching
+# also stops concurrent views multiplying history writes). Deliberately two
+# small local caches, not a shared caching framework.
+_RWA_DASHBOARD_TTL_SECONDS = 45.0
+_RWA_DASHBOARD_STALE_GRACE_SECONDS = 300.0
+_rwa_dashboard_lock = threading.Lock()
+_rwa_dashboard_fetch_lock = threading.Lock()
+_rwa_dashboard_cache: dict = {"at": None, "value": None}
 
+_BNB_PAYLOAD_TTL_SECONDS = 45.0
+_BNB_PAYLOAD_STALE_GRACE_SECONDS = 300.0
+_bnb_payload_lock = threading.Lock()
+_bnb_payload_fetch_lock = threading.Lock()
+_bnb_payload_cache: dict = {"at": None, "value": None}
+
+
+def _reset_rwa_dashboard_cache() -> None:
+    with _rwa_dashboard_lock:
+        _rwa_dashboard_cache["at"] = None
+        _rwa_dashboard_cache["value"] = None
+
+
+def _reset_bnb_payload_cache() -> None:
+    with _bnb_payload_lock:
+        _bnb_payload_cache["at"] = None
+        _bnb_payload_cache["value"] = None
+
+
+def _read_rwa_dashboard_cached():
+    """TTL-cached, single-flight RWA overview read with typed last-known-good.
+
+    See ``app.radar_ui._dashboard_lkg`` for the shared typed-UNAVAILABLE /
+    exception last-known-good contract.
+    """
+    from app.radar_ui import _dashboard_lkg
+    return _dashboard_lkg.read_with_last_known_good(
+        cache=_rwa_dashboard_cache, lock=_rwa_dashboard_lock,
+        fetch_lock=_rwa_dashboard_fetch_lock,
+        fetch=_rwa_service.read_dashboard,
+        ttl=_RWA_DASHBOARD_TTL_SECONDS, grace=_RWA_DASHBOARD_STALE_GRACE_SECONDS)
+
+def _read_bnb_payload_cached():
+    """TTL-cached, single-flight BNB RWA payload read (same contract as the
+    RWA overview cache; shared by the HTML page and the JSON snapshot).
+
+    See ``app.radar_ui._dashboard_lkg`` for the shared typed-UNAVAILABLE /
+    exception last-known-good contract.
+    """
+    from app.radar_ui import _dashboard_lkg
+    return _dashboard_lkg.read_with_last_known_good(
+        cache=_bnb_payload_cache, lock=_bnb_payload_lock,
+        fetch_lock=_bnb_payload_fetch_lock,
+        fetch=_bnb_service.read_payload,
+        ttl=_BNB_PAYLOAD_TTL_SECONDS, grace=_BNB_PAYLOAD_STALE_GRACE_SECONDS)
 
 @router.get("/radar/crypto/rwa/basis", response_class=HTMLResponse)
 async def radar_crypto_rwa_basis(request: Request):
@@ -124,11 +180,13 @@ async def radar_r_live_aapl_history(economic_asset_uid: str, contract_address: s
 def set_rwa_service(service) -> None:
     global _rwa_service
     _rwa_service = service
+    _reset_rwa_dashboard_cache()
 
 
 def set_bnb_service(service) -> None:
     global _bnb_service
     _bnb_service = service
+    _reset_bnb_payload_cache()
 
 
 def _bnb_payload_failure(exc: Exception) -> dict:
@@ -154,7 +212,7 @@ def _route_failure(exc: Exception) -> dict:
 @router.get("/radar/crypto/rwa", response_class=HTMLResponse)
 async def radar_crypto_rwa(request: Request):
     try:
-        dashboard = await run_in_threadpool(_rwa_service.read_dashboard)
+        dashboard = await run_in_threadpool(_read_rwa_dashboard_cached)
     except Exception as exc:  # noqa: BLE001 — browser boundary must fail closed
         dashboard = _route_failure(exc)
 
@@ -176,7 +234,7 @@ async def radar_crypto_rwa(request: Request):
 @router.get("/radar/crypto/rwa/bnb/snapshot")
 async def radar_crypto_rwa_bnb_snapshot():
     try:
-        return await run_in_threadpool(_bnb_service.read_payload)
+        return await run_in_threadpool(_read_bnb_payload_cached)
     except Exception as exc:  # read-only API boundary fails closed
         return _bnb_payload_failure(exc)
 
@@ -199,7 +257,7 @@ async def radar_crypto_rwa_bnb_history(economic_asset_uid: str, contract_address
 @router.get("/radar/crypto/rwa/bnb", response_class=HTMLResponse)
 async def radar_crypto_rwa_bnb(request: Request):
     try:
-        dashboard = await run_in_threadpool(_bnb_service.read_payload)
+        dashboard = await run_in_threadpool(_read_bnb_payload_cached)
     except Exception as exc:  # browser boundary must not leak provider diagnostics
         dashboard = _bnb_payload_failure(exc)
 

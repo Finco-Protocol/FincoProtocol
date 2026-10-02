@@ -145,18 +145,20 @@ def stream_r_live_current(request: Request):
 def get_all_r_live_ranges():
     """One read-only landing summary response for all exact approved identities.
 
-    Delegates to canonical read_r_live_ranges → read_r_live_range_summary_readonly.
-    Uses collected_at clock. Zero writes. Unauthenticated reference surface.
+    Single-pass batch read over the canonical B1.3 history (one store read
+    for all approved identities — same rows, ordering, digest verification
+    and summaries as the per-asset read). Uses collected_at clock. Zero
+    writes. Unauthenticated reference surface.
     """
-    from app.radar_rwa.r_live_service import read_r_live_ranges
+    from app.radar_rwa.bnb_history import read_r_live_ranges_batch_readonly
     from finco_radar.authority.r_live_policy import APPROVED_RLIVE_ASSETS
-    ranges: dict = {}
-    for policy in APPROVED_RLIVE_ASSETS.values():
-        key = policy.asset_key.canonical_id
-        try:
-            ranges[key] = read_r_live_ranges(key)
-        except Exception:
-            ranges[key] = {"reason": "HISTORY_UNAVAILABLE"}
+    pairs = [(policy.economic_asset_uid, policy.asset_key)
+             for policy in APPROVED_RLIVE_ASSETS.values()]
+    try:
+        ranges = read_r_live_ranges_batch_readonly(pairs)
+    except Exception:
+        ranges = {policy.asset_key.canonical_id: {"reason": "HISTORY_UNAVAILABLE"}
+                  for policy in APPROVED_RLIVE_ASSETS.values()}
     return JSONResponse(
         status_code=200,
         content=InstitutionalEnvelope(
