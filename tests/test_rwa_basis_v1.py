@@ -131,7 +131,7 @@ def test_history_missing_baseline_stays_unavailable(tmp_path):
 
 
 def test_api_exact_uid_only():
-    from app.api.v1_1.r_live_public_router import router
+    from app.api.v1_1.rwa_basis_public_router import router
     app = FastAPI()
     app.include_router(router, prefix="/api/v1.1")
     client = TestClient(app)
@@ -148,3 +148,10 @@ def test_no_recommendation_vocabulary_and_no_action_path():
     for word in ("cheap", "expensive", "undervalued", "overvalued", "arb opportunity"):
         assert word not in template
     assert "finco_radar.quotes" not in module and "wallet" not in module and "@router.post" not in module
+
+
+def test_rwa_basis_router_does_not_expand_frozen_r_live_route_families():
+    from app.api.v1_1.r_live_public_router import router as r_live_router
+    paths = {route.path for route in r_live_router.routes}
+    assert "/radar/rwa-basis" not in paths
+    assert "/radar/rwa-basis/{economic_asset_uid}" not in paths
