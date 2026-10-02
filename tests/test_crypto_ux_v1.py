@@ -48,6 +48,16 @@ def client():
     return TestClient(app, raise_server_exceptions=False, follow_redirects=False)
 
 
+@pytest.fixture()
+def client_factory():
+    def _make(**kwargs):
+        from app.crypto_ui import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app, follow_redirects=False, **kwargs)
+    return _make
+
+
 def _session(monkeypatch, user_id=None):
     session = SimpleNamespace(user_id=user_id or "user-1", username="demo",
                               login_at=None, session_type="demo") if user_id else None
@@ -745,20 +755,18 @@ class TestCryptoFailSoftAuthorities:
         assert "UNAVAILABLE" in page.text
         assert 'data-testid="wallet-unavailable"' in page.text
 
-    def test_entitlement_evaluator_outage_renders_unavailable_rows(
-            self, client, monkeypatch):
+    def test_evaluator_programming_error_propagates_not_masked(
+            self, client_factory, monkeypatch):
+        """Correction A: unexpected evaluator programming errors are NOT
+        masked into a fake "no decisions" state — they propagate visibly."""
         _session(monkeypatch, "user-1")
 
         async def boom(wallet):
-            raise RuntimeError("RPC transport failed")
+            raise RuntimeError("evaluator programming defect")
 
         monkeypatch.setattr("app.crypto_ui._resource_decisions", boom)
-        page = client.get("/crypto")
-        assert page.status_code == 200
-        assert 'data-testid="crypto-access"' in page.text
-        # Every resource row degrades to the typed UNAVAILABLE presentation.
-        assert "UNAVAILABLE" in page.text
-        assert "ACCESS_DECISION_UNAVAILABLE" in page.text
+        with pytest.raises(RuntimeError):
+            client_factory(raise_server_exceptions=True).get("/crypto")
 
     def test_watchlist_store_outage_never_renders_zero(
             self, client, monkeypatch):
@@ -810,7 +818,6 @@ class TestCryptoFailSoftAuthorities:
             raise RuntimeError("access authority down")
 
         monkeypatch.setattr("app.crypto_access.get_wallet_state", db_boom)
-        monkeypatch.setattr("app.crypto_ui._resource_decisions", evaluator_boom)
         monkeypatch.setattr("finco_yield.watchlist.list_watchlist_items", db_boom)
         from finco_yield import access as access_mod
         monkeypatch.setattr(access_mod, "resolve_yield_access", access_boom)

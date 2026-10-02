@@ -289,6 +289,13 @@
         Utilities show as not configured.
       </p>
 
+      {% elif wallet_store_unavailable %}
+      {# Wallet store outage: typed unavailable — never "not connected" #}
+      <div class="finco-wallet__state">
+        <span class="finco-wallet__dot finco-wallet__dot--error"></span>
+        <strong style="color:#b45309;" data-testid="wallet-store-unavailable">Wallet state unavailable</strong>
+      </div>
+      <p class="finco-wallet__meta">The wallet store is currently unavailable. No balance has been assumed — unavailable is not zero.</p>
       {% elif wallet_address %}
       {# Wallet connected #}
       <div class="finco-wallet__state">

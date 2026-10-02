@@ -22,10 +22,10 @@
 
 <section class="y-section" data-testid="monitor-positions">
   <h2>Positions</h2>
-  {% if not wallet %}
-  <p class="y-empty" data-testid="positions-no-wallet">Link and verify a wallet to see your on-chain vault positions. Nothing is scanned without a verified wallet.</p>
-  {% elif wallet_error %}
+  {% if wallet_error %}
   <p class="y-warn" data-testid="positions-unavailable">Positions are temporarily unavailable ({{ wallet_error }}). No balance has been assumed — unavailable is not zero.</p>
+  {% elif not wallet %}
+  <p class="y-empty" data-testid="positions-no-wallet">Link and verify a wallet to see your on-chain vault positions. Nothing is scanned without a verified wallet.</p>
   {% elif positions_error %}
   <p class="y-warn" data-testid="positions-unavailable">Position scan partially unavailable ({{ positions_error }}). Detected positions below are factual; unavailable chains are not counted as empty.</p>
     {% if positions %}

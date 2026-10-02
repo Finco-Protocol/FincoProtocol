@@ -83,12 +83,12 @@ def _wallet_state_fail_soft(user_id) -> tuple[str, dict | None]:
 
 
 async def _decisions_fail_soft(wallet) -> dict:
-    """Entitlement decisions; an evaluator outage renders every resource UNAVAILABLE."""
-    try:
-        return dict(await _resource_decisions(wallet))
-    except Exception as exc:  # noqa: BLE001 — optional authority, fail soft
-        _fail_soft("entitlement_evaluator", exc)
-        return {}
+    """Entitlement decisions for a resolved wallet context.
+
+    No broad catch: canonical evaluation already fails closed internally for
+    expected provider/RPC failures; unexpected programming errors propagate.
+    """
+    return dict(await _resource_decisions(wallet))
 
 
 def _watchlist_fail_soft(user_id) -> dict:
@@ -193,7 +193,7 @@ async def crypto_overview(request: Request):
     wallet_state, _ = _wallet_state_fail_soft(user_id)
     try:
         wallet = wallet_context_for_session(user)
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _fail_soft("wallet_store", exc)
         wallet = None
         wallet_context_unavailable = True

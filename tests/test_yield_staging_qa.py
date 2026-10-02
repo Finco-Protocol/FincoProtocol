@@ -69,6 +69,19 @@ def client():
 
 
 @pytest.fixture()
+def client_factory():
+    """Build standalone clients with custom TestClient options."""
+
+    def _make(**kwargs):
+        from finco_yield.web import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app, follow_redirects=False, **kwargs)
+
+    return _make
+
+
+@pytest.fixture()
 def authed(client, monkeypatch):
     session = SimpleNamespace(user_id="user-1", username="demo",
                               login_at=None, session_type="demo")
@@ -193,6 +206,19 @@ class TestFilterAcceptanceMatrix:
 
     def test_max_reward_dependency_invalid_is_typed_400(self, client):
         page = client.get("/yield?max_reward_dependency=abc")
+        assert page.status_code == 400
+        assert "FILTER_INVALID_NUMBER" in page.text
+
+    @pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity", "nan", "inf"])
+    def test_non_finite_min_tvl_is_typed_400_never_500(self, client, raw):
+        page = client.get(f"/yield?min_tvl={raw}")
+        assert page.status_code == 400
+        assert "FILTER_INVALID_NUMBER" in page.text
+        assert "finite" in page.text
+
+    @pytest.mark.parametrize("raw", ["NaN", "Infinity", "-Infinity"])
+    def test_non_finite_max_reward_dependency_is_typed_400(self, client, raw):
+        page = client.get(f"/yield?max_reward_dependency={raw}")
         assert page.status_code == 400
         assert "FILTER_INVALID_NUMBER" in page.text
 
@@ -341,19 +367,30 @@ class TestMonitorTypedStates:
         assert page.status_code == 200
         assert "WALLET_STORE_UNAVAILABLE" in page.text
         assert 'data-testid="monitor-wallet-state">Wallet store unavailable<' in page.text
+        # Regression (Correction A #3): the POSITIONS section itself must
+        # show the typed unavailable warning — never "No verified FINCO
+        # wallet is linked" (wallet_error wins over not-wallet), never a
+        # zero-position claim.
+        positions = re.search(
+            r'data-testid="monitor-positions".*?(?=<section class="y-section" data-testid="yield-watchlist")',
+            page.text, re.S).group(0)
+        assert 'data-testid="positions-unavailable"' in positions
+        assert "No verified FINCO wallet is linked" not in positions
+        assert 'data-testid="positions-empty"' not in positions
 
-    def test_entitlement_evaluator_outage_is_typed_not_500(
-            self, client, authed, monkeypatch):
+    def test_evaluator_programming_error_propagates_visibly(
+            self, client_factory, authed, monkeypatch):
+        """Correction A: unexpected evaluator programming errors are NOT
+        swallowed into a fake "no decisions" state — they propagate."""
         _link_wallet()
 
         async def evaluator_boom(wallet):
-            raise RuntimeError("evaluator down")
+            raise RuntimeError("evaluator programming defect")
 
         monkeypatch.setattr("app.protocol.entitlement_evaluator.evaluate_all_resources",
                             evaluator_boom)
-        page = client.get("/yield/monitor")
-        assert page.status_code == 200
-        assert 'data-testid="finco-access-panel"' in page.text
+        with pytest.raises(RuntimeError):
+            client_factory(raise_server_exceptions=True).get("/yield/monitor")
 
     def test_watchlist_states_empty_nonempty_unavailable(
             self, client, authed, monkeypatch):
@@ -402,16 +439,15 @@ class TestMonitorTypedStates:
 # ── access.json wallet-authority boundary ─────────────────────────────────────
 
 class TestAuthorityBoundaries:
-    def test_yield_access_json_typed_on_evaluator_outage(self, client, authed,
-                                                         monkeypatch):
+    def test_yield_access_json_evaluator_programming_error_propagates(
+            self, client_factory, authed, monkeypatch):
         async def evaluator_boom(wallet):
-            raise RuntimeError("evaluator down")
+            raise RuntimeError("evaluator programming defect")
 
         monkeypatch.setattr("app.protocol.entitlement_evaluator.evaluate_all_resources",
                             evaluator_boom)
-        page = client.get("/yield/access.json")
-        assert page.status_code == 200
-        assert page.json()["entitlement_decisions_available"] is False
+        with pytest.raises(RuntimeError):
+            client_factory(raise_server_exceptions=True).get("/yield/access.json")
 
     def test_yield_access_json_typed_on_wallet_store_outage(self, client, authed,
                                                             monkeypatch):
@@ -425,3 +461,115 @@ class TestAuthorityBoundaries:
         page = client.get("/yield/access.json")
         assert page.status_code == 200
         assert page.json()["wallet"]["state"] == "UNAVAILABLE"
+
+
+# ── Protocol fail-soft (Correction A #1/#2) ───────────────────────────────────
+
+class TestProtocolAuthorityBoundaries:
+    """app.protocol.router fail-soft contract:
+
+    A. /protocol/finco/access.json authority failure does not 500;
+    B. /protocol/finco HTML authority failure does not 500;
+    C. the fallback decisions object is a MAPPING (canonical shape), never
+       the list-vs-mapping bug;
+    D. wallet-store outage renders typed unavailable — never
+       WALLET_NOT_CONNECTED, never empty-success, never zero;
+    E. unexpected programming errors are NOT swallowed by broad catches.
+    """
+
+    @pytest.fixture()
+    def protocol_client(self, monkeypatch):
+        from app.protocol.router import router
+
+        session = SimpleNamespace(user_id="user-1", username="qa",
+                                  login_at=None, session_type="user")
+        monkeypatch.setattr("app.auth.resolve_request_session",
+                            lambda request: session)
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def _link_wallet(self, user_id="user-1"):
+        _link_wallet(user_id)
+
+    def test_access_json_wallet_store_outage_typed_mapping(
+            self, protocol_client, monkeypatch):
+        import sqlite3
+        self._link_wallet()
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet", boom)
+        page = protocol_client.get("/protocol/finco/access.json")
+        assert page.status_code == 200
+        payload = page.json()
+        utilities = payload["utilities"]
+        assert utilities, "typed fallback must be a populated mapping"
+        for uid, decision in utilities.items():
+            assert decision["status"] == "OBSERVATION_UNAVAILABLE"
+            assert decision["reason_code"] == "WALLET_STORE_UNAVAILABLE"
+            assert decision["allowed"] is False
+
+    def test_html_surface_wallet_store_outage_typed_mapping(
+            self, protocol_client, monkeypatch):
+        import sqlite3
+        self._link_wallet()
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet", boom)
+        # Token config present so the wallet-state branch of the template
+        # renders (without it the honest NOT_CONFIGURED panel takes priority).
+        monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "https://rpc-unreachable.invalid")
+        monkeypatch.setenv("FINCO_TOKEN_CHAIN_ID", "8453")
+        monkeypatch.setenv("FINCO_TOKEN_ADDRESS", "0x" + "ab" * 20)
+        monkeypatch.setenv("FINCO_ACCESS_MIN_BALANCE", "100")
+        monkeypatch.setenv("FINCO_TOKEN_DECIMALS", "6")
+        page = protocol_client.get("/protocol/finco")
+        assert page.status_code == 200  # no 500, template renders .values()
+        assert 'data-testid="wallet-store-unavailable"' in page.text
+        assert "Wallet state unavailable" in page.text
+        assert "Not connected" not in page.text
+
+    def test_access_decisions_fallback_is_mapping_not_list(self, protocol_client,
+                                                           monkeypatch):
+        """Directly proves the list-vs-mapping bug is gone: the fallback
+        decisions object must support .items()/.values() semantics."""
+        import sqlite3
+        self._link_wallet()
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet", boom)
+        page = protocol_client.get("/protocol/finco/access.json")
+        utilities = page.json()["utilities"]
+        assert isinstance(utilities, dict)
+        assert all(isinstance(v, dict) and "status" in v for v in utilities.values())
+
+    def test_programming_error_propagates_not_masked(self, monkeypatch):
+        """Correction A #2: broad except-Exception masking is gone — an
+        unexpected programming defect in the decision path propagates."""
+        session = SimpleNamespace(user_id="user-1", username="qa",
+                                  login_at=None, session_type="user")
+        monkeypatch.setattr("app.auth.resolve_request_session",
+                            lambda request: session)
+
+        async def programming_bug(wallet_address, config):
+            raise AttributeError("programming defect")
+
+        monkeypatch.setattr(
+            "app.protocol.access_decision.get_all_access_decisions",
+            programming_bug)
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet",
+                            lambda user_id: None)
+
+        from app.protocol.router import router
+
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app, raise_server_exceptions=True)
+        with pytest.raises(AttributeError):
+            client.get("/protocol/finco")

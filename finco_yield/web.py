@@ -275,6 +275,10 @@ def _filter_decimal(value, name: str, *, minimum: Decimal | None = None) -> Deci
         parsed = Decimal(raw)
     except InvalidOperation:
         raise FilterError("FILTER_INVALID_NUMBER", f"{name} must be a number")
+    if not parsed.is_finite():
+        # NaN / Infinity are not valid FINCO numeric filter inputs and would
+        # break range comparison downstream.
+        raise FilterError("FILTER_INVALID_NUMBER", f"{name} must be a finite number")
     if minimum is not None and parsed < minimum:
         raise FilterError(
             "FILTER_OUT_OF_RANGE", f"{name} must be at least {minimum}")
@@ -494,7 +498,7 @@ def _wallet_state_for_request(request: Request) -> str:
     user = _request_user(request)
     try:
         state, _ = get_wallet_state(user.user_id if user else None)
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _log_authority_unavailable("wallet_store", exc)
         return "UNAVAILABLE"
     return state
@@ -514,29 +518,21 @@ async def _resource_decisions_for_request(request: Request):
     session = _request_user(request)
     try:
         wallet = wallet_context_for_session(session)
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _log_authority_unavailable("wallet_store", exc)
         return {}
-    try:
-        return dict(await evaluate_all_resources(wallet))
-    except Exception as exc:  # noqa: BLE001 - optional authority, fail soft
-        _log_authority_unavailable("entitlement_evaluator", exc)
-        return {}
+    return dict(await evaluate_all_resources(wallet))
 
 
-async def _decisions_fail_soft(wallet):
-    """Agent A decisions; an evaluator outage renders typed unavailable rows.
+async def _decisions_for_wallet(wallet):
+    """Agent A decisions for a resolved wallet context.
 
-    Entitlement state stays INDEPENDENT of wallet position detection: an
-    evaluator failure never becomes a position or balance claim, and a scan
-    failure never becomes an entitlement claim.
+    No broad catch here: canonical evaluation already fails closed internally
+    for expected provider/RPC failures.  An unexpected programming error must
+    propagate to logs/tests, never masquerade as "no decisions".
     """
     from app.protocol.entitlement_evaluator import evaluate_all_resources
-    try:
-        return dict(await evaluate_all_resources(wallet))
-    except Exception as exc:  # noqa: BLE001 - optional authority, fail soft
-        _log_authority_unavailable("entitlement_evaluator", exc)
-        return {}
+    return dict(await evaluate_all_resources(wallet))
 
 
 def _wallet_context_fail_soft(user):
@@ -544,7 +540,7 @@ def _wallet_context_fail_soft(user):
     from app.protocol.entitlement_evaluator import wallet_context_for_session
     try:
         return wallet_context_for_session(user), None
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _log_authority_unavailable("wallet_store", exc)
         return None, "WALLET_STORE_UNAVAILABLE"
 
@@ -554,7 +550,7 @@ def _verified_wallet_fail_soft(user_id):
     from app.protocol.wallet_auth import get_verified_wallet
     try:
         return get_verified_wallet(user_id), None
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _log_authority_unavailable("wallet_store", exc)
         return None, "WALLET_STORE_UNAVAILABLE"
 
@@ -634,8 +630,9 @@ async def yield_monitor(request: Request):
         except OnchainReadError as exc:
             _log_authority_unavailable("position_scan", exc)
             positions_error = "POSITIONS_UNAVAILABLE_RPC"
-        except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
-            # Registry/scan plumbing failure: typed unavailable (logged), no crash.
+        except (sqlite3.Error, OSError) as exc:
+            # Store/plumbing failure: typed unavailable (logged), no crash.
+            # Registry data defects (ValueError) propagate visibly.
             _log_authority_unavailable("position_scan", exc)
             positions_error = "POSITIONS_UNAVAILABLE"
 
@@ -654,14 +651,14 @@ async def yield_monitor(request: Request):
 
     try:
         wallet_state, _ = get_wallet_state(user.user_id)
-    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+    except (sqlite3.Error, OSError, ValueError) as exc:
         _log_authority_unavailable("wallet_store", exc)
         wallet_state = "UNAVAILABLE"
     wallet_context, context_error = _wallet_context_fail_soft(user)
     if context_error is not None:
         decisions = {}
     else:
-        decisions = await _decisions_fail_soft(wallet_context)
+        decisions = await _decisions_for_wallet(wallet_context)
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
     if context_error is not None:
         access["entitlement_unavailable"] = context_error
