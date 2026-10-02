@@ -15,7 +15,11 @@ from app.protocol import activation_readiness as ar
 from app.protocol import entitlement_policy as ep
 from app.protocol.activation_readiness import ActivationStatus as S, ChainProbeResult, Issue
 from app.protocol.entitlement_evaluator import Decision, WalletContext, evaluate_resource_access
+from app.protocol.token_config import TokenConfig
 from app.verified.token_entitlement import ApprovedFincoDeployment
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from types import SimpleNamespace
 
 CHAIN, OTHER_CHAIN = 31337, 31338
 TOKEN, OTHER_TOKEN = "0x" + "ab" * 20, "0x" + "cd" * 20
@@ -139,6 +143,7 @@ TWO_RPC = {**RPC, f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}": "https://rpc2.example.in
 def active_ready(report, env, approved_set, provider_chain_token=None):
     """Runtime parity: every resource in active_resources reaches token entitlement and can ALLOW."""
     from datetime import datetime, timezone
+    from types import SimpleNamespace
     from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
     now = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
     results = {}
@@ -427,6 +432,7 @@ def test_gating_switch_is_the_only_difference_between_ready_and_active():
 
 def test_runtime_coherence_active_report_means_the_canonical_evaluator_can_operate():
     from datetime import datetime, timezone
+    from types import SimpleNamespace
     from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
     now = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -514,3 +520,343 @@ def test_check_tool_reports_not_configured_and_exits_nonzero(capsys):
     spec.loader.exec_module(module)
     assert module.main([]) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "NOT_CONFIGURED"
+
+
+# ── optional balance-authority probe (canonical-readiness enhancement V1) ─────
+
+class _BalanceProviderDouble:
+    """Canonical TokenBalanceProvider double: records the TokenConfig it
+    receives (runtime-parity proof) and scripts the evidence."""
+
+    def __init__(self, *, state="AVAILABLE", balance_raw=None, reason=None):
+        self.state_value = state
+        self.balance_raw = balance_raw
+        self.reason = reason
+        self.configs = []
+        self.wallets = []
+
+    async def balance_of(self, policy, wallet_address):
+        from app.protocol.token_config import TokenConfig
+        from app.verified.token_entitlement import BalanceEvidenceState, TokenBalanceEvidence
+        self.wallets.append(wallet_address)
+        evidence = TokenBalanceEvidence(
+            chain_id=policy.chain_id, token_address=policy.token_address,
+            wallet_address=wallet_address, token_decimals=policy.token_decimals,
+            balance_raw=self.balance_raw,
+            observed_at=datetime.now(timezone.utc), source="TEST_ONLY",
+            state=BalanceEvidenceState(self.state_value),
+            reason=None if self.state_value == "AVAILABLE" else
+            (self.reason or self.state_value))
+        return evidence
+
+    # capture helper used through monkeypatched P4ReadOnlyBalanceProvider
+    def __call__(self, config):
+        self.configs.append(config)
+        return self
+
+
+def _provider_double(monkeypatch, **kw):
+    from app.protocol.token_config import TokenConfig
+    double = _BalanceProviderDouble(**kw)
+
+    class _ProviderFactory:
+        def __new__(cls, config: TokenConfig):
+            double.configs.append(config)
+            return double
+
+    monkeypatch.setattr(
+        "app.verified.token_entitlement.P4ReadOnlyBalanceProvider",
+        _ProviderFactory)
+    return double
+
+
+def _probe_report(monkeypatch, *, wallet=WALLET, env=None, provider_kw=None,
+                  approved_set=None, **assess_kw):
+    double = _provider_double(monkeypatch, **(provider_kw or {}))
+    report = asyncio.run(ar.assess_activation(
+        environ=env if env is not None else {**READY_ENV, **RPC},
+        approved=[approved()] if approved_set is None else approved_set,
+        probe=Probe(),
+        balance_probe_wallet=wallet,
+        balance_provider=double))
+    return report, double
+
+
+def test_no_balance_probe_flag_keeps_result_unchanged(monkeypatch):
+    """Without --balance-probe-wallet the readiness result is exactly the
+    existing contract: no balance_probe evidence is attached."""
+    report = assess(READY_ENV, probe=Probe())
+    assert report.status is S.READY_FOR_ACTIVATION
+    assert report.balance_probe is None
+    assert "balance_probe" not in report.public_view()
+
+
+def test_balance_probe_nonzero_observation(monkeypatch):
+    report, double = _probe_report(
+        monkeypatch, provider_kw=dict(balance_raw=123 * 10 ** DECIMALS))
+    probe = report.balance_probe
+    assert probe.requested and probe.executed and probe.available
+    assert probe.balance_raw_present and probe.factual_zero is False
+    assert probe.observation_status == "BALANCE_OBSERVED"
+    assert double.wallets == [WALLET]           # the exact supplied probe wallet
+
+
+def test_balance_probe_factual_zero(monkeypatch):
+    report, _ = _probe_report(monkeypatch, provider_kw=dict(balance_raw=0))
+    probe = report.balance_probe
+    assert probe.available and probe.balance_raw_present
+    assert probe.factual_zero is True           # explicit observed zero is real data
+    assert probe.observation_status == "BALANCE_OBSERVED"
+
+
+@pytest.mark.parametrize("state,reason", [
+    ("UNAVAILABLE", "RPC_UNAVAILABLE"),
+    ("UNAVAILABLE", "TOKEN_CONTRACT_UNAVAILABLE"),
+    ("UNAVAILABLE", "BALANCE_UNAVAILABLE"),
+])
+def test_balance_probe_unavailable_never_zero(monkeypatch, state, reason):
+    report, _ = _probe_report(monkeypatch, provider_kw=dict(
+        state=state, reason=reason))
+    probe = report.balance_probe
+    assert probe.executed and not probe.available
+    assert probe.balance_raw_present is False   # never fabricated
+    assert probe.factual_zero is False          # failure is never zero
+    assert probe.observation_status == reason
+
+
+def test_balance_probe_wrong_chain_fails_closed(monkeypatch):
+    """A probe wallet whose evidence comes from a different chain never
+    becomes a number: the identity mismatch fails the diagnostic closed."""
+    from app.protocol.token_config import TokenConfig
+    double = _BalanceProviderDouble()
+
+    from app.protocol.token_config import TokenConfig
+
+    class _WrongChainProvider:
+        """Runtime-parity double: installed at the SAME seam the evaluator
+        uses (P4ReadOnlyBalanceProvider) and constructed with the SAME
+        chain-scoped TokenConfig."""
+
+        def __init__(self, config: TokenConfig):
+            double.configs.append(config)
+
+        async def balance_of(self, policy, wallet_address):
+            from app.verified.token_entitlement import (
+                BalanceEvidenceState, TokenBalanceEvidence,
+            )
+            return TokenBalanceEvidence(
+                chain_id=999, token_address=policy.token_address,
+                wallet_address=wallet_address, token_decimals=policy.token_decimals,
+                balance_raw=10 ** 12, observed_at=datetime.now(timezone.utc),
+                source="TEST_ONLY", state=BalanceEvidenceState.AVAILABLE)
+
+    monkeypatch.setattr(
+        "app.verified.token_entitlement.P4ReadOnlyBalanceProvider",
+        _WrongChainProvider)
+
+    report = asyncio.run(ar.assess_activation(
+        environ={**READY_ENV, **RPC}, approved=[approved()], probe=Probe(),
+        balance_probe_wallet=WALLET, balance_provider=None))
+    probe = report.balance_probe
+    assert probe.executed and not probe.available
+    assert probe.balance_raw_present is False
+    assert probe.observation_status == "BALANCE_IDENTITY_MISMATCH"
+
+
+def test_balance_probe_malformed_wallet_fails_clean(monkeypatch):
+    report, double = _probe_report(
+        monkeypatch, wallet="not-a-wallet")
+    probe = report.balance_probe
+    assert probe.requested and not probe.executed
+    assert probe.observation_status == "MALFORMED_PROBE_WALLET"
+    assert double.wallets == []                 # provider never reached
+
+
+def test_balance_probe_wallet_never_stored_or_bound(monkeypatch):
+    """The probe wallet is used transiently for the read only — it is never
+    bound to a FINCO user (wallet store unchanged)."""
+    from app.protocol.wallet_auth import get_verified_wallet
+    _probe_report(monkeypatch, wallet=WALLET)
+    assert get_verified_wallet("user-1") is None
+
+
+# ── runtime parity: same chain-scoped RPC as the evaluator ────────────────────
+
+def test_balance_probe_uses_exact_chain_scoped_rpc(monkeypatch):
+    """Runtime parity: the provider is constructed at the SAME factory seam
+    the evaluator uses and receives a TokenConfig bound to the chain-scoped
+    env value (FINCO_TOKEN_RPC_URL_<chain_id>), the exact approved chain,
+    contract and decimals — never the flat legacy URL."""
+    from app.verified.token_entitlement import (
+        BalanceEvidenceState, TokenBalanceEvidence,
+    )
+    configs = []
+
+    class _Factory:
+        def __new__(cls, config: TokenConfig):
+            configs.append(config)
+            provider = SimpleNamespace(balance_of=None)
+            async def balance_of(policy, wallet,
+                                 _c=config, _p=provider):
+                _p.evidence = TokenBalanceEvidence(
+                    chain_id=_c.chain_id, token_address=_c.token_address,
+                    wallet_address=wallet, token_decimals=_c.decimals_override,
+                    balance_raw=123 * 10 ** (_c.decimals_override or 18),
+                    observed_at=datetime.now(timezone.utc), source="TEST_ONLY",
+                    state=BalanceEvidenceState.AVAILABLE)
+                return _p.evidence
+            provider.balance_of = balance_of
+            return provider
+
+    monkeypatch.setattr(
+        "app.verified.token_entitlement.P4ReadOnlyBalanceProvider", _Factory)
+    report = asyncio.run(ar.assess_activation(
+        environ={**READY_ENV, **RPC,                      # chain-scoped only
+                 "FINCO_TOKEN_RPC_URL": "https://flat-legacy.invalid/not-the-gate"},
+        approved=[approved()], probe=Probe(),
+        balance_probe_wallet=WALLET, balance_provider=None))  # runtime path
+    assert report.status is S.READY_FOR_ACTIVATION
+    assert len(configs) == 1
+    config = configs[0]
+    assert isinstance(config, TokenConfig)
+    assert config.rpc_url == RPC[f"FINCO_TOKEN_RPC_URL_{CHAIN}"]
+    assert config.rpc_url != "https://flat-legacy.invalid/not-the-gate"
+    assert config.chain_id == CHAIN
+    assert config.token_address == TOKEN
+    assert config.decimals_override == DECIMALS
+    assert report.balance_probe.available
+    assert report.balance_probe.balance_raw_present
+
+
+def test_flat_rpc_cannot_substitute_for_chain_scoped(monkeypatch):
+    """Only FINCO_TOKEN_RPC_URL_<chain_id> is the runtime binding: with the
+    chain-scoped value absent the diagnostic fails closed (NO_RPC_FOR_CHAIN)
+    even when a flat legacy URL exists. The provider is never constructed."""
+    from app.verified.token_entitlement import P4ReadOnlyBalanceProvider
+    constructed = []
+
+    class _NeverConstructed:
+        def __new__(cls, config):
+            constructed.append(config)
+            return SimpleNamespace(balance_of=lambda *a: None)
+
+    monkeypatch.setattr(
+        "app.verified.token_entitlement.P4ReadOnlyBalanceProvider",
+        _NeverConstructed)
+    report = asyncio.run(ar.assess_activation(
+        environ={**FRESH, **THRESHOLD,                 # NO chain-scoped RPC
+                 "FINCO_TOKEN_RPC_URL": "https://flat-legacy.invalid/x"},
+        approved=[approved()], probe=Probe(),
+        balance_probe_wallet=WALLET, balance_provider=None))
+    probe = report.balance_probe
+    # honest typed state: the readiness assessment itself failed closed at
+    # deployment verification (NO_RPC_FOR_CHAIN), so the optional probe
+    # never ran — and the provider was never constructed
+    assert report.status is S.RPC_UNAVAILABLE
+    assert probe.executed is False
+    assert probe.observation_status == "DEPLOYMENT_NOT_VERIFIED"
+    assert constructed == []                 # provider never constructed
+
+
+def test_balance_probe_probes_the_selected_deployment_chain(monkeypatch):
+    """A resource policy with an explicit chain_id selects THAT approved
+    deployment: the probe binds to its chain, not another approved chain."""
+    other = approved(chain_id=OTHER_CHAIN, token_address=OTHER_TOKEN)
+    from app.verified.token_entitlement import (
+        BalanceEvidenceState, TokenBalanceEvidence,
+    )
+    configs = []
+
+    class _Factory:
+        def __new__(cls, config: TokenConfig):
+            configs.append(config)
+            provider = SimpleNamespace(balance_of=None)
+            async def balance_of(policy, wallet,
+                                 _c=config, _p=provider):
+                _p.evidence = TokenBalanceEvidence(
+                    chain_id=_c.chain_id, token_address=_c.token_address,
+                    wallet_address=wallet, token_decimals=_c.decimals_override,
+                    balance_raw=7 * 10 ** (_c.decimals_override or 18),
+                    observed_at=datetime.now(timezone.utc), source="TEST_ONLY",
+                    state=BalanceEvidenceState.AVAILABLE)
+                return _p.evidence
+            provider.balance_of = balance_of
+            return provider
+
+    monkeypatch.setattr(
+        "app.verified.token_entitlement.P4ReadOnlyBalanceProvider", _Factory)
+    env = {**READY_ENV,
+           f"FINCO_TOKEN_RPC_URL_{OTHER_CHAIN}": "https://rpc.other.invalid/k",
+           ep.POLICIES_ENV: json.dumps({HOLDER: {"enabled": True, "minimum_balance": "100",
+                                                 "chain_id": OTHER_CHAIN}})}
+    report = asyncio.run(ar.assess_activation(
+        environ=env, approved=[approved(), other],
+        probe=Probe(chain_id=OTHER_CHAIN, decimals=DECIMALS),
+        balance_probe_wallet=WALLET, balance_provider=None))  # runtime path
+    assert report.status is S.READY_FOR_ACTIVATION
+    assert len(configs) == 1
+    assert configs[0].chain_id == OTHER_CHAIN
+    assert configs[0].token_address == OTHER_TOKEN
+    assert configs[0].decimals_override == DECIMALS
+
+
+# ── AST safety: the probe adds no write RPC or signing ────────────────────────
+
+def test_balance_probe_uses_no_write_rpc_or_signing():
+    """No write/signing RPC constants anywhere in the readiness + balance
+    authority; the probe reuses the canonical provider (no reimplemented
+    ABI) by import."""
+    import ast
+    import inspect
+    from app.protocol import activation_readiness
+    from app.protocol import token_balance
+    readiness_constants = {node.value for node in ast.walk(
+        ast.parse(inspect.getsource(activation_readiness)))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    for write in ("eth_sendTransaction", "eth_sendRawTransaction",
+                  "eth_signTransaction", "personal_sign"):
+        assert write not in readiness_constants, write
+    balance_constants = {node.value for node in ast.walk(
+        ast.parse(inspect.getsource(token_balance)))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    for write in ("eth_sendTransaction", "eth_sendRawTransaction",
+                  "eth_signTransaction", "personal_sign"):
+        assert write not in balance_constants, write
+    assert "0x70a08231" in balance_constants    # balanceOf — read-only
+    # the probe reuses the canonical provider by import, no reimplemented ABI
+    source = inspect.getsource(activation_readiness)
+    assert "P4ReadOnlyBalanceProvider" in source
+    assert "_encode_balanceof" not in source   # balanceOf only via the provider
+
+
+# ── production truth / gate OFF unchanged by the enhancement ─────────────────
+
+def test_production_truth_unchanged_by_enhancement():
+    assert canon.APPROVED_FINCO_DEPLOYMENTS == ()
+    report = asyncio.run(ar.assess_activation(environ={}))
+    assert report.status is S.NOT_CONFIGURED
+    assert report.balance_probe is None         # not requested → unchanged
+    assert ep.load_policy_set({}).gating_enabled is False
+
+
+def test_runtime_evaluator_unchanged():
+    """Canonical runtime evaluator behaves exactly as before: an enabled
+    gated resource without a freshness window still fails closed with
+    TOKEN_CONFIGURATION_UNAVAILABLE through decide_resource_access."""
+    from app.protocol.entitlement_policy import AccessMode, PolicySet
+    policy = ep.EntitlementPolicy(
+        resource_key=HOLDER, access_mode=AccessMode.FINCO_HOLDER,
+        minimum_balance=Decimal(100), wallet_verified_required=True,
+        enabled=True, chain_id=CHAIN)
+    policy_set = PolicySet({HOLDER: policy}, gating_enabled=True)
+    deployment = approved()
+    resolution = SimpleNamespace(status=SimpleNamespace(value="RESOLVED"),
+                                 reason="", resolved=True,
+                                 deployment=deployment)
+    wallet = WalletContext(WALLET, True, "user-1")
+    verdict = evaluate_resource_access if False else None
+    from app.protocol.entitlement_evaluator import decide_resource_access
+    decision = decide_resource_access(
+        HOLDER, wallet, policy_set, resolution, None, freshness_seconds=None)
+    assert decision.decision is Decision.DENY
+    assert decision.reason_code == "TOKEN_CONFIGURATION_UNAVAILABLE"
