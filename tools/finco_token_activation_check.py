@@ -15,9 +15,16 @@ from app.protocol.activation_readiness import ActivationStatus, assess_activatio
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate", help="JSON file with a PROPOSED deployment (validated, never authoritative)")
+    parser.add_argument("--balance-probe-wallet",
+                        help="OPTIONAL exact EVM address (0x + 40 hex): run ONE read-only "
+                             "balanceOf diagnostic against the approved deployment over the "
+                             "same chain-scoped RPC the runtime evaluator uses. Read-only; "
+                             "proves observation authority only, never wallet ownership. "
+                             "Without this flag readiness behaviour is unchanged.")
     args = parser.parse_args(argv)
     candidate = json.loads(Path(args.candidate).read_text()) if args.candidate else None
-    report = asyncio.run(assess_activation(candidate=candidate))
+    report = asyncio.run(assess_activation(
+        candidate=candidate, balance_probe_wallet=args.balance_probe_wallet))
     print(json.dumps(report.public_view(), indent=2, sort_keys=True))
     return 0 if report.status in (ActivationStatus.READY_FOR_ACTIVATION, ActivationStatus.ACTIVE) else 1
 

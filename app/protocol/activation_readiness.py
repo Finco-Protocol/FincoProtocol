@@ -207,6 +207,30 @@ class ActivationCheck:
 
 
 @dataclass(frozen=True)
+class BalanceProbeCheck:
+    """OPTIONAL read-only balance-authority diagnostic result.
+
+    Proves ONLY that the configured read-only balance authority can execute
+    ``balanceOf`` against the exact approved deployment over the SAME
+    chain-scoped RPC the runtime evaluator consumes.  It never asserts
+    wallet ownership and never affects the activation status.
+
+    MISSING ≠ ZERO: ``balance_raw_present`` is True only when a successful
+    chain read returned a raw balance (an explicit zero included);
+    ``factual_zero`` is True only for such an observed zero.  Any RPC /
+    contract / identity failure is a typed unavailable state with no number.
+    """
+
+    requested: bool
+    executed: bool
+    available: bool
+    balance_raw_present: bool
+    factual_zero: bool
+    observation_status: str
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class ActivationReport:
     status: ActivationStatus
     checks: tuple[ActivationCheck, ...]
@@ -216,18 +240,25 @@ class ActivationReport:
     active_resources: tuple[str, ...] = ()       # ONLY when ACTIVE: resources that are on and runtime-operable
     activation_targets: tuple[str, ...] = ()     # validated resources that WOULD be active once gating is on
     reason: str = ""
+    balance_probe: BalanceProbeCheck | None = None   # additive; None = not requested
 
     @property
     def ready_or_active(self) -> bool:
         return self.status in (ActivationStatus.READY_FOR_ACTIVATION, ActivationStatus.ACTIVE)
 
     def public_view(self) -> dict:
-        """Safe to log or print: no RPC URL, no secret."""
-        return {"status": self.status.value, "reason": self.reason, "chain_id": self.chain_id,
+        """Safe to log or print: no RPC URL, no secret, no probe wallet."""
+        view = {"status": self.status.value, "reason": self.reason, "chain_id": self.chain_id,
                 "contract_address": self.contract_address, "issues": [i.value for i in self.issues],
                 "active_resources": list(self.active_resources),
                 "activation_targets": list(self.activation_targets),
                 "checks": [{"name": c.name, "passed": c.passed, "detail": c.detail} for c in self.checks]}
+        if self.balance_probe is not None:
+            from dataclasses import asdict
+            probe = asdict(self.balance_probe)
+            probe.pop("wallet_address", None)    # never printed
+            view["balance_probe"] = probe
+        return view
 
 
 _CHECK_NAMES = ("deployment_approved", "deployment_valid", "rpc_configured", "chain_verified",
@@ -288,6 +319,113 @@ async def _verify_deployment(deployment, env: Mapping[str, str], probe: ChainPro
 
 
 async def assess_activation(
+    *,
+    environ: Mapping[str, str] | None = None,
+    approved: Iterable | None = None,
+    candidate: Any = None,
+    probe: ChainProbe | None = None,
+    policy_set: PolicySet | None = None,
+    balance_probe_wallet: str | None = None,
+    balance_provider: Any = None,
+) -> ActivationReport:
+    """Deterministic, read-only readiness assessment. Fails closed at the first unmet requirement.
+
+    ``balance_probe_wallet`` (optional): when supplied with an exact EVM
+    address, ONE additional read-only ``balanceOf`` diagnostic runs against
+    the exact approved deployment over the SAME chain-scoped RPC the runtime
+    evaluator consumes — using the existing
+    ``app.verified.token_entitlement.P4ReadOnlyBalanceProvider``.  It is
+    additive evidence only: it never changes the ActivationStatus, never
+    asserts wallet ownership, and MISSING/UNAVAILABLE is never a zero.
+    """
+    report = await _assess_activation_inner(
+        environ=environ, approved=approved, candidate=candidate, probe=probe,
+        policy_set=policy_set)
+    if balance_probe_wallet is None:
+        return report
+    return await _attach_balance_probe(
+        report, balance_probe_wallet,
+        os.environ if environ is None else environ,
+        approved=None if approved is None else tuple(approved),
+        provider=balance_provider)
+
+
+async def _attach_balance_probe(
+    report: ActivationReport, wallet: str, env: Mapping[str, str],
+    approved: tuple | None, provider: Any,
+) -> ActivationReport:
+    """Attach the optional balance diagnostic WITHOUT changing the status."""
+    from dataclasses import replace
+    from app.protocol.token_config import _validate_hex_address
+
+    def _check(executed: bool, available: bool, raw_present: bool,
+               factual_zero: bool, status: str, detail: str = ""):
+        return replace(report, balance_probe=BalanceProbeCheck(
+            requested=True, executed=executed, available=available,
+            balance_raw_present=raw_present, factual_zero=factual_zero,
+            observation_status=status, detail=detail))
+
+    address = _validate_hex_address(wallet)
+    if address is None:
+        return _check(False, False, False, False, "MALFORMED_PROBE_WALLET",
+                      "probe wallet must be an exact 0x + 40-hex address")
+    if report.status not in (ActivationStatus.READY_FOR_ACTIVATION,
+                             ActivationStatus.ACTIVE,
+                             ActivationStatus.ACTIVATION_INCOMPLETE):
+        return _check(False, False, False, False, "DEPLOYMENT_NOT_VERIFIED",
+                      "deployment verification did not complete")
+
+    deployment = None
+    for entry in (approved if approved is not None else approved_deployments()):
+        if (entry.chain_id, entry.token_address) == (report.chain_id,
+                                                     report.contract_address):
+            deployment = entry
+            break
+    if deployment is None:
+        return _check(False, False, False, False, "DEPLOYMENT_NOT_VERIFIED",
+                      "approved deployment for the verified identity not found")
+    rpc_url = (env.get(f"{RPC_ENV_PREFIX}{deployment.chain_id}") or "").strip()
+    if not rpc_url:
+        return _check(False, False, False, False, "NO_RPC_FOR_CHAIN",
+                      "chain-scoped RPC not configured")
+
+    from decimal import Decimal
+    from app.protocol.token_config import TokenConfig
+    from app.verified.token_entitlement import P4ReadOnlyBalanceProvider
+    # Runtime parity: the SAME chain-scoped rpc_url, contract, decimals and
+    # P4 read-only provider the entitlement evaluator's default provider
+    # uses (mirror of entitlement_evaluator._default_provider).
+    config = TokenConfig(rpc_url=rpc_url, chain_id=deployment.chain_id,
+                         token_address=deployment.token_address,
+                         min_balance=Decimal(1),
+                         decimals_override=deployment.decimals)
+    from app.verified.token_entitlement import FincoEntitlementPolicy
+    token_policy = FincoEntitlementPolicy(
+        chain_id=deployment.chain_id, token_address=deployment.token_address,
+        token_decimals=deployment.decimals, minimum_balance_raw=1,
+        freshness_seconds=1, provenance=deployment.provenance)
+    try:
+        active_provider = provider or P4ReadOnlyBalanceProvider(config)
+        evidence = await active_provider.balance_of(token_policy, address)
+    except Exception:
+        return _check(True, False, False, False, "BALANCE_UNAVAILABLE",
+                      "balance observation raised")
+    # Identity fail-closed: evidence from another chain/contract/wallet is a
+    # typed mismatch, never a balance (same rule as the canonical evaluator).
+    if (getattr(evidence, "chain_id", None) != deployment.chain_id
+            or getattr(evidence, "token_address", None) != deployment.token_address
+            or getattr(evidence, "wallet_address", None) != address):
+        return _check(True, False, False, False, "BALANCE_IDENTITY_MISMATCH",
+                      "evidence identity differs from the approved deployment")
+    if evidence.state.value == "AVAILABLE" and evidence.balance_raw is not None:
+        return _check(True, True, True, evidence.balance_raw == 0,
+                      "BALANCE_OBSERVED",
+                      f"raw balance observed on chain {deployment.chain_id}")
+    return _check(True, False, False, False,
+                  evidence.reason or evidence.state.value)
+
+
+async def _assess_activation_inner(
     *,
     environ: Mapping[str, str] | None = None,
     approved: Iterable | None = None,
