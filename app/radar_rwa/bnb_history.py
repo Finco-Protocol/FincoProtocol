@@ -134,6 +134,206 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
             "last_available": last_available}
 
 
+
+def _history_collection_datetime(point: dict) -> datetime | None:
+    """Return source acquisition time only; never synthesize a history clock."""
+    raw = point.get("collected_at")
+    if not isinstance(raw, str):
+        reference = point.get("independent_token_reference")
+        evidence = reference.get("evidence") if isinstance(reference, dict) else None
+        raw = _source_collection_time(evidence) if isinstance(evidence, dict) else None
+    if not isinstance(raw, str):
+        return None
+    try:
+        value = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return None
+    return value.astimezone(timezone.utc)
+
+
+def _verified_basis_history_point(row, uid: str, key: AssetKey) -> dict | None:
+    """Digest-check and exact-bind one existing B1.3 history row."""
+    if row is None:
+        return None
+    digest, payload = row
+    if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
+        raise ValueError("history digest does not reconstruct")
+    try:
+        point = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("history payload is invalid JSON") from exc
+    try:
+        point_uid = normalize_asset_uid(point.get("economic_asset_uid"))
+    except (TypeError, ValueError):
+        return None
+    if point_uid != uid or point.get("asset_key") != key.canonical_id:
+        return None
+    if point.get("state") != "AVAILABLE":
+        return None
+    try:
+        premium = Decimal(str(point["reference_premium_bps"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation):
+        return None
+    if not premium.is_finite():
+        return None
+    collected = _history_collection_datetime(point)
+    if collected is None:
+        return None
+    basis = point.get("robinhood_basis")
+    reference = point.get("independent_token_reference")
+    if not isinstance(basis, dict) or not isinstance(reference, dict):
+        return None
+
+    liquidity = None
+    evidence = reference.get("evidence")
+    if isinstance(evidence, dict):
+        try:
+            raw_liquidity = Decimal(str(evidence.get("liquidity")))
+        except (InvalidOperation, TypeError, ValueError):
+            raw_liquidity = None
+        if raw_liquidity is not None and raw_liquidity.is_finite() and raw_liquidity >= 0:
+            liquidity = {
+                "value": str(raw_liquidity),
+                "unit": "UNISWAP_V3_ACTIVE_LIQUIDITY_RAW",
+                "source": "UNISWAP_V3_POOL_STATE",
+            }
+
+    return {
+        "collected_at": collected.isoformat(),
+        "effective_evidence_at": point.get("observed_at"),
+        "basis_price_usd_per_token": basis.get("price_usd_per_token"),
+        "token_price_usd_per_token": reference.get("priceUsdPerToken"),
+        "premium_bps": str(premium),
+        "liquidity": liquidity,
+        "_premium": premium,
+        "_collected": collected,
+    }
+
+
+def read_r_live_basis_history_summary_readonly(
+    uid: str,
+    key: AssetKey,
+    *,
+    as_of: datetime | None = None,
+    max_24h_baseline_skew_seconds: int,
+    path: str | None = None,
+) -> dict:
+    """Derived exact-history view over the existing B1.3 ledger.
+
+    No interpolation or synthetic backfill is permitted. 24h change exists
+    only when the latest exact observation is current to the requested clock
+    and an exact observation exists inside the caller-supplied window around
+    T-24h. The actual observation gap is always exposed.
+    """
+    if key.chain_id != 4663:
+        raise ValueError("exact Robinhood key required")
+    if max_24h_baseline_skew_seconds <= 0:
+        raise ValueError("positive 24h baseline skew required")
+    identity = normalize_asset_uid(uid)
+    now = as_of or datetime.now(timezone.utc)
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("history summary clock must be timezone-aware")
+    now = now.astimezone(timezone.utc)
+    ranges = read_r_live_range_summary_readonly(identity, key, as_of=now, path=path)
+    result = {
+        "latest_observation": None,
+        "prior_observation": None,
+        "range_24h": ranges["range_24h"],
+        "change_24h": {
+            "state": "UNAVAILABLE",
+            "change_bps": None,
+            "latest_collected_at": None,
+            "baseline_collected_at": None,
+            "observation_gap_seconds": None,
+            "reason": "HISTORY_POINTS_UNAVAILABLE",
+        },
+        "interpolation": False,
+    }
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:" or not Path(location).is_file():
+        return result
+
+    target = now - timedelta(hours=24)
+    tolerance = timedelta(seconds=max_24h_baseline_skew_seconds)
+    clock_sql = (
+        "COALESCE(json_extract(payload, '$.collected_at'), "
+        "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'))"
+    )
+    uri = Path(location).resolve().as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True, timeout=5) as conn:
+        latest_rows = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            f"AND {clock_sql} IS NOT NULL AND {clock_sql} <= ? "
+            f"ORDER BY {clock_sql} DESC, digest DESC LIMIT 2",
+            (identity, key.canonical_id, now.isoformat()),
+        ).fetchall()
+        before = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            f"AND {clock_sql} >= ? AND {clock_sql} <= ? "
+            f"ORDER BY {clock_sql} DESC, digest DESC LIMIT 1",
+            (identity, key.canonical_id, (target - tolerance).isoformat(), target.isoformat()),
+        ).fetchone()
+        after = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            f"AND {clock_sql} >= ? AND {clock_sql} <= ? "
+            f"ORDER BY {clock_sql} ASC, digest ASC LIMIT 1",
+            (identity, key.canonical_id, target.isoformat(), (target + tolerance).isoformat()),
+        ).fetchone()
+
+    latest = _verified_basis_history_point(latest_rows[0], identity, key) if latest_rows else None
+    prior = _verified_basis_history_point(latest_rows[1], identity, key) if len(latest_rows) > 1 else None
+    if latest is not None:
+        result["latest_observation"] = {
+            key_name: value for key_name, value in latest.items() if not key_name.startswith("_")
+        }
+    if prior is not None:
+        result["prior_observation"] = {
+            key_name: value for key_name, value in prior.items() if not key_name.startswith("_")
+        }
+    if latest is None:
+        return result
+
+    latest_age = (now - latest["_collected"]).total_seconds()
+    if latest_age < 0 or latest_age > max_24h_baseline_skew_seconds:
+        result["change_24h"]["reason"] = "LATEST_HISTORY_POINT_OUTSIDE_CURRENT_WINDOW"
+        return result
+
+    candidates = []
+    for candidate_row in (before, after):
+        candidate = _verified_basis_history_point(candidate_row, identity, key)
+        if candidate is not None:
+            candidates.append(candidate)
+    if not candidates:
+        result["change_24h"]["reason"] = "EXACT_24H_BASELINE_UNAVAILABLE"
+        return result
+    baseline = min(candidates, key=lambda item: abs((item["_collected"] - target).total_seconds()))
+    target_skew = abs((baseline["_collected"] - target).total_seconds())
+    if target_skew > max_24h_baseline_skew_seconds:
+        result["change_24h"]["reason"] = "EXACT_24H_BASELINE_OUTSIDE_WINDOW"
+        return result
+
+    change = latest["_premium"] - baseline["_premium"]
+    result["change_24h"] = {
+        "state": "AVAILABLE",
+        "change_bps": str(change),
+        "latest_collected_at": latest["collected_at"],
+        "baseline_collected_at": baseline["collected_at"],
+        "observation_gap_seconds": int(
+            abs((latest["_collected"] - baseline["_collected"]).total_seconds())
+        ),
+        "reason": None,
+    }
+    return result
+
+
 def read_r_live_points_readonly(uid: str, key: AssetKey, *, limit: int = 30,
                                 path: str | None = None) -> list[dict]:
     """Read an existing B1.3 ledger without creating files, schema or a writer."""

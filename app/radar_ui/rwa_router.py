@@ -24,6 +24,35 @@ _rwa_service = RwaDashboardService()
 _bnb_service = BnbRwaDashboardService()
 
 
+
+@router.get("/radar/crypto/rwa/basis", response_class=HTMLResponse)
+async def radar_crypto_rwa_basis(request: Request):
+    """Network-free RWA Basis product view over canonical snapshot/history."""
+    try:
+        from app.radar_rwa.rwa_basis import build_rwa_basis_monitor
+        monitor = await run_in_threadpool(build_rwa_basis_monitor)
+    except Exception:
+        monitor = {
+            "schema_version": "finco-rwa-basis-v1",
+            "state": "UNAVAILABLE",
+            "evaluation_time": datetime.now(timezone.utc).isoformat(),
+            "records": [],
+        }
+    from app.auth import resolve_request_session
+    user = resolve_request_session(request)
+    return _templates.TemplateResponse(
+        request=request,
+        name="radar/rwa_basis.html",
+        context={
+            "monitor": monitor,
+            "radar_domain": "crypto",
+            "crypto_section": "rwa",
+            "user": user,
+        },
+        status_code=200,
+    )
+
+
 @router.get("/radar/crypto/rwa/r-live/aapl/snapshot")
 async def radar_r_live_aapl_snapshot(request: Request = None):  # type: ignore[assignment]
     """Read-only exact AAPL reference; never infer an RPC endpoint or pool."""
