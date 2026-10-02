@@ -6,7 +6,13 @@ from dataclasses import dataclass, replace
 import math
 from numbers import Real
 
-from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
+from finco_core.inputs import (
+    DebtSizingMode,
+    GearingBasisMode,
+    GearingCapRepaymentMethod,
+    ProjectInputs,
+    SponsorFundingMode,
+)
 from finco_core._numeric import require_finite_real
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
@@ -1007,6 +1013,19 @@ def run_project_financing_model(
     derived_shl = candidate_shl
     additional_equity = 0.0  # derived residual; overwritten each iteration by reconcile_financing_stack
     for iteration in range(1, maximum_iterations + 1):
+        # The capacity pass is a DSCR-ONLY capacity calculation (no gearing basis).
+        # For canonical M6 GEARING_CAP the project-owned invariant
+        # (GEARING_CAP => TOTAL_PROJECT_USES, non-default repayment => GEARING_CAP)
+        # must hold for every FinancingParams, so this internal pass is expressed
+        # as the semantically valid DSCR-only configuration instead of an invalid
+        # GEARING_CAP copy with its basis removed. Its result stays a diagnostic
+        # for GEARING_CAP: it never sizes M6 debt (see ``expected_final_senior``).
+        _capacity_mode_overrides: dict = {}
+        if fin.debt_sizing_mode == DebtSizingMode.GEARING_CAP:
+            _capacity_mode_overrides = {
+                "debt_sizing_mode": DebtSizingMode.FLAT_DSCR_SCULPTED,
+                "gearing_cap_repayment_method": GearingCapRepaymentMethod.LEVEL_PRINCIPAL,
+            }
         capacity_inputs = replace(
             project_inputs,
             financing=replace(
@@ -1014,6 +1033,7 @@ def run_project_financing_model(
                 clean_shl_principal_keur=candidate_shl,
                 sponsor_funding_mode=None,
                 gearing_basis_mode=None,
+                **_capacity_mode_overrides,
             ),
         )
         # Fix 3: compute timing-resolved construction draw schedule for this candidate_shl.
@@ -1158,7 +1178,12 @@ def run_project_financing_model(
         if capacity_result.senior_debt is None:
             raise RuntimeError("G2A DSCR capacity result is unavailable")
         authoritative_dscr_capacity = capacity_result.senior_debt.debt_size_keur
-        expected_final_senior = min(authoritative_dscr_capacity, gearing_capacity)
+        if fin.debt_sizing_mode == DebtSizingMode.GEARING_CAP:
+            # M6: debt = eligible project cost x maximum gearing. DSCR capacity is
+            # informational only; DSCR_SCULPTED repayment never resizes the debt.
+            expected_final_senior = gearing_capacity
+        else:
+            expected_final_senior = min(authoritative_dscr_capacity, gearing_capacity)
 
         funded_inputs = replace(
             project_inputs,
