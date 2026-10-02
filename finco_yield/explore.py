@@ -8,6 +8,22 @@ from .registry import YieldRegistry
 from .snapshot import displayed_freshness
 from .underwriting import decompose, run_scenario
 
+# Exposed category filters (canonical, exact — an unknown value is a filter
+# error, never a silent match-everything no-op).
+CATEGORY_FILTERS: tuple[str, ...] = ("stablecoin", "major")
+
+# Evidence filters (exact canonical evidence states).
+EVIDENCE_FILTERS: tuple[str, ...] = (
+    "NATIVE_ENRICHED", "DIRECT_ONCHAIN", "THIRD_PARTY_REFERENCE",
+)
+
+# Chain filter choices exposed by the Explore control bar.
+CHAIN_FILTERS: tuple[tuple[int, str], ...] = (
+    (1, "Ethereum"),
+    (8453, "Base"),
+)
+
+
 @dataclass(frozen=True)
 class ExploreFilters:
     chain_id:int|None=None
@@ -27,6 +43,19 @@ def _asset_category(symbol:str,category:str|None)->bool:
     return sym in (stable if category=="stablecoin" else major if category=="major" else {sym})
 
 def explore(registry:YieldRegistry,*,filters:ExploreFilters|None=None,history_days_by_uid:dict[str,int]|None=None):
+    """Deterministic server-side filtering against the ACTIVE canonical registry.
+
+    Semantics (manual-QA staging correction):
+    - protocol/asset compare case-insensitively and ignore surrounding
+      whitespace (product UX only — identity stays the canonical uid);
+    - min TVL: a row with UNAVAILABLE TVL never matches (unavailable is
+      never treated as zero and never passes a threshold);
+    - min history days: canonical history coverage, missing coverage = 0;
+    - max reward dependency: strict — a row whose reward dependency is
+      UNAVAILABLE does not match a max-dependency bound (unknown cannot
+      satisfy a bound).  The Explore UI states this explicitly.
+    - evidence: exact canonical evidence state.
+    """
     filters=filters or ExploreFilters(); history_days_by_uid=history_days_by_uid or {}; rows=[]
     for o in registry.all():
         if filters.chain_id is not None and o.chain_id!=filters.chain_id: continue

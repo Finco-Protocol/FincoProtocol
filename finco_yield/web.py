@@ -27,12 +27,23 @@ from .execution import (
     build_pre_trade_evidence,
     validate_quote,
 )
-from .explore import ExploreFilters, compare, explore
+from .explore import (
+    CATEGORY_FILTERS,
+    CHAIN_FILTERS,
+    EVIDENCE_FILTERS,
+    ExploreFilters,
+    compare,
+    explore,
+)
 from .flags import execution_enabled, yield_enabled
 from .freshness import evaluate_freshness
 from .history import YieldHistoryStore, history_window_summary
 from .intelligence import IntelligenceStatus, build_intelligence
-from .monitor import detect_positions
+import logging
+import sqlite3
+
+from .monitor import detect_positions, detect_positions_scan
+from .observation import DATA_ORIGIN_SOURCE_OBSERVED
 from .onchain import OnchainReadError, read_allowance, read_erc4626, rpc_url_for_chain
 from .registry import RegistryError, load_bundled_registry
 from .snapshot import (
@@ -216,15 +227,6 @@ def _chain(chain_id: int) -> str:
     return {1: "Ethereum", 8453: "Base", 4663: "Robinhood"}.get(chain_id, str(chain_id))
 
 
-def _d(value):
-    if value in (None, ""):
-        return None
-    try:
-        return Decimal(str(value))
-    except InvalidOperation as exc:
-        raise HTTPException(400, "Invalid decimal filter") from exc
-
-
 def _allowed_source_domains() -> frozenset[str]:
     raw = os.getenv("FINCO_YIELD_SOURCE_DOMAINS", "app.morpho.org")
     return frozenset(domain.strip().lower() for domain in raw.split(",") if domain.strip())
@@ -246,15 +248,90 @@ def _safe_external_href(value: str | None) -> str | None:
     return value
 
 
+class FilterError(ValueError):
+    """Typed invalid-filter failure (code + message, HTTP 400 at the route)."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"{code}: {message}")
+
+
+def _filter_int(value, name: str) -> int | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise FilterError("FILTER_INVALID_INTEGER", f"{name} must be a whole number")
+
+
+def _filter_decimal(value, name: str, *, minimum: Decimal | None = None) -> Decimal | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = Decimal(raw)
+    except InvalidOperation:
+        raise FilterError("FILTER_INVALID_NUMBER", f"{name} must be a number")
+    if minimum is not None and parsed < minimum:
+        raise FilterError(
+            "FILTER_OUT_OF_RANGE", f"{name} must be at least {minimum}")
+    return parsed
+
+
+def _filter_choice(value, name: str, choices) -> str | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if raw not in choices:
+        raise FilterError(
+            "FILTER_UNKNOWN_VALUE", f"{name} must be one of: {', '.join(choices)}")
+    return raw
+
+
+def _parse_explore_filters(
+    chain_id, protocol, asset, category, min_tvl,
+    min_history_days, max_reward_dependency, evidence,
+):
+    """Typed parse of the GET filter string. Raises FilterError (400)."""
+    chain_values = {str(cid) for cid, _ in CHAIN_FILTERS}
+    chain_raw = (chain_id or "").strip()
+    parsed_chain = None
+    if chain_raw:
+        if chain_raw not in chain_values:
+            raise FilterError(
+                "FILTER_UNKNOWN_CHAIN",
+                "Chain must be one of: " + ", ".join(sorted(chain_values)))
+        parsed_chain = int(chain_raw)
+    parsed_category = _filter_choice(
+        category, "Category", CATEGORY_FILTERS)
+    parsed_evidence = _filter_choice(
+        evidence, "Evidence", EVIDENCE_FILTERS)
+    parsed_min_tvl = _filter_decimal(min_tvl, "Min TVL", minimum=Decimal(0))
+    parsed_min_history = _filter_int(min_history_days, "Min history days")
+    if parsed_min_history is not None and parsed_min_history < 0:
+        raise FilterError(
+            "FILTER_OUT_OF_RANGE", "Min history days cannot be negative")
+    parsed_max_reward = _filter_decimal(
+        max_reward_dependency, "Max reward dependency", minimum=Decimal(0))
+    parsed_protocol = (protocol or "").strip()
+    parsed_asset = (asset or "").strip()
+    return (parsed_chain, parsed_protocol, parsed_asset, parsed_category,
+            parsed_min_tvl, parsed_min_history, parsed_max_reward,
+            parsed_evidence)
+
+
 @router.get("", response_class=HTMLResponse)
 async def yield_explore(
     request: Request,
-    chain_id: int | None = None,
+    chain_id: str | None = None,
     protocol: str | None = None,
     asset: str | None = None,
     category: str | None = None,
     min_tvl: str | None = None,
-    min_history_days: int | None = None,
+    min_history_days: str | None = None,
     max_reward_dependency: str | None = None,
     evidence: str | None = None,
 ):
@@ -263,6 +340,24 @@ async def yield_explore(
             request=request,
             name="yield/disabled.html",
             context={"user": _request_user(request)},
+        )
+
+    try:
+        (parsed_chain, parsed_protocol, parsed_asset, parsed_category,
+         parsed_min_tvl, parsed_min_history, parsed_max_reward,
+         parsed_evidence) = _parse_explore_filters(
+            chain_id, protocol, asset, category, min_tvl,
+            min_history_days, max_reward_dependency, evidence)
+    except FilterError as exc:
+        return _templates.TemplateResponse(
+            request=request,
+            name="yield/filter_error.html",
+            context={
+                "user": _request_user(request),
+                "error_code": exc.code,
+                "error_message": exc.message,
+            },
+            status_code=400,
         )
 
     registry, source_status = _active()
@@ -278,21 +373,22 @@ async def yield_explore(
     rows = explore(
         registry,
         filters=ExploreFilters(
-            chain_id,
-            protocol,
-            asset,
-            category,
-            _d(min_tvl),
-            min_history_days,
-            _d(max_reward_dependency),
+            parsed_chain,
+            parsed_protocol,
+            parsed_asset,
+            parsed_category,
+            parsed_min_tvl,
+            parsed_min_history,
+            parsed_max_reward,
             None,
-            evidence,
+            parsed_evidence,
         ),
         history_days_by_uid=history_days,
     )
 
     view_rows = []
     for opportunity in rows:
+        is_live = opportunity.data_origin == DATA_ORIGIN_SOURCE_OBSERVED
         view_rows.append({
             "uid": opportunity.uid,
             "name": opportunity.name,
@@ -309,6 +405,8 @@ async def yield_explore(
                 opportunity, evaluate_freshness(_source(opportunity)).state),
             "last_observed": _last_observed_label(opportunity.observed_at),
             "origin": origin_label(opportunity),
+            "is_live": is_live,
+            "origin_class": "LIVE" if is_live else "REFERENCE",
             "provider": opportunity.provider or "—",
             "support_state": opportunity.support_state.value,
         })
@@ -331,8 +429,11 @@ async def yield_explore(
             "user": user,
             "csrf_token": generate_csrf_token(),
             "source_status": source_status,
+            "result_count": len(view_rows),
+            "chain_choices": CHAIN_FILTERS,
+            "evidence_choices": EVIDENCE_FILTERS,
             "filters": {
-                "chain_id": chain_id,
+                "chain_id": chain_id or "",
                 "protocol": protocol or "",
                 "asset": asset or "",
                 "category": category or "",
@@ -388,48 +489,159 @@ def _request_user(request: Request):
 
 
 def _wallet_state_for_request(request: Request) -> str:
-    """Wallet presentation state from the existing session/wallet authority."""
+    """Wallet presentation state; a wallet-store outage is typed UNAVAILABLE."""
     from app.crypto_access import get_wallet_state
     user = _request_user(request)
-    state, _ = get_wallet_state(user.user_id if user else None)
+    try:
+        state, _ = get_wallet_state(user.user_id if user else None)
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _log_authority_unavailable("wallet_store", exc)
+        return "UNAVAILABLE"
     return state
 
 
 async def _resource_decisions_for_request(request: Request):
-    """Agent D wiring: session -> canonical Agent A wallet -> all decisions."""
-    from app.protocol.entitlement_evaluator import evaluate_all_resources, wallet_context_for_session
+    """Agent D wiring: session -> canonical Agent A wallet -> all decisions.
+
+    Typed fail-soft: an outage of the wallet store or the evaluator renders
+    typed unavailable decisions instead of an unhandled 500.  Entitlement
+    state stays independent of position detection and vice versa.
+    """
+    from app.protocol.entitlement_evaluator import (
+        evaluate_all_resources,
+        wallet_context_for_session,
+    )
     session = _request_user(request)
-    wallet = wallet_context_for_session(session)
-    return await evaluate_all_resources(wallet)
+    try:
+        wallet = wallet_context_for_session(session)
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _log_authority_unavailable("wallet_store", exc)
+        return {}
+    try:
+        return dict(await evaluate_all_resources(wallet))
+    except Exception as exc:  # noqa: BLE001 - optional authority, fail soft
+        _log_authority_unavailable("entitlement_evaluator", exc)
+        return {}
+
+
+async def _decisions_fail_soft(wallet):
+    """Agent A decisions; an evaluator outage renders typed unavailable rows.
+
+    Entitlement state stays INDEPENDENT of wallet position detection: an
+    evaluator failure never becomes a position or balance claim, and a scan
+    failure never becomes an entitlement claim.
+    """
+    from app.protocol.entitlement_evaluator import evaluate_all_resources
+    try:
+        return dict(await evaluate_all_resources(wallet))
+    except Exception as exc:  # noqa: BLE001 - optional authority, fail soft
+        _log_authority_unavailable("entitlement_evaluator", exc)
+        return {}
+
+
+def _wallet_context_fail_soft(user):
+    """Canonical wallet context; a wallet-store outage is typed UNAVAILABLE."""
+    from app.protocol.entitlement_evaluator import wallet_context_for_session
+    try:
+        return wallet_context_for_session(user), None
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _log_authority_unavailable("wallet_store", exc)
+        return None, "WALLET_STORE_UNAVAILABLE"
+
+
+def _verified_wallet_fail_soft(user_id):
+    """Wallet-store read for the monitor; outage is typed, never a crash."""
+    from app.protocol.wallet_auth import get_verified_wallet
+    try:
+        return get_verified_wallet(user_id), None
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _log_authority_unavailable("wallet_store", exc)
+        return None, "WALLET_STORE_UNAVAILABLE"
+
+
+def _log_authority_unavailable(authority: str, exc: Exception) -> None:
+    """Single audit point for optional-authority degradation (no secrets)."""
+    logging.getLogger("finco.yield").warning(
+        "YIELD_AUTHORITY_UNAVAILABLE authority=%s error=%s:%s",
+        authority, type(exc).__name__, exc,
+    )
+
+
+def _position_scan_view(scan) -> tuple[list[dict], str | None]:
+    """Presentation rows + one typed unavailable reason (or None).
+
+    Facts: only a factual on-chain scan supports an empty-positions state.
+    Unavailable RPC/config/identity chains yield a typed reason and the UI
+    never presents that as a factual zero.
+    """
+    from .monitor import (
+        SCAN_RPC_NOT_CONFIGURED,
+        SCAN_RPC_UNAVAILABLE,
+        SCAN_WALLET_ADDRESS_INVALID,
+    )
+
+    positions_view = []
+    for position in scan.positions:
+        positions_view.append({
+            "name": position.name,
+            "chain": _chain(position.chain_id),
+            "balance": str(position.balance),
+            "observed_apy": _pct(position.observed_apy),
+            "exit_state": position.exit_state,
+            "evidence_freshness": position.evidence_freshness,
+        })
+
+    reasons = scan.unavailable_reasons
+    if not reasons:
+        return positions_view, None
+    if reasons == (SCAN_WALLET_ADDRESS_INVALID,):
+        return positions_view, "POSITIONS_UNAVAILABLE_WALLET_IDENTITY"
+    if SCAN_RPC_UNAVAILABLE in reasons:
+        return positions_view, "POSITIONS_UNAVAILABLE_RPC"
+    return positions_view, "POSITIONS_UNAVAILABLE_NOT_CONFIGURED"
 
 
 @router.get("/monitor", response_class=HTMLResponse)
 async def yield_monitor(request: Request):
-    """Existing read-only Wallet Monitor. It is NOT yield.alerts."""
+    """Read-only Wallet Monitor. It is NOT yield.alerts.
+
+    Every optional authority (wallet store, position scan, entitlement
+    decisions, watchlist) degrades to a typed product state - an expected
+    external/provider failure never becomes an unhandled 500 and never
+    becomes a fabricated zero.  Unexpected programming errors still
+    propagate and fail visibly in logs.
+    """
     _require()
-    from app.protocol.wallet_auth import get_verified_wallet
+    from app.auth import generate_csrf_token
+    from app.crypto_access import build_crypto_access_snapshot, get_wallet_state
+    from finco_yield.watchlist import list_watchlist_items
 
     user = _request_user(request)
     if not user:
         return RedirectResponse("/login", 302)
 
-    wallet = get_verified_wallet(user.user_id)
-    positions_view = []
-    if wallet:
-        positions = await detect_positions(
-            _active()[0],
-            wallet_address=wallet["wallet_address"],
-        )
-        for position in positions:
-            positions_view.append({
-                "name": position.name,
-                "balance": str(position.balance),
-                "observed_apy": _pct(position.observed_apy),
-                "exit_state": position.exit_state,
-                "evidence_freshness": position.evidence_freshness,
-            })
+    wallet, wallet_error = _verified_wallet_fail_soft(user.user_id)
 
-    if not wallet:
+    positions_view: list[dict] = []
+    positions_error: str | None = None
+    if wallet:
+        try:
+            scan = await detect_positions_scan(
+                _active()[0],
+                wallet_address=wallet["wallet_address"],
+            )
+            positions_view, positions_error = _position_scan_view(scan)
+        except OnchainReadError as exc:
+            _log_authority_unavailable("position_scan", exc)
+            positions_error = "POSITIONS_UNAVAILABLE_RPC"
+        except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+            # Registry/scan plumbing failure: typed unavailable (logged), no crash.
+            _log_authority_unavailable("position_scan", exc)
+            positions_error = "POSITIONS_UNAVAILABLE"
+
+    if wallet_error == "WALLET_STORE_UNAVAILABLE":
+        info = "The wallet store is currently unavailable, so no wallet state is shown."
+    elif not wallet:
         info = (
             "No verified FINCO wallet is linked. Yield reuses the existing "
             "wallet verification flow."
@@ -440,24 +652,42 @@ async def yield_monitor(request: Request):
             "read-only context, not signing authority and not $FINCO entitlement."
         )
 
-    from app.auth import generate_csrf_token
-    from app.crypto_access import build_crypto_access_snapshot, get_wallet_state
-    from finco_yield.watchlist import list_watchlist_items
-
-    wallet_state, _ = get_wallet_state(user.user_id)
-    decisions = await _resource_decisions_for_request(request)
+    try:
+        wallet_state, _ = get_wallet_state(user.user_id)
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _log_authority_unavailable("wallet_store", exc)
+        wallet_state = "UNAVAILABLE"
+    wallet_context, context_error = _wallet_context_fail_soft(user)
+    if context_error is not None:
+        decisions = {}
+    else:
+        decisions = await _decisions_fail_soft(wallet_context)
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
-    watchlist = list_watchlist_items(user.user_id)
+    if context_error is not None:
+        access["entitlement_unavailable"] = context_error
+
+    try:
+        watchlist_items = list_watchlist_items(user.user_id)
+        watchlist_state = {"state": "AVAILABLE", "count": len(watchlist_items),
+                           "items": watchlist_items}
+    except (sqlite3.Error, OSError, ValueError) as exc:
+        _log_authority_unavailable("yield_watchlist", exc)
+        watchlist_items = []
+        watchlist_state = {"state": "UNAVAILABLE", "count": None, "items": []}
 
     return _templates.TemplateResponse(
         request=request,
         name="yield/monitor.html",
         context={
             "wallet": wallet,
+            "wallet_error": wallet_error,
             "info": info,
             "positions": positions_view,
+            "positions_error": positions_error,
             "access": access,
-            "watchlist": watchlist,
+            "watchlist": watchlist_items,
+            "watchlist_state": watchlist_state["state"],
+            "watchlist_count": watchlist_state["count"],
             "csrf_token": generate_csrf_token(),
         },
     )
@@ -496,8 +726,10 @@ async def yield_access_json(request: Request):
 
     wallet_state = _wallet_state_for_request(request)
     decisions = await _resource_decisions_for_request(request)
+    snapshot = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
+    snapshot["entitlement_decisions_available"] = bool(decisions)
     return JSONResponse(
-        content=build_crypto_access_snapshot(wallet_state, resource_decisions=decisions),
+        content=snapshot,
         headers={"Cache-Control": "no-store"},
     )
 

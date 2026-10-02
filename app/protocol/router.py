@@ -65,11 +65,22 @@ async def finco_protocol_surface(request: Request):
     from app.protocol.wallet_auth import get_verified_wallet
     from app.protocol.access_decision import get_all_access_decisions
 
+    import sqlite3
+
     config = get_token_config()
-    wallet_info = get_verified_wallet(user.user_id)
+    try:
+        wallet_info = get_verified_wallet(user.user_id)
+    except (sqlite3.Error, OSError, ValueError, TypeError):
+        # Wallet-store outage: typed unavailable state, never a 500 and
+        # never a fabricated zero balance.
+        wallet_info = {"wallet_address": None, "verified_at": None,
+                       "store": "UNAVAILABLE"}
     wallet_address = wallet_info["wallet_address"] if wallet_info else None
 
-    observation, decisions = await get_all_access_decisions(wallet_address, config)
+    try:
+        observation, decisions = await get_all_access_decisions(wallet_address, config)
+    except Exception:
+        observation, decisions = None, []
 
     return _templates.TemplateResponse(
         request=request,
@@ -107,11 +118,22 @@ async def finco_access_json(request: Request):
     from app.protocol.wallet_auth import get_verified_wallet
     from app.protocol.access_decision import get_all_access_decisions
 
+    import sqlite3
+
     config = get_token_config()
-    wallet_info = get_verified_wallet(user.user_id)
+    try:
+        wallet_info = get_verified_wallet(user.user_id)
+    except (sqlite3.Error, OSError, ValueError, TypeError):
+        # Wallet-store outage: typed unavailable state, never a 500 and
+        # never a fabricated zero balance.
+        wallet_info = {"wallet_address": None, "verified_at": None,
+                       "store": "UNAVAILABLE"}
     wallet_address = wallet_info["wallet_address"] if wallet_info else None
 
-    observation, decisions = await get_all_access_decisions(wallet_address, config)
+    try:
+        observation, decisions = await get_all_access_decisions(wallet_address, config)
+    except Exception:
+        observation, decisions = None, []
 
     # Build response — never include RPC URL
     utilities_payload = {}

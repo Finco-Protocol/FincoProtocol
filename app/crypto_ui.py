@@ -191,9 +191,18 @@ async def crypto_overview(request: Request):
     user = _request_user(request)
     user_id = user.user_id if user else None
     wallet_state, _ = _wallet_state_fail_soft(user_id)
-    wallet = wallet_context_for_session(user)
+    try:
+        wallet = wallet_context_for_session(user)
+    except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        _fail_soft("wallet_store", exc)
+        wallet = None
+        wallet_context_unavailable = True
+    else:
+        wallet_context_unavailable = False
     decisions = await _decisions_fail_soft(wallet)
     access = build_crypto_access_snapshot(wallet_state, resource_decisions=decisions)
+    if wallet_context_unavailable:
+        access["entitlement_unavailable"] = "WALLET_STORE_UNAVAILABLE"
     watchlist_state = _watchlist_fail_soft(user_id)
     watchlist = watchlist_state["items"]
     watchlist_count = watchlist_state["count"]

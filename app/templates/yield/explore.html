@@ -1,90 +1,164 @@
 {% extends "yield/base.html" %}
 {% block title %}FINCO Yield — Explore{% endblock %}
 {% block content %}
-<p class="k">FINCO Yield · V1 Beta</p>
-<h1>Explore</h1>
-<p class="sub">Evidence-backed DeFi opportunities. Source confidence and freshness stay visible; FINCO does not rank a winner.</p>
-{% if source_status %}
-<p class="sub" data-testid="yield-source-status" data-origin="{{ source_status.origin }}">
-  {% if source_status.origin == "SNAPSHOT" and source_status.live_rows %}
-    Source-observed snapshot generated {{ source_status.generated_at }} · {{ source_status.live_rows }} source-observed row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only row(s) with no source observation{% endif %}. A source-observed row may still be STALE; each row shows its own freshness.
-  {% elif source_status.origin == "REFERENCE_FALLBACK" %}
-    Live snapshot unavailable ({{ source_status.reason }}). Showing the bundled reference sample — not live data.
-  {% else %}
-    Showing the bundled reference sample — not live data. No live collection is configured.
+<div class="y-header">
+  <p class="k">FINCO Yield · V1 Beta</p>
+  <h1>Explore</h1>
+  <p class="y-lede">Evidence-backed DeFi opportunities. Freshness and source stay visible; FINCO does not rank a winner.</p>
+  {% if source_status %}
+  <p class="y-note y-status-line" data-testid="yield-source-status" data-origin="{{ source_status.origin }}">
+    {% if source_status.origin == "SNAPSHOT" and source_status.live_rows %}
+      Live source-observed data (snapshot generated {{ source_status.generated_at }}): {{ source_status.live_rows }} live row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only{% endif %}. A live row can still be STALE — each row shows its own freshness.
+    {% elif source_status.origin == "REFERENCE_FALLBACK" %}
+      Live snapshot unavailable ({{ source_status.reason }}). Showing the bundled reference sample — not live data.
+    {% else %}
+      Showing the bundled reference sample — not live data. No live collection is configured.
+    {% endif %}
+  </p>
   {% endif %}
-</p>
-{% endif %}
+</div>
 <div class="nav">
   <a class="a" href="/">FINCO</a>
   <a class="a" href="/yield/monitor">Wallet Monitor</a>
 </div>
 
-<form class="filters">
-  <select name="chain_id">
-    <option value="">All chains</option>
-    <option value="1" {% if filters.chain_id == 1 %}selected{% endif %}>Ethereum</option>
-    <option value="8453" {% if filters.chain_id == 8453 %}selected{% endif %}>Base</option>
-  </select>
-  <input name="protocol" placeholder="Protocol" value="{{ filters.protocol }}">
-  <input name="asset" placeholder="Asset" value="{{ filters.asset }}">
-  <select name="category">
-    <option value="">All assets</option>
-    <option value="stablecoin" {% if filters.category == "stablecoin" %}selected{% endif %}>Stablecoin</option>
-    <option value="major" {% if filters.category == "major" %}selected{% endif %}>Major</option>
-  </select>
-  <input name="min_tvl" placeholder="Min TVL USD" value="{{ filters.min_tvl }}">
-  <input name="min_history_days" placeholder="Min history days" value="{{ filters.min_history_days }}">
-  <input name="max_reward_dependency" placeholder="Max reward dependency" value="{{ filters.max_reward_dependency }}">
-  <select name="evidence">
-    <option value="">All evidence</option>
-    {% for choice in ["NATIVE_ENRICHED","DIRECT_ONCHAIN","THIRD_PARTY_REFERENCE"] %}
-      <option value="{{ choice }}" {% if filters.evidence == choice %}selected{% endif %}>{{ choice }}</option>
-    {% endfor %}
-  </select>
-  <button class="btn">Filter</button>
+<form class="y-controls" method="get" action="/yield" data-testid="yield-filters">
+  <div class="y-controls-primary">
+    <div class="y-field">
+      <label for="f-chain">Chain</label>
+      <select id="f-chain" name="chain_id">
+        <option value="">All chains</option>
+        {% for cid, label in chain_choices %}
+        <option value="{{ cid }}" {% if filters.chain_id == cid|string %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="y-field">
+      <label for="f-asset">Asset</label>
+      <input id="f-asset" name="asset" placeholder="e.g. USDC" value="{{ filters.asset }}" autocomplete="off">
+    </div>
+    <div class="y-field">
+      <label for="f-min-tvl">Min TVL (USD)</label>
+      <input id="f-min-tvl" name="min_tvl" inputmode="numeric" placeholder="Any" value="{{ filters.min_tvl }}" autocomplete="off">
+    </div>
+    <div class="y-actions">
+      <button type="submit" class="y-apply" data-testid="yield-apply">Apply</button>
+      <a class="y-clear" href="/yield" data-testid="yield-clear">Clear filters</a>
+    </div>
+  </div>
+  <details class="y-more" {% if filters.protocol or filters.category or filters.min_history_days or filters.max_reward_dependency or filters.evidence %}open{% endif %}>
+    <summary data-testid="yield-more-filters">More filters</summary>
+    <div class="y-more-grid">
+      <div class="y-field">
+        <label for="f-protocol">Protocol</label>
+        <input id="f-protocol" name="protocol" placeholder="e.g. morpho" value="{{ filters.protocol }}" autocomplete="off">
+      </div>
+      <div class="y-field">
+        <label for="f-category">Asset category</label>
+        <select id="f-category" name="category">
+          <option value="">All assets</option>
+          <option value="stablecoin" {% if filters.category == "stablecoin" %}selected{% endif %}>Stablecoin</option>
+          <option value="major" {% if filters.category == "major" %}selected{% endif %}>Major</option>
+        </select>
+      </div>
+      <div class="y-field">
+        <label for="f-history">Min history (days)</label>
+        <input id="f-history" name="min_history_days" inputmode="numeric" placeholder="Any" value="{{ filters.min_history_days }}" autocomplete="off">
+      </div>
+      <div class="y-field">
+        <label for="f-reward-dep">Max reward dependency</label>
+        <input id="f-reward-dep" name="max_reward_dependency" inputmode="decimal" placeholder="Any" value="{{ filters.max_reward_dependency }}" autocomplete="off">
+      </div>
+      <div class="y-field">
+        <label for="f-evidence">Evidence</label>
+        <select id="f-evidence" name="evidence">
+          <option value="">All evidence</option>
+          {% for choice in evidence_choices %}
+          <option value="{{ choice }}" {% if filters.evidence == choice %}selected{% endif %}>{{ choice }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </details>
 </form>
 
-<div class="scroll" data-testid="yield-opportunities-scroll">
-  <table>
-    <thead><tr><th>Opportunity</th><th>Protocol</th><th>Chain</th><th>TVL</th><th>Total APY</th><th>Base APY</th><th>Rewards APY</th><th>Evidence</th><th>Support</th><th>Exit</th><th>Freshness</th><th>Watchlist</th></tr></thead>
+{% set active_chips = [] %}
+{% if filters.chain_id %}{% set _ = active_chips.append(("Chain", filters.chain_id)) %}{% endif %}
+{% if filters.asset %}{% set _ = active_chips.append(("Asset", filters.asset)) %}{% endif %}
+{% if filters.min_tvl %}{% set _ = active_chips.append(("Min TVL", "$" + filters.min_tvl)) %}{% endif %}
+{% if filters.protocol %}{% set _ = active_chips.append(("Protocol", filters.protocol)) %}{% endif %}
+{% if filters.category %}{% set _ = active_chips.append(("Category", filters.category)) %}{% endif %}
+{% if filters.min_history_days %}{% set _ = active_chips.append(("History ≥", filters.min_history_days ~ "d")) %}{% endif %}
+{% if filters.max_reward_dependency %}{% set _ = active_chips.append(("Max reward dep.", filters.max_reward_dependency)) %}{% endif %}
+{% if filters.evidence %}{% set _ = active_chips.append(("Evidence", filters.evidence)) %}{% endif %}
+{% if active_chips %}
+<div class="y-chips" data-testid="yield-active-filters">
+  {% for label, value in active_chips %}
+  <span class="y-chip">{{ label }}: <span class="mono">{{ value }}</span></span>
+  {% endfor %}
+  <a class="y-chip-clear y-chip" href="/yield">Clear all ✕</a>
+</div>
+{% endif %}
+
+<div class="y-result-meta">
+  <span><strong data-testid="yield-result-count">{{ result_count }}</strong> opportunit{{ "y" if result_count == 1 else "ies" }}</span>
+  {% if filters.max_reward_dependency %}
+  <span class="y-note">Rows with an unavailable reward dependency do not match a max-reward-dependency filter.</span>
+  {% endif %}
+</div>
+
+<div class="y-table-wrap scroll" data-testid="yield-opportunities-scroll">
+  <table class="y-table">
+    <thead><tr>
+      <th>Opportunity</th><th>TVL</th><th>Total APY</th><th>Freshness</th><th>Source</th><th>Watchlist</th>
+    </tr></thead>
     <tbody>
     {% for row in rows %}
       <tr data-opportunity-uid="{{ row.uid }}">
-        <td><a href="/yield/{{ row.uid }}">{{ row.name }}</a><br><small>{{ row.underlying_symbol }}</small></td>
-        <td>{{ row.protocol }}</td>
-        <td>{{ row.chain }}</td>
-        <td>{{ row.tvl }}</td>
-        <td>{{ row.total_apy }}</td>
-        <td>{{ row.base_apy }}</td>
-        <td>{{ row.rewards_apy }}</td>
-        <td><span class="badge">{{ row.evidence }}</span></td>
-        <td><span class="badge">{{ row.support_state }}</span></td>
-        <td>{{ row.exit }}</td>
-        <td><span class="badge">{{ row.freshness }}</span>
-            <br><small data-testid="last-observed-{{ row.uid }}">{{ row.last_observed }}</small>
-            <br><small data-testid="origin-{{ row.uid }}">{{ row.origin }}{% if row.provider != "—" %} · {{ row.provider }}{% endif %}</small></td>
+        <td>
+          <a class="y-opp-name" href="/yield/{{ row.uid }}">{{ row.name }}</a>
+          <span class="y-subtext">{{ row.underlying_symbol }} · {{ row.chain }} · {{ row.protocol }}</span>
+        </td>
+        <td class="y-num">{{ row.tvl }}</td>
+        <td class="y-num">
+          {{ row.total_apy }}
+          {% if row.base_apy != "—" or row.rewards_apy != "—" %}
+          <span class="y-subtext">Base {{ row.base_apy }} · Rewards {{ row.rewards_apy }}</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="y-badge {% if row.freshness == 'CURRENT' %}y-badge-current{% elif row.freshness == 'STALE' %}y-badge-stale{% elif row.freshness in ('INVALID', 'UNAVAILABLE', 'FUTURE_TIMESTAMP') %}y-badge-invalid{% else %}y-badge-unknown{% endif %}"
+                data-testid="freshness-{{ row.uid }}">{{ row.freshness }}</span>
+          <span class="y-subtext" data-testid="last-observed-{{ row.uid }}">{{ row.last_observed }}</span>
+        </td>
+        <td>
+          <span class="y-badge {% if row.is_live %}y-badge-live{% else %}y-badge-reference{% endif %}"
+                data-testid="origin-{{ row.uid }}" data-origin-class="{{ row.origin_class }}">{{ row.origin_class }}</span>
+          <span class="y-subtext">{{ row.evidence }}{% if row.provider != "—" %} · {{ row.provider }}{% endif %}<br>{{ row.support_state }} · exit {{ row.exit }}</span>
+        </td>
         <td data-testid="watchlist-cell-{{ row.uid }}">
           {% if row.uid in saved_uids %}
-          <span class="badge" data-testid="watchlist-saved">Saved</span>
+          <span class="y-badge y-badge-saved" data-testid="watchlist-saved">Saved</span>
           {% elif user %}
           <form method="post" action="/yield/watchlist/{{ row.uid }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
+            <button type="submit" class="y-btn-ghost" data-testid="watchlist-save" title="Save to watchlist (canonical opportunity identity)">Save</button>
           </form>
           {% else %}
-          <a href="/login" data-testid="watchlist-signin" class="muted small" title="Sign in to save opportunities to your watchlist">Sign in to save</a>
+          <a href="/login" data-testid="watchlist-signin" class="y-btn-ghost" title="Sign in to save opportunities to your watchlist">Sign in to save</a>
           {% endif %}
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="12">No exact matches.</td></tr>
+      <tr><td colspan="6">
+        <p class="y-empty" data-testid="yield-empty">No exact matches for the current filters. <a href="/yield">Clear filters</a> to see all opportunities.</p>
+      </td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
 
-<p class="sub">Save adds the opportunity to your watchlist by its canonical identity. Anonymous visitors can sign in to save; saved items never use ticker or name matching.</p>
+<p class="y-note">Save adds the opportunity to your watchlist by its canonical identity — never by ticker or name matching. A LIVE badge means the row comes from a source observation; it can still be STALE. REFERENCE means fixture data, never live. “—” means unavailable.</p>
 
 <p class="bound">Read-only by default. Execution planning is separately gated. FINCO never custodies assets, holds private keys, auto-invests or rebalances.</p>
 {% endblock %}

@@ -1,0 +1,165 @@
+/* FINCO Yield — product surface styles (Explore / Monitor / detail pass).
+   Builds on tokens.css + protocol-shell.css; no unrelated design system. */
+
+/* ── page shell ──────────────────────────────────────────────────────────── */
+.y-header { margin-bottom: 18px; }
+.y-header h1 { font-size: 22px; font-weight: 700; margin: 4px 0 6px; letter-spacing: -0.01em; }
+.y-lede { color: #4b5563; margin: 0 0 4px; max-width: 68ch; }
+.y-status-line { margin: 8px 0 0; }
+.y-note { color: #6b7280; font-size: 12px; margin: 6px 0 0; overflow-wrap: anywhere; }
+
+/* ── filter control bar ──────────────────────────────────────────────────── */
+.y-controls {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 12px 14px; margin: 16px 0 10px;
+}
+.y-controls-primary {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: end;
+}
+.y-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.y-field > label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #6b7280;
+}
+.y-controls input, .y-controls select {
+  min-width: 0; padding: 8px 10px; border: 1px solid #d1d5db;
+  border-radius: 8px; background: #fff; font-size: 13px; color: #111827;
+}
+.y-controls input:focus, .y-controls select:focus {
+  outline: 2px solid #1a56db; outline-offset: 0; border-color: #1a56db;
+}
+.y-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+.y-apply {
+  background: #1a56db; color: #fff; border: 0; border-radius: 8px;
+  padding: 9px 18px; font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.y-apply:hover { background: #154fa8; }
+.y-clear {
+  color: #1a56db; background: #fff; border: 1px dashed #93b4f0;
+  border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+  text-decoration: none; display: inline-flex; align-items: center;
+}
+.y-more { margin-top: 10px; }
+.y-more > summary {
+  cursor: pointer; font-size: 13px; font-weight: 600; color: #374151;
+  padding: 4px 0; list-style: none;
+}
+.y-more > summary::before { content: "▸ "; color: #6b7280; }
+.y-more[open] > summary::before { content: "▾ "; }
+.y-more-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  gap: 10px; padding-top: 10px; border-top: 1px solid #eef2f7; margin-top: 6px;
+}
+
+/* active filter chips */
+.y-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.y-chip {
+  display: inline-flex; align-items: center; gap: 6px; background: #eff6ff;
+  border: 1px solid #bfdbfe; color: #1e40af; border-radius: 999px;
+  padding: 3px 10px; font-size: 12px; font-weight: 600;
+}
+.y-chip .y-chip-clear { color: #1e40af; text-decoration: none; font-weight: 700; }
+
+/* result meta line */
+.y-result-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline;
+  color: #4b5563; font-size: 13px; margin: 0 2px 8px;
+}
+.y-result-meta strong { color: #111827; }
+
+/* ── opportunities table ─────────────────────────────────────────────────── */
+.y-table-wrap {
+  width: 100%; max-width: 100%; overflow-x: auto; background: #fff;
+  border: 1px solid #e5e7eb; border-radius: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+.y-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+.y-table th, .y-table td {
+  padding: 11px 14px; border-bottom: 1px solid #eef2f7; text-align: left;
+  font-size: 13px; vertical-align: top; white-space: nowrap;
+}
+.y-table tbody tr:last-child td { border-bottom: 0; }
+.y-table tbody tr:hover { background: #f9fafb; }
+.y-table th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: #6b7280; background: #f9fafb;
+}
+.y-opp-name { font-weight: 600; color: #111827; text-decoration: none; }
+.y-opp-name:hover { color: #1a56db; text-decoration: underline; }
+.y-subtext { display: block; color: #6b7280; font-size: 11.5px; margin-top: 2px; white-space: normal; }
+.y-num { font-variant-numeric: tabular-nums; }
+.y-missing { color: #9ca3af; }
+
+/* ── badges ──────────────────────────────────────────────────────────────── */
+.y-badge {
+  display: inline-block; border-radius: 999px; padding: 2px 9px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+  border: 1px solid #d1d5db; color: #374151; background: #fff;
+}
+.y-badge-live { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.y-badge-reference { background: #f3f4f6; border-color: #d1d5db; color: #6b7280; }
+.y-badge-current { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.y-badge-stale { background: #fffbeb; border-color: #fde68a; color: #b45309; }
+.y-badge-invalid, .y-badge-unavailable { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.y-badge-unknown { background: #f3f4f6; border-color: #d1d5db; color: #6b7280; }
+.y-badge-saved { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+
+/* ── buttons / forms inside tables and cards ─────────────────────────────── */
+.y-btn-ghost {
+  display: inline-flex; align-items: center; border: 1px solid #d1d5db;
+  border-radius: 7px; padding: 5px 11px; background: #fff; color: #1f2937;
+  font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none;
+}
+.y-btn-ghost:hover { border-color: #1a56db; color: #1a56db; }
+
+/* ── monitor dashboard ───────────────────────────────────────────────────── */
+.y-section {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  padding: 16px 18px; margin: 0 0 14px; min-width: 0; overflow-wrap: anywhere;
+}
+.y-section > h2 {
+  font-size: 15px; font-weight: 700; margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.y-section-note { color: #6b7280; font-size: 12px; margin: 8px 0 0; overflow-wrap: anywhere; }
+.y-wallet-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 0; }
+.y-wallet-badge {
+  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
+  padding: 4px 12px; font-size: 12px; font-weight: 700;
+  background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+}
+.y-wallet-badge.is-off { background: #f3f4f6; border-color: #d1d5db; color: #6b7280; }
+.y-wallet-addr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #374151; }
+.y-empty {
+  color: #4b5563; background: #f9fafb; border: 1px dashed #d1d5db;
+  border-radius: 10px; padding: 14px 16px; font-size: 13px; margin: 0;
+}
+.y-warn {
+  border-left: 4px solid #f59e0b; background: #fffbeb; padding: 10px 14px;
+  border-radius: 0 8px 8px 0; font-size: 13px; margin: 0 0 10px; overflow-wrap: anywhere;
+}
+.y-details > summary {
+  cursor: pointer; font-size: 13px; font-weight: 600; color: #374151; padding: 4px 0;
+}
+.y-details[open] > summary { margin-bottom: 6px; }
+.y-access-summary {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  font-size: 12.5px; color: #4b5563;
+}
+.y-access-count { font-weight: 700; color: #111827; }
+
+/* ── filter error page ───────────────────────────────────────────────────── */
+.y-error-card {
+  background: #fff; border: 1px solid #fecaca; border-left: 4px solid #dc2626;
+  border-radius: 12px; padding: 18px 20px; margin: 16px 0;
+}
+.y-error-card h1 { font-size: 18px; margin: 0 0 6px; }
+.y-error-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #b91c1c; }
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .y-controls-primary { flex-direction: column; align-items: stretch; }
+  .y-actions { margin-left: 0; }
+  .y-apply, .y-clear { justify-content: center; }
+  .y-table th, .y-table td { padding: 9px 10px; }
+}

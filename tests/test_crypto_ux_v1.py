@@ -902,3 +902,22 @@ class TestRunStageTimingIsolation:
         assert timer.stages["form_parsed"] >= first.get("form_parsed", 0)
         assert "not_a_real_stage" not in timer.stages
         assert sum(1 for s in timer.stages if s == "form_parsed") == 1
+
+
+class TestCryptoWalletContextOutage:
+    """The residual unguarded wallet-authority call in /crypto (post-#163
+    QA): wallet_context_for_session outage must degrade to typed unavailable
+    decisions — never a 500."""
+
+    def test_wallet_context_outage_renders_unavailable(self, client, monkeypatch):
+        import sqlite3
+        _session(monkeypatch, "user-1")
+
+        def boom(session):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr(
+            "app.protocol.entitlement_evaluator.wallet_context_for_session", boom)
+        page = client.get("/crypto")
+        assert page.status_code == 200
+        assert "UNAVAILABLE" in page.text
