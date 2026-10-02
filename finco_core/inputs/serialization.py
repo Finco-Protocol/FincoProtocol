@@ -24,6 +24,7 @@ from finco_core.inputs._models import (
     CapexStructure,
     DebtSizingMethod,
     DebtSizingMode,
+    GearingCapRepaymentMethod,
     SponsorFundingMode,
     GearingBasisMode,
     DebtSizingCaseConfig,
@@ -755,6 +756,15 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "equity_irr_method": fin.equity_irr_method,
             "debt_sizing_method": fin.debt_sizing_method,
             "debt_sizing_mode": _ser_enum(fin.debt_sizing_mode),
+            **(
+                {
+                    "gearing_cap_repayment_method": _ser_enum(
+                        fin.gearing_cap_repayment_method
+                    )
+                }
+                if fin.debt_sizing_mode == DebtSizingMode.GEARING_CAP
+                else {}
+            ),
             "target_min_dscr": fin.target_min_dscr,
             "flat_dscr_target": fin.flat_dscr_target,
             "frozen_schedule_note": fin.frozen_schedule_note,
@@ -1082,6 +1092,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
     )
 
     dsm_raw = fin_d.get("debt_sizing_mode")
+    gearing_repayment_raw = fin_d.get("gearing_cap_repayment_method")
     sponsor_mode_raw = fin_d.get("sponsor_funding_mode")
     gearing_basis_raw = fin_d.get("gearing_basis_mode")
     financing = FinancingParams(
@@ -1121,6 +1132,11 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         equity_irr_method=fin_d.get("equity_irr_method", "equity_only"),
         debt_sizing_method=fin_d.get("debt_sizing_method", "dscr_sculpt"),
         debt_sizing_mode=DebtSizingMode(dsm_raw) if dsm_raw is not None else None,
+        gearing_cap_repayment_method=(
+            GearingCapRepaymentMethod(gearing_repayment_raw)
+            if gearing_repayment_raw is not None
+            else GearingCapRepaymentMethod.LEVEL_PRINCIPAL
+        ),
         target_min_dscr=fin_d.get("target_min_dscr"),
         flat_dscr_target=fin_d.get("flat_dscr_target"),
         frozen_schedule_note=fin_d.get("frozen_schedule_note"),
