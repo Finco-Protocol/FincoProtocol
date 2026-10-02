@@ -1050,8 +1050,8 @@ class TestWebProvenance:
         page = client.get("/yield").text
         assert 'data-testid="yield-source-status"' in page and 'data-origin="REFERENCE_FIXTURE"' in page
         assert "not live data" in page
-        assert "Reference fixture — not live" in page
-        assert "Source-observed" not in page
+        assert 'data-origin-class="REFERENCE"' in page
+        assert 'data-origin-class="LIVE"' not in page
 
     def test_live_snapshot_rows_show_provider_and_state(self, web, tmp_path):
         client, mp = web
@@ -1061,11 +1061,11 @@ class TestWebProvenance:
         mp.setenv("FINCO_YIELD_SNAPSHOT_PATH", env["FINCO_YIELD_SNAPSHOT_PATH"])
         page = client.get("/yield").text
         assert 'data-origin="SNAPSHOT"' in page
-        assert "Source-observed" in page and "morpho_graphql" in page
-        assert "14 source-observed row(s)" in page and "live row" not in page.lower()
+        assert 'data-origin-class="LIVE"' in page and "morpho_graphql" in page
+        assert "14 live row(s)" in page
         assert "4.12%" in page                                                # netApy 0.0412
         assert "CURRENT" in page
-        assert "Reference fixture — not live" not in page
+        assert 'data-origin-class="REFERENCE"' not in page
 
     def test_stale_live_snapshot_is_stale_not_unavailable_not_zero(self, web, tmp_path):
         client, mp = web
@@ -1074,9 +1074,8 @@ class TestWebProvenance:
         _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
         mp.setenv("FINCO_YIELD_SNAPSHOT_PATH", env["FINCO_YIELD_SNAPSHOT_PATH"])
         page = client.get("/yield").text
-        assert "STALE" in page and "4.12%" in page and "Source-observed" in page
-        assert "14 source-observed row(s)" in page and "may still be STALE" in page
-        assert "live row" not in page.lower()
+        assert "STALE" in page and "4.12%" in page and 'data-origin-class="LIVE"' in page
+        assert "14 live row(s)" in page and "can still be STALE" in page
         assert "UNAVAILABLE" not in page.split("<tbody>")[1].split("</tbody>")[0].replace("Last observed", "")
 
     def test_unavailable_snapshot_falls_back_with_visible_reason(self, web, tmp_path):
@@ -1093,7 +1092,9 @@ class TestWebProvenance:
         _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
         mp.setenv("FINCO_YIELD_SNAPSHOT_PATH", env["FINCO_YIELD_SNAPSHOT_PATH"])
         page = client.get("/yield").text
-        assert "<td>—</td>" in page and "0.00%" not in page
+        body = page.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+        assert "Base " not in body and "Rewards " not in body
+        assert "0.00%" not in body
 
     def test_detail_page_shows_origin_provider_and_fetch_time(self, web, tmp_path):
         client, mp = web

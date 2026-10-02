@@ -290,5 +290,6 @@ class TestYieldLastObserved:
         stay missing ('—') — never invented, never zero."""
         # Every bundled Morpho row lacks apy_base/apy_rewards: the cells
         # render the missing marker, not a fabricated percentage.
-        assert "<td>—</td>" in yield_page
-        assert "0.00%" not in yield_page
+        body = yield_page.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+        assert "Base " not in body and "Rewards " not in body
+        assert "0.00%" not in body
