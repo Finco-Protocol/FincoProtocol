@@ -42,10 +42,19 @@ def _homepage_templates() -> tuple[str, str]:
 
 # ── Navigation / homepage promotion removed ──────────────────────────────────
 
+def _strip_jinja_comments(text: str) -> str:
+    """Remove Jinja comment blocks so retirement DOCUMENTATION does not
+    count as promotion."""
+    import re
+    return re.sub(r"\{#[\s\S]*?#\}", "", text)
+
+
 def test_primary_nav_no_longer_links_verified():
     nav, _, _ = _homepage_templates()
+    # no live link to /verified anywhere (comments may document retirement)
     assert 'href="/verified"' not in nav
-    assert "Verified" not in nav
+    rendered_nav = _strip_jinja_comments(nav)
+    assert "Verified" not in rendered_nav
 
 
 def test_brand_bar_no_longer_links_verified():
