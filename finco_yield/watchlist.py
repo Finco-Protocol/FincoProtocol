@@ -204,3 +204,20 @@ def watchlist_contains(user_id: str, opportunity_uid: str) -> bool:
     finally:
         conn.close()
     return row is not None
+
+
+def list_watchlist_user_ids() -> list[str]:
+    """Distinct user ids that currently have canonical watchlist items.
+
+    Read-only enumeration of THE canonical ``yield_watchlist`` table -- there
+    is no second subscription list.  Stable (sorted) order so background
+    evaluation is deterministic.
+    """
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT user_id FROM yield_watchlist ORDER BY user_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [row["user_id"] for row in rows]

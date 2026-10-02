@@ -36,6 +36,15 @@ class AlertsRefreshResult:
         }
 
 
+@dataclass(frozen=True)
+class AlertsEvaluationOutcome:
+    """Typed result of one user's canonical evaluation (no snapshot)."""
+
+    available: bool
+    reason: str | None
+    created_count: int | None
+
+
 class YieldAlertsGateway:
     """Presentation adapter over Agent A's canonical alert backend."""
 
@@ -123,46 +132,58 @@ class YieldAlertsGateway:
                 return None, "YIELD_HISTORY_UNAVAILABLE"
         return store, None
 
-    def refresh(self, user_id: str) -> AlertsRefreshResult:
-        """Evaluate watched opportunities once against canonical authorities."""
-        from finco_yield.alerts_core import evaluate_watchlist_alerts
+    @classmethod
+    def resolve_inputs(cls):
+        """Canonical evaluation inputs: ``(history_store, registry, reason)``.
+
+        One resolution used by manual Refresh AND background evaluation, so the
+        two paths can never disagree about what "unavailable" means.  ``reason``
+        is a typed code when either input is unavailable.
+        """
         from finco_yield.registry import load_bundled_registry
 
-        history_store, history_reason = self._history_store()
+        history_store, history_reason = cls._history_store()
         if history_store is None:
-            return AlertsRefreshResult(
-                available=False,
-                reason=history_reason,
-                created_count=None,
-                snapshot=self.snapshot(user_id),
-            )
+            return None, None, history_reason
         try:
             registry = load_bundled_registry()
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-            return AlertsRefreshResult(
-                available=False,
-                reason="YIELD_REGISTRY_UNAVAILABLE",
-                created_count=None,
-                snapshot=self.snapshot(user_id),
-            )
+            return None, None, "YIELD_REGISTRY_UNAVAILABLE"
+        return history_store, registry, None
 
+    @classmethod
+    def evaluate_user(cls, user_id: str, *, history_store=None, registry=None,
+                      now=None) -> "AlertsEvaluationOutcome":
+        """Evaluate ONE user's canonical watchlist once (THE shared core).
+
+        Manual Refresh and the background runner both call this function; the
+        transition logic stays in ``finco_yield.alerts_eval``.  Inputs are
+        resolved here unless the caller already resolved them once for a batch.
+        ``now`` is passed through to the canonical evaluator (None = its clock).
+        """
+        from finco_yield.alerts_core import evaluate_watchlist_alerts
+
+        if history_store is None or registry is None:
+            history_store, registry, reason = cls.resolve_inputs()
+            if reason is not None:
+                return AlertsEvaluationOutcome(False, reason, None)
         try:
             created = evaluate_watchlist_alerts(
                 user_id=user_id,
                 history_store=history_store,
                 registry=registry,
+                now=now,
             )
         except (OSError, sqlite3.Error, ValueError, KeyError, TypeError):
-            return AlertsRefreshResult(
-                available=False,
-                reason="ALERT_EVALUATION_UNAVAILABLE",
-                created_count=None,
-                snapshot=self.snapshot(user_id),
-            )
+            return AlertsEvaluationOutcome(False, "ALERT_EVALUATION_UNAVAILABLE", None)
+        return AlertsEvaluationOutcome(True, None, len(created))
 
+    def refresh(self, user_id: str) -> AlertsRefreshResult:
+        """Evaluate watched opportunities once against canonical authorities."""
+        outcome = self.evaluate_user(user_id)
         return AlertsRefreshResult(
-            available=True,
-            reason=None,
-            created_count=len(created),
+            available=outcome.available,
+            reason=outcome.reason,
+            created_count=outcome.created_count,
             snapshot=self.snapshot(user_id),
         )

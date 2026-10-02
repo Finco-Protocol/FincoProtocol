@@ -1,0 +1,32 @@
+[Unit]
+Description=FINCO Yield one-shot background alert evaluation (in-app alerts only)
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/yield_alert_automation_v1/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=finco
+Group=finco
+WorkingDirectory=/opt/finco_protocol
+EnvironmentFile=/etc/finco/yield-alert-evaluator.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=finco/yield
+StateDirectoryMode=0750
+UMask=0027
+ExecStart=/usr/bin/flock -n -E 75 /var/lib/finco/yield/yield-alert-evaluator.lock /opt/finco_protocol/.venv/bin/python -m finco_yield.evaluate_alerts
+TimeoutStartSec=240
+# Exit 3 = PARTIAL (some users evaluated, failures listed in the report): visible
+# in the journal but not a failed unit. Exit 2 / 4 / 75 remain failures.
+SuccessExitStatus=3
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=finco-yield-alert-evaluator
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/finco
+ProtectHome=true
+PrivateTmp=true
+
+# Deliberately no [Install]: only the timer (or a manual start) activates this unit.

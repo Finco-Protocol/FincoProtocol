@@ -10,3 +10,10 @@ def yield_enabled() -> bool:
 
 def execution_enabled() -> bool:
     return _env_flag("FINCO_YIELD_EXECUTION_ENABLED")
+
+def alert_automation_enabled() -> bool:
+    """Background Yield alert evaluation is allowed to run (default OFF).
+
+    This only states configuration.  It does not prove a scheduler is active.
+    """
+    return _env_flag("FINCO_YIELD_ALERT_AUTOMATION_ENABLED")

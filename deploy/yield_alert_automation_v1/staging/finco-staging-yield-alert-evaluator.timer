@@ -1,0 +1,13 @@
+[Unit]
+Description=Evaluate FINCO staging Yield in-app alerts every ten minutes (3 minutes after the collector)
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/yield_alert_automation_v1/README.md
+
+[Timer]
+Unit=finco-staging-yield-alert-evaluator.service
+OnCalendar=*-*-* *:03/10:00
+AccuracySec=5s
+RandomizedDelaySec=0
+Persistent=true
+
+[Install]
+WantedBy=timers.target
