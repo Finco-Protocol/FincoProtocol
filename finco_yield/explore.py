@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from .freshness import evaluate_freshness
 from .registry import YieldRegistry
+from .snapshot import displayed_freshness
 from .underwriting import decompose, run_scenario
 
 @dataclass(frozen=True)
@@ -57,5 +58,5 @@ def compare(registry:YieldRegistry,uids:list[str]|tuple[str,...])->tuple[Compare
         o=registry.resolve(uid); d=decompose(o.observation)
         source=__import__("finco_yield.schema",fromlist=["SourceReference"]).SourceReference(o.source_type,o.source_uri,o.observed_at,o.block_number,o.adapter,o.adapter_version)
         r0=run_scenario("REWARDS_OFF",o.observation); r50=run_scenario("REWARDS_MINUS_50",o.observation); ex=run_scenario("EXIT_STRESS",o.observation); gas=run_scenario("GAS_SHOCK",o.observation)
-        out.append(CompareRow(uid,o.name,o.protocol,o.chain_id,o.underlying_symbol,o.observation.tvl_usd,o.observation.apy_total,o.observation.apy_base,o.observation.apy_rewards,o.observation.apy_intrinsic,d.reward_dependency,o.source_type.value,evaluate_freshness(source).state,(o.observation.withdrawal_type or "UNKNOWN").upper(),o.observation.fee_bps,0,r0.apy,r50.apy,ex.state.value,gas.state.value))
+        out.append(CompareRow(uid,o.name,o.protocol,o.chain_id,o.underlying_symbol,o.observation.tvl_usd,o.observation.apy_total,o.observation.apy_base,o.observation.apy_rewards,o.observation.apy_intrinsic,d.reward_dependency,o.source_type.value,displayed_freshness(o,evaluate_freshness(source).state),(o.observation.withdrawal_type or "UNKNOWN").upper(),o.observation.fee_bps,0,r0.apy,r50.apy,ex.state.value,gas.state.value))
     return tuple(out)

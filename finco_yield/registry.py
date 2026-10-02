@@ -42,6 +42,13 @@ class CanonicalOpportunity:
     adapter_version: str
     support_state: YieldSupportState
     snapshot_version: str = "research-y0"
+    # Provenance of the observation values: SOURCE_OBSERVED (collected from a
+    # live provider), REFERENCE_FIXTURE (bundled research sample), or
+    # UNSPECIFIED (constructed directly, e.g. tests).  reference != live.
+    data_origin: str = "UNSPECIFIED"
+    provider: str | None = None
+    fetched_at: datetime | None = None
+    observation_hash: str | None = None
 
     @property
     def allowed_execution_methods(self) -> tuple[str, ...]:
@@ -85,7 +92,7 @@ def _support_state(source_type: EvidenceConfidence) -> YieldSupportState:
     return YieldSupportState.DISCOVERY_ONLY
 
 
-def _from_row(row: dict) -> CanonicalOpportunity:
+def _from_row(row: dict, *, default_origin: str = "UNSPECIFIED") -> CanonicalOpportunity:
     identity = YieldIdentity(
         chain_id=int(row["chain_id"]),
         protocol=str(row["protocol"]),
@@ -123,6 +130,10 @@ def _from_row(row: dict) -> CanonicalOpportunity:
         adapter=str(row.get("adapter") or "unknown"),
         adapter_version=str(row.get("adapter_version") or "unknown"),
         support_state=_support_state(source_type),
+        data_origin=str(row.get("data_origin") or default_origin),
+        provider=(str(row["provider"]) if row.get("provider") else None),
+        fetched_at=(_dt(row["fetched_at"]) if row.get("fetched_at") else None),
+        observation_hash=(str(row["history_observation_hash"]) if row.get("history_observation_hash") else None),
     )
 
 
@@ -185,7 +196,16 @@ class YieldRegistry:
         return self._binding(opportunity)
 
 
-def load_bundled_registry() -> YieldRegistry:
+def bundled_reference_rows() -> list[dict]:
+    """Raw rows of the bundled research sample (a REFERENCE fixture)."""
     path = Path(__file__).resolve().parent / "data" / "live_opportunities.json"
-    rows = json.loads(path.read_text(encoding="utf-8"))
-    return YieldRegistry([_from_row(row) for row in rows])
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_bundled_registry() -> YieldRegistry:
+    """The bundled sample.  Rows are marked REFERENCE_FIXTURE: loadable does
+    not mean live."""
+    return YieldRegistry([
+        _from_row(row, default_origin="REFERENCE_FIXTURE")
+        for row in bundled_reference_rows()
+    ])

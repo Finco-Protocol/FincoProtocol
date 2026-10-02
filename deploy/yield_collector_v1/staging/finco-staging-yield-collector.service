@@ -1,0 +1,28 @@
+[Unit]
+Description=FINCO staging Yield one-shot live observation collection (read-only)
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/yield_collector_v1/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=finco-staging
+Group=finco-staging
+WorkingDirectory=/opt/finco_staging
+EnvironmentFile=/opt/finco_staging/.env.yield-collector
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0027
+ExecStart=/usr/bin/flock -n -E 75 /opt/finco_staging/storage/yield/yield-collector.lock /opt/finco_staging/.venv/bin/python -m finco_yield.collect_live
+TimeoutStartSec=240
+SuccessExitStatus=3
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=finco-staging-yield-collector
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/finco_staging/storage
+ProtectHome=true
+PrivateTmp=true
+
+# Deliberately no [Install]: only the staging timer or a manual start runs it.
