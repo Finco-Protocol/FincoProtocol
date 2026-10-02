@@ -324,30 +324,248 @@
   }
 
   // ── Entry point ─────────────────────────────────────────────────────── //
+  function initWorkbookChart(el) {
+    const type    = el.dataset.chartType;
+    const raw     = el.dataset.periods;
+    const target  = el.dataset.target;
+    if (!raw) return;
+    let periods;
+    try { periods = JSON.parse(raw); } catch (e) { return; }
+    if (!Array.isArray(periods) || !periods.length) return;
+
+    el.replaceChildren();
+
+    if (type === 'debt-balance') renderDebtBalance(el, periods);
+    else if (type === 'dscr')    renderDscr(el, periods, target);
+    else if (type === 'operating') renderCashSeries(el, periods, [
+      {key:'revenue_cash_keur', label:'Revenue', color:'#1e40af'},
+      {key:'opex_cash_keur', label:'OPEX (outflow)', color:'#b45309'},
+      {key:'ebitda_cash_keur', label:'EBITDA', color:'#0f766e'},
+    ]);
+    else if (type === 'cash-service') renderCashSeries(el, periods, [
+      {key:'fcf_banks_keur', label:'FCF Banks', color:'#0f766e'},
+      {key:'senior_total_ds_keur', label:'Debt service (outflow)', color:'#6366f1'},
+    ]);
+  }
+
   function init() {
-    document.querySelectorAll('.v2-overview-chart').forEach(function (el) {
-      const type    = el.dataset.chartType;
-      const raw     = el.dataset.periods;
-      const target  = el.dataset.target;
-      if (!raw) return;
-      let periods;
-      try { periods = JSON.parse(raw); } catch (e) { return; }
-      if (!Array.isArray(periods) || !periods.length) return;
-
-      el.replaceChildren();
-
-      if (type === 'debt-balance') renderDebtBalance(el, periods);
-      else if (type === 'dscr')    renderDscr(el, periods, target);
-      else if (type === 'operating') renderCashSeries(el, periods, [
-        {key:'revenue_cash_keur', label:'Revenue', color:'#1e40af'},
-        {key:'opex_cash_keur', label:'OPEX (outflow)', color:'#b45309'},
-        {key:'ebitda_cash_keur', label:'EBITDA', color:'#0f766e'},
-      ]);
-      else if (type === 'cash-service') renderCashSeries(el, periods, [
-        {key:'fcf_banks_keur', label:'FCF Banks', color:'#0f766e'},
-        {key:'senior_total_ds_keur', label:'Debt service (outflow)', color:'#6366f1'},
-      ]);
+    // Generic dispatch: any element with data-chart-type is a chart root.
+    // The legacy .v2-overview-chart workbook elements keep working unchanged.
+    document.querySelectorAll('[data-chart-type]').forEach(function (el) {
+      if (el.classList.contains('v2-overview-chart')) { initWorkbookChart(el); return; }
+      renderElement(el);
     });
+  }
+
+  // ── Radar / terminal primitives (Terminal UX V1) ───────────────────── //
+  //
+  // Same authority contract as the workbook renderers above: values are
+  // consumed VERBATIM from the canonical data handed to the element; only
+  // pure visual/coordinate operations are applied. Missing values are GAPS —
+  // never interpolated, never zero-filled. No external dependencies.
+  //
+  // Element contract:
+  //   data-chart-type   "sparkline" | "line" | "range-bar"
+  //   data-points       JSON [{t: isoString, v: number|null}, ...] (null v = gap)
+  //   data-series-2     JSON same shape — second line, same unit (line only)
+  //   data-low/high/current  numbers (range-bar)
+  //   data-zero-line    "true" → dotted zero reference (sparkline/line)
+  //   data-theme        "dark" → Radar terminal palette
+  //   aria-label        accessible summary text
+
+  const DARK = {
+    line:     '#4ade80',  // primary line — terminal green
+    line2:    '#60a5fa',  // secondary series — blue
+    marker:   '#f8fafc',
+    axis:     '#55606b',
+    label:    '#8d98a5',
+    gridLine: '#232b33',
+    rangeBar: '#1a2129',
+    rangeNow: '#4ade80',
+  };
+
+  function paletteFor(el) {
+    return el.dataset.theme === 'dark' ? DARK : C;
+  }
+
+  // Safe numeric parse: anything non-numeric becomes a GAP (null), never 0.
+  function num(v) {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : null;
+  }
+
+  function parsePoints(raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      return parsed.map(p => ({ t: String(p.t || ''), v: num(p.v) }));
+    } catch (e) { return null; }
+  }
+
+  // Split a series into gap-free runs; gaps render as gaps (no interpolation).
+  function runsOf(points) {
+    const runs = [];
+    let run = [];
+    for (const p of points) {
+      if (p.v == null) { if (run.length) runs.push(run); run = []; continue; }
+      run.push(p);
+    }
+    if (run.length) runs.push(run);
+    return runs;
+  }
+
+  function extentOf(seriesList) {
+    let lo = Infinity, hi = -Infinity;
+    for (const pts of seriesList) {
+      for (const p of pts) {
+        if (p.v == null) continue;
+        if (p.v < lo) lo = p.v;
+        if (p.v > hi) hi = p.v;
+      }
+    }
+    return lo === Infinity ? null : { lo, hi };
+  }
+
+  function renderSparkline(container) {
+    const points = parsePoints(container.dataset.points);
+    if (!points || !points.some(p => p.v != null)) { container.textContent = '—'; return; }
+    const pal = paletteFor(container);
+    const W = 120, H = 30;
+    const ext = extentOf([points]);
+    const lo = ext.lo, hi = ext.hi;
+    const svg = svgRoot(W, H);
+    svg.removeAttribute('aria-hidden');
+    svg.setAttribute('aria-label', container.getAttribute('aria-label') || 'sparkline');
+    const xOf = i => (i / (points.length - 1 || 1)) * (W - 4) + 2;
+    const yOf = v => scaleY(v, lo, hi, 3, H - 3);
+    for (const run of runsOf(points)) {
+      const start = points.indexOf(run[0]);
+      svg.appendChild(el('polyline', {
+        points: run.map((p, j) => `${xOf(start + j)},${yOf(p.v)}`).join(' '),
+        fill: 'none', stroke: pal.line, 'stroke-width': 1.25,
+      }));
+    }
+    if (container.dataset.zeroLine === 'true' && lo < 0 && hi > 0) {
+      svg.appendChild(el('line', { x1: 0, y1: yOf(0), x2: W, y2: yOf(0), stroke: pal.axis, 'stroke-width': 0.75, 'stroke-dasharray': '2 3' }));
+    }
+    const runs = runsOf(points);
+    const lastRun = runs[runs.length - 1] || [];
+    const last = lastRun[lastRun.length - 1];
+    if (last) {
+      const dot = el('circle', {
+        cx: xOf(points.indexOf(last)), cy: yOf(last.v), r: 2, fill: pal.marker,
+      });
+      dot.appendChild(makeTitle(`Latest: ${last.v} at ${last.t.replace('T', ' ').slice(0, 16)}`));
+      svg.appendChild(dot);
+    }
+    container.replaceChildren(svg);
+  }
+
+  function renderLine(container) {
+    const s1 = parsePoints(container.dataset.points);
+    if (!s1 || !s1.some(p => p.v != null)) {
+      container.textContent = container.dataset.emptyText || 'Insufficient history — no chart rendered.';
+      return;
+    }
+    const s2 = container.dataset.series2 ? parsePoints(container.dataset.series2) : null;
+    const pal = paletteFor(container);
+    const W = 560, H = 170, PAD = { t: 14, r: 12, b: 26, l: 56 };
+    const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+    const seriesList = s2 ? [s1, s2] : [s1];
+    const ext = extentOf(seriesList);
+    if (!ext) { container.textContent = '—'; return; }
+    let lo = ext.lo, hi = ext.hi;
+    if (container.dataset.zeroLine === 'true') { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+    if (lo === hi) { lo -= 1; hi += 1; }
+    const svg = svgRoot(W, H);
+    svg.removeAttribute('aria-hidden');
+    svg.setAttribute('aria-label', container.getAttribute('aria-label') || 'line chart');
+    // Points map left→right by their OWN canonical timestamps.
+    const times = [];
+    for (const pts of seriesList) for (const p of pts) if (p.t) times.push(Date.parse(p.t));
+    const tMin = Math.min.apply(null, times), tMax = Math.max.apply(null, times);
+    const xOf = p => {
+      if (!p.t || !isFinite(tMin) || tMax === tMin) return PAD.l;
+      return PAD.l + ((Date.parse(p.t) - tMin) / (tMax - tMin)) * plotW;
+    };
+    const yOf = v => scaleY(v, lo, hi, PAD.t, PAD.t + plotH);
+    for (let i = 0; i <= 3; i++) {
+      const y = PAD.t + (plotH / 3) * i;
+      svg.appendChild(el('line', { x1: PAD.l, y1: y, x2: W - PAD.r, y2: y, stroke: pal.gridLine, 'stroke-width': 1 }));
+    }
+    if (container.dataset.zeroLine === 'true' && lo < 0 && hi > 0) {
+      svg.appendChild(el('line', { x1: PAD.l, y1: yOf(0), x2: W - PAD.r, y2: yOf(0), stroke: pal.axis, 'stroke-width': 1, 'stroke-dasharray': '3 4' }));
+    }
+    seriesList.forEach((pts, si) => {
+      const color = si === 0 ? pal.line : pal.line2;
+      for (const run of runsOf(pts)) {
+        svg.appendChild(el('polyline', {
+          points: run.map(p => `${xOf(p)},${yOf(p.v)}`).join(' '),
+          fill: 'none', stroke: color, 'stroke-width': 1.5,
+        }));
+      }
+      const runs = runsOf(pts);
+      const lastRun = runs.length ? runs[runs.length - 1] : [];
+      if (lastRun.length) {
+        const last = lastRun[lastRun.length - 1];
+        const dot = el('circle', { cx: xOf(last), cy: yOf(last.v), r: 2.5, fill: color });
+        dot.appendChild(makeTitle(`Latest: ${last.v} at ${last.t.replace('T', ' ').slice(0, 16)}`));
+        svg.appendChild(dot);
+      }
+    });
+    [lo, hi].forEach(v => {
+      const label = el('text', { x: PAD.l - 6, y: yOf(v) + 3, 'text-anchor': 'end', fill: pal.label, 'font-size': 9 });
+      label.textContent = v.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+      svg.appendChild(label);
+    });
+    // Deterministic time-label thinning: at most 5 labels.
+    const stamped = s1.filter(p => p.t);
+    if (stamped.length) {
+      const step = Math.max(1, Math.ceil(stamped.length / 5));
+      for (let i = 0; i < stamped.length; i += step) {
+        const label = el('text', { x: xOf(stamped[i]), y: H - 6, 'text-anchor': 'middle', fill: pal.label, 'font-size': 9 });
+        label.textContent = stamped[i].t.replace('T', ' ').slice(5, 16);
+        svg.appendChild(label);
+      }
+    }
+    container.replaceChildren(svg);
+  }
+
+  function renderRangeBar(container) {
+    const lo = num(container.dataset.low), hi = num(container.dataset.high);
+    const now = num(container.dataset.current);
+    if (lo == null || hi == null || now == null || hi <= lo) {
+      container.textContent = '—';
+      return;
+    }
+    const pal = paletteFor(container);
+    const W = 120, H = 14;
+    const svg = svgRoot(W, H);
+    svg.removeAttribute('aria-hidden');
+    svg.setAttribute('aria-label', container.getAttribute('aria-label') || 'range bar');
+    svg.appendChild(el('rect', { x: 0, y: 5, width: W, height: 4, rx: 2, fill: pal.rangeBar, stroke: pal.axis, 'stroke-width': 0.5 }));
+    const frac = Math.min(1, Math.max(0, (now - lo) / (hi - lo)));
+    const x = Math.min(W - 3, Math.max(3, frac * (W - 6) + 3));
+    const marker = el('circle', { cx: x, cy: 7, r: 3, fill: pal.rangeNow });
+    marker.appendChild(makeTitle(`Now ${now} · 24h range ${lo} … ${hi}`));
+    svg.appendChild(marker);
+    container.replaceChildren(svg);
+  }
+
+  function renderElement(el) {
+    const type = el.dataset.chartType;
+    if (type === 'sparkline') renderSparkline(el);
+    else if (type === 'line') renderLine(el);
+    else if (type === 'range-bar') renderRangeBar(el);
+  }
+
+  // Programmatic seam for async data (Radar pages fetch snapshot/history
+  // client-side, then render): render one element or re-scan the document.
+  window.FoCharts = { renderElement: renderElement, renderAll: init };
+
+  if (typeof window !== 'undefined') {
+    document.addEventListener('fo-charts:refresh', function () { init(); });
   }
 
   if (document.readyState === 'loading') {

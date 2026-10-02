@@ -155,7 +155,8 @@ def get_all_r_live_ranges():
     pairs = [(policy.economic_asset_uid, policy.asset_key)
              for policy in APPROVED_RLIVE_ASSETS.values()]
     try:
-        ranges = read_r_live_ranges_batch_readonly(pairs)
+        ranges = read_r_live_ranges_batch_readonly(pairs, include_series=True,
+                                                   max_series_points=48)
     except Exception:
         ranges = {policy.asset_key.canonical_id: {"reason": "HISTORY_UNAVAILABLE"}
                   for policy in APPROVED_RLIVE_ASSETS.values()}

@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
 
@@ -53,6 +54,7 @@
         <th class="rlive-th" style="text-align:right;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">Economic Basis</th>
         <th class="rlive-th" style="text-align:right;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">Indep. Token Ref.</th>
         <th class="rlive-th" style="text-align:right;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">Premium/Discount</th>
+        <th class="rlive-th" style="text-align:left;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">24h Trend</th>
         <th class="rlive-th" style="text-align:right;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">1h Range</th>
         <th class="rlive-th" style="text-align:right;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">24h Range</th>
         <th class="rlive-th" style="text-align:left;padding:10px 12px;color:var(--radar-muted,#8d98a5);font-weight:600;white-space:nowrap">Freshness</th>
@@ -83,13 +85,27 @@
             style="padding:12px 12px;vertical-align:top;text-align:right">
           <span class="rlive-loading" aria-label="Loading">—</span>
         </td>
+        <td class="rlive-cell-trend" data-field="trend"
+            style="padding:12px 12px;vertical-align:top">
+          <div data-chart-type="sparkline" data-theme="dark" data-zero-line="true"
+               class="fo-power-skeleton fo-power-skeleton--block"
+               aria-label="24h premium or discount trend, canonical observations only; gaps are missing evidence"
+               style="width:120px;height:30px;min-width:120px"></div>
+        </td>
         <td class="rlive-cell-1h mono" data-field="range_1h"
             style="padding:12px 12px;vertical-align:top;text-align:right;color:var(--radar-muted,#8d98a5)">
           <span class="rlive-loading" aria-label="Loading">—</span>
         </td>
-        <td class="rlive-cell-24h mono" data-field="range_24h"
-            style="padding:12px 12px;vertical-align:top;text-align:right;color:var(--radar-muted,#8d98a5)">
-          <span class="rlive-loading" aria-label="Loading">—</span>
+        <td class="rlive-cell-24h" data-field="range_24h"
+            style="padding:12px 12px;vertical-align:top;white-space:nowrap">
+          <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+            <div data-chart-type="range-bar" data-theme="dark"
+                 class="fo-power-skeleton fo-power-skeleton--block"
+                 aria-label="Current premium position within the 24h canonical range"
+                 style="width:120px;height:14px;min-width:120px"></div>
+            <span class="mono rlive-cell-range-text" data-field="range_24h_text"
+                  style="color:var(--radar-muted,#8d98a5)">—</span>
+          </div>
         </td>
         <td class="rlive-cell-freshness" data-field="freshness"
             style="padding:12px 12px;vertical-align:top;color:var(--radar-muted,#8d98a5)">

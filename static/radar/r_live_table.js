@@ -51,6 +51,19 @@
     cell.textContent = text != null ? text : "—";
   }
 
+  function chart_cell(row_el, field, cfg) {
+    // Fill one chart container (sparkline / range-bar) from canonical data and
+    // render via the shared zero-dependency renderer. cfg=null → typed empty.
+    var box = row_el.querySelector("[data-field='" + field + "'] [data-chart-type]");
+    if (!box || !window.FoCharts) return;
+    box.classList.remove("fo-power-skeleton", "fo-power-skeleton--block");
+    if (!cfg) { box.textContent = "—"; return; }
+    if (cfg.attrs) {
+      Object.keys(cfg.attrs).forEach(function (key) { box.dataset[key] = cfg.attrs[key]; });
+    }
+    window.FoCharts.renderElement(box);
+  }
+
   function set_historical_cell(row_el, field, text, collected_at) {
     var cell = row_el.querySelector("[data-field='" + field + "']");
     if (!cell || text == null) return;
@@ -121,7 +134,29 @@
     }
 
     set_cell(row_el, "range_1h", fmt_range(ranges && ranges.range_1h));
-    set_cell(row_el, "range_24h", fmt_range(ranges && ranges.range_24h));
+    set_cell(row_el, "range_24h_text", fmt_range(ranges && ranges.range_24h));
+
+    // Terminal visuals — pure display of the SAME canonical data:
+    // trend sparkline from the bounded verified 24h series, and the current
+    // position inside the canonical 24h range. No extra requests, no
+    // provider calls, gaps stay gaps.
+    var series = ranges && Array.isArray(ranges.series_24h) ? ranges.series_24h : null;
+    if (series && series.length >= 2) {
+      chart_cell(row_el, "trend", { attrs: { points: JSON.stringify(series.map(function (p) {
+        return { t: p.collected_at || "", v: p.premium_bps };
+      })) } });
+    } else {
+      chart_cell(row_el, "trend", null);
+    }
+    var range24 = ranges && ranges.range_24h;
+    var current_bps = (is_current && snap_data.b1_0_premium) ? parseFloat(snap_data.b1_0_premium.value_bps) : NaN;
+    if (range24 && range24.state === "AVAILABLE" && isFinite(current_bps)) {
+      chart_cell(row_el, "range_24h", { attrs: {
+        low: range24.low_bps, high: range24.high_bps, current: String(current_bps),
+      } });
+    } else {
+      chart_cell(row_el, "range_24h", null);
+    }
 
     // Market activity and oracle ages are distinct. Read-time ages from the
     // snapshot view are preferred; observed_at is the conservative oldest
@@ -182,7 +217,14 @@
         Object.keys(snapshots).forEach(function(key) {
           populate_row(byId[key], snapshots[key], history[key]);
         });
-      }).catch(function() { /* Ranges remain unavailable, never zero. */ });
+      }).catch(function() {
+        // Ranges remain unavailable, never zero. Visual cells resolve to the
+        // typed empty state — the skeleton must never shimmer forever.
+        history = Object.create(null);
+        Object.keys(snapshots).forEach(function(key) {
+          populate_row(byId[key], snapshots[key], undefined);
+        });
+      });
 
     // One instant snapshot read, then CONTINUOUS snapshot polling while the
     // page is active. Polling is state-independent: it continues through

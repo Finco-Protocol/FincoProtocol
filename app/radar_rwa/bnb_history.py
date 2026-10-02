@@ -46,7 +46,9 @@ def _range_result(values: list[Decimal]) -> dict:
             "observation_count": len(values)}
 
 
-def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
+def _range_summary_from_rows(rows, latest, *, now: datetime,
+                             include_series: bool = False,
+                             max_series_points: int = 48) -> dict:
     """Pure post-processing for B1.3 range summaries.
 
     ``rows`` are the bounded (digest, payload) window rows newest-first for
@@ -54,6 +56,14 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
     (or None). Digest verification, canonical timestamps and filters are
     identical to the per-asset read path — this helper exists so the batch
     read produces byte-identical summaries.
+
+    ``include_series`` additionally returns a bounded, deterministic,
+    display-only 24h premium series (``series_24h``) extracted from the SAME
+    digest-verified, already-filtered window points: oldest-first
+    ``[{"collected_at", "premium_bps"}]`` bucket-downsampled to at most
+    ``max_series_points`` (first point of each equal-size bucket; first and
+    last canonical points always preserved). No interpolation, no synthetic
+    points, no canonical data change — pure visual selection.
     """
     last_available = None
     if latest is not None:
@@ -80,10 +90,14 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
                 "premium_bps": point["reference_premium_bps"],
             }
     if len(rows) > MAX_RLIVE_RANGE_POINTS:
-        return {"range_1h": _range_result([]), "range_24h": _range_result([]),
-                "last_available": last_available, "reason": "HISTORY_WINDOW_CAP_EXCEEDED"}
+        result = {"range_1h": _range_result([]), "range_24h": _range_result([]),
+                  "last_available": last_available, "reason": "HISTORY_WINDOW_CAP_EXCEEDED"}
+        if include_series:
+            result["series_24h"] = []
+        return result
     one_hour = []
     one_day = []
+    series: list[tuple[datetime, str]] = []
     hour_cutoff = now - timedelta(hours=1)
     for digest, payload in rows:
         if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
@@ -104,8 +118,42 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
         one_day.append(value)
         if collected >= hour_cutoff:
             one_hour.append(value)
-    return {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
-            "last_available": last_available}
+        if include_series:
+            series.append((collected, point["reference_premium_bps"]))
+    result = {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
+              "last_available": last_available}
+    if include_series:
+        series.sort(key=lambda item: item[0])
+        result["series_24h"] = _downsample_series(series, max_series_points)
+    return result
+
+
+def _downsample_series(series: list[tuple[datetime, str]],
+                       max_points: int) -> list[dict]:
+    """Deterministic display-only downsample of verified canonical points.
+
+    Keeps the first and last canonical points; between them, divides the
+    series into equal-size buckets and keeps each bucket's FIRST point.
+    Canonical timestamps and values are never altered, interpolated or
+    re-timestamped — points are only selected.
+    """
+    if max_points <= 0 or len(series) <= max_points:
+        return [{"collected_at": collected.isoformat(), "premium_bps": value}
+                for collected, value in series]
+    first, last = series[0], series[-1]
+    inner = series[1:-1]
+    bucket_count = max_points - 2
+    bucket_size = len(inner) / bucket_count
+    picked = [first]
+    for i in range(bucket_count):
+        start = int(i * bucket_size)
+        end = max(start + 1, int((i + 1) * bucket_size))
+        bucket = inner[start:end]
+        if bucket:
+            picked.append(bucket[0])
+    picked.append(last)
+    return [{"collected_at": collected.isoformat(), "premium_bps": value}
+            for collected, value in picked]
 
 
 _RANGE_WINDOW_SQL = (
@@ -168,7 +216,9 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
 
 
 def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
-                                      path: str | None = None) -> dict:
+                                      path: str | None = None,
+                                      include_series: bool = False,
+                                      max_series_points: int = 48) -> dict:
     """Single-pass read-only 24h range summaries for MANY exact pairs.
 
     One store open and two grouped queries replace the per-asset store reads
@@ -177,6 +227,11 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     ``read_r_live_range_summary_readonly``: each pair's window rows are the
     newest-first bounded set that pair's own LIMIT query would return, and
     each pair's latest row is that pair's newest AVAILABLE point.
+
+    With ``include_series`` each summary additionally carries the bounded
+    display-only ``series_24h`` premium series extracted from the same
+    digest-verified window points (see ``_range_summary_from_rows``) — no
+    extra store reads, no interpolation, no synthetic points.
 
     Returns ``{canonical_id: summary}``. Per-pair computation failures map
     to ``{"reason": "HISTORY_UNAVAILABLE"}`` exactly like the router-level
@@ -193,6 +248,8 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     now = now.astimezone(timezone.utc)
     empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
              "last_available": None}
+    if include_series:
+        empty["series_24h"] = []
     location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
     if not checked:
         return {}
@@ -231,7 +288,8 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     for pair in checked:
         try:
             out[pair[1]] = _range_summary_from_rows(
-                windows.get(pair, []), latest.get(pair), now=now)
+                windows.get(pair, []), latest.get(pair), now=now,
+                include_series=include_series, max_series_points=max_series_points)
         except Exception:
             out[pair[1]] = {"reason": "HISTORY_UNAVAILABLE"}
     return out
