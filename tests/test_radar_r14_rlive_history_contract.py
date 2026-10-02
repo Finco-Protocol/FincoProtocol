@@ -383,15 +383,42 @@ class TestHistoryNeverReplacesCurrentState:
         )
 
     def test_detail_js_current_snapshot_and_history_are_separate_fetches(self):
-        """Detail page fetches snapshot and history separately."""
+        """Detail page fetches the canonical snapshot and history separately.
+
+        Invariant contract (name-agnostic — the local JS variable may be
+        SNAPSHOT_URL or SNAP_URL, the invariant is what is pinned here):
+        1. a distinct fetch of the network-free canonical snapshot endpoint
+           drives the initial/current render;
+        2. a distinct history fetch exists;
+        3. the initial/current render path never calls the live acquisition
+           endpoint (/{uid});
+        4. the live acquisition endpoint is fetched in exactly one place,
+           inside the explicit Refresh now control.
+        """
         html = (REPO / "app/templates/radar/r_live_detail.html").read_text()
-        snap_fetch = "fetch(SNAP_URL)" in html
-        hist_fetch = "fetch(HIST_URL)" in html
-        assert snap_fetch, "detail page must have separate snapshot fetch"
-        assert hist_fetch, "detail page must have separate history fetch"
+        # 1. canonical snapshot fetch exists and targets the snapshot endpoint
+        snap_url_declared = (
+            'SNAP_URL = "/api/v1.1/radar/r-live/snapshot"' in html
+            or 'SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot"' in html)
+        assert snap_url_declared, "detail page must declare the canonical snapshot endpoint"
+        assert "fetch(SNAP_URL)" in html or "fetch(SNAPSHOT_URL)" in html, (
+            "detail page must have a separate snapshot fetch")
+        # 2. separate history fetch
+        assert "fetch(HIST_URL)" in html, "detail page must have separate history fetch"
         # The populate and build_history_table functions are independent
         assert "function populate" in html, "populate function for current snapshot missing"
         assert "function build_history_table" in html, "build_history_table function missing"
+        # 3+4. live acquisition endpoint appears in exactly one fetch and that
+        # call site lives inside the explicit Refresh now control — the initial
+        # render can never trigger hidden live acquisition.
+        live_fetches = [line for line in html.splitlines() if "fetch(LIVE_URL" in line]
+        assert len(live_fetches) == 1, (
+            "live acquisition must have exactly one fetch call site")
+        refresh_now_pos = html.find("function refresh_now")
+        live_fetch_pos = html.find(live_fetches[0])
+        assert refresh_now_pos != -1 and live_fetch_pos > refresh_now_pos, (
+            "live acquisition fetch must be inside the explicit Refresh now control")
+        assert "detail-refresh-now" in html, "explicit Refresh now control missing"
 
 
 # ── Integration: API endpoint returns canonical-shape points ──────────────────

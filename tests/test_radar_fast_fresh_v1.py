@@ -176,31 +176,152 @@ def test_dashboard_cache_expiry_reacquires(module):
         setattr(module, ttl_name, original_ttl)
 
 
+def _grace_name(module):
+    return [name for name in vars(module)
+            if name.endswith("_STALE_GRACE_SECONDS") and name.startswith("_")][0]
+
+
+def _assert_stale_lkg_presentation(module, first, second, service_calls_expected,
+                                   original_retrieved_at):
+    """Shared Correction A assertions: the served last-known-good payload keeps
+    its evidence and canonical timestamps, is explicitly stale, and the cached
+    last-known-good itself is never overwritten by the failed refresh."""
+    assert second.status_code == 200
+    # Explicit stale presentation — never fresh/current.
+    assert "STALE" in second.text, "last-known-good fallback must be visibly stale"
+    assert "Last-known-good fallback" in second.text, (
+        "last-known-good fallback must be identifiable as such")
+    assert first.text != second.text, (
+        "stale fallback must not be presented identically to the fresh render")
+    # The cached last-known-good is untouched: original state and canonical
+    # retrieved_at preserved, no UNAVAILABLE overwrite.
+    cached = module._dashboard_cache["value"]
+    assert cached is not None and cached["state"] == "AVAILABLE"
+    assert cached["retrieved_at"] == original_retrieved_at
+    # Surfaces whose templates render retrieved_at expose the preserved
+    # canonical timestamp through the stale presentation too.
+    if module is derivatives_router_module or module is stablecoin_router_module:
+        assert original_retrieved_at in first.text
+        assert original_retrieved_at in second.text, (
+            "canonical observation timestamp must survive the stale projection")
+    assert service_calls_expected()
+
+
 @pytest.mark.parametrize("module", DASHBOARD_MODULES)
-def test_dashboard_provider_failure_serves_last_known_good(module):
+def test_dashboard_exception_failure_serves_stale_last_known_good(module):
     service = FlipFailingService(DASHBOARD_PAYLOADS[module.__name__])
     _setter(module)(service)
     ttl_name = _ttl_names(module)[0]
-    grace_name = [name for name in vars(module)
-                  if name.endswith("_STALE_GRACE_SECONDS") and name.startswith("_")][0]
+    grace = _grace_name(module)
     original_ttl = getattr(module, ttl_name)
-    original_grace = getattr(module, grace_name)
+    original_grace = getattr(module, grace)
     setattr(module, ttl_name, 0.02)
-    setattr(module, grace_name, 60.0)
+    setattr(module, grace, 60.0)
     client = _client_for(module)
     path = _route_path(module)
     try:
-        first = client.get(path)  # provider success — primes the cache
+        first = client.get(path)  # provider success — primes last-known-good
         assert first.status_code == 200
-        time.sleep(0.06)  # expire the TTL; provider now failing
+        original_retrieved_at = module._dashboard_cache["value"]["retrieved_at"]
+        time.sleep(0.06)  # expire the TTL; provider now raising
         second = client.get(path)
-        assert second.status_code == 200
-        assert service.calls == 2
-        assert second.text == first.text, (
-            "provider failure must serve the preserved last-known-good payload")
+        assert service.calls == 2, "expired TTL must attempt exactly one refresh"
+        _assert_stale_lkg_presentation(
+            module, first, second, lambda: service.calls == 2, original_retrieved_at)
     finally:
         setattr(module, ttl_name, original_ttl)
-        setattr(module, grace_name, original_grace)
+        setattr(module, grace, original_grace)
+
+
+class TypedUnavailableService:
+    """Mirrors the production failure shape: dashboard services fail closed
+    INTERNALLY — a real provider failure returns a typed
+    ``{"state": "UNAVAILABLE", ...}`` payload instead of raising."""
+
+    def __init__(self, good_payload, unavailable_payload):
+        self.calls = 0
+        self.good_payload = good_payload
+        self.unavailable_payload = unavailable_payload
+
+    def read_dashboard(self):
+        self.calls += 1
+        if self.calls == 1:
+            return dict(self.good_payload)
+        return dict(self.unavailable_payload)
+
+
+@pytest.mark.parametrize("module", [crypto_router_module, stablecoin_router_module])
+def test_dashboard_typed_unavailable_refresh_serves_stale_last_known_good(module):
+    """The REAL production failure shape: refresh returns typed UNAVAILABLE
+    normally (no exception) — bounded last-known-good must still apply, be
+    explicitly stale, and the UNAVAILABLE result must not overwrite it."""
+    good = DASHBOARD_PAYLOADS[module.__name__]
+    unavailable = {"state": "UNAVAILABLE",
+                   "reason": "PROVIDER_REFRESH_FAILED",
+                   "retrieved_at": NOW.isoformat()}
+    service = TypedUnavailableService(good, unavailable)
+    _setter(module)(service)
+    ttl_name = _ttl_names(module)[0]
+    grace = _grace_name(module)
+    original_ttl = getattr(module, ttl_name)
+    original_grace = getattr(module, grace)
+    setattr(module, ttl_name, 0.02)
+    setattr(module, grace, 60.0)
+    client = _client_for(module)
+    path = _route_path(module)
+    try:
+        first = client.get(path)  # primes last-known-good
+        assert first.status_code == 200
+        original_retrieved_at = module._dashboard_cache["value"]["retrieved_at"]
+        time.sleep(0.06)  # expire the TTL; provider now typed-UNAVAILABLE
+        second = client.get(path)
+        assert service.calls == 2
+        _assert_stale_lkg_presentation(
+            module, first, second, lambda: service.calls == 2, original_retrieved_at)
+        # Bounded: a further refresh within grace still serves the same
+        # last-known-good — the UNAVAILABLE payload never replaced it.
+        third = client.get(path)
+        assert service.calls == 3
+        assert third.status_code == 200
+        assert "Last-known-good fallback" in third.text
+        assert module._dashboard_cache["value"]["retrieved_at"] == original_retrieved_at
+        assert module._dashboard_cache["value"]["state"] == "AVAILABLE"
+    finally:
+        setattr(module, ttl_name, original_ttl)
+        setattr(module, grace, original_grace)
+
+
+@pytest.mark.parametrize("module", [crypto_router_module, stablecoin_router_module])
+def test_dashboard_no_last_known_good_fails_closed(module):
+    """With nothing to preserve, typed UNAVAILABLE and exceptions keep the
+    existing fail-closed behavior — never a fabricated stale page."""
+    # Typed-UNAVAILABLE service from the first call: no LKG exists.
+    unavailable_only = TypedUnavailableService(
+        {"state": "UNAVAILABLE", "reason": "DOWN", "retrieved_at": NOW.isoformat()},
+        {"state": "UNAVAILABLE", "reason": "DOWN", "retrieved_at": NOW.isoformat()})
+    unavailable_only.calls = 1  # every read is typed-UNAVAILABLE
+    _setter(module)(unavailable_only)
+    ttl_name = _ttl_names(module)[0]
+    original_ttl = getattr(module, ttl_name)
+    setattr(module, ttl_name, 60.0)
+    client = _client_for(module)
+    path = _route_path(module)
+    try:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "Last-known-good fallback" not in response.text
+        # Exception path with no LKG: route boundary fails closed typed.
+        def _raise():
+            raise RuntimeError("provider down")
+        from app.radar_ui import _dashboard_lkg
+        cache = {"at": None, "value": None}
+        with pytest.raises(RuntimeError):
+            _dashboard_lkg.read_with_last_known_good(
+                cache=cache, lock=threading.Lock(),
+                fetch_lock=threading.Lock(), fetch=_raise,
+                ttl=60.0, grace=60.0)
+    finally:
+        setattr(module, ttl_name, original_ttl)
 
 
 def test_dashboard_unavailable_payload_is_never_cached():
@@ -215,6 +336,7 @@ def test_dashboard_unavailable_payload_is_never_cached():
         client.get("/radar/crypto")
         client.get("/radar/crypto")
         assert unavailable.calls == 2, "UNAVAILABLE payloads must not be cached"
+        assert module._dashboard_cache["value"] is None
     finally:
         module._DASHBOARD_TTL_SECONDS = original_ttl
 
@@ -539,6 +661,6 @@ def test_rlive_detail_page_is_snapshot_first_with_explicit_refresh():
     live_fetches = [line for line in html.splitlines() if "fetch(LIVE_URL" in line]
     assert len(live_fetches) == 1, "live acquisition must have exactly one call site"
     initial_fetch_region = html.split("function refresh_snapshot", 1)[1][:300]
-    assert "fetch(SNAP_URL)" in initial_fetch_region, "initial fetch must target the snapshot URL"
-    assert "fetch(SNAP_URL)" in html and "fetch(HIST_URL)" in html, (
+    assert "fetch(SNAPSHOT_URL)" in initial_fetch_region, "initial fetch must target the snapshot URL"
+    assert "fetch(SNAPSHOT_URL)" in html and "fetch(HIST_URL)" in html, (
         "R14 contract: current snapshot and history must be separate fetches")

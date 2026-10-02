@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
@@ -39,46 +38,21 @@ def _reset_dashboard_cache() -> None:
         _dashboard_cache["value"] = None
 
 
-def _payload_cacheable(value) -> bool:
-    # A fully UNAVAILABLE dashboard is never cached — a transient provider
-    # outage must not pin the failure for the TTL window.
-    return not (isinstance(value, dict) and value.get("state") == "UNAVAILABLE")
-
-
 def _read_dashboard_cached():
-    """TTL-cached, single-flight dashboard read.
+    """TTL-cached, single-flight dashboard read with typed last-known-good.
 
-    Provider I/O runs outside the cache lock; concurrent identical misses
-    coalesce on the fetch lock. On provider failure the last-known-good
-    payload is served within the stale-grace window and is never erased.
-    Cached payloads keep their canonical timestamps — serving them is a
-    repetition of a real observation, never a fabricated new one.
+    See ``app.radar_ui._dashboard_lkg``: covers BOTH provider exceptions and
+    services that fail closed internally with a fully typed UNAVAILABLE
+    payload; within the stale-grace window the last-known-good payload is
+    served as an explicit stale presentation (never as fresh/current) and a
+    fully UNAVAILABLE result is never stored over it.
     """
-    now = time.monotonic()
-    with _dashboard_lock:
-        at, value = _dashboard_cache["at"], _dashboard_cache["value"]
-    if value is not None and at is not None and (now - at) < _DASHBOARD_TTL_SECONDS:
-        return value
-    with _dashboard_fetch_lock:
-        now = time.monotonic()
-        with _dashboard_lock:
-            at, value = _dashboard_cache["at"], _dashboard_cache["value"]
-        if value is not None and at is not None and (now - at) < _DASHBOARD_TTL_SECONDS:
-            return value
-        try:
-            value = _derivatives_service.read_dashboard()
-        except Exception:
-            with _dashboard_lock:
-                at, value = _dashboard_cache["at"], _dashboard_cache["value"]
-            if value is not None and at is not None \
-                    and (time.monotonic() - at) < _DASHBOARD_STALE_GRACE_SECONDS:
-                return value
-            raise
-        if _payload_cacheable(value):
-            with _dashboard_lock:
-                _dashboard_cache["at"] = now
-                _dashboard_cache["value"] = value
-        return value
+    from app.radar_ui import _dashboard_lkg
+    return _dashboard_lkg.read_with_last_known_good(
+        cache=_dashboard_cache, lock=_dashboard_lock,
+        fetch_lock=_dashboard_fetch_lock,
+        fetch=_derivatives_service.read_dashboard,
+        ttl=_DASHBOARD_TTL_SECONDS, grace=_DASHBOARD_STALE_GRACE_SECONDS)
 
 
 def _route_failure(exc: Exception) -> dict:

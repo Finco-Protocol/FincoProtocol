@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 import threading
-import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
@@ -55,78 +54,32 @@ def _reset_bnb_payload_cache() -> None:
         _bnb_payload_cache["value"] = None
 
 
-def _payload_cacheable(value) -> bool:
-    # A fully UNAVAILABLE payload is never cached — a transient provider
-    # outage must not pin the failure for the TTL window.
-    return not (isinstance(value, dict) and value.get("state") == "UNAVAILABLE")
-
-
 def _read_rwa_dashboard_cached():
-    """TTL-cached, single-flight RWA overview read.
+    """TTL-cached, single-flight RWA overview read with typed last-known-good.
 
-    Provider I/O runs outside the cache lock; concurrent identical misses
-    coalesce on the fetch lock. On provider failure the last-known-good
-    payload is served within the stale-grace window and is never erased.
-    Cached payloads keep their canonical timestamps — serving them is a
-    repetition of a real observation, never a fabricated new one.
+    See ``app.radar_ui._dashboard_lkg`` for the shared typed-UNAVAILABLE /
+    exception last-known-good contract.
     """
-    now = time.monotonic()
-    with _rwa_dashboard_lock:
-        at, value = _rwa_dashboard_cache["at"], _rwa_dashboard_cache["value"]
-    if value is not None and at is not None and (now - at) < _RWA_DASHBOARD_TTL_SECONDS:
-        return value
-    with _rwa_dashboard_fetch_lock:
-        now = time.monotonic()
-        with _rwa_dashboard_lock:
-            at, value = _rwa_dashboard_cache["at"], _rwa_dashboard_cache["value"]
-        if value is not None and at is not None and (now - at) < _RWA_DASHBOARD_TTL_SECONDS:
-            return value
-        try:
-            value = _rwa_service.read_dashboard()
-        except Exception:
-            with _rwa_dashboard_lock:
-                at, value = _rwa_dashboard_cache["at"], _rwa_dashboard_cache["value"]
-            if value is not None and at is not None \
-                    and (time.monotonic() - at) < _RWA_DASHBOARD_STALE_GRACE_SECONDS:
-                return value
-            raise
-        if _payload_cacheable(value):
-            with _rwa_dashboard_lock:
-                _rwa_dashboard_cache["at"] = now
-                _rwa_dashboard_cache["value"] = value
-        return value
-
+    from app.radar_ui import _dashboard_lkg
+    return _dashboard_lkg.read_with_last_known_good(
+        cache=_rwa_dashboard_cache, lock=_rwa_dashboard_lock,
+        fetch_lock=_rwa_dashboard_fetch_lock,
+        fetch=_rwa_service.read_dashboard,
+        ttl=_RWA_DASHBOARD_TTL_SECONDS, grace=_RWA_DASHBOARD_STALE_GRACE_SECONDS)
 
 def _read_bnb_payload_cached():
     """TTL-cached, single-flight BNB RWA payload read (same contract as the
-    RWA overview cache; shared by the HTML page and the JSON snapshot)."""
-    now = time.monotonic()
-    with _bnb_payload_lock:
-        at, value = _bnb_payload_cache["at"], _bnb_payload_cache["value"]
-    if value is not None and at is not None and (now - at) < _BNB_PAYLOAD_TTL_SECONDS:
-        return value
-    with _bnb_payload_fetch_lock:
-        now = time.monotonic()
-        with _bnb_payload_lock:
-            at, value = _bnb_payload_cache["at"], _bnb_payload_cache["value"]
-        if value is not None and at is not None and (now - at) < _BNB_PAYLOAD_TTL_SECONDS:
-            return value
-        try:
-            value = _bnb_service.read_payload()
-        except Exception:
-            with _bnb_payload_lock:
-                at, value = _bnb_payload_cache["at"], _bnb_payload_cache["value"]
-            if value is not None and at is not None \
-                    and (time.monotonic() - at) < _BNB_PAYLOAD_STALE_GRACE_SECONDS:
-                return value
-            raise
-        if _payload_cacheable(value):
-            with _bnb_payload_lock:
-                _bnb_payload_cache["at"] = now
-                _bnb_payload_cache["value"] = value
-        return value
+    RWA overview cache; shared by the HTML page and the JSON snapshot).
 
-
+    See ``app.radar_ui._dashboard_lkg`` for the shared typed-UNAVAILABLE /
+    exception last-known-good contract.
+    """
+    from app.radar_ui import _dashboard_lkg
+    return _dashboard_lkg.read_with_last_known_good(
+        cache=_bnb_payload_cache, lock=_bnb_payload_lock,
+        fetch_lock=_bnb_payload_fetch_lock,
+        fetch=_bnb_service.read_payload,
+        ttl=_BNB_PAYLOAD_TTL_SECONDS, grace=_BNB_PAYLOAD_STALE_GRACE_SECONDS)
 
 @router.get("/radar/crypto/rwa/basis", response_class=HTMLResponse)
 async def radar_crypto_rwa_basis(request: Request):

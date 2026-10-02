@@ -24,6 +24,9 @@
     </div>
     <div class="crypto-health" data-state="{{ stablecoins.state }}">
       <span class="crypto-health__state">{{ stablecoins.state }}</span>
+      {% if stablecoins.last_known_good %}
+      <span class="muted small" data-lkg-fallback="true">Last-known-good fallback — refresh is currently failing; the preserved observation is shown as STALE.</span>
+      {% endif %}
       <span>retrieved {{ stablecoins.retrieved_at }}</span>
     </div>
   </header>
