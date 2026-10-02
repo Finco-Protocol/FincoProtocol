@@ -335,13 +335,13 @@ class TestUsersAndFailures:
 
         def sometimes(cls, user_id, **kw):
             if user_id == U1:
-                raise RuntimeError("secret-bearing /home/private/path")
+                raise RuntimeError("secret-bearing PRIVATE_LOCATION")
             return real(cls, user_id, **kw)
         env.mp.setattr(YieldAlertsGateway, "evaluate_user", classmethod(sometimes))
         code, report = _run(T0 + timedelta(minutes=11))
         assert code == 3 and report["users_evaluated"] == 2
         assert report["failures"][0]["reason"] == "ALERT_EVALUATION_ERROR"
-        assert "secret-bearing" not in json.dumps(report) and "/home/private" not in json.dumps(report)
+        assert "secret-bearing" not in json.dumps(report) and "PRIVATE_LOCATION" not in json.dumps(report)
 
     def test_unavailable_history_is_failed_never_success(self, env, uids):
         _watch(U1, uids[0])
@@ -532,7 +532,7 @@ class TestReportAndSafety:
 
     def test_no_user_ids_secrets_or_paths_in_the_report(self, env, uids, monkeypatch):
         from finco_yield import alerts_eval
-        secret_user = "alice@example.com"
+        secret_user = "alice-private-identifier"
         monkeypatch.setenv("SOME_API_TOKEN", "hunter2-token")
         _watch(secret_user, uids[0])
         _observe(env.history, uids[0], T0)
