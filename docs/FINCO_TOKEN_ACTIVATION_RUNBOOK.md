@@ -45,6 +45,33 @@ python tools/finco_token_activation_check.py            # current committed stat
 python tools/finco_token_activation_check.py --candidate proposal.json   # validate a proposal; never authoritative
 ```
 
+### Optional balance-authority probe
+
+```
+python tools/finco_token_activation_check.py --balance-probe-wallet 0xAbC…   # exact 0x + 40 hex
+```
+
+Without `--balance-probe-wallet` the readiness behaviour is exactly as
+before.  With it, ONE additional read-only diagnostic runs **after**
+deployment verification succeeds: a single `balanceOf` call against the
+exact approved deployment, over the SAME chain-scoped
+`FINCO_TOKEN_RPC_URL_<chain_id>` provider the runtime evaluator consumes
+(the existing `P4ReadOnlyBalanceProvider` is reused — no reimplemented ABI
+or RPC logic).  It proves only that "the configured read-only balance
+authority can query this address":
+
+- read-only `balanceOf` only — **no signing, no transaction, no custody**;
+- it does **not** assert wallet ownership and never binds the address to a
+  FINCO user (used transiently for the single read, never stored);
+- a factual zero is reported only when the chain call succeeds and
+  explicitly returns `balance_raw == 0` — RPC failure, contract failure,
+  wrong chain and identity mismatch are typed unavailable states that are
+  **never** shown as zero;
+- the probe never changes the readiness status: it is additive evidence
+  (`balance_probe` in the JSON output) — `READY_FOR_ACTIVATION` /
+  `ACTIVE` still mean exactly what they meant before;
+- malformed addresses fail the optional diagnostic deterministically.
+
 ### Statuses (exactly as implemented)
 
 | Status | Meaning |
