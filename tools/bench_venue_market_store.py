@@ -97,8 +97,9 @@ def main() -> int:
             rows7 = store.get_window_for_underlying(
                 "SYM000", since=since7)
         window7_ms = (time.perf_counter() - t3) / 50 * 1000
+        stored_rows = store.count()
 
-    print(f"stored rows        : {store.count()}")
+    print(f"stored rows        : {stored_rows}")
     print(f"append throughput  : {total / append_seconds:8.0f} rows/s "
           f"({append_seconds:.1f}s total)")
     print(f"latest-by-instr    : {latest_ms:8.2f} ms/read")

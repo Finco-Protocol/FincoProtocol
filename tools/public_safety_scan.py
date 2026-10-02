@@ -85,7 +85,9 @@ _VENDOR_EMAIL_EXEMPT = {
 _SEED_SECRET_EXEMPT = {
     # path -> expected SHA-256 (hex)
     "finco_radar/venues/data/venue_registry_seed.json": (
-        "42dc488081387ae9da80dd882d6856d11d45c46bacd802d1bf98396ba8b91f4d"
+        # SHA-256 of the committed blob (LF; .gitattributes pins -text so
+        # checkout bytes are identical on every platform).
+        "45dca0667c967e5e011faa546ffe0419bdc9be173e129e787f399c1fb7bf1d36"
     ),
 }
 
