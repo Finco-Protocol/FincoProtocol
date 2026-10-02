@@ -185,12 +185,28 @@ def _verified_basis_history_point(row, uid: str, key: AssetKey) -> dict | None:
     reference = point.get("independent_token_reference")
     if not isinstance(basis, dict) or not isinstance(reference, dict):
         return None
+
+    liquidity = None
+    evidence = reference.get("evidence")
+    if isinstance(evidence, dict):
+        try:
+            raw_liquidity = Decimal(str(evidence.get("liquidity")))
+        except (InvalidOperation, TypeError, ValueError):
+            raw_liquidity = None
+        if raw_liquidity is not None and raw_liquidity.is_finite() and raw_liquidity >= 0:
+            liquidity = {
+                "value": str(raw_liquidity),
+                "unit": "UNISWAP_V3_ACTIVE_LIQUIDITY_RAW",
+                "source": "UNISWAP_V3_POOL_STATE",
+            }
+
     return {
         "collected_at": collected.isoformat(),
         "effective_evidence_at": point.get("observed_at"),
         "basis_price_usd_per_token": basis.get("price_usd_per_token"),
         "token_price_usd_per_token": reference.get("priceUsdPerToken"),
         "premium_bps": str(premium),
+        "liquidity": liquidity,
         "_premium": premium,
         "_collected": collected,
     }
@@ -222,6 +238,7 @@ def read_r_live_basis_history_summary_readonly(
     now = now.astimezone(timezone.utc)
     ranges = read_r_live_range_summary_readonly(identity, key, as_of=now, path=path)
     result = {
+        "latest_observation": None,
         "prior_observation": None,
         "range_24h": ranges["range_24h"],
         "change_24h": {
@@ -273,6 +290,10 @@ def read_r_live_basis_history_summary_readonly(
 
     latest = _verified_basis_history_point(latest_rows[0], identity, key) if latest_rows else None
     prior = _verified_basis_history_point(latest_rows[1], identity, key) if len(latest_rows) > 1 else None
+    if latest is not None:
+        result["latest_observation"] = {
+            key_name: value for key_name, value in latest.items() if not key_name.startswith("_")
+        }
     if prior is not None:
         result["prior_observation"] = {
             key_name: value for key_name, value in prior.items() if not key_name.startswith("_")

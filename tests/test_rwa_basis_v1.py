@@ -26,7 +26,7 @@ def calc(ref, tok, **kw):
 
 
 def row(p=None, *, ref="100", tok="101", bps="100", ref_at=NOW, tok_at=NOW,
-        state="AVAILABLE", uid=None, key=None, metrics=None):
+        state="AVAILABLE", uid=None, key=None):
     p = p or policy()
     cid = key or p.asset_key.canonical_id
     chain, contract = cid.split(":", 1)
@@ -40,7 +40,6 @@ def row(p=None, *, ref="100", tok="101", bps="100", ref_at=NOW, tok_at=NOW,
                             "source": "UNISWAP_V3_TWAP_CHAINLINK_USDG_USD",
                             "observed_at": tok_at.isoformat() if tok_at else None},
         "b1_0_premium": {"state": "AVAILABLE", "value_bps": bps},
-        "market_metrics": metrics or {"liquidity": None, "volume_24h": None},
     }}
 
 
@@ -93,7 +92,7 @@ def point(p, at, premium, seq):
     return {"economic_asset_uid": p.economic_asset_uid, "asset_key": p.asset_key.canonical_id,
             "observed_at": at.isoformat(), "collected_at": at.isoformat(), "state": "AVAILABLE",
             "robinhood_basis": {"price_usd_per_token": "100"},
-            "independent_token_reference": {"priceUsdPerToken": "101", "evidence": {"retrievedAt": at.isoformat(), "seq": seq}},
+            "independent_token_reference": {"priceUsdPerToken": "101", "evidence": {"retrievedAt": at.isoformat(), "seq": seq, "liquidity": "123"}},
             "reference_premium_bps": premium}
 
 
@@ -155,3 +154,112 @@ def test_rwa_basis_router_does_not_expand_frozen_r_live_route_families():
     paths = {route.path for route in r_live_router.routes}
     assert "/radar/rwa-basis" not in paths
     assert "/radar/rwa-basis/{economic_asset_uid}" not in paths
+
+
+# ── Correction A: explicit status precedence ─────────────────────────────────
+
+def _assert_consistent(record, expected):
+    assert record["evaluation_status"] == expected
+    assert record["basis"]["status"] == expected
+
+
+def test_missing_reference_plus_stale_row_is_unavailable():
+    record = build_basis_record(row(ref=None, state="STALE"), policy(), evaluation_time=NOW)
+    _assert_consistent(record, "UNAVAILABLE")
+    assert record["basis"]["reason"] == "REFERENCE_VALUE_UNAVAILABLE"
+
+
+def test_missing_tokenized_plus_stale_row_is_unavailable():
+    record = build_basis_record(row(tok=None, state="STALE"), policy(), evaluation_time=NOW)
+    _assert_consistent(record, "UNAVAILABLE")
+    assert record["basis"]["reason"] == "TOKENIZED_VALUE_UNAVAILABLE"
+
+
+def test_unit_mismatch_plus_stale_source_is_unavailable():
+    result = calc(Decimal("100"), Decimal("101"),
+                  reference_freshness="STALE", tokenized_unit="EUR_PER_TOKEN")
+    assert result.status is BasisStatus.UNAVAILABLE
+    assert result.reason == "UNIT_MISMATCH"
+
+
+def test_currency_mismatch_plus_stale_source_is_unavailable():
+    result = calc(Decimal("100"), Decimal("101"),
+                  reference_freshness="STALE", tokenized_currency="EUR")
+    assert result.status is BasisStatus.UNAVAILABLE
+    assert result.reason == "CURRENCY_MISMATCH"
+
+
+def test_observation_gap_plus_stale_row_is_unavailable():
+    record = build_basis_record(
+        row(state="STALE", ref_at=NOW - timedelta(hours=2), tok_at=NOW),
+        policy(), evaluation_time=NOW,
+    )
+    _assert_consistent(record, "UNAVAILABLE")
+    assert record["basis"]["reason"] == "OBSERVATION_TIME_GAP_EXCEEDS_POLICY"
+
+
+def test_authoritative_basis_unavailable_plus_stale_row_is_unavailable():
+    stale = row(state="STALE")
+    stale["data"]["b1_0_premium"] = {"state": "UNAVAILABLE", "value_bps": None}
+    record = build_basis_record(stale, policy(), evaluation_time=NOW)
+    _assert_consistent(record, "UNAVAILABLE")
+    assert record["basis"]["reason"] == "AUTHORITATIVE_BASIS_UNAVAILABLE"
+
+
+def test_valid_factual_basis_plus_stale_source_is_stale():
+    record = build_basis_record(row(state="STALE"), policy(), evaluation_time=NOW)
+    _assert_consistent(record, "STALE")
+    assert record["basis"]["basis_bps"] is None  # stale current value is suppressed
+
+
+def test_valid_current_basis_is_available():
+    record = build_basis_record(row(), policy(), evaluation_time=NOW)
+    _assert_consistent(record, "AVAILABLE")
+    assert record["basis"]["basis_bps"] == "100.00"
+
+
+def test_identity_mismatch_is_unbound():
+    mismatch = row(uid=policy("NVDA").economic_asset_uid)
+    record = build_basis_record(mismatch, policy(), evaluation_time=NOW)
+    _assert_consistent(record, "UNBOUND")
+
+
+def test_public_contract_never_reports_contradictory_status_semantics():
+    records = [
+        build_basis_record(row(), policy(), evaluation_time=NOW),
+        build_basis_record(row(state="STALE"), policy(), evaluation_time=NOW),
+        build_basis_record(row(ref=None, state="STALE"), policy(), evaluation_time=NOW),
+        build_basis_record(row(uid=policy("NVDA").economic_asset_uid), policy(), evaluation_time=NOW),
+    ]
+    for record in records:
+        assert record["evaluation_status"] == record["basis"]["status"]
+
+
+# ── Frozen R-LIVE payload / isolated liquidity seam ───────────────────────────
+
+def test_r_live_formatter_payload_is_not_widened_for_rwa_basis():
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "app/radar_rwa/r_live_service.py").read_text()
+    assert '"market_metrics"' not in source
+    assert "_format_market_metrics" not in source
+
+
+def test_raw_liquidity_comes_from_exact_history_seam_only(tmp_path):
+    p = policy()
+    summary = history_summary(tmp_path, [point(p, NOW, "100", 1)])
+    latest = summary["latest_observation"]
+    assert latest["liquidity"] == {
+        "value": "123",
+        "unit": "UNISWAP_V3_ACTIVE_LIQUIDITY_RAW",
+        "source": "UNISWAP_V3_POOL_STATE",
+    }
+    record = build_basis_record(row(), p, evaluation_time=NOW, history=summary)
+    assert record["tokenized_observation"]["liquidity"] == latest["liquidity"]
+    assert record["tokenized_observation"]["volume_24h"] is None
+
+
+def test_history_liquidity_is_not_reused_across_observation_time(tmp_path):
+    p = policy()
+    summary = history_summary(tmp_path, [point(p, NOW - timedelta(minutes=5), "100", 1)])
+    record = build_basis_record(row(), p, evaluation_time=NOW, history=summary)
+    assert record["tokenized_observation"]["liquidity"] is None

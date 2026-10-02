@@ -40,11 +40,15 @@ class BasisComputation:
     reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        # Public current-value contract: stale/unavailable values are suppressed.
+        # The object may retain validated Decimal values internally so later
+        # comparability checks can distinguish STALE from UNAVAILABLE.
+        expose = self.status is BasisStatus.AVAILABLE
         return {
             "status": self.status.value,
-            "basis_fraction": str(self.basis_fraction) if self.basis_fraction is not None else None,
-            "basis_bps": str(self.basis_bps) if self.basis_bps is not None else None,
-            "premium_discount": self.direction,
+            "basis_fraction": str(self.basis_fraction) if expose and self.basis_fraction is not None else None,
+            "basis_bps": str(self.basis_bps) if expose and self.basis_bps is not None else None,
+            "premium_discount": self.direction if expose else None,
             "reason": self.reason,
         }
 
@@ -126,14 +130,14 @@ def compute_basis(*, reference_value: Decimal | None, tokenized_value: Decimal |
                   reference_unit: str = UNIT, tokenized_unit: str = UNIT,
                   identity_bound: bool = True, reference_freshness: str = "AVAILABLE",
                   tokenized_freshness: str = "AVAILABLE") -> BasisComputation:
-    """Decimal-only descriptive basis. Missing is never coerced to zero."""
+    """Decimal-only descriptive basis with explicit status precedence.
+
+    Precedence is UNBOUND > UNAVAILABLE > STALE > AVAILABLE. Freshness is
+    evaluated only after all required factual values and comparability checks
+    succeed, so STALE can never rescue a missing/invalid comparison.
+    """
     if not identity_bound:
         return BasisComputation(BasisStatus.UNBOUND, reason="IDENTITY_UNBOUND")
-    states = {reference_freshness, tokenized_freshness}
-    if "STALE" in states:
-        return BasisComputation(BasisStatus.STALE, reason="SOURCE_STALE")
-    if states != {"AVAILABLE"}:
-        return BasisComputation(BasisStatus.UNAVAILABLE, reason="SOURCE_UNAVAILABLE")
     if reference_value is None:
         return BasisComputation(BasisStatus.UNAVAILABLE, reason="REFERENCE_VALUE_UNAVAILABLE")
     if tokenized_value is None:
@@ -146,9 +150,17 @@ def compute_basis(*, reference_value: Decimal | None, tokenized_value: Decimal |
         return BasisComputation(BasisStatus.UNAVAILABLE, reason="CURRENCY_MISMATCH")
     if reference_unit.upper() != tokenized_unit.upper():
         return BasisComputation(BasisStatus.UNAVAILABLE, reason="UNIT_MISMATCH")
+
     fraction = (tokenized_value / reference_value) - Decimal("1")
     bps = fraction * Decimal("10000")
-    return BasisComputation(BasisStatus.AVAILABLE, fraction, bps, _label(bps))
+    direction = _label(bps)
+
+    states = {str(reference_freshness).upper(), str(tokenized_freshness).upper()}
+    if not states.issubset({"AVAILABLE", "STALE"}):
+        return BasisComputation(BasisStatus.UNAVAILABLE, reason="SOURCE_UNAVAILABLE")
+    if "STALE" in states:
+        return BasisComputation(BasisStatus.STALE, fraction, bps, direction, "SOURCE_STALE")
+    return BasisComputation(BasisStatus.AVAILABLE, fraction, bps, direction)
 
 
 def _policies_by_uid() -> dict[str, Any]:
@@ -185,6 +197,7 @@ def _metric(value: Any) -> MarketMetric | None:
 
 def _empty_history(reason: str) -> dict[str, Any]:
     return {
+        "latest_observation": None,
         "prior_observation": None,
         "range_24h": {"state": "UNAVAILABLE", "low_bps": None, "high_bps": None, "observation_count": 0},
         "change_24h": {"state": "UNAVAILABLE", "change_bps": None, "reason": reason},
@@ -230,7 +243,6 @@ def build_basis_record(row: Mapping[str, Any], policy, *, evaluation_time: datet
     ref = data.get("robinhood_basis") if isinstance(data.get("robinhood_basis"), Mapping) else {}
     tok = data.get("token_reference") if isinstance(data.get("token_reference"), Mapping) else {}
     premium = data.get("b1_0_premium") if isinstance(data.get("b1_0_premium"), Mapping) else {}
-    metrics = data.get("market_metrics") if isinstance(data.get("market_metrics"), Mapping) else {}
     ref_state, tok_state = str(ref.get("state") or "UNAVAILABLE").upper(), str(tok.get("state") or "UNAVAILABLE").upper()
     if row_state == "STALE":
         ref_state = "STALE" if ref_state == "AVAILABLE" else ref_state
@@ -251,23 +263,36 @@ def build_basis_record(row: Mapping[str, Any], policy, *, evaluation_time: datet
         gap = int(abs((tok_obs.observed_at - ref_obs.observed_at).total_seconds()))
         timing = ("WITHIN_CANONICAL_COMPARISON_WINDOW" if gap <= R_LIVE_AUTHORITY_POLICY.max_evidence_skew_seconds
                   else "OUTSIDE_CANONICAL_COMPARISON_WINDOW")
-    if calc.status is BasisStatus.AVAILABLE and timing != "WITHIN_CANONICAL_COMPARISON_WINDOW":
+    if (calc.status in (BasisStatus.AVAILABLE, BasisStatus.STALE)
+            and timing != "WITHIN_CANONICAL_COMPARISON_WINDOW"):
         calc = BasisComputation(BasisStatus.UNAVAILABLE, reason="OBSERVATION_TIME_GAP_EXCEEDS_POLICY")
+
     authority_bps = _decimal(premium.get("value_bps"), signed=True)
-    if calc.status is BasisStatus.AVAILABLE:
-        if premium.get("state") != "AVAILABLE" or authority_bps is None:
+    if calc.status in (BasisStatus.AVAILABLE, BasisStatus.STALE):
+        if premium.get("state") not in ("AVAILABLE", "STALE") or authority_bps is None:
             calc = BasisComputation(BasisStatus.UNAVAILABLE, reason="AUTHORITATIVE_BASIS_UNAVAILABLE")
         elif authority_bps != calc.basis_bps:
             calc = BasisComputation(BasisStatus.UNAVAILABLE, reason="AUTHORITATIVE_BASIS_MISMATCH")
 
-    status = calc.status
-    if row_state == "STALE" and status is not BasisStatus.UNBOUND:
-        status = BasisStatus.STALE
-    elif row_state not in ("AVAILABLE", "STALE") and status is not BasisStatus.UNBOUND:
-        status = BasisStatus.UNAVAILABLE
-    liquidity, volume = _metric(metrics.get("liquidity")), _metric(metrics.get("volume_24h"))
+    # A non-current/non-stale row can never be promoted by component metadata.
+    if (row_state not in ("AVAILABLE", "STALE")
+            and calc.status in (BasisStatus.AVAILABLE, BasisStatus.STALE)):
+        calc = BasisComputation(BasisStatus.UNAVAILABLE, reason="ROW_STATE_UNAVAILABLE")
+
     hist = dict(history) if history is not None else _empty_history("HISTORY_UNAVAILABLE")
     hist["interpolation"] = False
+
+    # Preserve the frozen R-LIVE payload shape. Liquidity is read only from
+    # existing exact B1.3 history and is considered current only when that
+    # history point's effective observation exactly matches the current token
+    # observation. No fallback by symbol/name and no timestamp interpolation.
+    liquidity = None
+    latest = hist.get("latest_observation") if isinstance(hist.get("latest_observation"), Mapping) else None
+    if calc.status is BasisStatus.AVAILABLE and latest is not None and tok_obs.observed_at is not None:
+        latest_observed = _time(latest.get("effective_evidence_at"))
+        if latest_observed == tok_obs.observed_at:
+            liquidity = _metric(latest.get("liquidity"))
+    volume = None
     return {
         "economic_asset_uid": policy.economic_asset_uid, "canonical_asset_id": policy.asset_key.canonical_id,
         "display_symbol": policy.symbol, "reference_observation": ref_obs.as_dict(),
@@ -275,7 +300,7 @@ def build_basis_record(row: Mapping[str, Any], policy, *, evaluation_time: datet
                                   "contract_address": policy.asset_key.contract_address, "market_state": tok_state,
                                   "liquidity": liquidity.as_dict() if liquidity else None,
                                   "volume_24h": volume.as_dict() if volume else None},
-        "basis": calc.as_dict(), "evaluation_status": status.value, "evaluation_time": now.isoformat(),
+        "basis": calc.as_dict(), "evaluation_status": calc.status.value, "evaluation_time": now.isoformat(),
         "observation_age_difference_seconds": gap, "timing_relationship": timing,
         "comparison_window_seconds": R_LIVE_AUTHORITY_POLICY.max_evidence_skew_seconds,
         "provenance": {"identity_authority": "R_LIVE_REVIEWED_EXACT_BINDING",

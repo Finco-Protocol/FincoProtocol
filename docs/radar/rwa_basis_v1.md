@@ -20,7 +20,7 @@ The reference side reuses ROBINHOOD_STOCK_TOKEN_BOUND_PRICE: official underlying
 
 The tokenized side reuses the independent R-LIVE Uniswap V3 TWAP converted through the reviewed USDG/USD Chainlink quote. It is a reference observation, not an executable quote.
 
-Where present, liquidity is the source-proven raw Uniswap V3 active-liquidity value with an explicit raw unit. V1 has no source-proven 24h volume authority, so 24h volume remains unavailable.
+Where present, liquidity is the source-proven raw Uniswap V3 active-liquidity value with an explicit raw unit. It is read through the existing digest-verified B1.3 history seam only when the exact history observation matches the current token observation timestamp; the frozen R-LIVE public payload is not widened for this feature. V1 has no source-proven 24h volume authority, so 24h volume remains unavailable.
 
 ## Basis
 
@@ -30,7 +30,7 @@ basis_bps = basis_fraction * 10,000
 
 Positive values are PREMIUM, negative values DISCOUNT and zero PAR. These labels are descriptive.
 
-Missing values are never coerced to zero. The reference denominator must be strictly positive. A factual tokenized zero remains zero. The derived layer reconstructs the Decimal calculation and requires it to equal the existing B1.0 authoritative basis value; mismatch suppresses the metric.
+Status precedence is explicit: UNBOUND > UNAVAILABLE > STALE > AVAILABLE. Missing values are never coerced to zero. The reference denominator must be strictly positive. A factual tokenized zero remains zero. Factual/comparability checks run before freshness, so stale evidence can never rescue an unavailable comparison. The derived layer reconstructs the Decimal calculation and requires it to equal the existing B1.0 authoritative basis value; mismatch suppresses the metric.
 
 ## Time and freshness
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Iterator
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
@@ -190,41 +189,10 @@ def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, d
             "formula": premium.formula,
             "reason": premium.reason,
         },
-        "market_metrics": _format_market_metrics(
-            onchain.evidence, is_current=is_current, source_state=token.state.value
-        ),
         "observed_at": onchain.observed_at.isoformat() if onchain.observed_at else None,
         "freshness": _format_freshness(onchain.evidence),
     }
     return state, data
-
-
-
-def _format_market_metrics(evidence, *, is_current: bool, source_state: str) -> dict:
-    """Expose only market metrics proven by the existing R-LIVE source evidence.
-
-    The V3 `liquidity()` value is raw active-liquidity state, not USD depth.
-    R-LIVE currently has no source-proven rolling 24h volume authority, so
-    volume remains explicitly unavailable.
-    """
-    fields = evidence if isinstance(evidence, dict) else dict(evidence or {})
-    liquidity = None
-    if is_current:
-        try:
-            raw = Decimal(str(fields.get("liquidity")))
-        except (InvalidOperation, TypeError, ValueError):
-            raw = None
-        if raw is not None and raw.is_finite() and raw >= 0:
-            liquidity = {
-                "value": str(raw),
-                "unit": "UNISWAP_V3_ACTIVE_LIQUIDITY_RAW",
-                "source": "UNISWAP_V3_POOL_STATE",
-            }
-    return {
-        "source_state": source_state,
-        "liquidity": liquidity,
-        "volume_24h": None,
-    }
 
 
 def _format_freshness(evidence) -> dict:
