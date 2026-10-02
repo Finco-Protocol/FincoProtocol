@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS market_observations (
 )
 """
 
+# Ordering-clock expression indexes: the generic latest reads order by
+# COALESCE(ts, collected_at) (ts is nullable), which a plain (…, ts) index
+# cannot serve.  Benchmark (1.55M rows) showed ~1s latest reads without
+# these; with them, raw indexed reads remain sufficient — no rollups.
 _INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_market_obs_asset_ts "
     "ON market_observations (canonical_asset_id, ts)",
@@ -58,6 +62,15 @@ _INDEXES = (
     "ON market_observations (venue_id, ts)",
     "CREATE INDEX IF NOT EXISTS idx_market_obs_instrument_ts "
     "ON market_observations (instrument_id, ts)",
+    "CREATE INDEX IF NOT EXISTS idx_market_obs_instrument_order "
+    "ON market_observations (instrument_id, "
+    "COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_market_obs_asset_order "
+    "ON market_observations (canonical_asset_id, "
+    "COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_market_obs_venue_instrument_order "
+    "ON market_observations (venue_id, instrument_id, "
+    "COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC)",
 )
 
 _COLUMNS = ("digest, ts, collected_at, canonical_asset_id, venue_id, "
