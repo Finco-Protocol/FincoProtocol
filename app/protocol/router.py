@@ -86,7 +86,7 @@ async def finco_protocol_surface(request: Request):
     # programming defect and must propagate to logs/tests.
     observation, decisions = await get_all_access_decisions(wallet_address, config)
 
-    if wallet_store_unavailable:
+    if wallet_store_unavailable and config is not None:
         decisions = {
             uid: _dc_replace(
                 decision,
@@ -159,7 +159,7 @@ async def finco_access_json(request: Request):
     # programming defect and must propagate to logs/tests.
     observation, decisions = await get_all_access_decisions(wallet_address, config)
 
-    if wallet_store_unavailable:
+    if wallet_store_unavailable and config is not None:
         decisions = {
             uid: _dc_replace(
                 decision,
