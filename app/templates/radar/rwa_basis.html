@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — RWA Basis / Tokenized Markets</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/radar/rwa.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+</head>
+<body class="radar rwa-page">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+{% include "radar/crypto_subnav.html" %}
+{% set rwa_view = 'basis' %}
+{% include "radar/rwa_tabs.html" %}
+
+<main class="radar-main rwa-main">
+  <header class="rwa-hero">
+    <div>
+      <p class="rwa-eyebrow">FINCO RADAR / SOURCE-PROVEN TOKENIZED MARKETS</p>
+      <h1>RWA Basis / Tokenized Markets</h1>
+      <p class="muted">Exact canonical comparison of the Robinhood reference basis and its reviewed on-chain token representation at one explicit evaluation time.</p>
+    </div>
+    <div class="rwa-health" data-state="{{ monitor.state }}">
+      <span class="rwa-health__state">{{ monitor.state }}</span>
+      <span class="mono">evaluated {{ monitor.evaluation_time }}</span>
+    </div>
+  </header>
+
+  <section class="panel rwa-boundary">
+    <strong>Descriptive evidence only</strong>
+    <span>Basis = (tokenized value / reference value) − 1. Both timestamps are shown. Stale, unbound, mismatched, or unavailable evidence suppresses the metric. No interpolation or synthetic backfill is used.</span>
+  </section>
+
+  <section class="rwa-section">
+    <div class="rwa-section__heading"><div>
+      <h2>Canonical bound assets</h2>
+      <p class="muted small">Identity is exact economic_asset_uid ↔ chain ↔ contract from reviewed R-LIVE authority. Symbols are display labels only.</p>
+    </div></div>
+    <div class="rwa-table-wrap panel">
+      <table class="rwa-table" data-testid="rwa-basis-table">
+        <thead><tr>
+          <th>Asset</th><th>Reference basis</th><th>Tokenized observation</th>
+          <th>Premium / discount</th><th>Prior</th><th>24h range</th><th>24h change</th>
+          <th>Liquidity</th><th>24h volume</th><th>Freshness</th><th>Observed</th>
+        </tr></thead>
+        <tbody>
+        {% for row in monitor.records %}
+          <tr data-economic-asset-uid="{{ row.economic_asset_uid }}" data-state="{{ row.evaluation_status }}">
+            <td>
+              <strong>{{ row.display_symbol }}</strong>
+              <span class="mono rwa-symbol">{{ row.economic_asset_uid }}</span>
+              <details><summary class="muted small">Evidence</summary>
+                <div class="muted small mono">{{ row.canonical_asset_id }}</div>
+                <div class="muted small">Authority {{ row.provenance.authority_version }}</div>
+              </details>
+            </td>
+            <td>
+              {% if row.evaluation_status == 'AVAILABLE' and row.reference_observation.value is not none %}
+                <strong class="mono">{{ row.reference_observation.value }}</strong>
+                <span class="muted small">USD / token-equivalent</span>
+              {% else %}—{% endif %}
+              <span class="muted small">{{ row.reference_observation.source or 'Source unavailable' }}</span>
+            </td>
+            <td>
+              {% if row.evaluation_status == 'AVAILABLE' and row.tokenized_observation.value is not none %}
+                <strong class="mono">{{ row.tokenized_observation.value }}</strong>
+                <span class="muted small">USD / token</span>
+              {% else %}—{% endif %}
+              <span class="muted small">{{ row.tokenized_observation.source or 'Source unavailable' }}</span>
+            </td>
+            <td>
+              {% if row.basis.status == 'AVAILABLE' and row.basis.basis_bps is not none %}
+                <strong class="mono">{{ row.basis.basis_bps }} bps</strong>
+                <span class="muted small">{{ row.basis.premium_discount }}</span>
+              {% else %}— <span class="muted small">{{ row.basis.reason or row.evaluation_status }}</span>{% endif %}
+            </td>
+            {% set prior = row.history.prior_observation %}
+            <td>{% if prior %}<span class="mono">{{ prior.premium_bps }} bps</span><span class="muted small">HISTORICAL · {{ prior.collected_at }}</span>{% else %}—{% endif %}</td>
+            {% set range = row.history.range_24h %}
+            <td>{% if range and range.state == 'AVAILABLE' %}<span class="mono">{{ range.low_bps }} / {{ range.high_bps }} bps</span><span class="muted small">{{ range.observation_count }} exact observations</span>{% else %}—{% endif %}</td>
+            {% set change = row.history.change_24h %}
+            <td>{% if change and change.state == 'AVAILABLE' %}<span class="mono">{{ change.change_bps }} bps</span><span class="muted small">HISTORICAL · gap {{ change.observation_gap_seconds }}s</span>{% else %}—{% endif %}</td>
+            <td>{% if row.evaluation_status == 'AVAILABLE' and row.tokenized_observation.liquidity %}<span class="mono">{{ row.tokenized_observation.liquidity.value }}</span><span class="muted small">{{ row.tokenized_observation.liquidity.unit }}</span>{% else %}—{% endif %}</td>
+            <td>{% if row.evaluation_status == 'AVAILABLE' and row.tokenized_observation.volume_24h %}<span class="mono">{{ row.tokenized_observation.volume_24h.value }}</span><span class="muted small">{{ row.tokenized_observation.volume_24h.unit }}</span>{% else %}—{% endif %}</td>
+            <td><span class="rwa-state rwa-state--{{ row.evaluation_status|lower }}">{{ row.evaluation_status }}</span><span class="muted small">Reference {{ row.reference_observation.freshness_state }} · Token {{ row.tokenized_observation.freshness_state }}</span></td>
+            <td><span class="muted small">Reference</span><span class="mono">{{ row.reference_observation.observed_at or '—' }}</span><span class="muted small">Token</span><span class="mono">{{ row.tokenized_observation.observed_at or '—' }}</span><span class="muted small">Gap {{ row.observation_age_difference_seconds if row.observation_age_difference_seconds is not none else '—' }}s · {{ row.timing_relationship }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <footer class="rwa-footnote"><span>Read-only market observation. Missing evidence remains unavailable and is never rendered as zero.</span></footer>
+</main>
+</body>
+</html>
