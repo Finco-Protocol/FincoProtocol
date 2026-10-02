@@ -561,8 +561,10 @@ class TestProtocolAuthorityBoundaries:
         assert "Token access not configured" in page.text
         assert 'data-testid="wallet-store-unavailable"' not in page.text
         assert "Wallet state unavailable" not in page.text
-        assert "finco-status--observation_unavailable" not in page.text
-        assert "finco-status--not_configured" in page.text
+        # Assert on RENDERED chip markup, not the CSS class definition text
+        # (the inline stylesheet legitimately contains the class name).
+        assert 'finco-status--observation_unavailable">' not in page.text
+        assert 'finco-status--not_configured">' in page.text
 
     def test_html_surface_wallet_store_outage_typed_mapping(
             self, protocol_client, monkeypatch):
