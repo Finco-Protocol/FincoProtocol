@@ -391,6 +391,11 @@ app.include_router(_api_v1_router, prefix="/api/v1")
 from app.api.v1_1.r_live_public_router import router as _rlive_public_router
 app.include_router(_rlive_public_router, prefix="/api/v1.1")
 
+# -- FINCO Public RWA Basis API v1.1 (read-only derived market evidence) -------
+# Separate router: the R-LIVE public route-family contract remains frozen.
+from app.api.v1_1.rwa_basis_public_router import router as _rwa_basis_public_router
+app.include_router(_rwa_basis_public_router, prefix="/api/v1.1")
+
 # ── M-2 Signed Run public trust ──────────────────────────────────────────────
 # Public key discovery (unauthenticated, read-only, deterministic) and the
 # public certificate verification surface.  Public trust material only —

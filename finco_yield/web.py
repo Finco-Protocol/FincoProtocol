@@ -7,6 +7,7 @@ Yield mathematics and never enables execution.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 import json
 import os
@@ -30,6 +31,7 @@ from .explore import ExploreFilters, compare, explore
 from .flags import execution_enabled, yield_enabled
 from .freshness import evaluate_freshness
 from .history import YieldHistoryStore, history_window_summary
+from .intelligence import IntelligenceStatus, build_intelligence
 from .monitor import detect_positions
 from .onchain import OnchainReadError, read_allowance, read_erc4626, rpc_url_for_chain
 from .registry import RegistryError, load_bundled_registry
@@ -84,6 +86,81 @@ def _active():
             ORIGIN_REFERENCE_FIXTURE, "SNAPSHOT_NOT_CONFIGURED", None,
             0, len(registry.all()), 0)
     return load_active_registry()
+
+
+# ── Yield Intelligence V1 (derived read model over canonical history) ──────────
+
+def _intelligence_for(uid: str):
+    """``(YieldIntelligence | None, history_status)`` from canonical history.
+
+    One ``as_of`` per request.  Unconfigured / unreadable history is a typed
+    status -- never numeric zeros.
+    """
+    path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
+    if not path:
+        return None, "HISTORY_NOT_CONFIGURED"
+    try:
+        intel = build_intelligence(YieldHistoryStore(path), uid, as_of=datetime.now(timezone.utc))
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        return None, "HISTORY_UNAVAILABLE"
+    return intel, "AVAILABLE"
+
+
+def _signed(value: Decimal, fmt: str, unit: str) -> str:
+    sign = "+" if value > 0 else ("-" if value < 0 else "")
+    return f"{sign}{format(abs(value), fmt)}{unit}"
+
+
+def _bps_label(value) -> str:
+    return "—" if value is None else _signed(value, ",.1f", " bps")
+
+
+def _usd_delta_label(value) -> str:
+    if value is None:
+        return "—"
+    sign = "+" if value > 0 else ("-" if value < 0 else "")
+    return f"{sign}${abs(value):,.0f}"
+
+
+def _pct_delta_label(value) -> str:
+    return "—" if value is None else _signed(value * Decimal(100), ",.2f", "%")
+
+
+def _range_label(stat, fmt) -> str:
+    if stat.minimum is None or stat.maximum is None:
+        return "—"
+    return f"{fmt(stat.minimum)} – {fmt(stat.maximum)}"
+
+
+def _intelligence_view(intel) -> dict:
+    """Presentation only: every unavailable value renders as an em dash."""
+    latest = intel.latest
+    view = {
+        "status": intel.status.value,
+        "available": intel.status == IntelligenceStatus.AVAILABLE,
+        "as_of": intel.as_of.strftime("%Y-%m-%d %H:%M UTC"),
+        "current_apy": _pct(latest.apy_total) if latest else "—",
+        "current_tvl": _usd(latest.tvl_usd) if latest else "—",
+        "freshness": intel.freshness.state if intel.freshness else "UNAVAILABLE",
+        "latest_observed": _last_observed_label(latest.observed_at if latest else None),
+        "horizons": [],
+    }
+    for h in intel.horizons:
+        view["horizons"].append({
+            "name": h.horizon,
+            "coverage": h.coverage.value,
+            "observations": h.observation_count,
+            "apy_available": h.apy_window.available_count,
+            "tvl_available": h.tvl_window.available_count,
+            "apy_delta": _bps_label(h.apy_delta.delta_bps),
+            "apy_direction": h.apy_delta.direction.value,
+            "apy_range": _range_label(h.apy_window, _pct),
+            "tvl_delta": _usd_delta_label(h.tvl_delta.delta_usd),
+            "tvl_delta_pct": _pct_delta_label(h.tvl_delta.delta_fraction),
+            "tvl_direction": h.tvl_delta.direction.value,
+            "tvl_range": _range_label(h.tvl_window, _usd),
+        })
+    return view
 
 
 def _source(opportunity):
@@ -577,6 +654,30 @@ async def history_json(opportunity_uid: str, request: Request):
     }
 
 
+@router.get("/{opportunity_uid}/intelligence.json")
+async def intelligence_json(opportunity_uid: str, request: Request):
+    """Read-only derived intelligence for ONE canonical UID.
+
+    Same entitlement decision as ``history.json`` (it is derived from history);
+    no new threshold or policy.  Exact UID resolution only.
+    """
+    _require()
+    denial = await _enforce_premium(request, YieldResource.HISTORY)
+    if denial is not None:
+        return denial
+    try:
+        _active()[0].resolve(opportunity_uid)
+    except RegistryError as exc:
+        raise HTTPException(404, "Unknown Yield opportunity") from exc
+
+    intel, history_status = _intelligence_for(opportunity_uid)
+    body = {"schema": "YIELD_INTELLIGENCE_V1", "uid": opportunity_uid,
+            "history_status": history_status}
+    if intel is not None:
+        body["intelligence"] = intel
+    return PlainTextResponse(canonical_json(body), media_type="application/json")
+
+
 @router.get("/{opportunity_uid}", response_class=HTMLResponse)
 async def detail(request: Request, opportunity_uid: str):
     _require()
@@ -596,6 +697,14 @@ async def detail(request: Request, opportunity_uid: str):
         if path
         else {"observation_count": 0, "history_days": 0, "available_windows": []}
     )
+    # Yield Intelligence is derived from history, so it follows the existing
+    # HISTORY entitlement decision (no new policy).
+    history_decision = await resolve_yield_access(request, YieldResource.HISTORY)
+    if history_decision.access_allowed:
+        _intel, intel_history_status = _intelligence_for(opportunity.uid)
+        intelligence_view = _intelligence_view(_intel) if _intel is not None else None
+    else:
+        intelligence_view, intel_history_status = None, "ACCESS_RESTRICTED"
     scenarios = [
         run_scenario(name, opportunity.observation)
         for name in ("REWARDS_OFF", "REWARDS_MINUS_50", "EXIT_STRESS", "GAS_SHOCK")
@@ -633,6 +742,8 @@ async def detail(request: Request, opportunity_uid: str):
             "provider": opportunity.provider or "—",
             "fetched": _last_observed_label(opportunity.fetched_at),
             "source_status": source_status,
+            "intelligence": intelligence_view,
+            "intelligence_history_status": intel_history_status,
             "history": history,
             "exit_type": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "capacity": (

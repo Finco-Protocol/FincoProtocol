@@ -40,6 +40,40 @@
     <p>Windows: {% if history.available_windows %}{{ history.available_windows|join(", ") }}{% else %}UNAVAILABLE — no fabricated backfill{% endif %}</p>
   </section>
 
+  <section class="card" data-testid="yield-intelligence" data-intelligence-status="{{ intelligence.status if intelligence else intelligence_history_status }}">
+    <h2>Yield Intelligence</h2>
+    {% if intelligence and intelligence.available %}
+      <p class="sub">Derived from canonical observation history as of {{ intelligence.as_of }}. Descriptive only: no forecast, no interpolation, no recommendation.</p>
+      <p>Latest observation: <span data-testid="intel-latest-observed">{{ intelligence.latest_observed }}</span> · Freshness: <span data-testid="intel-freshness">{{ intelligence.freshness }}</span></p>
+      <table class="table" data-testid="intel-table">
+        <thead><tr><th></th><th>Current</th>{% for h in intelligence.horizons %}<th>{{ h.name }} Δ</th>{% endfor %}</tr></thead>
+        <tbody>
+          <tr data-testid="intel-apy-row"><th>APY</th><td>{{ intelligence.current_apy }}</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-apy-delta-{{ h.name }}">{{ h.apy_delta }}{% if h.apy_direction != "UNAVAILABLE" %} <small>{{ h.apy_direction }}</small>{% endif %}</td>{% endfor %}</tr>
+          <tr data-testid="intel-tvl-row"><th>TVL</th><td>{{ intelligence.current_tvl }}</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-tvl-delta-{{ h.name }}">{{ h.tvl_delta }}{% if h.tvl_delta_pct != "—" %} ({{ h.tvl_delta_pct }}){% endif %}{% if h.tvl_direction != "UNAVAILABLE" %} <small>{{ h.tvl_direction }}</small>{% endif %}</td>{% endfor %}</tr>
+          <tr><th>APY range</th><td>—</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-apy-range-{{ h.name }}">{{ h.apy_range }}</td>{% endfor %}</tr>
+          <tr><th>TVL range</th><td>—</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-tvl-range-{{ h.name }}">{{ h.tvl_range }}</td>{% endfor %}</tr>
+          <tr><th>Observations</th><td>—</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-count-{{ h.name }}">{{ h.observations }} ({{ h.apy_available }} with APY, {{ h.tvl_available }} with TVL)</td>{% endfor %}</tr>
+          <tr><th>History coverage</th><td>—</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-coverage-{{ h.name }}">{{ h.coverage }}</td>{% endfor %}</tr>
+        </tbody>
+      </table>
+      <p class="bound">A delta compares the latest observation with the newest observation at or before the horizon cutoff. “—” means unavailable, never zero.</p>
+    {% elif intelligence %}
+      <p data-testid="intel-insufficient">INSUFFICIENT_HISTORY — no canonical observation exists for this opportunity yet. Nothing is shown rather than a placeholder zero.</p>
+    {% elif intelligence_history_status == "HISTORY_NOT_CONFIGURED" %}
+      <p data-testid="intel-not-configured">HISTORY_NOT_CONFIGURED — Yield history is not configured in this environment. Intelligence is unavailable.</p>
+    {% elif intelligence_history_status == "ACCESS_RESTRICTED" %}
+      <p data-testid="intel-restricted">Yield Intelligence is derived from Yield History and follows the existing History access decision for this session.</p>
+    {% else %}
+      <p data-testid="intel-unavailable">HISTORY_UNAVAILABLE — canonical history could not be read. Intelligence is unavailable.</p>
+    {% endif %}
+  </section>
+
   <section class="card">
     <h2>Exit</h2>
     <p>Type: {{ exit_type }}</p>

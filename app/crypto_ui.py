@@ -112,6 +112,11 @@ def _watchlist_fail_soft(user_id) -> dict:
     return {"state": "AVAILABLE", "count": len(items), "items": items}
 
 
+def _alert_automation_configured() -> bool:
+    from finco_yield.flags import alert_automation_enabled
+    return alert_automation_enabled()
+
+
 def _execution_state() -> str:
     from finco_yield.flags import execution_enabled
     return "ON" if execution_enabled() else "OFF"
@@ -208,6 +213,8 @@ async def crypto_overview(request: Request):
             "alerts": alerts,
             "alerts_notice_reason": notice_reason if alerts_notice else None,
             "alerts_notice": alerts_notice,
+            # Configuration only: it does not prove a scheduler is running.
+            "alerts_automation_configured": _alert_automation_configured(),
             "execution_state": _execution_state(),
             "csrf_token": generate_csrf_token(),
             "user": user,
