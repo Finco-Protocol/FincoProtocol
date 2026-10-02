@@ -8,7 +8,7 @@
   {% if source_status %}
   <p class="y-note y-status-line" data-testid="yield-source-status" data-origin="{{ source_status.origin }}">
     {% if source_status.origin == "SNAPSHOT" and source_status.live_rows %}
-      Live source-observed data (snapshot generated {{ source_status.generated_at }}): {{ source_status.live_rows }} live row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only{% endif %}. A live row can still be STALE — each row shows its own freshness.
+      Source-observed snapshot generated {{ source_status.generated_at }} · {{ source_status.live_rows }} source-observed row(s){% if source_status.reference_rows %}, {{ source_status.reference_rows }} reference-only row(s) with no source observation{% endif %}. A source-observed row may still be STALE; each row shows its own freshness.
     {% elif source_status.origin == "REFERENCE_FALLBACK" %}
       Live snapshot unavailable ({{ source_status.reason }}). Showing the bundled reference sample — not live data.
     {% else %}
@@ -122,9 +122,7 @@
         <td class="y-num">{{ row.tvl }}</td>
         <td class="y-num">
           {{ row.total_apy }}
-          {% if row.base_apy != "—" or row.rewards_apy != "—" %}
-          <span class="y-subtext">Base {{ row.base_apy }} · Rewards {{ row.rewards_apy }}</span>
-          {% endif %}
+          <span class="y-subtext" data-testid="apy-components-{{ row.uid }}">Base {{ row.base_apy }} · Rewards {{ row.rewards_apy }}</span>
         </td>
         <td>
           <span class="y-badge {% if row.freshness == 'CURRENT' %}y-badge-current{% elif row.freshness == 'STALE' %}y-badge-stale{% elif row.freshness in ('INVALID', 'UNAVAILABLE', 'FUTURE_TIMESTAMP') %}y-badge-invalid{% else %}y-badge-unknown{% endif %}"
@@ -134,7 +132,7 @@
         <td>
           <span class="y-badge {% if row.is_live %}y-badge-live{% else %}y-badge-reference{% endif %}"
                 data-testid="origin-{{ row.uid }}" data-origin-class="{{ row.origin_class }}">{{ row.origin_class }}</span>
-          <span class="y-subtext">{{ row.evidence }}{% if row.provider != "—" %} · {{ row.provider }}{% endif %}<br>{{ row.support_state }} · exit {{ row.exit }}</span>
+          <span class="y-subtext">{{ row.origin }} · {{ row.evidence }}{% if row.provider != "—" %} · {{ row.provider }}{% endif %}<br>{{ row.support_state }} · exit {{ row.exit }}</span>
         </td>
         <td data-testid="watchlist-cell-{{ row.uid }}">
           {% if row.uid in saved_uids %}
