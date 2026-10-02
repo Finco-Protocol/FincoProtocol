@@ -1,0 +1,14 @@
+[Unit]
+Description=Evaluate FINCO Yield in-app alerts every ten minutes (3 minutes after the collector)
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/yield_alert_automation_v1/README.md
+
+[Timer]
+Unit=finco-yield-alert-evaluator.service
+# Collector runs at :00/:10/...; evaluate shortly after so new observations are seen.
+OnCalendar=*-*-* *:03/10:00
+AccuracySec=5s
+RandomizedDelaySec=0
+Persistent=true
+
+[Install]
+WantedBy=timers.target
