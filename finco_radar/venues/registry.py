@@ -95,14 +95,22 @@ class VenueRegistry:
         self._conflict_keys: set[tuple] = set()
         groups: dict[tuple, dict[str, set[str]]] = {}
         for entry in self._entries:
-            if not entry.contract_address or not entry.network:
-                continue
             if self.status_for(entry) is RegistryStatus.QUARANTINED:
                 continue
-            key = (entry.platform,
-                   entry.representation_symbol.strip().upper(), entry.network)
-            groups.setdefault(key, {}).setdefault(
-                entry.source, set()).add(entry.contract_address)
+            if entry.contract_address and entry.network:
+                key = (entry.platform,
+                       entry.representation_symbol.strip().upper(),
+                       entry.network)
+                groups.setdefault(key, {}).setdefault(
+                    entry.source, set()).add(entry.contract_address)
+            # Embedded deployment matrices join conflict detection under
+            # each deployment's own network.
+            for deployment in entry.deployments:
+                key = (entry.platform,
+                       entry.representation_symbol.strip().upper(),
+                       deployment.network)
+                groups.setdefault(key, {}).setdefault(
+                    entry.source, set()).add(deployment.contract_address)
         for key, by_source in groups.items():
             if len(by_source) > 1:
                 contracts = set().union(*by_source.values())
@@ -118,15 +126,28 @@ class VenueRegistry:
         return cls(underlyings, entries, quarantines)
 
     # ── status derivation ─────────────────────────────────────────────────
-    def status_for(self, entry: RepresentationEntry) -> RegistryStatus:
-        contract = entry.contract_address
+    def status_for(
+            self, entry: RepresentationEntry, *,
+            deployment_network: str | None = None,
+            deployment_contract: str | None = None,
+            deployment_chain_id: int | None = None) -> RegistryStatus:
+        """Registry status for a row, or for ONE exact embedded deployment
+        when the deployment fields are supplied (Correction A: an exact
+        quarantined embedded deployment can never come back ACTIVE, and
+        embedded deployments participate in conflict detection by their own
+        network)."""
+        contract = deployment_contract or entry.contract_address
+        network = deployment_network or entry.network
+        chain_id = (deployment_chain_id if deployment_contract is not None
+                    else entry.chain_id)
         if contract:
-            if (entry.network, contract) in self._quarantine_by_network:
+            if (network, contract) in self._quarantine_by_network:
                 return RegistryStatus.QUARANTINED
-            if (entry.chain_id, contract) in self._quarantine_by_chain:
+            if chain_id is not None and (
+                    chain_id, contract) in self._quarantine_by_chain:
                 return RegistryStatus.QUARANTINED
             if (entry.platform, entry.representation_symbol.strip().upper(),
-                    entry.network) in self._conflict_keys:
+                    network) in self._conflict_keys:
                 return RegistryStatus.CONFLICT
         if (entry.deployment_status or "").lower() in ("inactive", "delisted"):
             return RegistryStatus.INACTIVE
@@ -181,14 +202,32 @@ class VenueRegistry:
             for (cid, addr), group in self._by_chain_contract.items():
                 if addr == contract and (chain_id is None or cid == chain_id):
                     entries.extend(e for e in group if e not in entries)
-        # Embedded xStocks deployment matrices.
+        # Embedded xStocks deployment matrices: EXACT criteria only.  An
+        # explicit network request matches that network; an explicit
+        # chain_id request can only match a deployment whose chain_id is
+        # actually known and equal (an unknown chain_id never satisfies a
+        # chain_id request).  Status is computed against the exact
+        # deployment (quarantine/conflict by its own network+contract).
+        results: list[tuple[RepresentationEntry, RegistryStatus]] = []
+        for entry in entries:
+            results.append((entry, self.status_for(entry)))
         for entry in self._entries:
-            if entry.deployments and entry not in entries:
-                if any(d.contract_address == contract
-                       and (network is None or d.network == network)
-                       for d in entry.deployments):
-                    entries.append(entry)
-        return [(entry, self.status_for(entry)) for entry in entries]
+            if entry in [e for e, _ in results]:
+                continue
+            if not entry.deployments:
+                continue
+            for deployment in entry.deployments:
+                if deployment.contract_address != contract:
+                    continue
+                if network is not None and deployment.network != network:
+                    continue  # network mismatch → no match
+                if chain_id is not None and deployment.chain_id != chain_id:
+                    continue  # unknown/different chain never matches
+                results.append((entry, self.status_for(
+                    entry, deployment_network=deployment.network,
+                    deployment_contract=deployment.contract_address,
+                    deployment_chain_id=deployment.chain_id)))
+        return results
 
     def representations_for_venue(
             self, platform: str) -> list[ResolvedRepresentation]:
@@ -238,8 +277,13 @@ class VenueRegistry:
             self, *, network: str | None = None,
             chain_id: int | None = None,
             contract_address: str) -> CanonicalUnderlying | None:
-        """Exact contract → canonical underlying, ONLY when the contract is
-        canonical-active (quarantined/conflicting contracts resolve None)."""
+        """Exact contract → canonical underlying.
+
+        Ambiguity rule (Correction A): collect ALL canonical-active
+        matches; exactly one distinct underlying → return it; zero → None;
+        more than one distinct underlying → None (never first-row-wins on
+        ambiguous economic identity)."""
+        candidates: set[str] = set()
         for entry, status in self.representation_by_contract(
                 network=network, chain_id=chain_id,
                 contract_address=contract_address):
@@ -247,14 +291,17 @@ class VenueRegistry:
                 continue
             symbol = _norm_symbol(entry.underlying_symbol)
             if symbol:
-                underlying = self._underlyings.get(symbol)
-                if underlying is not None:
-                    return underlying
-                # Underlying seen only through this row: synthesize the
-                # exact-symbol underlying (missing metadata stays missing).
-                return parse_underlying({
-                    "canonical_symbol": symbol, "sources": [entry.source]})
-        return None
+                candidates.add(symbol)
+        if len(candidates) != 1:
+            return None
+        symbol = next(iter(candidates))
+        underlying = self._underlyings.get(symbol)
+        if underlying is not None:
+            return underlying
+        # Underlying seen only through this row: synthesize the
+        # exact-symbol underlying (missing metadata stays missing).
+        return parse_underlying({
+            "canonical_symbol": symbol, "sources": []})
 
     def stats(self) -> dict:
         statuses: dict[str, int] = {}

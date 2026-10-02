@@ -72,6 +72,32 @@ _VENDOR_EMAIL_EXEMPT = {
 }
 
 
+# Reviewed committed public registry seed (Tokenized Markets PR 3a).
+# This generated artifact contains imported public on-chain identity data
+# (e.g. base58 Solana contract addresses) that lexically collides with the
+# sk- credential regex.  The exemption is fail-closed: exact repository
+# path AND exact SHA-256 of file contents must both match; any one-byte
+# change to the seed invalidates the exemption and the scan fails again
+# until the regenerated artifact is reviewed and the expected digest is
+# deliberately updated.  Scoped ONLY to the secret-like-token check —
+# email, local-path, forbidden-identifier, and forbidden-binary checks
+# remain fully active for this file.
+_SEED_SECRET_EXEMPT = {
+    # path -> expected SHA-256 (hex)
+    "finco_radar/venues/data/venue_registry_seed.json": (
+        "42dc488081387ae9da80dd882d6856d11d45c46bacd802d1bf98396ba8b91f4d"
+    ),
+}
+
+
+def _seed_secret_exempt(rel: str, data: bytes) -> bool:
+    """Fail-closed: exact path + exact SHA-256, secret-check scope only."""
+    expected_sha = _SEED_SECRET_EXEMPT.get(rel)
+    if expected_sha is None:
+        return False
+    return hashlib.sha256(data).hexdigest() == expected_sha
+
+
 def _vendor_email_exempt(rel: str, data: bytes) -> bool:
     """Return True iff this file is an approved vendor asset with matching SHA-256.
 
@@ -193,7 +219,8 @@ def scan_file(rel: str, root: Path) -> list[str]:
                 break
     if rel != _THIS_SCRIPT and any(p.search(data) for p in LOCAL_PATH_PATTERNS):
         failures.append(f"local user path in {rel}")
-    if any(p.search(data) for p in SECRET_PATTERNS):
+    if any(p.search(data) for p in SECRET_PATTERNS) and not _seed_secret_exempt(
+            rel, data):
         failures.append(f"secret-like token in {rel}")
 
     return failures

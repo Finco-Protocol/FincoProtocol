@@ -32,7 +32,7 @@ from finco_radar.venues.observations import (
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS market_observations (
     digest              TEXT PRIMARY KEY,
-    ts                  TEXT NOT NULL,
+    ts                  TEXT,
     collected_at        TEXT NOT NULL,
     canonical_asset_id  TEXT NOT NULL,
     venue_id            TEXT NOT NULL,
@@ -64,6 +64,12 @@ _COLUMNS = ("digest, ts, collected_at, canonical_asset_id, venue_id, "
             "instrument_id, instrument_type, price, reference_price, "
             "basis_bps, volume_24h, open_interest, funding_rate, source, "
             "freshness_state, observation_status, payload")
+
+# Generic "latest collected usable observation" ordering: an explicitly
+# derived internal clock (COALESCE(ts, collected_at)) used ONLY for
+# ordering — provenance returned to callers still exposes ts=None when the
+# source had no source timestamp.
+_ORDER = "ORDER BY COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC"
 
 
 def default_db_path() -> str:
@@ -120,7 +126,7 @@ class VenueMarketStore:
                 f"INSERT INTO market_observations ({_COLUMNS}) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (digest,
-                 observation.ts if observation.ts is not None else "",
+                 observation.ts,
                  observation.collected_at,
                  observation.canonical_asset_id.upper(),
                  observation.venue_id,
@@ -150,29 +156,23 @@ class VenueMarketStore:
     def append_many_batched(self, observations) -> list[tuple[str, bool]]:
         """Batch append over ONE connection/transaction (collector path).
 
-        Identical semantics to repeated append_observation: same digest
-        dedupes, rows immutable.  A batch commit keeps the collector fast
-        without changing any durability contract between cycles.
+        Dedupe uses the digest PRIMARY KEY via INSERT OR IGNORE inside the
+        transaction — the historical digest universe is never pre-loaded
+        into Python (O(batch), not O(total history)).  Rows immutable; no
+        UPDATE path.
         """
         import json as _json
         created: list[tuple[str, bool]] = []
         conn = self._connect()
         try:
-            existing = {
-                row["digest"] for row in conn.execute(
-                    "SELECT digest FROM market_observations")
-            }
             for observation in observations:
                 digest = observation.resolved_digest()
-                if digest in existing:
-                    created.append((digest, False))
-                    continue
                 payload = observation.payload
-                conn.execute(
-                    f"INSERT INTO market_observations ({_COLUMNS}) "
+                cursor = conn.execute(
+                    f"INSERT OR IGNORE INTO market_observations ({_COLUMNS}) "
                     "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (digest,
-                     observation.ts if observation.ts is not None else "",
+                     observation.ts,
                      observation.collected_at,
                      observation.canonical_asset_id.upper(),
                      observation.venue_id,
@@ -189,8 +189,7 @@ class VenueMarketStore:
                      _as_str(observation.observation_status),
                      _as_str(payload) if isinstance(payload, str) else _json.dumps(
                          payload, sort_keys=True, separators=(",", ":"))))
-                existing.add(digest)
-                created.append((digest, True))
+                created.append((digest, cursor.rowcount > 0))
             conn.commit()
             return created
         except BaseException:
@@ -228,12 +227,11 @@ class VenueMarketStore:
             self, instrument_id: str, *,
             venue_id: str | None = None) -> MarketObservation | None:
         query = ("SELECT * FROM market_observations WHERE instrument_id=? "
-                 "ORDER BY ts DESC, collected_at DESC, digest DESC LIMIT 1")
+                 f"{_ORDER} LIMIT 1")
         param: tuple = (instrument_id,)
         if venue_id is not None:
             query = ("SELECT * FROM market_observations WHERE instrument_id=? "
-                     "AND venue_id=? ORDER BY ts DESC, collected_at DESC, "
-                     "digest DESC LIMIT 1")
+                     "AND venue_id=? " + _ORDER + " LIMIT 1")
             param = (instrument_id, venue_id)
         conn = self._connect()
         try:
@@ -247,12 +245,11 @@ class VenueMarketStore:
             venue_id: str | None = None) -> MarketObservation | None:
         symbol = canonical_asset_id.upper()
         query = ("SELECT * FROM market_observations WHERE canonical_asset_id=? "
-                 "ORDER BY ts DESC, collected_at DESC, digest DESC LIMIT 1")
+                 f"{_ORDER} LIMIT 1")
         param: tuple = (symbol,)
         if venue_id is not None:
             query = ("SELECT * FROM market_observations WHERE canonical_asset_id=? "
-                     "AND venue_id=? ORDER BY ts DESC, collected_at DESC, "
-                     "digest DESC LIMIT 1")
+                     "AND venue_id=? " + _ORDER + " LIMIT 1")
             param = (symbol, venue_id)
         conn = self._connect()
         try:
@@ -265,9 +262,12 @@ class VenueMarketStore:
             self, instrument_id: str, *, since: datetime,
             until: datetime | None = None,
             venue_id: str | None = None) -> list[MarketObservation]:
+        """SOURCE-EVIDENCE time window: rows without a provider source
+        timestamp (ts IS NULL) are excluded — collected_at is never
+        silently presented as provider evidence."""
         until = until or datetime.now(timezone.utc)
         query = ("SELECT * FROM market_observations WHERE instrument_id=? "
-                 "AND ts>=? AND ts<=?")
+                 "AND ts IS NOT NULL AND ts>=? AND ts<=?")
         params: list = [instrument_id, since.isoformat(), until.isoformat()]
         if venue_id is not None:
             query += " AND venue_id=?"
@@ -284,9 +284,11 @@ class VenueMarketStore:
             self, canonical_asset_id: str, *, since: datetime,
             until: datetime | None = None,
             venue_id: str | None = None) -> list[MarketObservation]:
+        """SOURCE-EVIDENCE time window (ts IS NOT NULL) — see
+        get_window_for_instrument for the provenance rule."""
         until = until or datetime.now(timezone.utc)
         query = ("SELECT * FROM market_observations WHERE canonical_asset_id=? "
-                 "AND ts>=? AND ts<=?")
+                 "AND ts IS NOT NULL AND ts>=? AND ts<=?")
         params: list = [canonical_asset_id.upper(), since.isoformat(),
                         until.isoformat()]
         if venue_id is not None:
@@ -301,16 +303,21 @@ class VenueMarketStore:
         return [self._to_observation(row) for row in rows]
 
     def list_latest_by_venue(self, venue_id: str) -> list[MarketObservation]:
-        """Latest observation per instrument within one venue (deterministic)."""
+        """Exactly ONE deterministic row per exact venue instrument, using
+        the derived ordering clock with the digest as the final
+        tie-breaker (timestamp ties cannot produce duplicate latest rows)."""
         conn = self._connect()
         try:
             rows = conn.execute(
                 "SELECT o.* FROM market_observations o "
-                "JOIN (SELECT instrument_id, MAX(ts || '|' || collected_at) "
-                "      AS top FROM market_observations WHERE venue_id=? "
+                "JOIN (SELECT instrument_id, "
+                "             MAX(COALESCE(ts, collected_at) || '|' || "
+                "                 collected_at || '|' || digest) AS top "
+                "      FROM market_observations WHERE venue_id=? "
                 "      GROUP BY instrument_id) t "
                 "ON o.instrument_id=t.instrument_id "
-                " AND (o.ts || '|' || o.collected_at)=t.top "
+                " AND (COALESCE(o.ts, o.collected_at) || '|' || o.collected_at "
+                "      || '|' || o.digest)=t.top "
                 "WHERE o.venue_id=? "
                 "ORDER BY o.canonical_asset_id ASC, o.instrument_id ASC",
                 (venue_id, venue_id)).fetchall()

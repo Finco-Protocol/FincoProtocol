@@ -38,10 +38,18 @@ def _iso(value: datetime) -> str:
 
 @dataclass(frozen=True)
 class MarketObservation:
-    """One normalized market observation for one exact instrument."""
+    """One normalized market observation for one exact instrument.
 
-    ts: str                          # source/provider evidence timestamp (ISO-8601 UTC)
-    collected_at: str                # FINCO collection timestamp (ISO-8601 UTC)
+    Clock authority: ``ts`` is the SOURCE/provider evidence timestamp and is
+    None when the provider does not supply one (the collection clock is
+    NEVER substituted into ts).  ``collected_at`` is always FINCO's
+    collection clock.  The evidence digest excludes collected_at entirely:
+    the same provider evidence re-collected later keeps the same digest and
+    dedupes; only changed evidence appends a new row.
+    """
+
+    ts: str | None                   # source/provider evidence stamp (ISO-8601 UTC) or None
+    collected_at: str                # FINCO collection timestamp (ISO-8601 UTC, tz-aware)
     canonical_asset_id: str          # exact canonical underlying symbol
     venue_id: str                    # platform/network key
     instrument_id: str               # exact symbol or 0x-contract identity
@@ -61,9 +69,14 @@ class MarketObservation:
     digest: str | None = None        # derived; excluded from digest input
 
     def __post_init__(self) -> None:
-        for clock_name in ("ts", "collected_at"):
-            raw = getattr(self, clock_name)
-            datetime.fromisoformat(raw)  # raises on malformed stamps
+        from datetime import datetime as _dt
+        parsed_collected = _dt.fromisoformat(self.collected_at)  # raises on malformed
+        if parsed_collected.tzinfo is None:
+            raise ValueError("collected_at must be timezone-aware")
+        if self.ts is not None:
+            parsed_ts = _dt.fromisoformat(self.ts)  # raises on malformed
+            if parsed_ts.tzinfo is None:
+                raise ValueError("ts must be timezone-aware when present")
         for numeric in ("price", "reference_price", "basis_bps",
                         "volume_24h", "open_interest", "funding_rate"):
             value = getattr(self, numeric)
@@ -93,21 +106,25 @@ class MarketObservation:
     @staticmethod
     def clocks(source_timestamp: datetime | None,
                collected_at: datetime) -> tuple[str | None, str]:
-        """Canonical clock handling: the SOURCE timestamp is used only when
-        the provider actually supplies one — it is never replaced by the
-        collection clock while pretending to be evidence.  A provider
-        without a source timestamp is represented explicitly (ts=None in
-        payload; the persisted ts column then carries the collection instant
-        ONLY as the ordering key, with freshness reflecting that
-        limitation)."""
+        """Canonical clock handling (Correction A): the SOURCE timestamp is
+        used only when the provider supplies one; a missing source stamp
+        yields ts=None — the collection clock is never substituted as
+        evidence.  ``collected_at`` is always the FINCO collection clock."""
         collected = _iso(collected_at)
         if source_timestamp is None:
             return None, collected
         return _iso(source_timestamp), collected
 
     def digest_input(self) -> dict:
+        """Canonical MARKET EVIDENCE input for the digest.
+
+        ``collected_at`` is local collection/transport metadata, NOT
+        provider evidence, and is excluded: the same evidence collected
+        again at another FINCO time keeps the same digest and dedupes.
+        """
         data = asdict(self)
         data.pop("digest", None)
+        data.pop("collected_at", None)
         return data
 
     def compute_digest(self) -> str:

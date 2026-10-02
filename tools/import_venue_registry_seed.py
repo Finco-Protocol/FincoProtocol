@@ -402,9 +402,22 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output",
                         default=str(REPO / "finco_radar/venues/data/venue_registry_seed.json"))
+    parser.add_argument("--allow-partial", action="store_true",
+                        help="development-only: keep a smaller seed when "
+                             "pinned-source dossiers fail to fetch (the "
+                             "committed artifact must normally be complete)")
     args = parser.parse_args()
 
     seed = build_seed()
+    generated = seed["generated_from"]["rwaimport_registry"]
+    if (generated["dossiers_imported"] != generated["dossiers_seen"]
+            and not args.allow_partial):
+        print(f"FAIL-CLOSED: requested {generated['dossiers_seen']} dossiers "
+              f"but imported {generated['dossiers_imported']}; transient "
+              "source failures must not silently shrink the reviewed seed. "
+              "Re-run, or pass --allow-partial for development-only use.",
+              file=sys.stderr)
+        return 2
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
