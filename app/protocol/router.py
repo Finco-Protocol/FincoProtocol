@@ -65,11 +65,41 @@ async def finco_protocol_surface(request: Request):
     from app.protocol.wallet_auth import get_verified_wallet
     from app.protocol.access_decision import get_all_access_decisions
 
+    import sqlite3
+    from dataclasses import replace as _dc_replace
+
     config = get_token_config()
-    wallet_info = get_verified_wallet(user.user_id)
+    try:
+        wallet_info = get_verified_wallet(user.user_id)
+    except (sqlite3.Error, OSError, ValueError):
+        # Wallet-store outage: typed unavailable decisions below — never
+        # WALLET_NOT_CONNECTED, never empty-success, never a fabricated zero.
+        wallet_info = None
+        wallet_store_unavailable = True
+    else:
+        wallet_store_unavailable = False
     wallet_address = wallet_info["wallet_address"] if wallet_info else None
 
+    # Canonical provider/RPC evaluation already fails closed internally for
+    # expected network/balance-evidence failures (read_token_balance is
+    # wrapped inside get_all_access_decisions).  Anything escaping it is a
+    # programming defect and must propagate to logs/tests.
     observation, decisions = await get_all_access_decisions(wallet_address, config)
+
+    if wallet_store_unavailable and config is not None:
+        decisions = {
+            uid: _dc_replace(
+                decision,
+                status="OBSERVATION_UNAVAILABLE",
+                access_mode="OBSERVATION_UNAVAILABLE",
+                allowed=False,
+                wallet_address=None,
+                observed_balance=None,
+                reason_code="WALLET_STORE_UNAVAILABLE",
+            )
+            for uid, decision in decisions.items()
+        }
+        observation = None
 
     return _templates.TemplateResponse(
         request=request,
@@ -82,6 +112,7 @@ async def finco_protocol_surface(request: Request):
             "wallet_verified_at": wallet_info["verified_at"] if wallet_info else None,
             "observation": observation,
             "decisions": decisions,
+            "wallet_store_unavailable": wallet_store_unavailable,
             "config_available": config is not None,
             "chain_id": config.chain_id if config else None,
             "token_address": config.token_address if config else None,
@@ -107,11 +138,41 @@ async def finco_access_json(request: Request):
     from app.protocol.wallet_auth import get_verified_wallet
     from app.protocol.access_decision import get_all_access_decisions
 
+    import sqlite3
+    from dataclasses import replace as _dc_replace
+
     config = get_token_config()
-    wallet_info = get_verified_wallet(user.user_id)
+    try:
+        wallet_info = get_verified_wallet(user.user_id)
+    except (sqlite3.Error, OSError, ValueError):
+        # Wallet-store outage: typed unavailable decisions below — never
+        # WALLET_NOT_CONNECTED, never empty-success, never a fabricated zero.
+        wallet_info = None
+        wallet_store_unavailable = True
+    else:
+        wallet_store_unavailable = False
     wallet_address = wallet_info["wallet_address"] if wallet_info else None
 
+    # Canonical provider/RPC evaluation already fails closed internally for
+    # expected network/balance-evidence failures (read_token_balance is
+    # wrapped inside get_all_access_decisions).  Anything escaping it is a
+    # programming defect and must propagate to logs/tests.
     observation, decisions = await get_all_access_decisions(wallet_address, config)
+
+    if wallet_store_unavailable and config is not None:
+        decisions = {
+            uid: _dc_replace(
+                decision,
+                status="OBSERVATION_UNAVAILABLE",
+                access_mode="OBSERVATION_UNAVAILABLE",
+                allowed=False,
+                wallet_address=None,
+                observed_balance=None,
+                reason_code="WALLET_STORE_UNAVAILABLE",
+            )
+            for uid, decision in decisions.items()
+        }
+        observation = None
 
     # Build response — never include RPC URL
     utilities_payload = {}

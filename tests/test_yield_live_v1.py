@@ -1093,7 +1093,10 @@ class TestWebProvenance:
         _run(tmp_path, _adapter(_by_address({}, _all_ok), clock), clock)
         mp.setenv("FINCO_YIELD_SNAPSHOT_PATH", env["FINCO_YIELD_SNAPSHOT_PATH"])
         page = client.get("/yield").text
-        assert "<td>—</td>" in page and "0.00%" not in page
+        # Missing APY components render the "—" marker in the APY cell
+        # (staging-QA redesign: components live in the Total-APY subtext),
+        # never a fabricated 0.00%.
+        assert "Base — · Rewards —" in page and "0.00%" not in page
 
     def test_detail_page_shows_origin_provider_and_fetch_time(self, web, tmp_path):
         client, mp = web

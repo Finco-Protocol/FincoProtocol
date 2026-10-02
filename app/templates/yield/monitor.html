@@ -1,48 +1,94 @@
 {% extends "yield/base.html" %}
-{% block title %}FINCO Yield — Monitor{% endblock %}
+{% block title %}FINCO Yield — Wallet Monitor{% endblock %}
 {% block content %}
-<p class="k">FINCO Yield · Wallet Monitor</p>
-<h1>Read-only positions</h1>
+<div class="y-header">
+  <p class="k">FINCO Yield · Wallet Monitor</p>
+  <h1>Wallet Monitor</h1>
+  <div class="y-wallet-line">
+    {% if wallet %}
+    <span class="y-wallet-badge" data-testid="monitor-wallet-state">Wallet verified</span>
+    <span class="y-wallet-addr" data-testid="monitor-wallet-address">{{ wallet.wallet_address }}</span>
+    {% elif wallet_error %}
+    <span class="y-wallet-badge is-off" data-testid="monitor-wallet-state">Wallet store unavailable</span>
+    <span class="y-badge y-badge-unavailable" data-testid="wallet-error-code">{{ wallet_error }}</span>
+    {% else %}
+    <span class="y-wallet-badge is-off" data-testid="monitor-wallet-state">No verified wallet</span>
+    {% endif %}
+    <span class="y-badge" data-testid="monitor-read-only">Read-only</span>
+  </div>
+  <p class="y-note">{{ info }}</p>
+</div>
 <div class="nav"><a class="a" href="/yield">← Explore</a></div>
-<p class="sub">{{ info }}</p>
 
-<section class="card" data-testid="finco-access-panel">
-  <h2>FINCO access</h2>
-  <p>Wallet: <span class="badge">{{ access.wallet.state }}</span></p>
-  <p class="sub">States are distinct on purpose: NOT CONFIGURED means the production $FINCO deployment does not exist yet; UNAVAILABLE means an authoritative input could not be read; LOCKED means gating applies and access is not granted; UNLOCKED means the authoritative evaluator granted access. Missing evidence is never shown as a balance of zero, and no thresholds or token amounts are displayed.</p>
-  <table>
-    <thead><tr><th>Capability</th><th>State</th><th>Why</th></tr></thead>
-    <tbody>
-    {% for key, resource in access.resources.items() %}
-      <tr data-testid="access-row-{{ key }}">
-        <td><strong>{{ resource.display_name }}</strong><br><span class="mono">{{ key }}</span></td>
-        <td><span class="badge">{{ resource.state }}</span>
-            {% if resource.balance %}<br><span class="mono">Observed balance {{ resource.balance.observed_balance }} (chain {{ resource.balance.chain_id }})</span>{% endif %}
-            {% if resource.note %}<br><span class="sub">{{ resource.note }}</span>{% endif %}</td>
-        <td><span class="mono">{{ resource.reason or '—' }}</span></td>
+<section class="y-section" data-testid="monitor-positions">
+  <h2>Positions</h2>
+  {% if wallet_error %}
+  <p class="y-warn" data-testid="positions-unavailable">Positions are temporarily unavailable ({{ wallet_error }}). No balance has been assumed — unavailable is not zero.</p>
+  {% elif not wallet %}
+  <p class="y-empty" data-testid="positions-no-wallet">Link and verify a wallet to see your on-chain vault positions. Nothing is scanned without a verified wallet.</p>
+  {% elif positions_error %}
+  <p class="y-warn" data-testid="positions-unavailable">Position scan partially unavailable ({{ positions_error }}). Detected positions below are factual; unavailable chains are not counted as empty.</p>
+    {% if positions %}
+    <table class="y-table">
+      <thead><tr><th>Vault</th><th>Chain</th><th>Balance</th><th>Observed APY</th><th>Freshness</th></tr></thead>
+      <tbody>
+      {% for position in positions %}
+      <tr data-testid="position-row">
+        <td>{{ position.name }}</td>
+        <td>{{ position.chain }}</td>
+        <td class="y-num">{{ position.balance }}</td>
+        <td class="y-num">{{ position.observed_apy }}</td>
+        <td><span class="y-badge {% if position.evidence_freshness == 'CURRENT' %}y-badge-current{% elif position.evidence_freshness == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ position.evidence_freshness }}</span></td>
       </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <p class="sub">Ownership ≠ entitlement · entitlement ≠ execution · entitlement ≠ metering. Execution Preflight shows entitlement status only; execution is not enabled. No staking, burns, rewards, revenue sharing, or token payments exist.</p>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  {% elif positions %}
+    <table class="y-table">
+      <thead><tr><th>Vault</th><th>Chain</th><th>Balance</th><th>Observed APY</th><th>Freshness</th></tr></thead>
+      <tbody>
+      {% for position in positions %}
+      <tr data-testid="position-row">
+        <td>{{ position.name }}</td>
+        <td>{{ position.chain }}</td>
+        <td class="y-num">{{ position.balance }}</td>
+        <td class="y-num">{{ position.observed_apy }}</td>
+        <td><span class="y-badge {% if position.evidence_freshness == 'CURRENT' %}y-badge-current{% elif position.evidence_freshness == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ position.evidence_freshness }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+  <p class="y-empty" data-testid="positions-empty">No vault-share positions detected on the scanned Yield chains. This is a factual on-chain result for the verified wallet.</p>
+  {% endif %}
+  <p class="y-section-note">Position values and earned-amount estimates are not computed yet — they stay out rather than being guessed.</p>
 </section>
 
-<section class="card" data-testid="yield-watchlist">
-  <h2>Watchlist</h2>
-  {% if watchlist %}
-  <table>
+<section class="y-section" data-testid="yield-watchlist">
+  <h2>Watchlist
+    {% if watchlist_state == 'UNAVAILABLE' %}
+    <span class="y-badge y-badge-unavailable" data-testid="watchlist-count">—</span>
+    {% else %}
+    <span class="y-badge" data-testid="watchlist-count">{{ watchlist_count }}</span>
+    {% endif %}
+  </h2>
+  {% if watchlist_state == 'UNAVAILABLE' %}
+  <p class="y-warn" data-testid="watchlist-unavailable">The watchlist store is currently unavailable. Saved opportunities cannot be read right now and are not counted as zero.</p>
+  {% elif watchlist %}
+  <table class="y-table">
     <thead><tr><th>Opportunity</th><th>Identity</th><th>Saved</th><th></th></tr></thead>
     <tbody>
     {% for item in watchlist %}
       <tr data-testid="watchlist-row">
         <td>{{ item.display_name }}</td>
         <td><span class="mono">{{ item.opportunity_uid }}</span><br>
-            <span class="mono">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
+            <span class="y-subtext">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
         <td><span class="mono">{{ item.saved_at }}</span></td>
         <td>
           <form method="post" action="/yield/watchlist/{{ item.opportunity_uid }}/remove">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" data-testid="watchlist-remove">Remove</button>
+            <button type="submit" class="y-btn-ghost" data-testid="watchlist-remove">Remove</button>
           </form>
         </td>
       </tr>
@@ -50,25 +96,40 @@
     </tbody>
   </table>
   {% else %}
-  <p data-testid="watchlist-empty">No saved opportunities yet. Save one from the <a class="a" href="/yield">Explore</a> table; saved items reference the canonical opportunity identity.</p>
+  <p class="y-empty" data-testid="watchlist-empty">No saved opportunities yet. Save one from the <a href="/yield">Explore</a> table; saved items reference the canonical opportunity identity.</p>
   {% endif %}
 </section>
 
-<div class="grid">
-  {% for position in positions %}
-  <section class="card">
-    <h2>{{ position.name }}</h2>
-    <p>Share balance: {{ position.balance }}</p>
-    <p>Observed APY: {{ position.observed_apy }}</p>
-    <p>Exit: {{ position.exit_state }}</p>
-    <p>Evidence freshness: {{ position.evidence_freshness }}</p>
-    <p>Position value: UNAVAILABLE</p>
-    <p>Estimated earned: UNAVAILABLE</p>
-  </section>
-  {% else %}
-  <section class="card"><p>No supported non-zero vault-share positions detected on configured Yield RPC chains.</p></section>
-  {% endfor %}
-</div>
+<section class="y-section" data-testid="finco-access-panel">
+  <h2>FINCO access</h2>
+  {% set unlocked = access.resources.values() | selectattr("state", "equalto", "UNLOCKED") | list %}
+  {% set unavailable = access.resources.values() | selectattr("state", "equalto", "UNAVAILABLE") | list %}
+  <div class="y-access-summary" data-testid="access-summary">
+    <span>Wallet: <span class="y-badge">{{ access.wallet.state }}</span></span>
+    <span><span class="y-access-count">{{ unlocked | length }}</span> of {{ access.resources | length }} capabilities unlocked</span>
+    {% if unavailable %}
+    <span><span class="y-access-count">{{ unavailable | length }}</span> currently unavailable (not zero)</span>
+    {% endif %}
+  </div>
+  <details class="y-details" {% if unavailable %}open{% endif %}>
+    <summary data-testid="access-details-toggle">Capability detail</summary>
+    <table class="y-table">
+      <thead><tr><th>Capability</th><th>State</th><th>Why</th></tr></thead>
+      <tbody>
+      {% for key, resource in access.resources.items() %}
+        <tr data-testid="access-row-{{ key }}">
+          <td><strong>{{ resource.display_name }}</strong><br><span class="y-subtext mono">{{ key }}</span></td>
+          <td><span class="y-badge">{{ resource.state }}</span>
+              {% if resource.balance %}<br><span class="y-subtext mono">Observed balance {{ resource.balance.observed_balance }} (chain {{ resource.balance.chain_id }})</span>{% endif %}
+              {% if resource.note %}<br><span class="y-subtext">{{ resource.note }}</span>{% endif %}</td>
+          <td><span class="mono">{{ resource.reason or '—' }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  <p class="y-section-note" data-testid="access-truth-note">States are distinct on purpose: NOT CONFIGURED (no production $FINCO deployment yet) ≠ UNAVAILABLE (an input could not be read) ≠ LOCKED (gating applies, not granted) ≠ UNLOCKED (granted). Missing evidence is never shown as a zero balance, and no thresholds or token amounts are displayed.</p>
+</section>
 
-<p class="bound">Wallet ownership ≠ transaction signing ≠ $FINCO entitlement. No signing control is present on this read-only monitor.</p>
+<p class="bound">Read-only monitor: wallet ownership is context, never signing authority and never $FINCO entitlement. No signing control, custody, auto-investing or broadcasting exists on this page.</p>
 {% endblock %}

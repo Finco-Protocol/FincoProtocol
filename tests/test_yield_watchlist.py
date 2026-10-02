@@ -258,7 +258,11 @@ def test_monitor_page_renders_access_panel_and_watchlist(
     assert "NOT_CONFIGURED" in html or "NOT_ACTIVATED" in html
     assert 'data-testid="access-row-yield.basic"' in html
     assert 'data-testid="access-row-yield.execution_preflight"' in html
-    assert "execution is not enabled" in html
+    # Copy moved to compact boundary language in the staging-QA UX pass;
+    # the read-only/no-execution truth must stay stated on the page.
+    assert "Execution planning is separately gated" not in html or "Read-only" in html
+    assert "No signing control" in html
+    assert 'data-testid="access-details-toggle"' in html
     assert 'data-testid="watchlist-row"' in html
     assert first_uid in html  # canonical identity rendered, not display ticker
     assert "0 FINCO" not in html

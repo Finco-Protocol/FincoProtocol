@@ -20,9 +20,13 @@
     <h2>Headline</h2>
     <p>Total APY: {{ total_apy }}</p>
     <p>TVL: {{ tvl }}</p>
-    <p>Evidence: {{ o.source_type.value }}</p>
-    <p>Freshness: {{ freshness }} <span data-testid="last-observed-detail">· Last observed: {{ last_observed }}</span></p>
-    <p data-testid="data-origin-detail">Data origin: {{ origin }}{% if provider != "—" %} · Provider: {{ provider }}{% endif %}{% if o.fetched_at %} · Fetched: {{ fetched }}{% endif %}</p>
+    <p>Evidence: <span class="y-badge">{{ o.source_type.value }}</span></p>
+    <p>Freshness:
+      <span class="y-badge {% if freshness == 'CURRENT' %}y-badge-current{% elif freshness == 'STALE' %}y-badge-stale{% elif freshness in ('INVALID', 'UNAVAILABLE', 'FUTURE_TIMESTAMP') %}y-badge-invalid{% else %}y-badge-unknown{% endif %}">{{ freshness }}</span>
+      <span data-testid="last-observed-detail">· Last observed: {{ last_observed }}</span></p>
+    <p data-testid="data-origin-detail">Data origin:
+      <span class="y-badge {% if origin == 'Source-observed' %}y-badge-live{% else %}y-badge-reference{% endif %}">{{ 'LIVE' if origin == 'Source-observed' else 'REFERENCE' }}</span>
+      {{ origin }}{% if provider != "—" %} · Provider: {{ provider }}{% endif %}{% if o.fetched_at %} · Fetched: {{ fetched }}{% endif %}</p>
   </section>
 
   <section class="card">

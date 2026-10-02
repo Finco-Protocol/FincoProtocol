@@ -288,7 +288,7 @@ class TestYieldLastObserved:
     def test_missing_apy_components_stay_unavailable(self, yield_page):
         """The bundled source supplies only Total APY; Base/Rewards APY must
         stay missing ('—') — never invented, never zero."""
-        # Every bundled Morpho row lacks apy_base/apy_rewards: the cells
-        # render the missing marker, not a fabricated percentage.
-        assert "<td>—</td>" in yield_page
+        # Every bundled Morpho row lacks apy_base/apy_rewards: the APY cell
+        # subtext renders the missing marker, not a fabricated percentage.
+        assert "Base — · Rewards —" in yield_page
         assert "0.00%" not in yield_page

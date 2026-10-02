@@ -240,3 +240,78 @@ def test_script_like_registry_content_is_inert_and_href_rejected(
     assert page.locator("a[href^='javascript:']").count() == 0
     assert page.evaluate("window.__yield_href === undefined")
     page.close()
+
+
+def test_yield_explore_filters_and_badges_browser(
+    yield_url, yield_browser, monkeypatch
+):
+    """Staging-QA browser acceptance: filters visibly usable, submission
+    changes results, clear restores the full set, mixed LIVE/REFERENCE
+    badges render, no horizontal breakage at desktop width."""
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
+    monkeypatch.delenv("FINCO_YIELD_EXECUTION_ENABLED", raising=False)
+
+    registry = load_bundled_registry()
+    total = len(registry.all())
+
+    page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
+    response = page.goto(f"{yield_url}/yield")
+    assert response is not None and response.status == 200
+    page.wait_for_load_state("domcontentloaded")
+
+    # Filter control bar is visibly usable.
+    assert page.locator("[data-testid='yield-filters']").is_visible()
+    assert page.locator("[data-testid='yield-clear']").is_visible()
+    assert page.locator("[data-testid='yield-more-filters']").is_visible()
+
+    # Filter submission changes results (exact canonical count).
+    page.select_option("#f-chain", "8453")
+    page.click("[data-testid='yield-apply']")
+    page.wait_for_load_state("domcontentloaded")
+    base_count = len(registry.all() and [o for o in registry.all() if o.chain_id == 8453])
+    assert page.locator("[data-testid='yield-result-count']").inner_text().strip() == str(base_count)
+    assert page.locator("[data-testid='yield-active-filters']").is_visible()
+    # GET URLs stay linkable/bookmarkable (browsers submit every named
+    # field; empty values are no-ops server-side).
+    assert "chain_id=8453" in page.url
+
+    # Clear restores the full set.
+    page.click("[data-testid='yield-clear']")
+    page.wait_for_load_state("domcontentloaded")
+    assert page.locator("[data-testid='yield-result-count']").inner_text().strip() == str(total)
+    assert page.locator("[data-testid='yield-active-filters']").count() == 0
+
+    # Mixed LIVE/REFERENCE badges render across the real universe.
+    badges = page.locator("[data-testid^='origin-']").all_inner_texts()
+    assert badges, "expected origin badges on every row"
+    assert all(b.strip() in ("LIVE", "REFERENCE") for b in badges)
+
+    assert page.locator("[data-testid='last-observed-']").count() == 0  # uid-suffixed only
+    assert page.locator("[data-testid^='last-observed-']").count() == total
+    assert _overflow_px(page) <= WIDTH_TOLERANCE
+    page.close()
+
+
+def test_yield_monitor_browser_states(yield_url, yield_browser, monkeypatch):
+    """Monitor: route 200, layout renders, unavailable wallet state is
+    graceful, watchlist renders."""
+    monkeypatch.setenv("FINCO_YIELD_ENABLED", "1")
+    import app.auth
+
+    class User:
+        user_id = "yield-qa-browser-user"
+
+    monkeypatch.setattr(app.auth, "resolve_request_session", lambda request: User())
+
+    page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
+    response = page.goto(f"{yield_url}/yield/monitor")
+    assert response is not None and response.status == 200
+    page.wait_for_load_state("domcontentloaded")
+
+    assert page.locator("[data-testid='monitor-positions']").is_visible()
+    assert page.locator("[data-testid='yield-watchlist']").is_visible()
+    assert page.locator("[data-testid='finco-access-panel']").is_visible()
+    assert page.locator("[data-testid='monitor-read-only']").is_visible()
+    assert "No verified FINCO wallet is linked" in page.locator("body").inner_text()
+    assert _overflow_px(page) <= WIDTH_TOLERANCE
+    page.close()

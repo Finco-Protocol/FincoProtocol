@@ -1,0 +1,10 @@
+{% extends "yield/base.html" %}
+{% block title %}FINCO Yield — Invalid filter{% endblock %}
+{% block content %}
+<div class="y-error-card" data-testid="yield-filter-error">
+  <p class="k">FINCO Yield · Explore</p>
+  <h1>That filter could not be applied</h1>
+  <p><span class="y-error-code" data-testid="filter-error-code">{{ error_code }}</span> — {{ error_message }}</p>
+  <p class="y-note">Nothing was filtered on your behalf. <a href="/yield">Clear filters and start again</a>.</p>
+</div>
+{% endblock %}
