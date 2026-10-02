@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore, read_r_live_basis_history_summary_readonly
 from app.radar_rwa.rwa_basis import (BasisStatus, HISTORY_24H_MAX_SKEW_SECONDS, MarketMetric,
                                      build_basis_record, compute_basis, resolve_policy_by_uid)
+from app.radar_rwa.r_live_service import R_LIVE_AUTHORITY_POLICY
 from finco_radar.authority.r_live_policy import AAPL_UID, APPROVED_RLIVE_ASSETS
 
 NOW = datetime(2026, 10, 2, 8, 0, tzinfo=timezone.utc)
@@ -190,11 +191,13 @@ def test_currency_mismatch_plus_stale_source_is_unavailable():
 
 
 def test_observation_gap_plus_stale_row_is_unavailable():
+    gap = timedelta(seconds=R_LIVE_AUTHORITY_POLICY.max_evidence_skew_seconds + 1)
     record = build_basis_record(
-        row(state="STALE", ref_at=NOW - timedelta(hours=2), tok_at=NOW),
+        row(state="STALE", ref_at=NOW - gap, tok_at=NOW),
         policy(), evaluation_time=NOW,
     )
     _assert_consistent(record, "UNAVAILABLE")
+    assert record["timing_relationship"] == "OUTSIDE_CANONICAL_COMPARISON_WINDOW"
     assert record["basis"]["reason"] == "OBSERVATION_TIME_GAP_EXCEEDS_POLICY"
 
 
