@@ -492,10 +492,14 @@ class TestProtocolAuthorityBoundaries:
     def _link_wallet(self, user_id="user-1"):
         _link_wallet(user_id)
 
-    def test_access_json_wallet_store_outage_typed_mapping(
+    def test_access_json_config_absent_wallet_store_outage_preserves_not_configured(
             self, protocol_client, monkeypatch):
         import sqlite3
-        self._link_wallet()
+        for key in (
+            "FINCO_TOKEN_RPC_URL", "FINCO_TOKEN_CHAIN_ID", "FINCO_TOKEN_ADDRESS",
+            "FINCO_ACCESS_MIN_BALANCE", "FINCO_TOKEN_DECIMALS",
+        ):
+            monkeypatch.delenv(key, raising=False)
 
         def boom(user_id):
             raise sqlite3.OperationalError("wallet store unavailable")
@@ -504,12 +508,61 @@ class TestProtocolAuthorityBoundaries:
         page = protocol_client.get("/protocol/finco/access.json")
         assert page.status_code == 200
         payload = page.json()
+        assert payload["token_observation"]["status"] == "NOT_CONFIGURED"
+        assert payload["token_observation"]["normalized_balance"] is None
+        utilities = payload["utilities"]
+        assert utilities, "canonical NOT_CONFIGURED mapping must remain populated"
+        for uid, decision in utilities.items():
+            assert decision["status"] == "NOT_CONFIGURED"
+            assert decision["reason_code"] == "TOKEN_ACCESS_NOT_CONFIGURED"
+            assert decision["allowed"] is False
+
+    def test_access_json_config_present_wallet_store_outage_typed_mapping(
+            self, protocol_client, monkeypatch):
+        import sqlite3
+        self._link_wallet()
+        monkeypatch.setenv("FINCO_TOKEN_RPC_URL", "https://rpc-unreachable.invalid")
+        monkeypatch.setenv("FINCO_TOKEN_CHAIN_ID", "8453")
+        monkeypatch.setenv("FINCO_TOKEN_ADDRESS", "0x" + "ab" * 20)
+        monkeypatch.setenv("FINCO_ACCESS_MIN_BALANCE", "100")
+        monkeypatch.setenv("FINCO_TOKEN_DECIMALS", "6")
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet", boom)
+        page = protocol_client.get("/protocol/finco/access.json")
+        assert page.status_code == 200
+        payload = page.json()
+        assert payload["token_observation"]["status"] == "OBSERVATION_UNAVAILABLE"
+        assert payload["token_observation"]["normalized_balance"] is None
         utilities = payload["utilities"]
         assert utilities, "typed fallback must be a populated mapping"
         for uid, decision in utilities.items():
             assert decision["status"] == "OBSERVATION_UNAVAILABLE"
             assert decision["reason_code"] == "WALLET_STORE_UNAVAILABLE"
             assert decision["allowed"] is False
+
+    def test_html_config_absent_wallet_store_outage_preserves_not_configured(
+            self, protocol_client, monkeypatch):
+        import sqlite3
+        for key in (
+            "FINCO_TOKEN_RPC_URL", "FINCO_TOKEN_CHAIN_ID", "FINCO_TOKEN_ADDRESS",
+            "FINCO_ACCESS_MIN_BALANCE", "FINCO_TOKEN_DECIMALS",
+        ):
+            monkeypatch.delenv(key, raising=False)
+
+        def boom(user_id):
+            raise sqlite3.OperationalError("wallet store unavailable")
+
+        monkeypatch.setattr("app.protocol.wallet_auth.get_verified_wallet", boom)
+        page = protocol_client.get("/protocol/finco")
+        assert page.status_code == 200
+        assert "Token access not configured" in page.text
+        assert 'data-testid="wallet-store-unavailable"' not in page.text
+        assert "Wallet state unavailable" not in page.text
+        assert "finco-status--observation_unavailable" not in page.text
+        assert "finco-status--not_configured" in page.text
 
     def test_html_surface_wallet_store_outage_typed_mapping(
             self, protocol_client, monkeypatch):
