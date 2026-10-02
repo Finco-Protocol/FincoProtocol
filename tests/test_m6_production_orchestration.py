@@ -19,6 +19,7 @@ import pytest
 
 from app.project_factories import create_generic_solar_reference
 from app.services.production_financial_authority import (
+    CleanProductionRunUnavailable,
     ProductionAuthorityClassification,
     classify_production_authority,
     run_clean_production,
@@ -107,16 +108,48 @@ def test_m6_dscr_sculpted_feasible_runs_and_does_not_resize_debt(m6_sculpted, m6
 
 
 def test_m6_repayment_methods_differ_in_repayment_not_in_debt(m6_level, m6_sculpted):
-    level, sculpted = m6_level[1], m6_sculpted[1]
-    assert level.final_senior_commitment_keur == pytest.approx(
-        sculpted.final_senior_commitment_keur, abs=TOL
+    """Same gearing-sized debt, different repayment / debt-service schedule.
+
+    Asserts directly on the canonical immutable senior result
+    (ProjectFinancingResult.project_model_result.senior_debt); nothing is skipped.
+    """
+    level_sd = m6_level[1].project_model_result.senior_debt
+    sculpted_sd = m6_sculpted[1].project_model_result.senior_debt
+    assert level_sd is not None
+    assert sculpted_sd is not None
+
+    # Same initial debt, sized by gearing for both repayment methods.
+    assert level_sd.debt_size_keur == pytest.approx(sculpted_sd.debt_size_keur, abs=TOL)
+    assert level_sd.debt_size_keur == pytest.approx(
+        _gearing_capacity(m6_level[0]), abs=TOL
     )
-    level_ds = [p.senior_principal_keur for p in level.senior_debt_result.periods] \
-        if hasattr(level, "senior_debt_result") else None
-    # Repayment profile comparison uses whichever senior schedule the result exposes.
-    if level_ds is not None:
-        sculpted_ds = [p.senior_principal_keur for p in sculpted.senior_debt_result.periods]
-        assert level_ds != pytest.approx(sculpted_ds)
+
+    # Different principal and debt-service profiles over the same periods.
+    assert len(level_sd.senior_principal_keur) == len(sculpted_sd.senior_principal_keur)
+    assert len(level_sd.senior_principal_keur) > 0
+    assert level_sd.senior_principal_keur != pytest.approx(sculpted_sd.senior_principal_keur)
+    assert level_sd.senior_debt_service_keur != pytest.approx(
+        sculpted_sd.senior_debt_service_keur
+    )
+    # Balance reconciliation on the canonical schedules: debt - principal = closing.
+    # Level principal retires the debt fully; the adapter permits a terminal balloon
+    # (permit_terminal_balloon=True), so a sculpted schedule may leave an explicit,
+    # visible closing balance at maturity (never hidden, never negative).
+    for sd in (level_sd, sculpted_sd):
+        assert sd.senior_debt_closing_keur[-1] == pytest.approx(
+            sd.debt_size_keur - sum(sd.senior_principal_keur), abs=1e-6
+        )
+        assert min(sd.senior_principal_keur) >= 0.0
+        assert min(sd.senior_debt_closing_keur) >= -1e-9
+    assert level_sd.senior_debt_closing_keur[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_m6_is_reported_gearing_bound_not_dscr_or_combined(m6_level, m6_sculpted, combined):
+    for _, result in (m6_level, m6_sculpted):
+        assert result.project_model_result.senior_debt.binding_constraint == "GEARING"
+        assert result.binding_senior_constraint == "GEARING"
+    # COMBINED_MINIMUM in the same fixture is DSCR-bound (DSCR capacity < gearing cap).
+    assert combined[1].project_model_result.senior_debt.binding_constraint == "DSCR"
 
 
 def test_m6_infeasible_dscr_sculpting_fails_closed_with_canonical_reason():
@@ -179,6 +212,7 @@ def test_m6_infeasible_clean_production_fails_closed():
     project = _project(
         DebtSizingMode.GEARING_CAP, Repayment.DSCR_SCULPTED, gearing=0.9, dscr=2.5
     )
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(CleanProductionRunUnavailable) as excinfo:
         run_clean_production(project, "Base", project_type="Solar")
-    assert DSCR_SCULPTING_INFEASIBLE in str(excinfo.value)
+    assert excinfo.value.reason_code == "PR8_CLEAN_ENGINE_FAIL_CLOSED"
+    assert DSCR_SCULPTING_INFEASIBLE in excinfo.value.detail
