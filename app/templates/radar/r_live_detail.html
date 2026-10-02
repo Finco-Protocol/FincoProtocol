@@ -241,7 +241,7 @@
   // controls presentation only, never whether the browser keeps checking.
   // No raw innerHTML for API response data — textContent/createElement only.
   var CANONICAL_ID = {{ row.canonical_id | tojson }};
-  var SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot";
+  var SNAP_URL = "/api/v1.1/radar/r-live/snapshot";
   var LIVE_URL = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
   var HIST_URL = LIVE_URL + "/history?limit=30";
   var POLL_INTERVAL_MS = 20000;
@@ -379,7 +379,7 @@
   }
 
   function refresh_snapshot() {
-    return fetch(SNAPSHOT_URL, {cache: "no-store"})
+    return fetch(SNAP_URL)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(env) {
         if (!env) throw new Error("SNAPSHOT_TRANSPORT_ERROR");

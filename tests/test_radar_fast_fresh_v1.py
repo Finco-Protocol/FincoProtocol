@@ -539,4 +539,6 @@ def test_rlive_detail_page_is_snapshot_first_with_explicit_refresh():
     live_fetches = [line for line in html.splitlines() if "fetch(LIVE_URL" in line]
     assert len(live_fetches) == 1, "live acquisition must have exactly one call site"
     initial_fetch_region = html.split("function refresh_snapshot", 1)[1][:300]
-    assert "SNAPSHOT_URL" in initial_fetch_region, "initial fetch must target the snapshot URL"
+    assert "fetch(SNAP_URL)" in initial_fetch_region, "initial fetch must target the snapshot URL"
+    assert "fetch(SNAP_URL)" in html and "fetch(HIST_URL)" in html, (
+        "R14 contract: current snapshot and history must be separate fetches")
