@@ -154,6 +154,7 @@ class DebtSizingMode(Enum):
     FROZEN_EXCEL_SCHEDULE = "frozen_excel_schedule"
     MINIMUM_DSCR_SCULPTED = "minimum_dscr_sculpted"
     FLAT_DSCR_SCULPTED = "flat_dscr_sculpted"
+    GEARING_CAP = "gearing_cap"
 
     def validate_and_resolve(self) -> "DebtSizingMode":
         """Return resolved mode, raising for unimplemented future modes.
@@ -167,10 +168,22 @@ class DebtSizingMode(Enum):
             DebtSizingMode.FROZEN_EXCEL_SCHEDULE,
             DebtSizingMode.MINIMUM_DSCR_SCULPTED,
             DebtSizingMode.FLAT_DSCR_SCULPTED,
+            DebtSizingMode.GEARING_CAP,
         ):
             return self
         raise ValueError(f"Unknown DebtSizingMode: {self}")
 
+
+class GearingCapRepaymentMethod(str, Enum):
+    """Project-owned repayment policy for canonical GEARING_CAP sizing.
+
+    LEVEL_PRINCIPAL preserves the shipped engine default. DSCR_SCULPTED is the
+    explicit M6 opt-in that changes repayment shape only; it never changes the
+    gearing-sized senior debt amount.
+    """
+
+    LEVEL_PRINCIPAL = "level_principal"
+    DSCR_SCULPTED = "dscr_sculpted"
 
 
 class SHLRepaymentMethod(Enum):
@@ -946,6 +959,39 @@ class FinancingParams:
     #   else: [PR-8 path unchanged]
     construction_financing: "ConstructionFinancingInput | None" = None
 
+    # M6 project-owned authority. This field is meaningful only when
+    # debt_sizing_mode == GEARING_CAP. Default LEVEL_PRINCIPAL preserves all
+    # pre-M6 ProjectInputs economics and serialized payload behavior.
+    gearing_cap_repayment_method: GearingCapRepaymentMethod = (
+        GearingCapRepaymentMethod.LEVEL_PRINCIPAL
+    )
+
+    def __post_init__(self) -> None:
+        repayment = self.gearing_cap_repayment_method
+        if not isinstance(repayment, GearingCapRepaymentMethod):
+            raise ValueError(
+                "GEARING_CAP_REPAYMENT_METHOD_INVALID: "
+                "gearing_cap_repayment_method must be a GearingCapRepaymentMethod"
+            )
+        if (
+            self.debt_sizing_mode != DebtSizingMode.GEARING_CAP
+            and repayment != GearingCapRepaymentMethod.LEVEL_PRINCIPAL
+        ):
+            raise ValueError(
+                "GEARING_CAP_REPAYMENT_METHOD_REQUIRES_GEARING_CAP: "
+                "non-default gearing-cap repayment policy is valid only when "
+                "debt_sizing_mode=GEARING_CAP"
+            )
+        if (
+            self.debt_sizing_mode == DebtSizingMode.GEARING_CAP
+            and self.gearing_basis_mode != GearingBasisMode.TOTAL_PROJECT_USES
+        ):
+            raise ValueError(
+                "GEARING_CAP_REQUIRES_TOTAL_PROJECT_USES: "
+                "debt_sizing_mode=GEARING_CAP requires "
+                "gearing_basis_mode=TOTAL_PROJECT_USES"
+            )
+
     @property
     def all_in_rate(self) -> float:
         """All-in senior debt interest rate."""
@@ -973,6 +1019,11 @@ class FinancingParams:
             return f"FLAT_DSCR_SCULPTED — closed-form sculpting, uniform DSCR = {self.target_dscr}"
         if mode == DebtSizingMode.MINIMUM_DSCR_SCULPTED:
             return "MINIMUM_DSCR_SCULPTED — closed-form sculpting, per-period DSCR schedule"
+        if mode == DebtSizingMode.GEARING_CAP:
+            return (
+                "GEARING_CAP — debt amount determined by maximum gearing; "
+                f"repayment={self.gearing_cap_repayment_method.name}"
+            )
         return f"{mode.value}"
 
 

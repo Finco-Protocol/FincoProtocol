@@ -30,6 +30,7 @@ from financial_engine.senior_debt.inputs import (
 )
 from financial_engine.senior_debt.policy import (
     DayCountConvention,
+    GearingCapRepaymentMethod as EngineGearingCapRepaymentMethod,
     SeniorDebtPolicy,
     SeniorDebtSizingMode,
 )
@@ -54,7 +55,10 @@ def build_senior_debt_contract_from_project_inputs(
     -------
     (SeniorDebtPolicy, SeniorDebtInputs) — ready for solve_senior_debt().
     """
-    from finco_core.inputs._models import DebtSizingMode
+    from finco_core.inputs._models import (
+        DebtSizingMode,
+        GearingCapRepaymentMethod as ProjectGearingCapRepaymentMethod,
+    )
     from finco_core.inputs.senior_rate_schedule import SeniorRateMode
 
     fin = project_inputs.financing
@@ -78,11 +82,36 @@ def build_senior_debt_contract_from_project_inputs(
                 f"gearing_basis_mode={gearing_basis!r}. "
                 f"Only TOTAL_PROJECT_USES and None are supported."
             )
+    elif raw_mode == DebtSizingMode.GEARING_CAP:
+        if gearing_basis != GearingBasisMode.TOTAL_PROJECT_USES:
+            raise ValueError(
+                "GEARING_CAP_REQUIRES_TOTAL_PROJECT_USES: "
+                "DebtSizingMode.GEARING_CAP requires "
+                "gearing_basis_mode=TOTAL_PROJECT_USES"
+            )
+        sizing_mode = SeniorDebtSizingMode.GEARING_CAP
     else:
         raise ValueError(
             f"build_senior_debt_contract_from_project_inputs: unsupported "
             f"debt_sizing_mode={raw_mode!r}. "
-            f"Only FLAT_DSCR_SCULPTED is supported via the clean solver path."
+            "Only FLAT_DSCR_SCULPTED and GEARING_CAP are supported via the "
+            "clean solver path."
+        )
+
+    project_repayment = fin.gearing_cap_repayment_method
+    if project_repayment == ProjectGearingCapRepaymentMethod.LEVEL_PRINCIPAL:
+        engine_gearing_repayment = EngineGearingCapRepaymentMethod.LEVEL_PRINCIPAL
+    elif project_repayment == ProjectGearingCapRepaymentMethod.DSCR_SCULPTED:
+        if sizing_mode != SeniorDebtSizingMode.GEARING_CAP:
+            raise ValueError(
+                "GEARING_CAP_REPAYMENT_METHOD_REQUIRES_GEARING_CAP: "
+                "DSCR_SCULPTED gearing-cap repayment requires GEARING_CAP sizing"
+            )
+        engine_gearing_repayment = EngineGearingCapRepaymentMethod.DSCR_SCULPTED
+    else:
+        raise ValueError(
+            "GEARING_CAP_REPAYMENT_METHOD_INVALID: "
+            f"unsupported project repayment policy {project_repayment!r}"
         )
 
     # --- Day-count convention ---
@@ -177,10 +206,14 @@ def build_senior_debt_contract_from_project_inputs(
         )
 
     # --- Gearing contract ---
-    # When COMBINED_MINIMUM is active, wire the gearing cap from the canonical
-    # Total Project Uses authority.  Fail closed if gearing_basis_mode is set
-    # but the resulting eligible cost would be zero (contract violation).
-    if sizing_mode == SeniorDebtSizingMode.COMBINED_MINIMUM:
+    # COMBINED_MINIMUM and GEARING_CAP both consume the SAME canonical Total
+    # Project Uses gearing basis. They remain economically distinct: combined
+    # sizing takes min(DSCR capacity, gearing cap); GEARING_CAP fixes debt at
+    # eligible cost × maximum gearing and only its repayment policy may vary.
+    if sizing_mode in (
+        SeniorDebtSizingMode.COMBINED_MINIMUM,
+        SeniorDebtSizingMode.GEARING_CAP,
+    ):
         from financial_engine.financing.project_uses import compute_project_uses
         project_uses = compute_project_uses(project_inputs)
         eligible_cost = project_uses.total_project_uses_keur
@@ -211,6 +244,7 @@ def build_senior_debt_contract_from_project_inputs(
         maximum_iterations=200,
         permit_terminal_balloon=True,
         damping_alpha=1.0,
+        gearing_cap_repayment_method=engine_gearing_repayment,
     )
 
     # Solver seed only — has no effect on the converged authoritative result.
