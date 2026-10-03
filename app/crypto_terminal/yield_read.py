@@ -25,16 +25,20 @@ def _history_path() -> str:
     return os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
 
 
-def market_snapshot(*, now: datetime | None = None) -> dict[str, Any]:
+def market_snapshot(*, now: datetime | None = None,
+                    include_market: bool = True) -> dict[str, Any]:
     """One canonical history read -> registry + market view + treasury.
 
     Returns the raw authorities so both the UI and the API can serialize
-    from the SAME objects (never two independent recomputations)."""
+    from the SAME objects (never two independent recomputations).
+    ``include_market=False`` skips building the history-derived market view
+    entirely — used when a caller is not entitled to it, so the protected
+    payload is never constructed (not built-then-redacted)."""
     now = now or datetime.now(timezone.utc)
     registry, source_status = load_active_registry()
     path = _history_path()
     treasury = latest_treasury()
-    if not path:
+    if not path or not include_market:
         # No configured history: canonical market intelligence is unavailable
         # (the registry alone is identity, never market-current values).
         from finco_yield.market import MarketView
@@ -72,6 +76,7 @@ def pool_rows(view: dict[str, Any]) -> list[dict[str, Any]]:
             "protocol": opportunity.protocol,
             "chain_id": opportunity.chain_id,
             "underlying_symbol": opportunity.underlying_symbol,
+            "data_origin": opportunity.data_origin,
             "apy_total": (float(observation.apy_total)
                           if observation.apy_total is not None else None),
             "tvl_usd": (float(observation.tvl_usd)
@@ -111,7 +116,15 @@ def pool_rows(view: dict[str, Any]) -> list[dict[str, Any]]:
 def summary(view: dict[str, Any]) -> dict[str, Any]:
     market: Any = view["market"]
     treasury = view["treasury"]
+    source_status = view["source_status"]
     return {
+        "provenance": {
+            "source_status_origin": source_status.origin,
+            "source_status_reason": source_status.reason,
+            "source_status_generated_at": source_status.generated_at,
+            "source_status_live_rows": source_status.live_rows,
+            "source_status_reference_rows": source_status.reference_rows,
+        },
         "pools_observed": market.pools_observed,
         "pools_above_floor": market.pools_above_floor,
         "tvl_floor": str(market.tvl_floor),
@@ -141,19 +154,27 @@ def movers(view: dict[str, Any], horizon: str) -> list[dict[str, Any]]:
     } for m in view["market"].movers.get(horizon, [])]
 
 
-def pool_detail(canonical_id: str, *, now: datetime | None = None) -> dict[str, Any] | None:
-    """One pool: identity + canonical-history intelligence (typed unavailable
-    when the pool has no canonical observation history)."""
+def pool_detail(canonical_id: str, *, now: datetime | None = None,
+                include_history_intelligence: bool = True,
+                history_access: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """One pool: BASIC identity/current fields, plus — ONLY when
+    ``include_history_intelligence`` is True (YieldResource.HISTORY
+    access_allowed) — the canonical-history-derived intelligence
+    (horizons, deltas, sigma, spread, sparkline).  When False, the
+    protected payload is never built: ``build_intelligence`` is not called
+    and the history-derived market view is not constructed."""
     now = now or datetime.now(timezone.utc)
-    view = market_snapshot(now=now)
+    view = market_snapshot(now=now,
+                           include_market=include_history_intelligence)
     opportunity = next((o for o in view["registry"].all() if o.uid == canonical_id),
                        None)
     if opportunity is None:
         return None
-    intel = view["market"].pools.get(canonical_id)
+    intel = view["market"].pools.get(canonical_id) if include_history_intelligence else None
     intelligence = build_intelligence(
         YieldHistoryStore(view["store_path"]), canonical_id, as_of=now) \
-        if view["store_path"] else None
+        if (include_history_intelligence and view["store_path"]) else None
     horizons = []
     if intelligence is not None and intelligence.status == IntelligenceStatus.AVAILABLE:
         for h in intelligence.horizons:
@@ -166,6 +187,7 @@ def pool_detail(canonical_id: str, *, now: datetime | None = None) -> dict[str, 
                 "apy_sigma_source": h.apy_sigma_source,
                 "observation_count": h.observation_count,
             })
+    source_status = view["source_status"]
     detail = {
         "canonical_id": canonical_id,
         "name": opportunity.name,
@@ -173,6 +195,16 @@ def pool_detail(canonical_id: str, *, now: datetime | None = None) -> dict[str, 
         "chain_id": opportunity.chain_id,
         "underlying_symbol": opportunity.underlying_symbol,
         "provider": opportunity.provider,
+        "data_origin": opportunity.data_origin,
+        "origin": ("LIVE" if opportunity.data_origin == "SOURCE_OBSERVED"
+                   else "REFERENCE"),
+        "provenance": {
+            "source_status_origin": source_status.origin,
+            "source_status_reason": source_status.reason,
+            "source_status_generated_at": source_status.generated_at,
+            "source_status_live_rows": source_status.live_rows,
+            "source_status_reference_rows": source_status.reference_rows,
+        },
         "observed_at": (opportunity.observed_at.isoformat()
                         if opportunity.observed_at else None),
         "current_apy": _float_or_none(opportunity.observation.apy_total),
@@ -190,7 +222,8 @@ def pool_detail(canonical_id: str, *, now: datetime | None = None) -> dict[str, 
                        else None),
                    "horizons": horizons}
                   if intelligence is not None else
-                  {"status": "INSUFFICIENT_HISTORY", "horizons": []}),
+                  ({"status": "INSUFFICIENT_HISTORY", "horizons": []}
+                   if include_history_intelligence else None)),
         "market": ({"currentness": intel.currentness,
                     "latest_apy": _float_or_none(intel.latest_apy),
                     "latest_apy_observed_at": (
@@ -215,6 +248,7 @@ def pool_detail(canonical_id: str, *, now: datetime | None = None) -> dict[str, 
                     "sparkline": list(intel.sparkline)
                                  if intel is not None else []}
                    if intel is not None else None),
+        "history_intelligence_included": include_history_intelligence,
     }
     return detail
 

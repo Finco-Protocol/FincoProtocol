@@ -24,7 +24,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/crypto")
@@ -34,20 +35,27 @@ SCHEMA_VERSION = "finco-crypto-api-v1"
 _CACHE = {"Cache-Control": "no-store"}
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+# One evaluation clock per request: the SAME as_of is passed into the shared
+# read models and serialized as the envelope as_of.  Source observed_at stays
+# separate and is never substituted.
+_REQUEST_LIMIT_MAX = 60   # mirrors the reviewed Tokenized landing default
+
+
+def _request_as_of() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _envelope(resource: str, state: str, data: Any, *,
               canonical_id: str | None = None,
               access: dict | None = None,
-              reason: str | None = None) -> dict[str, Any]:
+              reason: str | None = None,
+              as_of: str | None = None) -> dict[str, Any]:
     envelope: dict[str, Any] = {
         "api_version": API_VERSION,
         "schema_version": SCHEMA_VERSION,
         "resource": resource,
         "state": state,
-        "as_of": _now(),
+        "as_of": as_of or _request_as_of().isoformat(),
     }
     if canonical_id is not None:
         envelope["canonical_asset_id"] = canonical_id
@@ -93,8 +101,12 @@ def _float(value):
 
 
 @router.get("/tokenized")
-async def crypto_tokenized_landing(request: Request, limit: int | None = None):
+async def crypto_tokenized_landing(
+    request: Request,
+    limit: int | None = Query(default=None, ge=1, le=_REQUEST_LIMIT_MAX),
+):
     """Cross-venue Tokenized Markets landing (tokenized.basic — public)."""
+    as_of = _request_as_of()
     gate = await _require_crypto_api(request)
     if gate is not None:
         return gate
@@ -102,7 +114,7 @@ async def crypto_tokenized_landing(request: Request, limit: int | None = None):
 
     gates = await resolve_tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import landing_rows
-    rows, meta = await _run(landing_rows, gates=gates, limit=limit)
+    rows, meta = await _run(landing_rows, gates=gates, limit=limit, now=as_of)
 
     access = gates.public_view()
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
@@ -113,13 +125,14 @@ async def crypto_tokenized_landing(request: Request, limit: int | None = None):
             "collector_health": meta["collector_health"],
             "rows": [_jsonify(row) for row in rows],
         },
-        access=access))
+        access=access, as_of=as_of.isoformat()))
 
 
 @router.get("/tokenized/{canonical_asset_id}")
 async def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
     """One canonical underlying: reference + representations + basis
     (tokenized.basic — public; premium fields redacted per access)."""
+    as_of = _request_as_of()
     gate = await _require_crypto_api(request)
     if gate is not None:
         return gate
@@ -127,12 +140,12 @@ async def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
 
     gates = await resolve_tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates)
+    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.detail", "UNKNOWN_IDENTITY", None,
             canonical_id=canonical_asset_id,
-            reason="CANONICAL_ASSET_ID_UNKNOWN"))
+            reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
     view = result["view"]
     data = {
         "underlying_name": view.underlying_name,
@@ -179,11 +192,13 @@ async def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
         }
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "tokenized.detail", "AVAILABLE", data,
-        canonical_id=canonical_asset_id, access=gates.public_view()))
+        canonical_id=canonical_asset_id, access=gates.public_view(),
+        as_of=as_of.isoformat()))
 
 
 @router.get("/tokenized/{canonical_asset_id}/history")
 async def crypto_tokenized_history(request: Request, canonical_asset_id: str):
+    as_of = _request_as_of()
     """Canonical basis history (tokenized.history — holder resource)."""
     gate = await _require_crypto_api(request)
     if gate is not None:
@@ -197,12 +212,12 @@ async def crypto_tokenized_history(request: Request, canonical_asset_id: str):
 
     gates = await resolve_tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates)
+    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.history", "UNKNOWN_IDENTITY", None,
             canonical_id=canonical_asset_id,
-            reason="CANONICAL_ASSET_ID_UNKNOWN"))
+            reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
     intelligence = result["intelligence"]
     series = []
     if intelligence is not None:
@@ -229,6 +244,7 @@ async def crypto_tokenized_history(request: Request, canonical_asset_id: str):
 
 @router.get("/tokenized/{canonical_asset_id}/dislocations")
 async def crypto_tokenized_dislocations(request: Request, canonical_asset_id: str):
+    as_of = _request_as_of()
     """Cross-venue divergence + dislocation events
     (tokenized.dislocation — holder resource)."""
     gate = await _require_crypto_api(request)
@@ -243,12 +259,12 @@ async def crypto_tokenized_dislocations(request: Request, canonical_asset_id: st
 
     gates = await resolve_tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates)
+    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.dislocation", "UNKNOWN_IDENTITY", None,
             canonical_id=canonical_asset_id,
-            reason="CANONICAL_ASSET_ID_UNKNOWN"))
+            reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
     intelligence = result["intelligence"]
     cross_venue = None
     events = []
@@ -283,12 +299,13 @@ async def crypto_tokenized_dislocations(request: Request, canonical_asset_id: st
 @router.get("/yield")
 async def crypto_yield_landing(request: Request):
     """Yield market intelligence (canonical history — read-only)."""
+    as_of = _request_as_of()
     gate = await _require_crypto_api(request)
     if gate is not None:
         return gate
     from app.crypto_terminal.yield_read import market_snapshot, movers, pool_rows, summary
 
-    view = await _run(market_snapshot)
+    view = await _run(market_snapshot, now=as_of)
     access = await _yield_history_access(request)
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "yield.market", "AVAILABLE",
@@ -296,26 +313,43 @@ async def crypto_yield_landing(request: Request):
          "movers_24h": movers(view, "24h"),
          "movers_7d": movers(view, "7d"),
          "pools": pool_rows(view)},
-        access=access))
+        access=access, as_of=as_of.isoformat()))
 
 
 @router.get("/yield/{canonical_id}")
 async def crypto_yield_detail(request: Request, canonical_id: str):
-    """One Yield pool: identity + canonical-history intelligence."""
+    """One Yield pool.
+
+    crypto.api ALLOW resolves first.  Then YieldResource.HISTORY is resolved
+    BEFORE any protected history intelligence is built: denied callers get
+    the BASIC pool payload (identity + current registry observation fields +
+    provenance) and the history-derived intelligence is never constructed —
+    not built-then-redacted.  This mirrors the existing Yield UI contract."""
+    as_of = _request_as_of()
     gate = await _require_crypto_api(request)
     if gate is not None:
         return gate
-    from app.crypto_terminal.yield_read import pool_detail
+    from finco_yield.access import YieldResource, resolve_yield_access
 
-    detail = await _run(pool_detail, canonical_id)
+    history_decision = await resolve_yield_access(request, YieldResource.HISTORY)
+    allowed = history_decision.access_allowed
+    from app.crypto_terminal.yield_read import pool_detail
+    detail = await _run(pool_detail, canonical_id, now=as_of,
+                        include_history_intelligence=allowed,
+                        history_access={"allowed": allowed,
+                                        "state": history_decision.state.value,
+                                        "reason": history_decision.reason})
     if detail is None:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "yield.pool", "UNKNOWN_IDENTITY", None,
-            canonical_id=canonical_id, reason="CANONICAL_ID_UNKNOWN"))
-    access = await _yield_history_access(request)
+            canonical_id=canonical_id, reason="CANONICAL_ID_UNKNOWN",
+            as_of=as_of.isoformat()))
+    access = {"history": {"allowed": allowed,
+                          "state": history_decision.state.value,
+                          "reason": history_decision.reason}}
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "yield.pool", "AVAILABLE", detail,
-        canonical_id=canonical_id, access=access))
+        canonical_id=canonical_id, access=access, as_of=as_of.isoformat()))
 
 
 async def _yield_history_access(request: Request) -> dict:
