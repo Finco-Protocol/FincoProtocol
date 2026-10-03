@@ -34,6 +34,23 @@ TREASURY_SERIES = EconomySeriesDefinition(
 
 TREASURY_SOURCE = "FRED_DGS3MO"
 
+# Yield-local bounded TTL cache: DGS3MO is DAILY data, so a page request must
+# not trigger one upstream FRED read per view.  Successful (fresh) reads are
+# cached for 6h; typed-unavailable reads are negatively cached for 5 minutes
+# to avoid request storms.  An expired cached value is never served as
+# AVAILABLE: when a refresh fails after expiry, the last-known-good value is
+# returned explicitly labelled STALE.  No Redis/Celery/shared framework.
+_TREASURY_TTL_OK_SECONDS = 6 * 3600.0
+_TREASURY_TTL_UNAVAILABLE_SECONDS = 300.0
+_treasury_cache_lock = __import__("threading").Lock()
+_treasury_cache = {"at": None, "value": None}
+
+
+def reset_treasury_cache() -> None:
+    with _treasury_cache_lock:
+        _treasury_cache["at"] = None
+        _treasury_cache["value"] = None
+
 
 @dataclass(frozen=True)
 class TreasuryObservation:
@@ -52,9 +69,51 @@ class TreasuryObservation:
         return self.state == "AVAILABLE" and self.yield_percent is not None
 
 
+def _serve_cached(cached: TreasuryObservation) -> TreasuryObservation:
+    """Expired cache + failed refresh: last-known-good served EXPLICITLY
+    stale — never presented as a fresh/current observation."""
+    return TreasuryObservation(
+        "STALE", cached.source, cached.yield_percent, cached.period,
+        cached.retrieved_at, "TREASURY_LAST_KNOWN_GOOD_EXPIRED")
+
+
 def latest_treasury(provider: FredEconomyProvider | None = None) -> TreasuryObservation:
-    """Read the latest DGS3MO observation.  Failures stay typed/UNAVAILABLE."""
-    provider = provider or FredEconomyProvider()
+    """Read the latest DGS3MO observation.  Failures stay typed/UNAVAILABLE.
+
+    Without an explicitly injected provider (production path) the result is
+    TTL-cached: fresh reads for 6h, typed-unavailable reads for 5 minutes;
+    provider reads that fail after the fresh cache expires serve the
+    last-known-good value explicitly labelled STALE.  Injected providers
+    (tests/diagnostics) always bypass the cache.
+    """
+    import time
+    if provider is not None:
+        return _read_treasury(provider)
+    now = time.monotonic()
+    with _treasury_cache_lock:
+        cached_at, cached = _treasury_cache["at"], _treasury_cache["value"]
+    if cached is not None and cached_at is not None:
+        ttl = (_TREASURY_TTL_OK_SECONDS if cached.usable
+               else _TREASURY_TTL_UNAVAILABLE_SECONDS)
+        if (now - cached_at) < ttl:
+            return cached
+    try:
+        fresh = _read_treasury(FredEconomyProvider())
+    except Exception as exc:
+        with _treasury_cache_lock:
+            cached_at, cached = _treasury_cache["at"], _treasury_cache["value"]
+        if cached is not None and cached.usable:
+            return _serve_cached(cached)
+        return TreasuryObservation(
+            "UNAVAILABLE", TREASURY_SOURCE, None, None, None,
+            f"FRED_TRANSPORT_FAILED:{type(exc).__name__}")
+    with _treasury_cache_lock:
+        _treasury_cache["at"] = time.monotonic()
+        _treasury_cache["value"] = fresh
+    return fresh
+
+
+def _read_treasury(provider: FredEconomyProvider) -> TreasuryObservation:
     try:
         observation = provider.read(TREASURY_SERIES)
     except Exception as exc:  # transport failure -> typed unavailable

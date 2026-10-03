@@ -277,7 +277,7 @@ class MorphoGraphQLAdapter:
         avg_30d = _optional_decimal(state.get("avgNetApy"), "avgNetApy")
         avg_30d_base = _optional_decimal(state.get("avgNetApyExcludingRewards"),
                                          "avgNetApyExcludingRewards")
-        has_30d = avg_30d is not None or avg_30d_base is not None
+        has_30d = avg_30d is not None
         native = {
             "endpoint": "morpho_graphql.vaultByAddress",
             "vault_address": target.contract_address,

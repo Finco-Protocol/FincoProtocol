@@ -118,7 +118,9 @@ class SourceObservation:
         except ValueError as exc:
             raise ObservationRejected("OBSERVATION_IDENTITY_INVALID") from exc
         for label, value in (("tvl_usd", self.tvl_usd), ("apy_total", self.apy_total),
-                             ("apy_base", self.apy_base), ("apy_rewards", self.apy_rewards)):
+                             ("apy_base", self.apy_base), ("apy_rewards", self.apy_rewards),
+                             ("apy_total_30d_avg", self.apy_total_30d_avg),
+                             ("apy_base_30d_avg", self.apy_base_30d_avg)):
             if value is None:
                 continue
             if not isinstance(value, Decimal) or not value.is_finite():

@@ -94,8 +94,9 @@ def _seed(path: Path):
     B: an extreme +500 bps move but only $100k TVL (below the movers floor).
     """
     store = YieldHistoryStore(path)
-    for i in range(12):                       # i=11 is exactly NOW
-        moment = NOW - timedelta(hours=(12 - i) * 24)
+    for i in range(12):                       # daily points; the last is fresh
+        hours = (12 - i) * 24 if i < 11 else 0.2   # latest observation ~12min old
+        moment = NOW - timedelta(hours=hours)
         a_apy = "0.0400" if i <= 10 else "0.0440"
         if i == 10:
             a_apy = "0.0430"
@@ -370,7 +371,8 @@ def test_explore_route_reads_history_once(monkeypatch, tmp_path):
     bumped = format(fixture_apy + Decimal("0.004"), "f")   # +40 bps at NOW
     now = datetime.now(timezone.utc)
     for i in range(6):
-        moment = now - timedelta(hours=(6 - i) * 24)
+        hours = (6 - i) * 24 if i < 5 else 0.2   # latest observation ~12min old
+        moment = now - timedelta(hours=hours)
         _record(store, real.uid, moment,
                 format(fixture_apy, "f") if i < 5 else bumped)
     from fastapi import FastAPI
@@ -440,3 +442,4 @@ def test_explore_template_contract():
     assert "sparkline_points|e" in html, "JSON in attributes must be escaped"
     for column in ("24h Δ", "7d Δ", "30d Avg", "Sigma 30d", "Treasury Spread"):
         assert column in html
+

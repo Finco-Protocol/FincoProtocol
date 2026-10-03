@@ -6,6 +6,14 @@ opportunity locally, and derives every per-pool statistic from that single
 loaded history.  No second store, no interpolation, no synthetic points;
 missing comparisons are UNAVAILABLE, never zero.
 
+Movers currentness gate
+-----------------------
+A pool enters 24h/7d mover rankings only when its LATEST canonical
+observation is CURRENT under the existing canonical Yield freshness policy
+(``freshness.evaluate_freshness`` -- no second classifier).  Stale/invalid
+observations keep their historically derivable deltas internally but are
+never presented as current movers.
+
 Movers TVL floor
 ----------------
 No product TVL policy existed, so one is introduced here explicitly:
@@ -20,6 +28,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from .alerts_eval import _source_ref_from_row
+from .freshness import evaluate_freshness
 from .history import YieldHistoryStore, _row_time
 
 MOVER_MIN_TVL_USD = Decimal("1000000")   # explicit product policy (introduced V1)
@@ -75,11 +85,13 @@ def _sorted_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for _t, r in ordered]
 
 
-def _latest_apy_and_tvl(rows: list[dict[str, Any]]) -> tuple[Decimal | None, Decimal | None]:
-    """Latest numeric APY/TVL: the newest observation carrying each value
-    (values are missing-annotated, never zero-filled)."""
+def _latest_values(sorted_rows: list[dict[str, Any]]) -> tuple[Decimal | None, Decimal | None]:
+    """Latest numeric APY/TVL: the NEWEST canonical observation carrying each
+    value (values are missing-annotated, never zero-filled).  APY and TVL are
+    resolved independently -- a missing TVL on the newest APY observation does
+    not hide an older TVL."""
     apy = tvl = None
-    for row in _sorted_rows(rows):
+    for row in reversed(sorted_rows):
         payload = row.get("payload") or {}
         if apy is None:
             apy = _dec(payload.get("apy_total"))
@@ -135,6 +147,17 @@ def _sparkline(sorted_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return points[-SPARKLINE_MAX_POINTS:]
 
 
+def _currentness(sorted_rows: list[dict[str, Any]], now: datetime) -> str:
+    """Canonical freshness of the pool's LATEST observation, evaluated by the
+    existing canonical Yield freshness policy (no second classifier)."""
+    if not sorted_rows:
+        return "UNAVAILABLE"
+    source = _source_ref_from_row(sorted_rows[-1])
+    if source is None:
+        return "UNAVAILABLE"
+    return evaluate_freshness(source, now=now).state
+
+
 @dataclass(frozen=True)
 class MoverRow:
     uid: str
@@ -152,6 +175,7 @@ class PoolIntel:
     uid: str
     latest_apy: Decimal | None
     latest_tvl: Decimal | None
+    currentness: str = "UNAVAILABLE"       # canonical freshness state
     deltas: dict[str, Decimal | None] = field(default_factory=dict)   # horizon -> bps
     directions: dict[str, str] = field(default_factory=dict)
     sigma_30d: Decimal | None = None
@@ -211,23 +235,13 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
     grouped = rows_by_uid if rows_by_uid is not None else read_rows_by_uid(store)
 
     pools: dict[str, PoolIntel] = {}
-    names: dict[str, str] = {}
-    current_apy: dict[str, Decimal | None] = {}
-    current_tvl: dict[str, Decimal | None] = {}
-    for opportunity in registry.all():
-        uid = opportunity.uid
-        names[uid] = opportunity.name
-        observation = opportunity.observation
-        # live current values win; fall back to canonical history latest
-        apy = _dec(observation.apy_total) if observation is not None else None
-        tvl = _dec(observation.tvl_usd) if observation is not None else None
+    names = {opportunity.uid: opportunity.name for opportunity in registry.all()}
+    for uid in sorted(set(names) | set(grouped)):
         rows = _sorted_rows(grouped.get(uid, []))
-        hist_apy, hist_tvl = _latest_apy_and_tvl(grouped.get(uid, []))
-        if apy is None:
-            apy = hist_apy
-        if tvl is None:
-            tvl = hist_tvl
-        current_apy[uid], current_tvl[uid] = apy, tvl
+        # Canonical history is the ONLY economic observation authority here:
+        # REFERENCE_FIXTURE registry values never become market-current data.
+        apy, tvl = _latest_values(rows)
+        currentness = _currentness(rows, as_of)
         deltas, directions = {}, {}
         for horizon, span in MOVER_HORIZONS:
             delta, _reason = _baseline_delta(rows, apy, span)
@@ -237,15 +251,20 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
                                    else "UNCHANGED" if delta is not None
                                    else "UNAVAILABLE")
         sigma = _sigma(rows, timedelta(days=30), as_of)
+        # Spread requires BOTH sides current: a fresh Treasury observation AND
+        # a CURRENT canonical yield observation.  Stale yield, stale treasury
+        # or missing evidence -> unavailable (never zero).
         spread = None
         spread_source = None
-        if (apy is not None and treasury is not None and treasury.usable):
+        if (apy is not None and currentness == "CURRENT"
+                and treasury is not None and treasury.usable):
             spread = _spread_bps(apy, treasury.yield_percent)
             spread_source = f"APY_VS_{treasury.source}" if spread is not None else None
         pools[uid] = PoolIntel(
             uid=uid,
             latest_apy=apy,
             latest_tvl=tvl,
+            currentness=currentness,
             deltas=deltas,
             directions=directions,
             sigma_30d=sigma,
@@ -255,8 +274,13 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
             spread_source=spread_source,
         )
 
-    above_floor = {uid for uid, intel in pools.items()
-                   if intel.latest_tvl is not None and intel.latest_tvl >= tvl_floor}
+    def _current_candidate(uid: str) -> bool:
+        intel = pools[uid]
+        return (intel.latest_tvl is not None and intel.latest_tvl >= tvl_floor
+                and intel.latest_apy is not None
+                and intel.currentness == "CURRENT")
+
+    above_floor = {uid for uid in pools if _current_candidate(uid)}
     movers: dict[str, list[MoverRow]] = {}
     for horizon, _span in MOVER_HORIZONS:
         ranked = []
@@ -274,8 +298,7 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
             for rank, (_abs, uid, delta) in enumerate(ranked)
         ]
 
-    eligible_apys = sorted(pools[uid].latest_apy for uid in above_floor
-                           if pools[uid].latest_apy is not None)
+    eligible_apys = sorted(pools[uid].latest_apy for uid in above_floor)
     median = None
     if eligible_apys:
         mid = len(eligible_apys) // 2
@@ -283,11 +306,9 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
                   else (eligible_apys[mid - 1] + eligible_apys[mid]) / 2)
     best = None
     if eligible_apys:
-        top = max(above_floor, key=lambda uid: (pools[uid].latest_apy is not None,
-                                                pools[uid].latest_apy))
-        if pools[top].latest_apy is not None:
-            best = {"uid": top, "name": names.get(top, top),
-                    "apy": pools[top].latest_apy}
+        top = max(above_floor, key=lambda uid: pools[uid].latest_apy)
+        best = {"uid": top, "name": names.get(top, top),
+                "apy": pools[top].latest_apy}
     return MarketView(
         as_of=as_of,
         tvl_floor=tvl_floor,

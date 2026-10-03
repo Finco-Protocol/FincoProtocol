@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -417,7 +418,7 @@ async def yield_explore(
                 rows_by_uid.get(opportunity.uid, []))["history_days"]
             for opportunity in registry.all()
         }
-        treasury = latest_treasury()
+        treasury = await run_in_threadpool(latest_treasury)
         market = build_market_view(store, registry, as_of=datetime.now(timezone.utc),
                                    tvl_floor=MOVER_MIN_TVL_USD, treasury=treasury,
                                    rows_by_uid=rows_by_uid)
@@ -1001,6 +1002,8 @@ async def detail(request: Request, opportunity_uid: str):
     )
     # Yield Intelligence is derived from history, so it follows the existing
     # HISTORY entitlement decision (no new policy).
+    _intel = None   # bound before entitlement branching: a denied HISTORY
+    # entitlement must never leave this name undefined below.
     history_decision = await resolve_yield_access(request, YieldResource.HISTORY)
     if history_decision.access_allowed:
         _intel, intel_history_status = _intelligence_for(opportunity.uid)
@@ -1009,15 +1012,22 @@ async def detail(request: Request, opportunity_uid: str):
         intelligence_view, intel_history_status = None, "ACCESS_RESTRICTED"
 
     # Treasury benchmark + per-pool spread (typed unavailable when either
-    # side is missing or stale -- never zero).  The 30d average is shown with
-    # its OWN provenance label: provider-native when available, otherwise a
-    # distinctly-labelled FINCO historical mean, otherwise unavailable.
-    treasury = latest_treasury()
+    # side is missing or stale -- never zero).  The YIELD side must be
+    # authoritative and CURRENT: it comes from the latest CANONICAL history
+    # observation under the existing freshness policy -- never from a
+    # REFERENCE_FIXTURE registry value and never from stale evidence.
+    # (DGS3MO is daily data: the Treasury read is TTL-cached and runs off the
+    # event loop.)
+    treasury = await run_in_threadpool(latest_treasury)
     spread_bps_value = None
-    if (treasury.usable and opportunity.observation.apy_total is not None):
+    yield_current = None
+    if (_intel is not None and _intel.status == IntelligenceStatus.AVAILABLE
+            and _intel.freshness is not None and _intel.freshness.state == "CURRENT"
+            and _intel.latest is not None):
+        yield_current = _intel.latest.apy_total
+    if treasury.usable and yield_current is not None:
         from .treasury import spread_bps as _spread_bps
-        spread_bps_value = _spread_bps(opportunity.observation.apy_total,
-                                       treasury.yield_percent)
+        spread_bps_value = _spread_bps(yield_current, treasury.yield_percent)
     native_30d = opportunity.observation.apy_total_30d_avg
     native_30d_source = opportunity.observation.apy_30d_avg_source
     finco_30d = None
