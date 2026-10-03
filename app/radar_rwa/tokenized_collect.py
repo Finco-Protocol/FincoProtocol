@@ -105,7 +105,10 @@ def _retry_one(
     last = (canonical_id, "UNAVAILABLE", {"reason": "RADAR_AUTHORITY_UNAVAILABLE"})
     for attempt in range(retries + 1):
         if attempt:
-            sleeper(backoff_seconds * (2 ** (attempt - 1)))
+            sleeper(min(
+                backoff_seconds * (2 ** (attempt - 1)),
+                _MAX_BACKOFF_SECONDS,
+            ))
         try:
             result = acquire_one(
                 canonical_asset_id=canonical_id,
