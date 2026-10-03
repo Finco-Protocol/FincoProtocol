@@ -79,11 +79,16 @@ def market_observation_from_r_live(
         raise TokenizedLiveIdentityMismatch("TOKENIZED_LIVE_EXACT_ASSET_KEY_MISMATCH")
 
     entry = _exact_robinhood_entry(registry, chain_id, contract)
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
+    if policy is None:
+        raise TokenizedLiveIdentityMismatch(
+            "TOKENIZED_LIVE_EXACT_ASSET_KEY_UNAPPROVED")
     if not entry.underlying_symbol:
         raise TokenizedLiveIdentityMismatch("TOKENIZED_LIVE_UNDERLYING_UNAVAILABLE")
-    policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
-    if (policy is None
-            or data.get("economic_asset_uid") != policy.economic_asset_uid):
+    if entry.underlying_symbol.strip().upper() != policy.symbol:
+        raise TokenizedLiveIdentityMismatch(
+            "TOKENIZED_LIVE_UNDERLYING_POLICY_MISMATCH")
+    if data.get("economic_asset_uid") != policy.economic_asset_uid:
         raise TokenizedLiveIdentityMismatch(
             "TOKENIZED_LIVE_ECONOMIC_UID_MISMATCH")
 
