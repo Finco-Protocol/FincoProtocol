@@ -29,12 +29,25 @@
   </p>
 </div>
 
+<div class="y-summary" data-testid="tm-collector-health">
+  <div class="card">
+    <span class="k">Collector</span>
+    <div class="v">{{ collector_health.health_state }}</div>
+    <div class="m">{{ collector_health.liveness }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:16] }} UTC{% endif %}</div>
+  </div>
+  <div class="card">
+    <span class="k">Last cycle</span>
+    <div class="v">{{ collector_health.outcome }}</div>
+    <div class="m">Market acquisition is job-driven; page loads never call providers.</div>
+  </div>
+</div>
+
 {% if not history_available %}
 <p class="y-note" data-testid="tm-history-note">
-  The market-history store contains no observations yet for these venues — market
-  columns fill in per underlying as the observation collector is activated (history
-  availability is per underlying). Identity coverage below is live from the canonical
-  registry.
+  The market-history store contains no observations yet for these venues. History
+  appears only after the separate bounded collector persists source-observed evidence;
+  page loads never trigger acquisition. Identity coverage remains available from the
+  canonical registry.
 </p>
 {% endif %}
 
@@ -43,6 +56,7 @@
     <thead><tr>
       <th>Underlying</th><th>Underlying Ref.</th><th>Representations</th>
       <th>Closest basis venue</th><th>Token Price</th><th>Basis</th>
+      <th>24h Basis Δ</th><th>7d Basis Δ</th><th>Cross-venue</th>
       <th>State</th><th>As-of</th>
     </tr></thead>
     <tbody>
@@ -75,6 +89,15 @@
         <td class="y-num">
           {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
         </td>
+        <td class="y-num" data-testid="tm-basis-24h-{{ row.canonical_asset_id }}">
+          {% if row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+        </td>
+        <td class="y-num" data-testid="tm-basis-7d-{{ row.canonical_asset_id }}">
+          {% if row.basis_change_7d_bps is not none %}{% set d7 = row.basis_change_7d_bps | float %}{% if d7 > 0 %}+{% endif %}{{ d7 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+        </td>
+        <td class="y-num" data-testid="tm-cross-venue-{{ row.canonical_asset_id }}">
+          {% if row.cross_venue_divergence_bps is not none %}{{ row.cross_venue_divergence_bps | float | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+        </td>
         <td>
           <span class="y-badge {% if row.overall_state == 'FRESH' %}y-badge-current{% elif row.overall_state in ('PARTIAL', 'STALE') %}y-badge-stale{% else %}y-badge-unknown{% endif %}"
                 data-testid="tm-state-{{ row.canonical_asset_id }}">{{ row.overall_state }}</span>
@@ -82,7 +105,7 @@
         <td><span class="y-subtext">{{ row.evaluation_time[:16] }} UTC</span></td>
       </tr>
     {% else %}
-      <tr><td colspan="8"><p class="y-empty" data-testid="tm-empty">
+      <tr><td colspan="11"><p class="y-empty" data-testid="tm-empty">
         No canonical tokenized-market underlyings resolved. The registry seed may be
         unavailable — check the deployment's registry artifact.
       </p></td></tr>
