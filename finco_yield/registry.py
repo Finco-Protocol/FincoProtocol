@@ -121,6 +121,8 @@ def _from_row(row: dict, *, default_origin: str = "UNSPECIFIED") -> CanonicalOpp
             apy_base=_dec(row.get("apy_base")),
             apy_rewards=_dec(row.get("apy_rewards")),
             apy_intrinsic=_dec(row.get("apy_intrinsic")),
+            apy_total_30d_avg=_dec(row.get("apy_total_30d_avg")),
+            apy_30d_avg_source=row.get("apy_30d_avg_source"),
             withdrawal_type=row.get("withdrawal_type"),
         ),
         source_type=source_type,

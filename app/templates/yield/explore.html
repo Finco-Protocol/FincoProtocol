@@ -107,10 +107,70 @@
   {% endif %}
 </div>
 
+{% if market_summary %}
+<section class="card" style="margin-bottom:16px" data-testid="yield-market-summary">
+  <p class="k" style="margin:0 0 8px">Market summary</p>
+  <div class="y-summary">
+    <div class="card"><span class="v" data-testid="summary-observed">{{ market_summary.pools_observed }}</span><span class="m">pools with yield observations</span></div>
+    <div class="card"><span class="v" data-testid="summary-above-floor">{{ market_summary.pools_above_floor }}</span><span class="m">above movers TVL floor ({{ market_summary.tvl_floor }})</span></div>
+    <div class="card"><span class="v">{{ market_summary.median_apy }}</span><span class="m">median APY (above floor)</span></div>
+    <div class="card">
+      {% if market_summary.best_apy %}<span class="v">{{ market_summary.best_apy.apy }}</span><span class="m">best APY · {{ market_summary.best_apy.name }}</span>
+      {% else %}<span class="v">—</span><span class="m">best APY</span>{% endif %}
+    </div>
+    <div class="card">
+      <span class="v" data-testid="summary-treasury">{{ market_summary.treasury_yield }}</span>
+      <span class="m">3M Treasury ({{ market_summary.treasury_source or "unavailable" }}{% if market_summary.treasury_period %} · {{ market_summary.treasury_period }}{% endif %}) · {{ market_summary.treasury_state }}</span>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if movers_24h or movers_7d %}
+<section class="card" style="margin-bottom:16px" data-testid="yield-movers">
+  <p class="k" style="margin:0 0 8px">Top movers · ranked by absolute APY change · TVL floor {{ market_summary.tvl_floor if market_summary else "—" }}</p>
+  <div class="grid">
+    <div>
+      <p class="k">24h</p>
+      <table style="min-width:0">
+        <tbody>
+        {% for m in movers_24h %}
+        <tr data-testid="mover-24h-{{ m.rank }}">
+          <td><a class="y-opp-name" href="/yield/{{ m.uid }}">{{ m.name }}</a></td>
+          <td class="y-num">{{ m.apy }}</td>
+          <td class="y-num {% if m.direction == 'UP' %}up{% elif m.direction == 'DOWN' %}down{% else %}flat{% endif %}">
+            {{ m.delta_bps }}</td>
+          <td class="y-num">{{ m.tvl }}</td>
+        </tr>
+        {% else %}<tr><td class="y-subtext">No qualified 24h movers (needs a canonical baseline and TVL ≥ floor).</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <p class="k">7d</p>
+      <table style="min-width:0">
+        <tbody>
+        {% for m in movers_7d %}
+        <tr data-testid="mover-7d-{{ m.rank }}">
+          <td><a class="y-opp-name" href="/yield/{{ m.uid }}">{{ m.name }}</a></td>
+          <td class="y-num">{{ m.apy }}</td>
+          <td class="y-num {% if m.direction == 'UP' %}up{% elif m.direction == 'DOWN' %}down{% else %}flat{% endif %}">
+            {{ m.delta_bps }}</td>
+          <td class="y-num">{{ m.tvl }}</td>
+        </tr>
+        {% else %}<tr><td class="y-subtext">No qualified 7d movers (needs a canonical baseline and TVL ≥ floor).</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="y-subtext" style="margin:8px 0 0">Changes compare the latest observation with the most recent canonical observation at or before the horizon cutoff. Missing baselines stay unavailable — never zero.</p>
+</section>
+{% endif %}
+
 <div class="y-table-wrap scroll" data-testid="yield-opportunities-scroll">
   <table class="y-table">
     <thead><tr>
-      <th>Opportunity</th><th>TVL</th><th>Total APY</th><th>Freshness</th><th>Source</th><th>Watchlist</th>
+      <th>Opportunity</th><th>TVL</th><th>Total APY</th><th>Trend</th><th>24h Δ</th><th>7d Δ</th><th>30d Avg</th><th>Sigma 30d</th><th>Treasury Spread</th><th>Freshness</th><th>Source</th><th>Watchlist</th>
     </tr></thead>
     <tbody>
     {% for row in rows %}
@@ -123,6 +183,30 @@
         <td class="y-num">
           {{ row.total_apy }}
           <span class="y-subtext" data-testid="apy-components-{{ row.uid }}">Base {{ row.base_apy }} · Rewards {{ row.rewards_apy }}</span>
+        </td>
+        <td data-field="trend">
+          {% if row.sparkline_points %}
+          <div data-chart-type="sparkline" aria-label="Recent APY trend, canonical observations only"
+               data-points="{{ row.sparkline_points|e }}"
+               style="width:110px;height:26px;min-width:110px"></div>
+          <span class="src-label">recent canonical points</span>
+          {% else %}<span class="y-subtext">—</span>{% endif %}
+        </td>
+        <td class="y-num {% if row.delta_24h_direction == 'UP' %}up{% elif row.delta_24h_direction == 'DOWN' %}down{% endif %}"
+            data-testid="delta-24h-{{ row.uid }}">{{ row.delta_24h_bps }}</td>
+        <td class="y-num {% if row.delta_7d_direction == 'UP' %}up{% elif row.delta_7d_direction == 'DOWN' %}down{% endif %}"
+            data-testid="delta-7d-{{ row.uid }}">{{ row.delta_7d_bps }}</td>
+        <td class="y-num">
+          {{ row.apy_30d_avg }}
+          {% if row.apy_30d_avg_source %}<span class="src-label">{{ row.apy_30d_avg_source }}</span>{% endif %}
+        </td>
+        <td class="y-num">
+          {{ row.sigma_30d }}
+          {% if row.sigma_source %}<span class="src-label">{{ row.sigma_source }}</span>{% endif %}
+        </td>
+        <td class="y-num">
+          {{ row.spread_bps }}
+          {% if row.spread_source %}<span class="src-label">{{ row.spread_source }}</span>{% endif %}
         </td>
         <td>
           <span class="y-badge {% if row.freshness == 'CURRENT' %}y-badge-current{% elif row.freshness == 'STALE' %}y-badge-stale{% elif row.freshness in ('INVALID', 'UNAVAILABLE', 'FUTURE_TIMESTAMP') %}y-badge-invalid{% else %}y-badge-unknown{% endif %}"
@@ -148,7 +232,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="6">
+      <tr><td colspan="12">
         <p class="y-empty" data-testid="yield-empty">No exact matches for the current filters. <a href="/yield">Clear filters</a> to see all opportunities.</p>
       </td></tr>
     {% endfor %}

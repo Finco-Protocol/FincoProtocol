@@ -37,6 +37,11 @@ class YieldObservation:
     apy_total: Decimal | None
     apy_base: Decimal | None = None
     apy_rewards: Decimal | None = None
+    # Provider-native 30d average + provenance (e.g. MORPHO_NATIVE); None is
+    # UNAVAILABLE -- never replaced by a FINCO-computed value under the same
+    # label (FINCO-computed fallbacks carry their own explicit source).
+    apy_total_30d_avg: Decimal | None = None
+    apy_30d_avg_source: str | None = None
     apy_intrinsic: Decimal | None = None
     annualized_costs: Decimal | None = None
     withdrawal_type: str | None = None

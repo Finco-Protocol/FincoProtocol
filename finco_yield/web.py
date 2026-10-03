@@ -38,6 +38,8 @@ from .explore import (
 from .flags import execution_enabled, yield_enabled
 from .freshness import evaluate_freshness
 from .history import YieldHistoryStore, history_window_summary
+from .market import MOVER_MIN_TVL_USD, build_market_view, read_rows_by_uid
+from .treasury import latest_treasury
 from .intelligence import IntelligenceStatus, build_intelligence
 import logging
 import sqlite3
@@ -100,6 +102,38 @@ def _active():
 
 
 # ── Yield Intelligence V1 (derived read model over canonical history) ──────────
+
+def _mover_view(mover) -> dict:
+    return {
+        "uid": mover.uid,
+        "name": mover.name,
+        "apy": _pct(mover.apy_total),
+        "delta_bps": _bps_label(mover.delta_bps),
+        "direction": mover.direction,
+        "tvl": _usd(mover.tvl_usd),
+        "rank": mover.rank,
+    }
+
+
+def _market_summary_view(market) -> dict:
+    treasury = market.treasury
+    return {
+        "pools_observed": market.pools_observed,
+        "pools_above_floor": market.pools_above_floor,
+        "tvl_floor": _usd(market.tvl_floor),
+        "median_apy": _pct(market.median_apy),
+        "best_apy": ({
+            "name": market.best_apy["name"],
+            "apy": _pct(market.best_apy["apy"]),
+        } if market.best_apy else None),
+        "treasury_state": treasury.state if treasury else "UNAVAILABLE",
+        "treasury_yield": (
+            f"{treasury.yield_percent:.2f}%"
+            if treasury is not None and treasury.yield_percent is not None else "—"),
+        "treasury_source": treasury.source if treasury is not None else "",
+        "treasury_period": treasury.period if treasury is not None else None,
+    }
+
 
 def _intelligence_for(uid: str):
     """``(YieldIntelligence | None, history_status)`` from canonical history.
@@ -170,6 +204,9 @@ def _intelligence_view(intel) -> dict:
             "tvl_delta_pct": _pct_delta_label(h.tvl_delta.delta_fraction),
             "tvl_direction": h.tvl_delta.direction.value,
             "tvl_range": _range_label(h.tvl_window, _usd),
+            "apy_sigma": _pct(h.apy_sigma) if h.apy_sigma is not None else "—",
+            "apy_sigma_source": h.apy_sigma_source or (
+                "—" if h.apy_sigma is None else "FINCO_HISTORICAL"),
         })
     return view
 
@@ -366,13 +403,27 @@ async def yield_explore(
 
     registry, source_status = _active()
     history_days = {}
+    movers_24h = []
+    movers_7d = []
+    market_summary = None
     path = os.getenv("FINCO_YIELD_HISTORY_PATH", "").strip()
     if path:
         store = YieldHistoryStore(path)
-        for opportunity in registry.all():
-            history_days[opportunity.uid] = history_window_summary(
-                store.for_opportunity(opportunity.uid)
-            )["history_days"]
+        # PERFORMANCE: canonical history is read ONCE per request and grouped
+        # locally -- never once per registry row.
+        rows_by_uid = read_rows_by_uid(store)
+        history_days = {
+            opportunity.uid: history_window_summary(
+                rows_by_uid.get(opportunity.uid, []))["history_days"]
+            for opportunity in registry.all()
+        }
+        treasury = latest_treasury()
+        market = build_market_view(store, registry, as_of=datetime.now(timezone.utc),
+                                   tvl_floor=MOVER_MIN_TVL_USD, treasury=treasury,
+                                   rows_by_uid=rows_by_uid)
+        movers_24h = [_mover_view(m) for m in market.movers.get("24h", [])[:5]]
+        movers_7d = [_mover_view(m) for m in market.movers.get("7d", [])[:5]]
+        market_summary = _market_summary_view(market)
 
     rows = explore(
         registry,
@@ -390,9 +441,14 @@ async def yield_explore(
         history_days_by_uid=history_days,
     )
 
+    intel_by_uid = market.pools if path else {}
     view_rows = []
     for opportunity in rows:
         is_live = opportunity.data_origin == DATA_ORIGIN_SOURCE_OBSERVED
+        pool_intel = intel_by_uid.get(opportunity.uid)
+        delta_24h = pool_intel.deltas.get("24h") if pool_intel else None
+        delta_7d = pool_intel.deltas.get("7d") if pool_intel else None
+        sigma = pool_intel.sigma_30d if pool_intel else None
         view_rows.append({
             "uid": opportunity.uid,
             "name": opportunity.name,
@@ -403,6 +459,20 @@ async def yield_explore(
             "total_apy": _pct(opportunity.observation.apy_total),
             "base_apy": _pct(opportunity.observation.apy_base),
             "rewards_apy": _pct(opportunity.observation.apy_rewards),
+            "apy_30d_avg": _pct(opportunity.observation.apy_total_30d_avg),
+            "apy_30d_avg_source": opportunity.observation.apy_30d_avg_source or "",
+            "delta_24h_bps": _bps_label(delta_24h),
+            "delta_24h_direction": (pool_intel.directions.get("24h", "UNAVAILABLE")
+                                    if pool_intel else "UNAVAILABLE"),
+            "delta_7d_bps": _bps_label(delta_7d),
+            "delta_7d_direction": (pool_intel.directions.get("7d", "UNAVAILABLE")
+                                   if pool_intel else "UNAVAILABLE"),
+            "sigma_30d": _pct(sigma) if sigma is not None else "—",
+            "sigma_source": (pool_intel.sigma_source or "") if pool_intel else "",
+            "spread_bps": _bps_label(pool_intel.spread_bps) if pool_intel else "—",
+            "spread_source": (pool_intel.spread_source or "") if pool_intel else "",
+            "sparkline_points": (json.dumps(pool_intel.sparkline)
+                                 if pool_intel and pool_intel.sparkline else ""),
             "evidence": opportunity.source_type.value,
             "exit": (opportunity.observation.withdrawal_type or "UNKNOWN").upper(),
             "freshness": displayed_freshness(
@@ -429,6 +499,9 @@ async def yield_explore(
         name="yield/explore.html",
         context={
             "rows": view_rows,
+            "movers_24h": movers_24h,
+            "movers_7d": movers_7d,
+            "market_summary": market_summary,
             "saved_uids": saved_uids,
             "user": user,
             "csrf_token": generate_csrf_token(),
@@ -934,6 +1007,33 @@ async def detail(request: Request, opportunity_uid: str):
         intelligence_view = _intelligence_view(_intel) if _intel is not None else None
     else:
         intelligence_view, intel_history_status = None, "ACCESS_RESTRICTED"
+
+    # Treasury benchmark + per-pool spread (typed unavailable when either
+    # side is missing or stale -- never zero).  The 30d average is shown with
+    # its OWN provenance label: provider-native when available, otherwise a
+    # distinctly-labelled FINCO historical mean, otherwise unavailable.
+    treasury = latest_treasury()
+    spread_bps_value = None
+    if (treasury.usable and opportunity.observation.apy_total is not None):
+        from .treasury import spread_bps as _spread_bps
+        spread_bps_value = _spread_bps(opportunity.observation.apy_total,
+                                       treasury.yield_percent)
+    native_30d = opportunity.observation.apy_total_30d_avg
+    native_30d_source = opportunity.observation.apy_30d_avg_source
+    finco_30d = None
+    sigma_30d, sigma_30d_source = None, ""
+    finco_30d = None
+    if _intel is not None and _intel.status == IntelligenceStatus.AVAILABLE:
+        horizon_30d = _intel.horizon("30d")
+        if horizon_30d is not None:
+            if horizon_30d.apy_sigma is not None:
+                sigma_30d = horizon_30d.apy_sigma
+                sigma_30d_source = horizon_30d.apy_sigma_source or "FINCO_HISTORICAL"
+            # EXPLICIT fallback (distinct source label): a plain FINCO
+            # historical 30d mean, used ONLY when the provider-native 30d
+            # average is unavailable.  Midrange of the canonical 30d window.
+            if native_30d is None and horizon_30d.apy_window.mean is not None:
+                finco_30d = horizon_30d.apy_window.mean
     scenarios = [
         run_scenario(name, opportunity.observation)
         for name in ("REWARDS_OFF", "REWARDS_MINUS_50", "EXIT_STRESS", "GAS_SHOCK")
@@ -970,6 +1070,18 @@ async def detail(request: Request, opportunity_uid: str):
             "origin": origin_label(opportunity),
             "provider": opportunity.provider or "—",
             "fetched": _last_observed_label(opportunity.fetched_at),
+            "apy_30d_avg": (_pct(native_30d) if native_30d is not None
+                            else _pct(finco_30d) if finco_30d is not None else "—"),
+            "apy_30d_avg_source": (native_30d_source or ("FINCO_HISTORICAL" if finco_30d is not None else "")),
+            "sigma_30d": _pct(sigma_30d) if sigma_30d is not None else "—",
+            "sigma_30d_source": sigma_30d_source,
+            "treasury_yield": (
+                f"{treasury.yield_percent:.2f}%" if treasury.yield_percent is not None else "—"),
+            "treasury_source": treasury.source,
+            "treasury_state": treasury.state,
+            "treasury_period": treasury.period,
+            "spread_bps": _bps_label(spread_bps_value),
+            "spread_source": (f"APY_VS_{treasury.source}" if spread_bps_value is not None else ""),
             "source_status": source_status,
             "intelligence": intelligence_view,
             "intelligence_history_status": intel_history_status,

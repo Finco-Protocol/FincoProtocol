@@ -72,6 +72,13 @@ class SourceObservation:
     apy_total: Decimal | None = None
     apy_base: Decimal | None = None
     apy_rewards: Decimal | None = None
+    # Provider-native 30d averages, when the source contract exposes them
+    # (Morpho: avgNetApy / avgNetApyExcludingRewards, lookback THIRTY_DAYS).
+    # Provenance is carried in ``apy_30d_avg_source`` -- never silently mixed
+    # with FINCO-computed statistics.
+    apy_total_30d_avg: Decimal | None = None
+    apy_base_30d_avg: Decimal | None = None
+    apy_30d_avg_source: str | None = None
     # Values exactly as the source supplied them (JSON primitives).
     source_native: dict[str, Any] = field(default_factory=dict)
     # How each FINCO field was derived from source-native values.
@@ -141,6 +148,9 @@ class SourceObservation:
             "apy_total": _s(self.apy_total),
             "apy_base": _s(self.apy_base),
             "apy_rewards": _s(self.apy_rewards),
+            "apy_total_30d_avg": _s(self.apy_total_30d_avg),
+            "apy_base_30d_avg": _s(self.apy_base_30d_avg),
+            "apy_30d_avg_source": self.apy_30d_avg_source,
             "tvl_usd": _s(self.tvl_usd),
             "fetched_at": self.fetched_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "observed_at_policy": self.observed_at_policy,
