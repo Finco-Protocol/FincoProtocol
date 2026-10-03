@@ -10,7 +10,22 @@ import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-BASE_SHA = "347812cca574a73c64bc71e29296204b3e144cfc"
+# Historical canonical base of the Crypto Utility V0 gate.  The frozen-
+# namespace comparison must run against the FORK POINT with the current
+# canonical main -- a hardcoded SHA goes stale the moment main legitimately
+# evolves (e.g. the M6 financing changes merged via PR #173), and would then
+# fail every later PR for changes it does not contain.
+HISTORICAL_BASE_SHA = "347812cca574a73c64bc71e29296204b3e144cfc"
+
+
+def _base_sha() -> str:
+    probe = subprocess.run(
+        ["git", "merge-base", "HEAD", "origin/main"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if probe.returncode == 0 and probe.stdout.strip():
+        return probe.stdout.strip()
+    return HISTORICAL_BASE_SHA
 
 
 def _read(rel: str) -> str:
@@ -200,7 +215,7 @@ def test_frozen_authority_namespaces_unchanged_from_canonical_base():
         "finco_yield/access.py",
     )
     probe = subprocess.run(
-        ["git", "diff", "--name-only", f"{BASE_SHA}..HEAD"],
+        ["git", "diff", "--name-only", f"{_base_sha()}..HEAD"],
         cwd=REPO,
         capture_output=True,
         text=True,
