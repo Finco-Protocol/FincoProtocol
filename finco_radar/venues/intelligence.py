@@ -185,12 +185,13 @@ def _basis_decimal(observation: MarketObservation | None) -> Decimal | None:
 def _basis_change(
     store: VenueMarketStore,
     *,
+    canonical_asset_id: str,
     venue_id: str,
     instrument_id: str,
     latest: MarketObservation | None,
     horizon: timedelta,
 ) -> str | None:
-    if latest is None:
+    if latest is None or latest.canonical_asset_id.upper() != canonical_asset_id.upper():
         return None
     latest_time = _parse_aware(latest.ts)
     latest_basis = _basis_decimal(latest)
@@ -201,6 +202,9 @@ def _basis_change(
         venue_id=venue_id,
         before=latest_time - horizon,
     )
+    if (baseline is None
+            or baseline.canonical_asset_id.upper() != canonical_asset_id.upper()):
+        return None
     baseline_basis = _basis_decimal(baseline)
     if baseline_basis is None:
         return None
@@ -210,6 +214,7 @@ def _basis_change(
 def _history_for_representation(
     store: VenueMarketStore,
     *,
+    canonical_asset_id: str,
     venue_id: str,
     instrument_id: str,
     representation_type: str,
@@ -217,6 +222,9 @@ def _history_for_representation(
     include_points: bool,
 ) -> RepresentationHistory:
     latest = store.get_latest_for_instrument(instrument_id, venue_id=venue_id)
+    if (latest is not None
+            and latest.canonical_asset_id.upper() != canonical_asset_id.upper()):
+        latest = None
     current_state = effective_observation_state(latest, as_of=as_of)
     latest_basis = None
     latest_reason = "REPRESENTATION_PRICE_UNAVAILABLE"
@@ -233,6 +241,8 @@ def _history_for_representation(
         )
         built: list[BasisPoint] = []
         for row in rows:
+            if row.canonical_asset_id.upper() != canonical_asset_id.upper():
+                continue
             basis, reason = _basis_from_observation(row)
             built.append(BasisPoint(t=row.ts or "", v=basis, reason=reason))
         points = tuple(built)
@@ -246,10 +256,12 @@ def _history_for_representation(
         latest_basis_bps=latest_basis,
         latest_basis_reason=latest_reason,
         basis_change_24h_bps=_basis_change(
-            store, venue_id=venue_id, instrument_id=instrument_id,
+            store, canonical_asset_id=canonical_asset_id,
+            venue_id=venue_id, instrument_id=instrument_id,
             latest=latest, horizon=timedelta(hours=24)),
         basis_change_7d_bps=_basis_change(
-            store, venue_id=venue_id, instrument_id=instrument_id,
+            store, canonical_asset_id=canonical_asset_id,
+            venue_id=venue_id, instrument_id=instrument_id,
             latest=latest, horizon=timedelta(days=7)),
         points=points,
     )
@@ -409,6 +421,7 @@ def build_tokenized_intelligence(
         venue_id, instrument_id = _entry_identity(entry)
         histories.append(_history_for_representation(
             store,
+            canonical_asset_id=underlying.canonical_symbol,
             venue_id=venue_id,
             instrument_id=instrument_id,
             representation_type=entry.instrument_type,
