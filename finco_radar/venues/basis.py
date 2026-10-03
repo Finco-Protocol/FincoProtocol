@@ -30,13 +30,18 @@ def basis_for_evidence(
 ) -> tuple[str | None, str | None]:
     if representation_price is None:
         return None, "REPRESENTATION_PRICE_UNAVAILABLE"
+    # A missing provider source clock is an evidence-provenance failure,
+    # not generic staleness. Preserve that typed reason even when read-time
+    # freshness has already degraded the representation to UNAVAILABLE.
+    if not representation_source_timestamp:
+        return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
     if representation_state != "AVAILABLE":
         return None, "REPRESENTATION_STALE"
     if reference_price is None or reference_state == "UNAVAILABLE":
         return None, "REFERENCE_UNAVAILABLE"
     if reference_state not in ("FRESH", "AVAILABLE"):
         return None, "REFERENCE_STALE"
-    if not representation_source_timestamp or not reference_source_timestamp:
+    if not reference_source_timestamp:
         return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
     try:
         rep_stamp = datetime.fromisoformat(representation_source_timestamp)
