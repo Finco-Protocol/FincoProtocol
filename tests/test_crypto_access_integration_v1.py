@@ -210,6 +210,38 @@ def test_api_and_ui_adapters_consume_the_same_authority(session, monkeypatch):
     assert (ui.upstream.chain_id, ui.upstream.token_address) == (api.upstream.chain_id, api.upstream.token_address)
 
 
+def test_api_default_configuration_is_inactive_and_not_activated(session):
+    d = asyncio.run(resolve_api_access(object(), environ={}, now=NOW))
+    assert d.upstream is not None and d.upstream.decision is Decision.INACTIVE
+    assert (d.state, d.access_allowed, d.token_entitled, d.gate_active) == (
+        S.TOKEN_ENTITLEMENT_FEATURE_INACTIVE, False, False, False)
+
+
+def test_api_valid_holder_evidence_allows_access(session):
+    d = asyncio.run(resolve_api_access(
+        object(), policy_set=policies(), provider=FakeProvider(), approved=[approved()], environ=ENV, now=NOW))
+    assert d.upstream is not None and d.upstream.decision is Decision.ALLOW
+    assert (d.state, d.access_allowed, d.token_entitled, d.gate_active) == (S.ENTITLED, True, True, True)
+
+
+@pytest.mark.parametrize(("value", "reason"), [
+    (evidence(RAW - 1), "BALANCE_BELOW_THRESHOLD"),
+    (evidence(age=3600), "BALANCE_STALE"),
+    (evidence(state=BalanceEvidenceState.UNAVAILABLE), "RPC_UNAVAILABLE"),
+])
+def test_api_insufficient_stale_or_unavailable_evidence_denies(session, value, reason):
+    d = asyncio.run(resolve_api_access(
+        object(), policy_set=policies(), provider=FakeProvider(value), approved=[approved()], environ=ENV, now=NOW))
+    assert d.upstream is not None and d.upstream.decision is Decision.DENY
+    assert d.access_allowed is False and d.token_entitled is False and d.reason == reason
+
+
+def test_api_no_approved_deployment_is_typed_not_configured_and_denied(session):
+    d = asyncio.run(resolve_api_access(
+        object(), policy_set=policies(), provider=FakeProvider(), approved=[], environ=ENV, now=NOW))
+    assert d.upstream is not None and d.upstream.decision is Decision.DENY
+    assert (d.state, d.access_allowed, d.token_entitled) == (S.TOKEN_DEPLOYMENT_NOT_CONFIGURED, False, False)
+
 def test_api_denial_payload_exposes_only_safe_fields(session):
     d = asyncio.run(resolve_api_access(
         object(), policy_set=policies(), provider=FakeProvider(evidence(RAW - 1)), approved=[approved()],
