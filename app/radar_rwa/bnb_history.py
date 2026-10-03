@@ -46,7 +46,9 @@ def _range_result(values: list[Decimal]) -> dict:
             "observation_count": len(values)}
 
 
-def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
+def _range_summary_from_rows(rows, latest, *, now: datetime,
+                             include_series: bool = False,
+                             max_series_points: int = 48) -> dict:
     """Pure post-processing for B1.3 range summaries.
 
     ``rows`` are the bounded (digest, payload) window rows newest-first for
@@ -54,6 +56,14 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
     (or None). Digest verification, canonical timestamps and filters are
     identical to the per-asset read path — this helper exists so the batch
     read produces byte-identical summaries.
+
+    ``include_series`` additionally returns a bounded, deterministic,
+    display-only 24h premium series (``series_24h``) extracted from the SAME
+    digest-verified, already-filtered window points: oldest-first
+    ``[{"collected_at", "premium_bps"}]`` LTTB-downsampled to at most
+    ``max_series_points`` (first and last canonical points always preserved;
+    visually material spikes survive). No interpolation, no synthetic
+    points, no canonical data change — pure visual selection.
     """
     last_available = None
     if latest is not None:
@@ -80,10 +90,14 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
                 "premium_bps": point["reference_premium_bps"],
             }
     if len(rows) > MAX_RLIVE_RANGE_POINTS:
-        return {"range_1h": _range_result([]), "range_24h": _range_result([]),
-                "last_available": last_available, "reason": "HISTORY_WINDOW_CAP_EXCEEDED"}
+        result = {"range_1h": _range_result([]), "range_24h": _range_result([]),
+                  "last_available": last_available, "reason": "HISTORY_WINDOW_CAP_EXCEEDED"}
+        if include_series:
+            result["series_24h"] = []
+        return result
     one_hour = []
     one_day = []
+    series: list[tuple[datetime, str]] = []
     hour_cutoff = now - timedelta(hours=1)
     for digest, payload in rows:
         if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
@@ -104,8 +118,76 @@ def _range_summary_from_rows(rows, latest, *, now: datetime) -> dict:
         one_day.append(value)
         if collected >= hour_cutoff:
             one_hour.append(value)
-    return {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
-            "last_available": last_available}
+        if include_series:
+            series.append((collected, point["reference_premium_bps"]))
+    result = {"range_1h": _range_result(one_hour), "range_24h": _range_result(one_day),
+              "last_available": last_available}
+    if include_series:
+        series.sort(key=lambda item: item[0])
+        result["series_24h"] = _downsample_series(series, max_series_points)
+    return result
+
+
+def _downsample_series(series: list[tuple[datetime, str]],
+                       max_points: int) -> list[dict]:
+    """Deterministic display-only downsample of verified canonical points.
+
+    Series within the budget render directly (exact canonical points). Longer
+    series are reduced with LTTB (Largest Triangle Three Buckets, adapted
+    from the MIT lttb-py reference as a dependency-light primitive): the
+    visually material excursions — short-lived premium spikes and
+    dislocations — survive, which a first-of-bucket sampler would silently
+    discard. First and last canonical points are always preserved and every
+    selected point is an ACTUAL canonical observation: no interpolation, no
+    generated values, no rewritten timestamps.
+    """
+    if max_points <= 0 or len(series) <= max_points:
+        return [{"collected_at": collected.isoformat(), "premium_bps": value}
+                for collected, value in series]
+    selected = _lttb_select(series, max_points)
+    return [{"collected_at": series[i][0].isoformat(), "premium_bps": series[i][1]}
+            for i in selected]
+
+
+def _lttb_select(series: list[tuple[datetime, str]], max_points: int) -> list[int]:
+    """LTTB index selection over (timestamp, value) canonical points.
+
+    Deterministic: bucket boundaries are fixed fractions of the series
+    length and ties resolve to the first maximal-area point. The first
+    point seeds the running anchor and the last point is always kept.
+    """
+    n = len(series)
+    if n <= max_points or max_points < 3:
+        return list(range(n))
+    xs = [float(collected.timestamp()) for collected, _value in series]
+    ys = [float(Decimal(value)) for _collected, value in series]
+    kept = [0]
+    bucket_count = max_points - 2
+    bucket_size = (n - 2) / bucket_count
+    anchor = 0
+    for i in range(1, bucket_count + 1):
+        # Average of the NEXT bucket is the far triangle edge; for the final
+        # bucket it is exactly the last canonical point.
+        if i < bucket_count:
+            nxt_start = 1 + int(i * bucket_size)
+            nxt_end = 1 + int((i + 1) * bucket_size)
+            nxt = range(nxt_start, max(nxt_end, nxt_start + 1))
+            avg_x = sum(xs[j] for j in nxt) / len(nxt)
+            avg_y = sum(ys[j] for j in nxt) / len(nxt)
+        else:
+            avg_x, avg_y = xs[-1], ys[-1]
+        start = 1 + int((i - 1) * bucket_size)
+        end = 1 + int(i * bucket_size)
+        best_index, best_area = start, -1.0
+        ax, ay = xs[anchor], ys[anchor]
+        for j in range(start, max(end, start + 1)):
+            area = abs((ax - avg_x) * (ys[j] - ay) - (ax - xs[j]) * (avg_y - ay)) * 0.5
+            if area > best_area:
+                best_area, best_index = area, j
+        kept.append(best_index)
+        anchor = best_index
+    kept.append(n - 1)
+    return kept
 
 
 _RANGE_WINDOW_SQL = (
@@ -168,7 +250,9 @@ def read_r_live_range_summary_readonly(uid: str, key: AssetKey, *,
 
 
 def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
-                                      path: str | None = None) -> dict:
+                                      path: str | None = None,
+                                      include_series: bool = False,
+                                      max_series_points: int = 48) -> dict:
     """Single-pass read-only 24h range summaries for MANY exact pairs.
 
     One store open and two grouped queries replace the per-asset store reads
@@ -177,6 +261,11 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     ``read_r_live_range_summary_readonly``: each pair's window rows are the
     newest-first bounded set that pair's own LIMIT query would return, and
     each pair's latest row is that pair's newest AVAILABLE point.
+
+    With ``include_series`` each summary additionally carries the bounded
+    display-only ``series_24h`` premium series extracted from the same
+    digest-verified window points (see ``_range_summary_from_rows``) — no
+    extra store reads, no interpolation, no synthetic points.
 
     Returns ``{canonical_id: summary}``. Per-pair computation failures map
     to ``{"reason": "HISTORY_UNAVAILABLE"}`` exactly like the router-level
@@ -193,6 +282,8 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     now = now.astimezone(timezone.utc)
     empty = {"range_1h": _range_result([]), "range_24h": _range_result([]),
              "last_available": None}
+    if include_series:
+        empty["series_24h"] = []
     location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
     if not checked:
         return {}
@@ -231,7 +322,8 @@ def read_r_live_ranges_batch_readonly(pairs, *, as_of: datetime | None = None,
     for pair in checked:
         try:
             out[pair[1]] = _range_summary_from_rows(
-                windows.get(pair, []), latest.get(pair), now=now)
+                windows.get(pair, []), latest.get(pair), now=now,
+                include_series=include_series, max_series_points=max_series_points)
         except Exception:
             out[pair[1]] = {"reason": "HISTORY_UNAVAILABLE"}
     return out

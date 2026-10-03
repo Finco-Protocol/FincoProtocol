@@ -738,3 +738,67 @@ html, body.radar {
 .terminal-fundamentals-grid strong { display: block; font-variant-numeric: tabular-nums; font-size: 17px; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .terminal-overview-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .terminal-fundamentals-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ── Terminal UX V1 — R-Live KPI strip, charts, trust-state chips ───────── */
+
+.rlive-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.rlive-kpi {
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--radar-border, #252b33);
+  border-radius: 8px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rlive-kpi__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--radar-muted, #8d98a5);
+}
+.rlive-kpi__value {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--radar-text, #d7dee5);
+  overflow-wrap: anywhere;
+}
+.rlive-kpi__meta {
+  font-size: 10px;
+  color: var(--radar-muted, #8d98a5);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 900px) { .rlive-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .rlive-kpi-strip { grid-template-columns: minmax(0, 1fr); } }
+
+.rlive-chart { max-width: 100%; box-sizing: border-box; }
+.rlive-chart [data-chart-type] { max-width: 100%; }
+.rlive-chart svg { max-width: 100%; height: auto; }
+
+/* Trust-state chips: compact visual language for source / as-of / age.
+   Source state and UI fetch state are DIFFERENT things — a freshly fetched
+   response carrying old evidence is still old evidence. */
+.rlive-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  border: 1px solid var(--radar-border, #252b33);
+  color: var(--radar-muted, #8d98a5);
+  white-space: nowrap;
+}
+.rlive-chip--available { color: #22c55e; border-color: rgba(34, 197, 94, .35); }
+.rlive-chip--stale { color: #eab308; border-color: rgba(234, 179, 8, .35); }
+.rlive-chip--historical { color: var(--radar-muted, #8d98a5); border-style: dashed; }
+.rlive-chip--unavailable { color: var(--radar-muted, #8d98a5); opacity: .8; }
+.rlive-chip--initializing { color: var(--radar-muted, #8d98a5); opacity: .8; }

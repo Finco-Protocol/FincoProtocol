@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
 
@@ -38,6 +39,42 @@
   </header>
 
   {% if row.approved %}
+  <section style="margin-bottom:28px">
+    <div class="rlive-kpi-strip" id="detail-kpi-strip" data-testid="detail-kpi-strip">
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Premium / Discount</span><span class="rlive-kpi__value mono" id="kpi-premium">—</span><span class="rlive-kpi__meta" id="kpi-state">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Economic Basis</span><span class="rlive-kpi__value mono" id="kpi-basis">—</span><span class="rlive-kpi__meta" id="kpi-basis-asof">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Independent Token Ref.</span><span class="rlive-kpi__value mono" id="kpi-token">—</span><span class="rlive-kpi__meta" id="kpi-token-asof">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">24h Range</span><span class="rlive-kpi__value mono" id="kpi-range">—</span><span class="rlive-kpi__meta" id="kpi-range-meta">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Freshness</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
+    </div>
+  </section>
+
+  <section style="margin-bottom:28px">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Premium / Discount — 24h canonical range
+    </h2>
+    <div class="rlive-chart" id="chart-premium-wrap">
+      <div class="fo-power-skeleton fo-power-skeleton--block" data-testid="chart-premium-skeleton" style="height:170px"></div>
+      <div data-chart-type="line" data-theme="dark" data-zero-line="true" id="chart-premium"
+           aria-label="Reference premium or discount in basis points over the last 24 hours, from the canonical 24h range series; gaps are missing evidence, never interpolated"
+           style="display:none"></div>
+      <p class="muted small" id="chart-premium-note" style="margin:6px 0 0"></p>
+    </div>
+  </section>
+
+  <section style="margin-bottom:28px">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Basis vs Token reference — recent history (USD per token)
+    </h2>
+    <div class="rlive-chart" id="chart-prices-wrap">
+      <div class="fo-power-skeleton fo-power-skeleton--block" data-testid="chart-prices-skeleton" style="height:170px"></div>
+      <div data-chart-type="line" data-theme="dark" id="chart-prices"
+           aria-label="Economic basis and independent token reference in USD per token over the most recent collected observations; green is token reference, blue is basis; gaps are missing evidence"
+           style="display:none"></div>
+      <p class="muted small" id="chart-prices-note" style="margin:6px 0 0"></p>
+    </div>
+  </section>
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Live Reference
@@ -243,7 +280,8 @@
   var CANONICAL_ID = {{ row.canonical_id | tojson }};
   var SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot";
   var LIVE_URL = "/api/v1.1/radar/r-live/" + encodeURIComponent(CANONICAL_ID);
-  var HIST_URL = LIVE_URL + "/history?limit=30";
+  var HIST_URL = LIVE_URL + "/history?limit=100";
+  var RANGES_URL = "/api/v1.1/radar/r-live/history/ranges";
   var POLL_INTERVAL_MS = 20000;
   var NOT_COLLECTED = "SNAPSHOT_NOT_YET_COLLECTED";
 
@@ -325,6 +363,22 @@
     if (rb_source && tok_source) sources_txt = rb_source + " · " + tok_source;
     else if (rb_source || tok_source) sources_txt = rb_source || tok_source;
     set_text("detail-sources", sources_txt);
+
+    // KPI strip — same canonical values, terminal presentation. Missing is —
+    // never 0; the state chip always shows the canonical typed state.
+    set_text("kpi-premium", prem_txt);
+    var state_chip = document.getElementById("kpi-state");
+    if (state_chip) {
+      state_chip.className = "rlive-chip rlive-chip--" + state.toLowerCase();
+      state_chip.textContent = state;
+    }
+    set_text("kpi-basis", basis_txt);
+    set_text("kpi-basis-asof", rb && rb.observed_at ? "as of " + String(rb.observed_at).replace("T", " ").slice(0, 16) : null);
+    set_text("kpi-token", ref_txt);
+    set_text("kpi-token-asof", tr && tr.observed_at ? "as of " + String(tr.observed_at).replace("T", " ").slice(0, 16) : null);
+    var market_age = (ages.market_activity_age_seconds != null) ? ages.market_activity_age_seconds : fresh.market_activity_age_seconds;
+    set_text("kpi-freshness", market_age != null ? ("Market " + fmt_age(market_age)) : null);
+    set_text("kpi-source", tok_source || rb_source || state);
   }
 
   // ── Snapshot-first render + continuous snapshot polling ──────────────────
@@ -504,11 +558,131 @@
     .then(function(env) {
       var points = (env && env.data && Array.isArray(env.data.points)) ? env.data.points : [];
       build_history_table(points);
+      build_recent_charts(points);
     })
     .catch(function() {
       var b = document.getElementById("detail-history-block");
       if (b) { b.textContent = ""; var p = document.createElement("p"); p.className = "muted small"; p.textContent = "History unavailable."; b.appendChild(p); }
+      chart_transport_failed("chart-prices", "chart-prices-note",
+        "History unavailable — no chart is rendered rather than an incomplete one.");
     });
+
+  // TRUE 24H SEMANTICS: the premium/discount chart and the 24h Range KPI are
+  // derived ONLY from the canonical 24h range/series authority
+  // (read_r_live_ranges_batch_readonly include_series=True, served by the
+  // read-only ranges endpoint) — never recomputed from a count-limited
+  // last-N history sample, which is not a guaranteed 24-hour window.
+  // Landing sparklines read the same canonical 24h evidence window.
+  fetch(RANGES_URL)
+    .then(function(r) {
+      if (!r.ok) { throw new Error("TRANSPORT_ERROR_" + r.status); }
+      return r.json();
+    })
+    .then(function(env) {
+      var entry = (env && env.data && env.data.assets)
+        ? env.data.assets[CANONICAL_ID] : null;
+      build_24h_views(entry);
+    })
+    .catch(function() {
+      build_24h_views(null);
+    });
+
+  function build_24h_views(entry) {
+    if (!window.FoCharts) return;
+    var premium_el = document.getElementById("chart-premium");
+    if (!premium_el) return;
+    var series = (entry && Array.isArray(entry.series_24h)) ? entry.series_24h : null;
+    var range24 = (entry && entry.range_24h) ? entry.range_24h : null;
+    if (series && series.length >= 2) {
+      premium_el.dataset.points = JSON.stringify(series.map(function (p) {
+        return { t: p.collected_at || "", v: parse_num(p.premium_bps) };
+      }));
+      window.FoCharts.renderElement(premium_el);
+      show_chart("chart-premium", "chart-premium-note",
+        series.length + " canonical observations in the 24h range series · gaps are missing evidence · canonical 24h window.");
+    } else {
+      show_chart("chart-premium", "chart-premium-note",
+        "24h range series not available yet (" + (series ? series.length : 0)
+        + " usable observations) — nothing synthesized.");
+      premium_el.style.display = "none";
+    }
+    // 24h Range KPI — verbatim canonical bounds, never recomputed locally.
+    if (range24 && range24.state === "AVAILABLE"
+        && range24.low_bps != null && range24.high_bps != null) {
+      var lo = parse_num(range24.low_bps), hi = parse_num(range24.high_bps);
+      if (lo != null && hi != null) {
+        set_text("kpi-range", fmt_signed_bps(lo) + " … " + fmt_signed_bps(hi) + " bps");
+        set_text("kpi-range-meta", (range24.observation_count != null
+          ? range24.observation_count + " observations · 24h window"
+          : "24h window"));
+        return;
+      }
+    }
+    set_text("kpi-range", "—");
+    set_text("kpi-range-meta", "no 24h range available");
+  }
+
+  // Charts are a pure presentation of the SAME canonical history points the
+  // table above shows: gaps stay gaps, values are never altered, no
+  // interpolation, no synthetic points, timestamps never rewritten.
+  function chart_points(points, picker) {
+    return points.map(function(pt) {
+      return { t: pt.collected_at || "", v: picker(pt) };
+    });
+  }
+
+  // Signed bps formatter: +5.0 / -5.0 / 0.0 — the sign is derived from the
+  // value, never hand-prefixed (a naive "+" prefix produces "+-5.0").
+  function fmt_signed_bps(v) {
+    var n = parse_num(v);
+    if (n == null) return "—";
+    return (n > 0 ? "+" : "") + n.toFixed(1);
+  }
+
+  function parse_num(v) {
+    if (v == null || v === "") return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  }
+
+  function show_chart(id, note_id, note) {
+    var skeleton = document.querySelector("[data-testid='" + id + "-skeleton']");
+    var chart = document.getElementById(id);
+    if (skeleton && skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
+    if (chart) { chart.style.display = "block"; }
+    if (note_id) set_text(note_id, note);
+  }
+
+  function chart_transport_failed(chart_id, note_id, message) {
+    show_chart(chart_id, note_id, message);
+  }
+
+  function build_recent_charts(points) {
+    if (!window.FoCharts) return;
+    var prices_el = document.getElementById("chart-prices");
+    if (!prices_el) return;
+    var basis_points = chart_points(points, function(pt) {
+      return (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
+        ? parse_num(pt.robinhood_basis.price_usd_per_token) : null;
+    });
+    var token_points = chart_points(points, function(pt) {
+      return (pt.independent_token_reference && pt.independent_token_reference.priceUsdPerToken != null)
+        ? parse_num(pt.independent_token_reference.priceUsdPerToken) : null;
+    });
+    var usable_prices = basis_points.filter(function(p) { return p.v != null; }).length;
+    if (usable_prices >= 2) {
+      prices_el.dataset.points = JSON.stringify(basis_points);
+      prices_el.dataset.series2 = JSON.stringify(token_points);
+      window.FoCharts.renderElement(prices_el);
+      show_chart("chart-prices", "chart-prices-note",
+        usable_prices + " canonical observations shown · gaps are missing evidence · recent history: last "
+        + points.length + " collected points (not a 24h window).");
+    } else {
+      show_chart("chart-prices", "chart-prices-note",
+        "Insufficient canonical history for a chart yet (" + usable_prices + " usable observations) — nothing synthesized.");
+      prices_el.style.display = "none";
+    }
+  }
 })();
 </script>
 {% endif %}
