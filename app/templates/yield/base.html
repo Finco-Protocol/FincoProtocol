@@ -53,6 +53,7 @@
 </head>
 <body>
 {% with proto_active_page="yield" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% with crypto_domain="yield" %}{% include "partials/_crypto_domain_nav.html" %}{% endwith %}
 <main class="y">
   {% block content %}{% endblock %}
 </main>

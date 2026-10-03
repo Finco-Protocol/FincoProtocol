@@ -1,0 +1,19 @@
+{% set _crypto_domains = [
+    ("overview", "/crypto", "Crypto Overview"),
+    ("radar", "/radar", "Radar"),
+    ("tokenized", "/radar/tokenized-markets", "Tokenized Markets"),
+    ("yield", "/yield", "Yield"),
+] %}
+<nav class="crypto-domain-nav" data-testid="crypto-domain-nav" aria-label="FINCO Crypto domains">
+  {% for domain, href, label in _crypto_domains %}
+  <a href="{{ href }}"
+     class="crypto-domain-link{% if crypto_domain == domain %} crypto-domain-link--active{% endif %}"
+     {% if crypto_domain == domain %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<style>
+.crypto-domain-nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;align-items:center}
+.crypto-domain-link{display:inline-flex;align-items:center;border:1px solid var(--radar-border,#d1d5db);border-radius:999px;padding:5px 14px;text-decoration:none;font-size:12px;font-weight:600;color:inherit;background:rgba(255,255,255,.03)}
+.crypto-domain-link--active{background:rgba(26,86,219,.15);border-color:currentColor;font-weight:700}
+.crypto-domain-link:hover{border-color:currentColor}
+</style>
