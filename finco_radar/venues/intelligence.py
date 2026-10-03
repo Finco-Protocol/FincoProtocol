@@ -153,6 +153,8 @@ def _entry_identity(entry) -> tuple[str, str]:
 
 
 def _basis_from_observation(observation: MarketObservation) -> tuple[str | None, str | None]:
+    if observation.observation_status is ObservationStatus.QUARANTINED:
+        return None, "REPRESENTATION_QUARANTINED"
     payload = observation.payload if isinstance(observation.payload, dict) else {}
     reference_state = str(payload.get("reference_state") or (
         "AVAILABLE" if observation.reference_price is not None else "UNAVAILABLE"
