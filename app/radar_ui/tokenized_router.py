@@ -138,7 +138,9 @@ def _order_featured_first(universe: list[dict]) -> list[dict]:
 def _landing_row(view) -> dict:
     best = None
     for representation in view.representations:
-        if representation.price is None:
+        # Correction B: quarantined evidence never qualifies for
+        # closest-basis selection (has_market_data is False).
+        if not representation.has_market_data or representation.price is None:
             continue
         if best is None or representation.basis_bps is not None and (
                 best.basis_bps is None

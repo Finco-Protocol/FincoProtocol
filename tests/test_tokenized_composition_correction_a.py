@@ -353,3 +353,138 @@ class TestHyperliquidScopeTruth:
 
 
 from finco_radar.venues.store import VenueMarketStore  # noqa: E402
+
+
+# ── Correction B: quarantined observation fail-closed gate ────────────────────
+
+class TestQuarantinedObservationGate:
+    """QUARANTINED evidence (e.g. halted instruments) is inspectable but is
+    NEVER active market data: no priced count, no basis, no closest-basis
+    selection, no FRESH contribution.  Persisted evidence itself stays
+    readable and provenanced."""
+
+    def _store_with_quarantined(self, *, halted_price="10.00"):
+        from finco_radar.venues.observations import (
+            FreshnessState, MarketObservation, ObservationStatus)
+        store = VenueMarketStore(_tmp_store())
+        stamp = (NOW - timedelta(seconds=30)).isoformat()
+        store.append_observation(MarketObservation(
+            ts=stamp, collected_at=stamp,
+            canonical_asset_id="NVDA",
+            venue_id="robinhood-chain",
+            instrument_id=ROBINHOOD_NVDA,
+            instrument_type="tokenized-equity",
+            price=halted_price,
+            source="persisted-evidence",
+            freshness_state=FreshnessState.AVAILABLE,
+            observation_status=ObservationStatus.QUARANTINED,
+            payload={"reason": "trading halted"},
+        ))
+        return store
+
+    def test_active_ok_priced_is_market_data(self):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(_tmp_store())
+        _fresh_observation(store, instrument_id=ROBINHOOD_NVDA,
+                           canonical="NVDA", price="196.00")
+        view = _compose(registry, store=store, reference_rows=[])
+        assert view.representations[0].has_market_data is True
+
+    def test_available_quarantined_priced_is_not_active(self):
+        registry = _registry([_entry()])
+        store = self._store_with_quarantined()
+        view = _compose(registry, store=store, reference_rows=[])
+        rep = view.representations[0]
+        # Price evidence remains inspectable...
+        assert rep.price == "10.00"
+        # ...but it is NOT active market data.
+        assert rep.has_market_data is False
+        assert rep.basis_bps is None
+        assert rep.basis_reason == "REPRESENTATION_QUARANTINED"
+        assert view.priced_representations == ()
+
+    def test_quarantined_produces_no_basis(self):
+        registry = _registry([_entry()])
+        store = self._store_with_quarantined()
+        view = _compose(registry, store=store, reference_rows=_reference_rows(
+            "NVDA"))  # fresh reference available
+        assert view.representations[0].basis_bps is None
+        assert view.representations[0].basis_reason == "REPRESENTATION_QUARANTINED"
+
+    def test_quarantined_excluded_from_closest_basis_selection(self):
+        registry = _registry([_entry()])
+        store = self._store_with_quarantined()
+        # Also a healthy priced venue — the quarantined row must never win.
+        _fresh_observation(store, instrument_id="0x" + "88" * 20,
+                           canonical="NVDA", price="196.00",
+                           venue="xstocks")
+        xstocks_entry = _entry(
+            platform="xstocks", representation_symbol="NVDAx",
+            network="xstocks", contract_address="0x" + "88" * 20,
+            source="xstocks")
+        registry_with_two = _registry([_entry(), xstocks_entry])
+        view = _compose(registry_with_two, store=store, reference_rows=[])
+        # Correction A conservative state: healthy xstocks + quarantined
+        # robinhood + no reference → PARTIAL (never FRESH without fresh
+        # reference).  The selection excludes the quarantined row.
+        assert view.overall_state == "PARTIAL"
+        from app.radar_ui.tokenized_router import _landing_row
+        row = _landing_row(view)
+        assert row["best_venue"] == "xstocks"
+
+    def test_quarantined_does_not_make_overall_state_fresh(self):
+        registry = _registry([_entry()])
+        store = self._store_with_quarantined()
+        view = _compose(registry, store=store, reference_rows=[])
+        assert view.overall_state != "FRESH"
+        assert view.overall_state == "UNAVAILABLE"
+
+    def test_persisted_quarantine_evidence_remains_readable(self):
+        store = self._store_with_quarantined()
+        latest = store.get_latest_for_instrument(ROBINHOOD_NVDA)
+        assert latest is not None
+        assert latest.price == "10.00"  # evidence intact, not mutated
+        assert latest.observation_status.value == "QUARANTINED"
+
+    def test_quarantined_detail_page_labels_explicitly(
+            self, tmp_path, monkeypatch):
+        """The detail route renders the quarantined row (price inspectable)
+        but the composed view marks it not-active (has_market_data False,
+        REPRESENTATION_QUARANTINED basis reason)."""
+        import os
+        db_path = str(tmp_path / "venues.db")
+        monkeypatch.setenv("FINCO_VENUE_DB_PATH", db_path)
+
+        # Persist the quarantined observation into the SAME DB the route reads.
+        from finco_radar.venues.observations import (
+            FreshnessState, MarketObservation, ObservationStatus)
+        from finco_radar.venues.store import VenueMarketStore
+        store = VenueMarketStore(db_path)
+        stamp = (NOW - timedelta(seconds=30)).isoformat()
+        store.append_observation(MarketObservation(
+            ts=stamp, collected_at=stamp,
+            canonical_asset_id="NVDA",
+            venue_id="robinhood-chain",
+            instrument_id=ROBINHOOD_NVDA,
+            instrument_type="tokenized-equity",
+            price="10.00",
+            source="persisted-evidence",
+            freshness_state=FreshnessState.AVAILABLE,
+            observation_status=ObservationStatus.QUARANTINED,
+            payload={"reason": "trading halted"},
+        ))
+
+        from app.radar_ui.tokenized_router import router
+        app = FastAPI()
+        app.include_router(router)
+        session = SimpleNamespace(user_id="user-1", username="qa",
+                                  login_at=None, session_type="user")
+        monkeypatch.setattr("app.auth.resolve_request_session",
+                            lambda request: session)
+
+        client = TestClient(app, raise_server_exceptions=False)
+        page = client.get("/radar/tokenized-markets/NVDA")
+        assert page.status_code == 200
+        body = page.text
+        assert ROBINHOOD_NVDA in body
+        assert "10.00" in body  # quarantined price remains inspectable

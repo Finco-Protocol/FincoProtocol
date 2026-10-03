@@ -73,10 +73,14 @@ class RepresentationMarketView:
     source: str | None = None
     provenance: str = ""                  # registry source_ref (identity)
     history_available: bool = False
+    has_market_data: bool | None = None   # None = derived from price
 
-    @property
-    def has_market_data(self) -> bool:
-        return self.price is not None
+    def __post_init__(self) -> None:
+        if self.has_market_data is None:
+            # Default derivation: a priced row is active market data.
+            # Callers may explicitly force False (e.g. QUARANTINED
+            # evidence: inspectable, never active composition data).
+            object.__setattr__(self, "has_market_data", self.price is not None)
 
 
 @dataclass(frozen=True)
@@ -198,7 +202,7 @@ def _store_observation_view(store: VenueMarketStore | None,
             latest.canonical_asset_id.upper() != expected_symbol):
         # Cross-underlying evidence: fail closed to unavailable.
         return base
-    return RepresentationMarketView(
+    view = RepresentationMarketView(
         venue_id=latest.venue_id,
         instrument_id=latest.instrument_id,
         representation_type=latest.instrument_type,
@@ -217,6 +221,16 @@ def _store_observation_view(store: VenueMarketStore | None,
         provenance=entry.source_ref,
         history_available=True,
     )
+    if latest.observation_status.value == "QUARANTINED":
+        # Correction B: quarantined evidence (e.g. halted instruments) is
+        # inspectable but is NEVER active market data — has_market_data is
+        # false and basis authority reports REPRESENTATION_QUARANTINED.
+        quarantined_view = dict(view.__dict__)
+        quarantined_view["has_market_data"] = False
+        quarantined_view["basis_bps"] = None
+        quarantined_view["basis_reason"] = "REPRESENTATION_QUARANTINED"
+        return RepresentationMarketView(**quarantined_view)
+    return view
 
 
 def compose_underlying(
@@ -257,10 +271,14 @@ def compose_underlying(
     for resolved in registry.representations_for_underlying(symbol):
         entry = resolved.entry
         view = _store_observation_view(store, entry)
-        if view.price is not None:
-            basis, reason = _basis_for(view, reference)
-        else:
+        if view.price is None:
             basis, reason = None, "REPRESENTATION_PRICE_UNAVAILABLE"
+        elif not view.has_market_data:
+            # QUARANTINED evidence: basis authority already reports the
+            # typed reason — never re-evaluate as active market data.
+            basis, reason = None, view.basis_reason
+        else:
+            basis, reason = _basis_for(view, reference)
         view = RepresentationMarketView(
             **{**view.__dict__, "basis_bps": basis, "basis_reason": reason})
         representations.append(view)
@@ -277,6 +295,7 @@ def compose_underlying(
             parsed_stamp = (datetime.fromisoformat(str(raw_stamp))
                             if raw_stamp else None)
             ts, collected = MarketObservation_clocks(parsed_stamp, now)
+            is_halted = bool(perp.get("trading_halted"))
             view = RepresentationMarketView(
                 venue_id="hyperliquid",
                 instrument_id=str(perp.get("instrument_id") or symbol),
@@ -287,11 +306,11 @@ def compose_underlying(
                 price=perp.get("price"),
                 source_timestamp=ts,
                 collected_at=collected,
-                basis_bps=perp.get("basis_bps"),
                 volume_24h=perp.get("volume_24h"),
                 funding_rate=perp.get("funding_rate"),
                 open_interest=perp.get("open_interest"),
                 freshness_state="AVAILABLE" if perp.get("price") else "UNAVAILABLE",
+                observation_status="QUARANTINED" if is_halted else "OK",
                 source=perp.get("source"),
                 provenance="hyperliquid-exact-mapping",
             )
@@ -305,7 +324,8 @@ def compose_underlying(
     # reference is part of the product context — all-priced-AVAILABLE
     # representations alone never make the view FRESH while the reference
     # is STALE/UNAVAILABLE.  Identity-only rows never make it fresh.
-    priced = [r for r in representations if r.price is not None]
+    priced = [r for r in representations
+              if r.price is not None and r.has_market_data]
     available_priced = [r for r in priced
                         if r.freshness_state == "AVAILABLE"]
     reference_usable = (reference.get("price") is not None
