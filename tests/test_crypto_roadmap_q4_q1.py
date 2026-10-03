@@ -210,7 +210,9 @@ def test_frozen_authority_namespaces_unchanged_from_canonical_base():
         "app/model_validation/",
         "app/verified/",
         "app/protocol/entitlement_evaluator.py",
-        "app/protocol/entitlement_policy.py",
+        # entitlement_policy.py is intentionally NOT frozen any more: Crypto Access Integration V1 extends
+        # the canonical resource vocabulary (tokenized.* / crypto.api) in that one file. The evaluator,
+        # deployment registry and the Yield adapter below stay frozen, so no second authority can appear.
         "app/protocol/token_deployments.py",
         "finco_yield/access.py",
     )
