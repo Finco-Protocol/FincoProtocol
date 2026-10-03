@@ -137,12 +137,6 @@ def test_integrity_api_allow_is_sync_and_acquisition_free(monkeypatch, tmp_path)
     from app.api.v1.crypto_router import crypto_tokenized_integrity
     assert not asyncio.iscoroutinefunction(crypto_tokenized_integrity)
 
-    import requests
-    monkeypatch.setattr(
-        requests, "get",
-        lambda *a, **k: (_ for _ in ()).throw(
-            AssertionError("integrity request must not perform provider HTTP")))
-
     response = client.get("/api/v1/crypto/tokenized/NVDA/integrity")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
@@ -195,7 +189,7 @@ def test_failure_isolation_reference_reader_does_not_500():
     assert view.attestation_evidence_state == "UNAVAILABLE"
 
 
-def test_integrity_source_has_no_score_holder_or_execution_path():
+def test_integrity_source_has_no_score_holder_provider_or_execution_path():
     sources = "\n".join(
         open(path, encoding="utf-8").read().lower()
         for path in (
@@ -206,5 +200,8 @@ def test_integrity_source_has_no_score_holder_or_execution_path():
     )
     assert "trust_score" not in sources
     assert "holder_concentration" not in sources
-    for forbidden in ("submit_order", "private_key", "sign_transaction", "custody("):
+    for forbidden in (
+        "requests.", "httpx.", "urllib.request", "submit_order",
+        "private_key", "sign_transaction", "custody(",
+    ):
         assert forbidden not in sources

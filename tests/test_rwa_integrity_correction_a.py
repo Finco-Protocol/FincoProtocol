@@ -188,7 +188,7 @@ class TestDependencyFromActiveOnly:
             view.dependency_flags)
         assert view.quarantined_count == 1
 
-    def test_conflicted_second_venue_does_not_remove_dependency(self):
+    def test_all_conflicted_rows_do_not_create_false_dependency(self):
         registry = _registry([
             _entry(source="source-a"),
             _entry(source="source-b", contract_address="0x" + "bb" * 20),
@@ -197,7 +197,8 @@ class TestDependencyFromActiveOnly:
             "NVDA", registry=registry, store=None,
             attestations=[_attestation()], now=NOW)
         assert view.conflict_count >= 2
-        assert IdentityFlag.SINGLE_VENUE_DEPENDENCY.value in view.dependency_flags
+        assert view.active_representation_count == 0
+        assert IdentityFlag.SINGLE_VENUE_DEPENDENCY.value not in view.dependency_flags
 
 
 class TestAttestationCoverage:
