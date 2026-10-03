@@ -313,27 +313,45 @@ def compose_underlying(
                 observation_status="QUARANTINED" if is_halted else "OK",
                 source=perp.get("source"),
                 provenance="hyperliquid-exact-mapping",
+                has_market_data=False if is_halted else None,
             )
-            if view.price is not None and perp.get("basis_bps") is None:
+            # Tokenized Markets basis is always FINCO-computed against the
+            # canonical underlying reference.  Provider-native basis_bps may
+            # represent a different concept (for example mark-vs-oracle) and
+            # is deliberately ignored on this product surface.
+            if is_halted:
+                basis, reason = None, "REPRESENTATION_QUARANTINED"
+            else:
                 basis, reason = _basis_for(view, reference)
-                view = RepresentationMarketView(
-                    **{**view.__dict__, "basis_bps": basis, "basis_reason": reason})
+            view = RepresentationMarketView(
+                **{**view.__dict__, "basis_bps": basis, "basis_reason": reason})
             representations.append(view)
 
-    # Conservative product state (Correction A #15): the underlying
-    # reference is part of the product context — all-priced-AVAILABLE
-    # representations alone never make the view FRESH while the reference
-    # is STALE/UNAVAILABLE.  Identity-only rows never make it fresh.
-    priced = [r for r in representations
-              if r.price is not None and r.has_market_data]
-    available_priced = [r for r in priced
-                        if r.freshness_state == "AVAILABLE"]
+    # Overall state is complete only when the reference is fresh AND
+    # every active representation in the composed view has usable AVAILABLE
+    # market evidence.  Identity-only, stale, or quarantined siblings make an
+    # otherwise usable view PARTIAL rather than FRESH.
+    usable_representations = [
+        r for r in representations
+        if r.has_market_data and r.freshness_state == "AVAILABLE"
+    ]
+    stale_representations = [
+        r for r in representations
+        if r.has_market_data and r.price is not None
+        and r.freshness_state != "AVAILABLE"
+    ]
     reference_usable = (reference.get("price") is not None
                         and reference.get("state") == "FRESH")
-    if priced and len(available_priced) == len(priced) and reference_usable:
+    all_representations_usable = (
+        bool(representations)
+        and len(usable_representations) == len(representations)
+    )
+    if reference_usable and all_representations_usable:
         overall = "FRESH"
-    elif available_priced or priced:
-        overall = "PARTIAL" if available_priced else "STALE"
+    elif usable_representations:
+        overall = "PARTIAL"
+    elif stale_representations:
+        overall = "STALE"
     else:
         overall = "UNAVAILABLE"
 
