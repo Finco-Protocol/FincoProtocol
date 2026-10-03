@@ -118,9 +118,14 @@ def latest_treasury(provider: FredEconomyProvider | None = None) -> TreasuryObse
         if fresh.usable:
             result = fresh
             prior_lkg = fresh
-        elif prior_lkg is not None and prior_lkg.usable:
+        elif (fresh.state == "UNAVAILABLE"
+              and prior_lkg is not None and prior_lkg.usable):
+            # A typed unavailable refresh carries no usable new evidence;
+            # preserve the last known good value, explicitly demoted to STALE.
             result = _serve_cached(prior_lkg)
         else:
+            # A genuine provider STALE observation is still evidence in its
+            # own right and must not be hidden behind an older LKG.
             result = fresh
 
     with _treasury_cache_lock:
