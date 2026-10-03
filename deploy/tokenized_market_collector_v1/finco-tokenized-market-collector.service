@@ -27,4 +27,4 @@ ReadWritePaths=/var/lib/finco/radar
 ProtectHome=true
 PrivateTmp=true
 
-# Deliberately no [Install]: only the timer (or a manual start) activates this unit.
+# Deliberately non-installable as a standalone unit: the timer (or a manual start) activates it.
