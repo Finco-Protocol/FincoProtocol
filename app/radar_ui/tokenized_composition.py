@@ -28,14 +28,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any, Callable
 
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.registry import VenueRegistry
 from finco_radar.venues.store import VenueMarketStore
-
-BASIS_SCALE = Decimal(10_000)
+from finco_radar.venues.basis import (
+    BASIS_MAX_CLOCK_SKEW_SECONDS,
+    basis_for_evidence,
+    compute_basis_bps,
+)
 
 
 class UnknownCanonicalUnderlying(KeyError):
@@ -101,65 +104,16 @@ class TokenizedUnderlyingView:
         return tuple(r for r in self.representations if r.has_market_data)
 
 
-def compute_basis_bps(
-    representation_price: str, reference_price: str,
-) -> Decimal:
-    """Deterministic basis in basis points:
-
-        (rep_price / reference_price - 1) × 10,000
-
-    Decimal arithmetic, quantized to whole bps (ROUND_HALF_UP).  The caller
-    guarantees both prices exist and are comparable (exact identity +
-    freshness authority); this function is pure arithmetic.
-    """
-    ratio = (Decimal(representation_price) / Decimal(reference_price)) - 1
-    return (ratio * BASIS_SCALE).quantize(Decimal("1"))
-
-
 def _basis_for(view: RepresentationMarketView, reference: dict[str, Any]) -> tuple[str | None, str | None]:
-    """Basis authority (Correction A): computed ONLY from source evidence.
-
-    - representation price exists AND freshness_state == AVAILABLE
-      (STALE/UNAVAILABLE evidence never produces current basis);
-    - reference price exists AND reference state == FRESH;
-    - representation SOURCE timestamp exists and is timezone-aware —
-      collected_at is FINCO transport metadata and NEVER substitutes for
-      the missing provider stamp;
-    - reference observed_at exists and is timezone-aware;
-    - absolute evidence skew <= BASIS_MAX_CLOCK_SKEW_SECONDS.
-
-    Clock compatibility never overrides freshness authority: two stale
-    stamps that agree still produce no basis.
-    """
-    reference_price = reference.get("price")
-    reference_state = reference.get("state")
-    reference_observed_at = reference.get("observed_at")
-    if view.price is None:
-        return None, "REPRESENTATION_PRICE_UNAVAILABLE"
-    if view.freshness_state != "AVAILABLE":
-        return None, "REPRESENTATION_STALE"
-    if reference_price is None or reference_state == "UNAVAILABLE":
-        return None, "REFERENCE_UNAVAILABLE"
-    if reference_state not in ("FRESH", "AVAILABLE"):
-        return None, "REFERENCE_STALE"
-    if not view.source_timestamp:
-        return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
-    try:
-        rep_stamp = datetime.fromisoformat(view.source_timestamp)
-        ref_stamp = datetime.fromisoformat(str(reference_observed_at))
-    except (ValueError, TypeError):
-        return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
-    if rep_stamp.tzinfo is None or ref_stamp.tzinfo is None:
-        return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
-    skew = abs((rep_stamp - ref_stamp).total_seconds())
-    if skew > BASIS_MAX_CLOCK_SKEW_SECONDS:
-        return None, "EVIDENCE_SKEW_EXCEEDS_POLICY"
-    try:
-        basis = compute_basis_bps(view.price, str(reference_price))
-    except (InvalidOperation, ZeroDivisionError):
-        return None, "BASIS_ARITHMETIC_INVALID"
-    return str(basis), None
-
+    """Shared canonical basis authority; see finco_radar.venues.basis."""
+    return basis_for_evidence(
+        representation_price=view.price,
+        representation_state=view.freshness_state,
+        representation_source_timestamp=view.source_timestamp,
+        reference_price=reference.get("price"),
+        reference_state=str(reference.get("state") or "UNAVAILABLE"),
+        reference_source_timestamp=reference.get("observed_at"),
+    )
 
 def _expected_venue_id(entry) -> str:
     """Exact expected observation venue key for a registry row, per the
