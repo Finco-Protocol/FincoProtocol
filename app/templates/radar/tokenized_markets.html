@@ -31,9 +31,10 @@
 
 {% if not history_available %}
 <p class="y-note" data-testid="tm-history-note">
-  No canonical FINCO market history collected yet for these venues — market columns
-  fill in as the observation collector is activated. Identity coverage below is live
-  from the canonical registry.
+  The market-history store contains no observations yet for these venues — market
+  columns fill in per underlying as the observation collector is activated (history
+  availability is per underlying). Identity coverage below is live from the canonical
+  registry.
 </p>
 {% endif %}
 
@@ -41,7 +42,7 @@
   <table class="y-table">
     <thead><tr>
       <th>Underlying</th><th>Underlying Ref.</th><th>Representations</th>
-      <th>Venue (best)</th><th>Token Price</th><th>Basis</th>
+      <th>Closest basis venue</th><th>Token Price</th><th>Basis</th>
       <th>State</th><th>As-of</th>
     </tr></thead>
     <tbody>
@@ -59,7 +60,15 @@
           <span data-testid="tm-rep-count-{{ row.canonical_asset_id }}">{{ row.priced_count }}/{{ row.representation_count }}</span>
           <span class="y-subtext">priced / resolved</span>
         </td>
-        <td><span class="y-badge">{{ row.best_venue or '—' }}</span></td>
+        <td>
+          {% if row.best_price and row.best_basis_bps is not none %}
+            <span class="y-badge" title="Representation with the smallest absolute basis — not an evaluative quality ranking">Closest basis · {{ row.best_venue }}</span>
+          {% elif row.best_price %}
+            <span class="y-badge" title="A priced representation; no basis computed">Representation · {{ row.best_venue }}</span>
+          {% else %}
+            <span class="y-missing">—</span>
+          {% endif %}
+        </td>
         <td class="y-num">
           {% if row.best_price %}${{ row.best_price }}{% else %}<span class="y-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">identity available · market unavailable</span>{% endif %}
         </td>

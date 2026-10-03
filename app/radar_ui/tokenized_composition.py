@@ -36,6 +36,12 @@ from finco_radar.venues.registry import VenueRegistry
 from finco_radar.venues.store import VenueMarketStore
 
 BASIS_SCALE = Decimal(10_000)
+
+
+class UnknownCanonicalUnderlying(KeyError):
+    """The requested canonical underlying does not exist in the registry
+    (typed, fail-closed — raised before any reference/provider/store
+    read)."""
 # A representation/reference pair is comparable only when both evidence
 # stamps are within this window of each other (existing R2/R6-style skew
 # authority; foundation freshness policies already bound each side).
@@ -107,16 +113,37 @@ def compute_basis_bps(
 
 
 def _basis_for(view: RepresentationMarketView, reference: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Basis authority (Correction A): computed ONLY from source evidence.
+
+    - representation price exists AND freshness_state == AVAILABLE
+      (STALE/UNAVAILABLE evidence never produces current basis);
+    - reference price exists AND reference state == FRESH;
+    - representation SOURCE timestamp exists and is timezone-aware —
+      collected_at is FINCO transport metadata and NEVER substitutes for
+      the missing provider stamp;
+    - reference observed_at exists and is timezone-aware;
+    - absolute evidence skew <= BASIS_MAX_CLOCK_SKEW_SECONDS.
+
+    Clock compatibility never overrides freshness authority: two stale
+    stamps that agree still produce no basis.
+    """
     reference_price = reference.get("price")
+    reference_state = reference.get("state")
     reference_observed_at = reference.get("observed_at")
     if view.price is None:
         return None, "REPRESENTATION_PRICE_UNAVAILABLE"
-    if reference_price is None or reference.get("state") == "UNAVAILABLE":
+    if view.freshness_state != "AVAILABLE":
+        return None, "REPRESENTATION_STALE"
+    if reference_price is None or reference_state == "UNAVAILABLE":
         return None, "REFERENCE_UNAVAILABLE"
+    if reference_state not in ("FRESH", "AVAILABLE"):
+        return None, "REFERENCE_STALE"
+    if not view.source_timestamp:
+        return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
     try:
-        rep_stamp = datetime.fromisoformat(view.source_timestamp or view.collected_at or "")
+        rep_stamp = datetime.fromisoformat(view.source_timestamp)
         ref_stamp = datetime.fromisoformat(str(reference_observed_at))
-    except ValueError:
+    except (ValueError, TypeError):
         return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
     if rep_stamp.tzinfo is None or ref_stamp.tzinfo is None:
         return None, "EVIDENCE_TIMESTAMP_UNAVAILABLE"
@@ -130,13 +157,29 @@ def _basis_for(view: RepresentationMarketView, reference: dict[str, Any]) -> tup
     return str(basis), None
 
 
+def _expected_venue_id(entry) -> str:
+    """Exact expected observation venue key for a registry row, per the
+    PR #175 observation convention (venue_id = network for chain rows,
+    platform for venue rows)."""
+    return entry.network or entry.platform
+
+
 def _store_observation_view(store: VenueMarketStore | None,
                             entry) -> RepresentationMarketView:
     """Persisted-observation market view for one exact registry row (or
-    unavailable when nothing was ever collected)."""
+    unavailable when nothing was ever collected).
+
+    Correction A: the store read is bound to the EXACT expected venue, and
+    the returned observation's canonical_asset_id must equal the row's
+    exact underlying symbol.  Cross-venue or cross-underlying evidence
+    fails closed to market unavailable — no fuzzy fallback.
+    """
+    expected_venue = _expected_venue_id(entry)
+    instrument_id = (entry.contract_address
+                     or entry.representation_symbol.strip().upper())
     base = RepresentationMarketView(
-        venue_id=entry.network or entry.platform,
-        instrument_id=entry.contract_address or entry.representation_symbol,
+        venue_id=expected_venue,
+        instrument_id=instrument_id,
         representation_type=entry.instrument_type,
         network=entry.network,
         contract_address=entry.contract_address,
@@ -145,10 +188,15 @@ def _store_observation_view(store: VenueMarketStore | None,
     )
     if store is None:
         return base
-    instrument_id = (entry.contract_address
-                     or entry.representation_symbol.strip().upper())
-    latest = store.get_latest_for_instrument(instrument_id)
+    expected_symbol = (str(entry.underlying_symbol).strip().upper()
+                       if entry.underlying_symbol else None)
+    latest = store.get_latest_for_instrument(instrument_id,
+                                             venue_id=expected_venue)
     if latest is None or latest.price is None:
+        return base
+    if expected_symbol is None or (
+            latest.canonical_asset_id.upper() != expected_symbol):
+        # Cross-underlying evidence: fail closed to unavailable.
         return base
     return RepresentationMarketView(
         venue_id=latest.venue_id,
@@ -192,7 +240,13 @@ def compose_underlying(
     now = now or datetime.now(timezone.utc)
     symbol = canonical_asset_id.strip().upper()
     underlying = registry.get_underlying(symbol)
+    if underlying is None:
+        # Unknown canonical underlying: fail closed BEFORE any reference
+        # read, provider seam, or store composition.
+        raise UnknownCanonicalUnderlying(symbol)
 
+    # ONE reference read per composition — the perp seam reuses this exact
+    # reference instead of re-acquiring (Correction A #7).
     reference_rows = reference_reader(symbol) if reference_reader else []
     reference = reference_rows[0] if reference_rows else {
         "state": "UNAVAILABLE", "price": None, "observed_at": None,
@@ -211,8 +265,11 @@ def compose_underlying(
             **{**view.__dict__, "basis_bps": basis, "basis_reason": reason})
         representations.append(view)
 
-    # Exact Hyperliquid perp seam (existing adapter/service authority; only
-    # where an exact canonical mapping exists).
+    # Exact Hyperliquid perp seam.  SCOPE TRUTH (Correction A #8): the
+    # merged Hyperliquid provider is bounded to its supported exact
+    # universe — there is NO equity stock-perp coverage today, so this seam
+    # is exercised ONLY when the caller supplies an exact canonical mapping.
+    # Nothing here implies NVDA/TSLA-style stock perps exist.
     if perp_lookup is not None:
         perp = perp_lookup(symbol)
         if perp:
@@ -238,35 +295,44 @@ def compose_underlying(
                 source=perp.get("source"),
                 provenance="hyperliquid-exact-mapping",
             )
-            if view.price is not None and "basis_bps" not in perp:
-                basis, reason = _basis_for(view, reference_reader(symbol)[0]
-                                           if reference_reader(symbol) else {})
+            if view.price is not None and perp.get("basis_bps") is None:
+                basis, reason = _basis_for(view, reference)
                 view = RepresentationMarketView(
                     **{**view.__dict__, "basis_bps": basis, "basis_reason": reason})
             representations.append(view)
 
+    # Conservative product state (Correction A #15): the underlying
+    # reference is part of the product context — all-priced-AVAILABLE
+    # representations alone never make the view FRESH while the reference
+    # is STALE/UNAVAILABLE.  Identity-only rows never make it fresh.
     priced = [r for r in representations if r.price is not None]
-    fresh = [r for r in priced if r.freshness_state == "AVAILABLE"]
-    if representations and len(priced) == len(representations) and all(
-            r.freshness_state == "AVAILABLE" for r in priced):
-        overall = "FRESH" if priced else "UNAVAILABLE"
-    elif priced:
-        overall = "PARTIAL"
-    elif representations:
-        overall = "UNAVAILABLE"
+    available_priced = [r for r in priced
+                        if r.freshness_state == "AVAILABLE"]
+    reference_usable = (reference.get("price") is not None
+                        and reference.get("state") == "FRESH")
+    if priced and len(available_priced) == len(priced) and reference_usable:
+        overall = "FRESH"
+    elif available_priced or priced:
+        overall = "PARTIAL" if available_priced else "STALE"
     else:
         overall = "UNAVAILABLE"
-    _ = fresh  # reserved for finer-grained state in PR 3b follow-ups
+
+    # Per-underlying history truth (Correction A #9/#10): history_available
+    # means at least one persisted observation exists for THIS canonical
+    # asset — global store counts never promote unrelated history.
+    history_available = (
+        store is not None
+        and store.get_latest_for_underlying(symbol) is not None)
 
     return TokenizedUnderlyingView(
         canonical_asset_id=symbol,
-        underlying_name=underlying.underlying_name if underlying else None,
-        underlying_isin=underlying.underlying_isin if underlying else None,
+        underlying_name=underlying.underlying_name,
+        underlying_isin=underlying.underlying_isin,
         reference=reference,
         representations=tuple(representations),
         evaluation_time=now.isoformat(),
         overall_state=overall,
-        history_available=bool(store is not None and store.count() > 0),
+        history_available=history_available,
     )
 
 

@@ -13,6 +13,14 @@
 {% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 {% include "radar/domain_nav.html" %}
 <main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
+{% if unknown %}
+<div class="y-header">
+  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
+  <h1 data-testid="tmd-unknown">Unknown canonical underlying</h1>
+  <p class="y-lede" data-testid="tmd-unknown-symbol">{{ canonical_asset_id }} is not a canonical underlying in the FINCO venue registry (exact identity only — no fuzzy matching).</p>
+</div>
+<p class="bound"><a href="/radar/tokenized-markets">← Back to Tokenized Markets</a></p>
+{% else %}
 <div class="y-header">
   <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
   <h1>{{ view.canonical_asset_id }}
@@ -105,6 +113,7 @@
 <p class="bound">Basis is a reference dislocation measure, not executable profit. Read-only
 composition over exact registry identity and persisted evidence. FINCO never custodies assets
 or auto-invests.</p>
+{% endif %}
 </main>
 </body>
 </html>
