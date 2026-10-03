@@ -246,7 +246,7 @@ def crypto_tokenized_integrity(request: Request, canonical_asset_id: str):
             "tokenized.integrity", "UNKNOWN_IDENTITY", None,
             canonical_id=canonical_asset_id,
             reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
-    data = as_data(view)
+    data = _jsonify(as_data(view))
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "tokenized.integrity", "AVAILABLE", data,
         canonical_id=view.canonical_asset_id, as_of=as_of.isoformat()))

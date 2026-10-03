@@ -151,6 +151,24 @@ def test_integrity_api_allow_is_sync_and_acquisition_free(monkeypatch, tmp_path)
             assert rep["basis_bps"] is None
 
 
+def test_integrity_api_jsonifies_decimal_basis(monkeypatch, tmp_path):
+    from decimal import Decimal
+    client = _api_client(monkeypatch, tmp_path, allow_api=True)
+    import app.crypto_terminal.integrity_read as integrity_read
+
+    monkeypatch.setattr(
+        integrity_read, "build_view",
+        lambda *a, **k: SimpleNamespace(canonical_asset_id="NVDA"))
+    monkeypatch.setattr(
+        integrity_read, "as_data",
+        lambda view: {"basis_bps": Decimal("12.5"), "missing": None})
+
+    response = client.get("/api/v1/crypto/tokenized/NVDA/integrity")
+    assert response.status_code == 200
+    assert response.json()["data"]["basis_bps"] == 12.5
+    assert response.json()["data"]["missing"] is None
+
+
 def test_integrity_api_unknown_identity_typed_404(monkeypatch, tmp_path):
     client = _api_client(monkeypatch, tmp_path, allow_api=True)
     response = client.get("/api/v1/crypto/tokenized/ZZZZ/integrity")
