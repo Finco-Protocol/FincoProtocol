@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.observations import (
     FreshnessState,
@@ -80,6 +81,11 @@ def market_observation_from_r_live(
     entry = _exact_robinhood_entry(registry, chain_id, contract)
     if not entry.underlying_symbol:
         raise TokenizedLiveIdentityMismatch("TOKENIZED_LIVE_UNDERLYING_UNAVAILABLE")
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
+    if (policy is None
+            or data.get("economic_asset_uid") != policy.economic_asset_uid):
+        raise TokenizedLiveIdentityMismatch(
+            "TOKENIZED_LIVE_ECONOMIC_UID_MISMATCH")
 
     token = data.get("token_reference")
     reference = data.get("robinhood_basis")
