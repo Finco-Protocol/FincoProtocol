@@ -257,50 +257,84 @@ class TestUnknownUnderlying:
 
 
 class TestLandingBatchedReference:
-    """Correction A #12/#13: N landing rows use ONE batched reference read."""
+    """Provider-free landing reuses persisted reference evidence only."""
 
-    def test_landing_batches_reference_reads(self, tmp_path, monkeypatch):
-        from finco_radar.venues.registry import parse_underlying
+    def test_landing_uses_persisted_references_without_provider_fanout(
+            self, tmp_path, monkeypatch):
+        from finco_radar.venues.observations import (
+            FreshnessState, MarketObservation, ObservationStatus)
+        from finco_radar.venues.registry import VenueRegistry, parse_underlying
+        from app.radar_ui import tokenized_router
+
         entries = []
         underlyings = {}
+        contracts = {}
         for ticker in ("AAPL", "NVDA", "MSFT"):
+            contract = "0x" + ticker.encode().hex().ljust(40, "0")
+            contracts[ticker] = contract
             entries.append(_entry(
                 representation_symbol=ticker, underlying_symbol=ticker,
-                contract_address="0x" + ticker.encode().hex().ljust(40, "0"),
-                source="test"))
+                contract_address=contract, source="test"))
             underlyings[ticker] = parse_underlying({
                 "canonical_symbol": ticker, "sources": ["test"]})
-        from finco_radar.venues.registry import VenueRegistry
         registry = VenueRegistry(underlyings, entries, [])
 
-        monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(tmp_path / "venues.db"))
-        monkeypatch.setenv("RADAR_FEATURED_EQUITY_SYMBOLS", "AAPL,NVDA,MSFT")
-        from app.radar_ui.tokenized_router import router
+        db_path = tmp_path / "venues.db"
+        store = VenueMarketStore(db_path)
+        stamp = datetime.now(timezone.utc) - timedelta(seconds=30)
+        for index, ticker in enumerate(("AAPL", "NVDA", "MSFT"), start=1):
+            reference_price = str(100 * index)
+            store.append_observation(MarketObservation(
+                ts=stamp.isoformat(),
+                collected_at=(stamp + timedelta(seconds=5)).isoformat(),
+                canonical_asset_id=ticker,
+                venue_id="robinhood-chain",
+                instrument_id=contracts[ticker],
+                instrument_type="tokenized-equity",
+                price=str(100 * index + 1),
+                reference_price=reference_price,
+                source="persisted-tokenized-test",
+                freshness_state=FreshnessState.AVAILABLE,
+                observation_status=ObservationStatus.OK,
+                payload={
+                    "reference_state": "AVAILABLE",
+                    "reference_observed_at": stamp.isoformat(),
+                    "reference_source": "persisted-reference-test",
+                },
+            ))
+
+        monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(db_path))
+        monkeypatch.setenv("RADAR_TOKENIZED_LANDING_LIMIT", "3")
+        monkeypatch.setattr(tokenized_router, "_registry", lambda: registry)
+
+        provider_reads: list[tuple] = []
+
+        class ForbiddenProviderService:
+            def read(self, *, featured_symbols=()):
+                provider_reads.append(tuple(featured_symbols))
+                raise AssertionError(
+                    "Tokenized landing must not acquire browser provider evidence")
+
+        import app.radar_ui.router as router_module
+        monkeypatch.setattr(
+            router_module, "_market_read_service", ForbiddenProviderService())
+
         app = FastAPI()
-        app.include_router(router)
+        app.include_router(tokenized_router.router)
         session = SimpleNamespace(user_id="user-1", username="qa",
                                   login_at=None, session_type="user")
         monkeypatch.setattr("app.auth.resolve_request_session",
                             lambda request: session)
 
-        board_reads: list[tuple] = []
-
-        class CountingService:
-            def read(self, *, featured_symbols=()):
-                board_reads.append(tuple(featured_symbols))
-                return [_reference_rows(t)[0] for t in featured_symbols]
-
-        import app.radar_ui.router as router_module
-        monkeypatch.setattr(router_module, "_market_read_service",
-                            CountingService())
-
-        client = TestClient(app, raise_server_exceptions=False)
-        page = client.get("/radar/tokenized-markets")
+        page = TestClient(app, raise_server_exceptions=True).get(
+            "/radar/tokenized-markets")
         assert page.status_code == 200
-        # 3 composed featured rows → exactly ONE batched board read.
-        # ONE batched read covering all three featured symbols
-        assert len(board_reads) == 1
-        assert sorted(board_reads[0]) == ["AAPL", "MSFT", "NVDA"]
+        assert provider_reads == []
+        # Persisted reference values are rendered; no provider batch or
+        # per-row network reference acquisition is needed.
+        assert "$100" in page.text
+        assert "$200" in page.text
+        assert "$300" in page.text
 
 
 class TestOverallState:
