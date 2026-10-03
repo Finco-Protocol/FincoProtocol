@@ -273,7 +273,9 @@ def collect_once(
 
     report["persisted"] = sum(1 for _digest, was_created in created if was_created)
     report["duplicates"] = len(created) - report["persisted"]
-    degraded = bool(report["stale"] or report["unavailable"] or report["provider_failures"])
+    degraded = bool(
+        report["stale"] or report["unavailable"] or report["quarantined"]
+        or report["provider_failures"])
     report["state"] = "PARTIAL" if degraded else "AVAILABLE"
 
     if health is not None:
