@@ -38,7 +38,13 @@ def _store():
     path = os.getenv("FINCO_VENUE_DB_PATH", default_db_path())
     if not os.path.exists(path):
         return None
-    return VenueMarketStore(path)
+    try:
+        return VenueMarketStore(path)
+    except Exception:
+        # Market-history storage is observational infrastructure. A broken
+        # collector/store must degrade this read-only surface to unavailable,
+        # never take down the web runtime or trigger replacement acquisition.
+        return None
 
 
 
