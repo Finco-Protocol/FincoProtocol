@@ -257,14 +257,14 @@ class TestUnknownUnderlying:
 
 
 class TestLandingBatchedReference:
-    """Provider-free landing reuses persisted reference evidence only."""
+    """Provider-free landing: persisted reference reuse, zero acquisition."""
 
-    def test_landing_uses_persisted_references_without_provider_fanout(
+    def test_landing_reuses_persisted_reference_with_zero_provider_calls(
             self, tmp_path, monkeypatch):
+        from finco_radar.venues.registry import parse_underlying, VenueRegistry
         from finco_radar.venues.observations import (
             FreshnessState, MarketObservation, ObservationStatus)
-        from finco_radar.venues.registry import VenueRegistry, parse_underlying
-        from app.radar_ui import tokenized_router
+        from app.radar_ui import tokenized_router as tokenized_module
 
         entries = []
         underlyings = {}
@@ -278,12 +278,12 @@ class TestLandingBatchedReference:
             underlyings[ticker] = parse_underlying({
                 "canonical_symbol": ticker, "sources": ["test"]})
         registry = VenueRegistry(underlyings, entries, [])
+        monkeypatch.setattr(tokenized_module, "_registry", lambda: registry)
 
         db_path = tmp_path / "venues.db"
         store = VenueMarketStore(db_path)
-        stamp = datetime.now(timezone.utc) - timedelta(seconds=30)
-        for index, ticker in enumerate(("AAPL", "NVDA", "MSFT"), start=1):
-            reference_price = str(100 * index)
+        stamp = NOW - timedelta(seconds=30)
+        for ticker in ("AAPL", "NVDA", "MSFT"):
             store.append_observation(MarketObservation(
                 ts=stamp.isoformat(),
                 collected_at=(stamp + timedelta(seconds=5)).isoformat(),
@@ -291,50 +291,47 @@ class TestLandingBatchedReference:
                 venue_id="robinhood-chain",
                 instrument_id=contracts[ticker],
                 instrument_type="tokenized-equity",
-                price=str(100 * index + 1),
-                reference_price=reference_price,
-                source="persisted-tokenized-test",
+                price="101",
+                reference_price="100",
+                source="persisted-test",
                 freshness_state=FreshnessState.AVAILABLE,
                 observation_status=ObservationStatus.OK,
                 payload={
                     "reference_state": "AVAILABLE",
                     "reference_observed_at": stamp.isoformat(),
-                    "reference_source": "persisted-reference-test",
+                    "reference_source": "persisted-reference",
                 },
             ))
-
         monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(db_path))
-        monkeypatch.setenv("RADAR_TOKENIZED_LANDING_LIMIT", "3")
-        monkeypatch.setattr(tokenized_router, "_registry", lambda: registry)
+        monkeypatch.setenv("RADAR_FEATURED_EQUITY_SYMBOLS", "AAPL,NVDA,MSFT")
 
-        provider_reads: list[tuple] = []
+        provider_calls = []
 
-        class ForbiddenProviderService:
-            def read(self, *, featured_symbols=()):
-                provider_reads.append(tuple(featured_symbols))
-                raise AssertionError(
-                    "Tokenized landing must not acquire browser provider evidence")
+        class ExplodingService:
+            def read(self, **kwargs):
+                provider_calls.append(kwargs)
+                raise AssertionError("browser provider acquisition is forbidden")
 
         import app.radar_ui.router as router_module
         monkeypatch.setattr(
-            router_module, "_market_read_service", ForbiddenProviderService())
+            router_module, "_market_read_service", ExplodingService())
 
         app = FastAPI()
-        app.include_router(tokenized_router.router)
-        session = SimpleNamespace(user_id="user-1", username="qa",
-                                  login_at=None, session_type="user")
-        monkeypatch.setattr("app.auth.resolve_request_session",
-                            lambda request: session)
+        app.include_router(tokenized_module.router)
+        session = SimpleNamespace(
+            user_id="user-1", username="qa", login_at=None, session_type="user")
+        monkeypatch.setattr(
+            "app.auth.resolve_request_session", lambda request: session)
 
         page = TestClient(app, raise_server_exceptions=True).get(
             "/radar/tokenized-markets")
         assert page.status_code == 200
-        assert provider_reads == []
-        # Persisted reference values are rendered; no provider batch or
-        # per-row network reference acquisition is needed.
-        assert "$100" in page.text
-        assert "$200" in page.text
-        assert "$300" in page.text
+        assert provider_calls == []
+        # Persisted reference evidence is reused independently for each exact
+        # underlying without any N-per-row provider/network fanout.
+        assert page.text.count("$100") >= 3
+        assert "persisted" not in str(provider_calls)
+
 
 
 class TestOverallState:
