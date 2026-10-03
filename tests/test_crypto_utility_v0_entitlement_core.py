@@ -182,10 +182,15 @@ def test_public_resource_is_public_for_everyone_with_no_deployment_and_no_wallet
 
 def test_resource_keys_and_default_modes():
     table = ep.default_policies()
-    assert set(table) == set(ep.RESOURCE_KEYS) == {
+    # The Yield vocabulary is unchanged; Tokenized Markets / crypto API keys extend (never replace) it.
+    assert set(ep.YIELD_RESOURCE_KEYS) == {
         "yield.basic", "yield.history", "yield.advanced_compare", "yield.alerts", "yield.execution_preflight"}
-    assert table[ep.YIELD_BASIC].access_mode is ep.AccessMode.PUBLIC
-    for key in ep.RESOURCE_KEYS[1:]:
+    assert set(table) == set(ep.RESOURCE_KEYS) == set(ep.YIELD_RESOURCE_KEYS) | {
+        "tokenized.basic", "tokenized.history", "tokenized.dislocation", "crypto.api"}
+    public_keys = {ep.YIELD_BASIC, ep.TOKENIZED_BASIC}
+    for key in public_keys:
+        assert table[key].access_mode is ep.AccessMode.PUBLIC
+    for key in set(ep.RESOURCE_KEYS) - public_keys:
         assert table[key].access_mode is ep.AccessMode.FINCO_HOLDER and table[key].wallet_verified_required
     with pytest.raises(ValueError):
         ep.EntitlementPolicy("x", ep.AccessMode.FINCO_HOLDER, None, False, True)
