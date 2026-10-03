@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.radar_rwa import tokenized_collect
+from app.radar_ui.tokenized_composition import compose_underlying
 from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
 from finco_radar.venues.health import (
     HEALTHY,
@@ -471,6 +472,45 @@ class TestHistoryIntelligence:
             price="102", at=NOW - timedelta(minutes=20))
         assert effective_observation_state(
             observation, as_of=NOW, max_age_seconds=900) == "STALE"
+
+    def test_missing_source_timestamp_does_not_promote_overall_to_stale(
+            self, tmp_path):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        store.append_observation(MarketObservation(
+            ts=None,
+            collected_at=NOW.isoformat(),
+            canonical_asset_id="NVDA",
+            venue_id="robinhood-chain",
+            instrument_id=ROBINHOOD_NVDA,
+            instrument_type="tokenized-equity",
+            price="102",
+            reference_price="100",
+            source="test",
+            freshness_state=FreshnessState.AVAILABLE,
+            observation_status=ObservationStatus.OK,
+            payload={
+                "reference_state": "AVAILABLE",
+                "reference_observed_at": NOW.isoformat(),
+                "comparison_unit": COMPARISON_UNIT,
+            },
+        ))
+        view = compose_underlying(
+            "NVDA",
+            registry=registry,
+            store=store,
+            now=NOW,
+            reference_reader=lambda symbol: [{
+                "symbol": symbol,
+                "state": "FRESH",
+                "price": "100",
+                "observed_at": NOW.isoformat(),
+                "source": "test-reference",
+            }],
+        )
+        assert view.representations[0].freshness_state == "UNAVAILABLE"
+        assert view.representations[0].basis_bps is None
+        assert view.overall_state == "UNAVAILABLE"
 
     def test_missing_source_timestamp_is_unavailable(self):
         observation = MarketObservation(
