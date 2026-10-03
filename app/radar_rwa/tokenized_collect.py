@@ -77,11 +77,15 @@ def _target_ids(registry: VenueRegistry, *, max_assets: int) -> tuple[str, ...]:
     targets: list[str] = []
     for canonical_id in approved:
         chain_text, contract = canonical_id.split(":", 1)
+        policy = APPROVED_BY_CANONICAL_ID[canonical_id]
         matches = [
             (entry, status)
             for entry, status in registry.representation_by_contract(
                 chain_id=int(chain_text), contract_address=contract)
-            if entry.platform == "robinhood" and status.value == "ACTIVE"
+            if (entry.platform == "robinhood"
+                and status.value == "ACTIVE"
+                and entry.underlying_symbol is not None
+                and entry.underlying_symbol.strip().upper() == policy.symbol)
         ]
         if len(matches) == 1:
             targets.append(canonical_id)
