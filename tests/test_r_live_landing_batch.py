@@ -53,16 +53,19 @@ def test_batch_current_stream_uses_every_exact_policy_and_preserves_stale(monkey
 
 
 def test_batch_ranges_are_read_only_registry_driven(monkeypatch):
-    from app.radar_rwa import r_live_service
+    # The bulk ranges endpoint delegates to the single-pass canonical batch
+    # read over B1.3 history; every approved identity must be covered.
+    from app.radar_rwa import bnb_history
     calls = []
 
-    def ranges(key):
-        calls.append(key)
-        return {"range_1h": {"state": "UNAVAILABLE", "observation_count": 1},
-                "range_24h": {"state": "UNAVAILABLE", "observation_count": 1},
-                "last_available": None}
+    def ranges(pairs, **kwargs):
+        calls.extend(key.canonical_id for _uid, key in pairs)
+        return {key.canonical_id: {"range_1h": {"state": "UNAVAILABLE", "observation_count": 0},
+                                   "range_24h": {"state": "UNAVAILABLE", "observation_count": 0},
+                                   "last_available": None}
+                for _uid, key in pairs}
 
-    monkeypatch.setattr(r_live_service, "read_r_live_ranges", ranges)
+    monkeypatch.setattr(bnb_history, "read_r_live_ranges_batch_readonly", ranges)
     with client() as api:
         response = api.get("/api/v1.1/radar/r-live/history/ranges")
     assert response.status_code == 200
@@ -95,7 +98,11 @@ def test_landing_is_snapshot_first_and_never_streams_live_acquisition():
     assert 'Math.abs(parseFloat(premium_a.value_bps))' in js
     # cold-start polling reads the snapshot ONLY — never live acquisition
     assert "INITIALIZING" in js
-    assert "setInterval(refresh_snapshot" in js
+    # continuous freshness: polling continues through every state and is
+    # never torn down once the snapshot is warm
+    assert "setInterval(poll_tick" in js
+    assert "clearInterval" not in js
+    assert "document.hidden" in js
     assert 'SNAPSHOT_URL = "/api/v1.1/radar/r-live/snapshot"' in js
     sorting = js.split('function sort_rows()', 1)[1].split('fetch("/api/v1.1/radar/r-live/history/ranges"', 1)[0]
     assert 'last.premium_bps' not in sorting
