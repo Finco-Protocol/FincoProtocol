@@ -678,6 +678,14 @@ class TestBrowserBoundary:
         assert 'data-testid="tmd-basis-history-chart"' in page.text
         assert "never triggers market acquisition" in page.text
 
+    def test_broken_market_store_degrades_without_web_exception(
+            self, tmp_path, monkeypatch):
+        # A directory is not a valid SQLite database path but does exist,
+        # exercising the initialization-failure boundary.
+        monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(tmp_path))
+        from app.radar_ui import tokenized_router
+        assert tokenized_router._store() is None
+
     def test_router_has_no_market_acquisition_import(self):
         source = Path("app/radar_ui/tokenized_router.py").read_text(encoding="utf-8")
         for forbidden in (
