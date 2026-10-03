@@ -556,6 +556,60 @@ class TestHistoryIntelligence:
         assert row.latest_basis_bps == "200"
         assert [point.v for point in row.points] == ["200"]
 
+    def test_24h_baseline_collision_uses_older_valid_exact_row(
+            self, tmp_path):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        latest_at = NOW - timedelta(minutes=5)
+        cutoff = latest_at - timedelta(hours=24)
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="101", at=cutoff - timedelta(hours=1)))
+        # These are newer than the valid baseline but still before cutoff.
+        # Neither belongs to the complete NVDA tokenized-equity identity.
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="150", at=cutoff - timedelta(minutes=20),
+            canonical_asset_id="AAPL"))
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="160", at=cutoff - timedelta(minutes=10),
+            instrument_type="perpetual"))
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="102", at=latest_at))
+
+        row = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store,
+            as_of=NOW).representations[0]
+        assert row.latest_basis_bps == "200"
+        assert row.basis_change_24h_bps == "100"
+
+    def test_cross_venue_collision_uses_exact_instrument_type(
+            self, tmp_path):
+        registry = self._registry_two_venues()
+        store = VenueMarketStore(tmp_path / "market.db")
+        stamp = NOW - timedelta(minutes=5)
+        xstocks_instrument = "0x" + "88" * 20
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="102", at=stamp))
+        store.append_observation(_market_obs(
+            venue="xstocks", instrument=xstocks_instrument,
+            price="103", at=stamp))
+        # A newer colliding perpetual must not replace the exact
+        # tokenized-equity evidence used for cross-venue comparison.
+        store.append_observation(_market_obs(
+            venue="xstocks", instrument=xstocks_instrument,
+            price="999", at=stamp + timedelta(minutes=1),
+            instrument_type="perpetual"))
+
+        intel = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store, as_of=NOW)
+        assert intel.cross_venue.state == "AVAILABLE"
+        assert intel.cross_venue.divergence_bps == "98"
+        assert intel.cross_venue.high_price == "103"
+
     def test_missing_baseline_is_none_not_zero(self, tmp_path):
         registry = _registry([_entry()])
         store = VenueMarketStore(tmp_path / "market.db")
