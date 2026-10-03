@@ -133,12 +133,13 @@ def _market_obs(
     status: ObservationStatus = ObservationStatus.OK,
     comparison_unit: str = COMPARISON_UNIT,
     reference_at: datetime | None = None,
+    canonical_asset_id: str = "NVDA",
 ):
     reference_at = reference_at or at
     return MarketObservation(
         ts=at.isoformat(),
         collected_at=(at + timedelta(seconds=5)).isoformat(),
-        canonical_asset_id="NVDA",
+        canonical_asset_id=canonical_asset_id,
         venue_id=venue,
         instrument_id=instrument,
         instrument_type="tokenized-equity",
@@ -435,6 +436,22 @@ class TestHistoryIntelligence:
         assert row.latest_basis_bps == "200"
         assert row.basis_change_24h_bps == "100"
         assert row.basis_change_7d_bps == "300"
+
+    def test_cross_underlying_store_evidence_fails_closed(self, tmp_path):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="999", at=NOW - timedelta(minutes=5),
+            canonical_asset_id="AAPL"))
+        row = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store,
+            as_of=NOW).representations[0]
+        assert row.current_state == "UNAVAILABLE"
+        assert row.latest_price is None
+        assert row.latest_basis_bps is None
+        assert row.basis_change_24h_bps is None
+        assert row.points == ()
 
     def test_missing_baseline_is_none_not_zero(self, tmp_path):
         registry = _registry([_entry()])
