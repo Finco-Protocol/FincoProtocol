@@ -7,6 +7,7 @@
 {% set domain = radar_domain|default('stocks') %}
 <nav class="radar-domain-nav" aria-label="Radar domains" data-testid="radar-domain-nav">
   <a href="/radar/r-live" class="{% if domain == 'rlive' %}is-active{% endif %}" {% if domain == 'rlive' %}aria-current="page"{% endif %} data-testid="nav-rlive">R-LIVE</a>
+  <a href="/radar/tokenized-markets" class="{% if domain == 'tokenized' %}is-active{% endif %}" {% if domain == 'tokenized' %}aria-current="page"{% endif %} data-testid="nav-tokenized">Tokenized</a>
   <a href="/radar/stocks" class="{% if domain == 'stocks' %}is-active{% endif %}" {% if domain == 'stocks' %}aria-current="page"{% endif %} data-testid="nav-stocks">Stocks</a>
   <a href="/radar/crypto" class="{% if domain == 'crypto' %}is-active{% endif %}" {% if domain == 'crypto' %}aria-current="page"{% endif %} data-testid="nav-crypto">Crypto</a>
   <a href="/radar/economy" class="{% if domain == 'economy' %}is-active{% endif %}" {% if domain == 'economy' %}aria-current="page"{% endif %} data-testid="nav-economy">Economy</a>

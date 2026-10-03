@@ -71,6 +71,12 @@ _INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_market_obs_venue_instrument_order "
     "ON market_observations (venue_id, instrument_id, "
     "COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_market_obs_exact_identity_order "
+    "ON market_observations (canonical_asset_id, venue_id, instrument_id, "
+    "instrument_type, COALESCE(ts, collected_at) DESC, collected_at DESC, digest DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_market_obs_exact_identity_ts "
+    "ON market_observations (canonical_asset_id, venue_id, instrument_id, "
+    "instrument_type, ts)",
 )
 
 _COLUMNS = ("digest, ts, collected_at, canonical_asset_id, venue_id, "
@@ -253,6 +259,24 @@ class VenueMarketStore:
             conn.close()
         return self._to_observation(row) if row is not None else None
 
+    def get_latest_for_identity(
+            self, canonical_asset_id: str, venue_id: str,
+            instrument_id: str, instrument_type: str) -> MarketObservation | None:
+        """Latest row for one complete canonical instrument identity."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM market_observations "
+                "WHERE canonical_asset_id=? AND venue_id=? "
+                "AND instrument_id=? AND instrument_type=? "
+                + _ORDER + " LIMIT 1",
+                (canonical_asset_id.upper(), venue_id, instrument_id,
+                 instrument_type),
+            ).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
+
     def get_latest_for_underlying(
             self, canonical_asset_id: str, *,
             venue_id: str | None = None) -> MarketObservation | None:
@@ -293,6 +317,28 @@ class VenueMarketStore:
             conn.close()
         return [self._to_observation(row) for row in rows]
 
+    def get_window_for_identity(
+            self, canonical_asset_id: str, venue_id: str,
+            instrument_id: str, instrument_type: str, *,
+            since: datetime, until: datetime | None = None,
+    ) -> list[MarketObservation]:
+        """SOURCE-EVIDENCE window for one complete canonical identity."""
+        until = until or datetime.now(timezone.utc)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM market_observations "
+                "WHERE canonical_asset_id=? AND venue_id=? "
+                "AND instrument_id=? AND instrument_type=? "
+                "AND ts IS NOT NULL AND ts>=? AND ts<=? "
+                "ORDER BY ts ASC, collected_at ASC, digest ASC",
+                (canonical_asset_id.upper(), venue_id, instrument_id,
+                 instrument_type, since.isoformat(), until.isoformat()),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [self._to_observation(row) for row in rows]
+
     def get_window_for_underlying(
             self, canonical_asset_id: str, *, since: datetime,
             until: datetime | None = None,
@@ -314,6 +360,75 @@ class VenueMarketStore:
         finally:
             conn.close()
         return [self._to_observation(row) for row in rows]
+
+    def get_latest_reference_for_underlying(
+            self, canonical_asset_id: str) -> MarketObservation | None:
+        """Latest persisted row carrying canonical underlying-reference evidence.
+
+        Browser surfaces use this instead of acquiring provider data. A reference
+        is eligible only when its price and source timestamp were persisted by the
+        collector; collected_at never substitutes for source evidence.
+        """
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM market_observations WHERE canonical_asset_id=? "
+                "AND reference_price IS NOT NULL AND ts IS NOT NULL "
+                + _ORDER + " LIMIT 1",
+                (canonical_asset_id.upper(),),
+            ).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
+
+    def get_latest_at_or_before_for_instrument(
+            self, instrument_id: str, *, before: datetime,
+            venue_id: str | None = None) -> MarketObservation | None:
+        """Latest SOURCE-TIMESTAMPED row at or before a cutoff.
+
+        collected_at never substitutes for missing provider time. This is
+        the canonical baseline read used by 24h/7d Tokenized intelligence.
+        """
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ValueError("before must be timezone-aware")
+        query = (
+            "SELECT * FROM market_observations WHERE instrument_id=? "
+            "AND ts IS NOT NULL AND ts<=?"
+        )
+        params: list = [instrument_id, before.isoformat()]
+        if venue_id is not None:
+            query += " AND venue_id=?"
+            params.append(venue_id)
+        query += " ORDER BY ts DESC, collected_at DESC, digest DESC LIMIT 1"
+        conn = self._connect()
+        try:
+            row = conn.execute(query, params).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
+
+    def get_latest_at_or_before_for_identity(
+            self, canonical_asset_id: str, venue_id: str,
+            instrument_id: str, instrument_type: str, *,
+            before: datetime,
+    ) -> MarketObservation | None:
+        """Latest SOURCE-TIMESTAMPED row at/before cutoff for exact identity."""
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ValueError("before must be timezone-aware")
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM market_observations "
+                "WHERE canonical_asset_id=? AND venue_id=? "
+                "AND instrument_id=? AND instrument_type=? "
+                "AND ts IS NOT NULL AND ts<=? "
+                "ORDER BY ts DESC, collected_at DESC, digest DESC LIMIT 1",
+                (canonical_asset_id.upper(), venue_id, instrument_id,
+                 instrument_type, before.isoformat()),
+            ).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
 
     def list_latest_by_venue(self, venue_id: str) -> list[MarketObservation]:
         """Exactly ONE deterministic row per exact venue instrument, using

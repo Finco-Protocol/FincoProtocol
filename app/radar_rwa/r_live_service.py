@@ -247,8 +247,13 @@ def collect_r_live_batch(
     rpc_url: str,
     workers: int = _CURRENT_WORKERS,
     as_of: datetime | None = None,
+    canonical_ids: tuple[str, ...] | None = None,
 ) -> Iterator[tuple[str, str, dict]]:
-    """Acquire all approved R-LIVE assets in one batch; yield as each completes.
+    """Acquire an explicit approved R-LIVE subset, or all approved assets.
+
+    canonical_ids is exact AssetKey canonical identity only. Omitting it
+    preserves the existing all-approved R-LIVE contract; bounded callers
+    may pass an already-reviewed exact subset.
 
     ONE RegistrySnapshot is fetched for the entire batch (not one per asset).
     ONE shared httpx.Client is used for RPC calls across all assets.
@@ -266,7 +271,15 @@ def collect_r_live_batch(
     if not 1 <= workers <= 4:
         raise ValueError("BATCH_WORKERS_OUT_OF_RANGE")
 
-    canonical_ids = list(APPROVED_BY_CANONICAL_ID)
+    if canonical_ids is None:
+        selected_ids = list(APPROVED_BY_CANONICAL_ID)
+    else:
+        selected_ids = list(canonical_ids)
+        if len(selected_ids) != len(set(selected_ids)):
+            raise ValueError("R_LIVE_BATCH_DUPLICATE_EXACT_ASSETKEY")
+        if any(canonical_id not in APPROVED_BY_CANONICAL_ID
+               for canonical_id in selected_ids):
+            raise ValueError("R_LIVE_BATCH_EXACT_ASSETKEY_NOT_APPROVED")
     shared_rpc_client = httpx.Client(timeout=15)
 
     try:
@@ -310,7 +323,7 @@ def collect_r_live_batch(
                 return canonical_id, state, data
 
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(_acquire_one, cid): cid for cid in canonical_ids}
+                futures = {executor.submit(_acquire_one, cid): cid for cid in selected_ids}
                 for future in _as_completed(futures):
                     try:
                         yield future.result()

@@ -1,0 +1,30 @@
+[Unit]
+Description=FINCO Tokenized Markets one-shot live evidence collection
+Documentation=https://github.com/Finco-Protocol/FincoProtocol/blob/main/deploy/tokenized_market_collector_v1/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=finco
+Group=finco
+WorkingDirectory=/opt/finco_protocol
+EnvironmentFile=/etc/finco/tokenized-market-collector.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=finco/radar
+StateDirectoryMode=0750
+UMask=0077
+ExecStart=/usr/bin/flock -n -E 75 /var/lib/finco/radar/tokenized-market-collector.lock /opt/finco_protocol/.venv/bin/python -m app.radar_rwa.tokenized_collect
+TimeoutStartSec=540
+SuccessExitStatus=3
+Restart=no
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=finco-tokenized-market-collector
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/finco/radar
+ProtectHome=true
+PrivateTmp=true
+
+# Deliberately non-installable as a standalone unit: the timer (or a manual start) activates it.
