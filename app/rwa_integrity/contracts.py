@@ -120,7 +120,11 @@ def parse_attestation(raw: dict[str, Any]) -> BackingAttestationEvidence:
     # No usable published_at → the record stays UNAVAILABLE (not current):
     # enforced by the freshness authority, not by dropping the record.
     state = EvidenceState(raw.get("evidence_status", EvidenceState.UNAVAILABLE))
-    if not isinstance(provider, str) or not provider.strip() or not published:
+    source_uri = str(raw.get("source_uri") or "").strip()
+    source_type = str(raw.get("source_type") or "").strip()
+    if (not isinstance(provider, str) or not provider.strip() or not published
+            or not source_uri or not source_type
+            or source_type.lower() == "unknown"):
         state = EvidenceState.UNAVAILABLE
     return BackingAttestationEvidence(
         canonical_asset_id=asset.strip().upper(),
@@ -215,16 +219,31 @@ def evaluate_attestations(
         return AttestationEvaluation(
             state=EvidenceState.UNAVAILABLE, reason="ATTESTATION_UNAVAILABLE")
 
+    # valid_through fail-closed: malformed or naive → STALE (not VERIFIED)
     expiry = best.valid_through
     if expiry:
         try:
-            if datetime.fromisoformat(expiry) < now:
+            expiry_dt = datetime.fromisoformat(expiry)
+            if expiry_dt.tzinfo is None:
+                return AttestationEvaluation(
+                    state=EvidenceState.STALE,
+                    reason="ATTESTATION_VALID_THROUGH_MALFORMED", record=best)
+            if expiry_dt < now:
                 return AttestationEvaluation(
                     state=EvidenceState.STALE, reason="ATTESTATION_STALE",
                     record=best)
         except ValueError:
-            pass  # unparseable expiry never fabricates currency
+            return AttestationEvaluation(
+                state=EvidenceState.STALE,
+                reason="ATTESTATION_VALID_THROUGH_MALFORMED", record=best)
+
+    # Future published_at fail-closed: evidence dated in the future is
+    # not presentable as current.
     if best_published is not None:
+        if best_published > now:
+            return AttestationEvaluation(
+                state=EvidenceState.STALE,
+                reason="ATTESTATION_FUTURE_TIMESTAMP", record=best)
         age_days = (now - best_published).total_seconds() / 86400
         if age_days > stale_after_days:
             return AttestationEvaluation(

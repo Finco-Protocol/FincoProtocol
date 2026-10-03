@@ -1,17 +1,11 @@
 """RWA Integrity & Trust Intelligence V1 — representation profile +
-underlying-level read model.
+underlying-level read model (Correction A).
 
-Read-model authority: composes existing canonical facts only:
-
-  - identity/status   → finco_radar.venues.VenueRegistry (exact, Correction-B
-                        quarantine/conflict semantics);
-  - market evidence   → finco_radar.venues.intelligence.build_tokenized_intelligence
-                        (freshness/basis/divergence NOT recomputed here);
-  - attestation       → app.rwa_integrity.contracts evaluate_attestations.
-
-No provider acquisition happens inside these functions; callers inject the
-authorities.  One unavailable authority degrades its own evidence state —
-it never crashes the profile and never fabricates a clean state.
+Read-model authority: composes existing canonical facts only.
+Identity binding uses COMPLETE representation identity:
+canonical_asset_id + venue_id + instrument_id + representation_type.
+No first-match-by-instrument shortcut. Dependency intelligence counts
+only ACTIVE representations.
 """
 from __future__ import annotations
 
@@ -29,8 +23,6 @@ from app.rwa_integrity.contracts import (
     parse_attestation,
 )
 
-# Cross-venue divergence semantics are interpreted from the merged #179
-# authority (finco_radar.venues.intelligence) — never recomputed here.
 from finco_radar.venues.intelligence import build_tokenized_intelligence
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.registry import VenueRegistry
@@ -39,10 +31,13 @@ from finco_radar.venues.store import VenueMarketStore
 DEFAULT_ATTESTATION_STALE_DAYS = 180
 
 
+class UnknownCanonicalUnderlying(KeyError):
+    """The requested canonical underlying does not exist in the registry
+    (typed, fail-closed — raised before any reference/provider/store read)."""
+
+
 @dataclass(frozen=True)
 class RepresentationIntegrityProfile:
-    """Integrity profile for ONE exact canonical representation."""
-
     canonical_asset_id: str
     platform: str
     representation_symbol: str
@@ -52,10 +47,10 @@ class RepresentationIntegrityProfile:
     instrument_type: str
     registry_status: str
     source_ref: str
-    market_evidence_state: str         # AVAILABLE / STALE / UNAVAILABLE
+    market_evidence_state: str
     market_source_timestamp: str | None
-    reference_evidence_state: str      # AVAILABLE / UNAVAILABLE
-    basis_evidence_state: str          # AVAILABLE / UNAVAILABLE / CONFLICT
+    reference_evidence_state: str
+    basis_evidence_state: str
     basis_bps: str | None
     attestation: AttestationEvaluation
     flags: tuple[str, ...] = field(default_factory=tuple)
@@ -67,8 +62,6 @@ class RepresentationIntegrityProfile:
 
 @dataclass(frozen=True)
 class UnderlyingIntegrityView:
-    """Canonical underlying-level integrity read model."""
-
     canonical_asset_id: str
     generated_at: str
     representation_count: int
@@ -78,17 +71,23 @@ class UnderlyingIntegrityView:
     venue_count: int
     chain_count: int
     source_count: int
-    market_evidence_coverage: str      # AVAILABLE / PARTIAL / UNAVAILABLE
+    market_evidence_coverage: str
     reference_evidence_state: str
     attestation_evidence_state: str
     dependency_flags: tuple[str, ...]
     integrity_flags: tuple[str, ...]
     representations: tuple[RepresentationIntegrityProfile, ...]
-    cross_venue_divergence_state: str  # interpreted from #179 authority
+    cross_venue_divergence_state: str
+
+def _expected_identity(entry) -> tuple[str, str, str]:
+    venue_id = entry.network or entry.platform
+    instrument_id = (entry.contract_address
+                     or entry.representation_symbol.strip().upper())
+    return venue_id, instrument_id, entry.instrument_type
 
 
-def _identity_flags_for(entry: RepresentationEntryLike, registry_status: str,
-                        market_state: str, basis_state: str,
+def _identity_flags_for(registry_status: str, market_state: str,
+                        basis_state: str,
                         attestation: AttestationEvaluation) -> list[str]:
     flags: list[str] = []
     if registry_status == "CONFLICT":
@@ -110,11 +109,6 @@ def _identity_flags_for(entry: RepresentationEntryLike, registry_status: str,
     return flags
 
 
-# Structural type alias to avoid importing the private registry entry class.
-class RepresentationEntryLike:
-    pass
-
-
 def build_representation_integrity(
     resolved, *,
     registry: VenueRegistry,
@@ -124,40 +118,48 @@ def build_representation_integrity(
     now: datetime | None = None,
     attestation_stale_days: int = DEFAULT_ATTESTATION_STALE_DAYS,
     registry_status: str | None = None,
+    reference_evidence: dict[str, Any] | None = None,
 ) -> RepresentationIntegrityProfile:
-    """Integrity profile for ONE exact registry representation.
-
-    ``resolved`` is a ResolvedRepresentation from the canonical registry.
-    ``intelligence`` is the pre-built TokenizedIntelligence for the
-    underlying (built ONCE by the caller — never recomputed per row).
-    Missing store → market_evidence_state UNAVAILABLE.
-    """
     now = now or datetime.now(timezone.utc)
     entry = resolved.entry
-    status = resolved.status if registry_status is None else RegistryStatus(
-        registry_status)
+    status = (RegistryStatus(registry_status) if registry_status
+              else resolved.status)
+    effective_status = (status.value if hasattr(status, "value")
+                        else str(status))
+
+    venue_id, instrument_id, rep_type = _expected_identity(entry)
+    underlying_symbol = str(entry.underlying_symbol or "").strip().upper()
 
     market_state = "UNAVAILABLE"
-    market_ts = None
+    market_source_ts = None
     basis_state = "UNAVAILABLE"
     basis_bps = None
     if intelligence is not None:
         for history in intelligence.representations:
-            identity = getattr(history, "instrument_id", None)
-            if identity in (entry.contract_address,
-                            entry.representation_symbol.strip().upper()):
-                market_state = getattr(history, "freshness_state",
-                                       "UNAVAILABLE")
-                observation = getattr(history, "latest", None)
-                if observation is not None:
-                    market_ts = observation.ts
-                basis_bps = getattr(history, "basis_bps", None)
-                basis_state = "AVAILABLE" if basis_bps is not None \
-                    else "UNAVAILABLE"
-                break
+            if (history.venue_id != venue_id
+                    or history.instrument_id != instrument_id
+                    or history.representation_type != rep_type):
+                continue
+            market_state = history.current_state
+            basis_bps = history.latest_basis_bps
+            basis_state = "AVAILABLE" if basis_bps is not None else "UNAVAILABLE"
+            break
+
+    if market_state != "UNAVAILABLE" and store is not None:
+        try:
+            latest = store.get_latest_for_identity(
+                underlying_symbol, venue_id, instrument_id, rep_type)
+            if latest is not None:
+                market_source_ts = latest.ts
+        except Exception:
+            pass
+
+    if reference_evidence is not None and reference_evidence.get("price") is not None:
+        reference_state = "AVAILABLE"
+    else:
+        reference_state = "UNAVAILABLE"
 
     if attestations is not None:
-        # Accept raw dicts (fail-closed parse) or parsed records.
         records = [
             record if isinstance(record, BackingAttestationEvidence)
             else parse_attestation(record)
@@ -165,7 +167,7 @@ def build_representation_integrity(
         ]
         attestation_eval = evaluate_attestations(
             records,
-            canonical_asset_id=underlying_symbol_of(entry),
+            canonical_asset_id=underlying_symbol,
             chain_id=entry.chain_id,
             contract_address=entry.contract_address,
             now=now, stale_after_days=attestation_stale_days,
@@ -174,12 +176,11 @@ def build_representation_integrity(
         attestation_eval = AttestationEvaluation(
             state=EvidenceState.UNAVAILABLE, reason="ATTESTATION_UNAVAILABLE")
 
-    effective_status = (status.value if hasattr(status, "value") else str(status))
-    flags = _identity_flags_for(entry, effective_status, market_state,
+    flags = _identity_flags_for(effective_status, market_state,
                                 basis_state, attestation_eval)
 
     return RepresentationIntegrityProfile(
-        canonical_asset_id=underlying_symbol_of(entry),
+        canonical_asset_id=underlying_symbol,
         platform=entry.platform,
         representation_symbol=entry.representation_symbol,
         network=entry.network,
@@ -189,8 +190,8 @@ def build_representation_integrity(
         registry_status=effective_status,
         source_ref=entry.source_ref,
         market_evidence_state=market_state,
-        market_source_timestamp=market_ts,
-        reference_evidence_state=_reference_state(intelligence),
+        market_source_timestamp=market_source_ts,
+        reference_evidence_state=reference_state,
         basis_evidence_state=basis_state,
         basis_bps=basis_bps,
         attestation=attestation_eval,
@@ -198,21 +199,25 @@ def build_representation_integrity(
     )
 
 
-def underlying_symbol_of(entry) -> str:
-    return str(entry.underlying_symbol or "").strip().upper()
-
-
-def _reference_state(intelligence: Any) -> str:
-    """Reference evidence availability interpreted from the merged #179
-    authority (no recomputation): the cross-venue divergence structure
-    reports reference availability when it was computable."""
-    cross = getattr(intelligence, "cross_venue", None) if intelligence else None
-    if cross is None:
-        return "UNAVAILABLE"
-    state = getattr(cross, "state", None)
-    if state in ("AVAILABLE", "PARTIAL"):
-        return "AVAILABLE"
-    return "UNAVAILABLE"
+def _aggregate_attestation_state(profiles) -> str:
+    active_attestations = [
+        p.attestation for p in profiles
+        if p.registry_status == "ACTIVE"
+    ]
+    if not active_attestations:
+        return EvidenceState.UNAVAILABLE.value
+    states = [a.state for a in active_attestations]
+    if EvidenceState.CONFLICT in states:
+        return EvidenceState.CONFLICT.value
+    verified_count = sum(1 for s in states if s is EvidenceState.VERIFIED)
+    stale_count = sum(1 for s in states if s is EvidenceState.STALE)
+    if verified_count == len(states):
+        return EvidenceState.VERIFIED.value
+    if verified_count > 0:
+        return EvidenceState.PARTIAL.value
+    if stale_count > 0:
+        return EvidenceState.STALE.value
+    return EvidenceState.UNAVAILABLE.value
 
 
 def build_underlying_integrity(
@@ -222,13 +227,8 @@ def build_underlying_integrity(
     attestations: list[BackingAttestationEvidence] | None = None,
     now: datetime | None = None,
     attestation_stale_days: int = DEFAULT_ATTESTATION_STALE_DAYS,
+    reference_evidence_reader: Callable[[str], dict[str, Any] | None] | None = None,
 ) -> UnderlyingIntegrityView:
-    """Canonical underlying-level RWA integrity read model.
-
-    Unknown canonical underlying → KeyError (fail-closed, no fabricated
-    profile).  One unavailable authority (store/attestation) degrades only
-    its own evidence state.
-    """
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
@@ -236,29 +236,31 @@ def build_underlying_integrity(
 
     underlying = registry.get_underlying(symbol)
     if underlying is None:
-        raise KeyError(symbol)
+        raise UnknownCanonicalUnderlying(symbol)
 
-    # ALL representations for the underlying — including QUARANTINED and
-    # CONFLICT rows, which must remain inspectable (never hidden).  Status
-    # is derived per entry by the registry's own authority.
     raw_entries = registry._by_underlying.get(symbol, [])
     resolved_all = [
         SimpleNamespace(entry=entry, status=registry.status_for(entry))
         for entry in raw_entries
     ]
-    active = [r for r in resolved_all
-              if r.status is RegistryStatus.ACTIVE]
+    active_resolved = [r for r in resolved_all
+                       if r.status is RegistryStatus.ACTIVE]
 
-    # Market intelligence built ONCE via the merged #179 authority.
     intelligence = None
-    store_unavailable = False
     try:
-        if store is not None and active:
+        if store is not None and active_resolved:
             intelligence = build_tokenized_intelligence(
                 symbol, registry=registry, store=store, as_of=now,
                 include_points=False)
-    except Exception:  # noqa: BLE001 — market authority unavailable degrades
-        store_unavailable = True
+    except Exception:
+        intelligence = None
+
+    reference_evidence = None
+    if reference_evidence_reader is not None:
+        try:
+            reference_evidence = reference_evidence_reader(symbol)
+        except Exception:
+            reference_evidence = None
 
     profiles = []
     for resolved in resolved_all:
@@ -266,19 +268,21 @@ def build_underlying_integrity(
             resolved, registry=registry, store=store,
             intelligence=intelligence, attestations=attestations,
             now=now, attestation_stale_days=attestation_stale_days,
-            registry_status=resolved.status.value))
+            reference_evidence=reference_evidence))
 
-    venues = {p.platform for p in profiles}
-    # Chain diversity uses network identity when chain_id is unavailable —
-    # non-EVM chains (e.g. Solana) legitimately have no chain_id.
-    chains = {p.chain_id if p.chain_id is not None else p.network
-              for p in profiles
+    active_profiles = [p for p in profiles
+                       if p.registry_status == RegistryStatus.ACTIVE.value]
+    venues = {p.platform for p in active_profiles}
+    chains = {(p.chain_id if p.chain_id is not None else p.network)
+              for p in active_profiles
               if p.chain_id is not None or p.network is not None}
-    sources = {p.source_ref.split("#")[0] for p in profiles if p.source_ref}
+    sources = {p.source_ref.split("#")[0] for p in active_profiles
+               if p.source_ref}
 
     dependency_flags: list[str] = []
-    if len(profiles) == 1:
-        dependency_flags.append(IdentityFlag.SINGLE_REPRESENTATION_DEPENDENCY.value)
+    if len(active_profiles) == 1:
+        dependency_flags.append(
+            IdentityFlag.SINGLE_REPRESENTATION_DEPENDENCY.value)
     if len(venues) <= 1:
         dependency_flags.append(IdentityFlag.SINGLE_VENUE_DEPENDENCY.value)
     if len(chains) <= 1:
@@ -286,27 +290,20 @@ def build_underlying_integrity(
     if len(sources) <= 1:
         dependency_flags.append(IdentityFlag.SINGLE_SOURCE_DEPENDENCY.value)
 
-    priced_active = [p for p in profiles
-                     if p.market_evidence_state == "AVAILABLE"
-                     and p.registry_status == "ACTIVE"]
-    if active and len(priced_active) == len(active):
+    priced_active = [p for p in active_profiles
+                     if p.market_evidence_state == "AVAILABLE"]
+    if active_profiles and len(priced_active) == len(active_profiles):
         market_coverage = "AVAILABLE"
     elif priced_active:
         market_coverage = "PARTIAL"
     else:
         market_coverage = "UNAVAILABLE"
 
-    reference_state = ("AVAILABLE" if any(
-        p.reference_evidence_state == "AVAILABLE" for p in profiles)
-        else "UNAVAILABLE")
+    reference_state = ("AVAILABLE" if reference_evidence is not None
+                       and reference_evidence.get("price") is not None
+                       else "UNAVAILABLE")
 
-    attestation_states = {p.attestation.state for p in profiles}
-    if EvidenceState.VERIFIED in attestation_states:
-        attestation_state = "VERIFIED"
-    elif EvidenceState.STALE in attestation_states:
-        attestation_state = "STALE"
-    else:
-        attestation_state = "UNAVAILABLE"
+    attestation_state = _aggregate_attestation_state(profiles)
 
     integrity_flags: list[str] = []
     for profile in profiles:
@@ -316,7 +313,6 @@ def build_underlying_integrity(
         integrity_flags.append(IdentityFlag.ATTESTATION_UNAVAILABLE.value)
     elif attestation_state == "STALE":
         integrity_flags.append(IdentityFlag.ATTESTATION_STALE.value)
-    # dedupe, stable order
     integrity_flags = tuple(dict.fromkeys(integrity_flags))
 
     cross_state = "UNAVAILABLE"
@@ -333,7 +329,7 @@ def build_underlying_integrity(
         canonical_asset_id=symbol,
         generated_at=now.isoformat(),
         representation_count=len(profiles),
-        active_representation_count=len(active),
+        active_representation_count=len(active_profiles),
         quarantined_count=quarantined,
         conflict_count=conflicts,
         venue_count=len(venues),
@@ -354,8 +350,6 @@ def list_integrity_profiles(
     attestations: list[BackingAttestationEvidence] | None = None,
     now: datetime | None = None, limit: int | None = None,
 ) -> list[UnderlyingIntegrityView]:
-    """Canonical integrity profiles for every underlying with active
-    representations (deterministic order).  No provider acquisition."""
     views = []
     for symbol in sorted(registry._underlyings):
         resolved = registry.representations_for_underlying(symbol)
