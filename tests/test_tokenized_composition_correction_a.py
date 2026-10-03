@@ -69,6 +69,37 @@ class TestExactStoreBinding:
         assert view.representations[0].price is None
         assert view.representations[0].freshness_state == "UNAVAILABLE"
 
+    def test_newer_wrong_identity_cannot_shadow_older_valid_current_row(self):
+        from finco_radar.venues.observations import (
+            FreshnessState, MarketObservation, ObservationStatus)
+        registry = _registry([_entry()])
+        store = VenueMarketStore(_tmp_store())
+        valid_at = NOW - timedelta(minutes=10)
+        _fresh_observation(
+            store, instrument_id=ROBINHOOD_NVDA,
+            canonical="NVDA", price="196.00", observed_at=valid_at)
+        for canonical, instrument_type, price, offset in (
+            ("AAPL", "tokenized-equity", "999.00", 5),
+            ("NVDA", "perpetual", "888.00", 4),
+        ):
+            stamp = NOW - timedelta(minutes=offset)
+            store.append_observation(MarketObservation(
+                ts=stamp.isoformat(),
+                collected_at=(stamp + timedelta(seconds=5)).isoformat(),
+                canonical_asset_id=canonical,
+                venue_id="robinhood-chain",
+                instrument_id=ROBINHOOD_NVDA,
+                instrument_type=instrument_type,
+                price=price,
+                source="collision-test",
+                freshness_state=FreshnessState.AVAILABLE,
+                observation_status=ObservationStatus.OK,
+                payload={},
+            ))
+        view = _compose(registry, store=store, reference_rows=[])
+        assert view.representations[0].price == "196.00"
+        assert view.representations[0].representation_type == "tokenized-equity"
+
     def test_cross_venue_collision_resolves_only_own_venue(self):
         """Same instrument_id on venues A and B with different prices:
         composing venue A's representation resolves ONLY venue A's price."""
