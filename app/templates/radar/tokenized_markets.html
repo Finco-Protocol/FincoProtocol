@@ -42,6 +42,14 @@
   </div>
 </div>
 
+{% if access and (not access.history.allowed or not access.dislocation.allowed) %}
+<p class="y-note" data-testid="tm-premium-access-note">
+  Basis history changes and cross-venue divergence are $FINCO holder resources
+  ({{ access.history.state if not access.history.allowed else access.dislocation.state }}).
+  Identity and current market state remain public.
+</p>
+{% endif %}
+
 {% if not history_available %}
 <p class="y-note" data-testid="tm-history-note">
   The market-history store contains no observations yet for these venues. History
@@ -90,13 +98,13 @@
           {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
         </td>
         <td class="y-num" data-testid="tm-basis-24h-{{ row.canonical_asset_id }}">
-          {% if row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+          {% if access and not access.history.allowed %}<span class="y-missing" data-testid="tm-locked-history">locked</span>{% elif row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
         </td>
         <td class="y-num" data-testid="tm-basis-7d-{{ row.canonical_asset_id }}">
-          {% if row.basis_change_7d_bps is not none %}{% set d7 = row.basis_change_7d_bps | float %}{% if d7 > 0 %}+{% endif %}{{ d7 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+          {% if access and not access.history.allowed %}<span class="y-missing">locked</span>{% elif row.basis_change_7d_bps is not none %}{% set d7 = row.basis_change_7d_bps | float %}{% if d7 > 0 %}+{% endif %}{{ d7 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
         </td>
         <td class="y-num" data-testid="tm-cross-venue-{{ row.canonical_asset_id }}">
-          {% if row.cross_venue_divergence_bps is not none %}{{ row.cross_venue_divergence_bps | float | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+          {% if access and not access.dislocation.allowed %}<span class="y-missing" data-testid="tm-locked-dislocation">locked</span>{% elif row.cross_venue_divergence_bps is not none %}{{ row.cross_venue_divergence_bps | float | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
         </td>
         <td>
           <span class="y-badge {% if row.overall_state == 'FRESH' %}y-badge-current{% elif row.overall_state in ('PARTIAL', 'STALE') %}y-badge-stale{% else %}y-badge-unknown{% endif %}"

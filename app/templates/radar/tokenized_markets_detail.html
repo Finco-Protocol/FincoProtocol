@@ -116,7 +116,15 @@
 
 <section class="y-section" data-testid="tmd-history">
   <h2>Basis history & market intelligence</h2>
-  {% if intelligence and history_available %}
+  {% set _hist_ok = access is none or access.history.allowed %}
+  {% set _disl_ok = access is none or access.dislocation.allowed %}
+  {% if not _hist_ok and not _disl_ok %}
+    <p class="y-empty" data-testid="tmd-premium-locked">
+      Basis history, cross-venue divergence and dislocation intelligence are $FINCO holder
+      resources. Access state: {{ access.history.state }} ({{ access.history.reason }}).
+      Basic identity and current market state above remain public.
+    </p>
+  {% elif intelligence and history_available %}
     <div class="y-table-wrap">
       <table class="y-table" data-testid="tmd-history-table">
         <thead><tr>
@@ -140,6 +148,12 @@
       </table>
     </div>
 
+    {% if not _hist_ok %}
+    <div class="card" style="margin-top:14px" data-testid="tmd-history-locked">
+      <h3>Premium / discount history</h3>
+      <p class="y-empty">$FINCO holder resource — access state: {{ access.history.state }} ({{ access.history.reason }}).</p>
+    </div>
+    {% else %}
     <div class="card" style="margin-top:14px" data-testid="tmd-basis-chart-card">
       <h3>Premium / discount history</h3>
       <p class="y-section-note">
@@ -166,7 +180,14 @@
         </p>
       {% endif %}
     </div>
+    {% endif %}
 
+    {% if not _disl_ok %}
+    <div class="card" style="margin-top:14px" data-testid="tmd-dislocation-locked">
+      <h3>Cross-venue divergence &amp; dislocation events</h3>
+      <p class="y-empty">$FINCO holder resource — access state: {{ access.dislocation.state }} ({{ access.dislocation.reason }}).</p>
+    </div>
+    {% else %}
     <div class="card" style="margin-top:14px" data-testid="tmd-cross-venue">
       <h3>Cross-venue divergence</h3>
       {% if intelligence.cross_venue.state == 'AVAILABLE' %}
@@ -209,6 +230,7 @@
         signals and do not assert executable or risk-free arbitrage.
       </p>
     </div>
+    {% endif %}
   {% else %}
     <p class="y-empty" data-testid="tmd-history-none">
       No canonical FINCO history collected yet. Charts and 24h/7d comparisons appear

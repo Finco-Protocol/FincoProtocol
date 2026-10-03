@@ -131,11 +131,16 @@ async def tokenized_markets_landing(request: Request):
     )
     from app.auth import resolve_request_session
 
+    from app.radar_ui.tokenized_gating import redact_landing_row, resolve_tokenized_gates
+
     user = resolve_request_session(request)
     registry = _registry()
     store = _store()
     now = datetime.now(timezone.utc)
     reference_reader = _persisted_reference_reader(store, as_of=now)
+    # Canonical access decisions (public basic; holder history / dislocation). Gating off keeps the
+    # existing ungated behaviour; protected payload is removed from the context when denied.
+    gates = await resolve_tokenized_gates(request)
 
     universe = list_supported_underlyings(registry)
     featured_first = _order_featured_first(universe)
@@ -154,10 +159,10 @@ async def tokenized_markets_landing(request: Request):
                 reference_reader=reference_reader, store=store, now=now)
         except Exception:
             continue  # a row that cannot compose never breaks the page
-        intel = _intelligence(
+        intel = (_intelligence(
             row["canonical_asset_id"], registry, store,
-            include_points=False, as_of=now)
-        composed.append(_landing_row(view, intel))
+            include_points=False, as_of=now) if gates.any_premium_allowed else None)
+        composed.append(redact_landing_row(_landing_row(view, intel), gates))
 
     return _templates.TemplateResponse(
         request=request,
@@ -169,6 +174,7 @@ async def tokenized_markets_landing(request: Request):
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
             "collector_health": _collector_health(),
+            "access": gates.public_view(),
         },
     )
 
@@ -301,9 +307,16 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             status_code=HTTP_404_NOT_FOUND,
         )
 
-    intelligence = _intelligence(
-        canonical_asset_id, registry, store,
-        include_points=True, as_of=now)
+    from app.radar_ui.tokenized_gating import redact_intelligence, resolve_tokenized_gates
+
+    gates = await resolve_tokenized_gates(request)
+    intelligence = None
+    if gates.any_premium_allowed:
+        intelligence = redact_intelligence(
+            _intelligence(
+                canonical_asset_id, registry, store,
+                include_points=gates.history.access_allowed, as_of=now),
+            gates)
     basis_series = []
     if intelligence is not None:
         for item in intelligence.representations:
@@ -328,5 +341,6 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             "intelligence": intelligence,
             "basis_series": basis_series[:2],
             "collector_health": _collector_health(),
+            "access": gates.public_view(),
         },
     )
