@@ -177,6 +177,19 @@ class TestExactRLiveBridge:
         assert observation.instrument_id == ROBINHOOD_NVDA
         assert observation.payload["comparison_unit"] == COMPARISON_UNIT
 
+    def test_contract_mapped_to_wrong_underlying_symbol_fails_closed(self):
+        registry = _registry([_entry(underlying_symbol="AAPL")])
+        with pytest.raises(
+                TokenizedLiveIdentityMismatch,
+                match="TOKENIZED_LIVE_UNDERLYING_POLICY_MISMATCH"):
+            market_observation_from_r_live(
+                canonical_id=NVDA_ID,
+                state="AVAILABLE",
+                data=_live_data(NVDA_ID),
+                registry=registry,
+                collected_at=NOW,
+            )
+
     def test_economic_uid_mismatch_fails_closed(self):
         registry = _registry([_entry()])
         data = _live_data(NVDA_ID)
