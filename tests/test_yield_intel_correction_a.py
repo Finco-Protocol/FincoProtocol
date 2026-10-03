@@ -73,24 +73,45 @@ def _record(store, uid, observed_at, apy, tvl="2000000"):
 
 # ── latest-value correctness ─────────────────────────────────────────────────
 
+def _rows_for_bindings():
+    return _sorted_rows([
+        {"observed_at": "2026-10-01T00:00:00Z", "source_authority": "NATIVE_ENRICHED",
+         "source_uri": "https://test", "adapter_version": "test",
+         "payload": {"apy_total": "0.04", "tvl_usd": "1000000"}},
+        {"observed_at": "2026-10-02T00:00:00Z", "source_authority": "NATIVE_ENRICHED",
+         "source_uri": "https://test", "adapter_version": "test",
+         "payload": {"apy_total": "0.06", "tvl_usd": "1100000"}},
+    ])
+
+
 def test_latest_values_returns_newest_apy_not_oldest():
-    rows = [
-        {"observed_at": "2026-10-01T00:00:00Z", "payload": {"apy_total": "0.04", "tvl_usd": "1000000"}},
-        {"observed_at": "2026-10-02T00:00:00Z", "payload": {"apy_total": "0.06", "tvl_usd": "1100000"}},
-    ]
-    apy, tvl = _latest_values(_sorted_rows(rows))
-    assert apy == Decimal("0.06"), "latest APY must be the NEWEST observation (6%), not the oldest (4%)"
-    assert tvl == Decimal("1100000")
+    from finco_yield.market import _value_binding
+    rows = _rows_for_bindings()
+    now = datetime(2026, 10, 2, 0, 30, tzinfo=timezone.utc)   # both rows fresh
+    apy = _value_binding(rows, "apy_total", now)
+    tvl = _value_binding(rows, "tvl_usd", now)
+    assert apy.value == Decimal("0.06"), "latest APY must be the NEWEST observation (6%), not the oldest (4%)"
+    assert tvl.value == Decimal("1100000")
+    assert apy.currentness == "CURRENT" and tvl.currentness == "CURRENT"
+    assert apy.observed_at.isoformat() == "2026-10-02T00:00:00+00:00"
 
 
 def test_latest_tvl_independent_of_newest_apy_gap():
-    rows = [
-        {"observed_at": "2026-10-01T00:00:00Z", "payload": {"apy_total": None, "tvl_usd": "900000"}},
-        {"observed_at": "2026-10-02T00:00:00Z", "payload": {"apy_total": "0.06", "tvl_usd": None}},
-    ]
-    apy, tvl = _latest_values(_sorted_rows(rows))
-    assert apy == Decimal("0.06")            # newest APY
-    assert tvl == Decimal("900000")          # newest AVAILABLE TVL (independently)
+    from finco_yield.market import _value_binding
+    rows = _sorted_rows([
+        {"observed_at": "2026-10-01T00:00:00Z", "source_authority": "NATIVE_ENRICHED",
+         "source_uri": "https://test", "adapter_version": "test",
+         "payload": {"apy_total": None, "tvl_usd": "900000"}},
+        {"observed_at": "2026-10-02T00:00:00Z", "source_authority": "NATIVE_ENRICHED",
+         "source_uri": "https://test", "adapter_version": "test",
+         "payload": {"apy_total": "0.06", "tvl_usd": None}},
+    ])
+    now = datetime(2026, 10, 2, 0, 30, tzinfo=timezone.utc)
+    apy = _value_binding(rows, "apy_total", now)
+    tvl = _value_binding(rows, "tvl_usd", now)
+    assert apy.value == Decimal("0.06")      # newest APY
+    assert tvl.value == Decimal("900000")    # newest AVAILABLE TVL (independently)
+    assert tvl.observed_at.isoformat() == "2026-10-01T00:00:00+00:00"
 
 
 # ── fixture values are never market-current ──────────────────────────────────

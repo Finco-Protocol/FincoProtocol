@@ -85,19 +85,43 @@ def _sorted_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [r for _t, r in ordered]
 
 
+@dataclass(frozen=True)
+class ValueBinding:
+    """One economic value bound to the EXACT canonical observation that
+    supplied it.  A newer observation that does not carry the value can never
+    refresh it -- and can never lend its own freshness to it."""
+
+    value: Decimal | None
+    observed_at: datetime | None
+    currentness: str            # freshness of the SUPPLYING observation
+
+
+def _value_binding(sorted_rows: list[dict[str, Any]], field: str,
+                   now: datetime) -> ValueBinding:
+    """Newest canonical observation carrying a numeric ``field``, bound to its
+    own timestamp and freshness.  Missing values are UNAVAILABLE, never
+    zero-filled, and never refreshed by a later value-less observation."""
+    for row in reversed(sorted_rows):
+        value = _dec((row.get("payload") or {}).get(field))
+        if value is None:
+            continue
+        moment = _row_time(row)
+        source = _source_ref_from_row(row)
+        state = (evaluate_freshness(source, now=now).state
+                 if source is not None and moment is not None else "UNAVAILABLE")
+        return ValueBinding(value, moment, state)
+    return ValueBinding(None, None, "UNAVAILABLE")
+
+
 def _latest_values(sorted_rows: list[dict[str, Any]]) -> tuple[Decimal | None, Decimal | None]:
     """Latest numeric APY/TVL: the NEWEST canonical observation carrying each
     value (values are missing-annotated, never zero-filled).  APY and TVL are
     resolved independently -- a missing TVL on the newest APY observation does
     not hide an older TVL."""
-    apy = tvl = None
-    for row in reversed(sorted_rows):
-        payload = row.get("payload") or {}
-        if apy is None:
-            apy = _dec(payload.get("apy_total"))
-        if tvl is None:
-            tvl = _dec(payload.get("tvl_usd"))
-    return apy, tvl
+    now = datetime.now(timezone.utc)
+    apy = _value_binding(sorted_rows, "apy_total", now)
+    tvl = _value_binding(sorted_rows, "tvl_usd", now)
+    return apy.value, tvl.value
 
 
 def _baseline_apy(sorted_rows: list[dict[str, Any]], cutoff: datetime) -> Decimal | None:
@@ -175,7 +199,11 @@ class PoolIntel:
     uid: str
     latest_apy: Decimal | None
     latest_tvl: Decimal | None
-    currentness: str = "UNAVAILABLE"       # canonical freshness state
+    currentness: str = "UNAVAILABLE"       # freshness of the newest row overall
+    latest_apy_observed_at: datetime | None = None   # APY-bearing observation
+    latest_apy_currentness: str = "UNAVAILABLE"      # ITS freshness
+    latest_tvl_observed_at: datetime | None = None   # TVL-bearing observation
+    latest_tvl_currentness: str = "UNAVAILABLE"      # ITS freshness
     deltas: dict[str, Decimal | None] = field(default_factory=dict)   # horizon -> bps
     directions: dict[str, str] = field(default_factory=dict)
     sigma_30d: Decimal | None = None
@@ -199,16 +227,20 @@ class MarketView:
 
 
 def _baseline_delta(sorted_rows: list[dict[str, Any]], latest_apy: Decimal | None,
-                    span: timedelta) -> tuple[Decimal | None, str]:
+                    span: timedelta, *, anchor: datetime | None = None,
+) -> tuple[Decimal | None, str]:
     """Delta of the current APY against the newest canonical observation at or
-    before ``latest_observation_time - span`` (the same observation-anchored
-    convention as ``intelligence.build_intelligence``).  ``None`` = no
-    baseline in the window (UNAVAILABLE, never zero)."""
+    before ``anchor - span``.  ``anchor`` is the APY-BEARING observation's own
+    timestamp (the same observation-anchored convention as
+    ``intelligence.build_intelligence``) -- a later TVL-only row never moves
+    the cutoff.  ``None`` = no baseline in the window (UNAVAILABLE, never
+    zero)."""
     if latest_apy is None:
         return None, "LATEST_APY_MISSING"
     if not sorted_rows:
         return None, "NO_BASELINE"
-    anchor = _row_time(sorted_rows[-1])
+    if anchor is None:
+        anchor = _row_time(sorted_rows[-1])
     if anchor is None:
         return None, "NO_BASELINE"
     baseline = _baseline_apy(sorted_rows, anchor - span)
@@ -240,11 +272,19 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
         rows = _sorted_rows(grouped.get(uid, []))
         # Canonical history is the ONLY economic observation authority here:
         # REFERENCE_FIXTURE registry values never become market-current data.
-        apy, tvl = _latest_values(rows)
+        # Each value is bound to the exact observation that supplied it: a
+        # newer APY-missing observation never refreshes an older APY (and
+        # never lends the APY its own freshness), and vice versa for TVL.
+        apy_binding = _value_binding(rows, "apy_total", as_of)
+        tvl_binding = _value_binding(rows, "tvl_usd", as_of)
+        apy, tvl = apy_binding.value, tvl_binding.value
         currentness = _currentness(rows, as_of)
         deltas, directions = {}, {}
         for horizon, span in MOVER_HORIZONS:
-            delta, _reason = _baseline_delta(rows, apy, span)
+            # The horizon anchor is the APY-BEARING observation's own
+            # timestamp -- never a later TVL-only / APY-missing row.
+            delta, _reason = _baseline_delta(rows, apy, span,
+                                             anchor=apy_binding.observed_at)
             deltas[horizon] = delta
             directions[horizon] = ("UP" if delta is not None and delta > 0
                                    else "DOWN" if delta is not None and delta < 0
@@ -252,11 +292,11 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
                                    else "UNAVAILABLE")
         sigma = _sigma(rows, timedelta(days=30), as_of)
         # Spread requires BOTH sides current: a fresh Treasury observation AND
-        # a CURRENT canonical yield observation.  Stale yield, stale treasury
-        # or missing evidence -> unavailable (never zero).
+        # a CURRENT canonical APY-bearing yield observation.  Stale yield,
+        # stale treasury or missing evidence -> unavailable (never zero).
         spread = None
         spread_source = None
-        if (apy is not None and currentness == "CURRENT"
+        if (apy is not None and apy_binding.currentness == "CURRENT"
                 and treasury is not None and treasury.usable):
             spread = _spread_bps(apy, treasury.yield_percent)
             spread_source = f"APY_VS_{treasury.source}" if spread is not None else None
@@ -265,6 +305,10 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
             latest_apy=apy,
             latest_tvl=tvl,
             currentness=currentness,
+            latest_apy_observed_at=apy_binding.observed_at,
+            latest_apy_currentness=apy_binding.currentness,
+            latest_tvl_observed_at=tvl_binding.observed_at,
+            latest_tvl_currentness=tvl_binding.currentness,
             deltas=deltas,
             directions=directions,
             sigma_30d=sigma,
@@ -277,8 +321,9 @@ def build_market_view(store: YieldHistoryStore, registry, *, as_of: datetime,
     def _current_candidate(uid: str) -> bool:
         intel = pools[uid]
         return (intel.latest_tvl is not None and intel.latest_tvl >= tvl_floor
+                and intel.latest_tvl_currentness == "CURRENT"
                 and intel.latest_apy is not None
-                and intel.currentness == "CURRENT")
+                and intel.latest_apy_currentness == "CURRENT")
 
     above_floor = {uid for uid in pools if _current_candidate(uid)}
     movers: dict[str, list[MoverRow]] = {}
