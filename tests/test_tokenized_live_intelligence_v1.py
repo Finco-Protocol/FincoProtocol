@@ -364,6 +364,24 @@ class TestCollectorVertical:
         assert calls["n"] == 3
         assert sleeps == [0.25, 0.5]
 
+    def test_retry_backoff_never_exceeds_hard_cap(self, monkeypatch):
+        sleeps = []
+
+        def acquire(**kwargs):
+            raise RuntimeError("down")
+
+        row = tokenized_collect._retry_one(
+            NVDA_ID,
+            rpc_url="https://rpc.example",
+            as_of=NOW,
+            retries=2,
+            backoff_seconds=5.0,
+            acquire_one=acquire,
+            sleeper=sleeps.append,
+        )
+        assert row[1] == "UNAVAILABLE"
+        assert sleeps == [5.0, 5.0]
+
     def test_quarantine_is_persisted_but_not_counted_available(self, tmp_path):
         registry = _registry([_entry(trading_halted=True)])
         store = VenueMarketStore(tmp_path / "market.db")
