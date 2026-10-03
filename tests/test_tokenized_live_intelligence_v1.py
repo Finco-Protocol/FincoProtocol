@@ -267,6 +267,7 @@ class TestCollectorVertical:
         assert latest.ts == (NOW - timedelta(seconds=30)).isoformat()
         assert latest.collected_at == NOW.isoformat()
         assert calls and calls[0]["workers"] == 2
+        assert calls[0]["canonical_ids"] == (NVDA_ID,)
 
     def test_identical_source_evidence_dedupes_across_collection_times(self, tmp_path):
         registry = _registry([_entry()])
