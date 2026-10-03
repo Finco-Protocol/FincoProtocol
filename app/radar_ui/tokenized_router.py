@@ -4,7 +4,8 @@ the canonical venue registry and persisted market observations.
 UNDERLYING → REPRESENTATIONS mental model.  Exact identity authority
 (``finco_radar.venues.VenueRegistry``); existing bound-reference authority
 for the underlying; persisted ``VenueMarketStore`` history where collected.
-No new provider, no runtime collector wiring, no execution/trading.
+No UI-triggered acquisition and no execution/trading. Live observations are
+written only by the separate bounded Tokenized collector runtime.
 """
 from __future__ import annotations
 
@@ -38,6 +39,34 @@ def _store():
         return None
     return VenueMarketStore(path)
 
+
+
+def _collector_health():
+    """Read operational collector health without creating/writing state."""
+    try:
+        from finco_radar.venues.health import read_tokenized_collector_health
+        return read_tokenized_collector_health().public_dict()
+    except Exception:
+        return {
+            "health_state": "UNHEALTHY",
+            "liveness": "UNKNOWN",
+            "last_attempt_at": None,
+            "last_success_at": None,
+            "outcome": "UNAVAILABLE",
+            "failure_reason": "COLLECTOR_HEALTH_UNAVAILABLE",
+        }
+
+
+def _intelligence(canonical_asset_id: str, registry, store, *, include_points: bool):
+    if store is None:
+        return None
+    try:
+        from finco_radar.venues.intelligence import build_tokenized_intelligence
+        return build_tokenized_intelligence(
+            canonical_asset_id, registry=registry, store=store,
+            include_points=include_points)
+    except Exception:
+        return None
 
 def _reference_reader(reference_map: dict[str, dict] | None = None):
     """Existing cached bound-reference authority (reused, not reimplemented).
@@ -111,7 +140,9 @@ async def tokenized_markets_landing(request: Request):
                 reference_reader=reference_reader, store=store)
         except Exception:
             continue  # a row that cannot compose never breaks the page
-        composed.append(_landing_row(view))
+        intel = _intelligence(
+            row["canonical_asset_id"], registry, store, include_points=False)
+        composed.append(_landing_row(view, intel))
 
     return _templates.TemplateResponse(
         request=request,
@@ -122,6 +153,7 @@ async def tokenized_markets_landing(request: Request):
             "total_underlyings": len(universe),
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
+            "collector_health": _collector_health(),
         },
     )
 
@@ -135,7 +167,7 @@ def _order_featured_first(universe: list[dict]) -> list[dict]:
     return featured + rest
 
 
-def _landing_row(view) -> dict:
+def _landing_row(view, intelligence=None) -> dict:
     best = None
     for representation in view.representations:
         # Correction B: quarantined evidence never qualifies for
@@ -148,6 +180,17 @@ def _landing_row(view) -> dict:
                 < abs(float(best.basis_bps))):
             best = representation
     reference = view.reference
+    history_row = None
+    cross_venue = None
+    if intelligence is not None:
+        cross_venue = intelligence.cross_venue
+        if best is not None:
+            history_row = next(
+                (item for item in intelligence.representations
+                 if item.venue_id == best.venue_id
+                 and item.instrument_id == best.instrument_id),
+                None,
+            )
     return {
         "canonical_asset_id": view.canonical_asset_id,
         "underlying_name": view.underlying_name,
@@ -159,6 +202,14 @@ def _landing_row(view) -> dict:
         "best_price": best.price if best else None,
         "best_basis_bps": best.basis_bps if best else None,
         "best_venue": best.venue_id if best else None,
+        "basis_change_24h_bps": (
+            history_row.basis_change_24h_bps if history_row else None),
+        "basis_change_7d_bps": (
+            history_row.basis_change_7d_bps if history_row else None),
+        "cross_venue_state": (
+            cross_venue.state if cross_venue is not None else "UNAVAILABLE"),
+        "cross_venue_divergence_bps": (
+            cross_venue.divergence_bps if cross_venue is not None else None),
         # Correction A #14: neutral selection semantics — the shown
         # representation is the one with the smallest absolute basis when a
         # basis exists ("Closest basis venue"); otherwise a neutral
@@ -200,6 +251,9 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
                 "history_available": False,
                 "unknown": True,
                 "canonical_asset_id": canonical_asset_id,
+                "intelligence": None,
+                "basis_series": [],
+                "collector_health": _collector_health(),
             },
             status_code=HTTP_404_NOT_FOUND,
         )
@@ -228,6 +282,19 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             status_code=HTTP_404_NOT_FOUND,
         )
 
+    intelligence = _intelligence(
+        canonical_asset_id, registry, store, include_points=True)
+    basis_series = []
+    if intelligence is not None:
+        for item in intelligence.representations:
+            points = [{"t": point.t, "v": point.v} for point in item.points]
+            if any(point["v"] is not None for point in points):
+                basis_series.append({
+                    "venue_id": item.venue_id,
+                    "instrument_id": item.instrument_id,
+                    "points": points,
+                })
+
     return _templates.TemplateResponse(
         request=request,
         name="radar/tokenized_markets_detail.html",
@@ -238,5 +305,8 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             # Correction A: per-underlying history truth from the view —
             # never the global store count.
             "history_available": view.history_available,
+            "intelligence": intelligence,
+            "basis_series": basis_series[:2],
+            "collector_health": _collector_health(),
         },
     )
