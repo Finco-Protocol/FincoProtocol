@@ -49,6 +49,17 @@ class PriceEvidenceUnavailable(RuntimeError):
     exact instrument (typed, operational — never fabricated as zero)."""
 
 
+class PriceEvidenceIdentityMismatch(RuntimeError):
+    """The price-evidence provider returned evidence for a DIFFERENT exact
+    venue symbol than the one requested (typed, fail-closed).
+
+    Canonical exact identity rule: the requested symbol MUST equal
+    PriceEvidence.symbol character-for-character before any observation is
+    constructed.  No case-insensitive fallback, no ticker alias, no suffix
+    normalization, no underlying inference — mismatched evidence is never
+    reinterpreted under the requested symbol and never persisted."""
+
+
 @dataclass(frozen=True)
 class PriceEvidence:
     """One exact price-evidence fact from an injected provider."""
@@ -78,10 +89,20 @@ def xstocks_market_observation(
 ) -> MarketObservation:
     """One official price-evidence fact → one normalized market observation.
 
+    EXACT SYMBOL BINDING (Correction B): the requested venue symbol and the
+    evidence's own symbol MUST be the identical string — the guard lives at
+    this construction boundary so no caller can bind evidence from one
+    instrument to another instrument's canonical identity.  Fail-closed:
+    mismatch raises PriceEvidenceIdentityMismatch and nothing is persisted.
+
     ts is the provider evidence stamp ONLY when the provider supplies one;
     otherwise ts is None (the collection clock never masquerades as source
     evidence).  A halted instrument keeps explicit QUARANTINED typing.
     """
+    if evidence.symbol != symbol:
+        raise PriceEvidenceIdentityMismatch(
+            f"price evidence is for {evidence.symbol!r} but was requested "
+            f"for {symbol!r} — exact venue symbol binding violated")
     canonical = canonical_underlying_symbol(underlying_symbol)
     ts, collected = MarketObservation.clocks(
         evidence.source_timestamp, collected_at)
@@ -156,6 +177,10 @@ def collect_xstocks_prices(
                 skipped_unavailable=report.skipped_unavailable + 1,
                 halted_quarantined=report.halted_quarantined)
             continue
+        # Exact symbol binding is enforced AGAIN at the construction
+        # boundary (defense in depth): a mismatched provider response is a
+        # fail-closed programming/source defect, not skippable evidence —
+        # the exception propagates before any batch write occurs.
         halted = halt_lookup(symbol) if halt_lookup else None
         observation = xstocks_market_observation(
             symbol=symbol,

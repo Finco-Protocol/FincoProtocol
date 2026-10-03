@@ -612,3 +612,103 @@ class TestSafetyScanExemption:
         assert (hashlib.sha256(
             (REPO / self.SEED_PATH).read_bytes()).hexdigest()
             == self._expected_sha())
+
+
+# ── Correction B: exact price-evidence symbol binding ────────────────────────
+
+class TestExactSymbolBinding:
+    """Requested exact venue symbol MUST equal PriceEvidence.symbol before
+    any observation can be constructed.  Mismatch = typed fail-closed
+    error; nothing persisted; no identity reinterpretation."""
+
+    @pytest.fixture()
+    def store(self, tmp_path):
+        return VenueMarketStore(tmp_path / "venues.db")
+
+    def test_matching_symbol_accepted(self, store, monkeypatch):
+        prices = {"AAPLx": PriceEvidence(
+            symbol="AAPLx", price="250.10",
+            source_timestamp=datetime(2026, 10, 2, 11, 59, tzinfo=timezone.utc))}
+        fetch = lambda symbol: {"AAPLx": "AAPL"}.get(symbol)
+        fetch, price_fetcher, halt = TestCollector._deps(
+            monkeypatch, store, prices, underlyings={"AAPLx": "AAPL"})
+        report = collect_xstocks_prices(
+            store=store, symbols=["AAPLx"], price_fetcher=price_fetcher,
+            underlying_lookup=fetch, halt_lookup=halt, collected_at=NOW)
+        assert (report.requested, report.priced, report.persisted) == (1, 1, 1)
+        latest = store.get_latest_for_underlying("AAPL")
+        assert latest.instrument_id == "AAPLx"
+        assert latest.price == "250.10"
+
+    def test_symbol_mismatch_is_typed_fail_closed(self, store, monkeypatch):
+        from finco_radar.venues.collector import PriceEvidenceIdentityMismatch
+        # The provider wrongly returns TSLAx evidence for the AAPLx request.
+        prices = {"AAPLx": PriceEvidence(
+            symbol="TSLAx", price="420.00", source_timestamp=None)}
+        fetch, price_fetcher, halt = TestCollector._deps(
+            monkeypatch, store, prices, underlyings={"AAPLx": "AAPL"})
+        with pytest.raises(PriceEvidenceIdentityMismatch):
+            collect_xstocks_prices(
+                store=store, symbols=["AAPLx"], price_fetcher=price_fetcher,
+                underlying_lookup=fetch, halt_lookup=halt, collected_at=NOW)
+
+    def test_mismatch_writes_zero_rows(self, store, monkeypatch):
+        from finco_radar.venues.collector import PriceEvidenceIdentityMismatch
+        prices = {"AAPLx": PriceEvidence(symbol="TSLAx", price="420.00",
+                                         source_timestamp=None)}
+        fetch, price_fetcher, halt = TestCollector._deps(
+            monkeypatch, store, prices, underlyings={"AAPLx": "AAPL"})
+        with pytest.raises(PriceEvidenceIdentityMismatch):
+            collect_xstocks_prices(
+                store=store, symbols=["AAPLx"], price_fetcher=price_fetcher,
+                underlying_lookup=fetch, halt_lookup=halt, collected_at=NOW)
+        assert store.count() == 0
+
+    def test_mismatch_cannot_create_cross_identity_row(self, store):
+        """The construction boundary itself: AAPLx request + TSLAx evidence
+        can never become (canonical=AAPL, instrument=TSLAx)."""
+        evidence = PriceEvidence(symbol="TSLAx", price="420.00",
+                                 source_timestamp=None)
+        from finco_radar.venues.collector import PriceEvidenceIdentityMismatch
+        with pytest.raises(PriceEvidenceIdentityMismatch):
+            collector_module.xstocks_market_observation(
+                symbol="AAPLx", underlying_symbol="AAPL", evidence=evidence,
+                collected_at=NOW)
+
+    def test_binding_is_case_sensitive(self):
+        from finco_radar.venues.collector import PriceEvidenceIdentityMismatch
+        evidence = PriceEvidence(symbol="aaplx", price="250.10",
+                                 source_timestamp=None)
+        with pytest.raises(PriceEvidenceIdentityMismatch):
+            collector_module.xstocks_market_observation(
+                symbol="AAPLx", underlying_symbol="AAPL", evidence=evidence,
+                collected_at=NOW)
+
+    def test_identical_evidence_dedupe_survives_binding_guard(
+            self, store, monkeypatch):
+        evidence = PriceEvidence(symbol="AAPLx", price="250.10",
+                                 source_timestamp=None)
+        fetch, price_fetcher, halt = TestCollector._deps(
+            monkeypatch, store, {"AAPLx": evidence},
+            underlyings={"AAPLx": "AAPL"})
+        first = collect_xstocks_prices(
+            store=store, symbols=["AAPLx"], price_fetcher=price_fetcher,
+            underlying_lookup=fetch, halt_lookup=halt, collected_at=NOW)
+        second = collect_xstocks_prices(
+            store=store, symbols=["AAPLx"], price_fetcher=price_fetcher,
+            underlying_lookup=fetch, halt_lookup=halt,
+            collected_at=NOW + timedelta(hours=2))
+        assert first.persisted == 1
+        assert second.persisted == 0 and second.duplicates == 1
+        assert store.count() == 1
+
+    def test_correction_a_suite_remains_green(self, tmp_path):
+        """Guard lives only in the collector seam: direct market-observation
+        construction without evidence (identity/observation tests) and the
+        rest of Correction A behavior are untouched."""
+        # spot-check Correction A invariants still hold
+        first = _observation(collected_at="2026-10-02T12:00:00+00:00")
+        second = _observation(collected_at="2026-10-02T18:30:00+00:00")
+        assert first.compute_digest() == second.compute_digest()
+        ts, collected = MarketObservation.clocks(None, NOW)
+        assert ts is None
