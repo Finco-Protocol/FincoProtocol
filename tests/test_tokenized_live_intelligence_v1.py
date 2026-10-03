@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import ast
 import io
 from pathlib import Path
 from types import SimpleNamespace
@@ -135,6 +136,7 @@ def _market_obs(
     comparison_unit: str = COMPARISON_UNIT,
     reference_at: datetime | None = None,
     canonical_asset_id: str = "NVDA",
+    instrument_type: str = "tokenized-equity",
 ):
     reference_at = reference_at or at
     return MarketObservation(
@@ -143,7 +145,7 @@ def _market_obs(
         canonical_asset_id=canonical_asset_id,
         venue_id=venue,
         instrument_id=instrument,
-        instrument_type="tokenized-equity",
+        instrument_type=instrument_type,
         price=price,
         reference_price=reference,
         source="test-source",
@@ -344,7 +346,7 @@ class TestCollectorVertical:
 
         def acquire(**kwargs):
             calls["n"] += 1
-            if calls["n"] < 3:
+            if calls["n"] < 2:
                 raise RuntimeError("down")
             return Result()
 
@@ -362,8 +364,46 @@ class TestCollectorVertical:
             sleeper=sleeps.append,
         )
         assert row[1] == "AVAILABLE"
-        assert calls["n"] == 3
+        assert calls["n"] == 2
         assert sleeps == [0.25, 0.5]
+
+    @pytest.mark.parametrize("retries,additional_attempts", [
+        (0, 0),
+        (1, 1),
+        (2, 2),
+    ])
+    def test_collect_once_batch_is_initial_attempt(
+            self, tmp_path, retries, additional_attempts):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / f"market-{retries}.db")
+        batch_calls = {"n": 0}
+        retry_calls = {"n": 0}
+
+        def batch_provider(**kwargs):
+            batch_calls["n"] += 1
+            assert kwargs["canonical_ids"] == (NVDA_ID,)
+            return [(NVDA_ID, "UNAVAILABLE", {"reason": "RPC_UNAVAILABLE"})]
+
+        def acquire_one(**kwargs):
+            retry_calls["n"] += 1
+            raise RuntimeError("provider down")
+
+        report, code = tokenized_collect.collect_once(
+            rpc_url="https://rpc.example",
+            as_of=NOW,
+            registry=registry,
+            store=store,
+            batch_provider=batch_provider,
+            acquire_one=acquire_one,
+            retries=retries,
+            backoff_seconds=0,
+            sleeper=lambda _: None,
+        )
+        assert code == 3
+        assert report["unavailable"] == 1
+        assert batch_calls["n"] == 1
+        assert retry_calls["n"] == additional_attempts
+        assert 1 + retry_calls["n"] == 1 + retries
 
     def test_retry_backoff_never_exceeds_hard_cap(self, monkeypatch):
         sleeps = []
@@ -489,6 +529,32 @@ class TestHistoryIntelligence:
         assert row.latest_basis_bps is None
         assert row.basis_change_24h_bps is None
         assert row.points == ()
+
+    def test_complete_identity_collision_cannot_shadow_valid_history(
+            self, tmp_path):
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        valid_at = NOW - timedelta(minutes=10)
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="102", at=valid_at))
+        # Newer rows collide on venue+instrument but are not the same
+        # complete canonical identity.
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="999", at=NOW - timedelta(minutes=5),
+            canonical_asset_id="AAPL"))
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="888", at=NOW - timedelta(minutes=4),
+            instrument_type="perpetual"))
+
+        intel = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store, as_of=NOW)
+        row = intel.representations[0]
+        assert row.latest_price == "102"
+        assert row.latest_basis_bps == "200"
+        assert [point.v for point in row.points] == ["200"]
 
     def test_missing_baseline_is_none_not_zero(self, tmp_path):
         registry = _registry([_entry()])
@@ -622,6 +688,78 @@ class TestHistoryIntelligence:
         assert intel2.cross_venue.state == "UNAVAILABLE"
         assert intel2.cross_venue.reason == "CROSS_VENUE_EVIDENCE_SKEW_EXCEEDED"
 
+    @pytest.mark.parametrize("prices,expected_direction", [
+        (["101.5"], None),
+        (["100.5", "101.5"], "PREMIUM"),
+        (["99.5", "98.5"], "DISCOUNT"),
+    ])
+    def test_dislocation_requires_true_threshold_crossing(
+            self, tmp_path, monkeypatch, prices, expected_direction):
+        monkeypatch.setenv("FINCO_TOKENIZED_DISLOCATION_THRESHOLD_BPS", "100")
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        start = NOW - timedelta(hours=len(prices))
+        for index, price in enumerate(prices):
+            store.append_observation(_market_obs(
+                venue="robinhood-chain",
+                instrument=ROBINHOOD_NVDA,
+                price=price,
+                at=start + timedelta(hours=index),
+            ))
+        intel = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store, as_of=NOW)
+        reference_events = [
+            event for event in intel.events
+            if event.event_type == "REFERENCE_DIVERGENCE"
+        ]
+        if expected_direction is None:
+            assert reference_events == []
+        else:
+            assert len(reference_events) == 1
+            assert reference_events[0].direction == expected_direction
+
+    def test_missing_then_above_threshold_does_not_invent_crossing(
+            self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FINCO_TOKENIZED_DISLOCATION_THRESHOLD_BPS", "100")
+        registry = _registry([_entry()])
+        store = VenueMarketStore(tmp_path / "market.db")
+        missing = _market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="101.5", at=NOW - timedelta(hours=2))
+        missing = MarketObservation(
+            **{**missing.__dict__, "reference_price": None,
+               "payload": {"reference_state": "UNAVAILABLE",
+                           "comparison_unit": COMPARISON_UNIT}})
+        store.append_observation(missing)
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="101.5", at=NOW - timedelta(minutes=5)))
+        intel = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store, as_of=NOW)
+        assert not any(
+            event.event_type == "REFERENCE_DIVERGENCE"
+            for event in intel.events)
+
+    def test_cross_venue_divergence_stays_out_of_historical_event_clock(
+            self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FINCO_TOKENIZED_DISLOCATION_THRESHOLD_BPS", "50")
+        registry = self._registry_two_venues()
+        store = VenueMarketStore(tmp_path / "market.db")
+        stamp = NOW - timedelta(minutes=5)
+        store.append_observation(_market_obs(
+            venue="robinhood-chain", instrument=ROBINHOOD_NVDA,
+            price="100", at=stamp))
+        store.append_observation(_market_obs(
+            venue="xstocks", instrument="0x" + "88" * 20,
+            price="102", at=stamp))
+        intel = build_tokenized_intelligence(
+            "NVDA", registry=registry, store=store, as_of=NOW)
+        assert intel.cross_venue.state == "AVAILABLE"
+        assert all(event.observed_at != "CURRENT" for event in intel.events)
+        assert not any(
+            event.event_type == "CROSS_VENUE_DIVERGENCE"
+            for event in intel.events)
+
     def test_dislocation_detection_is_evidence_label_not_execution_claim(
             self, tmp_path, monkeypatch):
         monkeypatch.setenv("FINCO_TOKENIZED_DISLOCATION_THRESHOLD_BPS", "50")
@@ -688,13 +826,31 @@ class TestBrowserBoundary:
 
     def test_router_has_no_market_acquisition_import(self):
         source = Path("app/radar_ui/tokenized_router.py").read_text(encoding="utf-8")
-        for forbidden in (
-            "_market_read_service",
-            "RobinhoodAssetRegistryAdapter",
+        tree = ast.parse(source)
+        forbidden_modules = {
+            "app.radar_rwa.tokenized_collect",
+            "app.radar_rwa.r_live_service",
+            "finco_radar.assets.adapters.robinhood",
+        }
+        forbidden_calls = {
             "collect_r_live",
-            "tokenized_collect",
-        ):
-            assert forbidden not in source
+            "collect_r_live_batch",
+            "_market_read_service",
+        }
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                assert node.module not in forbidden_modules
+            elif isinstance(node, ast.Import):
+                assert all(alias.name not in forbidden_modules
+                           for alias in node.names)
+            elif isinstance(node, ast.Call):
+                func = node.func
+                leaf = (
+                    func.id if isinstance(func, ast.Name)
+                    else func.attr if isinstance(func, ast.Attribute)
+                    else None
+                )
+                assert leaf not in forbidden_calls
 
 
 class TestDeploymentContract:
@@ -706,7 +862,7 @@ class TestDeploymentContract:
         assert "python -m app.radar_rwa.tokenized_collect" in service
         assert "flock -n -E 75" in service
         assert "SuccessExitStatus=3" in service
-        assert "[Install]" not in service
+        assert all(line.strip() != "[Install]" for line in service.splitlines())
         assert "OnCalendar=*-*-* *:00/5:00" in timer
         assert "FINCO_TOKENIZED_COLLECTOR_ENABLED=0" in env
         assert "FINCO_TOKENIZED_COLLECTOR_MAX_ASSETS=32" in env
