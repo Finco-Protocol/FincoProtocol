@@ -43,13 +43,14 @@ TREASURY_SOURCE = "FRED_DGS3MO"
 _TREASURY_TTL_OK_SECONDS = 6 * 3600.0
 _TREASURY_TTL_UNAVAILABLE_SECONDS = 300.0
 _treasury_cache_lock = __import__("threading").Lock()
-_treasury_cache = {"at": None, "value": None}
+_treasury_cache = {"at": None, "value": None, "lkg": None}
 
 
 def reset_treasury_cache() -> None:
     with _treasury_cache_lock:
         _treasury_cache["at"] = None
         _treasury_cache["value"] = None
+        _treasury_cache["lkg"] = None
 
 
 @dataclass(frozen=True)
@@ -91,26 +92,42 @@ def latest_treasury(provider: FredEconomyProvider | None = None) -> TreasuryObse
         return _read_treasury(provider)
     now = time.monotonic()
     with _treasury_cache_lock:
-        cached_at, cached = _treasury_cache["at"], _treasury_cache["value"]
+        cached_at = _treasury_cache["at"]
+        cached = _treasury_cache["value"]
+        lkg = _treasury_cache["lkg"]
     if cached is not None and cached_at is not None:
         ttl = (_TREASURY_TTL_OK_SECONDS if cached.usable
                else _TREASURY_TTL_UNAVAILABLE_SECONDS)
         if (now - cached_at) < ttl:
             return cached
+
+    # Preserve the last usable observation independently from the current
+    # cache state.  A typed UNAVAILABLE refresh is a refresh failure for LKG
+    # purposes just as much as a thrown transport exception.
+    prior_lkg = cached if cached is not None and cached.usable else lkg
     try:
         fresh = _read_treasury(FredEconomyProvider())
     except Exception as exc:
-        with _treasury_cache_lock:
-            cached_at, cached = _treasury_cache["at"], _treasury_cache["value"]
-        if cached is not None and cached.usable:
-            return _serve_cached(cached)
-        return TreasuryObservation(
-            "UNAVAILABLE", TREASURY_SOURCE, None, None, None,
-            f"FRED_TRANSPORT_FAILED:{type(exc).__name__}")
+        if prior_lkg is not None and prior_lkg.usable:
+            result = _serve_cached(prior_lkg)
+        else:
+            result = TreasuryObservation(
+                "UNAVAILABLE", TREASURY_SOURCE, None, None, None,
+                f"FRED_TRANSPORT_FAILED:{type(exc).__name__}")
+    else:
+        if fresh.usable:
+            result = fresh
+            prior_lkg = fresh
+        elif prior_lkg is not None and prior_lkg.usable:
+            result = _serve_cached(prior_lkg)
+        else:
+            result = fresh
+
     with _treasury_cache_lock:
         _treasury_cache["at"] = time.monotonic()
-        _treasury_cache["value"] = fresh
-    return fresh
+        _treasury_cache["value"] = result
+        _treasury_cache["lkg"] = prior_lkg
+    return result
 
 
 def _read_treasury(provider: FredEconomyProvider) -> TreasuryObservation:
