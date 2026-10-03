@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — Tokenized Markets</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/yield.css">
+</head>
+<body class="radar">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+<main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
+<div class="y-header">
+  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
+  <h1>Tokenized Markets</h1>
+  <p class="y-lede">
+    One canonical underlying, every tokenized representation FINCO can
+    resolve by exact identity, with whatever market evidence actually
+    exists today. Same economic underlying does <strong>not</strong> mean
+    same instrument or same market authority.
+  </p>
+  <p class="y-note" data-testid="tm-universe">
+    {{ showing }} of {{ total_underlyings }} canonical underlyings with active representations.
+    Identity: exact registry mapping — no fuzzy ticker matching. Quarantined and
+    conflicting representations are excluded from active composition.
+  </p>
+</div>
+
+{% if not history_available %}
+<p class="y-note" data-testid="tm-history-note">
+  No canonical FINCO market history collected yet for these venues — market columns
+  fill in as the observation collector is activated. Identity coverage below is live
+  from the canonical registry.
+</p>
+{% endif %}
+
+<div class="y-table-wrap" data-testid="tokenized-markets-table">
+  <table class="y-table">
+    <thead><tr>
+      <th>Underlying</th><th>Underlying Ref.</th><th>Representations</th>
+      <th>Venue (best)</th><th>Token Price</th><th>Basis</th>
+      <th>State</th><th>As-of</th>
+    </tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr data-testid="tm-row-{{ row.canonical_asset_id }}">
+        <td>
+          <a class="y-opp-name" href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a>
+          {% if row.underlying_name %}<span class="y-subtext">{{ row.underlying_name }}</span>{% endif %}
+        </td>
+        <td class="y-num">
+          {% if row.reference_price %}${{ row.reference_price }}{% else %}<span class="y-missing">—</span>{% endif %}
+          <span class="y-subtext">{{ row.reference_state }}{% if row.reference_observed_at %} · {{ row.reference_observed_at[:16] }}{% endif %}</span>
+        </td>
+        <td class="y-num">
+          <span data-testid="tm-rep-count-{{ row.canonical_asset_id }}">{{ row.priced_count }}/{{ row.representation_count }}</span>
+          <span class="y-subtext">priced / resolved</span>
+        </td>
+        <td><span class="y-badge">{{ row.best_venue or '—' }}</span></td>
+        <td class="y-num">
+          {% if row.best_price %}${{ row.best_price }}{% else %}<span class="y-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">identity available · market unavailable</span>{% endif %}
+        </td>
+        <td class="y-num">
+          {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
+        </td>
+        <td>
+          <span class="y-badge {% if row.overall_state == 'FRESH' %}y-badge-current{% elif row.overall_state in ('PARTIAL', 'STALE') %}y-badge-stale{% else %}y-badge-unknown{% endif %}"
+                data-testid="tm-state-{{ row.canonical_asset_id }}">{{ row.overall_state }}</span>
+        </td>
+        <td><span class="y-subtext">{{ row.evaluation_time[:16] }} UTC</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8"><p class="y-empty" data-testid="tm-empty">
+        No canonical tokenized-market underlyings resolved. The registry seed may be
+        unavailable — check the deployment's registry artifact.
+      </p></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="y-note">
+  Basis = (token price / underlying reference − 1) × 10,000 bp — a reference dislocation
+  measure only. It is <strong>not</strong> an executable-arbitrage claim: venues differ in
+  market authority, access, settlement and trading hours. “—” means unavailable; missing
+  evidence is never shown as zero.
+</p>
+<p class="bound">Read-only composition over the canonical venue registry and persisted
+observations. No trading, execution, custody or recommendation is offered on this surface.</p>
+</main>
+</body>
+</html>

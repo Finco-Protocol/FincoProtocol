@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FINCO Radar — {{ view.canonical_asset_id }} · Tokenized Markets</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
+  <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/yield.css">
+</head>
+<body class="radar">
+{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% include "radar/domain_nav.html" %}
+<main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
+<div class="y-header">
+  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
+  <h1>{{ view.canonical_asset_id }}
+    {% if view.underlying_name %}<span style="font-weight:400;color:#6b7280;font-size:16px;">· {{ view.underlying_name }}</span>{% endif %}
+  </h1>
+  <p class="y-lede">
+    Canonical underlying → tokenized representations. Each venue row is one exact
+    instrument resolved from the canonical registry (platform, network, contract) —
+    same economic underlying does not mean same instrument or same market authority.
+  </p>
+  <p class="y-note" data-testid="tmd-eval-time">Composed at {{ view.evaluation_time[:19] }} UTC ·
+    registry status: quarantine and conflict rows excluded from active composition.</p>
+</div>
+<div class="nav"><a class="a" href="/radar/tokenized-markets">← All tokenized markets</a></div>
+
+<section class="y-section" data-testid="tmd-reference">
+  <h2>Underlying reference</h2>
+  {% if reference.price %}
+  <div class="y-wallet-line">
+    <span class="y-wallet-badge" data-testid="tmd-reference-price">${{ reference.price }}</span>
+    <span class="y-badge {% if reference.state == 'FRESH' %}y-badge-current{% else %}y-badge-stale{% endif %}">{{ reference.state }}</span>
+    {% if reference.observed_at %}<span class="y-subtext" data-testid="tmd-reference-asof">as-of {{ reference.observed_at[:19] }} UTC</span>{% endif %}
+    {% if reference.source %}<span class="y-subtext">source: {{ reference.source }}</span>{% endif %}
+  </div>
+  {% else %}
+  <p class="y-warn" data-testid="tmd-reference-unavailable">
+    Underlying reference is currently unavailable for this canonical symbol — basis cannot
+    be computed. Reference is not fabricated for symbols outside the bound-reference authority.
+  </p>
+  {% endif %}
+</section>
+
+<section class="y-section" data-testid="tmd-representations">
+  <h2>Representations <span class="y-badge" data-testid="tmd-rep-total">{{ view.representations | length }}</span></h2>
+  <div class="y-table-wrap">
+    <table class="y-table">
+      <thead><tr>
+        <th>Venue / Platform</th><th>Instrument</th><th>Network</th><th>Token Price</th>
+        <th>Basis</th><th>24h Volume</th><th>Funding</th><th>OI</th><th>Freshness</th><th>Source</th>
+      </tr></thead>
+      <tbody>
+      {% for rep in view.representations %}
+        <tr data-testid="tmd-rep-{{ rep.instrument_id }}">
+          <td><strong>{{ rep.venue_id }}</strong><br><span class="y-subtext">{{ rep.representation_type }}</span></td>
+          <td><span class="mono">{{ rep.instrument_id }}</span>
+              {% if rep.contract_address %}<br><span class="y-subtext mono">{{ rep.contract_address }}</span>{% endif %}</td>
+          <td>{{ rep.network or '—' }}</td>
+          <td class="y-num">
+            {% if rep.price %}${{ rep.price }}{% else %}
+              <span class="y-missing" data-testid="tmd-rep-unavailable-{{ loop.index }}">identity available · market unavailable</span>
+            {% endif %}
+          </td>
+          <td class="y-num">
+            {% if rep.basis_bps is not none %}{% set bps = rep.basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp
+            {% elif rep.basis_reason %}<span class="y-subtext" data-testid="tmd-basis-reason-{{ loop.index }}">{{ rep.basis_reason }}</span>
+            {% else %}<span class="y-missing">—</span>{% endif %}
+          </td>
+          <td class="y-num">{{ rep.volume_24h or '—' }}</td>
+          <td class="y-num">{{ rep.funding_rate or '—' }}</td>
+          <td class="y-num">{{ rep.open_interest or '—' }}</td>
+          <td><span class="y-badge {% if rep.freshness_state == 'AVAILABLE' %}y-badge-current{% elif rep.freshness_state == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ rep.freshness_state }}</span>
+              {% if rep.source_timestamp %}<br><span class="y-subtext">src {{ rep.source_timestamp[:19] }}</span>{% endif %}
+              {% if rep.collected_at %}<br><span class="y-subtext">collected {{ rep.collected_at[:19] }}</span>{% endif %}</td>
+          <td><span class="y-subtext">{{ rep.source or '—' }}{% if rep.provenance %}<br><span class="mono">{{ rep.provenance[:44] }}</span>{% endif %}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="y-section-note">An xStocks-style representation with registry identity but no verified
+    market observation reads “identity available · market unavailable” — that is information, not a
+    zero and not fake-live data. “—” always means unavailable.</p>
+</section>
+
+<section class="y-section" data-testid="tmd-history">
+  <h2>History</h2>
+  {% if history_available %}
+  <p class="y-section-note" data-testid="tmd-history-available">
+    Persisted canonical observations exist for this deployment; chart rendering over
+    bounded windows arrives with collector activation (next stream).
+  </p>
+  {% else %}
+  <p class="y-empty" data-testid="tmd-history-none">
+    No canonical FINCO history collected yet. Charts appear only once real observations
+    are persisted — nothing is synthesized or backfilled.
+  </p>
+  {% endif %}
+</section>
+
+<p class="bound">Basis is a reference dislocation measure, not executable profit. Read-only
+composition over exact registry identity and persisted evidence. FINCO never custodies assets
+or auto-invests.</p>
+</main>
+</body>
+</html>
