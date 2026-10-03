@@ -245,12 +245,17 @@ def collect_once(
             )
         except Exception:
             observation = None
-            if state == "AVAILABLE":
-                report["available"] -= 1
-                report["unavailable"] += 1
-                report["provider_failures"] += 1
+        if state == "AVAILABLE" and observation is None:
+            # Provider-level availability is insufficient if canonical
+            # normalization cannot produce usable exact market evidence.
+            report["available"] -= 1
+            report["unavailable"] += 1
+            report["provider_failures"] += 1
         if observation is not None:
             if observation.observation_status.value == "QUARANTINED":
+                # Quarantined evidence is persisted for inspection/history
+                # but never counted as active AVAILABLE pricing.
+                report["available"] -= 1
                 report["quarantined"] += 1
             observations.append(observation)
 
@@ -333,10 +338,11 @@ def main(argv=None, *, env: dict[str, str] | None = None, out=None) -> int:
         return 4
 
     health = None
+    health_unavailable = False
     try:
         health = TokenizedCollectorHealthStore()
     except Exception:
-        health = None
+        health_unavailable = True
     try:
         report, code = collect_once(
             rpc_url=rpc_url,
@@ -357,7 +363,11 @@ def main(argv=None, *, env: dict[str, str] | None = None, out=None) -> int:
             try:
                 health.close()
             except Exception:
-                code = 2
+                health_unavailable = True
+    if health_unavailable:
+        report["health_state"] = "UNAVAILABLE"
+        report["health_reason"] = "TOKENIZED_COLLECTOR_HEALTH_UNAVAILABLE"
+        code = 2
     out.write(json.dumps(report, sort_keys=True) + "\n")
     return code
 
