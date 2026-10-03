@@ -23,6 +23,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
+from app.api.v1 import crypto_router as _crypto_router
 from app.api.v1 import execution as _execution
 from app.api.v1 import model_router as _model_router
 from app.api.v1 import radar as _radar
@@ -45,6 +46,7 @@ from app.radar_runtime.contracts import RuntimeContractError
 
 router = APIRouter()
 router.include_router(_model_router.router)
+router.include_router(_crypto_router.router)
 
 _REGISTRY_UNAVAILABLE_DETAIL = "Asset registry is temporarily unavailable."
 
@@ -422,5 +424,24 @@ def get_api_meta():
             "model.references.opex",
             "model.references.preview",
             "model.references.run",
+            "crypto.tokenized.read",
+            "crypto.tokenized.history.read",
+            "crypto.tokenized.dislocation.read",
+            "crypto.yield.read",
         ],
+        "crypto_api": {
+            # The endpoints exist and are read-only; ACCESS is gated by the
+            # crypto.api capability, which ships INACTIVE (denied) by default.
+            # Presence in the capability list is not an activation claim.
+            "state": "CONFIGURABLE_BUT_INACTIVE",
+            "activation_authority": "crypto.api",
+            "endpoints": [
+                "/api/v1/crypto/tokenized",
+                "/api/v1/crypto/tokenized/{canonical_asset_id}",
+                "/api/v1/crypto/tokenized/{canonical_asset_id}/history",
+                "/api/v1/crypto/tokenized/{canonical_asset_id}/dislocations",
+                "/api/v1/crypto/yield",
+                "/api/v1/crypto/yield/{canonical_id}",
+            ],
+        },
     }
