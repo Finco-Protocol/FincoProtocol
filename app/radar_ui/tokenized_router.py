@@ -174,7 +174,6 @@ async def tokenized_markets_landing(request: Request):
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
             "collector_health": _collector_health(),
-            "integrity": integrity,
             "access": gates.public_view(),
         },
     )
@@ -354,6 +353,7 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             "intelligence": intelligence,
             "basis_series": basis_series[:2],
             "collector_health": _collector_health(),
+            "integrity": integrity,
             "access": gates.public_view(),
         },
     )

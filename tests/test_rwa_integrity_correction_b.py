@@ -17,8 +17,11 @@ def _intel(states):
     return SimpleNamespace(
         representations=[
             SimpleNamespace(
-                venue_id="robinhood-chain",
-                instrument_id=e.contract_address,
+                venue_id=e.network or e.platform,
+                instrument_id=(
+                    e.contract_address
+                    or e.representation_symbol.strip().upper()
+                ),
                 representation_type=e.instrument_type,
                 current_state=state,
                 latest_basis_bps=None,
@@ -195,6 +198,31 @@ def test_browser_detail_renders_integrity_without_new_gate(monkeypatch, tmp_path
     assert 'data-testid="tmd-integrity"' in response.text
     assert "RWA Integrity" in response.text
     assert "trust score" in response.text.lower()
+
+
+def test_browser_detail_integrity_failure_is_fail_soft(monkeypatch, tmp_path):
+    monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(tmp_path / "venues.db"))
+    from app.radar_ui.tokenized_router import router
+    monkeypatch.setattr(
+        "app.auth.resolve_request_session",
+        lambda request: SimpleNamespace(
+            user_id="user-1", username="qa", login_at=None, session_type="user"))
+
+    import app.crypto_terminal.integrity_read as integrity_read
+    monkeypatch.setattr(
+        integrity_read, "detail_data",
+        lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("integrity authority unavailable")))
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/radar/tokenized-markets/NVDA")
+
+    assert response.status_code == 200
+    assert 'data-testid="tmd-reference"' in response.text
+    assert 'data-testid="tmd-representations"' in response.text
+    assert 'data-testid="tmd-integrity-unavailable"' in response.text
 
 
 def test_failure_isolation_reference_reader_does_not_500():
