@@ -226,6 +226,32 @@ def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
         as_of=as_of.isoformat()))
 
 
+@router.get("/tokenized/{canonical_asset_id}/integrity")
+def crypto_tokenized_integrity(request: Request, canonical_asset_id: str):
+    """Canonical RWA Integrity evidence profile (read-only, acquisition-free).
+
+    Access is controlled only by crypto.api.  Browser/public Integrity evidence
+    has no separate token-holder entitlement resource in V1.
+    """
+    as_of = _request_as_of()
+    gate = _require_crypto_api(request)
+    if gate is not None:
+        return gate
+    from app.rwa_integrity.read_model import UnknownCanonicalUnderlying
+    from app.crypto_terminal.integrity_read import build_view, as_data
+    try:
+        view = build_view(canonical_asset_id, now=as_of)
+    except UnknownCanonicalUnderlying:
+        return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
+            "tokenized.integrity", "UNKNOWN_IDENTITY", None,
+            canonical_id=canonical_asset_id,
+            reason="CANONICAL_ASSET_ID_UNKNOWN", as_of=as_of.isoformat()))
+    data = as_data(view)
+    return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
+        "tokenized.integrity", "AVAILABLE", data,
+        canonical_id=view.canonical_asset_id, as_of=as_of.isoformat()))
+
+
 @router.get("/tokenized/{canonical_asset_id}/history")
 def crypto_tokenized_history(request: Request, canonical_asset_id: str):
     """Canonical basis history (tokenized.history — holder resource)."""

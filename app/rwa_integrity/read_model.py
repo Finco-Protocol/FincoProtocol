@@ -86,6 +86,26 @@ def _expected_identity(entry) -> tuple[str, str, str]:
     return venue_id, instrument_id, entry.instrument_type
 
 
+def _reference_evidence_state(reference_evidence: Any) -> str:
+    """Interpret the canonical reference state without reclassifying freshness.
+
+    The persisted Tokenized reference reader is the freshness authority.  This
+    layer only maps its typed state into the Integrity evidence vocabulary.
+    A historical non-null price never upgrades STALE/UNAVAILABLE evidence.
+    """
+    evidence = reference_evidence
+    if isinstance(evidence, (list, tuple)):
+        evidence = evidence[0] if evidence else None
+    if not isinstance(evidence, dict) or evidence.get("price") is None:
+        return "UNAVAILABLE"
+    state = str(evidence.get("state") or "").strip().upper()
+    if state in {"FRESH", "AVAILABLE"}:
+        return "AVAILABLE"
+    if state == "STALE":
+        return "STALE"
+    return "UNAVAILABLE"
+
+
 def _identity_flags_for(registry_status: str, market_state: str,
                         basis_state: str,
                         attestation: AttestationEvaluation) -> list[str]:
@@ -154,10 +174,7 @@ def build_representation_integrity(
         except Exception:
             pass
 
-    if reference_evidence is not None and reference_evidence.get("price") is not None:
-        reference_state = "AVAILABLE"
-    else:
-        reference_state = "UNAVAILABLE"
+    reference_state = _reference_evidence_state(reference_evidence)
 
     if attestations is not None:
         records = [
@@ -283,25 +300,28 @@ def build_underlying_integrity(
     if len(active_profiles) == 1:
         dependency_flags.append(
             IdentityFlag.SINGLE_REPRESENTATION_DEPENDENCY.value)
-    if len(venues) <= 1:
+    # Dependency flags are facts about the ACTIVE universe.  Zero ACTIVE
+    # representations cannot truthfully imply a single venue/chain/source.
+    if active_profiles and len(venues) == 1:
         dependency_flags.append(IdentityFlag.SINGLE_VENUE_DEPENDENCY.value)
-    if len(chains) <= 1:
+    if active_profiles and len(chains) == 1:
         dependency_flags.append(IdentityFlag.SINGLE_CHAIN_DEPENDENCY.value)
-    if len(sources) <= 1:
+    if active_profiles and len(sources) == 1:
         dependency_flags.append(IdentityFlag.SINGLE_SOURCE_DEPENDENCY.value)
 
-    priced_active = [p for p in active_profiles
-                     if p.market_evidence_state == "AVAILABLE"]
-    if active_profiles and len(priced_active) == len(active_profiles):
+    market_states = [p.market_evidence_state for p in active_profiles]
+    available_count = sum(1 for state in market_states if state == "AVAILABLE")
+    stale_count = sum(1 for state in market_states if state == "STALE")
+    if active_profiles and available_count == len(active_profiles):
         market_coverage = "AVAILABLE"
-    elif priced_active:
+    elif available_count:
         market_coverage = "PARTIAL"
+    elif stale_count:
+        market_coverage = "STALE"
     else:
         market_coverage = "UNAVAILABLE"
 
-    reference_state = ("AVAILABLE" if reference_evidence is not None
-                       and reference_evidence.get("price") is not None
-                       else "UNAVAILABLE")
+    reference_state = _reference_evidence_state(reference_evidence)
 
     attestation_state = _aggregate_attestation_state(profiles)
 

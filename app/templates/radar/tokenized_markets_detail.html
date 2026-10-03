@@ -68,6 +68,43 @@
   {% endif %}
 </section>
 
+<section class="y-section" data-testid="tmd-integrity">
+  <h2>RWA Integrity</h2>
+  {% if integrity %}
+  <div class="y-summary">
+    <div class="card"><span class="k">Identity state</span><div class="v" data-testid="tmd-integrity-identity">{{ integrity.identity_state }}</div><div class="m">{{ integrity.active_representation_count }} active / {{ integrity.representation_count }} total</div></div>
+    <div class="card"><span class="k">Market evidence</span><div class="v" data-testid="tmd-integrity-market">{{ integrity.market_evidence_coverage }}</div><div class="m">{{ integrity.venue_count }} venue(s) · {{ integrity.chain_count }} chain(s)</div></div>
+    <div class="card"><span class="k">Reference evidence</span><div class="v" data-testid="tmd-integrity-reference">{{ integrity.reference_evidence_state }}</div><div class="m">Canonical persisted reference authority</div></div>
+    <div class="card"><span class="k">Attestation evidence</span><div class="v" data-testid="tmd-integrity-attestation">{{ integrity.attestation_evidence_state }}</div><div class="m">No external PoR/backing claim without approved evidence</div></div>
+  </div>
+  <p class="y-section-note">
+    Representation dependency facts: {% if integrity.dependency_flags %}{{ integrity.dependency_flags | join(' · ') }}{% else %}none observed{% endif %}.
+    {% if integrity.integrity_flags %} Integrity flags: {{ integrity.integrity_flags | join(' · ') }}.{% endif %}
+    These are evidence states and structural facts, not a trust score or investment recommendation.
+  </p>
+  <div class="y-table-wrap">
+    <table class="y-table" data-testid="tmd-integrity-representations">
+      <thead><tr><th>Representation</th><th>Registry</th><th>Market</th><th>Reference</th><th>Basis</th><th>Attestation</th><th>Flags</th></tr></thead>
+      <tbody>
+      {% for rep in integrity.representations %}
+        <tr>
+          <td><strong>{{ rep.platform }}</strong><br><span class="y-subtext">{{ rep.network or '—' }} · {{ rep.instrument_type }}</span>{% if rep.contract_address %}<br><span class="y-subtext mono">{{ rep.contract_address }}</span>{% endif %}</td>
+          <td>{{ rep.registry_status }}</td>
+          <td>{{ rep.market_evidence_state }}{% if rep.market_source_timestamp %}<br><span class="y-subtext">{{ rep.market_source_timestamp[:19] }} UTC</span>{% endif %}</td>
+          <td>{{ rep.reference_evidence_state }}</td>
+          <td>{{ rep.basis_evidence_state }}{% if rep.basis_bps is not none %}<br><span class="y-subtext">{{ rep.basis_bps }} bp</span>{% endif %}</td>
+          <td>{{ rep.attestation_state }}{% if rep.attestation_reason %}<br><span class="y-subtext">{{ rep.attestation_reason }}</span>{% endif %}</td>
+          <td>{% if rep.flags %}<span class="y-subtext">{{ rep.flags | join(' · ') }}</span>{% else %}—{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="y-empty" data-testid="tmd-integrity-unavailable">Integrity evidence is unavailable for this request. The Tokenized Markets detail remains available.</p>
+  {% endif %}
+</section>
+
 <section class="y-section" data-testid="tmd-representations">
   <h2>Representations <span class="y-badge" data-testid="tmd-rep-total">{{ view.representations | length }}</span></h2>
   <div class="y-table-wrap">

@@ -174,6 +174,7 @@ async def tokenized_markets_landing(request: Request):
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
             "collector_health": _collector_health(),
+            "integrity": integrity,
             "access": gates.public_view(),
         },
     )
@@ -327,6 +328,18 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
                     "instrument_id": item.instrument_id,
                     "points": points,
                 })
+
+    # RWA Integrity is factual/public product evidence.  It reuses the exact
+    # registry/store/reference context above and has no additional entitlement
+    # or acquisition path.  Any evidence-dimension failure degrades fail-soft.
+    integrity = None
+    try:
+        from app.crypto_terminal.integrity_read import detail_data
+        integrity = detail_data(
+            canonical_asset_id, now=now, registry=registry, store=store,
+            reference_evidence_reader=reference_reader)
+    except Exception:
+        integrity = None
 
     return _templates.TemplateResponse(
         request=request,
