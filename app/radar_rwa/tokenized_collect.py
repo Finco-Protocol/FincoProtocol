@@ -103,12 +103,13 @@ def _retry_one(
     sleeper: Callable[[float], None] = time.sleep,
 ) -> tuple[str, str, dict]:
     last = (canonical_id, "UNAVAILABLE", {"reason": "RADAR_AUTHORITY_UNAVAILABLE"})
-    for attempt in range(retries + 1):
-        if attempt:
-            sleeper(min(
-                backoff_seconds * (2 ** (attempt - 1)),
-                _MAX_BACKOFF_SECONDS,
-            ))
+    # The batch acquisition is attempt #1. This helper performs ONLY the
+    # configured number of post-batch retries: 0, 1, or 2 additional reads.
+    for retry_index in range(retries):
+        sleeper(min(
+            backoff_seconds * (2 ** retry_index),
+            _MAX_BACKOFF_SECONDS,
+        ))
         try:
             result = acquire_one(
                 canonical_asset_id=canonical_id,
@@ -226,7 +227,7 @@ def collect_once(
         canonical_id for canonical_id in targets
         if canonical_id not in rows or rows[canonical_id][1] == "UNAVAILABLE"
     ]
-    if retry_ids:
+    if retry_ids and retries > 0:
         with ThreadPoolExecutor(max_workers=min(workers, len(retry_ids))) as pool:
             futures = {
                 pool.submit(
