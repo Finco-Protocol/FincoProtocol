@@ -145,13 +145,10 @@ def collect_once(
         raise ValueError("TOKENIZED_COLLECTION_CLOCK_MUST_BE_AWARE")
     now = now.astimezone(timezone.utc)
 
-    registry = registry or VenueRegistry.load()
-    store = store or VenueMarketStore()
-    targets = _target_ids(registry, max_assets=max_assets)
     report = {
         "schema": "FINCO_TOKENIZED_LIVE_INTELLIGENCE_V1",
         "state": "UNAVAILABLE",
-        "attempted": len(targets),
+        "attempted": 0,
         "available": 0,
         "stale": 0,
         "unavailable": 0,
@@ -168,6 +165,30 @@ def collect_once(
             health.record_attempt(now=now)
         except Exception:
             health_error = True
+
+    try:
+        registry = registry or VenueRegistry.load()
+        store = store or VenueMarketStore()
+        targets = _target_ids(registry, max_assets=max_assets)
+    except TokenizedCollectorConfigError as exc:
+        if health is not None:
+            try:
+                health.record_failure(str(exc), now=now)
+            except Exception:
+                health_error = True
+        raise
+    except Exception:
+        report["reason"] = "TOKENIZED_COLLECTOR_INITIALIZATION_UNAVAILABLE"
+        if health is not None:
+            try:
+                health.record_failure(report["reason"], now=now)
+            except Exception:
+                health_error = True
+        if health_error:
+            report["health_state"] = "UNAVAILABLE"
+        return report, 2
+
+    report["attempted"] = len(targets)
 
     if not targets:
         report["reason"] = "TOKENIZED_COLLECTOR_EMPTY_EXACT_UNIVERSE"
@@ -354,6 +375,12 @@ def main(argv=None, *, env: dict[str, str] | None = None, out=None) -> int:
             retries=retries,
             backoff_seconds=backoff,
         )
+    except TokenizedCollectorConfigError as exc:
+        report, code = ({
+            "schema": "FINCO_TOKENIZED_LIVE_INTELLIGENCE_V1",
+            "state": "CONFIG_ERROR",
+            "reason": str(exc),
+        }, 4)
     except Exception:
         report, code = ({
             "schema": "FINCO_TOKENIZED_LIVE_INTELLIGENCE_V1",
