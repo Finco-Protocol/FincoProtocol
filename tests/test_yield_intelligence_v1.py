@@ -503,7 +503,7 @@ class TestWebSurface:
         assert i["freshness"]["state"] == "CURRENT"
         h24 = i["horizons"][0]
         assert h24["apy_delta"]["delta_bps"] == "25" and h24["coverage"] == "AVAILABLE"
-        assert len(i["horizons"]) == 2
+        assert [h["horizon"] for h in i["horizons"]] == ["24h", "7d", "30d"]
 
     def test_unknown_uid_is_404_and_tickers_never_resolve(self, web):
         client, _, hist = web
