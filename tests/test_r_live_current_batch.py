@@ -147,6 +147,39 @@ def test_C_unknown_canonical_id_not_yielded():
     assert "4663:0x0000000000000000000000000000000000000000" not in {row[0] for row in results}
 
 
+def test_C2_explicit_exact_subset_only_acquires_requested_assets():
+    subset = tuple(_APPROVED_IDS[:2])
+    adapter = _mock_adapter()
+
+    def compose(**kwargs):
+        return _fake_r_live_result(kwargs["key"].canonical_id)
+
+    with patch("app.radar_rwa.r_live_service.RobinhoodAssetRegistryAdapter",
+               return_value=adapter), \
+         patch("app.radar_rwa.r_live_service.compose_r_live",
+               side_effect=compose):
+        results = list(collect_r_live_batch(
+            rpc_url="https://rpc.example.com/",
+            canonical_ids=subset,
+        ))
+    assert {row[0] for row in results} == set(subset)
+    assert len(results) == len(subset)
+
+
+def test_C3_explicit_subset_rejects_duplicate_or_unapproved_identity():
+    approved = _APPROVED_IDS[0]
+    with pytest.raises(ValueError, match="R_LIVE_BATCH_DUPLICATE_EXACT_ASSETKEY"):
+        list(collect_r_live_batch(
+            rpc_url="https://rpc.example.com/",
+            canonical_ids=(approved, approved),
+        ))
+    with pytest.raises(ValueError, match="R_LIVE_BATCH_EXACT_ASSETKEY_NOT_APPROVED"):
+        list(collect_r_live_batch(
+            rpc_url="https://rpc.example.com/",
+            canonical_ids=("4663:0x" + "11" * 20,),
+        ))
+
+
 # D. Registry failure never reuses hidden previous state.
 def test_D_registry_failure_does_not_reuse_previous_state():
     adapter = _mock_adapter()

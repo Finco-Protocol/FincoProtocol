@@ -4,11 +4,13 @@ the canonical venue registry and persisted market observations.
 UNDERLYING → REPRESENTATIONS mental model.  Exact identity authority
 (``finco_radar.venues.VenueRegistry``); existing bound-reference authority
 for the underlying; persisted ``VenueMarketStore`` history where collected.
-No new provider, no runtime collector wiring, no execution/trading.
+No UI-triggered acquisition and no execution/trading. Live observations are
+written only by the separate bounded Tokenized collector runtime.
 """
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -36,43 +38,89 @@ def _store():
     path = os.getenv("FINCO_VENUE_DB_PATH", default_db_path())
     if not os.path.exists(path):
         return None
-    return VenueMarketStore(path)
+    try:
+        return VenueMarketStore(path)
+    except Exception:
+        # Market-history storage is observational infrastructure. A broken
+        # collector/store must degrade this read-only surface to unavailable,
+        # never take down the web runtime or trigger replacement acquisition.
+        return None
 
 
-def _reference_reader(reference_map: dict[str, dict] | None = None):
-    """Existing cached bound-reference authority (reused, not reimplemented).
 
-    With a ``reference_map`` the reader serves rows from ONE batched board
-    read (Correction A: no per-symbol singleton acquisition); symbols
-    outside the map stay honestly REFERENCE_UNAVAILABLE.
+def _collector_health():
+    """Read operational collector health without creating/writing state."""
+    try:
+        from finco_radar.venues.health import read_tokenized_collector_health
+        return read_tokenized_collector_health().public_dict()
+    except Exception:
+        return {
+            "health_state": "UNHEALTHY",
+            "liveness": "UNKNOWN",
+            "last_attempt_at": None,
+            "last_success_at": None,
+            "outcome": "UNAVAILABLE",
+            "failure_reason": "COLLECTOR_HEALTH_UNAVAILABLE",
+        }
+
+
+def _intelligence(canonical_asset_id: str, registry, store, *,
+                  include_points: bool, as_of: datetime | None = None):
+    if store is None:
+        return None
+    try:
+        from finco_radar.venues.intelligence import build_tokenized_intelligence
+        return build_tokenized_intelligence(
+            canonical_asset_id, registry=registry, store=store,
+            include_points=include_points, as_of=as_of)
+    except Exception:
+        return None
+
+def _persisted_reference_reader(store, *, as_of: datetime):
+    """Read underlying reference evidence only from canonical persisted history.
+
+    This is deliberately network-free. The collector owns provider acquisition;
+    browser requests can only consume what was already persisted.
     """
-    from app.radar_ui.router import _market_read_service
-    from app.radar_ui.router import _get_featured_symbols
-    service = _market_read_service
-    featured = set(_get_featured_symbols())
-    reference_map = reference_map if reference_map is not None else {}
+    from finco_radar.venues.intelligence import market_max_age_seconds
 
     def read(symbol: str) -> list[dict]:
-        row = reference_map.get(symbol)
-        if row is not None:
-            return [row]
-        if symbol in featured:
-            # Single-symbol fallback (detail pages): one cached service read.
-            return service.read(featured_symbols=(symbol,))
-        # Non-featured underlyings have no bound-reference authority row in
-        # the current product — reference stays honestly unavailable.
-        return []
+        if store is None:
+            return []
+        observation = store.get_latest_reference_for_underlying(symbol)
+        if observation is None or observation.reference_price is None:
+            return []
+        payload = observation.payload if isinstance(observation.payload, dict) else {}
+        source_stamp = payload.get("reference_observed_at")
+        source_state = str(payload.get("reference_state") or "UNAVAILABLE")
+        source = payload.get("reference_source")
+        state = "UNAVAILABLE"
+        if source_state in ("AVAILABLE", "FRESH") and source_stamp:
+            try:
+                stamp = datetime.fromisoformat(str(source_stamp))
+                if stamp.tzinfo is not None and stamp.utcoffset() is not None:
+                    age = (as_of.astimezone(timezone.utc)
+                           - stamp.astimezone(timezone.utc)).total_seconds()
+                    if -60 <= age <= market_max_age_seconds():
+                        state = "FRESH"
+                    elif age > market_max_age_seconds():
+                        state = "STALE"
+            except (TypeError, ValueError):
+                state = "UNAVAILABLE"
+        elif source_state == "STALE":
+            state = "STALE"
+        return [{
+            "uid": None,
+            "symbol": symbol,
+            "state": state,
+            "price": observation.reference_price,
+            "bid": None,
+            "ask": None,
+            "observed_at": source_stamp,
+            "source": source,
+        }]
+
     return read
-
-
-def _batched_reference_map(symbols: tuple[str, ...]) -> dict[str, dict]:
-    """ONE MarketReadService.read for all needed featured symbols, then an
-    exact symbol → row map (Correction A: no N singleton reads)."""
-    from app.radar_ui.router import _market_read_service
-    if not symbols:
-        return {}
-    rows = _market_read_service.read(featured_symbols=tuple(symbols))
-    return {row.get("symbol"): row for row in rows if row.get("symbol")}
 
 
 @router.get("/radar/tokenized-markets", response_class=HTMLResponse)
@@ -86,7 +134,8 @@ async def tokenized_markets_landing(request: Request):
     user = resolve_request_session(request)
     registry = _registry()
     store = _store()
-    reference_reader = _reference_reader()
+    now = datetime.now(timezone.utc)
+    reference_reader = _persisted_reference_reader(store, as_of=now)
 
     universe = list_supported_underlyings(registry)
     featured_first = _order_featured_first(universe)
@@ -94,24 +143,21 @@ async def tokenized_markets_landing(request: Request):
                           str(_DEFAULT_LANDING_LIMIT)))
     page_rows = featured_first[:limit]
 
-    # Correction A: ONE batched reference read for every needed featured
-    # symbol on this page (Fast & Fresh friendly — never N singleton reads).
-    from app.radar_ui.router import _get_featured_symbols
-    needed = tuple(
-        row["canonical_asset_id"] for row in page_rows
-        if row["canonical_asset_id"] in set(_get_featured_symbols()))
-    reference_map = _batched_reference_map(needed)
-    reference_reader = _reference_reader(reference_map)
+    # Browser path is network-free: all market/reference evidence comes from
+    # VenueMarketStore populated by the separate collector.
 
     composed = []
     for row in page_rows:
         try:
             view = compose_underlying(
                 row["canonical_asset_id"], registry=registry,
-                reference_reader=reference_reader, store=store)
+                reference_reader=reference_reader, store=store, now=now)
         except Exception:
             continue  # a row that cannot compose never breaks the page
-        composed.append(_landing_row(view))
+        intel = _intelligence(
+            row["canonical_asset_id"], registry, store,
+            include_points=False, as_of=now)
+        composed.append(_landing_row(view, intel))
 
     return _templates.TemplateResponse(
         request=request,
@@ -122,6 +168,7 @@ async def tokenized_markets_landing(request: Request):
             "total_underlyings": len(universe),
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
+            "collector_health": _collector_health(),
         },
     )
 
@@ -135,7 +182,7 @@ def _order_featured_first(universe: list[dict]) -> list[dict]:
     return featured + rest
 
 
-def _landing_row(view) -> dict:
+def _landing_row(view, intelligence=None) -> dict:
     best = None
     for representation in view.representations:
         # Correction B: quarantined evidence never qualifies for
@@ -148,6 +195,17 @@ def _landing_row(view) -> dict:
                 < abs(float(best.basis_bps))):
             best = representation
     reference = view.reference
+    history_row = None
+    cross_venue = None
+    if intelligence is not None:
+        cross_venue = intelligence.cross_venue
+        if best is not None:
+            history_row = next(
+                (item for item in intelligence.representations
+                 if item.venue_id == best.venue_id
+                 and item.instrument_id == best.instrument_id),
+                None,
+            )
     return {
         "canonical_asset_id": view.canonical_asset_id,
         "underlying_name": view.underlying_name,
@@ -159,6 +217,14 @@ def _landing_row(view) -> dict:
         "best_price": best.price if best else None,
         "best_basis_bps": best.basis_bps if best else None,
         "best_venue": best.venue_id if best else None,
+        "basis_change_24h_bps": (
+            history_row.basis_change_24h_bps if history_row else None),
+        "basis_change_7d_bps": (
+            history_row.basis_change_7d_bps if history_row else None),
+        "cross_venue_state": (
+            cross_venue.state if cross_venue is not None else "UNAVAILABLE"),
+        "cross_venue_divergence_bps": (
+            cross_venue.divergence_bps if cross_venue is not None else None),
         # Correction A #14: neutral selection semantics — the shown
         # representation is the one with the smallest absolute basis when a
         # basis exists ("Closest basis venue"); otherwise a neutral
@@ -200,6 +266,9 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
                 "history_available": False,
                 "unknown": True,
                 "canonical_asset_id": canonical_asset_id,
+                "intelligence": None,
+                "basis_series": [],
+                "collector_health": _collector_health(),
             },
             status_code=HTTP_404_NOT_FOUND,
         )
@@ -207,11 +276,12 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
     from app.radar_ui.tokenized_composition import UnknownCanonicalUnderlying
 
     store = _store()
-    reference_reader = _reference_reader()
+    now = datetime.now(timezone.utc)
+    reference_reader = _persisted_reference_reader(store, as_of=now)
     try:
         view = compose_underlying(
             canonical_asset_id, registry=registry,
-            reference_reader=reference_reader, store=store)
+            reference_reader=reference_reader, store=store, now=now)
     except UnknownCanonicalUnderlying:
         from starlette.status import HTTP_404_NOT_FOUND
         return _templates.TemplateResponse(
@@ -224,9 +294,26 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
                 "history_available": False,
                 "unknown": True,
                 "canonical_asset_id": canonical_asset_id,
+                "intelligence": None,
+                "basis_series": [],
+                "collector_health": _collector_health(),
             },
             status_code=HTTP_404_NOT_FOUND,
         )
+
+    intelligence = _intelligence(
+        canonical_asset_id, registry, store,
+        include_points=True, as_of=now)
+    basis_series = []
+    if intelligence is not None:
+        for item in intelligence.representations:
+            points = [{"t": point.t, "v": point.v} for point in item.points]
+            if any(point["v"] is not None for point in points):
+                basis_series.append({
+                    "venue_id": item.venue_id,
+                    "instrument_id": item.instrument_id,
+                    "points": points,
+                })
 
     return _templates.TemplateResponse(
         request=request,
@@ -238,5 +325,8 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             # Correction A: per-underlying history truth from the view —
             # never the global store count.
             "history_available": view.history_available,
+            "intelligence": intelligence,
+            "basis_series": basis_series[:2],
+            "collector_health": _collector_health(),
         },
     )

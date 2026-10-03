@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
   <link rel="stylesheet" href="/static/css/yield.css">
+  <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
 {% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
-{% include "radar/domain_nav.html" %}
+{% with radar_domain="tokenized" %}{% include "radar/domain_nav.html" %}{% endwith %}
 <main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
 {% if unknown %}
 <div class="y-header">
@@ -35,6 +36,19 @@
     registry status: quarantine and conflict rows excluded from active composition.</p>
 </div>
 <div class="nav"><a class="a" href="/radar/tokenized-markets">← All tokenized markets</a></div>
+
+<div class="y-summary" data-testid="tmd-collector-health">
+  <div class="card">
+    <span class="k">Collector</span>
+    <div class="v">{{ collector_health.health_state }}</div>
+    <div class="m">{{ collector_health.liveness }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:19] }} UTC{% endif %}</div>
+  </div>
+  <div class="card">
+    <span class="k">Last successful cycle</span>
+    <div class="v">{% if collector_health.last_success_at %}{{ collector_health.last_success_at[:19] }} UTC{% else %}—{% endif %}</div>
+    <div class="m">Operational health only; it never upgrades market evidence.</div>
+  </div>
+</div>
 
 <section class="y-section" data-testid="tmd-reference">
   <h2>Underlying reference</h2>
@@ -81,7 +95,12 @@
           <td class="y-num">{{ rep.volume_24h or '—' }}</td>
           <td class="y-num">{{ rep.funding_rate or '—' }}</td>
           <td class="y-num">{{ rep.open_interest or '—' }}</td>
-          <td><span class="y-badge {% if rep.freshness_state == 'AVAILABLE' %}y-badge-current{% elif rep.freshness_state == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ rep.freshness_state }}</span>
+          <td>
+              {% if rep.observation_status == 'QUARANTINED' %}
+                <span class="y-badge y-badge-stale" data-testid="tmd-quarantined-{{ loop.index }}">QUARANTINED</span>
+              {% else %}
+                <span class="y-badge {% if rep.freshness_state == 'AVAILABLE' %}y-badge-current{% elif rep.freshness_state == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ rep.freshness_state }}</span>
+              {% endif %}
               {% if rep.source_timestamp %}<br><span class="y-subtext">src {{ rep.source_timestamp[:19] }}</span>{% endif %}
               {% if rep.collected_at %}<br><span class="y-subtext">collected {{ rep.collected_at[:19] }}</span>{% endif %}</td>
           <td><span class="y-subtext">{{ rep.source or '—' }}{% if rep.provenance %}<br><span class="mono">{{ rep.provenance[:44] }}</span>{% endif %}</span></td>
@@ -96,23 +115,113 @@
 </section>
 
 <section class="y-section" data-testid="tmd-history">
-  <h2>History</h2>
-  {% if history_available %}
-  <p class="y-section-note" data-testid="tmd-history-available">
-    Persisted canonical observations exist for this deployment; chart rendering over
-    bounded windows arrives with collector activation (next stream).
-  </p>
+  <h2>Basis history & market intelligence</h2>
+  {% if intelligence and history_available %}
+    <div class="y-table-wrap">
+      <table class="y-table" data-testid="tmd-history-table">
+        <thead><tr>
+          <th>Venue</th><th>Market state</th><th>Latest observed basis</th>
+          <th>24h basis Δ</th><th>7d basis Δ</th>
+        </tr></thead>
+        <tbody>
+        {% for item in intelligence.representations %}
+          <tr>
+            <td><strong>{{ item.venue_id }}</strong><br><span class="y-subtext mono">{{ item.instrument_id }}</span></td>
+            <td><span class="y-badge {% if item.current_state == 'AVAILABLE' %}y-badge-current{% elif item.current_state in ('STALE','QUARANTINED') %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ item.current_state }}</span></td>
+            <td class="y-num">
+              {% if item.latest_basis_bps is not none %}{{ item.latest_basis_bps }} bp
+              {% else %}<span class="y-missing">{{ item.latest_basis_reason or '—' }}</span>{% endif %}
+            </td>
+            <td class="y-num">{% if item.basis_change_24h_bps is not none %}{{ item.basis_change_24h_bps }} bp{% else %}<span class="y-missing">—</span>{% endif %}</td>
+            <td class="y-num">{% if item.basis_change_7d_bps is not none %}{{ item.basis_change_7d_bps }} bp{% else %}<span class="y-missing">—</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:14px" data-testid="tmd-basis-chart-card">
+      <h3>Premium / discount history</h3>
+      <p class="y-section-note">
+        Canonical source-timestamped observations only. Positive basis is a premium
+        to the persisted underlying reference; negative basis is a discount.
+        Missing evidence remains a gap — FINCO does not interpolate or backfill it.
+      </p>
+      {% if basis_series %}
+        <div data-chart-type="line"
+             data-zero-line="true"
+             data-points="{{ basis_series[0].points | tojson | forceescape }}"
+             {% if basis_series|length > 1 %}data-series-2="{{ basis_series[1].points | tojson | forceescape }}"{% endif %}
+             data-empty-text="Insufficient canonical basis history — no chart rendered."
+             aria-label="Tokenized-market basis history in basis points"
+             data-testid="tmd-basis-history-chart"></div>
+        <p class="y-subtext">
+          {{ basis_series[0].venue_id }}{% if basis_series|length > 1 %} · second series: {{ basis_series[1].venue_id }}{% endif %}
+          · basis points
+        </p>
+      {% else %}
+        <p class="y-empty" data-testid="tmd-history-insufficient">
+          Persisted observations exist, but there is not yet enough source-compatible
+          reference evidence to render basis history.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:14px" data-testid="tmd-cross-venue">
+      <h3>Cross-venue divergence</h3>
+      {% if intelligence.cross_venue.state == 'AVAILABLE' %}
+        <p>
+          <strong>{{ intelligence.cross_venue.divergence_bps }} bp</strong>
+          between {{ intelligence.cross_venue.low_venue }} ({{ intelligence.cross_venue.low_price }})
+          and {{ intelligence.cross_venue.high_venue }} ({{ intelligence.cross_venue.high_price }}).
+        </p>
+        <p class="y-subtext">Comparison unit: {{ intelligence.cross_venue.comparison_unit }} · exact comparable source evidence within the canonical skew policy.</p>
+      {% else %}
+        <p class="y-empty">{{ intelligence.cross_venue.reason or 'COMPARABLE_VENUE_EVIDENCE_UNAVAILABLE' }}</p>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:14px" data-testid="tmd-dislocation-events">
+      <h3>Dislocation events</h3>
+      {% if intelligence.events %}
+        <div class="y-table-wrap">
+          <table class="y-table">
+            <thead><tr><th>Observed</th><th>Type</th><th>Venue</th><th>Direction</th><th>Value</th><th>Threshold</th></tr></thead>
+            <tbody>
+            {% for event in intelligence.events %}
+              <tr>
+                <td>{{ event.observed_at[:19] if event.observed_at != 'CURRENT' else 'CURRENT' }}</td>
+                <td>{{ event.event_type }}</td>
+                <td>{{ event.venue_id or 'cross-venue' }}</td>
+                <td>{{ event.direction }}</td>
+                <td class="y-num">{{ event.value_bps }} bp</td>
+                <td class="y-num">{{ event.threshold_bps }} bp</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="y-empty">No threshold-crossing dislocation events in canonical history.</p>
+      {% endif %}
+      <p class="y-section-note">
+        Events describe observed market/reference divergence. They are not trading
+        signals and do not assert executable or risk-free arbitrage.
+      </p>
+    </div>
   {% else %}
-  <p class="y-empty" data-testid="tmd-history-none">
-    No canonical FINCO history collected yet. Charts appear only once real observations
-    are persisted — nothing is synthesized or backfilled.
-  </p>
+    <p class="y-empty" data-testid="tmd-history-none">
+      No canonical FINCO history collected yet. Charts and 24h/7d comparisons appear
+      only after the separate collector persists real observations — nothing is
+      synthesized or backfilled by this page.
+    </p>
   {% endif %}
 </section>
 
-<p class="bound">Basis is a reference dislocation measure, not executable profit. Read-only
-composition over exact registry identity and persisted evidence. FINCO never custodies assets
-or auto-invests.</p>
+<p class="bound">Basis, cross-venue divergence and dislocation events are market-evidence
+analytics, not guaranteed executable arbitrage or profit. This page is read-only over exact
+registry identity and persisted canonical evidence; it never triggers market acquisition.
+FINCO never custodies assets or auto-invests.</p>
 {% endif %}
 </main>
 </body>
