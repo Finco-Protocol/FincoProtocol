@@ -29,8 +29,20 @@ YIELD_ADVANCED_COMPARE = "yield.advanced_compare"
 YIELD_ALERTS = "yield.alerts"
 YIELD_EXECUTION_PREFLIGHT = "yield.execution_preflight"
 
-RESOURCE_KEYS = (YIELD_BASIC, YIELD_HISTORY, YIELD_ADVANCED_COMPARE, YIELD_ALERTS,
-                 YIELD_EXECUTION_PREFLIGHT)
+YIELD_RESOURCE_KEYS = (YIELD_BASIC, YIELD_HISTORY, YIELD_ADVANCED_COMPARE, YIELD_ALERTS,
+                       YIELD_EXECUTION_PREFLIGHT)
+
+# Tokenized Markets and the crypto read-only API reuse the SAME policy model (no second evaluator).
+# ``tokenized.basic`` (identity + current market state) stays PUBLIC; the premium surfaces are
+# FINCO_HOLDER, DISABLED and unthresholded by default exactly like the holder Yield resources.
+TOKENIZED_BASIC = "tokenized.basic"
+TOKENIZED_HISTORY = "tokenized.history"
+TOKENIZED_DISLOCATION = "tokenized.dislocation"
+CRYPTO_API = "crypto.api"
+
+TOKENIZED_RESOURCE_KEYS = (TOKENIZED_BASIC, TOKENIZED_HISTORY, TOKENIZED_DISLOCATION)
+
+RESOURCE_KEYS = YIELD_RESOURCE_KEYS + TOKENIZED_RESOURCE_KEYS + (CRYPTO_API,)
 
 
 class AccessMode(str, Enum):
@@ -60,7 +72,8 @@ class EntitlementPolicy:
 
 
 def default_policies() -> dict[str, EntitlementPolicy]:
-    """Production defaults: yield.basic is public; every holder resource is DISABLED and unthresholded."""
+    """Production defaults: yield.basic and tokenized.basic are public; every holder resource is DISABLED
+    and unthresholded."""
     def holder(key: str) -> EntitlementPolicy:
         return EntitlementPolicy(key, AccessMode.FINCO_HOLDER, None, True, False)
     return {
@@ -69,6 +82,10 @@ def default_policies() -> dict[str, EntitlementPolicy]:
         YIELD_ADVANCED_COMPARE: holder(YIELD_ADVANCED_COMPARE),
         YIELD_ALERTS: holder(YIELD_ALERTS),
         YIELD_EXECUTION_PREFLIGHT: holder(YIELD_EXECUTION_PREFLIGHT),   # verified wallet always required
+        TOKENIZED_BASIC: EntitlementPolicy(TOKENIZED_BASIC, AccessMode.PUBLIC, None, False, True),
+        TOKENIZED_HISTORY: holder(TOKENIZED_HISTORY),
+        TOKENIZED_DISLOCATION: holder(TOKENIZED_DISLOCATION),
+        CRYPTO_API: holder(CRYPTO_API),
     }
 
 
