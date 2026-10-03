@@ -15,9 +15,12 @@ import pytest
 
 from finco_yield.history import YieldHistoryStore
 from finco_yield.intelligence import build_intelligence
+import json
+
 from finco_yield.risk import (MIN_HISTORY_SPAN_SECONDS,
                               MIN_USABLE_OBSERVATIONS,
-                              RiskState, build_historical_risk,
+                              RiskError, RiskState,
+                              build_historical_risk,
                               _midrank_percentile, _nearest_rank)
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
@@ -345,3 +348,177 @@ def test_failure_isolation_missing_rewards_keeps_distribution(store):
     assert risk.reward_context.rewards_apy is None
     assert risk.apy_distribution.q25 is not None
     assert risk.apy_distribution.percentile is not None
+
+
+# ── Correction A: current-evidence truth ─────────────────────────────────────
+
+def test_current_apy_comes_from_latest_canonical_row_only(store):
+    """Latest canonical row has NO APY (TVL only) -> current_apy is None,
+    percentile None, peak delta None; the older APY stays an explicitly
+    labelled last-observed fact; historical distribution remains available;
+    state is not fully AVAILABLE."""
+    _seed_window(store, "yld_a", count=12,
+                 apy_fn=lambda i: str(Decimal("0.04") + Decimal(i) * Decimal("0.0001")))
+    _record(store, "yld_a", NOW, tvl="5000000")   # newest row: no APY
+    risk = build_historical_risk(store, "yld_a", as_of=NOW)
+    assert risk.apy_context.current_apy is None, (
+        "an older APY must never be promoted to current")
+    assert risk.apy_distribution.percentile is None
+    assert risk.apy_context.current_vs_peak_delta_bps is None
+    # the historical distribution remains factual
+    assert risk.apy_distribution.q25 is not None
+    assert risk.apy_distribution.max == Decimal("0.0411")
+    # last-observed semantics are explicit and correctly bound
+    assert risk.apy_context.last_observed_apy == Decimal("0.0411")
+    assert risk.apy_context.last_observed_apy_at is not None
+    # state must not be fully AVAILABLE
+    assert risk.state == RiskState.PARTIAL
+    assert risk.reason == "LATEST_APY_UNAVAILABLE"
+
+
+def test_current_tvl_comes_from_latest_canonical_row_only(store):
+    """OPTION A: a newer TVL-missing row never promotes an older TVL to
+    current; the newest TVL-bearing observation stays explicitly last-
+    observed with its timestamp."""
+    _seed_window(store, "yld_a", count=12, tvl_fn=lambda i: "5000000")
+    _record(store, "yld_a", NOW, apy="0.0450")   # newest row: no TVL
+    risk = build_historical_risk(store, "yld_a", as_of=NOW)
+    assert risk.tvl_context.current_tvl is None
+    assert risk.tvl_context.last_observed_tvl == Decimal("5000000")
+    assert risk.tvl_context.last_observed_tvl_at is not None
+    # trailing min/max remain historical facts
+    assert risk.tvl_context.trailing_max_tvl == Decimal("5000000")
+
+
+def test_current_freshness_does_not_promote_old_apy(store):
+    """Latest row CURRENT but missing APY -> old APY still not promoted."""
+    _seed_window(store, "yld_a", count=12, step_hours=6,
+                 end=NOW - timedelta(hours=1))
+    _record(store, "yld_a", NOW - timedelta(minutes=1), tvl="5000000")
+    risk = build_historical_risk(store, "yld_a", as_of=NOW)
+    assert risk.apy_context.current_apy is None
+    assert risk.apy_distribution.percentile is None
+    assert risk.apy_context.current_vs_peak_delta_bps is None
+
+
+def _seed_with_latest_freshness(store, uid, *, freshness):
+    """Seed a window whose LATEST row produces the requested canonical
+    freshness state."""
+    if freshness == "CURRENT":
+        _seed_window(store, uid, count=12, step_hours=6)
+        return
+    if freshness == "STALE":
+        _seed_window(store, uid, count=12, step_hours=6,
+                     end=NOW - timedelta(hours=2))
+        return
+    if freshness == "FUTURE_TIMESTAMP":
+        # the canonical window read (until=as_of) structurally excludes
+        # future-dated rows, so this state is exercised at the freshness
+        # classifier level (see test below) plus the exclusion behaviour.
+        _seed_window(store, uid, count=12, step_hours=6,
+                     end=NOW - timedelta(hours=2))
+        from finco_yield.observation import ImmutableObservationRecord as R
+        store.append(R(opportunity_uid=uid, observed_at=NOW + timedelta(hours=2),
+                       source_authority="NATIVE_ENRICHED",
+                       source_uri="https://test", adapter_version="test",
+                       payload={"apy_total": "0.0450"}))
+        return
+    from finco_yield.observation import ImmutableObservationRecord as R
+    if freshness == "UNKNOWN":
+        _seed_window(store, uid, count=12, step_hours=6,
+                     end=NOW - timedelta(minutes=10))
+        store.append(R(opportunity_uid=uid, observed_at=NOW,
+                       source_authority="MADE_UP_AUTHORITY",
+                       source_uri="https://test", adapter_version="test",
+                       payload={"apy_total": "0.0450"}))
+        return
+    if freshness == "INVALID":
+        _seed_window(store, uid, count=12, step_hours=6,
+                     end=NOW - timedelta(minutes=10))
+        store.append(R(opportunity_uid=uid, observed_at=NOW,
+                       source_authority="DIRECT_ONCHAIN",
+                       source_uri="https://test", adapter_version="test",
+                       payload={"apy_total": "0.0450"}))
+        return
+    raise ValueError(freshness)
+
+
+@pytest.mark.parametrize("freshness", ["STALE", "UNKNOWN", "INVALID",
+                                       "FUTURE_TIMESTAMP"])
+def test_non_current_freshness_states_do_not_collapse(store, freshness):
+    """Every non-CURRENT canonical freshness state is preserved verbatim and
+    fails the context closed (PARTIAL) — INVALID/FUTURE/UNKNOWN are not
+    collapsed into STALE."""
+    _seed_with_latest_freshness(store, "yld_a", freshness=freshness)
+    risk = build_historical_risk(store, "yld_a", as_of=NOW)
+    if freshness == "FUTURE_TIMESTAMP":
+        # a future-dated row lies beyond the evaluation window (until=as_of)
+        # and is excluded: the context fails closed on the remaining evidence
+        assert risk.freshness == "STALE"   # the last IN-WINDOW observation
+        assert risk.state == RiskState.STALE
+        # classifier-level: the future row itself preserves the canonical
+        # FUTURE_TIMESTAMP string verbatim (never collapsed to STALE)
+        from finco_yield.alerts_eval import _source_ref_from_row
+        from finco_yield.freshness import evaluate_freshness
+        future_row = {"observed_at": (NOW + timedelta(hours=2)).isoformat(),
+                      "source_authority": "NATIVE_ENRICHED",
+                      "source_uri": "https://test", "adapter_version": "test"}
+        result = evaluate_freshness(_source_ref_from_row(future_row), now=NOW)
+        assert result.state == "FUTURE_TIMESTAMP"
+        return
+    assert risk.freshness == freshness, "exact canonical string preserved"
+    if freshness == "STALE":
+        assert risk.state == RiskState.STALE
+    else:
+        assert risk.state == RiskState.PARTIAL
+        assert risk.reason.startswith("LATEST_FRESHNESS_")
+    assert risk.state != RiskState.AVAILABLE
+
+
+def test_zero_and_negative_window_rejected(store):
+    _seed_window(store, "yld_a", count=3)
+    for bad in (timedelta(0), timedelta(hours=-1)):
+        with pytest.raises(RiskError):
+            build_historical_risk(store, "yld_a", as_of=NOW, window=bad)
+
+
+def test_non_30d_window_does_not_label_30d_sigma(store):
+    """A 24h window maps to the 24h horizon; an unsupported window gets NO
+    sigma — a 30d sigma is never silently presented as same-horizon."""
+    _seed_window(store, "yld_a", count=12, step_hours=1)
+    risk_24h = build_historical_risk(store, "yld_a", as_of=NOW,
+                                     window=timedelta(hours=24))
+    assert risk_24h.apy_context.canonical_sigma_horizon == "24h"
+    risk_30d = build_historical_risk(store, "yld_a", as_of=NOW,
+                                     window=timedelta(days=30))
+    assert risk_30d.apy_context.canonical_sigma_horizon == "30d"
+    risk_5d = build_historical_risk(store, "yld_a", as_of=NOW,
+                                    window=timedelta(days=5))
+    assert risk_5d.apy_context.canonical_sigma is None
+    assert risk_5d.apy_context.canonical_sigma_horizon is None
+
+
+def test_malformed_non_dict_latest_payload_does_not_crash(store):
+    """A parseable history row with a non-dict payload must not crash the
+    reward context — reward unavailable, APY context intact."""
+    import hashlib
+    from finco_yield.observation import ImmutableObservationRecord
+    _seed_window(store, "yld_a", count=12)
+    store.append(ImmutableObservationRecord(
+        opportunity_uid="yld_a", observed_at=NOW,
+        source_authority="NATIVE_ENRICHED", source_uri="https://test",
+        adapter_version="test", payload={"apy_total": "0.0450"}))
+    lines = store.path.read_text(encoding="utf-8").splitlines()
+    row = json.loads(lines[-1])
+    row["payload"] = "0.0450-not-a-dict"
+    digest = hashlib.sha256(
+        json.dumps(row, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode()).hexdigest()
+    row["observation_hash"] = digest
+    lines[-1] = json.dumps(row, sort_keys=True, separators=(",", ":"))
+    store.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    risk = build_historical_risk(store, "yld_a", as_of=NOW)
+    assert risk.reward_context.rewards_apy is None
+    assert risk.reward_context.base_apy is None
+    assert risk.history.observation_count >= 10

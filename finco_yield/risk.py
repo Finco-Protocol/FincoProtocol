@@ -76,6 +76,16 @@ DEFAULT_WINDOW = timedelta(days=30)
 MIN_USABLE_OBSERVATIONS = SIGMA_MIN_OBSERVATIONS   # 10 -- one shared bar
 MIN_HISTORY_SPAN_SECONDS = 3600                    # 1h: a minutes-long burst is not history
 
+# Windows map 1:1 onto the EXISTING V1 intelligence horizons so the composed
+# sigma always matches the distribution window.  Any other window gets NO
+# sigma (never a second standard-deviation implementation, never a mislabelled
+# 30d value).
+_SIGMA_HORIZON_BY_WINDOW: dict[timedelta, str] = {
+    timedelta(hours=24): "24h",
+    timedelta(days=7): "7d",
+    timedelta(days=30): "30d",
+}
+
 _PERSISTENCE_BAND = Decimal("0.10")                # "within 10% of median"
 _BPS = Decimal(10000)
 
@@ -104,6 +114,13 @@ def _dec(value: Any) -> Decimal | None:
     return number if number.is_finite() else None
 
 
+def _row_payload(row: dict[str, Any]) -> dict[str, Any]:
+    """Safe payload access: a malformed (non-dict) payload yields an empty
+    mapping — the row simply carries no usable metrics, never a crash."""
+    payload = row.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
 def _usable_points(rows: list[dict[str, Any]], field: str,
                    *, since: datetime, until: datetime,
                    ) -> list[tuple[datetime, Decimal]]:
@@ -116,13 +133,37 @@ def _usable_points(rows: list[dict[str, Any]], field: str,
         moment = _row_observed_at(row)
         if moment is None or moment < since or moment > until:
             continue
-        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
-        value = _dec(payload.get(field))
+        value = _dec(_row_payload(row).get(field))
         if value is None:
             continue
         points.append((moment, value))
     points.sort(key=lambda item: item[0])
     return points
+
+
+def _latest_row_value(rows: list[dict[str, Any]], field: str) -> Decimal | None:
+    """The value on the ACTUAL latest canonical row — or None.  Never an
+    older value promoted to current (last-observed semantics live in the
+    explicit last_observed_* fields)."""
+    if not rows:
+        return None
+    return _dec(_row_payload(rows[-1]).get(field))
+
+
+def _last_observed_binding(rows: list[dict[str, Any]], field: str,
+                           now: datetime) -> ValueBinding:
+    """Newest observation CARRYING ``field`` (last-known semantics, explicitly
+    distinct from current)."""
+    for row in reversed(rows):
+        value = _dec(_row_payload(row).get(field))
+        if value is None:
+            continue
+        moment = _row_observed_at(row)
+        source = _source_ref_from_row(row)
+        state = (evaluate_freshness(source, now=now).state
+                 if source is not None and moment is not None else "UNAVAILABLE")
+        return ValueBinding(value, moment, state)
+    return ValueBinding(None, None, "UNAVAILABLE")
 
 
 def _span_seconds(points: list[tuple[datetime, Decimal]]) -> int:
@@ -157,6 +198,16 @@ def _midrank_percentile(values: list[Decimal], current: Decimal) -> Decimal | No
 # ── result types ─────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
+class ValueBinding:
+    """A value bound to the newest observation CARRYING it (last-observed
+    semantics — explicitly distinct from current)."""
+
+    value: Decimal | None
+    observed_at: datetime | None
+    currentness: str
+
+
+@dataclass(frozen=True)
 class HistoryMeta:
     observation_count: int            # usable APY points in the window
     history_span_seconds: int         # span of those usable points
@@ -178,16 +229,21 @@ class ApyDistribution:
 
 @dataclass(frozen=True)
 class ApyContext:
-    current_apy: Decimal | None = None
+    current_apy: Decimal | None = None          # latest canonical row's APY
+    last_observed_apy: Decimal | None = None    # newest APY-BEARING observation
+    last_observed_apy_at: datetime | None = None
     trailing_peak_apy: Decimal | None = None
     current_vs_peak_delta_bps: Decimal | None = None
     canonical_sigma: Decimal | None = None
+    canonical_sigma_horizon: str | None = None
     canonical_sigma_source: str | None = None
 
 
 @dataclass(frozen=True)
 class TvlContext:
-    current_tvl: Decimal | None = None
+    current_tvl: Decimal | None = None          # latest canonical row's TVL
+    last_observed_tvl: Decimal | None = None    # newest TVL-BEARING observation
+    last_observed_tvl_at: datetime | None = None
     trailing_min_tvl: Decimal | None = None
     trailing_max_tvl: Decimal | None = None
     tvl_drawdown_fraction: Decimal | None = None   # (current / trailing_max) - 1, max > 0
@@ -257,13 +313,22 @@ class HistoricalRiskContext:
             },
             "apy_context": {
                 "current_apy": num(self.apy_context.current_apy),
+                "last_observed_apy": num(self.apy_context.last_observed_apy),
+                "last_observed_apy_at": (
+                    self.apy_context.last_observed_apy_at.isoformat()
+                    if self.apy_context.last_observed_apy_at else None),
                 "trailing_peak_apy": num(self.apy_context.trailing_peak_apy),
                 "current_vs_peak_delta_bps": num(self.apy_context.current_vs_peak_delta_bps),
                 "canonical_sigma": num(self.apy_context.canonical_sigma),
+                "canonical_sigma_horizon": self.apy_context.canonical_sigma_horizon,
                 "canonical_sigma_source": self.apy_context.canonical_sigma_source,
             },
             "tvl_context": {
                 "current_tvl": num(self.tvl_context.current_tvl),
+                "last_observed_tvl": num(self.tvl_context.last_observed_tvl),
+                "last_observed_tvl_at": (
+                    self.tvl_context.last_observed_tvl_at.isoformat()
+                    if self.tvl_context.last_observed_tvl_at else None),
                 "trailing_min_tvl": num(self.tvl_context.trailing_min_tvl),
                 "trailing_max_tvl": num(self.tvl_context.trailing_max_tvl),
                 "tvl_drawdown_fraction": num(self.tvl_context.tvl_drawdown_fraction),
@@ -302,6 +367,8 @@ def build_historical_risk(
         raise RiskError("canonical_id is required")
     if not isinstance(store, YieldHistoryStore):
         raise RiskError("store must be a YieldHistoryStore")
+    if not isinstance(window, timedelta) or window <= timedelta(0):
+        raise RiskError("window must be a positive timedelta")
     as_of = as_of.astimezone(timezone.utc)
     since = as_of - window
 
@@ -315,6 +382,14 @@ def build_historical_risk(
     count_ok = count >= MIN_USABLE_OBSERVATIONS
     span_ok = span >= MIN_HISTORY_SPAN_SECONDS
 
+    # CURRENT evidence comes from the ACTUAL latest canonical row: if it has
+    # no usable apy_total, there is NO current APY — an older APY-bearing
+    # point stays a last-observed fact and is never promoted to current.
+    current_apy = _latest_row_value(rows, "apy_total")
+    current_tvl = _latest_row_value(rows, "tvl_usd")
+    last_apy_binding = _last_observed_binding(rows, "apy_total", as_of)
+    last_tvl_binding = _last_observed_binding(rows, "tvl_usd", as_of)
+
     # freshness of the LATEST canonical observation (existing classifier)
     latest_row = rows[-1] if rows else None
     freshness, freshness_reason = None, None
@@ -326,7 +401,10 @@ def build_historical_risk(
         else:
             freshness, freshness_reason = "UNKNOWN", "NO_RECOGNISED_SOURCE_AUTHORITY"
 
-    # top-level state
+    # top-level state.  Freshness states keep their CANONICAL meaning —
+    # STALE means old; INVALID / FUTURE_TIMESTAMP / UNKNOWN fail closed as
+    # PARTIAL (they are not merely old) — and the exact canonical string is
+    # preserved in the output.
     reason = None
     if count == 0:
         state = RiskState.UNAVAILABLE
@@ -338,17 +416,27 @@ def build_historical_risk(
         state = RiskState.PARTIAL
         reason = ("HISTORY_SPAN_BELOW_POLICY" if count_ok
                   else "OBSERVATION_COUNT_BELOW_POLICY")
-    elif freshness not in (None, "CURRENT"):
+    elif current_apy is None:
+        state = RiskState.PARTIAL
+        reason = "LATEST_APY_UNAVAILABLE"
+    elif freshness == "CURRENT":
+        state = RiskState.AVAILABLE
+    elif freshness == "STALE":
         state = RiskState.STALE
         reason = freshness_reason or "LATEST_OBSERVATION_NOT_CURRENT"
     else:
-        state = RiskState.AVAILABLE
+        # INVALID / FUTURE_TIMESTAMP / UNKNOWN: fail closed — such evidence
+        # is not merely old, so the context can never look fully AVAILABLE.
+        state = RiskState.PARTIAL
+        reason = f"LATEST_FRESHNESS_{freshness or 'UNKNOWN'}"
 
     # APY distribution: published whenever the count gate is met (PARTIAL
     # keeps the quartiles; the percentile needs BOTH gates).
     distribution = ApyDistribution()
     percentile_policy = None
     if count_ok:
+        # factual historical distribution — published whenever the count gate
+        # is met, independent of the current APY's presence
         ordered = sorted(apy_values)
         distribution = ApyDistribution(
             min=ordered[0],
@@ -357,48 +445,60 @@ def build_historical_risk(
             q75=_nearest_rank(apy_points_sorted_values(apy_points), "75"),
             max=ordered[-1],
         )
-    if count_ok and span_ok:
-        current = apy_values[-1]   # latest usable APY == latest canonical obs
+    # the percentile ranks the CURRENT APY — it exists only when the latest
+    # canonical row actually carries a usable APY
+    if count_ok and span_ok and current_apy is not None:
         distribution = ApyDistribution(
             min=distribution.min, q25=distribution.q25,
             median=distribution.median, q75=distribution.q75,
             max=distribution.max,
-            percentile=_midrank_percentile(apy_values, current),
+            percentile=_midrank_percentile(apy_values, current_apy),
             percentile_policy="MIDRANK_WITHIN_POOL_USABLE_OBSERVATIONS",
         )
         percentile_policy = distribution.percentile_policy
 
-    # APY context: current + trailing peak + compression + REUSED sigma
-    current_apy = apy_values[-1] if apy_values else None
+    # APY context: current comes from the latest canonical row; compression
+    # exists only against that CURRENT value.  The last OBSERVED APY is kept
+    # as an explicitly-labelled historical fact — never promoted to current.
     peak = max(apy_values) if apy_values else None
     peak_delta = (current_apy - peak) * _BPS \
         if (current_apy is not None and peak is not None) else None
+    sigma_horizon = _SIGMA_HORIZON_BY_WINDOW.get(window)
     apy_context = ApyContext(
         current_apy=current_apy,
+        last_observed_apy=last_apy_binding.value,
+        last_observed_apy_at=last_apy_binding.observed_at,
         trailing_peak_apy=peak,
         current_vs_peak_delta_bps=peak_delta,
     )
 
-    # canonical sigma composed from the EXISTING intelligence authority
-    try:
-        intelligence = build_intelligence(store, canonical_id, as_of=as_of)
-        horizon_30d = intelligence.horizon("30d")
-        if horizon_30d is not None and horizon_30d.apy_sigma is not None:
-            apy_context = ApyContext(
-                current_apy=apy_context.current_apy,
-                trailing_peak_apy=apy_context.trailing_peak_apy,
-                current_vs_peak_delta_bps=apy_context.current_vs_peak_delta_bps,
-                canonical_sigma=horizon_30d.apy_sigma,
-                canonical_sigma_source=horizon_30d.apy_sigma_source
-                or "FINCO_HISTORICAL",
-            )
-    except Exception:
-        # sigma stays UNAVAILABLE -- never reimplemented, never substituted
-        pass
+    # canonical sigma composed from the EXISTING intelligence authority, for
+    # the horizon that MATCHES the requested window (never mislabelled)
+    if sigma_horizon is not None:
+        try:
+            intelligence = build_intelligence(store, canonical_id, as_of=as_of)
+            horizon_intel = intelligence.horizon(sigma_horizon)
+            if horizon_intel is not None and horizon_intel.apy_sigma is not None:
+                apy_context = ApyContext(
+                    current_apy=apy_context.current_apy,
+                    last_observed_apy=apy_context.last_observed_apy,
+                    last_observed_apy_at=apy_context.last_observed_apy_at,
+                    trailing_peak_apy=apy_context.trailing_peak_apy,
+                    current_vs_peak_delta_bps=apy_context.current_vs_peak_delta_bps,
+                    canonical_sigma=horizon_intel.apy_sigma,
+                    canonical_sigma_horizon=sigma_horizon,
+                    canonical_sigma_source=horizon_intel.apy_sigma_source
+                    or "FINCO_HISTORICAL",
+                )
+        except Exception:
+            # sigma stays UNAVAILABLE -- never reimplemented, never substituted
+            pass
 
-    # TVL context (independent of APY availability)
+    # TVL context (independent of APY availability).  current_tvl is bound
+    # to the latest canonical row (OPTION A): a newer TVL-missing row never
+    # promotes an older TVL to current; the newest TVL-BEARING observation is
+    # exposed explicitly as last_observed_tvl/_at.
     tvl_values = [value for _t, value in tvl_points]
-    current_tvl = tvl_values[-1] if tvl_values else None
     trailing_min = min(tvl_values) if tvl_values else None
     trailing_max = max(tvl_values) if tvl_values else None
     drawdown = None
@@ -409,6 +509,8 @@ def build_historical_risk(
         baseline_change = current_tvl / tvl_values[0] - Decimal(1)
     tvl_context = TvlContext(
         current_tvl=current_tvl,
+        last_observed_tvl=last_tvl_binding.value,
+        last_observed_tvl_at=last_tvl_binding.observed_at,
         trailing_min_tvl=trailing_min,
         trailing_max_tvl=trailing_max,
         tvl_drawdown_fraction=drawdown,
@@ -416,8 +518,10 @@ def build_historical_risk(
         tvl_observation_count=len(tvl_values),
     )
 
-    # Reward dependency from the LATEST canonical observation only
-    latest_payload = (latest_row.get("payload") or {}) if latest_row else {}
+    # Reward dependency from the LATEST canonical observation only — with a
+    # safe payload read: a malformed (non-dict) payload means the reward
+    # context is unavailable while the historical APY context stays intact.
+    latest_payload = _row_payload(latest_row) if latest_row else {}
     base_apy = _dec(latest_payload.get("apy_base"))
     rewards_apy = _dec(latest_payload.get("apy_rewards"))
     total_apy = _dec(latest_payload.get("apy_total"))
