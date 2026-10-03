@@ -315,6 +315,32 @@ class VenueMarketStore:
             conn.close()
         return [self._to_observation(row) for row in rows]
 
+    def get_latest_at_or_before_for_instrument(
+            self, instrument_id: str, *, before: datetime,
+            venue_id: str | None = None) -> MarketObservation | None:
+        """Latest SOURCE-TIMESTAMPED row at or before a cutoff.
+
+        collected_at never substitutes for missing provider time. This is
+        the canonical baseline read used by 24h/7d Tokenized intelligence.
+        """
+        if before.tzinfo is None or before.utcoffset() is None:
+            raise ValueError("before must be timezone-aware")
+        query = (
+            "SELECT * FROM market_observations WHERE instrument_id=? "
+            "AND ts IS NOT NULL AND ts<=?"
+        )
+        params: list = [instrument_id, before.isoformat()]
+        if venue_id is not None:
+            query += " AND venue_id=?"
+            params.append(venue_id)
+        query += " ORDER BY ts DESC, collected_at DESC, digest DESC LIMIT 1"
+        conn = self._connect()
+        try:
+            row = conn.execute(query, params).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
+
     def list_latest_by_venue(self, venue_id: str) -> list[MarketObservation]:
         """Exactly ONE deterministic row per exact venue instrument, using
         the derived ordering clock with the digest as the final
