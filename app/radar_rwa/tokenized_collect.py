@@ -213,7 +213,8 @@ def collect_once(
         # per-asset isolation. The approved universe is bounded above before
         # this call and every returned row is exact-key filtered below.
         for canonical_id, state, data in batch_provider(
-                rpc_url=rpc_url, workers=workers, as_of=now):
+                rpc_url=rpc_url, workers=workers, as_of=now,
+                canonical_ids=targets):
             if canonical_id in target_set and canonical_id not in rows:
                 rows[canonical_id] = (canonical_id, state, data)
     except Exception:
