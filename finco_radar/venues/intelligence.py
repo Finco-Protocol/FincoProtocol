@@ -188,6 +188,7 @@ def _basis_change(
     canonical_asset_id: str,
     venue_id: str,
     instrument_id: str,
+    instrument_type: str,
     latest: MarketObservation | None,
     horizon: timedelta,
 ) -> str | None:
@@ -197,13 +198,14 @@ def _basis_change(
     latest_basis = _basis_decimal(latest)
     if latest_time is None or latest_basis is None:
         return None
-    baseline = store.get_latest_at_or_before_for_instrument(
+    baseline = store.get_latest_at_or_before_for_identity(
+        canonical_asset_id,
+        venue_id,
         instrument_id,
-        venue_id=venue_id,
+        instrument_type,
         before=latest_time - horizon,
     )
-    if (baseline is None
-            or baseline.canonical_asset_id.upper() != canonical_asset_id.upper()):
+    if baseline is None:
         return None
     baseline_basis = _basis_decimal(baseline)
     if baseline_basis is None:
@@ -221,10 +223,8 @@ def _history_for_representation(
     as_of: datetime,
     include_points: bool,
 ) -> RepresentationHistory:
-    latest = store.get_latest_for_instrument(instrument_id, venue_id=venue_id)
-    if (latest is not None
-            and latest.canonical_asset_id.upper() != canonical_asset_id.upper()):
-        latest = None
+    latest = store.get_latest_for_identity(
+        canonical_asset_id, venue_id, instrument_id, representation_type)
     current_state = effective_observation_state(latest, as_of=as_of)
     latest_basis = None
     latest_reason = "REPRESENTATION_PRICE_UNAVAILABLE"
@@ -233,16 +233,16 @@ def _history_for_representation(
 
     points: tuple[BasisPoint, ...] = ()
     if include_points:
-        rows = store.get_window_for_instrument(
+        rows = store.get_window_for_identity(
+            canonical_asset_id,
+            venue_id,
             instrument_id,
-            venue_id=venue_id,
+            representation_type,
             since=as_of - HISTORY_WINDOW,
             until=as_of,
         )
         built: list[BasisPoint] = []
         for row in rows:
-            if row.canonical_asset_id.upper() != canonical_asset_id.upper():
-                continue
             basis, reason = _basis_from_observation(row)
             built.append(BasisPoint(t=row.ts or "", v=basis, reason=reason))
         points = tuple(built)
@@ -258,10 +258,12 @@ def _history_for_representation(
         basis_change_24h_bps=_basis_change(
             store, canonical_asset_id=canonical_asset_id,
             venue_id=venue_id, instrument_id=instrument_id,
+            instrument_type=representation_type,
             latest=latest, horizon=timedelta(hours=24)),
         basis_change_7d_bps=_basis_change(
             store, canonical_asset_id=canonical_asset_id,
             venue_id=venue_id, instrument_id=instrument_id,
+            instrument_type=representation_type,
             latest=latest, horizon=timedelta(days=7)),
         points=points,
     )
@@ -271,14 +273,19 @@ def _cross_venue(
     histories: Iterable[RepresentationHistory],
     store: VenueMarketStore,
     *,
+    canonical_asset_id: str,
     as_of: datetime,
 ) -> CrossVenueDivergence:
     comparable: list[tuple[RepresentationHistory, MarketObservation, str]] = []
     for history in histories:
         if history.current_state != "AVAILABLE":
             continue
-        latest = store.get_latest_for_instrument(
-            history.instrument_id, venue_id=history.venue_id)
+        latest = store.get_latest_for_identity(
+            canonical_asset_id,
+            history.venue_id,
+            history.instrument_id,
+            history.representation_type,
+        )
         if latest is None or latest.price is None:
             continue
         payload = latest.payload if isinstance(latest.payload, dict) else {}
@@ -342,7 +349,6 @@ def _cross_venue(
 
 def _events(
     histories: Iterable[RepresentationHistory],
-    cross_venue: CrossVenueDivergence,
 ) -> tuple[DislocationEvent, ...]:
     threshold = dislocation_threshold_bps()
     events: list[DislocationEvent] = []
@@ -358,11 +364,14 @@ def _events(
             if current is None:
                 previous = None
                 continue
-            crossed = abs(current) >= threshold and (
-                previous is None
-                or abs(previous) < threshold
-                or (previous < 0 < current)
-                or (previous > 0 > current)
+            crossed = (
+                previous is not None
+                and abs(current) >= threshold
+                and (
+                    abs(previous) < threshold
+                    or (previous < 0 < current)
+                    or (previous > 0 > current)
+                )
             )
             if crossed:
                 events.append(DislocationEvent(
@@ -376,21 +385,10 @@ def _events(
                 ))
             previous = current
 
-    if cross_venue.state == "AVAILABLE" and cross_venue.divergence_bps is not None:
-        try:
-            cross_value = Decimal(cross_venue.divergence_bps)
-        except InvalidOperation:
-            cross_value = None
-        if cross_value is not None and abs(cross_value) >= threshold:
-            events.append(DislocationEvent(
-                observed_at="CURRENT",
-                event_type="CROSS_VENUE_DIVERGENCE",
-                venue_id=None,
-                instrument_id=None,
-                value_bps=str(cross_value),
-                direction="DIVERGENCE",
-                threshold_bps=str(threshold),
-            ))
+    # Current cross-venue divergence is exposed separately through
+    # TokenizedIntelligence.cross_venue. It is not inserted into the
+    # chronological historical-event stream without a single truthful
+    # event timestamp.
 
     events.sort(key=lambda event: event.observed_at)
     return tuple(events[-20:])
@@ -429,8 +427,10 @@ def build_tokenized_intelligence(
             include_points=include_points,
         ))
 
-    cross = _cross_venue(histories, store, as_of=now)
-    events = _events(histories, cross) if include_points else ()
+    cross = _cross_venue(
+        histories, store, canonical_asset_id=underlying.canonical_symbol,
+        as_of=now)
+    events = _events(histories) if include_points else ()
     return TokenizedIntelligence(
         canonical_asset_id=underlying.canonical_symbol,
         generated_at=now.isoformat(),
