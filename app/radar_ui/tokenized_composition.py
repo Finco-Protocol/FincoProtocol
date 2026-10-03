@@ -162,7 +162,7 @@ def _store_observation_view(store: VenueMarketStore | None,
         open_interest=latest.open_interest,
         freshness_state=(
             effective_observation_state(latest, as_of=as_of)
-            if as_of is not None and latest.ts is not None
+            if as_of is not None
             else latest.freshness_state.value
         ),
         observation_status=latest.observation_status.value,
