@@ -28,29 +28,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any, Callable
 
 from finco_radar.venues.models import RegistryStatus
 from finco_radar.venues.registry import VenueRegistry
 from finco_radar.venues.store import VenueMarketStore
-from finco_radar.venues.basis import (
-    BASIS_MAX_CLOCK_SKEW_SECONDS,
-    basis_for_evidence,
-    compute_basis_bps,
-)
+from finco_radar.venues.basis import basis_for_evidence, compute_basis_bps
+from finco_radar.venues.intelligence import effective_observation_state
 
 
 class UnknownCanonicalUnderlying(KeyError):
     """The requested canonical underlying does not exist in the registry
     (typed, fail-closed — raised before any reference/provider/store
     read)."""
-# A representation/reference pair is comparable only when both evidence
-# stamps are within this window of each other (existing R2/R6-style skew
-# authority; foundation freshness policies already bound each side).
-BASIS_MAX_CLOCK_SKEW_SECONDS = 300
-
-
 @dataclass(frozen=True)
 class RepresentationMarketView:
     """One venue representation of one canonical underlying, with whatever
@@ -123,7 +113,8 @@ def _expected_venue_id(entry) -> str:
 
 
 def _store_observation_view(store: VenueMarketStore | None,
-                            entry) -> RepresentationMarketView:
+                            entry, *,
+                            as_of: datetime | None = None) -> RepresentationMarketView:
     """Persisted-observation market view for one exact registry row (or
     unavailable when nothing was ever collected).
 
@@ -169,7 +160,11 @@ def _store_observation_view(store: VenueMarketStore | None,
         volume_24h=latest.volume_24h,
         funding_rate=latest.funding_rate,
         open_interest=latest.open_interest,
-        freshness_state=latest.freshness_state.value,
+        freshness_state=(
+            effective_observation_state(latest, as_of=as_of)
+            if as_of is not None and latest.ts is not None
+            else latest.freshness_state.value
+        ),
         observation_status=latest.observation_status.value,
         source=latest.source,
         provenance=entry.source_ref,
@@ -224,7 +219,7 @@ def compose_underlying(
     representations: list[RepresentationMarketView] = []
     for resolved in registry.representations_for_underlying(symbol):
         entry = resolved.entry
-        view = _store_observation_view(store, entry)
+        view = _store_observation_view(store, entry, as_of=now)
         if view.price is None:
             basis, reason = None, "REPRESENTATION_PRICE_UNAVAILABLE"
         elif not view.has_market_data:
