@@ -37,11 +37,8 @@ class YieldObservation:
     apy_total: Decimal | None
     apy_base: Decimal | None = None
     apy_rewards: Decimal | None = None
-    # Provider-native 30d average + provenance (e.g. MORPHO_NATIVE); None is
-    # UNAVAILABLE -- never replaced by a FINCO-computed value under the same
-    # label (FINCO-computed fallbacks carry their own explicit source).
-    apy_total_30d_avg: Decimal | None = None
-    apy_30d_avg_source: str | None = None
+    # Keep the original Y0 positional component/scenario contract stable:
+    # apy_intrinsic and annualized_costs remain the 5th/6th positional fields.
     apy_intrinsic: Decimal | None = None
     annualized_costs: Decimal | None = None
     withdrawal_type: str | None = None
@@ -50,6 +47,10 @@ class YieldObservation:
     fee_bps: Decimal | None = None
     queue_seconds: int | None = None
     quote_size_usd: Decimal | None = None
+    # Provider-native 30d average + provenance (e.g. MORPHO_NATIVE); appended
+    # to preserve backwards-compatible positional construction.
+    apy_total_30d_avg: Decimal | None = None
+    apy_30d_avg_source: str | None = None
 
 @dataclass(frozen=True)
 class YieldOpportunity:
