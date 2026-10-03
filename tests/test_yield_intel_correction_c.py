@@ -93,6 +93,29 @@ def test_no_prior_lkg_failed_refresh_stays_unavailable(monkeypatch):
     assert result.usable is False
 
 
+def test_genuine_stale_refresh_is_not_hidden_by_older_lkg(monkeypatch):
+    treasury.reset_treasury_cache()
+    clock = _clock(monkeypatch)
+    provider_stale = treasury.TreasuryObservation(
+        "STALE",
+        treasury.TREASURY_SOURCE,
+        Decimal("4.31"),
+        "2026-10-03",
+        "2026-10-03T09:00:00+00:00",
+        "TREASURY_SERIES_STALE",
+    )
+    sequence = iter([_available(), provider_stale])
+    monkeypatch.setattr(treasury, "FredEconomyProvider", lambda: object())
+    monkeypatch.setattr(treasury, "_read_treasury", lambda provider: next(sequence))
+
+    assert treasury.latest_treasury().usable
+    clock["value"] = treasury._TREASURY_TTL_OK_SECONDS + 1
+    result = treasury.latest_treasury()
+
+    assert result == provider_stale
+    assert result.usable is False
+
+
 def test_thrown_refresh_with_lkg_returns_stale(monkeypatch):
     treasury.reset_treasury_cache()
     clock = _clock(monkeypatch)
