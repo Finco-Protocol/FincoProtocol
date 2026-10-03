@@ -315,6 +315,26 @@ class VenueMarketStore:
             conn.close()
         return [self._to_observation(row) for row in rows]
 
+    def get_latest_reference_for_underlying(
+            self, canonical_asset_id: str) -> MarketObservation | None:
+        """Latest persisted row carrying canonical underlying-reference evidence.
+
+        Browser surfaces use this instead of acquiring provider data. A reference
+        is eligible only when its price and source timestamp were persisted by the
+        collector; collected_at never substitutes for source evidence.
+        """
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM market_observations WHERE canonical_asset_id=? "
+                "AND reference_price IS NOT NULL AND ts IS NOT NULL "
+                + _ORDER + " LIMIT 1",
+                (canonical_asset_id.upper(),),
+            ).fetchone()
+        finally:
+            conn.close()
+        return self._to_observation(row) if row is not None else None
+
     def get_latest_at_or_before_for_instrument(
             self, instrument_id: str, *, before: datetime,
             venue_id: str | None = None) -> MarketObservation | None:
