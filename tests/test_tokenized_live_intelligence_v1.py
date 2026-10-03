@@ -583,7 +583,7 @@ class TestBrowserBoundary:
         assert page.status_code == 200
         assert 'data-testid="tmd-history-table"' in page.text
         assert 'data-testid="tmd-basis-history-chart"' in page.text
-        assert "provider" not in page.text.lower() or "page loads never" not in page.text.lower()
+        assert "never triggers market acquisition" in page.text
 
     def test_router_has_no_market_acquisition_import(self):
         source = Path("app/radar_ui/tokenized_router.py").read_text(encoding="utf-8")
