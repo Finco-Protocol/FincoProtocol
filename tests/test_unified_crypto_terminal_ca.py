@@ -44,6 +44,17 @@ def api_client(monkeypatch, tmp_path):
     return TestClient(app)
 
 
+def _activated_api(monkeypatch):
+    """API app with crypto.api ACTIVATED (Agent-A patched)."""
+    from app.protocol.entitlement_evaluator import Decision
+    _patch_agent_a(monkeypatch, {"crypto.api": (Decision.ALLOW,
+                                                "CRYPTO_API_ACTIVATED")})
+    from app.api.v1.router import router
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    return TestClient(app)
+
+
 def _deny_yield_history(monkeypatch):
     from finco_yield import access as access_mod
     from app.protocol.entitlement_evaluator import Decision, ResourceAccessDecision
@@ -250,3 +261,115 @@ def test_meta_declares_crypto_api_configurable_but_inactive(api_client):
     for capability in ("crypto.tokenized.read", "crypto.tokenized.history.read",
                        "crypto.tokenized.dislocation.read", "crypto.yield.read"):
         assert capability in body["capabilities"]
+
+
+# ── Correction B: clock completion + fail-soft access authority ──────────────
+
+def test_tokenized_history_envelope_uses_request_clock(tmp_path, monkeypatch):
+    db = _seed_venue_store(tmp_path / "venues.db")
+    monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(db))
+    client = _activated_api(monkeypatch)
+    body = client.get("/api/v1/crypto/tokenized/NVDA/history").json()
+    captured = {}
+
+    # Re-request with a spy on the shared read to capture the request clock.
+    import app.crypto_terminal.tokenized_read as tread
+    real_detail = tread.detail
+
+    def spy(canonical_asset_id, *, gates, now=None):
+        captured["as_of"] = now
+        return real_detail(canonical_asset_id, gates=gates, now=now)
+
+    monkeypatch.setattr(tread, "detail", spy)
+    body = client.get("/api/v1/crypto/tokenized/NVDA/history").json()
+    assert captured["as_of"] is not None
+    assert body["as_of"] == captured["as_of"].isoformat(), (
+        "history envelope must use the SAME captured request clock as the read")
+
+
+def test_tokenized_dislocation_envelope_uses_request_clock(tmp_path, monkeypatch):
+    db = _seed_venue_store(tmp_path / "venues.db")
+    monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(db))
+    client = _activated_api(monkeypatch)
+    client.get("/api/v1/crypto/tokenized/NVDA/dislocations")
+    import app.crypto_terminal.tokenized_read as tread
+    captured = {}
+    real_detail = tread.detail
+
+    def spy(canonical_asset_id, *, gates, now=None):
+        captured["as_of"] = now
+        return real_detail(canonical_asset_id, gates=gates, now=now)
+
+    monkeypatch.setattr(tread, "detail", spy)
+    body = client.get("/api/v1/crypto/tokenized/NVDA/dislocations").json()
+    assert captured["as_of"] is not None
+    assert body["as_of"] == captured["as_of"].isoformat(), (
+        "dislocation envelope must use the SAME captured request clock as the read")
+
+
+def test_yield_access_authority_failure_fails_closed_not_500(api_client, monkeypatch):
+    """crypto.api ALLOW + Yield HISTORY authority RAISING -> 200 basic pool
+    detail, no protected build, typed authority-unavailable access state."""
+    from finco_yield import access as access_mod
+    from finco_yield.registry import load_bundled_registry
+
+    async def broken(resource_key, wallet):
+        raise RuntimeError("entitlement store unavailable")
+
+    monkeypatch.setattr(access_mod, "evaluate_resource_access", broken)
+
+    import app.crypto_terminal.yield_read as yield_read_mod
+    build_calls = []
+
+    def _spy(store, uid, *, as_of):
+        build_calls.append(uid)
+        raise AssertionError("build_intelligence must not run when the access "
+                             "authority is unavailable")
+
+    monkeypatch.setattr(yield_read_mod, "build_intelligence", _spy)
+
+    uid = load_bundled_registry().all()[0].uid
+    response = api_client.get(f"/api/v1/crypto/yield/{uid}")
+    assert response.status_code == 200, "authority failure must not 500"
+    body = response.json()
+    data = body["data"]
+    assert data["history_intelligence_included"] is False
+    assert not data.get("intel")
+    assert data.get("market") is None
+    assert build_calls == []
+    access = body["access"]["history"]
+    assert access["allowed"] is False
+    assert access["state"] == "ENTITLEMENT_AUTHORITY_UNAVAILABLE"
+    assert access["reason"] == "ACCESS_AUTHORITY_ERROR"
+
+
+def test_product_truth_acquisition_claims_are_precise():
+    doc = open("docs/CRYPTO_TERMINAL_PRODUCT_TRUTH.md", encoding="utf-8").read()
+    # Tokenized provider-free guarantee stays explicit...
+    assert "Tokenized Markets" in doc and "acquisition-free" in doc
+    # ...while the Treasury FRED-cache refresh is accurately described.
+    assert "bounded local FRED cache" in doc
+    # No universal "all reads are acquisition-free" overclaim remains.
+    assert "Browser and API reads are acquisition-free" not in doc
+
+
+# ── Correction B: A40 synchronous-handler contract ───────────────────────────
+
+def test_crypto_api_handlers_are_plain_def():
+    """Every Crypto API handler must be a plain synchronous def (API V1 A40
+    concurrency contract): FastAPI dispatches them to the worker threadpool;
+    the async entitlement adapters are bridged via _run_async only."""
+    import asyncio
+    import inspect
+    from app.api.v1.crypto_router import router
+    endpoints = [r for r in router.routes if hasattr(r, "endpoint")]
+    assert len(endpoints) == 6
+    for route in endpoints:
+        assert not asyncio.iscoroutinefunction(route.endpoint), (
+            f"Handler {route.endpoint.__name__!r} must be a plain def")
+        assert route.methods == {"GET"}
+    source = open("app/api/v1/crypto_router.py", encoding="utf-8").read()
+    assert "async def" not in source
+    assert "asyncio.to_thread" not in source, (
+        "sync read models are called directly from the worker-thread handler")
+    assert "_run_async" in source, "async adapter bridge must stay centralized"

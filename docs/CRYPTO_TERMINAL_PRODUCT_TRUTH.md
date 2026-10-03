@@ -52,8 +52,12 @@ resolve through the canonical entitlement authority; failures fail closed.
 
 - Missing data is null/“—”, never zero. Stale is not current. QUARANTINED
   representations are not active market evidence. Reference fixtures are
-  never live data. Browser and API reads are acquisition-free: market
-  evidence comes only from persisted canonical stores.
+  never live data. **Tokenized Markets** browser/API reads are
+  acquisition-free: market evidence comes only from the persisted
+  VenueMarketStore written by the separate collector. **Yield** reads are
+  canonical snapshot/history reads; the Treasury benchmark (DGS3MO) may
+  refresh through its bounded local FRED cache — no other upstream
+  acquisition exists on any Crypto read path.
 - Freshness (market evidence age) and entitlement (access authority) are
   SEPARATE authorities and never collapsed.
 - No execution, signing, custody, swapping, or auto-invest exists anywhere

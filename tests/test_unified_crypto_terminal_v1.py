@@ -3,7 +3,8 @@
 Proves the PR #181 acceptance list on the merged authorities:
 navigation, public/premium tokenized access, crypto.api fail-closed
 INACTIVE semantics, API/UI single read authority, missing != zero,
-stale != current, quarantined != active, acquisition-free read paths,
+stale != current, quarantined != active,
+Tokenized acquisition-free read paths,
 unknown identity fail-closed, and one-unavailable-domain resilience.
 """
 from __future__ import annotations
@@ -437,8 +438,8 @@ def test_quarantined_is_not_active_market_evidence(venue_env, monkeypatch, tmp_p
 # ── 12–13. acquisition-free read paths ───────────────────────────────────────
 
 def test_api_and_browser_never_invoke_market_acquisition(venue_env, yield_env, monkeypatch):
-    """Browser and API reads stay acquisition-free: any upstream provider
-    HTTP during the read paths fails the test loudly."""
+    """Tokenized Markets browser and API reads stay acquisition-free: any
+    upstream provider HTTP during those read paths fails the test loudly."""
     import httpx
 
     def _no_external_http(self, method=None, url=None, *args, **kwargs):
@@ -506,3 +507,4 @@ def test_product_truth_contract_is_canonical_and_pinned():
     assert "Decision.INACTIVE" in doc or "INACTIVE" in doc
     assert "never zero" in doc
     assert "DeFiLlama" not in doc  # not a Yield source; no provider expansion
+

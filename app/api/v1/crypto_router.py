@@ -3,6 +3,13 @@
 Adapts EXISTING canonical read models (shared layer ``app.crypto_terminal``);
 no product mathematics and no market-data acquisition happens here.
 
+Concurrency contract (A40, same as every API V1 route): handlers are plain
+synchronous ``def`` so FastAPI dispatches them to the worker threadpool.  The
+canonical entitlement adapters are async; this module bridges to them with one
+small ``_run_async`` helper (``asyncio.run`` is safe here because a
+synchronous handler executes in a worker thread with no running event loop).
+Ordinary synchronous read models are called directly — never re-wrapped.
+
 Access (merged PR #180 authorities):
   * every endpoint first resolves ``crypto.api`` through
     ``app.crypto_api_access`` — canonical Decision.INACTIVE stays DENIED
@@ -20,12 +27,12 @@ Envelope contract (stable V1):
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 router = APIRouter(prefix="/crypto")
@@ -33,7 +40,6 @@ router = APIRouter(prefix="/crypto")
 API_VERSION = "v1"
 SCHEMA_VERSION = "finco-crypto-api-v1"
 _CACHE = {"Cache-Control": "no-store"}
-
 
 # One evaluation clock per request: the SAME as_of is passed into the shared
 # read models and serialized as the envelope as_of.  Source observed_at stays
@@ -43,6 +49,16 @@ _REQUEST_LIMIT_MAX = 60   # mirrors the reviewed Tokenized landing default
 
 def _request_as_of() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _run_async(coro):
+    """Bridge a canonical async entitlement adapter from a synchronous
+    API V1 handler (worker thread — no running event loop)."""
+    return asyncio.run(coro)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _envelope(resource: str, state: str, data: Any, *,
@@ -55,7 +71,7 @@ def _envelope(resource: str, state: str, data: Any, *,
         "schema_version": SCHEMA_VERSION,
         "resource": resource,
         "state": state,
-        "as_of": as_of or _request_as_of().isoformat(),
+        "as_of": as_of or _now(),
     }
     if canonical_id is not None:
         envelope["canonical_asset_id"] = canonical_id
@@ -81,40 +97,56 @@ def _tokenized_denied(decision) -> JSONResponse:
                         headers=_CACHE)
 
 
-async def _require_crypto_api(request: Request):
+def _require_crypto_api(request: Request):
     from app.crypto_api_access import resolve_api_access
-    decision = await resolve_api_access(request)
+    decision = _run_async(resolve_api_access(request))
     if not decision.access_allowed:
         return _denied(decision)
     return None
 
 
-def _serialize_treasury(treasury) -> dict:
-    return {"source": treasury.source, "state": treasury.state,
-            "yield_percent": (_float(treasury.yield_percent)
-                              if treasury.yield_percent is not None else None),
-            "period": treasury.period}
+def _tokenized_gates(request: Request):
+    from app.radar_ui.tokenized_gating import resolve_tokenized_gates
+    return _run_async(resolve_tokenized_gates(request))
+
+
+def _tokenized_access(request, resource):
+    from app.tokenized_access import resolve_tokenized_access
+    return _run_async(resolve_tokenized_access(request, resource))
 
 
 def _float(value):
     return None if value is None else float(value)
 
 
+def _jsonify(value):
+    """Datetime-aware JSON-safe conversion for composed view objects."""
+    if isinstance(value, dict):
+        return {key: _jsonify(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return None if not value.is_finite() else float(value)
+    return value
+
+
 @router.get("/tokenized")
-async def crypto_tokenized_landing(
+def crypto_tokenized_landing(
     request: Request,
     limit: int | None = Query(default=None, ge=1, le=_REQUEST_LIMIT_MAX),
 ):
     """Cross-venue Tokenized Markets landing (tokenized.basic — public)."""
     as_of = _request_as_of()
-    gate = await _require_crypto_api(request)
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
     from app.radar_ui.tokenized_gating import resolve_tokenized_gates
 
-    gates = await resolve_tokenized_gates(request)
+    gates = _run_async(resolve_tokenized_gates(request))
     from app.crypto_terminal.tokenized_read import landing_rows
-    rows, meta = await _run(landing_rows, gates=gates, limit=limit, now=as_of)
+    rows, meta = landing_rows(gates=gates, limit=limit, now=as_of)
 
     access = gates.public_view()
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
@@ -129,18 +161,16 @@ async def crypto_tokenized_landing(
 
 
 @router.get("/tokenized/{canonical_asset_id}")
-async def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
+def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
     """One canonical underlying: reference + representations + basis
     (tokenized.basic — public; premium fields redacted per access)."""
     as_of = _request_as_of()
-    gate = await _require_crypto_api(request)
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
-    from app.radar_ui.tokenized_gating import resolve_tokenized_gates
-
-    gates = await resolve_tokenized_gates(request)
+    gates = _tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
+    result = detail(canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.detail", "UNKNOWN_IDENTITY", None,
@@ -197,22 +227,19 @@ async def crypto_tokenized_detail(request: Request, canonical_asset_id: str):
 
 
 @router.get("/tokenized/{canonical_asset_id}/history")
-async def crypto_tokenized_history(request: Request, canonical_asset_id: str):
-    as_of = _request_as_of()
+def crypto_tokenized_history(request: Request, canonical_asset_id: str):
     """Canonical basis history (tokenized.history — holder resource)."""
-    gate = await _require_crypto_api(request)
+    as_of = _request_as_of()
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
-    from app.tokenized_access import TokenizedResource, resolve_tokenized_access
-
-    decision = await resolve_tokenized_access(request, TokenizedResource.HISTORY)
+    from app.tokenized_access import TokenizedResource
+    decision = _tokenized_access(request, TokenizedResource.HISTORY)
     if not decision.access_allowed:
         return _tokenized_denied(decision)
-    from app.radar_ui.tokenized_gating import resolve_tokenized_gates
-
-    gates = await resolve_tokenized_gates(request)
+    gates = _tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
+    result = detail(canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.history", "UNKNOWN_IDENTITY", None,
@@ -239,27 +266,24 @@ async def crypto_tokenized_history(request: Request, canonical_asset_id: str):
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "tokenized.history", "AVAILABLE",
         {"canonical_asset_id": canonical_asset_id, "series": series},
-        canonical_id=canonical_asset_id))
+        canonical_id=canonical_asset_id, as_of=as_of.isoformat()))
 
 
 @router.get("/tokenized/{canonical_asset_id}/dislocations")
-async def crypto_tokenized_dislocations(request: Request, canonical_asset_id: str):
-    as_of = _request_as_of()
+def crypto_tokenized_dislocations(request: Request, canonical_asset_id: str):
     """Cross-venue divergence + dislocation events
     (tokenized.dislocation — holder resource)."""
-    gate = await _require_crypto_api(request)
+    as_of = _request_as_of()
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
-    from app.tokenized_access import TokenizedResource, resolve_tokenized_access
-
-    decision = await resolve_tokenized_access(request, TokenizedResource.DISLOCATION)
+    from app.tokenized_access import TokenizedResource
+    decision = _tokenized_access(request, TokenizedResource.DISLOCATION)
     if not decision.access_allowed:
         return _tokenized_denied(decision)
-    from app.radar_ui.tokenized_gating import resolve_tokenized_gates
-
-    gates = await resolve_tokenized_gates(request)
+    gates = _tokenized_gates(request)
     from app.crypto_terminal.tokenized_read import detail
-    result = await _run(detail, canonical_asset_id, gates=gates, now=as_of)
+    result = detail(canonical_asset_id, gates=gates, now=as_of)
     if not result["known"]:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "tokenized.dislocation", "UNKNOWN_IDENTITY", None,
@@ -293,20 +317,20 @@ async def crypto_tokenized_dislocations(request: Request, canonical_asset_id: st
         "tokenized.dislocation", "AVAILABLE",
         {"canonical_asset_id": canonical_asset_id,
          "cross_venue": cross_venue, "events": events},
-        canonical_id=canonical_asset_id))
+        canonical_id=canonical_asset_id, as_of=as_of.isoformat()))
 
 
 @router.get("/yield")
-async def crypto_yield_landing(request: Request):
+def crypto_yield_landing(request: Request):
     """Yield market intelligence (canonical history — read-only)."""
     as_of = _request_as_of()
-    gate = await _require_crypto_api(request)
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
     from app.crypto_terminal.yield_read import market_snapshot, movers, pool_rows, summary
 
-    view = await _run(market_snapshot, now=as_of)
-    access = await _yield_history_access(request)
+    view = market_snapshot(now=as_of)
+    access = _yield_history_access_state(request)
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "yield.market", "AVAILABLE",
         {"summary": summary(view),
@@ -317,46 +341,57 @@ async def crypto_yield_landing(request: Request):
 
 
 @router.get("/yield/{canonical_id}")
-async def crypto_yield_detail(request: Request, canonical_id: str):
+def crypto_yield_detail(request: Request, canonical_id: str):
     """One Yield pool.
 
     crypto.api ALLOW resolves first.  Then YieldResource.HISTORY is resolved
     BEFORE any protected history intelligence is built: denied callers get
     the BASIC pool payload (identity + current registry observation fields +
     provenance) and the history-derived intelligence is never constructed —
-    not built-then-redacted.  This mirrors the existing Yield UI contract."""
+    not built-then-redacted.  This mirrors the existing Yield UI contract.
+    An access-authority failure fails closed (typed unavailable, no 500).
+    """
     as_of = _request_as_of()
-    gate = await _require_crypto_api(request)
+    gate = _require_crypto_api(request)
     if gate is not None:
         return gate
     from finco_yield.access import YieldResource, resolve_yield_access
 
-    history_decision = await resolve_yield_access(request, YieldResource.HISTORY)
-    allowed = history_decision.access_allowed
+    # Fail-soft (same principle as _yield_history_access_state): an access
+    # authority failure is typed UNAVAILABLE, never a 500, and never grants
+    # access — the protected history intelligence is simply not built.
+    try:
+        history_decision = _run_async(
+            resolve_yield_access(request, YieldResource.HISTORY))
+        allowed = history_decision.access_allowed
+        access_state = {"allowed": allowed,
+                        "state": history_decision.state.value,
+                        "reason": history_decision.reason}
+    except Exception:
+        allowed = False
+        access_state = {"allowed": False,
+                        "state": "ENTITLEMENT_AUTHORITY_UNAVAILABLE",
+                        "reason": "ACCESS_AUTHORITY_ERROR"}
     from app.crypto_terminal.yield_read import pool_detail
-    detail = await _run(pool_detail, canonical_id, now=as_of,
-                        include_history_intelligence=allowed,
-                        history_access={"allowed": allowed,
-                                        "state": history_decision.state.value,
-                                        "reason": history_decision.reason})
+    detail = pool_detail(canonical_id, now=as_of,
+                         include_history_intelligence=allowed,
+                         history_access=access_state)
     if detail is None:
         return JSONResponse(status_code=404, headers=_CACHE, content=_envelope(
             "yield.pool", "UNKNOWN_IDENTITY", None,
             canonical_id=canonical_id, reason="CANONICAL_ID_UNKNOWN",
             as_of=as_of.isoformat()))
-    access = {"history": {"allowed": allowed,
-                          "state": history_decision.state.value,
-                          "reason": history_decision.reason}}
+    access = {"history": access_state}
     return JSONResponse(status_code=200, headers=_CACHE, content=_envelope(
         "yield.pool", "AVAILABLE", detail,
         canonical_id=canonical_id, access=access, as_of=as_of.isoformat()))
 
 
-async def _yield_history_access(request: Request) -> dict:
+def _yield_history_access_state(request: Request) -> dict:
     """Safe HISTORY access-state exposure (never the protected payload)."""
     from finco_yield.access import YieldResource, resolve_yield_access
     try:
-        decision = await resolve_yield_access(request, YieldResource.HISTORY)
+        decision = _run_async(resolve_yield_access(request, YieldResource.HISTORY))
         return {"history": {"allowed": decision.access_allowed,
                             "state": decision.state.value,
                             "reason": decision.reason}}
@@ -364,22 +399,3 @@ async def _yield_history_access(request: Request) -> dict:
         return {"history": {"allowed": False,
                             "state": "ENTITLEMENT_AUTHORITY_UNAVAILABLE",
                             "reason": "ACCESS_AUTHORITY_ERROR"}}
-
-
-async def _run(fn, *args, **kwargs):
-    """Sync canonical reads run in the threadpool (never the event loop)."""
-    import asyncio
-    return await asyncio.to_thread(fn, *args, **kwargs)
-
-
-def _jsonify(value):
-    """Datetime-aware JSON-safe conversion for composed view objects."""
-    if isinstance(value, dict):
-        return {key: _jsonify(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_jsonify(item) for item in value]
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return None if not value.is_finite() else float(value)
-    return value
