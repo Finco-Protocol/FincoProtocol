@@ -236,6 +236,10 @@ class TestCollectorVertical:
         with pytest.raises(tokenized_collect.TokenizedCollectorConfigError):
             tokenized_collect._target_ids(registry, max_assets=1)
 
+    def test_collector_universe_rejects_contract_bound_to_wrong_underlying(self):
+        registry = _registry([_entry(underlying_symbol="AAPL")])
+        assert tokenized_collect._target_ids(registry, max_assets=32) == ()
+
     def test_available_row_persists_canonical_observation(self, tmp_path):
         registry = _registry([_entry()])
         store = VenueMarketStore(tmp_path / "market.db")
