@@ -137,6 +137,77 @@ def test_series_excludes_non_available_points(tmp_path, monkeypatch):
     assert all(p["collected_at"] != pts[4]["collected_at"] for p in series)
 
 
+def test_spike_survives_downsampling(tmp_path, monkeypatch):
+    """Peak-preservation regression designed to FAIL under the previous
+    first-of-bucket sampler: a large, short-lived premium spike in the
+    interior of a downsample bucket must survive in the selected output."""
+    from app.radar_rwa import bnb_history
+    from finco_radar.assets.contracts import AssetKey
+
+    monkeypatch.delenv("RADAR_BNB_INTELLIGENCE_DB_PATH", raising=False)
+    uid = "0x" + "c" * 64
+    key = AssetKey(4663, "0x" + "d" * 40)
+    n = 200
+    pts = []
+    for i in range(n):
+        collected = NOW - timedelta(minutes=(n - i))
+        # Flat near-zero series with ONE short-lived dislocation spike at
+        # actual index 6 (interior of the first downsample bucket under the
+        # old first-of-bucket algorithm, which selected index 1 here).
+        premium = "300.0" if i == 6 else "0.1"
+        pts.append(_point(uid, key.canonical_id, collected, premium))
+        pts[-1]["economic_asset_uid"] = uid
+        pts[-1]["asset_key"] = key.canonical_id
+    db_path = _history_db(tmp_path, {(uid, key.canonical_id): pts})
+    monkeypatch.setattr(bnb_history, "DEFAULT_DB_PATH", str(db_path))
+
+    out = bnb_history.read_r_live_ranges_batch_readonly(
+        [(uid, key)], as_of=NOW, include_series=True, max_series_points=48)
+    series = out[key.canonical_id]["series_24h"]
+    # The visually material excursion is preserved.
+    values = [float(p["premium_bps"]) for p in series]
+    assert max(values) == 300.0, (
+        "LTTB must preserve the short-lived premium spike; a first-of-bucket "
+        "sampler would drop it")
+    # Deterministic output.
+    again = bnb_history.read_r_live_ranges_batch_readonly(
+        [(uid, key)], as_of=NOW, include_series=True, max_series_points=48)
+    assert series == again[key.canonical_id]["series_24h"]
+    # First and last canonical points preserved.
+    assert series[0]["collected_at"] == pts[0]["collected_at"]
+    assert series[-1]["collected_at"] == pts[-1]["collected_at"]
+    assert series[0]["premium_bps"] == pts[0]["reference_premium_bps"]
+    assert series[-1]["premium_bps"] == pts[-1]["reference_premium_bps"]
+    # Every selected point is an ACTUAL canonical observation.
+    canonical = {(p["collected_at"], p["reference_premium_bps"]) for p in pts}
+    for p in series:
+        assert (p["collected_at"], p["premium_bps"]) in canonical
+    # Output respects the point budget.
+    assert len(series) <= 48
+
+
+def test_series_within_budget_is_unchanged_exact_canonical_points():
+    from app.radar_rwa.bnb_history import _downsample_series
+    from datetime import timedelta as td
+    series = [(NOW - td(minutes=m), str(m)) for m in range(10, 0, -1)]
+    out = _downsample_series(series, 48)
+    assert [(p["collected_at"], p["premium_bps"]) for p in out] == \
+        [(c.isoformat(), v) for c, v in series]
+
+
+def test_lttb_select_is_deterministic_and_bounded():
+    from app.radar_rwa.bnb_history import _lttb_select
+    from datetime import timedelta as td
+    series = [(NOW - td(minutes=(500 - i)), str((i * 37) % 23 - 11))
+              for i in range(500)]
+    a = _lttb_select(series, 48)
+    b = _lttb_select(series, 48)
+    assert a == b
+    assert len(a) == 48
+    assert a[0] == 0 and a[-1] == 499
+    assert a == sorted(a), "selection must preserve chronological order"
+
+
 def test_series_absent_by_default_parity_preserved(tmp_path, monkeypatch):
     """Default batch output keeps its exact pre-series shape (parity with the
     per-asset read); series only appears with include_series=True."""
@@ -247,12 +318,58 @@ def test_detail_template_has_kpi_strip_and_charts():
 
 def test_detail_charts_use_canonical_history_only():
     js = _detail_html()
-    # the chart builder consumes the same history fetch as the table
-    assert "build_charts(points)" in js and "build_history_table(points)" in js
-    assert "Gaps stay gaps" in js or "gaps are missing evidence" in js or "gaps stay gaps" in js.lower()
-    # no new data source: charts come from HIST_URL only
+    # the recent-history chart builder consumes the same history fetch as the table
+    assert "build_recent_charts(points)" in js and "build_history_table(points)" in js
+    assert "gaps stay gaps" in js.lower() or "gaps are missing evidence" in js
+    # exactly two read-only data fetches drive the whole detail page:
+    # canonical snapshot (page data) + per-asset history (table/recent chart),
+    # plus the read-only ranges endpoint for the true 24h views.
     assert js.count("fetch(HIST_URL)") == 1 and js.count("fetch(SNAPSHOT_URL)") == 1
     assert "fo-charts:refresh" not in js, "async pages render via window.FoCharts, not re-scan"
+
+
+def test_detail_24h_views_use_true_canonical_range_authority():
+    """The premium chart and 24h Range KPI consume the canonical 24h
+    range/series response — never a recomputation from last-N history rows."""
+    js = _detail_html()
+    assert 'RANGES_URL = "/api/v1.1/radar/r-live/history/ranges"' in js
+    assert js.count("fetch(RANGES_URL)") == 1
+    # premium chart from series_24h only
+    premium_region = js.split("function build_24h_views", 1)[1].split("function chart_points", 1)[0]
+    assert "series_24h" in premium_region
+    assert "build_24h_views" in js
+    # KPI from canonical range_24h bounds — never a local min/max recomputation
+    assert "range24.low_bps" in premium_region and "range24.high_bps" in premium_region
+    assert "range24.observation_count" in premium_region
+    assert "Math.min.apply" not in premium_region and "Math.max.apply" not in premium_region
+    # no 24h claim on the count-limited history surfaces
+    assert "not a 24h window" in js
+    assert "24h canonical range" in js  # premium chart heading
+    assert "recent history" in js  # basis/token chart heading
+    # the old mislabeled note ("window: last N collected points" for the
+    # premium 24h chart) is gone from the 24h builder
+    assert "window: last" not in premium_region
+
+
+def test_detail_range_kpi_uses_signed_formatter():
+    js = _detail_html()
+    assert "function fmt_signed_bps" in js
+    # sign derived from the value; no manual "+"-prefix string surgery
+    assert '(n > 0 ? "+" : "")' in js
+    assert '"+ " + hi.toFixed' not in js and '.replace("+", "")' not in js
+    assert 'fmt_signed_bps(lo) + " … " + fmt_signed_bps(hi)' in js
+
+
+def test_chart_primitive_uses_strict_numeric_parsing():
+    js = _charts_js()
+    # strict full-string numeric validation in the NEW Radar primitives —
+    # no bare parseFloat prefix parsing (legacy workbook code is untouched)
+    radar_section = js.split("Radar / terminal primitives", 1)[1]
+    assert "parseFloat" not in radar_section, (
+        "generic Radar primitives must not partial-prefix parse")
+    assert "NUMERIC_RE" in radar_section
+    # documented strict contract
+    assert "partial-prefix" in radar_section
 
 
 def test_landing_visuals_are_read_only_and_bounded():

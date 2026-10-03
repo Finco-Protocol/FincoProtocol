@@ -388,10 +388,17 @@
     return el.dataset.theme === 'dark' ? DARK : C;
   }
 
-  // Safe numeric parse: anything non-numeric becomes a GAP (null), never 0.
+  // Strict finite-number parse for the generic Radar primitives: the WHOLE
+  // string must be a plain decimal/scientific number. Malformed input such
+  // as "12abc" becomes a GAP (null) — never a partial-prefix value.
+  // Legacy workbook renderers keep their own conversion unchanged.
+  const NUMERIC_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/;
   function num(v) {
-    if (v == null || v === '') return null;
-    const n = typeof v === 'number' ? v : parseFloat(v);
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v !== 'string') return null;
+    const s = v.trim();
+    if (!s || !NUMERIC_RE.test(s)) return null;
+    const n = Number(s);
     return isFinite(n) ? n : null;
   }
 

@@ -60,9 +60,9 @@ def _range_summary_from_rows(rows, latest, *, now: datetime,
     ``include_series`` additionally returns a bounded, deterministic,
     display-only 24h premium series (``series_24h``) extracted from the SAME
     digest-verified, already-filtered window points: oldest-first
-    ``[{"collected_at", "premium_bps"}]`` bucket-downsampled to at most
-    ``max_series_points`` (first point of each equal-size bucket; first and
-    last canonical points always preserved). No interpolation, no synthetic
+    ``[{"collected_at", "premium_bps"}]`` LTTB-downsampled to at most
+    ``max_series_points`` (first and last canonical points always preserved;
+    visually material spikes survive). No interpolation, no synthetic
     points, no canonical data change — pure visual selection.
     """
     last_available = None
@@ -132,28 +132,62 @@ def _downsample_series(series: list[tuple[datetime, str]],
                        max_points: int) -> list[dict]:
     """Deterministic display-only downsample of verified canonical points.
 
-    Keeps the first and last canonical points; between them, divides the
-    series into equal-size buckets and keeps each bucket's FIRST point.
-    Canonical timestamps and values are never altered, interpolated or
-    re-timestamped — points are only selected.
+    Series within the budget render directly (exact canonical points). Longer
+    series are reduced with LTTB (Largest Triangle Three Buckets, adapted
+    from the MIT lttb-py reference as a dependency-light primitive): the
+    visually material excursions — short-lived premium spikes and
+    dislocations — survive, which a first-of-bucket sampler would silently
+    discard. First and last canonical points are always preserved and every
+    selected point is an ACTUAL canonical observation: no interpolation, no
+    generated values, no rewritten timestamps.
     """
     if max_points <= 0 or len(series) <= max_points:
         return [{"collected_at": collected.isoformat(), "premium_bps": value}
                 for collected, value in series]
-    first, last = series[0], series[-1]
-    inner = series[1:-1]
+    selected = _lttb_select(series, max_points)
+    return [{"collected_at": series[i][0].isoformat(), "premium_bps": series[i][1]}
+            for i in selected]
+
+
+def _lttb_select(series: list[tuple[datetime, str]], max_points: int) -> list[int]:
+    """LTTB index selection over (timestamp, value) canonical points.
+
+    Deterministic: bucket boundaries are fixed fractions of the series
+    length and ties resolve to the first maximal-area point. The first
+    point seeds the running anchor and the last point is always kept.
+    """
+    n = len(series)
+    if n <= max_points or max_points < 3:
+        return list(range(n))
+    xs = [float(collected.timestamp()) for collected, _value in series]
+    ys = [float(Decimal(value)) for _collected, value in series]
+    kept = [0]
     bucket_count = max_points - 2
-    bucket_size = len(inner) / bucket_count
-    picked = [first]
-    for i in range(bucket_count):
-        start = int(i * bucket_size)
-        end = max(start + 1, int((i + 1) * bucket_size))
-        bucket = inner[start:end]
-        if bucket:
-            picked.append(bucket[0])
-    picked.append(last)
-    return [{"collected_at": collected.isoformat(), "premium_bps": value}
-            for collected, value in picked]
+    bucket_size = (n - 2) / bucket_count
+    anchor = 0
+    for i in range(1, bucket_count + 1):
+        # Average of the NEXT bucket is the far triangle edge; for the final
+        # bucket it is exactly the last canonical point.
+        if i < bucket_count:
+            nxt_start = 1 + int(i * bucket_size)
+            nxt_end = 1 + int((i + 1) * bucket_size)
+            nxt = range(nxt_start, max(nxt_end, nxt_start + 1))
+            avg_x = sum(xs[j] for j in nxt) / len(nxt)
+            avg_y = sum(ys[j] for j in nxt) / len(nxt)
+        else:
+            avg_x, avg_y = xs[-1], ys[-1]
+        start = 1 + int((i - 1) * bucket_size)
+        end = 1 + int(i * bucket_size)
+        best_index, best_area = start, -1.0
+        ax, ay = xs[anchor], ys[anchor]
+        for j in range(start, max(end, start + 1)):
+            area = abs((ax - avg_x) * (ys[j] - ay) - (ax - xs[j]) * (avg_y - ay)) * 0.5
+            if area > best_area:
+                best_area, best_index = area, j
+        kept.append(best_index)
+        anchor = best_index
+    kept.append(n - 1)
+    return kept
 
 
 _RANGE_WINDOW_SQL = (
