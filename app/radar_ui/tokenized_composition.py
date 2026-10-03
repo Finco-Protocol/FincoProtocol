@@ -287,7 +287,7 @@ def compose_underlying(
     stale_representations = [
         r for r in representations
         if r.has_market_data and r.price is not None
-        and r.freshness_state != "AVAILABLE"
+        and r.freshness_state == "STALE"
     ]
     reference_usable = (reference.get("price") is not None
                         and reference.get("state") == "FRESH")
