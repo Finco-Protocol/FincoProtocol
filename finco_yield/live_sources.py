@@ -173,7 +173,10 @@ MORPHO_QUERY = (
     "query VaultState($address: String!, $chainId: Int!) {"
     " vaultByAddress(address: $address, chainId: $chainId) {"
     " address name symbol asset { address symbol } chain { id }"
-    " state { apy netApy totalAssetsUsd } } }"
+    " state { apy netApy netApyExcludingRewards"
+    " avgNetApy(lookback: THIRTY_DAYS)"
+    " avgNetApyExcludingRewards(lookback: THIRTY_DAYS)"
+    " totalAssetsUsd } } }"
 )
 
 
@@ -188,10 +191,18 @@ class MorphoGraphQLAdapter:
 
     * ``state.netApy``         -> ``apy_total``  (depositor-facing net APY)
     * ``state.totalAssetsUsd`` -> ``tvl_usd``
+    * ``state.netApyExcludingRewards`` -> ``apy_base`` (explicit provider
+      field; the base/reward split is NEVER derived by subtraction)
+    * ``state.avgNetApy(lookback: THIRTY_DAYS)``
+                             -> ``apy_total_30d_avg`` with provenance
+      ``apy_30d_avg_source = "MORPHO_NATIVE"`` (provider-native 30d average;
+      FINCO never reconstructs it from history when the source exposes it)
+    * ``state.avgNetApyExcludingRewards(lookback: THIRTY_DAYS)``
+                             -> ``apy_base_30d_avg`` (same provenance)
     * ``state.apy``            -> kept ONLY in ``source_native`` (gross native
       APY); never mapped onto ``apy_base``.
-    * ``apy_base`` / ``apy_rewards`` stay ``None`` (UNAVAILABLE): the queried
-      fields do not prove a base/rewards split and FINCO never derives one by
+    * ``apy_rewards`` stays ``None`` (UNAVAILABLE): the queried fields expose
+      no explicit rewards-APY field and FINCO never derives one by
       subtraction.
 
     The query requests no source timestamp, so ``observed_at`` follows the
@@ -261,11 +272,20 @@ class MorphoGraphQLAdapter:
 
         net_apy = _optional_decimal(state.get("netApy"), "netApy")
         tvl = _optional_decimal(state.get("totalAssetsUsd"), "totalAssetsUsd")
+        base_apy = _optional_decimal(state.get("netApyExcludingRewards"),
+                                     "netApyExcludingRewards")
+        avg_30d = _optional_decimal(state.get("avgNetApy"), "avgNetApy")
+        avg_30d_base = _optional_decimal(state.get("avgNetApyExcludingRewards"),
+                                         "avgNetApyExcludingRewards")
+        has_30d = avg_30d is not None
         native = {
             "endpoint": "morpho_graphql.vaultByAddress",
             "vault_address": target.contract_address,
             "chain_id": target.chain_id,
             "state.netApy": state.get("netApy"),
+            "state.netApyExcludingRewards": state.get("netApyExcludingRewards"),
+            "state.avgNetApy": state.get("avgNetApy"),
+            "state.avgNetApyExcludingRewards": state.get("avgNetApyExcludingRewards"),
             "state.apy": state.get("apy"),
             "state.totalAssetsUsd": state.get("totalAssetsUsd"),
         }
@@ -289,14 +309,24 @@ class MorphoGraphQLAdapter:
             source_type=EvidenceConfidence.NATIVE_ENRICHED,
             tvl_usd=tvl,
             apy_total=net_apy,
-            apy_base=None,
+            apy_base=base_apy,
             apy_rewards=None,
+            apy_total_30d_avg=avg_30d,
+            apy_base_30d_avg=avg_30d_base,
+            apy_30d_avg_source=("MORPHO_NATIVE" if has_30d else None),
             source_native=native,
             derived={
                 "apy_total": "passthrough of state.netApy (fraction)",
                 "tvl_usd": "passthrough of state.totalAssetsUsd (USD)",
-                "apy_base": "UNAVAILABLE: not proven by queried fields",
-                "apy_rewards": "UNAVAILABLE: not proven by queried fields",
+                "apy_base": "passthrough of state.netApyExcludingRewards "
+                            "(explicit provider field, never derived)",
+                "apy_rewards": "UNAVAILABLE: no explicit rewards-APY field; "
+                               "never derived by subtraction",
+                "apy_total_30d_avg": "passthrough of state.avgNetApy"
+                                     "(lookback: THIRTY_DAYS); MORPHO_NATIVE",
+                "apy_base_30d_avg": "passthrough of "
+                                    "state.avgNetApyExcludingRewards"
+                                    "(lookback: THIRTY_DAYS); MORPHO_NATIVE",
                 "observed_at": "FETCHED_AT policy: no source timestamp requested",
             },
         )

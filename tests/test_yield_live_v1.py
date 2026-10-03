@@ -136,19 +136,29 @@ def _all_ok(target, request):
 class TestAdapterNormalization:
     def test_valid_payload_normalizes_deterministically(self):
         clock = FakeClock()
-        result = _adapter(_by_address({}, _all_ok), clock).fetch(_targets())
+
+        def explicit_base(target, request):
+            vault = _vault(target)
+            vault["state"]["netApyExcludingRewards"] = 0.035
+            return _ok(vault)
+
+        result = _adapter(_by_address({}, explicit_base), clock).fetch(_targets())
         assert result.status == "SUCCEEDED" and not result.failures
         assert len(result.observations) == len(_targets()) == 14
         obs = result.observations[0]
         assert obs.apy_total == Decimal("0.0412")           # state.netApy passthrough
         assert obs.tvl_usd == Decimal("1250000.5")
-        assert obs.apy_base is None and obs.apy_rewards is None   # never derived
+        assert obs.apy_base == Decimal("0.035")             # explicit provider passthrough
+        assert obs.apy_rewards is None                      # never inferred by subtraction
         assert obs.source_native["state.apy"] == 0.05       # kept native-only
+        assert obs.source_native["state.netApyExcludingRewards"] == 0.035
         assert obs.observed_at_policy == "FETCHED_AT" and obs.observed_at == obs.fetched_at == T0
         assert obs.provider == "morpho_graphql"
         assert obs.source_record_id == f"{obs.chain_id}:{obs.contract_address}"
-        assert "UNAVAILABLE" in obs.derived["apy_base"]
-        again = _adapter(_by_address({}, _all_ok), FakeClock()).fetch(_targets())
+        assert "passthrough" in obs.derived["apy_base"]
+        assert "never derived" in obs.derived["apy_base"]
+        assert "UNAVAILABLE" in obs.derived["apy_rewards"]
+        again = _adapter(_by_address({}, explicit_base), FakeClock()).fetch(_targets())
         assert [o.payload() for o in result.observations] == [o.payload() for o in again.observations]
 
     def test_canonical_identity_matches_registry_uid(self):

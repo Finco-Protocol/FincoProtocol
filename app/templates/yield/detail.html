@@ -35,6 +35,21 @@
     <p>Rewards: {{ rewards_apy }}</p>
     <p>Reward dependency: {{ reward_dependency }}</p>
     <p>Reward-Off APY: {{ reward_off_apy }}</p>
+    <p class="sub">Base is the explicit provider field (netApyExcludingRewards); Rewards APY has no explicit provider field and is never derived by subtraction.</p>
+  </section>
+
+  <section class="card" data-testid="yield-benchmark-stability">
+    <h2>Benchmark &amp; Stability</h2>
+    <p>30d average APY: <span data-testid="apy-30d-avg">{{ apy_30d_avg }}</span>
+      {% if apy_30d_avg_source %}<span class="y-badge">{{ apy_30d_avg_source }}</span>{% endif %}</p>
+    <p>APY volatility (30d sigma): <span data-testid="apy-sigma-30d">{{ sigma_30d }}</span>
+      {% if sigma_30d_source %}<span class="y-badge">{{ sigma_30d_source }}</span>{% endif %}</p>
+    <p>3M Treasury (DGS3MO): <span data-testid="treasury-yield">{{ treasury_yield }}</span>
+      <span class="y-badge">{{ treasury_state }}</span>
+      {% if treasury_period %}<span class="sub">{{ treasury_period }}</span>{% endif %}</p>
+    <p>Yield spread vs Treasury: <span data-testid="treasury-spread">{{ spread_bps }}</span>
+      {% if spread_source %}<span class="y-badge">{{ spread_source }}</span>{% endif %}</p>
+    <p class="sub">Spread exists only when the yield observation AND a fresh Treasury observation both exist — missing evidence stays “—”, never zero.</p>
   </section>
 
   <section class="card">
@@ -42,6 +57,15 @@
     <p>Observations: {{ history.observation_count }}</p>
     <p>Real span: {{ history.history_days }} days</p>
     <p>Windows: {% if history.available_windows %}{{ history.available_windows|join(", ") }}{% else %}UNAVAILABLE — no fabricated backfill{% endif %}</p>
+    {% if history.observation_count %}
+    <div class="y-chart" data-testid="apy-history-chart">
+      <div class="fo-power-skeleton fo-power-skeleton--block" data-testid="apy-chart-skeleton" style="height:150px"></div>
+      <div data-chart-type="line" data-zero-line="true" id="apy-history-chart"
+           aria-label="APY history, canonical observations only; gaps are missing evidence, never interpolated"
+           style="display:none"></div>
+      <p class="y-subtext" id="apy-chart-note"></p>
+    </div>
+    {% endif %}
   </section>
 
   <section class="card" data-testid="yield-intelligence" data-intelligence-status="{{ intelligence.status if intelligence else intelligence_history_status }}">
@@ -62,6 +86,8 @@
             {% for h in intelligence.horizons %}<td data-testid="intel-tvl-range-{{ h.name }}">{{ h.tvl_range }}</td>{% endfor %}</tr>
           <tr><th>Observations</th><td>—</td>
             {% for h in intelligence.horizons %}<td data-testid="intel-count-{{ h.name }}">{{ h.observations }} ({{ h.apy_available }} with APY, {{ h.tvl_available }} with TVL)</td>{% endfor %}</tr>
+          <tr><th>APY sigma</th><td>—</td>
+            {% for h in intelligence.horizons %}<td data-testid="intel-sigma-{{ h.name }}">{{ h.apy_sigma }}{% if h.apy_sigma_source %} <small>{{ h.apy_sigma_source }}</small>{% endif %}</td>{% endfor %}</tr>
           <tr><th>History coverage</th><td>—</td>
             {% for h in intelligence.horizons %}<td data-testid="intel-coverage-{{ h.name }}">{{ h.coverage }}</td>{% endfor %}</tr>
         </tbody>
@@ -125,4 +151,48 @@
 </section>
 
 <p class="bound">No custody. No server-side signing. No automatic broadcast. No auto-invest or rebalance.</p>
+{% if history.observation_count %}
+<script>
+(function () {
+  "use strict";
+  // Chart data is the SAME canonical observation history the tables show
+  // (read-only /history.json). Gaps stay gaps; no interpolation, no
+  // synthetic backfill, timestamps never rewritten.
+  var CHART = document.getElementById("apy-history-chart");
+  function start() {
+    if (!CHART || !window.FoCharts) return;
+  fetch("/yield/{{ o.uid }}/history.json", {cache: "no-store"})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (payload) {
+      var points = (payload && Array.isArray(payload.observations)) ? payload.observations : [];
+      var series = points.map(function (p) {
+        var v = (p.payload && p.payload.apy_total != null) ? Number(p.payload.apy_total) : null;
+        return { t: p.observed_at || "", v: (v != null && isFinite(v)) ? v * 100 : null };
+      });
+      var usable = series.filter(function (p) { return p.v != null; }).length;
+      var skeleton = document.querySelector("[data-testid='apy-chart-skeleton']");
+      if (skeleton && skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
+      if (usable < 2) {
+        var note = document.getElementById("apy-chart-note");
+        if (note) note.textContent = "Insufficient canonical history for a chart yet — nothing synthesized.";
+        return;
+      }
+      CHART.dataset.points = JSON.stringify(series);
+      window.FoCharts.renderElement(CHART);
+      var note2 = document.getElementById("apy-chart-note");
+      if (note2) note2.textContent = usable + " canonical observations shown · APY in percent · gaps are missing evidence.";
+    })
+    .catch(function () {
+      var skeleton = document.querySelector("[data-testid='apy-chart-skeleton']");
+      if (skeleton && skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
+      var note = document.getElementById("apy-chart-note");
+      if (note) note.textContent = "History unavailable — no chart is rendered rather than an incomplete one.";
+    });
+  }
+  // overview-charts.js is deferred: start once it has actually loaded.
+  if (window.FoCharts) { start(); }
+  else { window.addEventListener("load", start); }
+})();
+</script>
+{% endif %}
 {% endblock %}

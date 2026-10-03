@@ -33,6 +33,16 @@
     .hash,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;font-size:11px}
     .action-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}
     .muted-link{color:#6b7280;border-style:dashed}
+    .y-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px;margin:0 0 16px}
+    .y-summary .card{padding:10px 12px}
+    .y-summary .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+    .y-summary .m{font-size:10px;color:#6b7280;overflow-wrap:anywhere}
+    .up{color:#047857;font-weight:700}
+    .down{color:#b91c1c;font-weight:700}
+    .flat{color:#6b7280;font-weight:600}
+    .y-chart{width:100%;max-width:100%}
+    .y-chart svg{max-width:100%;height:auto}
+    .src-label{display:block;font-size:9px;color:#9ca3af;letter-spacing:.02em}
     @media(max-width:700px){
       .y{padding:20px 12px}
       .filters,.grid,.action-form{grid-template-columns:1fr}
@@ -46,5 +56,6 @@
 <main class="y">
   {% block content %}{% endblock %}
 </main>
+<script src="/static/interaction/overview-charts.js" defer></script>
 </body>
 </html>

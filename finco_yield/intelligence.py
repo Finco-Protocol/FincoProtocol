@@ -52,7 +52,13 @@ INTELLIGENCE_SCHEMA = "YIELD_INTELLIGENCE_V1"
 HORIZONS: tuple[tuple[str, timedelta], ...] = (
     ("24h", timedelta(hours=24)),
     ("7d", timedelta(days=7)),
+    ("30d", timedelta(days=30)),
 )
+
+# APY volatility (sigma) requires this many numeric APY observations inside a
+# window before a FINCO-computed standard deviation is exposed; below it the
+# statistic stays UNAVAILABLE rather than noisy.
+SIGMA_MIN_OBSERVATIONS = 10
 _PRIOR_RESOLUTION = timedelta(microseconds=1)
 _BPS = Decimal(10000)
 
@@ -132,6 +138,7 @@ class WindowStat:
     minimum: Decimal | None
     maximum: Decimal | None
     range: Decimal | None
+    mean: Decimal | None = None   # plain arithmetic mean of available values
 
 
 @dataclass(frozen=True)
@@ -147,6 +154,13 @@ class HorizonIntelligence:
     tvl_delta: TvlDelta
     apy_window: WindowStat
     tvl_window: WindowStat
+    # FINCO-computed APY volatility over THIS window (population standard
+    # deviation of available APY observations, APY fractions).  ``None`` =
+    # UNAVAILABLE (fewer than SIGMA_MIN_OBSERVATIONS numeric points).  Source
+    # label is always FINCO_HISTORICAL -- never mixed with provider-native
+    # statistics.
+    apy_sigma: Decimal | None = None
+    apy_sigma_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -221,7 +235,8 @@ def _window_stat(points: list[ObservationPoint], field: str) -> WindowStat:
     if not values:
         return WindowStat(len(points), 0, None, None, None)
     lo, hi = min(values), max(values)
-    return WindowStat(len(points), len(values), lo, hi, hi - lo)
+    mean = sum(values, Decimal(0)) / Decimal(len(values))
+    return WindowStat(len(points), len(values), lo, hi, hi - lo, mean)
 
 
 def _apy_delta(latest: ObservationPoint, base: ObservationPoint | None) -> ApyDelta:
@@ -262,6 +277,20 @@ def _coverage(base: ObservationPoint | None, apy: WindowStat, tvl: WindowStat) -
     return Coverage.AVAILABLE
 
 
+def _apy_sigma(points: list[ObservationPoint]) -> Decimal | None:
+    """Population standard deviation of available APY values in a window.
+
+    FINCO_HISTORICAL statistic over canonical observations only; UNAVAILABLE
+    below SIGMA_MIN_OBSERVATIONS (never a noisy or zero-padded value)."""
+    values = [p.apy_total for p in points if p.apy_total is not None]
+    if len(values) < SIGMA_MIN_OBSERVATIONS:
+        return None
+    count = Decimal(len(values))
+    mean = sum(values, Decimal(0)) / count
+    variance = sum(((v - mean) ** 2 for v in values), Decimal(0)) / count
+    return variance.sqrt()
+
+
 def _horizon(store: YieldHistoryStore, uid: str, latest: ObservationPoint,
              name: str, span: timedelta) -> HorizonIntelligence:
     cutoff = latest.observed_at - span
@@ -271,6 +300,7 @@ def _horizon(store: YieldHistoryStore, uid: str, latest: ObservationPoint,
     points = [_point(r) for r in window_rows]
     apy_w, tvl_w = _window_stat(points, "apy_total"), _window_stat(points, "tvl_usd")
     offset = None if baseline is None else int((cutoff - baseline.observed_at).total_seconds())
+    sigma = _apy_sigma(points)
     return HorizonIntelligence(
         horizon=name,
         horizon_seconds=int(span.total_seconds()),
@@ -283,6 +313,8 @@ def _horizon(store: YieldHistoryStore, uid: str, latest: ObservationPoint,
         tvl_delta=_tvl_delta(latest, baseline),
         apy_window=apy_w,
         tvl_window=tvl_w,
+        apy_sigma=sigma,
+        apy_sigma_source=("FINCO_HISTORICAL" if sigma is not None else None),
     )
 
 

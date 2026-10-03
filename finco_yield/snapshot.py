@@ -48,6 +48,7 @@ ORIGIN_REFERENCE_FALLBACK = "REFERENCE_FALLBACK"
 # (chain, protocol, contract, underlying, share token, name) never come from it.
 _OVERLAY_KEYS = (
     "tvl_usd", "apy_total", "apy_base", "apy_rewards", "apy_intrinsic",
+    "apy_total_30d_avg", "apy_30d_avg_source",
     "observed_at", "block_number", "source_type", "adapter", "adapter_version",
     "data_origin", "provider", "source_record_id", "fetched_at",
     "observed_at_policy", "history_observation_hash", "source_native",
@@ -129,6 +130,8 @@ def snapshot_row(
         "apy_total": _decimal_text(observation.apy_total),
         "apy_base": _decimal_text(observation.apy_base),
         "apy_rewards": _decimal_text(observation.apy_rewards),
+        "apy_total_30d_avg": _decimal_text(observation.apy_total_30d_avg),
+        "apy_30d_avg_source": observation.apy_30d_avg_source,
         "apy_intrinsic": None,
         "observed_at": _iso(observation.observed_at),
         "block_number": None,
