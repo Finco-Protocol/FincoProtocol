@@ -139,13 +139,15 @@ def _store_observation_view(store: VenueMarketStore | None,
         return base
     expected_symbol = (str(entry.underlying_symbol).strip().upper()
                        if entry.underlying_symbol else None)
-    latest = store.get_latest_for_instrument(instrument_id,
-                                             venue_id=expected_venue)
-    if latest is None or latest.price is None:
+    if expected_symbol is None:
         return base
-    if expected_symbol is None or (
-            latest.canonical_asset_id.upper() != expected_symbol):
-        # Cross-underlying evidence: fail closed to unavailable.
+    latest = store.get_latest_for_identity(
+        expected_symbol,
+        expected_venue,
+        instrument_id,
+        entry.instrument_type,
+    )
+    if latest is None or latest.price is None:
         return base
     view = RepresentationMarketView(
         venue_id=latest.venue_id,
