@@ -1,0 +1,99 @@
+{
+  "audit_completeness": {
+    "note": "The original run printed only a block-hash prefix to the console and did not persist the full hash or block timestamp; they are NOT reconstructed here. Runs of the corrected tool record pinned_block_number, pinned_block_hash, pinned_block_timestamp and reorg_detected in the artifact. The 8 result rows are unchanged.",
+    "pinned_block_hash": "NOT_RECORDED_BY_ORIGINAL_RUN",
+    "pinned_block_number": "RECORDED",
+    "pinned_block_timestamp": "NOT_RECORDED_BY_ORIGINAL_RUN"
+  },
+  "authority_note": "None of the 8 candidate Chainlink feed proxy addresses derived from the official Chainlink docs catalog page for Robinhood Chain had deployed bytecode on chain 4663 at pinned block 80165854 (typed result NOT_DEPLOYED_ON_4663 for all 8). That proves only non-deployment on chain 4663 at that block; it does not establish which other network, if any, the addresses belong to. Future verification requires NEW chain-4663-specific candidates from authoritative sources.",
+  "chain_id": 4663,
+  "not_deployed": 8,
+  "onchain_verified": 0,
+  "pinned_block_number": 80165854,
+  "reorg_detected": false,
+  "results": [
+    {
+      "candidate_proxy": "0x7E7B45b08F68EC69A99AAb12e42FcCB078e10094",
+      "canonical_id": "4663:0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "AAPL",
+      "token_contract": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0xf9184b8E5da48C19fA4E06f83f77742e748cca96",
+      "canonical_id": "4663:0x12f190a9f9d7d37a250758b26824b97ce941bf54",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "AMZN",
+      "token_contract": "0x12f190a9f9d7d37a250758b26824b97ce941bf54",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0x1b32682C033b2DD7EFdC615FA82d353e254F39b5",
+      "canonical_id": "4663:0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "GOOGL",
+      "token_contract": "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0xfc76E9445952A3C31369dFd26edfdfb9713DF5Bb",
+      "canonical_id": "4663:0xc0d6457c16cc70d6790dd43521c899c87ce02f35",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "META",
+      "token_contract": "0xc0d6457c16cc70d6790dd43521c899c87ce02f35",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0xC43081d9EA6d1c53f1F0e525504d47Dd60de12da",
+      "canonical_id": "4663:0xe93237c50d904957cf27e7b1133b510c669c2e74",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "MSFT",
+      "token_contract": "0xe93237c50d904957cf27e7b1133b510c669c2e74",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0x1fE6c9Bd9B29e5810c2819f37dDa8559739ebeC9",
+      "canonical_id": "4663:0xe0444ef8bf4ed74f74fd73686e2ddf4c1c5591e8",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "NFLX",
+      "token_contract": "0xe0444ef8bf4ed74f74fd73686e2ddf4c1c5591e8",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0xea5c2Cbb5cD57daC24E26180b19a929F3E9699B8",
+      "canonical_id": "4663:0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "NVDA",
+      "token_contract": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    },
+    {
+      "candidate_proxy": "0x567E67f456c7453c583B6eFA6F18452cDee1F5a8",
+      "canonical_id": "4663:0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+      "eth_getCode_result": "empty (not deployed)",
+      "symbol": "TSLA",
+      "token_contract": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+      "verification_block": 80165854,
+      "verification_date": "2026-10-04",
+      "verification_result": "NOT_DEPLOYED_ON_4663"
+    }
+  ],
+  "rpc_authority": "ROBINHOOD_CHAIN_MAINNET",
+  "total_candidates": 8,
+  "verified_at": "2026-10-04"
+}

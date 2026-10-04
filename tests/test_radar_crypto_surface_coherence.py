@@ -313,7 +313,8 @@ def test_authorities_have_zero_diff(path):
     excluded = [
         ":(exclude)app/radar_rwa/stock_token_oracle.py", ":(exclude)app/radar_rwa/stock_token_oracle_registry.py",
         ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
-        ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json"]   # multi-source modules (#188) have their own guards
+        ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json",
+        ":(exclude)app/radar_rwa/data/stock_token_oracle_candidates.json"]   # multi-source modules (#188) have their own guards
     out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", "origin/main..HEAD", "--", path, *excluded],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
