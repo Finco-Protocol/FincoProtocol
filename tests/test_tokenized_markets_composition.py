@@ -309,11 +309,13 @@ class TestTokenizedMarketsSurface:
         assert 'data-testid="tm-history-note"' in page.text
 
     def test_landing_primary_list_excludes_identity_only_rows_and_catalog_keeps_them(self, client):
-        # Product-reality contract: an identity with no persisted market evidence is NOT a primary
-        # public row; it stays reachable through the research identity catalog and detail deep link.
+        # Product-reality contract: only reviewed collector-eligible assets (13, unpriced until the collector
+        # runs) are primary rows; every other identity stays in the research identity catalog.
+        import re
         page = client.get("/radar/tokenized-markets")
-        assert 'data-testid="tm-row-NVDA"' not in page.text
-        assert 'data-testid="tm-empty"' in page.text
+        assert len(re.findall(r'data-testid="tm-row-', page.text)) == 13
+        assert 'data-testid="tm-row-NVDA"' in page.text      # reviewed eligible, still unpriced
+        assert 'data-testid="tm-row-ZZZZ"' not in page.text
         catalog = client.get("/radar/tokenized-markets?view=catalog")
         assert 'href="/radar/tokenized-markets/NVDA"' in catalog.text
         assert 'data-testid="tm-catalog-row-NVDA"' in catalog.text
