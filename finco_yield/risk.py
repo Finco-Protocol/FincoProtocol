@@ -52,10 +52,14 @@ Eligibility policy (both gates required for a percentile)
 - ``MIN_HISTORY_SPAN_SECONDS`` between the earliest and latest usable point.
 
 A burst of observations collected over a few minutes never produces a
-meaningful-looking percentile.  Both gates met -> AVAILABLE (or STALE when
-the latest canonical observation is not CURRENT); exactly one gate met ->
-PARTIAL (distribution published, percentile withheld); neither ->
-INSUFFICIENT_HISTORY; no usable points -> UNAVAILABLE.
+meaningful-looking percentile.  The COUNT gate controls whether distribution
+statistics (min/q25/median/q75/max) are published.  The percentile requires
+BOTH count + span gates plus a usable APY on the actual latest canonical row.
+Therefore a span-only sample remains PARTIAL with distribution statistics
+withheld; a count-qualified but short-span sample may publish distribution
+statistics while withholding the percentile.  Canonical freshness is
+preserved separately: STALE stays STALE, while UNKNOWN / INVALID /
+FUTURE_TIMESTAMP fail closed without being relabelled as stale.
 """
 from __future__ import annotations
 
@@ -65,7 +69,7 @@ from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
-from .alerts_eval import _row_observed_at, _source_ref_from_row
+from .alerts_eval import _row_field, _row_observed_at, _source_ref_from_row
 from .freshness import evaluate_freshness
 from .history import YieldHistoryStore
 from .intelligence import SIGMA_MIN_OBSERVATIONS, build_intelligence
@@ -133,7 +137,7 @@ def _usable_points(rows: list[dict[str, Any]], field: str,
         moment = _row_observed_at(row)
         if moment is None or moment < since or moment > until:
             continue
-        value = _dec(_row_payload(row).get(field))
+        value = _dec(_row_field(row, field))
         if value is None:
             continue
         points.append((moment, value))
@@ -147,7 +151,7 @@ def _latest_row_value(rows: list[dict[str, Any]], field: str) -> Decimal | None:
     explicit last_observed_* fields)."""
     if not rows:
         return None
-    return _dec(_row_payload(rows[-1]).get(field))
+    return _dec(_row_field(rows[-1], field))
 
 
 def _last_observed_binding(rows: list[dict[str, Any]], field: str,
@@ -155,7 +159,7 @@ def _last_observed_binding(rows: list[dict[str, Any]], field: str,
     """Newest observation CARRYING ``field`` (last-known semantics, explicitly
     distinct from current)."""
     for row in reversed(rows):
-        value = _dec(_row_payload(row).get(field))
+        value = _dec(_row_field(row, field))
         if value is None:
             continue
         moment = _row_observed_at(row)
@@ -372,7 +376,13 @@ def build_historical_risk(
     as_of = as_of.astimezone(timezone.utc)
     since = as_of - window
 
-    rows = store.window(canonical_id, since=since, until=as_of)
+    # Historical distribution is bounded by the evaluation window, but
+    # CURRENT evidence is bound to the actual latest canonical observation.
+    # This distinction matters for FUTURE_TIMESTAMP: a future-dated latest
+    # row is not smuggled into historical statistics, yet its canonical
+    # freshness state remains visible and fails the top-level context closed.
+    rows = list(store.window(canonical_id, since=since, until=as_of))
+    latest_row = store.latest(canonical_id)
     apy_points = _usable_points(rows, "apy_total", since=since, until=as_of)
     tvl_points = _usable_points(rows, "tvl_usd", since=since, until=as_of)
     apy_values = [value for _t, value in apy_points]
@@ -385,13 +395,14 @@ def build_historical_risk(
     # CURRENT evidence comes from the ACTUAL latest canonical row: if it has
     # no usable apy_total, there is NO current APY — an older APY-bearing
     # point stays a last-observed fact and is never promoted to current.
-    current_apy = _latest_row_value(rows, "apy_total")
-    current_tvl = _latest_row_value(rows, "tvl_usd")
+    current_rows = [latest_row] if latest_row is not None else []
+    current_apy = _latest_row_value(current_rows, "apy_total")
+    current_tvl = _latest_row_value(current_rows, "tvl_usd")
     last_apy_binding = _last_observed_binding(rows, "apy_total", as_of)
     last_tvl_binding = _last_observed_binding(rows, "tvl_usd", as_of)
 
-    # freshness of the LATEST canonical observation (existing classifier)
-    latest_row = rows[-1] if rows else None
+    # freshness of the ACTUAL LATEST canonical observation (existing
+    # classifier), not merely the latest in-window row.
     freshness, freshness_reason = None, None
     if latest_row is not None:
         source = _source_ref_from_row(latest_row)
@@ -406,7 +417,21 @@ def build_historical_risk(
     # PARTIAL (they are not merely old) — and the exact canonical string is
     # preserved in the output.
     reason = None
-    if count == 0:
+    if latest_row is None:
+        state = RiskState.UNAVAILABLE
+        reason = "NO_CANONICAL_OBSERVATION"
+    elif freshness == "STALE":
+        # STALE means exactly stale — never collapse it into a generic
+        # unavailable-current state merely because the row also lacks APY.
+        state = RiskState.STALE
+        reason = freshness_reason or "LATEST_OBSERVATION_NOT_CURRENT"
+    elif freshness in ("UNKNOWN", "INVALID", "FUTURE_TIMESTAMP"):
+        # These are canonical evidence-quality failures, not age.  Preserve
+        # the exact freshness string and fail closed without calling them
+        # STALE.
+        state = RiskState.PARTIAL
+        reason = f"LATEST_FRESHNESS_{freshness}"
+    elif count == 0:
         state = RiskState.UNAVAILABLE
         reason = "NO_USABLE_OBSERVATIONS"
     elif not count_ok and not span_ok:
@@ -421,12 +446,9 @@ def build_historical_risk(
         reason = "LATEST_APY_UNAVAILABLE"
     elif freshness == "CURRENT":
         state = RiskState.AVAILABLE
-    elif freshness == "STALE":
-        state = RiskState.STALE
-        reason = freshness_reason or "LATEST_OBSERVATION_NOT_CURRENT"
     else:
-        # INVALID / FUTURE_TIMESTAMP / UNKNOWN: fail closed — such evidence
-        # is not merely old, so the context can never look fully AVAILABLE.
+        # Defensive fail-closed guard for any future canonical freshness
+        # state introduced upstream.
         state = RiskState.PARTIAL
         reason = f"LATEST_FRESHNESS_{freshness or 'UNKNOWN'}"
 
@@ -521,10 +543,9 @@ def build_historical_risk(
     # Reward dependency from the LATEST canonical observation only — with a
     # safe payload read: a malformed (non-dict) payload means the reward
     # context is unavailable while the historical APY context stays intact.
-    latest_payload = _row_payload(latest_row) if latest_row else {}
-    base_apy = _dec(latest_payload.get("apy_base"))
-    rewards_apy = _dec(latest_payload.get("apy_rewards"))
-    total_apy = _dec(latest_payload.get("apy_total"))
+    base_apy = _dec(_row_field(latest_row, "apy_base")) if latest_row else None
+    rewards_apy = _dec(_row_field(latest_row, "apy_rewards")) if latest_row else None
+    total_apy = _dec(_row_field(latest_row, "apy_total")) if latest_row else None
     reward_share = None
     if (rewards_apy is not None and total_apy is not None
             and total_apy != 0):

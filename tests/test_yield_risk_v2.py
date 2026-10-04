@@ -412,9 +412,8 @@ def _seed_with_latest_freshness(store, uid, *, freshness):
                      end=NOW - timedelta(hours=2))
         return
     if freshness == "FUTURE_TIMESTAMP":
-        # the canonical window read (until=as_of) structurally excludes
-        # future-dated rows, so this state is exercised at the freshness
-        # classifier level (see test below) plus the exclusion behaviour.
+        # Historical distribution remains bounded by as_of, but the actual
+        # latest canonical row must still drive CURRENT evidence/freshness.
         _seed_window(store, uid, count=12, step_hours=6,
                      end=NOW - timedelta(hours=2))
         from finco_yield.observation import ImmutableObservationRecord as R
@@ -451,27 +450,12 @@ def test_non_current_freshness_states_do_not_collapse(store, freshness):
     collapsed into STALE."""
     _seed_with_latest_freshness(store, "yld_a", freshness=freshness)
     risk = build_historical_risk(store, "yld_a", as_of=NOW)
-    if freshness == "FUTURE_TIMESTAMP":
-        # a future-dated row lies beyond the evaluation window (until=as_of)
-        # and is excluded: the context fails closed on the remaining evidence
-        assert risk.freshness == "STALE"   # the last IN-WINDOW observation
-        assert risk.state == RiskState.STALE
-        # classifier-level: the future row itself preserves the canonical
-        # FUTURE_TIMESTAMP string verbatim (never collapsed to STALE)
-        from finco_yield.alerts_eval import _source_ref_from_row
-        from finco_yield.freshness import evaluate_freshness
-        future_row = {"observed_at": (NOW + timedelta(hours=2)).isoformat(),
-                      "source_authority": "NATIVE_ENRICHED",
-                      "source_uri": "https://test", "adapter_version": "test"}
-        result = evaluate_freshness(_source_ref_from_row(future_row), now=NOW)
-        assert result.state == "FUTURE_TIMESTAMP"
-        return
     assert risk.freshness == freshness, "exact canonical string preserved"
     if freshness == "STALE":
         assert risk.state == RiskState.STALE
     else:
         assert risk.state == RiskState.PARTIAL
-        assert risk.reason.startswith("LATEST_FRESHNESS_")
+        assert risk.reason == f"LATEST_FRESHNESS_{freshness}"
     assert risk.state != RiskState.AVAILABLE
 
 
@@ -489,6 +473,9 @@ def test_non_30d_window_does_not_label_30d_sigma(store):
     risk_24h = build_historical_risk(store, "yld_a", as_of=NOW,
                                      window=timedelta(hours=24))
     assert risk_24h.apy_context.canonical_sigma_horizon == "24h"
+    risk_7d = build_historical_risk(store, "yld_a", as_of=NOW,
+                                    window=timedelta(days=7))
+    assert risk_7d.apy_context.canonical_sigma_horizon == "7d"
     risk_30d = build_historical_risk(store, "yld_a", as_of=NOW,
                                      window=timedelta(days=30))
     assert risk_30d.apy_context.canonical_sigma_horizon == "30d"
@@ -522,3 +509,5 @@ def test_malformed_non_dict_latest_payload_does_not_crash(store):
     assert risk.reward_context.rewards_apy is None
     assert risk.reward_context.base_apy is None
     assert risk.history.observation_count >= 10
+    assert risk.apy_distribution.q25 is not None
+    assert risk.apy_context.last_observed_apy is not None
