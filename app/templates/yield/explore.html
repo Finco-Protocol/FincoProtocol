@@ -32,6 +32,7 @@
 </div>
 
 <form class="y-controls" method="get" action="/yield" data-testid="yield-filters">
+  {% if research_mode %}<input type="hidden" name="include_reference" value="1">{% endif %}
   <div class="y-controls-primary">
     <div class="y-field">
       <label for="f-chain">Chain</label>
@@ -52,7 +53,7 @@
     </div>
     <div class="y-actions">
       <button type="submit" class="y-apply" data-testid="yield-apply">Apply</button>
-      <a class="y-clear" href="/yield" data-testid="yield-clear">Clear filters</a>
+      <a class="y-clear" href="/yield{% if research_mode %}?include_reference=1{% endif %}" data-testid="yield-clear">Clear filters</a>
     </div>
   </div>
   <details class="y-more" {% if filters.protocol or filters.category or filters.min_history_days or filters.max_reward_dependency or filters.evidence %}open{% endif %}>

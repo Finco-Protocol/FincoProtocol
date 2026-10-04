@@ -57,13 +57,19 @@ def test_home_architecture_and_shared_nav_are_consistent(live_url, browser):
     page = browser.new_page(viewport={"width": 1280, "height": 800})
     page.goto(f"{live_url}/")
     page.wait_for_load_state("domcontentloaded")
-    assert "MODEL · RADAR · YIELD · CRYPTO" in page.inner_text("body")
+    # Product-reality reset: home leads with R-LIVE; Yield / account & access live in the secondary menu.
+    assert "R-LIVE · RADAR · MODEL" in page.inner_text("body")
     nav = page.locator(".proto-nav")
-    for label, href in (("Model", "/library"), ("Radar", "/radar"),
-                        ("Yield", "/yield"), ("Crypto", "/crypto")):
-        link = nav.locator(f'a[href="{href}"]')
-        assert link.count() == 1, f"missing shared-nav {label} link"
+    for label, href in (("R-LIVE", "/radar/r-live"), ("Radar", "/radar"), ("Model", "/library"),
+                        ("API", "/api"), ("Docs", "/docs")):
+        link = nav.locator(f'[data-testid="proto-nav-primary"] a[href="{href}"]')
+        assert link.count() == 1, f"missing primary-nav {label} link"
         assert label in link.inner_text()
+    for label, href in (("Yield", "/yield"), ("Account", "/crypto")):
+        link = nav.locator(f'[data-testid="proto-nav-secondary"] a[href="{href}"]')
+        assert link.count() == 1, f"missing secondary-nav {label} link"
+        assert label in (link.text_content() or "")      # in the DOM; visible once the menu is opened
+    assert nav.locator('[data-testid="proto-nav-primary"] a[href="/protocol/finco"]').count() == 0
     page.close()
 
 
