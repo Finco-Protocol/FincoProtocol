@@ -269,7 +269,8 @@ class TestYieldLastObserved:
     @pytest.fixture()
     def yield_page(self, client):
         _login(client)
-        page = client.get("/yield")
+        # Bundled reference sample rows are research-mode only (the public default shows live rows only).
+        page = client.get("/yield?include_reference=1")
         assert page.status_code == 200
         return page.text
 

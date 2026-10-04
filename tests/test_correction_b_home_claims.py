@@ -134,18 +134,12 @@ def test_p01_radar_arch_describes_current_surfaces(home_html):
         )
 
 
-# ── P01-C: illustrative composite remains explicitly labelled ─────────────────
+# ── P01-C: no demo / illustrative composite on the public home ────────────────
 
-def test_p01_illustrative_composite_boundary_preserved(home_html):
-    """Product composite must be explicitly marked ILLUSTRATIVE and non-live."""
-    composite_block = _between(home_html, 'class="proto-composite"', '</div>\n        </div>')
-    assert composite_block, "proto-composite block not found"
-    text = composite_block.upper()
-    assert "ILLUSTRATIVE" in text, (
-        "Product composite must carry an explicit ILLUSTRATIVE label"
-    )
-    # Must also carry the non-live disclaimer
-    lower = composite_block.lower()
-    assert "not live" in lower or "non-live" in lower or "not live asset" in lower, (
-        "Product composite must carry a non-live / not-live-asset disclaimer"
-    )
+def test_p01_no_illustrative_demo_composite_on_public_home(home_html):
+    """Product-reality reset: the public home carries no illustrative / demo composite at all.
+
+    Previously the composite was kept but labelled ILLUSTRATIVE; non-live demo content on the front page
+    damages credibility, so it is removed rather than labelled."""
+    assert 'class="proto-composite"' not in home_html
+    assert "ILLUSTRATIVE" not in home_html.upper()
