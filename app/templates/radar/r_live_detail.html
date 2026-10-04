@@ -45,7 +45,7 @@
       <div class="rlive-kpi"><span class="rlive-kpi__label">Economic Basis</span><span class="rlive-kpi__value mono" id="kpi-basis">—</span><span class="rlive-kpi__meta" id="kpi-basis-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">Independent Token Ref.</span><span class="rlive-kpi__value mono" id="kpi-token">—</span><span class="rlive-kpi__meta" id="kpi-token-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">24h Range</span><span class="rlive-kpi__value mono" id="kpi-range">—</span><span class="rlive-kpi__meta" id="kpi-range-meta">—</span></div>
-      <div class="rlive-kpi"><span class="rlive-kpi__label">Freshness</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Evidence age (per leg)</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
     </div>
   </section>
 
@@ -377,7 +377,12 @@
     set_text("kpi-token", ref_txt);
     set_text("kpi-token-asof", tr && tr.observed_at ? "as of " + String(tr.observed_at).replace("T", " ").slice(0, 16) : null);
     var market_age = (ages.market_activity_age_seconds != null) ? ages.market_activity_age_seconds : fresh.market_activity_age_seconds;
-    set_text("kpi-freshness", market_age != null ? ("Market " + fmt_age(market_age)) : null);
+    // Each evidence leg keeps its OWN age — a fresh market leg must never read as a fresh oracle/reference leg.
+    var quote_age_kpi = (ages.quote_feed_age_seconds != null) ? ages.quote_feed_age_seconds : fresh.quote_feed_age_seconds;
+    var legs = [];
+    if (market_age != null) legs.push("Market " + fmt_age(market_age));
+    if (quote_age_kpi != null) legs.push("Oracle " + fmt_age(quote_age_kpi));
+    set_text("kpi-freshness", legs.length ? legs.join(" · ") : null);
     set_text("kpi-source", tok_source || rb_source || state);
   }
 
@@ -626,8 +631,17 @@
   // table above shows: gaps stay gaps, values are never altered, no
   // interpolation, no synthetic points, timestamps never rewritten.
   function chart_points(points, picker) {
-    return points.map(function(pt) {
-      return { t: pt.collected_at || "", v: picker(pt) };
+    // The history API returns newest-first (table order). Charts need a chronological, deterministic
+    // axis: sort ascending by collection time; equal/unparseable times keep the API's reverse order.
+    var indexed = points.map(function(pt, i) { return { pt: pt, i: i }; });
+    indexed.sort(function(a, b) {
+      var ta = Date.parse(a.pt.collected_at || ""), tb = Date.parse(b.pt.collected_at || "");
+      var ka = isNaN(ta) ? null : ta, kb = isNaN(tb) ? null : tb;
+      if (ka !== null && kb !== null && ka !== kb) return ka - kb;
+      return b.i - a.i;
+    });
+    return indexed.map(function(entry) {
+      return { t: entry.pt.collected_at || "", v: picker(entry.pt) };
     });
   }
 
