@@ -24,6 +24,18 @@ OFFICIAL_SOURCES = frozenset({"CHAINLINK_OFFICIAL_FEED_CATALOG", "ROBINHOOD_CHAI
 SOURCE_PROVEN = "SOURCE_PROVEN"
 ORACLE_FEED_NOT_REVIEWED = "ORACLE_FEED_NOT_REVIEWED"
 
+# Typed L2 sequencer authority vocabulary. ``"sequencer": null`` only ever means "no proxy address is source-proven";
+# whether the absence was REVIEWED is a separate, explicit fact:
+#   UNREVIEWED                   — nobody has reviewed the official catalogs (fail closed: no oracle can be AVAILABLE)
+#   SOURCE_PROVEN                — an official sequencer uptime feed proxy is bound in ``sequencer``
+#   OFFICIAL_FEED_NOT_PUBLISHED  — the official Chainlink L2 Sequencer Uptime Feed catalog was reviewed and publishes NO feed
+#                                  for this chain (NOT "not applicable": the chain is an L2 and sequencer liveness still matters)
+SEQUENCER_UNREVIEWED = "UNREVIEWED"
+SEQUENCER_SOURCE_PROVEN = "SOURCE_PROVEN"
+SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED = "OFFICIAL_FEED_NOT_PUBLISHED"
+SEQUENCER_AUTHORITY_STATES = frozenset({
+    SEQUENCER_UNREVIEWED, SEQUENCER_SOURCE_PROVEN, SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED})
+
 _ADDRESS = re.compile(r"^0x[0-9a-f]{40}$")
 
 
@@ -60,9 +72,31 @@ class SequencerBinding:
 
 
 @dataclass(frozen=True)
+class SequencerAuthority:
+    """Explicit reviewed fact about sequencer-feed availability for the chain (see vocabulary above)."""
+
+    state: str
+    chain_id: int
+    provenance: Provenance | None
+
+
+@dataclass(frozen=True)
 class OracleRegistry:
     bindings: Mapping[str, FeedBinding]
     sequencer: SequencerBinding | None
+    sequencer_authority: SequencerAuthority | None = None
+
+    @property
+    def sequencer_authority_state(self) -> str:
+        """Derived, fail-closed. A bound proxy is SOURCE_PROVEN; a reviewed official absence is only honoured when it carries
+        official provenance; everything else — including a bare ``sequencer: null`` — is UNREVIEWED."""
+        if self.sequencer is not None:
+            return SEQUENCER_SOURCE_PROVEN
+        authority = self.sequencer_authority
+        if (authority is not None and authority.state == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED
+                and authority.provenance is not None):
+            return SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED
+        return SEQUENCER_UNREVIEWED
 
     def status_for(self, canonical_id: str) -> str:
         return SOURCE_PROVEN if canonical_id in self.bindings else ORACLE_FEED_NOT_REVIEWED
@@ -154,7 +188,30 @@ def parse_registry(raw: dict) -> OracleRegistry:
             _provenance(seq_raw.get("provenance"), "ORACLE_SEQUENCER"))
         if sequencer.feed_proxy in proxies:
             raise OracleRegistryError("ORACLE_SEQUENCER_PROXY_COLLIDES_WITH_ASSET_FEED")
-    return OracleRegistry(bindings, sequencer)
+    return OracleRegistry(bindings, sequencer, _parse_sequencer_authority(raw.get("sequencer_authority"), sequencer))
+
+
+def _parse_sequencer_authority(raw, sequencer: SequencerBinding | None) -> SequencerAuthority | None:
+    if raw is None:
+        return None                       # no record: the registry derives UNREVIEWED (fail closed)
+    if not isinstance(raw, dict):
+        raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_INVALID")
+    state = str(raw.get("state") or "")
+    if state not in SEQUENCER_AUTHORITY_STATES:
+        raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_STATE_INVALID")
+    if raw.get("chain_id") != SUPPORTED_CHAIN_ID:
+        raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_CHAIN_INVALID")
+    if state == SEQUENCER_UNREVIEWED:
+        if sequencer is not None:
+            raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_CONTRADICTION")
+        provenance = _provenance(raw["provenance"], "ORACLE_SEQUENCER_AUTHORITY") if raw.get("provenance") else None
+        return SequencerAuthority(state, SUPPORTED_CHAIN_ID, provenance)
+    provenance = _provenance(raw.get("provenance"), "ORACLE_SEQUENCER_AUTHORITY")   # official provenance is mandatory
+    if state == SEQUENCER_SOURCE_PROVEN and sequencer is None:
+        raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_CONTRADICTION")     # claims a proxy that is not bound
+    if state == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED and sequencer is not None:
+        raise OracleRegistryError("ORACLE_SEQUENCER_AUTHORITY_CONTRADICTION")     # a bound proxy contradicts "not published"
+    return SequencerAuthority(state, SUPPORTED_CHAIN_ID, provenance)
 
 
 def load_registry(path: str | Path | None = None) -> OracleRegistry:

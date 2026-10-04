@@ -26,7 +26,9 @@ from finco_radar.authority.r_live_policy import (
 )
 
 from .keccak import selector
-from .stock_token_oracle_registry import FeedBinding, OracleRegistry, SequencerBinding
+from .stock_token_oracle_registry import (
+    SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED, SEQUENCER_SOURCE_PROVEN, FeedBinding, OracleRegistry, SequencerBinding,
+)
 
 ORACLE_SOURCE_AUTHORITY = "CHAINLINK_STOCK_TOKEN_PRICE_FEED"
 ORACLE_UNIT = "USD_PER_STOCK_TOKEN"
@@ -110,6 +112,7 @@ class SequencerStatus:
     reason: str | None
     evidence: Mapping[str, Any]
     block_hash: str | None = None   # the pinned block this status was evaluated at
+    checked: bool = True            # False ONLY for a reviewed OFFICIAL_FEED_NOT_PUBLISHED authority: no feed was queried
 
 
 def check_sequencer(rpc: Rpc, sequencer: SequencerBinding | None, block: OracleBlockContext) -> SequencerStatus:
@@ -123,7 +126,9 @@ def check_sequencer(rpc: Rpc, sequencer: SequencerBinding | None, block: OracleB
     except (_BadEvidence, RpcUnavailable, ValueError, TypeError):
         return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {}, block.block_hash)
     evidence = {"sequencerFeed": sequencer.feed_proxy, "sequencerAnswer": answer,
-                "sequencerStartedAt": started_at, "sequencerGraceSeconds": sequencer.grace_period_seconds}
+                "sequencerStartedAt": started_at, "sequencerGraceSeconds": sequencer.grace_period_seconds,
+                "sequencerAuthorityState": SEQUENCER_SOURCE_PROVEN, "sequencerChecked": True,
+                "sequencerGraceProtection": True}
     if (round_id <= 0 or started_at <= 0 or started_at > block.timestamp + MAX_BLOCK_FUTURE_SKEW_SECONDS
             or answer not in (0, 1)):
         return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", evidence, block.block_hash)
@@ -132,6 +137,30 @@ def check_sequencer(rpc: Rpc, sequencer: SequencerBinding | None, block: OracleB
     if block.timestamp - started_at <= sequencer.grace_period_seconds:
         return SequencerStatus(False, "ORACLE_SEQUENCER_GRACE_PERIOD", evidence, block.block_hash)
     return SequencerStatus(True, None, evidence, block.block_hash)
+
+
+NO_SEQUENCER_EVIDENCE: Mapping[str, Any] = {
+    "sequencerAuthorityState": SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED,
+    "sequencerChecked": False,
+    "l2LivenessGuard": "PINNED_BLOCK_FRESHNESS_ONLY",
+    "sequencerGraceProtection": False,
+}
+
+
+def resolve_sequencer(rpc: Rpc, registry: OracleRegistry, block: OracleBlockContext) -> SequencerStatus:
+    """The sequencer status for ONE pinned block, per the registry's typed sequencer authority.
+
+    * SOURCE_PROVEN                -> the official uptime feed is queried at the pinned tag (UP / DOWN / grace unchanged).
+    * OFFICIAL_FEED_NOT_PUBLISHED  -> the official catalog was REVIEWED and publishes no feed for this chain. No feed is
+      queried and nothing pretends it was: ``sequencerChecked`` is False, there is no "OK" status, and the only L2 guard is the
+      pinned-block freshness already enforced by ``pin_oracle_block``. That is NOT sequencer assurance and cannot prove a
+      post-outage grace period elapsed; no recovery time is fabricated. Acceptable ONLY for read-only market intelligence —
+      any fund-moving use needs its own review and must not inherit this exception.
+    * UNREVIEWED (including a bare ``sequencer: null``) -> fail closed: ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE.
+    """
+    if registry.sequencer_authority_state == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED:
+        return SequencerStatus(True, None, dict(NO_SEQUENCER_EVIDENCE), block.block_hash, checked=False)
+    return check_sequencer(rpc, registry.sequencer, block)
 
 
 def read_stock_token_oracle(
@@ -164,7 +193,7 @@ def read_stock_token_oracle(
         return _fail(canonical_id, pinned.reason, binding=binding)
     tag = pinned.tag
 
-    status = sequencer if sequencer is not None else check_sequencer(rpc, registry.sequencer, pinned)
+    status = sequencer if sequencer is not None else resolve_sequencer(rpc, registry, pinned)
     if status.block_hash != pinned.block_hash:
         return _fail(canonical_id, "ORACLE_SEQUENCER_BLOCK_MISMATCH", binding=binding)
     if not status.ok:
