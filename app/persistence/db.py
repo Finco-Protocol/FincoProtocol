@@ -237,6 +237,12 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
     _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "source_project_id", "TEXT")
+    # Model V2 foundation: non-economic project metadata. Nullable — existing
+    # rows keep NULL ("not set"); no stage/perspective value is ever inferred
+    # for legacy projects. Stored values are validated at the app boundary
+    # (app.model_v2.project_metadata), never inside the financial engine.
+    _ensure_column(conn, "projects", "project_stage", "TEXT")
+    _ensure_column(conn, "projects", "model_perspective", "TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_projects_role"
         " ON projects(user_id, project_role, archived, updated_at DESC)"

@@ -67,6 +67,10 @@ class ProjectRecord:
     project_role: str = "user_project"           # "reference" | "working_copy" | "user_project"
     is_protected: bool = False                   # True for reference projects
     source_project_id: Optional[str] = None      # lineage: working_copy → source reference
+    # Model V2 foundation: non-economic metadata. None = not set (never
+    # inferred). Validated against app.model_v2.project_metadata vocabularies.
+    project_stage: Optional[str] = None
+    model_perspective: Optional[str] = None
 
     @classmethod
     def from_row(cls, row) -> "ProjectRecord":
@@ -92,6 +96,8 @@ class ProjectRecord:
             project_role=row["project_role"] if "project_role" in keys else "user_project",
             is_protected=bool(row["is_protected"]) if "is_protected" in keys else False,
             source_project_id=row["source_project_id"] if "source_project_id" in keys else None,
+            project_stage=row["project_stage"] if "project_stage" in keys else None,
+            model_perspective=row["model_perspective"] if "model_perspective" in keys else None,
         )
 
 
