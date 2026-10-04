@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from finco_radar.venues.intelligence import (
     RepresentationHistory,
@@ -205,14 +205,28 @@ def compute_basis_distribution(
             history_span_seconds=span_seconds)
 
     sorted_values = sorted(v for _, v in usable)
-    percentile = (_percentile_rank(sorted_values, current_basis)
-                  if current_basis is not None else None)
 
     def _s(v: Decimal) -> str:
         return str(v)
 
+    # Correction B: historical distribution facts may remain available even
+    # when the CURRENT evidence is not.  Reuse the canonical #179
+    # current_state; do not create a second freshness classifier.
+    if history.current_state == "STALE":
+        distribution_state = DistributionState.STALE.value
+        percentile = None
+    elif history.current_state != "AVAILABLE":
+        distribution_state = DistributionState.UNAVAILABLE.value
+        percentile = None
+    elif current_basis is None:
+        distribution_state = DistributionState.PARTIAL.value
+        percentile = None
+    else:
+        distribution_state = DistributionState.AVAILABLE.value
+        percentile = _percentile_rank(sorted_values, current_basis)
+
     return BasisDistribution(
-        state=DistributionState.AVAILABLE.value,
+        state=distribution_state,
         usable_observation_count=len(usable),
         history_span_seconds=span_seconds,
         historical_min_basis_bps=_s(sorted_values[0]),
@@ -340,7 +354,12 @@ def compute_dislocation_persistence(
     for i in range(len(stream) - 1, -1, -1):
         stamp_i, basis_i = stream[i]
         if basis_i is None or stamp_i is None:
-            found_break = True  # missing/unusable evidence breaks continuity
+            # Correction B: a continuity gap proves only that the episode
+            # start is unknown.  It must never be reinterpreted by the
+            # generic post-loop logic as a proven threshold crossing.
+            found_break = True
+            episode_start = None
+            start_state = DislocationStartState.PREHISTORY_UNAVAILABLE.value
             break
         above = abs(basis_i) >= threshold
         direction = 1 if basis_i > 0 else (-1 if basis_i < 0 else 0)
@@ -459,11 +478,16 @@ def build_dislocation_monitor(
         for history in intel.representations:
             basis = _parse_basis(history.latest_basis_bps)
             threshold = dislocation_threshold_bps()
-            if basis is not None:
+            current_usable = (
+                history.current_state == "AVAILABLE" and basis is not None)
+            if current_usable:
                 pd_state = ("PREMIUM" if basis >= threshold
                             else "DISCOUNT" if basis <= -threshold
                             else "WITHIN_THRESHOLD")
             else:
+                # Preserve the last factual basis separately, but do not
+                # describe stale/unavailable evidence as a CURRENT premium
+                # or discount.
                 pd_state = None
 
             distribution = compute_basis_distribution(history, now=now)
@@ -508,11 +532,15 @@ def build_dislocation_monitor(
 
     def _sort_key(row: DislocationMonitorRow):
         basis = _parse_basis(row.current_basis_bps)
-        dislocated = basis is not None and abs(basis) >= threshold
+        current_usable = (
+            row.market_evidence_state == "AVAILABLE" and basis is not None)
+        dislocated = current_usable and abs(basis) >= threshold
+        evidence_bucket = 0 if dislocated else 1 if current_usable else 2
         return (
-            0 if dislocated else 1,
-            -(abs(basis) if basis is not None else 0),
-            -(row.current_dislocation_duration_seconds or 0),
+            evidence_bucket,
+            -(abs(basis) if dislocated and basis is not None else 0),
+            -(row.current_dislocation_duration_seconds or 0)
+            if dislocated else 0,
             row.canonical_asset_id, row.venue_id, row.instrument_id,
         )
 
