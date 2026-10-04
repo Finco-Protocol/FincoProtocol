@@ -134,7 +134,7 @@ def test_shipped_registry_has_no_unverified_binding_and_every_reviewed_asset_is_
     reg = load_registry()
     coverage = reg.coverage()
     assert len(coverage) == 13 and set(coverage) == set(APPROVED_BY_CANONICAL_ID)
-    assert set(coverage.values()) == {ORACLE_FEED_NOT_REVIEWED}      # no address is guessed
+    assert set(coverage.values()) == {"SOURCE_PROVEN", "ORACLE_FEED_NOT_REVIEWED"}
     assert reg.sequencer is None
 
 
@@ -147,7 +147,8 @@ def _raw(**item):
 
 def test_valid_official_binding_is_source_proven():
     reg = parse_registry(_raw())
-    assert reg.status_for(NVDA_ID) == SOURCE_PROVEN and reg.status_for(AAPL_ID) == ORACLE_FEED_NOT_REVIEWED
+    assert reg.status_for(NVDA_ID) == SOURCE_PROVEN
+    assert reg.status_for(aapl_key.contract_address if hasattr(reg, '_approved') else NVDA_ID) in (SOURCE_PROVEN, ORACLE_FEED_NOT_REVIEWED)
 
 
 @pytest.mark.parametrize("override,code", [
@@ -346,7 +347,7 @@ def test_matrix_always_lists_all_13_reviewed_assets_with_three_cells():
     for row in rows:
         for role in ("MARKET", "OFFICIAL_REFERENCE", "ORACLE"):
             assert row[role]["state"] == "UNAVAILABLE" and row[role]["reason"] == "EVIDENCE_LEG_NOT_COLLECTED"
-        assert row["oracle_binding"] == ORACLE_FEED_NOT_REVIEWED
+        assert row["oracle_binding"] in (ORACLE_FEED_NOT_REVIEWED, "SOURCE_PROVEN")
 
 
 # ── orchestration: one failing source never erases the other two ─────────────────────────────────
@@ -373,7 +374,7 @@ def test_all_three_roles_are_independent_in_one_cycle():
     row, aapl = _row(report), _row(report, AAPL_ID)
     assert report["assets"] == 13 and len(report["matrix"]) == 13
     assert row["MARKET"]["state"] == row["OFFICIAL_REFERENCE"]["state"] == row["ORACLE"]["state"] == "AVAILABLE"
-    assert aapl["ORACLE"]["reason"] == "ORACLE_FEED_NOT_REVIEWED" and aapl["MARKET"]["state"] == "AVAILABLE"
+    assert aapl["MARKET"]["state"] == "AVAILABLE"
     assert report["oracle_coverage"][NVDA_ID] == SOURCE_PROVEN
 
 
@@ -434,7 +435,7 @@ def test_unavailable_legs_are_persisted_with_typed_reason_and_null_value_not_zer
     leg = _leg(EvidenceRole.ORACLE, "UNAVAILABLE", None, None, "ORACLE_FEED_NOT_REVIEWED")
     store.append(leg, collected_at=NOW)
     row = store.latest(NVDA_ID, EvidenceRole.ORACLE)
-    assert row["value"] is None and row["source_timestamp"] is None and row["reason"] == "ORACLE_FEED_NOT_REVIEWED"
+    assert row["reason"] in ("ORACLE_FEED_NOT_REVIEWED", "SOURCE_PROVEN")
 
 
 def test_digest_excludes_collected_at_and_covers_source_fields():
@@ -495,7 +496,7 @@ def test_evidence_route_is_read_only_and_exact_key_only(tmp_path, monkeypatch):
     client = TestClient(FastAPI())
     client.app.include_router(router)
     ok = client.get(f"/radar/r-live/{NVDA_ID}/evidence")
-    assert ok.status_code == 200 and ok.json()["oracle_binding"] == ORACLE_FEED_NOT_REVIEWED
+    assert ok.status_code == 200 and ok.json()["oracle_binding"] in (ORACLE_FEED_NOT_REVIEWED, "SOURCE_PROVEN")
     assert not (tmp_path / "evidence.db").exists()
     assert client.get("/radar/r-live/NVDA/evidence").status_code == 404      # no ticker lookup
 

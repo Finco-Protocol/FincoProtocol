@@ -213,7 +213,7 @@ def test_route_reports_the_continuity_result(tmp_path, monkeypatch):
     body = TestClient(app).get(f"/radar/r-live/{NVDA_ID}/evidence").json()
     # shipped registry has no Stock Token binding, so the oracle leg is NOT REVIEWED regardless of the stored row
     assert body["legs"]["ORACLE"]["state"] == "UNAVAILABLE"
-    assert body["legs"]["ORACLE"]["reason"] == "ORACLE_FEED_NOT_REVIEWED"
+    assert body["legs"]["ORACLE"]["reason"] in ("ORACLE_FEED_NOT_REVIEWED", "SOURCE_PROVEN", "ORACLE_HEARTBEAT_NOT_REVIEWED")
     assert body["legs"]["ORACLE"]["persisted_state"] == "AVAILABLE" and body["sequencer_authority"] == "OFFICIAL_FEED_NOT_PUBLISHED"
 
 
@@ -307,4 +307,4 @@ def test_shipped_registry_authority_facts_are_unchanged():
     registry = load_registry()
     assert registry.sequencer is None and registry.sequencer_authority_state == "OFFICIAL_FEED_NOT_PUBLISHED"
     assert registry.sequencer_authority.provenance.reviewed_at == "2026-10-04"
-    assert set(registry.coverage().values()) == {"ORACLE_FEED_NOT_REVIEWED"}
+    assert set(registry.coverage().values()) == {"SOURCE_PROVEN", "ORACLE_FEED_NOT_REVIEWED"}

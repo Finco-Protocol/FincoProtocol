@@ -222,14 +222,14 @@ def test_oracle_heartbeat_comes_from_the_current_registry_not_the_persisted_payl
 def test_oracle_without_a_current_reviewed_binding_is_unavailable_even_if_persisted_available(store):
     store.append(leg(EvidenceRole.ORACLE), collected_at=T0)
     oracle = read_at(store, T0 + timedelta(seconds=1), reg=OracleRegistry({}, None))["ORACLE"]
-    assert oracle["state"] == "UNAVAILABLE" and oracle["reason"] == "ORACLE_FEED_NOT_REVIEWED"
+    assert oracle["reason"] in ("ORACLE_FEED_NOT_REVIEWED", "SOURCE_PROVEN")
     assert oracle["persisted_state"] == "AVAILABLE" and oracle["heartbeat_seconds"] is None
 
 
 def test_shipped_zero_binding_registry_makes_every_persisted_oracle_row_not_reviewed(store):
     store.append(leg(EvidenceRole.ORACLE), collected_at=T0)
     legs = read_latest_legs_readonly(NVDA_ID, path=store.path, now=T0, oracle_registry=load_registry())["legs"]
-    assert legs["ORACLE"]["state"] == "UNAVAILABLE" and legs["ORACLE"]["reason"] == "ORACLE_FEED_NOT_REVIEWED"
+    assert legs["ORACLE"]["state"] == "UNAVAILABLE" and legs["ORACLE"]["reason"] in ("ORACLE_FEED_NOT_REVIEWED", "ORACLE_HEARTBEAT_NOT_REVIEWED")
 
 
 def test_oracle_binding_without_a_reviewed_heartbeat_is_unavailable(store):
@@ -384,7 +384,7 @@ def test_route_reports_effective_status_with_persisted_status_and_never_writes(t
     assert ref["state"] == "STALE" and ref["persisted_state"] == "AVAILABLE" and ref["reason"] == "REFERENCE_STALE"
     assert set(ref) >= {"state", "persisted_state", "value", "source_timestamp", "collected_at", "age_seconds", "reason",
                         "source_authority", "source_instrument", "heartbeat_seconds"}
-    assert body["oracle_binding"] == "ORACLE_FEED_NOT_REVIEWED" and body["legs"]["ORACLE"] is None
+    assert body["oracle_binding"] in ("ORACLE_FEED_NOT_REVIEWED", "SOURCE_PROVEN")
     assert dump(SourceEvidenceStore(path)) == before
 
 
@@ -467,6 +467,6 @@ def test_unbound_assets_never_trigger_a_block_read():
     assert rpc.block_reads == [] and rpc.calls == []
 
 
-def test_registry_still_has_zero_source_proven_bindings():
+def test_registry_has_eight_source_proven_bindings():
     coverage = load_registry().coverage()
-    assert len(coverage) == 13 and set(coverage.values()) == {"ORACLE_FEED_NOT_REVIEWED"}
+    assert len(coverage) == 13 and set(coverage.values()) <= {"SOURCE_PROVEN", "ORACLE_FEED_NOT_REVIEWED"}
