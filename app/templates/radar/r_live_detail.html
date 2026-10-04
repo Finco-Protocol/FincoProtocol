@@ -337,6 +337,10 @@
           value = parseFloat(leg.value);          // numbers are shown only while the EFFECTIVE status is AVAILABLE
         }
         age = fmt_age(leg.age_seconds);
+        if (role === "ORACLE" && leg.l2_liveness_guard === "PINNED_BLOCK_FRESHNESS_ONLY") {
+          // Factual limitation recorded with the observation: no official sequencer feed is published for this chain.
+          detail += (detail ? " · " : "") + "no sequencer feed published — chain block freshness only";
+        }
         if (leg.collected_at) {
           detail += (detail ? " · " : "") + "collected " + String(leg.collected_at).replace("T", " ").slice(0, 16) + " UTC";
         }

@@ -23,16 +23,18 @@ from app.radar_rwa.multi_source_evidence import (
 )
 from app.radar_rwa.r_live_service import R_LIVE_AUTHORITY_POLICY
 from app.radar_rwa.stock_token_oracle import (
-    SEL_DECIMALS, SEL_DESCRIPTION, SEL_LATEST_ROUND, SEL_ORACLE_PAUSED, check_sequencer, pin_oracle_block,
-    read_stock_token_oracle,
+    NO_SEQUENCER_EVIDENCE, SEL_DECIMALS, SEL_DESCRIPTION, SEL_LATEST_ROUND, SEL_ORACLE_PAUSED, check_sequencer,
+    pin_oracle_block, read_stock_token_oracle,
 )
-from app.radar_rwa.stock_token_oracle_registry import OracleRegistry, load_registry
+from app.radar_rwa.stock_token_oracle_registry import (
+    OracleRegistry, Provenance, SequencerAuthority, load_registry,
+)
 from finco_radar.authority.contracts import AuthorityState
 from finco_radar.authority.r_live_policy import (
     APPROVED_BY_CANONICAL_ID, MAX_BLOCK_AGE_SECONDS, MAX_QUOTE_AGE_SECONDS, TWAP_WINDOW_SECONDS,
 )
 from tests.test_multi_source_evidence_v2 import (
-    AAPL_ID, AAPL_TOKEN, BLOCK_TS, FEED, NOW, NVDA_ID, NVDA_TOKEN, SEQ, FakeRpc, abi_string, binding, registry, word,
+    AAPL_ID, AAPL_TOKEN, BLOCK_TS, FEED, NOW, NVDA_ID, NVDA_TOKEN, PROV, SEQ, FakeRpc, abi_string, binding, registry, word,
     _pair,
 )
 
@@ -42,15 +44,24 @@ HEARTBEAT = 3600
 FEED2 = "0x" + "f2" * 20
 
 
+def current_registry(**binding_kw) -> OracleRegistry:
+    """The CURRENT reviewed registry used at read time: official sequencer absence reviewed, one reviewed feed binding."""
+    binding_kw.setdefault("heartbeat_seconds", HEARTBEAT)
+    return OracleRegistry({NVDA_ID: binding(**binding_kw)}, None,
+                          SequencerAuthority("OFFICIAL_FEED_NOT_PUBLISHED", 4663, Provenance(**PROV)))
+
+
 def leg(role, *, state="AVAILABLE", value="190", ts=T0, reason=None, evidence=None, cid=NVDA_ID):
+    # An ORACLE observation always records the sequencer context it was collected under (here: official absence).
+    base = dict(NO_SEQUENCER_EVIDENCE) if role is EvidenceRole.ORACLE else {}
     return EvidenceLeg(cid, role, f"SRC_{role.value}", "inst", state, None if value is None else Decimal(value),
-                       "USD_PER_STOCK_TOKEN", ts, reason, evidence or {})
+                       "USD_PER_STOCK_TOKEN", ts, reason, {**base, **(evidence or {})})
 
 
 def read_at(store, when, *, reg=None, cid=NVDA_ID):
     return read_latest_legs_readonly(
         cid, path=store.path, now=when,
-        oracle_registry=reg if reg is not None else registry(bindings=[binding(heartbeat_seconds=HEARTBEAT)]))["legs"]
+        oracle_registry=reg if reg is not None else current_registry())["legs"]
 
 
 @pytest.fixture()
@@ -202,9 +213,9 @@ def test_oracle_aging_available_at_heartbeat_stale_one_second_after_and_row_unch
 
 def test_oracle_heartbeat_comes_from_the_current_registry_not_the_persisted_payload(store):
     store.append(leg(EvidenceRole.ORACLE, evidence={"heartbeatSeconds": 10**9}), collected_at=T0)
-    short = registry(bindings=[binding(heartbeat_seconds=60)])
+    short = current_registry(heartbeat_seconds=60)
     assert read_at(store, T0 + timedelta(seconds=120), reg=short)["ORACLE"]["state"] == "STALE"
-    long_ = registry(bindings=[binding(heartbeat_seconds=86400)])
+    long_ = current_registry(heartbeat_seconds=86400)
     assert read_at(store, T0 + timedelta(seconds=120), reg=long_)["ORACLE"]["state"] == "AVAILABLE"
 
 
@@ -223,7 +234,7 @@ def test_shipped_zero_binding_registry_makes_every_persisted_oracle_row_not_revi
 
 def test_oracle_binding_without_a_reviewed_heartbeat_is_unavailable(store):
     store.append(leg(EvidenceRole.ORACLE), collected_at=T0)
-    oracle = read_at(store, T0, reg=registry(bindings=[binding(heartbeat_seconds=None)]))["ORACLE"]
+    oracle = read_at(store, T0, reg=current_registry(heartbeat_seconds=None))["ORACLE"]
     assert oracle["state"] == "UNAVAILABLE" and oracle["reason"] == "ORACLE_HEARTBEAT_NOT_REVIEWED"
 
 
@@ -238,7 +249,7 @@ def _insert_raw(store, role, state, *, ts, payload="{}", reason=None, value="190
 
 
 def test_available_oracle_row_without_a_source_timestamp_never_becomes_current(store):
-    _insert_raw(store, "ORACLE", "AVAILABLE", ts=None)
+    _insert_raw(store, "ORACLE", "AVAILABLE", ts=None, payload=json.dumps(dict(NO_SEQUENCER_EVIDENCE)))
     oracle = read_at(store, T0)["ORACLE"]
     assert oracle["state"] == "UNAVAILABLE" and oracle["reason"] == "ORACLE_SOURCE_TIMESTAMP_UNAVAILABLE"
 
