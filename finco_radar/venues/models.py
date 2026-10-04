@@ -86,6 +86,20 @@ class Deployment:
 
 
 @dataclass(frozen=True)
+class SourceAssertion:
+    """One contributing source's own claim about a representation.
+
+    Kept on a collapsed exact representation so a descriptive disagreement
+    between sources (e.g. instrument taxonomy) stays inspectable."""
+
+    source: str
+    source_ref: str
+    instrument_type: str
+    name: str | None
+    underlying_symbol: str | None
+
+
+@dataclass(frozen=True)
 class RepresentationEntry:
     """One imported representation fact from one seed source.
 
@@ -109,6 +123,9 @@ class RepresentationEntry:
     deployments: tuple[Deployment, ...]  # embedded matrix (xStocks asset rows)
     source: str                      # seed source id (provenance)
     source_ref: str                  # repo@revision / URL provenance
+    # Populated ONLY when several sources agreed on the exact identity and
+    # were collapsed into this row (see VenueRegistry); empty otherwise.
+    source_assertions: tuple[SourceAssertion, ...] = ()
 
     @property
     def identity_key(self) -> tuple:

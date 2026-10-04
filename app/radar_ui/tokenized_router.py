@@ -147,7 +147,7 @@ async def tokenized_markets_landing(request: Request):
     from app.radar_ui.tokenized_gating import redact_landing_row, resolve_tokenized_gates
     from app.radar_ui.tokenized_operational import (
         build_operational_view, classify_identity_catalog, live_eligible_ids,
-        representation_conflicts, symbols_with_market_evidence,
+        representation_conflicts, resolved_taxonomy_disagreements, symbols_with_market_evidence,
     )
     from app.auth import resolve_request_session
 
@@ -208,6 +208,7 @@ async def tokenized_markets_landing(request: Request):
             "catalog_total": len(included),
             "audit_rows": excluded if mode == "audit" else [],
             "audit_conflicts": representation_conflicts(registry) if mode == "audit" else [],
+            "audit_taxonomy": resolved_taxonomy_disagreements(registry) if mode == "audit" else [],
             "operational": operational,
             "operating": operational.operating,
             "showing": len(composed),

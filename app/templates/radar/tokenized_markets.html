@@ -106,6 +106,15 @@
   </tbody></table>
   <p class="y-note" data-testid="tm-audit-conflicts">{{ audit_conflicts | length }} exact chain+contract
     registry conflicts (type or underlying disagreement) — such representations are excluded from active composition.</p>
+  <p class="y-note" data-testid="tm-audit-taxonomy">{{ audit_taxonomy | length }} exact representations where sources agree on
+    the deployment but classify it differently (taxonomy only). Identity is resolved to one representation; each source's own
+    classification is kept below as provenance.</p>
+  <ul class="y-note" data-testid="tm-audit-taxonomy-list">
+  {% for row in audit_taxonomy[:50] %}
+    <li>{{ row.representation }} · {{ row.chain }}:{{ row.contract }} → {{ row.resolved_instrument_type }}
+      ({% for a in row.assertions %}{{ a.0 }}={{ a.2 }}{% if not loop.last %}; {% endif %}{% endfor %})</li>
+  {% endfor %}
+  </ul>
 </div>
 {% else %}
 <div class="y-table-wrap" data-testid="tokenized-markets-table">

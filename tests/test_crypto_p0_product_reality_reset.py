@@ -104,12 +104,10 @@ def test_clean_identity_is_included():
     assert "NVDA" in {row["canonical_asset_id"] for row in included}
 
 
-def test_seeded_reviewed_robinhood_contracts_are_conflicted_so_collector_universe_is_empty():
-    """Documented finding: the seed records two types for every reviewed Robinhood contract, and the
-    collector requires exactly one exact match -> 0 live-collector eligible assets (no fuzzy fix)."""
+def test_reviewed_robinhood_contracts_resolve_so_collector_universe_is_full():
+    """Superseded 0/13 finding: sources agree on the exact deployment and differ only on taxonomy."""
     registry = VenueRegistry.load()
-    assert op.live_eligible_ids(registry) == ()
-    assert any(c["reason"] == "REPRESENTATION_TYPE_CONFLICT_SAME_CONTRACT" for c in op.representation_conflicts(registry))
+    assert len(op.live_eligible_ids(registry)) == 13
 
 
 # ── routes ───────────────────────────────────────────────────────────────────────────────────────
@@ -129,7 +127,7 @@ def test_collector_never_run_renders_preview_not_live(tm):
     assert 'data-testid="tm-operational-state"' in page
     assert "PREVIEW" in page and "DATA COLLECTION NOT ACTIVE" in page
     state = re.search(r'data-state="([A-Z_]+)"', page).group(1)
-    assert state not in {"LIVE", "PARTIAL_LIVE"}
+    assert state == "COLLECTOR_NOT_STARTED"
 
 
 def test_identity_catalog_count_is_not_market_coverage(tm):
@@ -138,23 +136,26 @@ def test_identity_catalog_count_is_not_market_coverage(tm):
     priced = int(re.search(r'data-testid="tm-cov-priced">(\d+)<', page).group(1))
     eligible = int(re.search(r'data-testid="tm-cov-eligible">(\d+)<', page).group(1))
     history = int(re.search(r'data-testid="tm-cov-history">(\d+)<', page).group(1))
-    assert catalog > 1000 and priced == 0 and eligible == 0 and history == 0
+    assert catalog > 1000 and priced == 0 and eligible == 13 and history == 0
     assert "not market coverage" in page and "research identity source" in page
     assert "canonical underlyings with active representations" not in page
-    assert 'data-testid="tm-empty"' in page          # no dozens of unavailable rows in the primary list
+    # only the 13 reviewed collector-eligible assets are listed; the identity catalog is not
+    assert len(re.findall(r'data-testid="tm-row-', page)) == 13
 
 
 def test_primary_list_excludes_malformed_numeric_and_identity_only_rows(tm):
     page = tm.client.get("/radar/tokenized-markets").text
     assert 'data-testid="tm-row-1"' not in page and 'data-testid="tm-row-1024"' not in page
-    assert 'data-testid="tm-row-AAPL"' not in page           # identity only, no persisted evidence
+    assert 'data-testid="tm-row-ZZZZ"' not in page
+    assert 'data-testid="tm-row-AAPL"' in page               # reviewed eligible asset, still unpriced
+    assert int(re.search(r'data-testid="tm-cov-priced">(\d+)<', page).group(1)) == 0
 
 
 def test_audit_view_keeps_excluded_evidence_inspectable(tm):
     page = tm.client.get("/radar/tokenized-markets?view=audit").text
     assert 'data-testid="tm-audit-table"' in page and 'data-testid="tm-audit-row-1"' in page
     assert "NUMERIC_ONLY_SYMBOL" in page and 'data-testid="tm-audit-conflicts"' in page
-    assert "REPRESENTATION_TYPE_CONFLICT_SAME_CONTRACT" in page or "registry conflicts" in page
+    assert 'data-testid="tm-audit-taxonomy"' in page
 
 
 def test_catalog_view_is_identity_only_and_labelled(tm):
