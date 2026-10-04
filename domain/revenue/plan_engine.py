@@ -45,8 +45,25 @@ from domain.revenue.plan import (
 )
 from domain.revenue.revenue_config import CfDParams
 
-# Generation identity tolerance (MWh).
-_ALLOCATION_TOLERANCE_MWH = 1e-9
+# Generation identity tolerance policy (Correction B §8): share-space and
+# MWh-space are different units and never share one raw numeric tolerance.
+#   - SHARE_ALLOCATION_TOLERANCE (dimensionless, in plan.py) bounds share-sum
+#     validation;
+#   - the runtime MWh identity tolerance is an absolute float-safety floor
+#     OR the validated share epsilon scaled by the period's eligible
+#     generation, whichever is larger — so a plan accepted by share
+#     validation can never fail its MWh identity merely because the
+#     tolerated epsilon was multiplied by generation.
+MWH_IDENTITY_TOLERANCE_ABSOLUTE = 1e-9  # MWh floor for float noise
+
+
+def _mwh_identity_tolerance(eligible_generation_mwh: float) -> float:
+    from domain.revenue.plan import SHARE_ALLOCATION_TOLERANCE
+
+    return max(
+        MWH_IDENTITY_TOLERANCE_ABSOLUTE,
+        SHARE_ALLOCATION_TOLERANCE * eligible_generation_mwh,
+    )
 
 # Neutralized nested-CfD term: the RevenueStream owns lifecycle; this bound
 # simply makes the legacy nested clock a no-op inside the stream's active
@@ -455,14 +472,15 @@ def evaluate_revenue_plan(
 
     unallocated = max(0.0, eligible_generation_mwh - allocated_total)
     # Generation identity guard (float safety, fail loud on a real breach).
-    if abs(allocated_total + unallocated - eligible_generation_mwh) > _ALLOCATION_TOLERANCE_MWH:
+    identity_tolerance = _mwh_identity_tolerance(eligible_generation_mwh)
+    if abs(allocated_total + unallocated - eligible_generation_mwh) > identity_tolerance:
         raise ValueError(
             "REVENUE_ALLOCATION_IDENTITY_BROKEN: allocated + unallocated != eligible"
         )
 
     if has_unavailable:
         status = PlanPeriodStatus.HAS_UNAVAILABLE_STREAMS
-    elif unallocated > _ALLOCATION_TOLERANCE_MWH:
+    elif unallocated > identity_tolerance:
         status = PlanPeriodStatus.PARTIALLY_UNALLOCATED
     else:
         status = PlanPeriodStatus.OK

@@ -53,7 +53,16 @@ from domain.revenue.revenue_config import (
     PPAParams,
 )
 
-_ALLOCATION_TOLERANCE = 1e-9
+# Dimensionless SHARE tolerance: the maximum accepted excess of summed
+# explicit primary allocation shares above 1.0 (pure float-safety epsilon in
+# share space; units: fraction of eligible generation). Runtime MWh identity
+# uses its own separate MWh-scaled tolerance (see plan_engine).
+SHARE_ALLOCATION_TOLERANCE = 1e-9
+
+# Explicitly understood MerchantParams price scenarios (the existing domain
+# contract). Anything else changes how market_price would be interpreted and
+# fails closed instead of being silently accepted.
+SUPPORTED_MERCHANT_PRICE_SCENARIOS = frozenset({"base", "high", "low", "custom"})
 
 
 class RevenueStreamType(str, Enum):
@@ -285,6 +294,7 @@ class RevenueStream:
                 "only a MERCHANT stream may take the residual (None)"
             )
         self._validate_price_authority(sid)
+        self._validate_exactly_one_authority(sid)
         self._validate_economic_numbers(sid)
 
     # ------------------------------------------------------------------
@@ -350,6 +360,45 @@ class RevenueStream:
                 f"REVENUE_STREAM_AUCTION_AUTHORITY_MISMATCH: awarded-tariff stream "
                 f"{sid!r} uses the fixed-tariff price authority "
                 f"(fit_type='fixed_fit'), got {self.fit.fit_type!r}"
+            )
+
+    def _validate_exactly_one_authority(self, sid: str) -> None:
+        """Each typed stream carries EXACTLY ONE applicable price authority
+        (plus the indexed FiT's explicit fields). Extra unrelated authority
+        objects fail closed — they are never silently ignored."""
+        if self.stream_type is RevenueStreamType.INDEXED_FIT:
+            unrelated = [
+                name for name, value in (
+                    ("ppa", self.ppa), ("merchant", self.merchant),
+                    ("fit", self.fit), ("cfd", self.cfd),
+                ) if value is not None
+            ]
+            if unrelated:
+                raise ValueError(
+                    f"REVENUE_STREAM_MULTIPLE_PRICE_AUTHORITIES: indexed-FiT stream "
+                    f"{sid!r} must use only its explicit indexed tariff fields; "
+                    f"found unrelated authority object(s) {unrelated}"
+                )
+            return
+        required = {
+            RevenueStreamType.PPA: "ppa",
+            RevenueStreamType.MERCHANT: "merchant",
+            RevenueStreamType.FIT_FIXED: "fit",
+            RevenueStreamType.FIT_PREMIUM: "fit",
+            RevenueStreamType.AUCTION_AWARDED_TARIFF: "fit",
+            RevenueStreamType.CFD: "cfd",
+        }[self.stream_type]
+        extras = [
+            name for name, value in (
+                ("ppa", self.ppa), ("merchant", self.merchant),
+                ("fit", self.fit), ("cfd", self.cfd),
+            ) if value is not None and name != required
+        ]
+        if extras:
+            raise ValueError(
+                f"REVENUE_STREAM_MULTIPLE_PRICE_AUTHORITIES: stream {sid!r} "
+                f"({self.stream_type.value}) requires only the {required!r} price "
+                f"authority; found extra unrelated authority object(s) {extras}"
             )
 
     def _validate_economic_numbers(self, sid: str) -> None:
@@ -470,6 +519,7 @@ class RevenuePlan:
         self._validate_time_aware_allocation()
         self._validate_residual_merchant_uniqueness()
         self._validate_overlay_references(seen)
+        self._validate_plan_market_price()
 
     def _validate_allocation_groups(self) -> None:
         """One effective allocation group in this phase (fail closed)."""
@@ -525,7 +575,7 @@ class RevenuePlan:
                 active_share = sum(
                     float(m.volume_share) for m in members if m.is_active(year)
                 )
-                if active_share > 1.0 + _ALLOCATION_TOLERANCE:
+                if active_share > 1.0 + SHARE_ALLOCATION_TOLERANCE:
                     raise ValueError(
                         "REVENUE_ALLOCATION_EXCEEDS_ELIGIBLE_GENERATION: allocation "
                         f"group {group!r} contracts {active_share:.6f} of eligible "
@@ -586,6 +636,63 @@ class RevenuePlan:
                     "REVENUE_OVERLAY_REFERENCE_MARKET_REQUIRED: overlay stream "
                     f"{s.stream_id!r} has no reference_stream_id and the plan has "
                     "no plan-level market price authority"
+                )
+
+    def _validate_plan_market_price(self) -> None:
+        """Plan-level market price authority (§ Correction B): validated with
+        the same rigour as a merchant stream's authority — an overlay-only
+        plan must not carry a malformed authority into evaluation.
+
+        Retained canonical Merchant contract (documented): a non-custom
+        ``price_scenario`` ("base" | "high" | "low") resolves through
+        ``base_price_eur_mwh`` + ``price_escalation_annual`` and IGNORES the
+        custom curve; ``"custom"`` requires a usable non-empty curve. Unknown
+        scenario strings fail closed.
+        """
+        if self.market_price is None:
+            return
+        mp = self.market_price
+        if not isinstance(mp, MerchantParams):
+            raise ValueError(
+                f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: market_price must be a "
+                f"MerchantParams instance, got {type(mp).__name__}"
+            )
+        if str(mp.price_scenario) not in SUPPORTED_MERCHANT_PRICE_SCENARIOS:
+            raise ValueError(
+                f"REVENUE_PLAN_MARKET_SCENARIO_UNSUPPORTED: price_scenario="
+                f"{mp.price_scenario!r} is not an understood merchant scenario "
+                f"(supported: {sorted(SUPPORTED_MERCHANT_PRICE_SCENARIOS)})"
+            )
+        if mp.price_scenario == "custom" and not mp.custom_price_curve:
+            raise ValueError(
+                "REVENUE_PLAN_MARKET_CUSTOM_CURVE_REQUIRED: price_scenario='custom' "
+                "requires a non-empty custom_price_curve on the plan-level market "
+                "authority (no silent fallback to the base price)"
+            )
+        self._validate_merchant_economics("plan-level market_price", mp)
+
+    @staticmethod
+    def _validate_merchant_economics(label: str, mp: MerchantParams) -> None:
+        """Finite / non-negative validation for every merchant field that can
+        affect ``price_at_year`` or capture selection."""
+        def _num(field: str, value: float, *, non_negative: bool = True) -> None:
+            if not math.isfinite(float(value)) or (non_negative and value < 0.0):
+                raise ValueError(
+                    f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: {label} {field} must "
+                    f"be finite and non-negative, got {value!r}"
+                )
+
+        _num("base_price_eur_mwh", mp.base_price_eur_mwh)
+        _num("price_escalation_annual", mp.price_escalation_annual)
+        _num("price_cannibalization_pct", mp.price_cannibalization_pct)
+        for i, price in enumerate(mp.custom_price_curve):
+            _num(f"custom_price_curve[{i}]", price)
+        for name in ("capture_rate_solar", "capture_rate_wind", "capture_rate_bess"):
+            rate = float(getattr(mp, name))
+            if not math.isfinite(rate) or not (0.0 <= rate <= 1.0):
+                raise ValueError(
+                    f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: {label} {name} must "
+                    f"be within [0, 1], got {rate!r}"
                 )
 
     # ------------------------------------------------------------------

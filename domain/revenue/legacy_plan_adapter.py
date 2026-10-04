@@ -12,13 +12,22 @@ Representable legacy semantics (documented limitations are fail-closed):
                                                  (legacy residual = 1 − PPA
                                                  share; the V2 residual is
                                                  computed from the group)
-- CfD with unlimited annual volume             → CfD settlement overlay
-  (cfd_volume_mwh_annual == 0)                   (share 1.0 of eligible
-                                                 generation)
-- CfD with a fixed annual MWh volume           → NOT representable as a
-                                                 volume share without
-                                                 generation data — fails
-                                                 closed
+- CfD (ANY enabled configuration)              → NOT representable — fails
+                                                 closed. The legacy CfD settles
+                                                 on a FIXED annual MWh volume
+                                                 (cfd_volume_mwh_annual), where
+                                                 0 is interpreted by the legacy
+                                                 authority as UNLIMITED volume,
+                                                 while a RevenuePlan overlay
+                                                 settles on a generation-
+                                                 RELATIVE share. The two
+                                                 semantics are not numerically
+                                                 equivalent, so no enabled
+                                                 legacy CfD is convertible
+                                                 without changing legacy
+                                                 economics. Model the intended
+                                                 CfD explicitly as a RevenuePlan
+                                                 overlay instead.
 - Fixed FiT alone                              → FIT_FIXED primary (share 1.0)
 - Premium FiT                                  → FIT_PREMIUM settlement
                                                  overlay (share 1.0) with the
@@ -130,33 +139,22 @@ def revenue_plan_from_legacy_config(config: RevenueConfig) -> RevenuePlan:
 
     cfd = config.cfd
     if cfd is not None and cfd.cfd_enabled:
-        if cfd.cfd_volume_mwh_annual > 0.0:
-            raise ValueError(
-                "LEGACY_CFD_FIXED_VOLUME_NOT_SHARE_REPRESENTABLE: the legacy CfD "
-                "declares a fixed annual MWh volume; a RevenuePlan overlay needs "
-                "a generation-relative volume_share. Model the intended CfD "
-                "share explicitly."
-            )
-        reference_stream_id = "merchant" if (
-            merchant is not None and merchant.merchant_enabled
-        ) else None
-        if reference_stream_id is None and merchant is None:
-            raise ValueError(
-                "LEGACY_CFD_REFERENCE_MARKET_REQUIRED: a legacy CfD settles "
-                "against the market price; provide the legacy merchant "
-                "configuration as the reference authority"
-            )
-        streams.append(RevenueStream(
-            stream_id="cfd",
-            stream_type=RevenueStreamType.CFD,
-            name=cfd.cfd_counterparty or "Legacy CfD",
-            start_year=1,
-            term_years=cfd.cfd_term_years if cfd.cfd_term_years > 0 else None,
-            volume_share=1.0,
-            cfd=cfd,
-            reference_stream_id=reference_stream_id,
-            counterparty=cfd.cfd_counterparty,
-        ))
+        # Fail closed for EVERY enabled legacy CfD. The legacy settlement
+        # authority interprets cfd_volume_mwh_annual == 0 as UNLIMITED volume
+        # and a positive value as a FIXED annual MWh volume; a RevenuePlan
+        # overlay settles on a generation-RELATIVE share. No legacy CfD
+        # configuration is numerically equivalent to a plan overlay without
+        # reinterpreting legacy semantics, which this adapter must never do
+        # (exact representation or fail closed — the runtime bridge may later
+        # define an explicit migration policy).
+        raise ValueError(
+            "LEGACY_CFD_NOT_REPRESENTABLE: the legacy CfD settles on a fixed or "
+            "unlimited annual MWh volume (cfd_volume_mwh_annual="
+            f"{cfd.cfd_volume_mwh_annual!r}), while a RevenuePlan overlay settles "
+            "on a generation-relative volume_share; the semantics are not "
+            "numerically equivalent, so the adapter refuses to convert it "
+            "silently. Model the intended CfD explicitly as a RevenuePlan overlay."
+        )
 
     if config.capacity_market is not None and config.capacity_market.capacity_market_enabled:
         raise ValueError(

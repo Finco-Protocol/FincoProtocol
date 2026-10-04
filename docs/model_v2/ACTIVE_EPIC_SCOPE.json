@@ -45,6 +45,7 @@
     "tests/test_model_v2_governance.py",
     "tests/test_model_v2_metadata.py",
     "tests/test_model_v2_revenue_correction_a.py",
+    "tests/test_model_v2_revenue_correction_b.py",
     "tests/test_model_v2_revenue_plan.py",
     "tests/test_multi_source_evidence_v2.py",
     "tests/test_opus_c1_product_truth.py",

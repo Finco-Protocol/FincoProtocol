@@ -423,7 +423,7 @@ def test_v2_legacy_adapter_fail_closed_limitations():
         merchant=MerchantParams(merchant_enabled=True, base_price_eur_mwh=65.0),
         cfd=CfDParams(cfd_enabled=True, strike_price_eur_mwh=70.0, cfd_volume_mwh_annual=50_000.0),
     )
-    with pytest.raises(ValueError, match="LEGACY_CFD_FIXED_VOLUME_NOT_SHARE_REPRESENTABLE"):
+    with pytest.raises(ValueError, match="LEGACY_CFD_NOT_REPRESENTABLE"):
         revenue_plan_from_legacy_config(legacy)
     # Fixed FiT stacked with PPA would double-count the same MWh
     stacked = RevenueConfig(
@@ -439,15 +439,24 @@ def test_v2_legacy_adapter_fail_closed_limitations():
         revenue_plan_from_legacy_config(bess)
 
 
-def test_v3_legacy_cfd_overlay_representable_and_premium_fails_closed():
-    legacy = RevenueConfig(
-        merchant=MerchantParams(merchant_enabled=True, base_price_eur_mwh=65.0),
-        cfd=CfDParams(cfd_enabled=True, strike_price_eur_mwh=70.0, cfd_term_years=10),
-    )
-    plan = revenue_plan_from_legacy_config(legacy)
-    r = evaluate_revenue_plan(plan, 1, 100_000.0)
-    by_id = {s.stream_id: s for s in r.stream_results}
-    assert by_id["cfd"].support_or_settlement_keur == pytest.approx(500.0, abs=TOL)
+def test_v3_legacy_cfd_zero_volume_fails_closed():
+    """Correction B §2/§3: the legacy CfD authority interprets
+    cfd_volume_mwh_annual == 0 as UNLIMITED settlement volume, so a
+    zero-volume legacy CfD is NOT equivalent to a plan overlay over 100% of
+    generation. The adapter must never silently migrate that semantics —
+    this regression protects against future reintroduction."""
+    for zero_volume_cfd in (
+        CfDParams(cfd_enabled=True, strike_price_eur_mwh=70.0, cfd_term_years=10,
+                  cfd_volume_mwh_annual=0.0),
+        CfDParams(cfd_enabled=True, strike_price_eur_mwh=70.0, cfd_term_years=10,
+                  cfd_volume_mwh_annual=50_000.0),
+    ):
+        legacy = RevenueConfig(
+            merchant=MerchantParams(merchant_enabled=True, base_price_eur_mwh=65.0),
+            cfd=zero_volume_cfd,
+        )
+        with pytest.raises(ValueError, match="LEGACY_CFD_NOT_REPRESENTABLE"):
+            revenue_plan_from_legacy_config(legacy)
 
     # Legacy premium stacks supported-price revenue on the FULL generation on
     # top of the merchant full-generation sale: not equivalent → fail closed.
@@ -585,5 +594,3 @@ def test_x2_contracts_are_domain_only():
     from domain.revenue.tariff import market_price_at_period, ppa_tariff_at_period
     assert ppa_tariff_at_period(57.0, 0.02, 2) == pytest.approx(58.14, abs=TOL)
     assert market_price_at_period(4, (60.0, 61.0, 62.0), 0.02) == pytest.approx(62.0 * 1.02, abs=TOL)
-
-
