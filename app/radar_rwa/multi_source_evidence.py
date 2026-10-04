@@ -397,8 +397,21 @@ def read_latest_legs_readonly(canonical_id: str, *, path: str | Path | None = No
                         "source_authority": row["source_authority"], "source_instrument": row["source_instrument"],
                         "heartbeat_seconds": heartbeat,
                     }
+                    if role is EvidenceRole.ORACLE:
+                        # The recorded L2 guard facts, verbatim from the persisted evidence (never inferred): when no official
+                        # sequencer feed is published the oracle is AVAILABLE with PINNED_BLOCK_FRESHNESS_ONLY, not sequencer
+                        # assurance.
+                        out[role.value].update({
+                            "sequencer_authority_state": payload.get("sequencerAuthorityState"),
+                            "sequencer_checked": payload.get("sequencerChecked"),
+                            "l2_liveness_guard": payload.get("l2LivenessGuard"),
+                            "sequencer_grace_protection": payload.get("sequencerGraceProtection"),
+                        })
             finally:
                 conn.close()
         except (sqlite3.Error, ValueError):
             out = {role.value: None for role in EvidenceRole}
-    return {"canonical_id": canonical_id, "legs": out}
+    return {
+        "canonical_id": canonical_id, "legs": out,
+        "sequencer_authority": oracle_registry.sequencer_authority_state if oracle_registry is not None else None,
+    }

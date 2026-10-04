@@ -1,7 +1,17 @@
 {
   "schema_version": "FINCO_STOCK_TOKEN_ORACLE_FEEDS_V1",
   "chain_id": 4663,
-  "authority_note": "Final authority is the official Chainlink Robinhood price-feed catalog and Robinhood Chain documentation. A binding is added here ONLY after its proxy address, description, decimals and heartbeat were verified against that official authority; third-party repositories are discovery hints only. An asset without a binding is ORACLE_FEED_NOT_REVIEWED. No address is inferred from a ticker.",
+  "authority_note": "Final authority is the official Chainlink Robinhood price-feed catalog and Robinhood Chain documentation. A binding is added here ONLY after its proxy address, description, decimals and heartbeat were verified against that official authority; third-party repositories are discovery hints only. An asset without a binding is ORACLE_FEED_NOT_REVIEWED. No address is inferred from a ticker. The L2 sequencer authority is recorded separately in `sequencer_authority`: `sequencer` stays null because NO sequencer uptime feed proxy is source-proven.",
   "sequencer": null,
+  "sequencer_authority": {
+    "state": "OFFICIAL_FEED_NOT_PUBLISHED",
+    "chain_id": 4663,
+    "provenance": {
+      "source": "CHAINLINK_OFFICIAL_FEED_CATALOG",
+      "reference_url": "https://docs.chain.link/data-feeds/l2-sequencer-feeds",
+      "reviewed_at": "2026-10-04",
+      "reviewer": "FINCO independent source review (reviewer-supplied result; official pages not reachable from the authoring sandbox)"
+    }
+  },
   "bindings": []
 }

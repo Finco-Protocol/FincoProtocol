@@ -24,8 +24,8 @@ from .multi_source_evidence import (
     EvidenceLeg, EvidenceRole, SourceEvidenceStore, build_matrix, market_leg, oracle_leg, reference_leg,
 )
 from .stock_token_oracle import (
-    OracleBlockContext, OracleBlockFailure, SequencerStatus, check_sequencer, pin_oracle_block,
-    read_stock_token_oracle,
+    OracleBlockContext, OracleBlockFailure, SequencerStatus, pin_oracle_block, read_stock_token_oracle,
+    resolve_sequencer,
 )
 from .stock_token_oracle_registry import OracleRegistry, load_registry
 
@@ -104,7 +104,7 @@ def collect_multi_source_once(
     if any(oracle_registry.binding_for(c) is not None for c in selected):
         pinned = pin_oracle_block(oracle_rpc, as_of=as_of)
         if isinstance(pinned, OracleBlockContext):
-            sequencer = check_sequencer(oracle_rpc, oracle_registry.sequencer, pinned)
+            sequencer = resolve_sequencer(oracle_rpc, oracle_registry, pinned)
 
     def one(canonical_id: str) -> dict[EvidenceRole, EvidenceLeg]:
         legs: dict[EvidenceRole, EvidenceLeg] = {}
