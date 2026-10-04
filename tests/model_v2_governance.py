@@ -231,13 +231,12 @@ def approved_by_active_model_v2_scope(path: str) -> bool:
 
 
 def changed_paths_vs_main() -> list[str]:
-    """Paths changed vs the authorized baseline lineage.
+    """Paths changed on the Model V2 lineage, excluding main-only advances.
 
-    The comparison base is ``git merge-base HEAD origin/main``: on the epic
-    branch that is origin/main itself (the epic contains main through its
-    syncs), and on a feature branch cut from the epic it is the epic commit
-    the branch was cut from — so commits that exist only on MAIN after the
-    branch point (unrelated Radar advances) are never blamed on this branch.
+    Use the common ancestor of HEAD and origin/main as the comparison base.
+    This keeps cumulative Model V2 changes visible to the ACTIVE scope while
+    ignoring unrelated commits that landed only on main after the last
+    reviewed main -> epic sync (for example Radar/Crypto/Yield work).
     Empty when git is unavailable, matching the historical guards' skip
     convention.
     """
