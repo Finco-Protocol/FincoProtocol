@@ -1,8 +1,9 @@
 {% set _crypto_domains = [
-    ("overview", "/crypto", "Crypto Overview"),
+    ("rlive", "/radar/r-live", "R-LIVE"),
     ("radar", "/radar", "Radar"),
-    ("tokenized", "/radar/tokenized-markets", "Tokenized Markets"),
+    ("tokenized", "/radar/tokenized-markets", "Tokenized Markets (preview)"),
     ("yield", "/yield", "Yield"),
+    ("overview", "/crypto", "Account & access"),
 ] %}
 <nav class="crypto-domain-nav" data-testid="crypto-domain-nav" aria-label="FINCO Crypto domains">
   {% for domain, href, label in _crypto_domains %}

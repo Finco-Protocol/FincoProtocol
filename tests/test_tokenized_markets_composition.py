@@ -308,12 +308,16 @@ class TestTokenizedMarketsSurface:
         assert "economic underlying" in page.text  # lede (capitalized in copy)
         assert 'data-testid="tm-history-note"' in page.text
 
-    def test_landing_routes_robinhood_nvda_row(self, client):
+    def test_landing_primary_list_excludes_identity_only_rows_and_catalog_keeps_them(self, client):
+        # Product-reality contract: an identity with no persisted market evidence is NOT a primary
+        # public row; it stays reachable through the research identity catalog and detail deep link.
         page = client.get("/radar/tokenized-markets")
-        assert 'href="/radar/tokenized-markets/NVDA"' in page.text
-        assert 'data-testid="tm-row-NVDA"' in page.text
-        assert 'data-testid="tm-rep-count-NVDA">0/' in page.text
-        assert 'data-testid="tm-unavailable-NVDA"' in page.text
+        assert 'data-testid="tm-row-NVDA"' not in page.text
+        assert 'data-testid="tm-empty"' in page.text
+        catalog = client.get("/radar/tokenized-markets?view=catalog")
+        assert 'href="/radar/tokenized-markets/NVDA"' in catalog.text
+        assert 'data-testid="tm-catalog-row-NVDA"' in catalog.text
+        assert client.get("/radar/tokenized-markets/NVDA").status_code == 200
 
     def test_detail_shows_representations_and_truth_states(self, client):
         page = client.get("/radar/tokenized-markets/NVDA")

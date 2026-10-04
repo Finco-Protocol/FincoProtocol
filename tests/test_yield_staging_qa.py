@@ -100,7 +100,27 @@ def _registry():
 
 # ── Functional filter acceptance matrix ───────────────────────────────────────
 
+class _ResearchClient:
+    """The filter matrix exercises the bundled reference sample, which the public default now hides.
+    Research mode (``include_reference=1``) is the explicit opt-in for that sample."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def get(self, url, **kwargs):
+        if url == "/yield" or url.startswith("/yield?"):
+            url += ("&" if "?" in url else "?") + "include_reference=1"
+        return self._inner.get(url, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 class TestFilterAcceptanceMatrix:
+    @pytest.fixture()
+    def client(self, client):
+        return _ResearchClient(client)
+
     def test_no_filters_lists_everything_and_values_not_selected(self, client):
         page = client.get("/yield")
         assert page.status_code == 200

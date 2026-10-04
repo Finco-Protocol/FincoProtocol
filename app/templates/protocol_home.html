@@ -23,15 +23,14 @@
           </div>
           <div class="proto-home__eyebrow">Financial Intelligence Infrastructure for Real-World Assets</div>
           <h1 class="proto-home__title">FINCO<br>Protocol</h1>
-          <p class="proto-home__tagline">Deterministic financial modeling, market intelligence, yield evidence and protocol access — infrastructure for real-world asset analysis.</p>
+          <p class="proto-home__tagline" data-testid="home-primary-message">Independent market intelligence for tokenized equities. Track token prices against their economic reference, measure premium and discount, inspect the source evidence and build a permanent dislocation history.</p>
           <div class="proto-home__proposition">
-            <div class="proto-home__prop-item">Model the Asset — infrastructure economics to returns.</div>
-            <div class="proto-home__prop-item">Understand the Market — source-aware market and tokenized-asset intelligence.</div>
-            <div class="proto-home__prop-item">Verify the Connection — NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION.</div>
+            <div class="proto-home__prop-item">R-LIVE — reviewed tokenized-equity market tape with per-leg evidence age.</div>
+            <div class="proto-home__prop-item">Model — deterministic infrastructure economics, from assumptions to returns.</div>
           </div>
           <p class="proto-home__supporting">AI explains. FINCO calculates.</p>
           <div class="proto-home__ctas">
-            <a href="/radar" class="proto-cta proto-cta--primary">Open Radar</a>
+            <a href="/radar/r-live" class="proto-cta proto-cta--primary">Open R-LIVE</a>
             <a href="/library" class="proto-cta proto-cta--secondary">Open FINCO Model</a>
           </div>
         </div>
@@ -63,10 +62,6 @@
             <a href="/radar" class="proto-capability-card__cta proto-capability-card__cta--teal">Open Radar →</a>
           </div>
 
-          <div class="proto-composite">
-            <p class="muted small" style="text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin:0 0 2px;">ILLUSTRATIVE — non-live values</p>
-            <p class="muted small" style="margin:0;">Representative product view. All values are illustrative only, not live asset data.</p>
-          </div>
         </div>
       </div>
     </div>
@@ -95,59 +90,51 @@
     <div class="proto-arch">
       <div class="proto-arch__inner">
         <div class="proto-arch__header">
-          <div class="proto-arch__eyebrow">Primary Product Architecture</div>
-          <h2 class="proto-arch__title">Financial intelligence infrastructure.</h2>
-          <p class="proto-arch__brand-strip">MODEL · RADAR · YIELD · CRYPTO</p>
+          <div class="proto-arch__eyebrow">Products</div>
+          <h2 class="proto-arch__title">Market evidence and deterministic models.</h2>
+          <p class="proto-arch__brand-strip">R-LIVE · RADAR · MODEL</p>
         </div>
 
         <div class="proto-arch__products">
-          <a href="/library" class="proto-arch__product">
+          <a href="/radar/r-live" class="proto-arch__product proto-arch__product--rlive" data-testid="home-product-rlive">
             <div class="proto-arch__product-num">01</div>
-            <h3 class="proto-arch__product-name">FINCO Model</h3>
-            <p class="proto-arch__product-headline">Model the Asset</p>
-            <p class="proto-arch__product-desc">Deterministic infrastructure economics from operating assumptions to cash flow, debt and returns. Solar, Wind, Data Center and EV Charging are supported; Storage remains preview/reference scope.</p>
-            <span class="proto-arch__product-link">Open Model Library →</span>
+            <h3 class="proto-arch__product-name proto-arch__product-name--teal">R-LIVE</h3>
+            <p class="proto-arch__product-headline">Tokenized Market Tape</p>
+            <p class="proto-arch__product-desc">Token price against its economic reference: premium or discount, the age of each evidence leg, and a permanent observation history for a reviewed set of tokenized equities. Observations are reference evidence, not executable prices.</p>
+            <span class="proto-arch__product-link">Open R-LIVE →</span>
           </a>
 
           <a href="/radar" class="proto-arch__product proto-arch__product--radar">
             <div class="proto-arch__product-num">02</div>
             <h3 class="proto-arch__product-name proto-arch__product-name--teal">FINCO Radar</h3>
             <p class="proto-arch__product-headline">Understand the Market</p>
-            <p class="proto-arch__product-desc">Reference-aware market and execution intelligence for tokenized real-world assets: Reference, Executable context, directional GAP and Evidence. R-LIVE observations remain reference evidence, not executable prices.</p>
+            <p class="proto-arch__product-desc">Reference-aware market and execution context for tokenized real-world assets: Reference, Executable context, directional GAP and Evidence.</p>
             <span class="proto-arch__product-link">Open Radar →</span>
           </a>
 
-          <a href="/yield" class="proto-arch__product">
+          <a href="/library" class="proto-arch__product">
             <div class="proto-arch__product-num">03</div>
-            <h3 class="proto-arch__product-name">FINCO Yield</h3>
-            <p class="proto-arch__product-headline">Underwrite Yield Evidence</p>
-            <p class="proto-arch__product-desc">Read-only Explore, Detail, Compare, Evidence, History and Wallet Monitor are implemented behind the Yield feature boundary. Yield execution remains separately OFF by default; FINCO does not sign or broadcast transactions.</p>
-            <span class="proto-arch__product-link">Open Yield →</span>
-          </a>
-
-          <a href="/crypto" class="proto-arch__product">
-            <div class="proto-arch__product-num">04</div>
-            <h3 class="proto-arch__product-name">FINCO Crypto</h3>
-            <p class="proto-arch__product-headline">Wallet, Watchlist &amp; Yield Alerts</p>
-            <p class="proto-arch__product-desc">Verified-wallet/access presentation, the canonical Yield Watchlist, persisted in-app Yield Alerts and manual Refresh are implemented. $FINCO activation-readiness infrastructure is implemented, while production deployment count remains 0 and token gating defaults OFF.</p>
-            <span class="proto-arch__product-link">Open FINCO Crypto →</span>
+            <h3 class="proto-arch__product-name">FINCO Model</h3>
+            <p class="proto-arch__product-headline">Model the Asset</p>
+            <p class="proto-arch__product-desc">Deterministic infrastructure economics from operating assumptions to cash flow, debt and returns. Solar, Wind, Data Center and EV Charging are supported; Storage remains preview/reference scope. The Model is a separate product line and is not connected to the market data above.</p>
+            <span class="proto-arch__product-link">Open Model Library →</span>
           </a>
         </div>
 
         <div class="proto-arch__protocol-layer">
-          <div class="proto-arch__protocol-label">Protocol Layer · VERIFY · API · $FINCO</div>
+          <div class="proto-arch__protocol-label">Platform · VERIFY · API · DOCS</div>
           <div class="proto-arch__protocol-items">
             <a href="/verify" class="proto-arch__protocol-item">
               <strong>VERIFY</strong>
-              <span>Run Integrity, Reference Regression and Signed Run evidence. FINCO Verify is the public verification and trust surface; Verified Assets composition awaits source-proven model-to-market records.</span>
+              <span>Verified Model run evidence: run integrity, reference regression and signed-run records.</span>
             </a>
             <a href="/api" class="proto-arch__protocol-item">
               <strong>API</strong>
-              <span>Programmatic read-only access to canonical Model and Radar authorities. Public contracts remain separate from execution.</span>
+              <span>Programmatic read-only access to Model and Radar data. Read-only; no trading or execution.</span>
             </a>
-            <a href="/protocol/finco" class="proto-arch__protocol-item">
-              <strong>$FINCO</strong>
-              <span>Access and service-entitlement infrastructure. The $FINCO token is not yet launched. No production deployment, chain, contract, threshold or final tokenomics is configured by this surface.</span>
+            <a href="/docs" class="proto-arch__protocol-item">
+              <strong>DOCS</strong>
+              <span>Methodology, known limitations and what each product does and does not cover today.</span>
             </a>
           </div>
         </div>

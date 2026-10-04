@@ -72,7 +72,7 @@ def _overflow_px(page) -> int:
 def test_yield_default_off_browser(yield_url, yield_browser, monkeypatch):
     monkeypatch.delenv("FINCO_YIELD_ENABLED", raising=False)
     page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
-    response = page.goto(f"{yield_url}/yield")
+    response = page.goto(f"{yield_url}/yield?include_reference=1")  # research mode: bundled reference rows are not in the public default
     assert response is not None and response.status == 200
     page.wait_for_load_state("domcontentloaded")
     text = page.locator("body").inner_text()
@@ -93,7 +93,8 @@ def test_yield_enabled_explore_detail_evidence_compare_and_execution_off(
     first, second = registry.all()[:2]
 
     page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
-    response = page.goto(f"{yield_url}/yield")
+    # Bundled reference rows are research-mode only; the public default shows live rows only.
+    response = page.goto(f"{yield_url}/yield?include_reference=1")
     assert response is not None and response.status == 200
     page.wait_for_load_state("domcontentloaded")
 
@@ -255,7 +256,7 @@ def test_yield_explore_filters_and_badges_browser(
     total = len(registry.all())
 
     page = yield_browser.new_page(viewport={"width": 1280, "height": 900})
-    response = page.goto(f"{yield_url}/yield")
+    response = page.goto(f"{yield_url}/yield?include_reference=1")  # research mode: bundled reference rows are not in the public default
     assert response is not None and response.status == 200
     page.wait_for_load_state("domcontentloaded")
 

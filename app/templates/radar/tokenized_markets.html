@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/static/css/yield.css">
 </head>
 <body class="radar">
-{% with proto_active_page="radar" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
+{% with proto_active_page="tokenized" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 {% with radar_domain="tokenized" %}{% include "radar/domain_nav.html" %}{% endwith %}
 {% with crypto_domain="tokenized" %}{% include "partials/_crypto_domain_nav.html" %}{% endwith %}
 <main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
@@ -23,10 +23,29 @@
     exists today. Same economic underlying does <strong>not</strong> mean
     same instrument or same market authority.
   </p>
+  <p class="y-note" data-testid="tm-operational-state" data-state="{{ operational.state.value }}">
+    <strong>{% if operating %}{{ operational.state.value | replace('_', ' ') }}{% else %}PREVIEW · DATA COLLECTION NOT ACTIVE{% endif %}</strong>
+    — {{ operational.headline }}
+  </p>
+  <div class="y-summary" data-testid="tm-coverage">
+    <div class="card"><span class="k">Identity catalog</span><div class="v" data-testid="tm-cov-catalog">{{ operational.coverage.identity_catalog }}</div>
+      <div class="m">research identities · not market coverage</div></div>
+    <div class="card"><span class="k">Live-collector eligible</span><div class="v" data-testid="tm-cov-eligible">{{ operational.coverage.live_eligible }}</div>
+      <div class="m">reviewed exact authorities</div></div>
+    <div class="card"><span class="k">Priced now</span><div class="v" data-testid="tm-cov-priced">{{ operational.coverage.priced_now }}</div>
+      <div class="m">fresh priced evidence</div></div>
+    <div class="card"><span class="k">History available</span><div class="v" data-testid="tm-cov-history">{{ operational.coverage.history_available }}</div>
+      <div class="m">persisted observations</div></div>
+  </div>
   <p class="y-note" data-testid="tm-universe">
-    {{ showing }} of {{ total_underlyings }} canonical underlyings with active representations.
-    Identity: exact registry mapping — no fuzzy ticker matching. Quarantined and
-    conflicting representations are excluded from active composition.
+    The identity catalog is a third-party-seeded <strong>research identity source</strong>. Only assets with
+    FINCO-reviewed live collection and persisted priced evidence are listed below.
+    {{ operational.coverage.excluded_identities }} catalog identities are excluded from the public list
+    (malformed, conflicting or unresolved) and stay inspectable in the
+    <a href="/radar/tokenized-markets?view=audit">audit view</a>. Browse the
+    <a href="/radar/tokenized-markets?view=catalog">identity catalog</a>, or open
+    <a href="/radar/r-live">R-LIVE</a> for the reviewed live market tape.
+    Identity is exact registry mapping — no fuzzy ticker matching.
   </p>
 </div>
 
@@ -60,6 +79,35 @@
 </p>
 {% endif %}
 
+{% if landing_view == 'catalog' %}
+<div class="y-table-wrap" data-testid="tm-catalog-table">
+  <p class="y-note">Research identity catalog — identity only, <strong>not market coverage</strong>.
+    Showing {{ catalog_rows | length }} of {{ catalog_total }} publicly eligible identities.</p>
+  <table class="y-table"><thead><tr><th>Underlying</th><th>Venues</th><th>Representations</th></tr></thead><tbody>
+  {% for row in catalog_rows %}
+    <tr data-testid="tm-catalog-row-{{ row.canonical_asset_id }}">
+      <td><a class="y-opp-name" href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a></td>
+      <td>{{ row.venues | join(', ') }}</td><td class="y-num">{{ row.representation_count }}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% elif landing_view == 'audit' %}
+<div class="y-table-wrap" data-testid="tm-audit-table">
+  <p class="y-note">Excluded identities are kept for inspection and are never deleted. Third-party
+    provenance is preserved; none of these rows is market evidence.</p>
+  <table class="y-table"><thead><tr><th>Underlying</th><th>Reason</th><th>Platforms</th><th>Seed sources</th></tr></thead><tbody>
+  {% for row in audit_rows %}
+    <tr data-testid="tm-audit-row-{{ row.canonical_asset_id }}">
+      <td>{{ row.canonical_asset_id }}</td><td>{{ row.exclusion_reason }}</td>
+      <td>{{ row.platforms | join(', ') }}</td><td>{{ row.sources | join(', ') }}</td>
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  <p class="y-note" data-testid="tm-audit-conflicts">{{ audit_conflicts | length }} exact chain+contract
+    registry conflicts (type or underlying disagreement) — such representations are excluded from active composition.</p>
+</div>
+{% else %}
 <div class="y-table-wrap" data-testid="tokenized-markets-table">
   <table class="y-table">
     <thead><tr>
@@ -115,13 +163,15 @@
       </tr>
     {% else %}
       <tr><td colspan="11"><p class="y-empty" data-testid="tm-empty">
-        No canonical tokenized-market underlyings resolved. The registry seed may be
-        unavailable — check the deployment's registry artifact.
+        No asset currently has persisted live market evidence. Identity is available in the
+        research catalog, but nothing is presented as market coverage until the reviewed
+        collector has stored priced observations.
       </p></td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+{% endif %}
 
 <p class="y-note">
   Basis = (token price / underlying reference − 1) × 10,000 bp — a reference dislocation

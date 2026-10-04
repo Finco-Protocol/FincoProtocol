@@ -11,7 +11,7 @@
 </head>
 <body class="radar">
 
-{% with proto_active_page="radar" %}
+{% with proto_active_page="rlive" %}
 {% include "partials/_protocol_nav.html" %}
 {% endwith %}
 {% include "radar/domain_nav.html" %}
@@ -45,7 +45,7 @@
       <div class="rlive-kpi"><span class="rlive-kpi__label">Economic Basis</span><span class="rlive-kpi__value mono" id="kpi-basis">—</span><span class="rlive-kpi__meta" id="kpi-basis-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">Independent Token Ref.</span><span class="rlive-kpi__value mono" id="kpi-token">—</span><span class="rlive-kpi__meta" id="kpi-token-asof">—</span></div>
       <div class="rlive-kpi"><span class="rlive-kpi__label">24h Range</span><span class="rlive-kpi__value mono" id="kpi-range">—</span><span class="rlive-kpi__meta" id="kpi-range-meta">—</span></div>
-      <div class="rlive-kpi"><span class="rlive-kpi__label">Freshness</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
+      <div class="rlive-kpi"><span class="rlive-kpi__label">Evidence age (per leg)</span><span class="rlive-kpi__value mono" id="kpi-freshness">—</span><span class="rlive-kpi__meta" id="kpi-source">—</span></div>
     </div>
   </section>
 
@@ -265,6 +265,7 @@
 {% endif %}
 
 {% if row.approved %}
+<script src="/static/radar/r_live_history_order.js"></script>
 <script>
 (function() {
   // SNAPSHOT FIRST, CONTINUOUSLY FRESH, READ-ONLY.
@@ -377,7 +378,12 @@
     set_text("kpi-token", ref_txt);
     set_text("kpi-token-asof", tr && tr.observed_at ? "as of " + String(tr.observed_at).replace("T", " ").slice(0, 16) : null);
     var market_age = (ages.market_activity_age_seconds != null) ? ages.market_activity_age_seconds : fresh.market_activity_age_seconds;
-    set_text("kpi-freshness", market_age != null ? ("Market " + fmt_age(market_age)) : null);
+    // Each evidence leg keeps its OWN age — a fresh market leg must never read as a fresh oracle/reference leg.
+    var quote_age_kpi = (ages.quote_feed_age_seconds != null) ? ages.quote_feed_age_seconds : fresh.quote_feed_age_seconds;
+    var legs = [];
+    if (market_age != null) legs.push("Market " + fmt_age(market_age));
+    if (quote_age_kpi != null) legs.push("Oracle " + fmt_age(quote_age_kpi));
+    set_text("kpi-freshness", legs.length ? legs.join(" · ") : null);
     set_text("kpi-source", tok_source || rb_source || state);
   }
 
@@ -518,7 +524,8 @@
     thead.appendChild(hrow);
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    points.slice(0, 20).forEach(function(pt) {
+    // TABLE order: newest canonical observation first (the chart below uses the opposite, oldest-first axis).
+    FincoRLiveHistoryOrder.tableOrder(points).slice(0, 20).forEach(function(pt) {
       var tr = document.createElement("tr");
       // Canonical B1.3 history schema: nested objects, camelCase token reference.
       var basis_val = (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
@@ -626,7 +633,9 @@
   // table above shows: gaps stay gaps, values are never altered, no
   // interpolation, no synthetic points, timestamps never rewritten.
   function chart_points(points, picker) {
-    return points.map(function(pt) {
+    // CHART order: oldest -> newest (natural left-to-right time axis). The history TABLE deliberately uses the
+    // opposite, newest-first order. Both come from the one tested helper in /static/radar/r_live_history_order.js.
+    return FincoRLiveHistoryOrder.chartOrder(points).map(function(pt) {
       return { t: pt.collected_at || "", v: picker(pt) };
     });
   }

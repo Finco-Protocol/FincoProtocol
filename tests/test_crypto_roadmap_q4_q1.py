@@ -46,9 +46,10 @@ def _section_between(text: str, start_heading: str, end_heading: str) -> str:
 
 
 def test_primary_product_architecture_is_explicit():
-    for rel in ("app/templates/protocol_home.html", "app/templates/protocol_roadmap.html"):
-        text = _flat(rel)
-        assert "MODEL · RADAR · YIELD · CRYPTO" in text, rel
+    # Product-reality reset: the HOME leads with the one product that has real operational data (R-LIVE),
+    # then Radar and the separate Model line. The ROADMAP keeps the historical four-product description.
+    assert "R-LIVE · RADAR · MODEL" in _flat("app/templates/protocol_home.html")
+    assert "MODEL · RADAR · YIELD · CRYPTO" in _flat("app/templates/protocol_roadmap.html")
 
 
 def test_protocol_layer_is_explicit_and_separate():
@@ -58,7 +59,8 @@ def test_protocol_layer_is_explicit_and_separate():
     # surface. The roadmap keeps the historical layer description.
     home = _flat("app/templates/protocol_home.html")
     roadmap = _flat("app/templates/protocol_roadmap.html")
-    assert "VERIFY · API · $FINCO" in home, "protocol_home"
+    assert "VERIFY · API · DOCS" in home, "protocol_home"
+    assert "$FINCO" not in home, "home must not feature the token while no production token exists"
     assert 'href="/verified"' not in home, "home must not link the legacy surface"
     assert 'href="/verify"' in home, "home links FINCO Verify"
     assert "VERIFY · API · $FINCO" in roadmap, "protocol_roadmap"
@@ -67,10 +69,16 @@ def test_protocol_layer_is_explicit_and_separate():
 
 def test_shared_navigation_exposes_primary_products_and_active_contracts():
     nav = _flat("app/templates/partials/_protocol_nav.html")
-    for label, href in (("Model", "/library"), ("Radar", "/radar"),
-                        ("Yield", "/yield"), ("Crypto", "/crypto")):
-        assert f'href="{href}"' in nav, label
-        assert f"> {label} </a>" in nav, label
+    # Primary navigation (compact): R-LIVE · Radar · Model · API · Docs. Yield / account & access / roadmap /
+    # $FINCO stay reachable through the secondary "More" menu, not as equal top-level products.
+    primary, secondary = nav.split('data-testid="proto-nav-secondary"', 1)
+    for label, href in (("R-LIVE", "/radar/r-live"), ("Radar", "/radar"), ("Model", "/library"),
+                        ("API", "/api"), ("Docs", "/docs")):
+        assert f'href="{href}"' in primary, label
+        assert f"> {label} </a>" in primary, label
+    for label, href in (("Yield", "/yield"), ("Account &amp; access", "/crypto")):
+        assert f'href="{href}"' in secondary, label
+        assert f"{label}</a>" in secondary, label
     assert "proto_active_page == 'yield'" in nav
     assert "proto_active_page == 'crypto'" in nav
     assert 'proto_active_page="yield"' in _flat("app/templates/yield/base.html")

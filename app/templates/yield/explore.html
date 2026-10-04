@@ -16,6 +16,15 @@
     {% endif %}
   </p>
   {% endif %}
+  <p class="y-note" data-testid="yield-live-only-note" data-research-mode="{{ 'on' if research_mode else 'off' }}">
+    {% if research_mode %}
+      Research mode — includes a bundled <strong>reference sample</strong> that is not live data. Reference rows are labelled and never indicate current market conditions.
+      <a href="/yield">Back to live opportunities</a>
+    {% else %}
+      Showing live, source-observed opportunities only{% if hidden_reference_count %}; {{ hidden_reference_count }} reference-sample row(s) are hidden{% endif %}.
+      <a href="/yield?include_reference=1">Research mode: include reference sample</a>
+    {% endif %}
+  </p>
 </div>
 <div class="nav">
   <a class="a" href="/">FINCO</a>
@@ -23,6 +32,7 @@
 </div>
 
 <form class="y-controls" method="get" action="/yield" data-testid="yield-filters">
+  {% if research_mode %}<input type="hidden" name="include_reference" value="1">{% endif %}
   <div class="y-controls-primary">
     <div class="y-field">
       <label for="f-chain">Chain</label>
@@ -43,7 +53,7 @@
     </div>
     <div class="y-actions">
       <button type="submit" class="y-apply" data-testid="yield-apply">Apply</button>
-      <a class="y-clear" href="/yield" data-testid="yield-clear">Clear filters</a>
+      <a class="y-clear" href="/yield{% if research_mode %}?include_reference=1{% endif %}" data-testid="yield-clear">Clear filters</a>
     </div>
   </div>
   <details class="y-more" {% if filters.protocol or filters.category or filters.min_history_days or filters.max_reward_dependency or filters.evidence %}open{% endif %}>
@@ -233,7 +243,7 @@
       </tr>
     {% else %}
       <tr><td colspan="12">
-        <p class="y-empty" data-testid="yield-empty">No exact matches for the current filters. <a href="/yield">Clear filters</a> to see all opportunities.</p>
+        <p class="y-empty" data-testid="yield-empty">{% if not research_mode and hidden_reference_count and not filters.chain_id and not filters.protocol and not filters.asset %}No live source-observed opportunities are available right now. FINCO shows only observed data here and does not substitute reference samples.{% else %}No exact matches for the current filters. <a href="/yield">Clear filters</a> to see all opportunities.{% endif %}</p>
       </td></tr>
     {% endfor %}
     </tbody>

@@ -1212,3 +1212,13 @@
     padding: 24px 16px;
   }
 }
+
+/* Secondary navigation ("More"): reachable but not an equal top-level product. */
+.proto-nav__more { position: relative; margin-left: 4px; }
+.proto-nav__more > summary { cursor: pointer; list-style: none; }
+.proto-nav__more > summary::-webkit-details-marker { display: none; }
+.proto-nav__more-menu {
+  position: absolute; right: 0; top: 100%; z-index: 20; min-width: 200px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--fo-surface, #0f1720); border: 1px solid var(--fo-border, #1f2a37); border-radius: 8px;
+}
