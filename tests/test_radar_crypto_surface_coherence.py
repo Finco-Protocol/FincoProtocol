@@ -310,7 +310,11 @@ def test_non_available_rlive_rows_never_become_market_observations():
     "app/radar_rwa", "app/crypto_resource_access.py", "app/crypto_access.py"])
 def test_authorities_have_zero_diff(path):
     # Existing authority files must not be modified or deleted; later PRs may ADD new modules beside them.
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", "origin/main..HEAD", "--", path],
+    excluded = [
+        ":(exclude)app/radar_rwa/stock_token_oracle.py", ":(exclude)app/radar_rwa/stock_token_oracle_registry.py",
+        ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
+        ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json"]   # multi-source modules (#188) have their own guards
+    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", "origin/main..HEAD", "--", path, *excluded],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")

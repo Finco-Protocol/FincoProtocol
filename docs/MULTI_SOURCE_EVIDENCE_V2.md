@@ -19,8 +19,8 @@ non-address proxy, a proxy shared by two assets. An asset without a binding is `
 a bound asset.
 
 **State of the shipped registry: 0 of 13 bindings.** No feed address could be verified against official authority from the
-authoring environment (no network), so none was added. All 13 are `ORACLE_FEED_NOT_REVIEWED` and the sequencer authority is
-unset. Official coverage clues (AAPL, AMD, GOOGL, AMZN, INTC, META, MSFT, NVDA, TSLA, and a later `RHDELL / USD`) are leads
+authoring environment (no network), so none was added. All 13 are `ORACLE_FEED_NOT_REVIEWED`. No sequencer proxy is
+bound either (`"sequencer": null`); see "L2 sequencer authority" below for what that does and does not mean. Official coverage clues (AAPL, AMD, GOOGL, AMZN, INTC, META, MSFT, NVDA, TSLA, and a later `RHDELL / USD`) are leads
 for the review, not authority. AVGO, NFLX and SNAP stay unbound until officially proven.
 
 ## Oracle checks (first failure wins, typed)
@@ -34,6 +34,77 @@ feed-specific reviewed heartbeat (`ORACLE_HEARTBEAT_EXCEEDED` => `STALE`). All r
 Units: the Stock Token feed already returns `underlying share price x multiplier` (value of ONE Stock Token).
 `uiMultiplier()` is never applied again. Robinhood REST `/prices` bid/ask are raw underlying-equity values and must not
 be mixed with these units.
+
+## L2 sequencer authority (typed)
+`"sequencer": null` only means *no sequencer uptime feed proxy is source-proven*. Whether that absence was reviewed is a
+separate, explicit record, `sequencer_authority`, with a stable vocabulary:
+
+| State | Meaning | Oracle behaviour |
+|---|---|---|
+| `UNREVIEWED` (also: no record at all, or a bare `sequencer: null`) | nobody has reviewed the official catalogs | **fail closed** — `ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE`, the oracle can never be AVAILABLE |
+| `SOURCE_PROVEN` | an official uptime feed proxy is bound in `sequencer` | the feed is queried at the pinned block; UP / DOWN / grace behaviour unchanged |
+| `OFFICIAL_FEED_NOT_PUBLISHED` | the official Chainlink L2 Sequencer Uptime Feed catalog was reviewed and publishes no feed for this chain (not "not applicable": Robinhood Chain is an L2) | bounded fallback below |
+
+A record is honoured only with official provenance (official source, https URL, review date, reviewer); a bound proxy always
+wins, and a record that contradicts the binding (`OFFICIAL_FEED_NOT_PUBLISHED` with a proxy, `SOURCE_PROVEN` without one) is
+rejected at load.
+
+**Review result recorded on 2026-10-04.** Robinhood's official documentation
+(`docs.robinhood.com/chain/oracles-and-price-feeds/`) recommends checking a Chainlink L2 Sequencer Uptime Feed. Chainlink's
+current official L2 Sequencer Uptime Feed documentation (`docs.chain.link/data-feeds/l2-sequencer-feeds`) lists its supported
+networks and **does not list Robinhood Chain**; it also states Chainlink is no longer expanding these feeds to additional
+networks. **No Robinhood Chain sequencer feed proxy has been source-proven and none has been inferred** (not from GitHub,
+explorers, third-party protocols, search snippets or community documentation). The official pages were not reachable from the
+authoring sandbox, so this record is the reviewer-supplied review result, marked as such in the registry.
+
+`OFFICIAL_FEED_NOT_PUBLISHED` is a **reviewed external-catalog fact as of its `reviewed_at` date**, not an eternal property of
+the chain: Chainlink may publish a feed later. The runtime never discovers this; a newer official source is applied by a
+reviewed registry change (and then every older fallback observation stops being usable, see below). No runtime TTL on the
+review date is defined here because no existing FINCO governance policy defines one.
+
+### Bounded fallback (read-only intelligence only)
+With `OFFICIAL_FEED_NOT_PUBLISHED` the Stock Token oracle read continues **without pretending a sequencer check occurred**.
+Successful (and stale) oracle evidence states the fact: `sequencerAuthorityState = OFFICIAL_FEED_NOT_PUBLISHED`,
+`sequencerChecked = false`, `l2LivenessGuard = PINNED_BLOCK_FRESHNESS_ONLY`, `sequencerGraceProtection = false`; there is no
+"sequencer OK" status. Every other check still applies in full: exact binding, reviewed heartbeat, pinned canonical block,
+`MAX_BLOCK_AGE_SECONDS` (`ORACLE_CHAIN_BLOCK_STALE` if the chain stops producing fresh blocks), exact-tag hash/reorg
+verification, `oraclePaused()`, `description()`, `decimals()`, `latestRoundData()`, positive answer, valid `updatedAt`,
+feed-specific heartbeat freshness.
+
+**Limitation (explicit):** pinned-block freshness gives bounded current-chain-state protection. It is *not* a Chainlink
+sequencer uptime feed. Without one FINCO cannot prove that a post-outage grace period has elapsed, and it does not fabricate a
+grace period or a recovery time from block timestamps, feed `updatedAt` or elapsed time. Oracle-feed freshness is never
+presented as L2 sequencer assurance. This is acceptable only because this leg is read-only market intelligence: it does not
+execute, trade, liquidate, move funds, sign or custody. Any fund-moving use must be separately reviewed and does not inherit
+this exception.
+
+Robinhood Stock Token feeds are 24/5 and may hold the last published value in off-hours. That is not a heartbeat; there is no
+generic weekend TTL, and the feed-specific reviewed heartbeat contract is unchanged until a later policy review based on real
+observations.
+
+### Read-time sequencer continuity (degrade-only)
+Persisted ORACLE rows are immutable, but their presentation status is re-evaluated against the CURRENT reviewed sequencer
+authority *and* the liveness context the row recorded when it was collected (read verbatim from the persisted evidence, never
+inferred). The current authority can preserve or degrade a row, never upgrade it:
+
+| Current authority | A persisted AVAILABLE row reads AVAILABLE only if … | Otherwise |
+|---|---|---|
+| `UNREVIEWED` | never | `UNAVAILABLE` / `ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE` (even with a fresh feed and valid heartbeat) |
+| `OFFICIAL_FEED_NOT_PUBLISHED` | it recorded `sequencerAuthorityState = OFFICIAL_FEED_NOT_PUBLISHED`, `sequencerChecked = false`, `l2LivenessGuard = PINNED_BLOCK_FRESHNESS_ONLY`, `sequencerGraceProtection = false` | `UNAVAILABLE` / `ORACLE_SEQUENCER_EVIDENCE_POLICY_MISMATCH` (contradictory) or `ORACLE_SEQUENCER_EVIDENCE_MISSING` (no sequencer facts recorded) |
+| `SOURCE_PROVEN` | it recorded `SOURCE_PROVEN`, `sequencerChecked = true`, `sequencerGraceProtection = true`, sequencer answer UP, the **same sequencer proxy** and **same grace period** as the current binding | same typed reasons — so an old fallback row (never checked against a feed) is rejected once a real sequencer binding exists, and a rotated proxy or changed grace policy fails closed |
+
+The sequencer check runs before the heartbeat/age check, so an incompatible authority outranks `STALE`. Persisted `STALE` /
+`UNAVAILABLE` rows are never promoted. The route still reports `persisted_state` next to the effective `state`.
+
+### Authority-context digest
+`EvidenceLeg.digest()` covers what the source said (asset, role, source authority/instrument, value, source timestamp, state,
+reason) **plus, for the ORACLE role only, a deterministic authority context**: feed proxy, reviewed heartbeat, binding
+provenance source and review date, `sequencerAuthorityState`, `sequencerChecked`, `l2LivenessGuard`,
+`sequencerGraceProtection`, sequencer feed proxy, sequencer grace period, and the sequencer answer / `startedAt` (which change
+only when the sequencer's own status changes, e.g. after an outage). It deliberately excludes poll-specific metadata (block
+number, block hash, block timestamp, retrieval clock, round id) so a normal repeat poll never appends history. Result: same
+evidence + same authority context → dedupe; same evidence + materially changed authority context → append. MARKET and
+OFFICIAL_REFERENCE digests are unchanged.
 
 ## One pinned block per oracle cycle
 `pin_oracle_block` reads `latest` exactly once and validates canonical block freshness once, producing an immutable
