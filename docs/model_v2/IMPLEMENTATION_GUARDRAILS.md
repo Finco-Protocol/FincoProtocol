@@ -92,6 +92,30 @@ before adapters.
   contract. Every foundation-level change is proven against the captured
   before/after reference metric baseline.
 
+## 6b. Active epic scope (temporary governance authority)
+
+`docs/model_v2/ACTIVE_EPIC_SCOPE.json` declares the explicit Model V2 epic
+scope: program, base SHA, the exact engine files the epic is authorized to
+change, the exact reviewed support files, and the strictly frozen namespaces
+(`finco_core/`, `domain/revenue/`, `domain/analytics/`, Radar/Yield/Crypto
+authorities, `app/model_validation/`, `app/verified/`). It replaces the false
+blanket "authorities are always zero-diff vs main" assumption for the duration
+of the epic only.
+
+Lifecycle rules:
+
+- The marker exists ONLY while `epic/model-saas-v2` is under development.
+- Authority never comes from a branch name and never from wildcards; every
+  future file needs an explicit, committed scope update
+  (`tests/test_model_v2_governance.py::test_g_future_files_require_explicit_scope_authorization`).
+- Frozen namespaces can never be approved — rejected by scope validation and
+  hard-denied in `tests/model_v2_governance.py`.
+- **The marker must be deleted (or set `status=RETIRED`) before the final
+  epic-to-main release merge.** This is enforced by
+  `test_active_epic_scope_must_not_reach_main`
+  (acceptance marker `MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE`), which
+  fails on any main-tip checkout carrying an ACTIVE marker.
+
 ## 7. Implementation neutrality
 
 All artifacts describe requirements as native FINCO product requirements.

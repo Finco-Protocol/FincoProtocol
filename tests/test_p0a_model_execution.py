@@ -675,4 +675,8 @@ def test_frozen_engine_and_core_are_untouched_by_this_stream():
     import subprocess
     changed = subprocess.run(["git", "diff", "origin/main", "--name-only", "--", "financial_engine", "finco_core"],
                              capture_output=True, text=True, cwd=str(REPO)).stdout.split()
+    # Explicitly authorized Model V2 epic engine files are governed by the
+    # Model V2 scope contract (tests/model_v2_governance.py), not this stream.
+    from model_v2_governance import approved_by_active_model_v2_scope
+    changed = [p for p in changed if not approved_by_active_model_v2_scope(p)]
     assert changed == []

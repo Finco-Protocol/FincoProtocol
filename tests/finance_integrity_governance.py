@@ -47,11 +47,24 @@ def changed_paths_vs_main() -> list[str]:
 
 
 def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
-    """financial_engine files changed vs main that are not on the allow-list."""
+    """financial_engine files changed vs main that are not on the allow-list.
+
+    Narrow Model V2 reconciliation: while the ACTIVE Model V2 epic scope
+    (tests/model_v2_governance.py / docs/model_v2/ACTIVE_EPIC_SCOPE.json) is
+    present, its explicitly reviewed engine files are governed by the Model V2
+    scope contract and do not falsely reject here. Every other engine module
+    stays protected by this allow-list exactly as before, and the Model V2
+    scope itself never approves finco_core/** or finco_radar/**, so
+    strictly_frozen_changes() is unaffected.
+    """
+    from model_v2_governance import approved_by_active_model_v2_scope
+
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(
         f for f in changed
-        if f.startswith("financial_engine/") and f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+        if f.startswith("financial_engine/")
+        and f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+        and not approved_by_active_model_v2_scope(f)
     )
 
 
