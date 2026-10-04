@@ -1,5 +1,11 @@
 {
-  "authority_note": "None of the 8 candidate Chainlink feed proxy addresses derived from the official Chainlink docs catalog page for Robinhood Chain have deployed bytecode on chain 4663. The proxy addresses likely belong to a different Chainlink network deployment. Future re-verification requires discovering chain-4663-specific proxy addresses from authoritative network-specific data.",
+  "audit_completeness": {
+    "note": "The original run printed only a block-hash prefix to the console and did not persist the full hash or block timestamp; they are NOT reconstructed here. Runs of the corrected tool record pinned_block_number, pinned_block_hash, pinned_block_timestamp and reorg_detected in the artifact. The 8 result rows are unchanged.",
+    "pinned_block_hash": "NOT_RECORDED_BY_ORIGINAL_RUN",
+    "pinned_block_number": "RECORDED",
+    "pinned_block_timestamp": "NOT_RECORDED_BY_ORIGINAL_RUN"
+  },
+  "authority_note": "None of the 8 candidate Chainlink feed proxy addresses derived from the official Chainlink docs catalog page for Robinhood Chain had deployed bytecode on chain 4663 at pinned block 80165854 (typed result NOT_DEPLOYED_ON_4663 for all 8). That proves only non-deployment on chain 4663 at that block; it does not establish which other network, if any, the addresses belong to. Future verification requires NEW chain-4663-specific candidates from authoritative sources.",
   "chain_id": 4663,
   "not_deployed": 8,
   "onchain_verified": 0,
