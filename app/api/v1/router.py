@@ -427,6 +427,7 @@ def get_api_meta():
             "crypto.tokenized.read",
             "crypto.tokenized.history.read",
             "crypto.tokenized.dislocation.read",
+            "crypto.tokenized.integrity.read",
             "crypto.yield.read",
         ],
         "crypto_api": {
@@ -440,6 +441,7 @@ def get_api_meta():
                 "/api/v1/crypto/tokenized/{canonical_asset_id}",
                 "/api/v1/crypto/tokenized/{canonical_asset_id}/history",
                 "/api/v1/crypto/tokenized/{canonical_asset_id}/dislocations",
+                "/api/v1/crypto/tokenized/{canonical_asset_id}/integrity",
                 "/api/v1/crypto/yield",
                 "/api/v1/crypto/yield/{canonical_id}",
             ],
