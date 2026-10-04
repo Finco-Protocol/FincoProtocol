@@ -259,7 +259,7 @@ def test_crypto_shared_nav_marks_crypto_active(client):
     nav = response.text.split('<nav class="proto-nav"', 1)[1].split("</nav>", 1)[0]
     assert 'href="/library"' in nav and ">\n        Model\n" in nav
     assert 'href="/radar"' in nav and ">\n        Radar\n" in nav
-    assert 'href="/radar/r-live"' in nav and ">\n        R-LIVE\n" in nav      # primary crypto product
+    assert 'href="/radar/r-live"' not in nav.split('data-testid="proto-nav-secondary"', 1)[0]   # R-LIVE is the default Radar surface
     secondary = nav.split('data-testid="proto-nav-secondary"', 1)[1]            # Yield / account live in "More"
     assert 'href="/yield"' in secondary
     crypto = nav.split('href="/crypto"', 1)[1].split("</a>", 1)[0]

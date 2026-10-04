@@ -170,7 +170,7 @@ def test_landing_denied_redacts_premium_columns_and_keeps_public_rows(env):
     assert all(r["cross_venue_divergence_bps"] is None and r["cross_venue_state"] == "ACCESS_RESTRICTED"
                for r in rows)
     assert 'data-testid="tm-premium-access-note"' in page.text
-    assert 'data-testid="tm-locked-history"' in page.text and 'data-testid="tm-locked-dislocation"' in page.text
+    assert 'data-testid="tm-locked-history"' in page.text            # cross-venue detail lives on the asset page
     assert 'data-testid="tokenized-markets-table"' in page.text
     assert any(r["best_price"] for r in rows)                             # public current market state remains
 

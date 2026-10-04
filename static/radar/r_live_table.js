@@ -80,6 +80,22 @@
     cell.appendChild(note);
   }
 
+  function mark_historical(row_el, fields) {
+    // When the CURRENT state is not AVAILABLE, stored 24h trend / range visuals are legitimate history but must not read as
+    // current. Presentation only: no value is removed, hidden or recomputed.
+    fields.forEach(function (field) {
+      var cell = row_el.querySelector("[data-field='" + field + "']");
+      if (!cell) return;
+      var previous = cell.querySelector(".rlive-historical-flag");
+      if (previous) previous.remove();
+      var tag = document.createElement("small");
+      tag.className = "rlive-historical-label rlive-historical-flag";
+      tag.style.display = "block";
+      tag.textContent = "Historical";
+      cell.appendChild(tag);
+    });
+  }
+
   function set_badge(row_el, state) {
     var badge = row_el.querySelector("[data-testid^='rlive-status-']");
     if (!badge) return;
@@ -158,6 +174,8 @@
       chart_cell(row_el, "range_24h", null);
     }
 
+    if (!is_current) mark_historical(row_el, ["trend", "range_1h", "range_24h"]);
+
     // Market activity and oracle ages are distinct. Read-time ages from the
     // snapshot view are preferred; observed_at is the conservative oldest
     // evidence timestamp, not market-activity age.
@@ -172,6 +190,16 @@
       }
     }
     set_cell(row_el, "freshness", freshness_txt);
+    if (is_current && freshness_txt) {
+      // AVAILABLE is only ever assigned when every leg is within its reviewed freshness policy.
+      var fresh_cell = row_el.querySelector("[data-field='freshness']");
+      if (fresh_cell) {
+        var policy_note = document.createElement("small");
+        policy_note.style.display = "block";
+        policy_note.textContent = "each leg within its source freshness policy";
+        fresh_cell.appendChild(policy_note);
+      }
+    }
   }
 
   function init() {

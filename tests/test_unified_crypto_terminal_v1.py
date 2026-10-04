@@ -264,7 +264,9 @@ def test_radar_to_tokenized_navigation_present(monkeypatch):
     assert tokenized.status_code == 200
     assert overview.status_code == 200
     for page in (tokenized, overview):
-        assert 'data-testid="crypto-domain-nav"' in page.text
+        # One Radar hierarchy: Protocol nav + Radar domain nav; no stacked crypto-domain nav.
+        assert 'data-testid="crypto-domain-nav"' not in page.text
+        assert 'data-testid="radar-domain-nav"' in page.text
         assert 'href="/radar/tokenized-markets"' in page.text
         assert 'href="/yield"' in page.text
         assert 'href="/radar"' in page.text

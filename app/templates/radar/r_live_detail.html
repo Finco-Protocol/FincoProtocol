@@ -49,6 +49,9 @@
     </div>
   </section>
 
+  <p class="muted small" id="history-current-note" data-testid="history-historical-note" role="status" hidden
+     style="margin:0 0 14px;padding:8px 12px;border:1px solid var(--radar-border,#252b33);border-radius:6px"></p>
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Premium / Discount — 24h canonical range
@@ -354,7 +357,8 @@
       ? fresh.last_pool_activity_at + " · " + fmt_age(market_age) : null);
     set_text("detail-oracle", fresh.quote_updated_at &&
       quote_age != null
-      ? fresh.quote_updated_at + " · " + fmt_age(quote_age) : null);
+      ? fresh.quote_updated_at + " · " + fmt_age(quote_age)
+        + (is_current ? " · AVAILABLE · within source heartbeat policy" : "") : null);
     set_text("detail-effective-evidence", fresh.effective_evidence_at);
     // Source provenance: canonical per-observation source labels, shown only
     // when the payload actually carries them — never invented.
@@ -381,10 +385,22 @@
     // Each evidence leg keeps its OWN age — a fresh market leg must never read as a fresh oracle/reference leg.
     var quote_age_kpi = (ages.quote_feed_age_seconds != null) ? ages.quote_feed_age_seconds : fresh.quote_feed_age_seconds;
     var legs = [];
-    if (market_age != null) legs.push("Market " + fmt_age(market_age));
-    if (quote_age_kpi != null) legs.push("Oracle " + fmt_age(quote_age_kpi));
+    // Source-specific legs: state · age. The AVAILABLE claim is only made when the canonical overall state is AVAILABLE,
+    // which is assigned only if EVERY leg is inside its reviewed freshness policy; otherwise only the age is shown.
+    var leg_state = is_current ? "AVAILABLE · " : "";
+    if (market_age != null) legs.push("Market " + leg_state + fmt_age(market_age));
+    if (quote_age_kpi != null) legs.push("Oracle " + leg_state + fmt_age(quote_age_kpi));
     set_text("kpi-freshness", legs.length ? legs.join(" · ") : null);
-    set_text("kpi-source", tok_source || rb_source || state);
+    set_text("kpi-source", (is_current ? "each leg within its source freshness policy · " : "")
+      + (tok_source || rb_source || state));
+
+    // Historical visuals: when the current state is not AVAILABLE the charts below show stored history, not current evidence.
+    var hist_note = document.getElementById("history-current-note");
+    if (hist_note) {
+      hist_note.hidden = is_current;
+      hist_note.textContent = is_current ? "" :
+        "Historical · last observed history. The current state is " + state + "; the charts below are stored observations, not current evidence.";
+    }
   }
 
   // ── Snapshot-first render + continuous snapshot polling ──────────────────

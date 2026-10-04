@@ -125,29 +125,30 @@ def tm(tmp_path, monkeypatch):
 def test_collector_never_run_renders_preview_not_live(tm):
     page = tm.client.get("/radar/tokenized-markets").text
     assert 'data-testid="tm-operational-state"' in page
-    assert "PREVIEW" in page and "DATA COLLECTION NOT ACTIVE" in page
+    assert "Preview · collection has not started" in page and "DATA COLLECTION NOT ACTIVE" not in page
     state = re.search(r'data-state="([A-Z_]+)"', page).group(1)
     assert state == "COLLECTOR_NOT_STARTED"
 
 
 def test_identity_catalog_count_is_not_market_coverage(tm):
     page = tm.client.get("/radar/tokenized-markets").text
-    catalog = int(re.search(r'data-testid="tm-cov-catalog">(\d+)<', page).group(1))
+    catalog = int(re.search(r'data-testid="tm-cov-catalog">(\d+)<', page).group(1))   # secondary disclosure, not a KPI
     priced = int(re.search(r'data-testid="tm-cov-priced">(\d+)<', page).group(1))
     eligible = int(re.search(r'data-testid="tm-cov-eligible">(\d+)<', page).group(1))
     history = int(re.search(r'data-testid="tm-cov-history">(\d+)<', page).group(1))
     assert catalog > 1000 and priced == 0 and eligible == 13 and history == 0
     assert "not market coverage" in page and "research identity source" in page
     assert "canonical underlyings with active representations" not in page
-    # only the 13 reviewed collector-eligible assets are listed; the identity catalog is not
-    assert len(re.findall(r'data-testid="tm-row-', page)) == 13
+    # no priced evidence → compact collecting state; neither the identity catalog nor a 13-row empty table is listed
+    assert len(re.findall(r'data-testid="tm-row-', page)) == 0 and 'data-testid="tm-empty"' in page
 
 
 def test_primary_list_excludes_malformed_numeric_and_identity_only_rows(tm):
     page = tm.client.get("/radar/tokenized-markets").text
     assert 'data-testid="tm-row-1"' not in page and 'data-testid="tm-row-1024"' not in page
     assert 'data-testid="tm-row-ZZZZ"' not in page
-    assert 'data-testid="tm-row-AAPL"' in page               # reviewed eligible asset, still unpriced
+    assert 'data-testid="tm-row-AAPL"' not in page           # nothing priced → compact state, no empty table
+    assert 'href="/radar/tokenized-markets/AAPL"' in page    # reviewed asset still reachable
     assert int(re.search(r'data-testid="tm-cov-priced">(\d+)<', page).group(1)) == 0
 
 
@@ -165,7 +166,7 @@ def test_catalog_view_is_identity_only_and_labelled(tm):
 
 
 def test_unknown_view_falls_back_to_primary_and_deep_links_still_work(tm):
-    assert 'data-testid="tokenized-markets-table"' in tm.client.get("/radar/tokenized-markets?view=bogus").text
+    assert 'data-testid="tm-empty"' in tm.client.get("/radar/tokenized-markets?view=bogus").text
     assert tm.client.get("/radar/tokenized-markets/NVDA").status_code == 200
 
 
@@ -176,7 +177,7 @@ def test_store_evidence_makes_a_row_primary_but_collector_state_still_gates_the_
                                          at=now - timedelta(seconds=30), reference_at=now - timedelta(seconds=30)))
     page = tm.client.get("/radar/tokenized-markets").text
     assert 'data-testid="tm-row-NVDA"' in page              # real persisted evidence is shown...
-    assert "PREVIEW" in page                                 # ...but the collector never ran: not a live product
+    assert "Preview · collection has not started" in page    # ...but the collector never ran: not a live product
     assert 'data-state="COLLECTOR_NOT_STARTED"' in page or 'data-state="IDENTITY_ONLY"' in page
 
 
@@ -254,7 +255,7 @@ def test_finco_token_is_not_in_primary_navigation_but_stays_reachable(home):
 def test_primary_navigation_is_compact_and_rlive_first(home):
     primary, _ = _nav(home.get("/").text)
     hrefs = re.findall(r'href="([^"]+)"', primary)
-    assert hrefs == ["/radar/r-live", "/radar", "/library", "/api", "/docs"]
+    assert hrefs == ["/radar", "/library", "/api", "/docs"]      # Radar opens R-LIVE; no duplicate global R-LIVE entry
     for demoted in ("/yield", "/crypto", "/roadmap", "/verify"):
         assert demoted not in primary
 
@@ -292,8 +293,8 @@ def test_crypto_status_is_demoted_in_domain_navigation():
 # ── R-LIVE presentation: per-leg freshness and chronological chart axis ──────────────────────────
 def test_rlive_detail_shows_each_evidence_leg_age_separately():
     html = (TEMPLATES / "radar" / "r_live_detail.html").read_text()
-    assert 'legs.push("Market " + fmt_age(market_age))' in html
-    assert 'legs.push("Oracle " + fmt_age(quote_age_kpi))' in html
+    assert 'legs.push("Market " + leg_state + fmt_age(market_age))' in html
+    assert 'legs.push("Oracle " + leg_state + fmt_age(quote_age_kpi))' in html
     assert "Evidence age (per leg)" in html
     assert 'set_text("kpi-freshness", market_age != null' not in html     # no single collapsed age
 
