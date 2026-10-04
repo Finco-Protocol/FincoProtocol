@@ -43,16 +43,32 @@ class ModelPerspective(str, Enum):
     IPP = "ipp"
 
 
+def _canonical_raw_value(raw: object) -> str:
+    """Extract the canonical candidate string from a raw input value.
+
+    Canonical enum members pass through their value; any other Enum instance
+    is NOT silently coerced (its str() form would be meaningless here) and
+    fails closed like any unrelated object.
+    """
+    if isinstance(raw, (ProjectStage, ModelPerspective)):
+        return raw.value
+    if isinstance(raw, Enum):
+        raise ValueError("metadata value is a non-canonical enum instance")
+    return str(raw).strip().lower()
+
+
 def normalize_stage(raw: object) -> ProjectStage | None:
     """Normalize a persisted raw stage value.
 
-    None passes through (unset); a valid canonical value parses; anything
-    else fails closed with ValueError — no guessed or silent defaults.
+    None passes through (unset); a canonical value is accepted as a canonical
+    string (case-insensitive) or as the canonical enum object itself;
+    anything else fails closed with ValueError — no guessed or silent
+    defaults, no coercion of unrelated strings or enum types.
     """
     if raw is None:
         return None
     try:
-        return ProjectStage(str(raw).strip().lower())
+        return ProjectStage(_canonical_raw_value(raw))
     except ValueError:
         raise ValueError(
             f"PROJECT_STAGE_INVALID: {raw!r} is not a canonical ProjectStage value. "
@@ -65,7 +81,7 @@ def normalize_perspective(raw: object) -> ModelPerspective | None:
     if raw is None:
         return None
     try:
-        return ModelPerspective(str(raw).strip().lower())
+        return ModelPerspective(_canonical_raw_value(raw))
     except ValueError:
         raise ValueError(
             f"MODEL_PERSPECTIVE_INVALID: {raw!r} is not a canonical ModelPerspective value. "

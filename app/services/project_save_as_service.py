@@ -271,6 +271,10 @@ async def execute_project_save_as_route(
 
     # Create the new project record (Quirk: project_origin=user_created,
     # is_readonly=False, last_run_summary={})
+    # Model V2: non-economic metadata is copied as configured on the source —
+    # explicitly-set Stage/Perspective carry over; None stays None (no
+    # inference). getattr keeps older test-double sources without the
+    # attributes working unchanged.
     new_record = deps.save_project(
         user_id=user.user_id,
         project_code=new_code,
@@ -286,6 +290,8 @@ async def execute_project_save_as_route(
         replay_metadata=deps.build_project_replay_metadata(
             source, project_code
         ),
+        project_stage=getattr(source, "project_stage", None),
+        model_perspective=getattr(source, "model_perspective", None),
     )
 
     # HOTFIX-PILOT-BLOCKER-1 (F1): Sanitize the inherited snapshot

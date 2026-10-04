@@ -490,6 +490,11 @@ def save_project(
                 project_stage = existing["project_stage"] if "project_stage" in _keys else None
             if model_perspective is _UNSET:
                 model_perspective = existing["model_perspective"] if "model_perspective" in _keys else None
+            # Fail closed: only canonical metadata values reach SQL. Explicit
+            # None clears; _UNSET was already resolved to the existing value.
+            from app.model_v2.project_metadata import perspective_value, stage_value
+            project_stage = stage_value(project_stage)
+            model_perspective = perspective_value(model_perspective)
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
@@ -534,11 +539,15 @@ def save_project(
             if source_project_id is _UNSET:
                 source_project_id = None
             # Model V2 metadata: insert-time default is "not set" (NULL) —
-            # never a guessed stage or perspective.
+            # never a guessed stage or perspective. Fail closed on
+            # non-canonical values before any SQL write.
             if project_stage is _UNSET:
                 project_stage = None
             if model_perspective is _UNSET:
                 model_perspective = None
+            from app.model_v2.project_metadata import perspective_value, stage_value
+            project_stage = stage_value(project_stage)
+            model_perspective = perspective_value(model_perspective)
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
