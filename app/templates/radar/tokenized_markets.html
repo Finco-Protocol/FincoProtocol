@@ -7,96 +7,75 @@
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
-  <link rel="stylesheet" href="/static/css/yield.css">
+  <link rel="stylesheet" href="/static/css/finco-surface.css">
 </head>
 <body class="radar">
 {% with proto_active_page="tokenized" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 {% with radar_domain="tokenized" %}{% include "radar/domain_nav.html" %}{% endwith %}
-{% with crypto_domain="tokenized" %}{% include "partials/_crypto_domain_nav.html" %}{% endwith %}
-<main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
-<div class="y-header">
-  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
-  <h1>Tokenized Markets</h1>
-  <p class="y-lede">
-    One canonical underlying, every tokenized representation FINCO can
-    resolve by exact identity, with whatever market evidence actually
-    exists today. Same economic underlying does <strong>not</strong> mean
-    same instrument or same market authority.
+<main class="radar-main fs-main">
+<header>
+  <p class="fs-eyebrow">FINCO Radar · Tokenized Markets</p>
+  <h1 class="fs-title">Tokenized Markets</h1>
+  <p class="fs-lede">
+    One canonical underlying, every tokenized representation FINCO can resolve by exact identity, with the
+    market evidence that is actually persisted. The same economic underlying does <strong>not</strong> mean the
+    same instrument or the same market authority.
   </p>
-  <p class="y-note" data-testid="tm-operational-state" data-state="{{ operational.state.value }}">
-    <strong>{% if operating %}{{ operational.state.value | replace('_', ' ') }}{% else %}PREVIEW · DATA COLLECTION NOT ACTIVE{% endif %}</strong>
-    — {{ operational.headline }}
-  </p>
-  <div class="y-summary" data-testid="tm-coverage">
-    <div class="card"><span class="k">Identity catalog</span><div class="v" data-testid="tm-cov-catalog">{{ operational.coverage.identity_catalog }}</div>
-      <div class="m">research identities · not market coverage</div></div>
-    <div class="card"><span class="k">Live-collector eligible</span><div class="v" data-testid="tm-cov-eligible">{{ operational.coverage.live_eligible }}</div>
-      <div class="m">reviewed exact authorities</div></div>
-    <div class="card"><span class="k">Priced now</span><div class="v" data-testid="tm-cov-priced">{{ operational.coverage.priced_now }}</div>
-      <div class="m">fresh priced evidence</div></div>
-    <div class="card"><span class="k">History available</span><div class="v" data-testid="tm-cov-history">{{ operational.coverage.history_available }}</div>
-      <div class="m">persisted observations</div></div>
-  </div>
-  <p class="y-note" data-testid="tm-universe">
-    The identity catalog is a third-party-seeded <strong>research identity source</strong>. Only assets with
-    FINCO-reviewed live collection and persisted priced evidence are listed below.
-    {{ operational.coverage.excluded_identities }} catalog identities are excluded from the public list
-    (malformed, conflicting or unresolved) and stay inspectable in the
-    <a href="/radar/tokenized-markets?view=audit">audit view</a>. Browse the
-    <a href="/radar/tokenized-markets?view=catalog">identity catalog</a>, or open
-    <a href="/radar/r-live">R-LIVE</a> for the reviewed live market tape.
-    Identity is exact registry mapping — no fuzzy ticker matching.
-  </p>
+</header>
+
+<div class="fs-state" data-testid="tm-operational-state" data-state="{{ operational.state.value }}" data-tone="{{ operational.tone }}">
+  <strong data-testid="tm-state-label">{{ operational.label }}</strong>
+  <span>{{ operational.headline }}</span>
 </div>
 
-<div class="y-summary" data-testid="tm-collector-health">
-  <div class="card">
-    <span class="k">Collector</span>
-    <div class="v">{{ collector_health.health_state }}</div>
-    <div class="m">{{ collector_health.liveness }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:16] }} UTC{% endif %}</div>
-  </div>
-  <div class="card">
-    <span class="k">Last cycle</span>
-    <div class="v">{{ collector_health.outcome }}</div>
-    <div class="m">Market acquisition is job-driven; page loads never call providers.</div>
-  </div>
+<div class="fs-kpis" data-testid="tm-coverage">
+  <div class="fs-kpi"><span class="k">Reviewed universe</span><div class="v" data-testid="tm-cov-eligible">{{ operational.coverage.live_eligible }}</div>
+    <div class="m">reviewed exact authorities</div></div>
+  <div class="fs-kpi"><span class="k">Priced now</span><div class="v" data-testid="tm-cov-priced">{{ operational.coverage.priced_now }}</div>
+    <div class="m">fresh priced evidence</div></div>
+  <div class="fs-kpi"><span class="k">History available</span><div class="v" data-testid="tm-cov-history">{{ operational.coverage.history_available }}</div>
+    <div class="m">assets with persisted observations</div></div>
+  <div class="fs-kpi" data-testid="tm-collector-health"><span class="k">Collector</span><div class="v">{{ collector_health.health_state }}</div>
+    <div class="m">{{ collector_health.outcome }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:16] }} UTC{% endif %}</div></div>
 </div>
+
+<details class="fs-details" data-testid="tm-research-catalog">
+  <summary>Research catalog: <span data-testid="tm-cov-catalog">{{ operational.coverage.identity_catalog }}</span> identities · identity coverage is not market coverage</summary>
+  <div class="fs-body" data-testid="tm-universe">
+    <p>The catalog is a third-party-seeded <strong>research identity source</strong>. Only FINCO-reviewed live-collection assets and
+      assets with persisted priced evidence are listed on this page. {{ operational.coverage.excluded_identities }} catalog identities are excluded
+      from the public list (malformed, conflicting or unresolved) and stay inspectable.</p>
+    <p><a href="/radar/tokenized-markets?view=catalog">Identity catalog</a> · <a href="/radar/tokenized-markets?view=audit">Audit view</a> ·
+      <a href="/radar/r-live">R-LIVE</a>. Identity is exact registry mapping — no fuzzy ticker matching.</p>
+  </div>
+</details>
 
 {% if access and (not access.history.allowed or not access.dislocation.allowed) %}
-<p class="y-note" data-testid="tm-premium-access-note">
+<p class="fs-note" data-testid="tm-premium-access-note">
   Basis history changes and cross-venue divergence are $FINCO holder resources
   ({{ access.history.state if not access.history.allowed else access.dislocation.state }}).
   Identity and current market state remain public.
 </p>
 {% endif %}
 
-{% if not history_available %}
-<p class="y-note" data-testid="tm-history-note">
-  The market-history store contains no observations yet for these venues. History
-  appears only after the separate bounded collector persists source-observed evidence;
-  page loads never trigger acquisition. Identity coverage remains available from the
-  canonical registry.
-</p>
-{% endif %}
-
 {% if landing_view == 'catalog' %}
-<div class="y-table-wrap" data-testid="tm-catalog-table">
-  <p class="y-note">Research identity catalog — identity only, <strong>not market coverage</strong>.
+<div class="fs-table-wrap" data-testid="tm-catalog-table">
+  <p class="fs-note">Research identity catalog — identity only, <strong>not market coverage</strong>.
     Showing {{ catalog_rows | length }} of {{ catalog_total }} publicly eligible identities.</p>
-  <table class="y-table"><thead><tr><th>Underlying</th><th>Venues</th><th>Representations</th></tr></thead><tbody>
+  <table class="fs-table"><thead><tr><th>Underlying</th><th>Venues</th><th>Representations</th></tr></thead><tbody>
   {% for row in catalog_rows %}
     <tr data-testid="tm-catalog-row-{{ row.canonical_asset_id }}">
-      <td><a class="y-opp-name" href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a></td>
-      <td>{{ row.venues | join(', ') }}</td><td class="y-num">{{ row.representation_count }}</td>
+      <td><a  href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a></td>
+      <td>{{ row.venues | join(', ') }}</td><td class="num">{{ row.representation_count }}</td>
     </tr>
   {% endfor %}
   </tbody></table>
 </div>
 {% elif landing_view == 'audit' %}
-<div class="y-table-wrap" data-testid="tm-audit-table">
-  <p class="y-note">Excluded identities are kept for inspection and are never deleted. Third-party
+<div class="fs-table-wrap" data-testid="tm-audit-table">
+  <p class="fs-note">Excluded identities are kept for inspection and are never deleted. Third-party
     provenance is preserved; none of these rows is market evidence.</p>
-  <table class="y-table"><thead><tr><th>Underlying</th><th>Reason</th><th>Platforms</th><th>Seed sources</th></tr></thead><tbody>
+  <table class="fs-table"><thead><tr><th>Underlying</th><th>Reason</th><th>Platforms</th><th>Seed sources</th></tr></thead><tbody>
   {% for row in audit_rows %}
     <tr data-testid="tm-audit-row-{{ row.canonical_asset_id }}">
       <td>{{ row.canonical_asset_id }}</td><td>{{ row.exclusion_reason }}</td>
@@ -104,12 +83,12 @@
     </tr>
   {% endfor %}
   </tbody></table>
-  <p class="y-note" data-testid="tm-audit-conflicts">{{ audit_conflicts | length }} exact chain+contract
+  <p class="fs-note" data-testid="tm-audit-conflicts">{{ audit_conflicts | length }} exact chain+contract
     registry conflicts (type or underlying disagreement) — such representations are excluded from active composition.</p>
-  <p class="y-note" data-testid="tm-audit-taxonomy">{{ audit_taxonomy | length }} exact representations where sources agree on
+  <p class="fs-note" data-testid="tm-audit-taxonomy">{{ audit_taxonomy | length }} exact representations where sources agree on
     the deployment but classify it differently (taxonomy only). Identity is resolved to one representation; each source's own
     classification is kept below as provenance.</p>
-  <ul class="y-note" data-testid="tm-audit-taxonomy-list">
+  <ul class="fs-note" data-testid="tm-audit-taxonomy-list">
   {% for row in audit_taxonomy[:50] %}
     <li>{{ row.representation }} · {{ row.chain }}:{{ row.contract }} → {{ row.resolved_instrument_type }}
       ({% for a in row.assertions %}{{ a.0 }}={{ a.2 }}{% if not loop.last %}; {% endif %}{% endfor %})</li>
@@ -117,79 +96,75 @@
   </ul>
 </div>
 {% else %}
-<div class="y-table-wrap" data-testid="tokenized-markets-table">
-  <table class="y-table">
+{% if operational.coverage.priced_now == 0 %}
+<section class="fs-panel fs-empty" data-testid="tm-empty">
+  <h2>{{ operational.coverage.live_eligible }} reviewed assets ready for live collection</h2>
+  <p>No fresh source-observed market prices are currently persisted.</p>
+  {% if reviewed_symbols %}
+  <div class="fs-chips" data-testid="tm-reviewed-symbols">
+    {% for symbol in reviewed_symbols %}<a class="fs-chip" href="/radar/tokenized-markets/{{ symbol }}">{{ symbol }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  <p class="fs-note" data-testid="tm-empty-collector">Collector: {{ collector_health.health_state }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:16] }} UTC{% endif %}</p>
+  {% if rlive_source %}
+  <p class="fs-note" data-testid="tm-empty-rlive">R-LIVE source state:
+    {% for state, count in rlive_source.states.items() %}{{ state }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}
+    of {{ rlive_source.total }} reviewed rows.</p>
+  {% endif %}
+  <p><a class="fs-cta" href="/radar/r-live" data-testid="tm-open-rlive">Open R-LIVE</a></p>
+  <p class="fs-note">The market table appears automatically once canonical source-observed market evidence is persisted.
+    Page loads never call providers.</p>
+</section>
+{% else %}
+<div class="fs-table-wrap" data-testid="tokenized-markets-table">
+  <table class="fs-table">
     <thead><tr>
-      <th>Underlying</th><th>Underlying Ref.</th><th>Representations</th>
-      <th>Closest basis venue</th><th>Token Price</th><th>Basis</th>
-      <th>24h Basis Δ</th><th>7d Basis Δ</th><th>Cross-venue</th>
-      <th>State</th><th>As-of</th>
+      <th>Underlying</th><th class="num">Reference</th><th class="num">Token price / venue</th>
+      <th class="num">Basis</th><th class="num">24h change</th><th>Freshness</th><th>State</th>
     </tr></thead>
     <tbody>
     {% for row in rows %}
       <tr data-testid="tm-row-{{ row.canonical_asset_id }}">
         <td>
-          <a class="y-opp-name" href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a>
-          {% if row.underlying_name %}<span class="y-subtext">{{ row.underlying_name }}</span>{% endif %}
+          <a href="/radar/tokenized-markets/{{ row.canonical_asset_id }}">{{ row.canonical_asset_id }}</a>
+          {% if row.underlying_name %}<span class="fs-sub">{{ row.underlying_name }}</span>{% endif %}
         </td>
-        <td class="y-num">
-          {% if row.reference_price %}${{ row.reference_price }}{% else %}<span class="y-missing">—</span>{% endif %}
-          <span class="y-subtext">{{ row.reference_state }}{% if row.reference_observed_at %} · {{ row.reference_observed_at[:16] }}{% endif %}</span>
+        <td class="num">
+          {% if row.reference_price %}${{ row.reference_price }}{% else %}<span class="fs-missing">—</span>{% endif %}
+          <span class="fs-sub">{{ row.reference_state }}</span>
         </td>
-        <td class="y-num">
-          <span data-testid="tm-rep-count-{{ row.canonical_asset_id }}">{{ row.priced_count }}/{{ row.representation_count }}</span>
-          <span class="y-subtext">priced / resolved</span>
+        <td class="num">
+          {% if row.best_price %}${{ row.best_price }}<span class="fs-sub">{{ row.best_venue }}</span>{% else %}<span class="fs-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">identity available · market unavailable</span>{% endif %}
         </td>
+        <td class="num">
+          {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="fs-missing">—</span>{% endif %}
+        </td>
+        <td class="num" data-testid="tm-basis-24h-{{ row.canonical_asset_id }}">
+          {% if access and not access.history.allowed %}<span class="fs-missing" data-testid="tm-locked-history">locked</span>{% elif row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="fs-missing">—</span>{% endif %}
+        </td>
+        <td><span class="fs-sub">{{ row.evaluation_time[:16] }} UTC</span></td>
         <td>
-          {% if row.best_price and row.best_basis_bps is not none %}
-            <span class="y-badge" title="Representation with the smallest absolute basis — not an evaluative quality ranking">Closest basis · {{ row.best_venue }}</span>
-          {% elif row.best_price %}
-            <span class="y-badge" title="A priced representation; no basis computed">Representation · {{ row.best_venue }}</span>
-          {% else %}
-            <span class="y-missing">—</span>
-          {% endif %}
-        </td>
-        <td class="y-num">
-          {% if row.best_price %}${{ row.best_price }}{% else %}<span class="y-missing" data-testid="tm-unavailable-{{ row.canonical_asset_id }}">identity available · market unavailable</span>{% endif %}
-        </td>
-        <td class="y-num">
-          {% if row.best_basis_bps is not none %}{% set bps = row.best_basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
-        </td>
-        <td class="y-num" data-testid="tm-basis-24h-{{ row.canonical_asset_id }}">
-          {% if access and not access.history.allowed %}<span class="y-missing" data-testid="tm-locked-history">locked</span>{% elif row.basis_change_24h_bps is not none %}{% set d24 = row.basis_change_24h_bps | float %}{% if d24 > 0 %}+{% endif %}{{ d24 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
-        </td>
-        <td class="y-num" data-testid="tm-basis-7d-{{ row.canonical_asset_id }}">
-          {% if access and not access.history.allowed %}<span class="y-missing">locked</span>{% elif row.basis_change_7d_bps is not none %}{% set d7 = row.basis_change_7d_bps | float %}{% if d7 > 0 %}+{% endif %}{{ d7 | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
-        </td>
-        <td class="y-num" data-testid="tm-cross-venue-{{ row.canonical_asset_id }}">
-          {% if access and not access.dislocation.allowed %}<span class="y-missing" data-testid="tm-locked-dislocation">locked</span>{% elif row.cross_venue_divergence_bps is not none %}{{ row.cross_venue_divergence_bps | float | abs | int }} bp{% else %}<span class="y-missing">—</span>{% endif %}
-        </td>
-        <td>
-          <span class="y-badge {% if row.overall_state == 'FRESH' %}y-badge-current{% elif row.overall_state in ('PARTIAL', 'STALE') %}y-badge-stale{% else %}y-badge-unknown{% endif %}"
+          <span class="fs-badge {% if row.overall_state == 'FRESH' %}fs-badge--ok{% elif row.overall_state in ('PARTIAL', 'STALE') %}fs-badge--warn{% endif %}"
                 data-testid="tm-state-{{ row.canonical_asset_id }}">{{ row.overall_state }}</span>
         </td>
-        <td><span class="y-subtext">{{ row.evaluation_time[:16] }} UTC</span></td>
       </tr>
-    {% else %}
-      <tr><td colspan="11"><p class="y-empty" data-testid="tm-empty">
-        No asset currently has persisted live market evidence. Identity is available in the
-        research catalog, but nothing is presented as market coverage until the reviewed
-        collector has stored priced observations.
-      </p></td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+{% if not history_available %}
+<p class="fs-note" data-testid="tm-history-note">No history is stored yet. History appears only after the bounded collector persists source-observed evidence.</p>
+{% endif %}
+{% endif %}
 {% endif %}
 
-<p class="y-note">
-  Basis = (token price / underlying reference − 1) × 10,000 bp — a reference dislocation
-  measure only. It is <strong>not</strong> an executable-arbitrage claim: venues differ in
-  market authority, access, settlement and trading hours. “—” means unavailable; missing
-  evidence is never shown as zero.
+<p class="fs-note">
+  Basis = (token price / underlying reference − 1) × 10,000 bp — a reference dislocation measure only, not an
+  executable-arbitrage claim: venues differ in market authority, access, settlement and trading hours. “—” means
+  unavailable; missing evidence is never shown as zero. Asset detail pages carry representations, cross-venue and 7-day detail.
 </p>
-<p class="bound">Read-only composition over the canonical venue registry and persisted
-observations. No trading, execution, custody or recommendation is offered on this surface.</p>
+<p class="fs-note">Read-only composition over the canonical venue registry and persisted observations. No trading,
+  execution, custody or recommendation is offered on this surface.</p>
 </main>
 </body>
 </html>

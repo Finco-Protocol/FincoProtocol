@@ -7,108 +7,107 @@
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
-  <link rel="stylesheet" href="/static/css/yield.css">
+  <link rel="stylesheet" href="/static/css/finco-surface.css">
   <script src="/static/interaction/overview-charts.js" defer></script>
 </head>
 <body class="radar">
 {% with proto_active_page="tokenized" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
 {% with radar_domain="tokenized" %}{% include "radar/domain_nav.html" %}{% endwith %}
-{% with crypto_domain="tokenized" %}{% include "partials/_crypto_domain_nav.html" %}{% endwith %}
-<main class="radar-main" style="max-width:1180px;margin:0 auto;padding:26px 18px 64px;min-width:0">
+<main class="radar-main fs-main">
 {% if unknown %}
-<div class="y-header">
-  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
+<div class="fs-header">
+  <p class="fs-eyebrow">FINCO RADAR · TOKENIZED MARKETS</p>
   <h1 data-testid="tmd-unknown">Unknown canonical underlying</h1>
-  <p class="y-lede" data-testid="tmd-unknown-symbol">{{ canonical_asset_id }} is not a canonical underlying in the FINCO venue registry (exact identity only — no fuzzy matching).</p>
+  <p class="fs-lede" data-testid="tmd-unknown-symbol">{{ canonical_asset_id }} is not a canonical underlying in the FINCO venue registry (exact identity only — no fuzzy matching).</p>
 </div>
-<p class="bound"><a href="/radar/tokenized-markets">← Back to Tokenized Markets</a></p>
+<p class="fs-note"><a href="/radar/tokenized-markets">← Back to Tokenized Markets</a></p>
 {% else %}
-<div class="y-header">
-  <p class="k">FINCO RADAR · TOKENIZED MARKETS</p>
+<div class="fs-header">
+  <p class="fs-eyebrow">FINCO RADAR · TOKENIZED MARKETS</p>
   <h1>{{ view.canonical_asset_id }}
     {% if view.underlying_name %}<span style="font-weight:400;color:#6b7280;font-size:16px;">· {{ view.underlying_name }}</span>{% endif %}
   </h1>
-  <p class="y-lede">
+  <p class="fs-lede">
     Canonical underlying → tokenized representations. Each venue row is one exact
     instrument resolved from the canonical registry (platform, network, contract) —
     same economic underlying does not mean same instrument or same market authority.
   </p>
-  <p class="y-note" data-testid="tmd-eval-time">Composed at {{ view.evaluation_time[:19] }} UTC ·
+  <p class="fs-note" data-testid="tmd-eval-time">Composed at {{ view.evaluation_time[:19] }} UTC ·
     registry status: quarantine and conflict rows excluded from active composition.</p>
 </div>
 <div class="nav"><a class="a" href="/radar/tokenized-markets">← All tokenized markets</a></div>
 
-<div class="y-summary" data-testid="tmd-collector-health">
-  <div class="card">
+<div class="fs-kpis" data-testid="tmd-collector-health">
+  <div class="fs-kpi">
     <span class="k">Collector</span>
     <div class="v">{{ collector_health.health_state }}</div>
     <div class="m">{{ collector_health.liveness }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:19] }} UTC{% endif %}</div>
   </div>
-  <div class="card">
+  <div class="fs-kpi">
     <span class="k">Last successful cycle</span>
     <div class="v">{% if collector_health.last_success_at %}{{ collector_health.last_success_at[:19] }} UTC{% else %}—{% endif %}</div>
     <div class="m">Operational health only; it never upgrades market evidence.</div>
   </div>
 </div>
 
-<section class="y-section" data-testid="tmd-reference">
+<section class="fs-section" data-testid="tmd-reference">
   <h2>Underlying reference</h2>
   {% if reference.price %}
-  <div class="y-wallet-line">
-    <span class="y-wallet-badge" data-testid="tmd-reference-price">${{ reference.price }}</span>
-    <span class="y-badge {% if reference.state == 'FRESH' %}y-badge-current{% else %}y-badge-stale{% endif %}">{{ reference.state }}</span>
-    {% if reference.observed_at %}<span class="y-subtext" data-testid="tmd-reference-asof">as-of {{ reference.observed_at[:19] }} UTC</span>{% endif %}
-    {% if reference.source %}<span class="y-subtext">source: {{ reference.source }}</span>{% endif %}
+  <div class="fs-note">
+    <span class="fs-badge" data-testid="tmd-reference-price">${{ reference.price }}</span>
+    <span class="fs-badge {% if reference.state == 'FRESH' %}fs-badge--ok{% else %}fs-badge--warn{% endif %}">{{ reference.state }}</span>
+    {% if reference.observed_at %}<span class="fs-sub" data-testid="tmd-reference-asof">as-of {{ reference.observed_at[:19] }} UTC</span>{% endif %}
+    {% if reference.source %}<span class="fs-sub">source: {{ reference.source }}</span>{% endif %}
   </div>
   {% else %}
-  <p class="y-warn" data-testid="tmd-reference-unavailable">
+  <p class="fs-warn" data-testid="tmd-reference-unavailable">
     Underlying reference is currently unavailable for this canonical symbol — basis cannot
     be computed. Reference is not fabricated for symbols outside the bound-reference authority.
   </p>
   {% endif %}
 </section>
 
-<section class="y-section" data-testid="tmd-integrity">
+<section class="fs-section" data-testid="tmd-integrity">
   <h2>RWA Integrity</h2>
   {% if integrity %}
-  <div class="y-summary">
-    <div class="card"><span class="k">Identity state</span><div class="v" data-testid="tmd-integrity-identity">{{ integrity.identity_state }}</div><div class="m">{{ integrity.active_representation_count }} active / {{ integrity.representation_count }} total</div></div>
-    <div class="card"><span class="k">Market evidence</span><div class="v" data-testid="tmd-integrity-market">{{ integrity.market_evidence_coverage }}</div><div class="m">{{ integrity.venue_count }} venue(s) · {{ integrity.chain_count }} chain(s)</div></div>
-    <div class="card"><span class="k">Reference evidence</span><div class="v" data-testid="tmd-integrity-reference">{{ integrity.reference_evidence_state }}</div><div class="m">Canonical persisted reference authority</div></div>
-    <div class="card"><span class="k">Attestation evidence</span><div class="v" data-testid="tmd-integrity-attestation">{{ integrity.attestation_evidence_state }}</div><div class="m">No external PoR/backing claim without approved evidence</div></div>
+  <div class="fs-kpis">
+    <div class="fs-kpi"><span class="k">Identity state</span><div class="v" data-testid="tmd-integrity-identity">{{ integrity.identity_state }}</div><div class="m">{{ integrity.active_representation_count }} active / {{ integrity.representation_count }} total</div></div>
+    <div class="fs-kpi"><span class="k">Market evidence</span><div class="v" data-testid="tmd-integrity-market">{{ integrity.market_evidence_coverage }}</div><div class="m">{{ integrity.venue_count }} venue(s) · {{ integrity.chain_count }} chain(s)</div></div>
+    <div class="fs-kpi"><span class="k">Reference evidence</span><div class="v" data-testid="tmd-integrity-reference">{{ integrity.reference_evidence_state }}</div><div class="m">Canonical persisted reference authority</div></div>
+    <div class="fs-kpi"><span class="k">Attestation evidence</span><div class="v" data-testid="tmd-integrity-attestation">{{ integrity.attestation_evidence_state }}</div><div class="m">No external PoR/backing claim without approved evidence</div></div>
   </div>
-  <p class="y-section-note">
+  <p class="fs-note">
     Representation dependency facts: {% if integrity.dependency_flags %}{{ integrity.dependency_flags | join(' · ') }}{% else %}none observed{% endif %}.
     {% if integrity.integrity_flags %} Integrity flags: {{ integrity.integrity_flags | join(' · ') }}.{% endif %}
     These are evidence states and structural facts, not a trust score or investment recommendation.
   </p>
-  <div class="y-table-wrap">
-    <table class="y-table" data-testid="tmd-integrity-representations">
+  <div class="fs-table-wrap">
+    <table class="fs-table" data-testid="tmd-integrity-representations">
       <thead><tr><th>Representation</th><th>Registry</th><th>Market</th><th>Reference</th><th>Basis</th><th>Attestation</th><th>Flags</th></tr></thead>
       <tbody>
       {% for rep in integrity.representations %}
         <tr>
-          <td><strong>{{ rep.platform }}</strong><br><span class="y-subtext">{{ rep.network or '—' }} · {{ rep.instrument_type }}</span>{% if rep.contract_address %}<br><span class="y-subtext mono">{{ rep.contract_address }}</span>{% endif %}</td>
+          <td><strong>{{ rep.platform }}</strong><br><span class="fs-sub">{{ rep.network or '—' }} · {{ rep.instrument_type }}</span>{% if rep.contract_address %}<br><span class="fs-sub mono">{{ rep.contract_address }}</span>{% endif %}</td>
           <td>{{ rep.registry_status }}</td>
-          <td>{{ rep.market_evidence_state }}{% if rep.market_source_timestamp %}<br><span class="y-subtext">{{ rep.market_source_timestamp[:19] }} UTC</span>{% endif %}</td>
+          <td>{{ rep.market_evidence_state }}{% if rep.market_source_timestamp %}<br><span class="fs-sub">{{ rep.market_source_timestamp[:19] }} UTC</span>{% endif %}</td>
           <td>{{ rep.reference_evidence_state }}</td>
-          <td>{{ rep.basis_evidence_state }}{% if rep.basis_bps is not none %}<br><span class="y-subtext">{{ rep.basis_bps }} bp</span>{% endif %}</td>
-          <td>{{ rep.attestation_state }}{% if rep.attestation_reason %}<br><span class="y-subtext">{{ rep.attestation_reason }}</span>{% endif %}</td>
-          <td>{% if rep.flags %}<span class="y-subtext">{{ rep.flags | join(' · ') }}</span>{% else %}—{% endif %}</td>
+          <td>{{ rep.basis_evidence_state }}{% if rep.basis_bps is not none %}<br><span class="fs-sub">{{ rep.basis_bps }} bp</span>{% endif %}</td>
+          <td>{{ rep.attestation_state }}{% if rep.attestation_reason %}<br><span class="fs-sub">{{ rep.attestation_reason }}</span>{% endif %}</td>
+          <td>{% if rep.flags %}<span class="fs-sub">{{ rep.flags | join(' · ') }}</span>{% else %}—{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="y-empty" data-testid="tmd-integrity-unavailable">Integrity evidence is unavailable for this request. The Tokenized Markets detail remains available.</p>
+  <p class="fs-note" data-testid="tmd-integrity-unavailable">Integrity evidence is unavailable for this request. The Tokenized Markets detail remains available.</p>
   {% endif %}
 </section>
 
-<section class="y-section" data-testid="tmd-representations">
-  <h2>Representations <span class="y-badge" data-testid="tmd-rep-total">{{ view.representations | length }}</span></h2>
-  <div class="y-table-wrap">
-    <table class="y-table">
+<section class="fs-section" data-testid="tmd-representations">
+  <h2>Representations <span class="fs-badge" data-testid="tmd-rep-total">{{ view.representations | length }}</span></h2>
+  <div class="fs-table-wrap">
+    <table class="fs-table">
       <thead><tr>
         <th>Venue / Platform</th><th>Instrument</th><th>Network</th><th>Token Price</th>
         <th>Basis</th><th>24h Volume</th><th>Funding</th><th>OI</th><th>Freshness</th><th>Source</th>
@@ -116,55 +115,55 @@
       <tbody>
       {% for rep in view.representations %}
         <tr data-testid="tmd-rep-{{ rep.instrument_id }}">
-          <td><strong>{{ rep.venue_id }}</strong><br><span class="y-subtext">{{ rep.representation_type }}</span></td>
+          <td><strong>{{ rep.venue_id }}</strong><br><span class="fs-sub">{{ rep.representation_type }}</span></td>
           <td><span class="mono">{{ rep.instrument_id }}</span>
-              {% if rep.contract_address %}<br><span class="y-subtext mono">{{ rep.contract_address }}</span>{% endif %}</td>
+              {% if rep.contract_address %}<br><span class="fs-sub mono">{{ rep.contract_address }}</span>{% endif %}</td>
           <td>{{ rep.network or '—' }}</td>
-          <td class="y-num">
+          <td class="num">
             {% if rep.price %}${{ rep.price }}{% else %}
-              <span class="y-missing" data-testid="tmd-rep-unavailable-{{ loop.index }}">identity available · market unavailable</span>
+              <span class="fs-missing" data-testid="tmd-rep-unavailable-{{ loop.index }}">identity available · market unavailable</span>
             {% endif %}
           </td>
-          <td class="y-num">
+          <td class="num">
             {% if rep.basis_bps is not none %}{% set bps = rep.basis_bps | float %}{% if bps > 0 %}+{% elif bps < 0 %}{% else %}±{% endif %}{{ bps | abs | int }} bp
-            {% elif rep.basis_reason %}<span class="y-subtext" data-testid="tmd-basis-reason-{{ loop.index }}">{{ rep.basis_reason }}</span>
-            {% else %}<span class="y-missing">—</span>{% endif %}
+            {% elif rep.basis_reason %}<span class="fs-sub" data-testid="tmd-basis-reason-{{ loop.index }}">{{ rep.basis_reason }}</span>
+            {% else %}<span class="fs-missing">—</span>{% endif %}
           </td>
-          <td class="y-num">{{ rep.volume_24h or '—' }}</td>
-          <td class="y-num">{{ rep.funding_rate or '—' }}</td>
-          <td class="y-num">{{ rep.open_interest or '—' }}</td>
+          <td class="num">{{ rep.volume_24h or '—' }}</td>
+          <td class="num">{{ rep.funding_rate or '—' }}</td>
+          <td class="num">{{ rep.open_interest or '—' }}</td>
           <td>
               {% if rep.observation_status == 'QUARANTINED' %}
-                <span class="y-badge y-badge-stale" data-testid="tmd-quarantined-{{ loop.index }}">QUARANTINED</span>
+                <span class="fs-badge fs-badge--warn" data-testid="tmd-quarantined-{{ loop.index }}">QUARANTINED</span>
               {% else %}
-                <span class="y-badge {% if rep.freshness_state == 'AVAILABLE' %}y-badge-current{% elif rep.freshness_state == 'STALE' %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ rep.freshness_state }}</span>
+                <span class="fs-badge {% if rep.freshness_state == 'AVAILABLE' %}fs-badge--ok{% elif rep.freshness_state == 'STALE' %}fs-badge--warn{% else %}{% endif %}">{{ rep.freshness_state }}</span>
               {% endif %}
-              {% if rep.source_timestamp %}<br><span class="y-subtext">src {{ rep.source_timestamp[:19] }}</span>{% endif %}
-              {% if rep.collected_at %}<br><span class="y-subtext">collected {{ rep.collected_at[:19] }}</span>{% endif %}</td>
-          <td><span class="y-subtext">{{ rep.source or '—' }}{% if rep.provenance %}<br><span class="mono">{{ rep.provenance[:44] }}</span>{% endif %}</span></td>
+              {% if rep.source_timestamp %}<br><span class="fs-sub">src {{ rep.source_timestamp[:19] }}</span>{% endif %}
+              {% if rep.collected_at %}<br><span class="fs-sub">collected {{ rep.collected_at[:19] }}</span>{% endif %}</td>
+          <td><span class="fs-sub">{{ rep.source or '—' }}{% if rep.provenance %}<br><span class="mono">{{ rep.provenance[:44] }}</span>{% endif %}</span></td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
-  <p class="y-section-note">An xStocks-style representation with registry identity but no verified
+  <p class="fs-note">An xStocks-style representation with registry identity but no verified
     market observation reads “identity available · market unavailable” — that is information, not a
     zero and not fake-live data. “—” always means unavailable.</p>
 </section>
 
-<section class="y-section" data-testid="tmd-history">
+<section class="fs-section" data-testid="tmd-history">
   <h2>Basis history & market intelligence</h2>
   {% set _hist_ok = access is none or access.history.allowed %}
   {% set _disl_ok = access is none or access.dislocation.allowed %}
   {% if not _hist_ok and not _disl_ok %}
-    <p class="y-empty" data-testid="tmd-premium-locked">
+    <p class="fs-note" data-testid="tmd-premium-locked">
       Basis history, cross-venue divergence and dislocation intelligence are $FINCO holder
       resources. Access state: {{ access.history.state }} ({{ access.history.reason }}).
       Basic identity and current market state above remain public.
     </p>
   {% elif intelligence and history_available %}
-    <div class="y-table-wrap">
-      <table class="y-table" data-testid="tmd-history-table">
+    <div class="fs-table-wrap">
+      <table class="fs-table" data-testid="tmd-history-table">
         <thead><tr>
           <th>Venue</th><th>Market state</th><th>Latest observed basis</th>
           <th>24h basis Δ</th><th>7d basis Δ</th>
@@ -172,14 +171,14 @@
         <tbody>
         {% for item in intelligence.representations %}
           <tr>
-            <td><strong>{{ item.venue_id }}</strong><br><span class="y-subtext mono">{{ item.instrument_id }}</span></td>
-            <td><span class="y-badge {% if item.current_state == 'AVAILABLE' %}y-badge-current{% elif item.current_state in ('STALE','QUARANTINED') %}y-badge-stale{% else %}y-badge-unknown{% endif %}">{{ item.current_state }}</span></td>
-            <td class="y-num">
+            <td><strong>{{ item.venue_id }}</strong><br><span class="fs-sub mono">{{ item.instrument_id }}</span></td>
+            <td><span class="fs-badge {% if item.current_state == 'AVAILABLE' %}fs-badge--ok{% elif item.current_state in ('STALE','QUARANTINED') %}fs-badge--warn{% else %}{% endif %}">{{ item.current_state }}</span></td>
+            <td class="num">
               {% if item.latest_basis_bps is not none %}{{ item.latest_basis_bps }} bp
-              {% else %}<span class="y-missing">{{ item.latest_basis_reason or '—' }}</span>{% endif %}
+              {% else %}<span class="fs-missing">{{ item.latest_basis_reason or '—' }}</span>{% endif %}
             </td>
-            <td class="y-num">{% if item.basis_change_24h_bps is not none %}{{ item.basis_change_24h_bps }} bp{% else %}<span class="y-missing">—</span>{% endif %}</td>
-            <td class="y-num">{% if item.basis_change_7d_bps is not none %}{{ item.basis_change_7d_bps }} bp{% else %}<span class="y-missing">—</span>{% endif %}</td>
+            <td class="num">{% if item.basis_change_24h_bps is not none %}{{ item.basis_change_24h_bps }} bp{% else %}<span class="fs-missing">—</span>{% endif %}</td>
+            <td class="num">{% if item.basis_change_7d_bps is not none %}{{ item.basis_change_7d_bps }} bp{% else %}<span class="fs-missing">—</span>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -187,14 +186,14 @@
     </div>
 
     {% if not _hist_ok %}
-    <div class="card" style="margin-top:14px" data-testid="tmd-history-locked">
+    <div class="fs-kpi" style="margin-top:14px" data-testid="tmd-history-locked">
       <h3>Premium / discount history</h3>
-      <p class="y-empty">$FINCO holder resource — access state: {{ access.history.state }} ({{ access.history.reason }}).</p>
+      <p class="fs-note">$FINCO holder resource — access state: {{ access.history.state }} ({{ access.history.reason }}).</p>
     </div>
     {% else %}
-    <div class="card" style="margin-top:14px" data-testid="tmd-basis-chart-card">
+    <div class="fs-kpi" style="margin-top:14px" data-testid="tmd-basis-chart-card">
       <h3>Premium / discount history</h3>
-      <p class="y-section-note">
+      <p class="fs-note">
         Canonical source-timestamped observations only. Positive basis is a premium
         to the persisted underlying reference; negative basis is a discount.
         Missing evidence remains a gap — FINCO does not interpolate or backfill it.
@@ -207,12 +206,12 @@
              data-empty-text="Insufficient canonical basis history — no chart rendered."
              aria-label="Tokenized-market basis history in basis points"
              data-testid="tmd-basis-history-chart"></div>
-        <p class="y-subtext">
+        <p class="fs-sub">
           {{ basis_series[0].venue_id }}{% if basis_series|length > 1 %} · second series: {{ basis_series[1].venue_id }}{% endif %}
           · basis points
         </p>
       {% else %}
-        <p class="y-empty" data-testid="tmd-history-insufficient">
+        <p class="fs-note" data-testid="tmd-history-insufficient">
           Persisted observations exist, but there is not yet enough source-compatible
           reference evidence to render basis history.
         </p>
@@ -221,12 +220,12 @@
     {% endif %}
 
     {% if not _disl_ok %}
-    <div class="card" style="margin-top:14px" data-testid="tmd-dislocation-locked">
+    <div class="fs-kpi" style="margin-top:14px" data-testid="tmd-dislocation-locked">
       <h3>Cross-venue divergence &amp; dislocation events</h3>
-      <p class="y-empty">$FINCO holder resource — access state: {{ access.dislocation.state }} ({{ access.dislocation.reason }}).</p>
+      <p class="fs-note">$FINCO holder resource — access state: {{ access.dislocation.state }} ({{ access.dislocation.reason }}).</p>
     </div>
     {% else %}
-    <div class="card" style="margin-top:14px" data-testid="tmd-cross-venue">
+    <div class="fs-kpi" style="margin-top:14px" data-testid="tmd-cross-venue">
       <h3>Cross-venue divergence</h3>
       {% if intelligence.cross_venue.state == 'AVAILABLE' %}
         <p>
@@ -234,17 +233,17 @@
           between {{ intelligence.cross_venue.low_venue }} ({{ intelligence.cross_venue.low_price }})
           and {{ intelligence.cross_venue.high_venue }} ({{ intelligence.cross_venue.high_price }}).
         </p>
-        <p class="y-subtext">Comparison unit: {{ intelligence.cross_venue.comparison_unit }} · exact comparable source evidence within the canonical skew policy.</p>
+        <p class="fs-sub">Comparison unit: {{ intelligence.cross_venue.comparison_unit }} · exact comparable source evidence within the canonical skew policy.</p>
       {% else %}
-        <p class="y-empty">{{ intelligence.cross_venue.reason or 'COMPARABLE_VENUE_EVIDENCE_UNAVAILABLE' }}</p>
+        <p class="fs-note">{{ intelligence.cross_venue.reason or 'COMPARABLE_VENUE_EVIDENCE_UNAVAILABLE' }}</p>
       {% endif %}
     </div>
 
-    <div class="card" style="margin-top:14px" data-testid="tmd-dislocation-events">
+    <div class="fs-kpi" style="margin-top:14px" data-testid="tmd-dislocation-events">
       <h3>Dislocation events</h3>
       {% if intelligence.events %}
-        <div class="y-table-wrap">
-          <table class="y-table">
+        <div class="fs-table-wrap">
+          <table class="fs-table">
             <thead><tr><th>Observed</th><th>Type</th><th>Venue</th><th>Direction</th><th>Value</th><th>Threshold</th></tr></thead>
             <tbody>
             {% for event in intelligence.events %}
@@ -253,24 +252,24 @@
                 <td>{{ event.event_type }}</td>
                 <td>{{ event.venue_id or 'cross-venue' }}</td>
                 <td>{{ event.direction }}</td>
-                <td class="y-num">{{ event.value_bps }} bp</td>
-                <td class="y-num">{{ event.threshold_bps }} bp</td>
+                <td class="num">{{ event.value_bps }} bp</td>
+                <td class="num">{{ event.threshold_bps }} bp</td>
               </tr>
             {% endfor %}
             </tbody>
           </table>
         </div>
       {% else %}
-        <p class="y-empty">No threshold-crossing dislocation events in canonical history.</p>
+        <p class="fs-note">No threshold-crossing dislocation events in canonical history.</p>
       {% endif %}
-      <p class="y-section-note">
+      <p class="fs-note">
         Events describe observed market/reference divergence. They are not trading
         signals and do not assert executable or risk-free arbitrage.
       </p>
     </div>
     {% endif %}
   {% else %}
-    <p class="y-empty" data-testid="tmd-history-none">
+    <p class="fs-note" data-testid="tmd-history-none">
       No canonical FINCO history collected yet. Charts and 24h/7d comparisons appear
       only after the separate collector persists real observations — nothing is
       synthesized or backfilled by this page.
@@ -278,7 +277,7 @@
   {% endif %}
 </section>
 
-<p class="bound">Basis, cross-venue divergence and dislocation events are market-evidence
+<p class="fs-note">Basis, cross-venue divergence and dislocation events are market-evidence
 analytics, not guaranteed executable arbitrage or profit. This page is read-only over exact
 registry identity and persisted canonical evidence; it never triggers market acquisition.
 FINCO never custodies assets or auto-invests.</p>
