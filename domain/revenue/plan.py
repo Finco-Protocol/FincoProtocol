@@ -65,6 +65,55 @@ SHARE_ALLOCATION_TOLERANCE = 1e-9
 SUPPORTED_MERCHANT_PRICE_SCENARIOS = frozenset({"base", "high", "low", "custom"})
 
 
+def _validate_merchant_price_authority(
+    label: str,
+    mp: MerchantParams,
+    *,
+    value_code: str,
+    scenario_code: str,
+    curve_code: str,
+) -> None:
+    """ONE shared validator for MerchantParams authority semantics, used by
+    both merchant RevenueStreams and the plan-level market_price authority.
+
+    Validates: scenario vocabulary; a custom scenario requires a non-empty
+    curve; base price / escalation / cannibalization / every curve member
+    finite and non-negative; capture rates within [0, 1]. Error codes are
+    supplied by the caller so stream-level and plan-level messages keep
+    their existing clarity.
+    """
+    if str(mp.price_scenario) not in SUPPORTED_MERCHANT_PRICE_SCENARIOS:
+        raise ValueError(
+            f"{scenario_code}: {label} price_scenario={mp.price_scenario!r} is "
+            f"not an understood merchant scenario "
+            f"(supported: {sorted(SUPPORTED_MERCHANT_PRICE_SCENARIOS)})"
+        )
+    if mp.price_scenario == "custom" and not mp.custom_price_curve:
+        raise ValueError(
+            f"{curve_code}: {label} price_scenario='custom' requires a non-empty "
+            "custom_price_curve (no silent fallback to the base price)"
+        )
+
+    def _num(field: str, value: float) -> None:
+        if not math.isfinite(float(value)) or float(value) < 0.0:
+            raise ValueError(
+                f"{value_code}: {label} {field} must be finite and non-negative, "
+                f"got {value!r}"
+            )
+
+    _num("base_price_eur_mwh", mp.base_price_eur_mwh)
+    _num("price_escalation_annual", mp.price_escalation_annual)
+    _num("price_cannibalization_pct", mp.price_cannibalization_pct)
+    for i, price in enumerate(mp.custom_price_curve):
+        _num(f"custom_price_curve[{i}]", price)
+    for name in ("capture_rate_solar", "capture_rate_wind", "capture_rate_bess"):
+        rate = float(getattr(mp, name))
+        if not math.isfinite(rate) or not (0.0 <= rate <= 1.0):
+            raise ValueError(
+                f"{value_code}: {label} {name} must be within [0, 1], got {rate!r}"
+            )
+
+
 class RevenueStreamType(str, Enum):
     """Active V2 revenue stream types plus reserved future vocabulary.
 
@@ -400,6 +449,18 @@ class RevenueStream:
                 f"({self.stream_type.value}) requires only the {required!r} price "
                 f"authority; found extra unrelated authority object(s) {extras}"
             )
+        # Correction C §5: the reverse direction — indexed tariff fields are
+        # the exclusive authority of an INDEXED_FIT stream and are never
+        # silently ignored on any other stream type.
+        if self.indexed_fit_base_tariff_eur_mwh is not None or (
+            self.indexed_fit_index_factors
+        ):
+            raise ValueError(
+                f"REVENUE_STREAM_INDEXED_FIELDS_ON_NON_INDEXED: stream {sid!r} "
+                f"({self.stream_type.value}) must not carry indexed-FiT tariff "
+                "fields; those are the exclusive price authority of an "
+                "INDEXED_FIT stream"
+            )
 
     def _validate_economic_numbers(self, sid: str) -> None:
         if self.ppa is not None:
@@ -425,24 +486,15 @@ class RevenueStream:
                     "exceeds price cap"
                 )
         if self.merchant is not None:
-            self._require_finite_non_negative(sid, "merchant_base_price_eur_mwh",
-                                              self.merchant.base_price_eur_mwh)
-            self._require_finite_non_negative(sid, "price_escalation_annual",
-                                              self.merchant.price_escalation_annual)
-            self._require_finite_non_negative(sid, "price_cannibalization_pct",
-                                              self.merchant.price_cannibalization_pct)
-            for i, p in enumerate(self.merchant.custom_price_curve):
-                self._require_finite_non_negative(sid, f"custom_price_curve[{i}]", p)
-            for label, rate in (
-                ("capture_rate_solar", self.merchant.capture_rate_solar),
-                ("capture_rate_wind", self.merchant.capture_rate_wind),
-                ("capture_rate_bess", self.merchant.capture_rate_bess),
-            ):
-                if not math.isfinite(rate) or not (0.0 <= rate <= 1.0):
-                    raise ValueError(
-                        f"REVENUE_STREAM_VALUE_INVALID: stream {sid!r} {label} must "
-                        f"be within [0, 1], got {rate!r}"
-                    )
+            # Correction C §4: ONE shared validator — scenario vocabulary,
+            # custom-curve usability and all merchant economics.
+            _validate_merchant_price_authority(
+                f"stream {sid!r}",
+                self.merchant,
+                value_code="REVENUE_STREAM_VALUE_INVALID",
+                scenario_code="REVENUE_STREAM_MARKET_SCENARIO_UNSUPPORTED",
+                curve_code="REVENUE_STREAM_MARKET_CUSTOM_CURVE_REQUIRED",
+            )
         if self.fit is not None:
             self._require_finite_non_negative(sid, "fit_price_eur_mwh",
                                               self.fit.fit_price_eur_mwh)
@@ -641,7 +693,8 @@ class RevenuePlan:
     def _validate_plan_market_price(self) -> None:
         """Plan-level market price authority (§ Correction B): validated with
         the same rigour as a merchant stream's authority — an overlay-only
-        plan must not carry a malformed authority into evaluation.
+        plan must not carry a malformed authority into evaluation. Delegates
+        to the ONE shared merchant authority validator (Correction C §4).
 
         Retained canonical Merchant contract (documented): a non-custom
         ``price_scenario`` ("base" | "high" | "low") resolves through
@@ -657,43 +710,17 @@ class RevenuePlan:
                 f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: market_price must be a "
                 f"MerchantParams instance, got {type(mp).__name__}"
             )
-        if str(mp.price_scenario) not in SUPPORTED_MERCHANT_PRICE_SCENARIOS:
-            raise ValueError(
-                f"REVENUE_PLAN_MARKET_SCENARIO_UNSUPPORTED: price_scenario="
-                f"{mp.price_scenario!r} is not an understood merchant scenario "
-                f"(supported: {sorted(SUPPORTED_MERCHANT_PRICE_SCENARIOS)})"
-            )
-        if mp.price_scenario == "custom" and not mp.custom_price_curve:
-            raise ValueError(
-                "REVENUE_PLAN_MARKET_CUSTOM_CURVE_REQUIRED: price_scenario='custom' "
-                "requires a non-empty custom_price_curve on the plan-level market "
-                "authority (no silent fallback to the base price)"
-            )
-        self._validate_merchant_economics("plan-level market_price", mp)
+        _validate_merchant_price_authority(
+            "plan-level market_price",
+            mp,
+            value_code="REVENUE_PLAN_MARKET_AUTHORITY_INVALID",
+            scenario_code="REVENUE_PLAN_MARKET_SCENARIO_UNSUPPORTED",
+            curve_code="REVENUE_PLAN_MARKET_CUSTOM_CURVE_REQUIRED",
+        )
 
-    @staticmethod
-    def _validate_merchant_economics(label: str, mp: MerchantParams) -> None:
-        """Finite / non-negative validation for every merchant field that can
-        affect ``price_at_year`` or capture selection."""
-        def _num(field: str, value: float, *, non_negative: bool = True) -> None:
-            if not math.isfinite(float(value)) or (non_negative and value < 0.0):
-                raise ValueError(
-                    f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: {label} {field} must "
-                    f"be finite and non-negative, got {value!r}"
-                )
-
-        _num("base_price_eur_mwh", mp.base_price_eur_mwh)
-        _num("price_escalation_annual", mp.price_escalation_annual)
-        _num("price_cannibalization_pct", mp.price_cannibalization_pct)
-        for i, price in enumerate(mp.custom_price_curve):
-            _num(f"custom_price_curve[{i}]", price)
-        for name in ("capture_rate_solar", "capture_rate_wind", "capture_rate_bess"):
-            rate = float(getattr(mp, name))
-            if not math.isfinite(rate) or not (0.0 <= rate <= 1.0):
-                raise ValueError(
-                    f"REVENUE_PLAN_MARKET_AUTHORITY_INVALID: {label} {name} must "
-                    f"be within [0, 1], got {rate!r}"
-                )
+    # (Correction C §4: the duplicate plan-level merchant economics validator
+    # was replaced by the shared module-level
+    # _validate_merchant_price_authority used by both streams and the plan.)
 
     # ------------------------------------------------------------------
     # Convenience accessors (deterministic ordering: by stream id)

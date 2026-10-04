@@ -69,12 +69,34 @@ required for `custom` (no silent fallback), and finite non-negative checks
 across base price, escalation, cannibalization, curve members and capture
 rates. Malformed authorities never reach evaluation.
 
+## Merchant price scenario contract (one shared validator)
+
+MerchantParams authorities — both on merchant streams and as the plan-level
+``market_price`` — are validated by ONE shared validator
+(``_validate_merchant_price_authority``): the scenario vocabulary is exactly
+``base`` | ``high`` | ``low`` | ``custom``; ``custom`` requires a non-empty
+curve; base price, escalation, cannibalization and every curve member must
+be finite and non-negative; capture rates within [0, 1]. Unknown scenario
+strings fail closed — they are never silently reinterpreted as base-price
+paths.
+
+**Custom curve post-horizon policy (locked, existing domain contract):**
+inside the supplied custom curve horizon the explicit curve values are
+authoritative; AFTER the supplied custom horizon the existing
+``MerchantParams.price_at_year`` fallback applies unchanged (base price ×
+escalation growth, reduced by linear cannibalization, floored at zero).
+Workflow 02 preserves this legacy behavior; changing it would require a
+separate reviewed product-contract decision.
+
 ## Exactly one price authority
 
 Each stream carries exactly ONE applicable price authority object; extra
 unrelated authority objects fail closed
-(`REVENUE_STREAM_MULTIPLE_PRICE_AUTHORITIES`). Indexed FiT uses only its
-explicit indexed fields.
+(`REVENUE_STREAM_MULTIPLE_PRICE_AUTHORITIES`). The reverse direction is
+also enforced (Correction C): indexed-FiT tariff fields on any
+non-INDEXED_FIT stream fail closed
+(`REVENUE_STREAM_INDEXED_FIELDS_ON_NON_INDEXED`); an INDEXED_FIT stream
+uses only its explicit indexed fields.
 
 ## Allocation tolerances (named, unit-separated)
 
