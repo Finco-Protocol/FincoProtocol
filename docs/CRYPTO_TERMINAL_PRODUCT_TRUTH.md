@@ -19,6 +19,11 @@ here is product truth, not marketing.
   resolved through canonical entitlement; denials remove the payload at the
   composition boundary (never hidden markup). Gating INACTIVE preserves the
   approved ungated behaviour.
+  **RWA Integrity V1** is factual/public product information inside the same
+  Tokenized Markets detail: canonical representation integrity profiles,
+  identity state, market/reference evidence state, ACTIVE-set dependency facts,
+  and an attestation/backing evidence contract with explicit
+  UNAVAILABLE/STALE/CONFLICT states. There is no composite trust score.
 - **Yield** (`/yield`) — AVAILABLE TODAY. Opportunity listing with canonical
   market intelligence: movers (TVL floor), 30d stability (sigma),
   Morpho-native 30d averages where the provider exposes them, Treasury
@@ -32,6 +37,7 @@ Read-only endpoints adapting the same canonical read models as the UI:
 - `GET /api/v1/crypto/tokenized/{canonical_asset_id}`
 - `GET /api/v1/crypto/tokenized/{canonical_asset_id}/history` (`tokenized.history`)
 - `GET /api/v1/crypto/tokenized/{canonical_asset_id}/dislocations` (`tokenized.dislocation`)
+- `GET /api/v1/crypto/tokenized/{canonical_asset_id}/integrity` (RWA Integrity V1; `crypto.api` only)
 - `GET /api/v1/crypto/yield`
 - `GET /api/v1/crypto/yield/{canonical_id}`
 
@@ -62,9 +68,16 @@ resolve through the canonical entitlement authority; failures fail closed.
   SEPARATE authorities and never collapsed.
 - No execution, signing, custody, swapping, or auto-invest exists anywhere
   in the Crypto terminal.
+- RWA Integrity V1 has no approved external Proof-of-Reserves/attestation
+  source yet; normal production attestation state may therefore be UNAVAILABLE.
+  FINCO does not claim verified reserves or full backing without such evidence.
+- RWA Integrity V1 does not perform token-holder concentration analysis, does
+  not expose a 0–100/A-B-C composite trust score, and is not an investment
+  recommendation.
 
 ## NOT YET SUPPORTED
 
-New providers/chains, PoR/attestation scoring, concentration scoring,
-Gini/HHI, issuer risk scoring, staking, burn mechanics, Model↔RWA
-integration, and any trading capability.
+New providers/chains, an approved external PoR/attestation authority,
+token-holder concentration analysis (including Gini/HHI), issuer risk scoring,
+composite trust scoring, staking, burn mechanics, Model↔RWA integration, and
+any trading capability.
