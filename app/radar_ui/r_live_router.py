@@ -109,6 +109,26 @@ async def radar_r_live_landing(request: Request):
     )
 
 
+@router.get("/radar/r-live/{canonical_id_slug}/evidence")
+async def radar_r_live_evidence(canonical_id_slug: str):
+    """Latest persisted MARKET / OFFICIAL_REFERENCE / ORACLE leg for one exact reviewed asset.
+
+    Read-only and network-free: reads the append-only source-evidence store only; never calls a provider and never
+    writes. Each leg is reported on its own; a missing leg is "not collected", never borrowed from another leg."""
+    from fastapi.responses import JSONResponse
+    from app.radar_rwa.multi_source_evidence import read_latest_legs_readonly
+    from app.radar_rwa.stock_token_oracle_registry import ORACLE_FEED_NOT_REVIEWED, load_registry
+    try:
+        payload = read_latest_legs_readonly(canonical_id_slug)
+    except ValueError:
+        return JSONResponse({"state": "UNAVAILABLE", "reason": "ASSET_NOT_IN_REGISTRY"}, status_code=404)
+    try:
+        payload["oracle_binding"] = load_registry().status_for(canonical_id_slug)
+    except Exception:
+        payload["oracle_binding"] = ORACLE_FEED_NOT_REVIEWED
+    return JSONResponse(payload)
+
+
 @router.get("/radar/r-live/{canonical_id_slug}", response_class=HTMLResponse)
 async def radar_r_live_detail(request: Request, canonical_id_slug: str):
     """Per-asset R-LIVE detail shell.

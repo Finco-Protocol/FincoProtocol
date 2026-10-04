@@ -78,6 +78,31 @@
     </div>
   </section>
 
+  <section style="margin-bottom:28px" data-testid="source-legs">
+    <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
+      Source legs — Market · Official reference · Oracle
+    </h2>
+    <p class="muted small" style="margin:0 0 10px">
+      Three independent evidence roles. Each leg has its own status, value and age; a fresh leg never makes another leg current.
+      States are those recorded by the collector (see collected time); ages are measured from each source timestamp.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px" id="source-legs-table">
+      <thead><tr style="border-bottom:1px solid var(--radar-border,#252b33)">
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Leg</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Status</th>
+        <th style="text-align:right;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Value (USD / Stock Token)</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Age</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--radar-muted,#8d98a5)">Detail</th>
+      </tr></thead>
+      <tbody>
+        <tr data-leg="MARKET"><td style="padding:8px 10px">Market</td><td>—</td><td></td><td></td><td></td></tr>
+        <tr data-leg="OFFICIAL_REFERENCE"><td style="padding:8px 10px">Reference</td><td>—</td><td></td><td></td><td></td></tr>
+        <tr data-leg="ORACLE"><td style="padding:8px 10px">Oracle</td><td>—</td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    <p class="muted small" id="source-legs-note" style="margin:8px 0 0"></p>
+  </section>
+
   <section style="margin-bottom:28px">
     <h2 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--radar-muted,#8d98a5);margin:0 0 14px">
       Live Reference
@@ -263,6 +288,33 @@
       if (panel) { panel.setAttribute("data-jev-state", "AVAILABLE"); }
     })
     .catch(function () { unavailable("JEV_TRANSPORT_UNAVAILABLE"); });
+
+  // ── Source legs (read-only, network-free: reads the persisted per-role evidence only) ──
+  var EVIDENCE_URL = "/radar/r-live/" + encodeURIComponent(CANONICAL_ID) + "/evidence";
+  var LEG_LABELS = { MARKET: "Market", OFFICIAL_REFERENCE: "Reference", ORACLE: "Oracle" };
+  function render_source_legs(payload) {
+    var legs = (payload && payload.legs) || {};
+    Object.keys(LEG_LABELS).forEach(function (role) {
+      var row = document.querySelector("#source-legs-table tr[data-leg='" + role + "']");
+      if (!row) return;
+      var leg = legs[role];
+      var cells = row.querySelectorAll("td");
+      var state = leg ? leg.state : "NOT COLLECTED";
+      var detail = leg ? (leg.reason || "") : (role === "ORACLE" && payload && payload.oracle_binding
+        ? payload.oracle_binding : "No persisted evidence yet");
+      var value = leg && leg.value != null ? parse_num(leg.value) : null;
+      cells[1].textContent = state;
+      cells[2].textContent = value != null ? "$" + value.toFixed(4) : "—";
+      cells[2].style.textAlign = "right";
+      cells[3].textContent = leg && leg.age_seconds != null ? fmt_age(leg.age_seconds) : "—";
+      cells[4].textContent = detail + (leg && leg.collected_at ? (detail ? " · " : "") + "collected " + String(leg.collected_at).replace("T", " ").slice(0, 16) + " UTC" : "");
+      cells.forEach(function (cell) { cell.style.padding = "8px 10px"; });
+    });
+  }
+  fetch(EVIDENCE_URL, { headers: { accept: "application/json" } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (payload) { if (payload) render_source_legs(payload); })
+    .catch(function () { set_text("source-legs-note", "Source legs are unavailable right now."); });
 })();
 </script>
 {% endif %}
