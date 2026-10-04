@@ -231,11 +231,24 @@ def approved_by_active_model_v2_scope(path: str) -> bool:
 
 
 def changed_paths_vs_main() -> list[str]:
-    """Paths changed vs origin/main (working tree included). Empty when git
-    is unavailable, matching the historical guards' skip convention."""
+    """Paths changed on the Model V2 lineage, excluding main-only advances.
+
+    Use the common ancestor of HEAD and origin/main as the comparison base.
+    This keeps cumulative Model V2 changes visible to the ACTIVE scope while
+    ignoring unrelated commits that landed only on main after the last
+    reviewed main -> epic sync (for example Radar/Crypto/Yield work).
+    Empty when git is unavailable, matching the historical guards' skip
+    convention.
+    """
     try:
+        base = subprocess.run(
+            ["git", "merge-base", "HEAD", "origin/main"],
+            capture_output=True, text=True, cwd=str(REPO), check=True,
+        ).stdout.strip()
+        if not base:
+            base = "origin/main"
         result = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only"],
+            ["git", "diff", base, "--name-only"],
             capture_output=True, text=True, cwd=str(REPO), check=True,
         )
     except (OSError, subprocess.CalledProcessError):
