@@ -231,11 +231,25 @@ def approved_by_active_model_v2_scope(path: str) -> bool:
 
 
 def changed_paths_vs_main() -> list[str]:
-    """Paths changed vs origin/main (working tree included). Empty when git
-    is unavailable, matching the historical guards' skip convention."""
+    """Paths changed vs the authorized baseline lineage.
+
+    The comparison base is ``git merge-base HEAD origin/main``: on the epic
+    branch that is origin/main itself (the epic contains main through its
+    syncs), and on a feature branch cut from the epic it is the epic commit
+    the branch was cut from — so commits that exist only on MAIN after the
+    branch point (unrelated Radar advances) are never blamed on this branch.
+    Empty when git is unavailable, matching the historical guards' skip
+    convention.
+    """
     try:
+        base = subprocess.run(
+            ["git", "merge-base", "HEAD", "origin/main"],
+            capture_output=True, text=True, cwd=str(REPO), check=True,
+        ).stdout.strip()
+        if not base:
+            base = "origin/main"
         result = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only"],
+            ["git", "diff", base, "--name-only"],
             capture_output=True, text=True, cwd=str(REPO), check=True,
         )
     except (OSError, subprocess.CalledProcessError):
