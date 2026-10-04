@@ -240,6 +240,9 @@ class BalanceSheetPeriod:
     accumulated_book_depreciation_keur: float | None
     share_capital_keur: float | None
     share_premium_keur: float | None
+    # Sponsor residual equity under EQUITY_ONLY funding (non-SHL, non-SC/SP).
+    # None = authority unavailable; 0.0 for SHARE_CAPITAL_THEN_SHL projects.
+    additional_equity_keur: float | None = None
     net_cit_payable_keur: float | None = None     # signed; None = not computed
     legal_reserve_keur: float | None = None       # None = LR not computed
     retained_earnings_keur: float | None = None
