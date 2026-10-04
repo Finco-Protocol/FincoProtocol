@@ -91,6 +91,14 @@ def revenue_plan_from_legacy_config(config: RevenueConfig) -> RevenuePlan:
                     "the same MWh. Model the intended structure explicitly as "
                     "a RevenuePlan instead."
                 )
+            if merchant is not None and merchant.merchant_enabled:
+                raise ValueError(
+                    "LEGACY_REVENUE_STACKING_NOT_REPRESENTABLE: a legacy fixed "
+                    "FiT prices the FULL generation while merchant revenue also "
+                    "prices the FULL generation; the same MWh would be "
+                    "monetized twice. Model the intended structure explicitly "
+                    "as a RevenuePlan instead."
+                )
             streams.append(RevenueStream(
                 stream_id="fit_fixed",
                 stream_type=RevenueStreamType.FIT_FIXED,
@@ -101,25 +109,19 @@ def revenue_plan_from_legacy_config(config: RevenueConfig) -> RevenuePlan:
                 fit=fit,
             ))
         elif fit.fit_type == "premium":
-            reference_stream_id = "merchant" if (
-                merchant is not None and merchant.merchant_enabled
-            ) else None
-            if reference_stream_id is None and merchant is None:
-                raise ValueError(
-                    "LEGACY_PREMIUM_REFERENCE_MARKET_REQUIRED: a legacy premium "
-                    "FiT settles against the market price; provide the legacy "
-                    "merchant configuration as the reference authority"
-                )
-            streams.append(RevenueStream(
-                stream_id="fit_premium",
-                stream_type=RevenueStreamType.FIT_PREMIUM,
-                name=fit.fit_scheme or "Legacy premium support",
-                start_year=1,
-                term_years=fit.fit_term_years if fit.fit_term_years > 0 else None,
-                volume_share=1.0,
-                fit=fit,
-                reference_stream_id=reference_stream_id,
-            ))
+            # The legacy aggregation adds supported-price revenue on the FULL
+            # generation ON TOP of the merchant's full-generation market sale,
+            # which double-counts the spot component of the supported volume.
+            # The V2 premium overlay adds only the support payment, so the
+            # legacy combination is NOT numerically equivalent. Fail closed —
+            # the runtime bridge may later define an explicit migration policy.
+            raise ValueError(
+                "LEGACY_PREMIUM_NOT_EQUIVALENT: the legacy aggregation prices the "
+                "supported volume at spot + premium ON TOP of the market sale, "
+                "while the RevenuePlan premium overlay adds only the support "
+                "payment. Represent the intended structure explicitly as a "
+                "RevenuePlan instead of silently reinterpreting legacy economics."
+            )
         else:
             raise ValueError(
                 f"LEGACY_FIT_TYPE_UNSUPPORTED: {fit.fit_type!r} has no RevenuePlan "

@@ -11,9 +11,18 @@ Design invariants:
   ``PPAParams`` / ``MerchantParams`` / ``FeedInTariffParams`` /
   ``CfDParams`` authorities from ``revenue_config.py``. This module never
   re-implements their formulas.
-- DOUBLE-COUNTING GUARD: generation-backed primary streams in the same
-  allocation group may not allocate more than 100% of eligible generation.
-  Shares are never silently normalized.
+- ONE lifecycle authority: ``RevenueStream.start_year`` / ``term_years``
+  exclusively own when a contract is active. Nested price-authority objects
+  never shorten or extend a stream: the evaluation engine neutralizes the
+  legacy nested CfD term clock (the stream status gates activity; the CfD
+  formula itself keeps owning strike-reference settlement and two-way /
+  one-way direction). PPA / FiT price math carries no lifecycle of its own.
+- DOUBLE-COUNTING GUARD (time-aware): within one allocation group, the
+  explicit shares of primary streams that are SIMULTANEOUSLY ACTIVE must
+  never exceed 100%. Sequential (non-overlapping) contracts are valid;
+  overlapping contracts beyond 100% fail closed. Shares are never silently
+  normalized, and a residual merchant never counts toward the explicit-share
+  check.
 - PRIMARY vs OVERLAY: a stream is either a PHYSICAL PRIMARY ALLOCATION
   (consumes eligible generation volume: PPA, Merchant, fixed/indexed/
   awarded tariffs) or a FINANCIAL SETTLEMENT OVERLAY (applies to an
@@ -23,6 +32,9 @@ Design invariants:
   first-class valid plan.
 - MISSING != ZERO, UNAVAILABLE != ZERO, INACTIVE != UNAVAILABLE,
   EXPIRED != INVALID: typed statuses, no silent zero substitution.
+- ONE EFFECTIVE ALLOCATION GROUP in this phase: multi-group generation
+  authority is deferred and fails closed rather than silently reusing one
+  generation scalar across groups.
 - Storage remains untouched: capacity/arbitrage/ancillary/firming types are
   reserved vocabulary only and fail closed when instantiated as active
   streams.
@@ -40,6 +52,8 @@ from domain.revenue.revenue_config import (
     MerchantParams,
     PPAParams,
 )
+
+_ALLOCATION_TOLERANCE = 1e-9
 
 
 class RevenueStreamType(str, Enum):
@@ -86,6 +100,12 @@ SETTLEMENT_OVERLAY_TYPES = frozenset({
     RevenueStreamType.FIT_PREMIUM,
 })
 
+# Workflow 02 supports pay-as-produced PPA economics only: the existing
+# authoritative domain math implements pay-as-produced. Baseload / shaped /
+# synthetic delivery mechanics would be silently priced as
+# pay-as-produced, so they fail closed at the contract boundary.
+SUPPORTED_PPA_TYPES = frozenset({"pay_as_produced"})
+
 
 class ContractRole(str, Enum):
     """Physical primary allocation vs financial settlement overlay."""
@@ -120,9 +140,11 @@ DEFAULT_ALLOCATION_GROUP = "generation"
 class RevenueAllocationGroup:
     """One generation pool whose eligible volume is shared by primary streams.
 
-    ``eligible_generation_mwh`` is resolved per period by the evaluation
-    engine; the group itself only declares the sharing policy. Overlay
-    streams never participate in group capacity.
+    Workflow 02 evaluates ONE effective allocation group per plan: the
+    eligible generation scalar passed to the engine feeds that single pool.
+    Declaring groups that no stream uses, duplicate group ids, or streams
+    spread across multiple groups fail closed (multi-group generation
+    authority is deferred, never silently approximated).
     """
 
     group_id: str
@@ -133,29 +155,35 @@ class RevenueAllocationGroup:
 class RevenueStream:
     """One typed revenue contract within a RevenuePlan.
 
+    LIFECYCLE OWNER: ``start_year`` (integer >= 1, 1-based model year) and
+    ``term_years`` (None = unlimited) exclusively decide activity. Nested
+    price-authority lifecycle metadata (e.g. ``CfDParams.cfd_term_years``)
+    is documentation only — the engine neutralizes it (see module docstring).
+
     Volume (primary streams):
         volume_share is the fraction of the allocation group's eligible
-        generation purchased by this contract. ``None`` is legal ONLY for a
-        MERCHANT stream and means the RESIDUAL unallocated volume of the
-        group (eligible minus all explicit primary shares, floor zero).
+        generation purchased by this contract while the stream is ACTIVE.
+        ``None`` is legal ONLY for a MERCHANT stream and means the RESIDUAL
+        unallocated volume of the group (eligible minus the explicit shares
+        of simultaneously active primary streams, floor zero).
     Volume (overlay streams):
         volume_share declares the contractual settlement volume as a
         fraction of the group's eligible generation (e.g. a CfD written for
-        70% of production). It consumes no allocation capacity.
+        70% of production). It consumes no allocation capacity and is
+        required (overlays cannot take the residual).
 
     Price authority (reused, never duplicated):
-        PPA streams resolve price through ``ppa: PPAParams``;
-        MERCHANT streams through ``merchant: MerchantParams`` (custom
+        PPA streams resolve price through ``ppa: PPAParams`` (pay-as-produced
+        only); MERCHANT streams through ``merchant: MerchantParams`` (custom
         curves, escalation, cannibalization, capture rates preserved);
         FIT_FIXED / FIT_PREMIUM / AUCTION_AWARDED_TARIFF through
-        ``fit: FeedInTariffParams``; CFD through ``cfd: CfDParams``.
-        Overlay streams resolve their REFERENCE market price from
-        ``reference_stream_id`` (a MERCHANT stream in the plan) or from the
-        plan-level ``market_price`` authority when None.
+        ``fit: FeedInTariffParams`` with the matching ``fit_type``; CFD
+        through ``cfd: CfDParams``. Overlay streams resolve their REFERENCE
+        market price from ``reference_stream_id`` (a merchant stream in the
+        plan) or from the plan-level ``market_price`` authority when None.
 
-    Term: ``start_year`` is the 1-based model year the contract begins;
-        ``term_years`` None means unlimited. Mirrors the existing domain
-        is_active semantics exactly.
+    Price clocks are model-year clocks (year 1 = first model year), matching
+    the existing domain math exactly.
     """
 
     stream_id: str
@@ -164,7 +192,7 @@ class RevenueStream:
 
     enabled: bool = True
     start_year: int = 1
-    term_years: Optional[float] = None  # None = unlimited
+    term_years: Optional[float] = None  # None = unlimited; 0 is INVALID
 
     allocation_group: str = DEFAULT_ALLOCATION_GROUP
     # None → residual merchant (MERCHANT primary only).
@@ -191,20 +219,25 @@ class RevenueStream:
     counterparty: str = ""
 
     def is_active(self, year: int) -> bool:
-        """Existing domain term semantics: start ≤ year ≤ start+term−1."""
+        """THE lifecycle authority: enabled AND start ≤ year ≤ start+term−1."""
         if not self.enabled:
             return False
-        if self.start_year > 1 and year < self.start_year:
+        if year < self.start_year:
             return False
-        if self.term_years is not None and self.term_years <= 0:
-            return False
-        if self.term_years is not None:
-            return self.start_year <= year <= self.start_year + self.term_years - 1
-        return year >= self.start_year
+        if self.term_years is None:
+            return True
+        return year <= self.start_year + self.term_years - 1
 
     @property
     def contract_role(self) -> ContractRole:
         return contract_role_for(self.stream_type)
+
+    @property
+    def end_year(self) -> Optional[int]:
+        """Last active model year (None when term is unlimited)."""
+        if self.term_years is None:
+            return None
+        return int(self.start_year + self.term_years - 1)
 
     def validate(self) -> None:
         """Fail-closed contract validation. Raises ValueError on any defect."""
@@ -222,17 +255,23 @@ class RevenueStream:
                 f"{self.stream_type.value!r}; Storage-adjacent streams are not "
                 "activatable in this domain layer"
             )
+        if not isinstance(self.start_year, int) or isinstance(self.start_year, bool) \
+                or self.start_year < 1:
+            raise ValueError(
+                f"REVENUE_STREAM_START_INVALID: stream {sid!r} start_year must be an "
+                f"integer >= 1, got {self.start_year!r}"
+            )
         if self.term_years is not None:
+            if self.term_years == 0:
+                raise ValueError(
+                    f"REVENUE_STREAM_TERM_INVALID: stream {sid!r} term_years=0 is "
+                    "contradictory; use None for an unlimited term"
+                )
             if not math.isfinite(float(self.term_years)) or self.term_years < 0:
                 raise ValueError(
                     f"REVENUE_STREAM_TERM_INVALID: stream {sid!r} term_years must be "
-                    "a finite non-negative number or None"
+                    "a finite positive number or None"
                 )
-        if self.start_year < 1 or not math.isfinite(float(self.start_year)):
-            raise ValueError(
-                f"REVENUE_STREAM_START_INVALID: stream {sid!r} start_year must be a "
-                "finite integer >= 1"
-            )
         if self.volume_share is not None:
             if not math.isfinite(self.volume_share) or not (0.0 <= self.volume_share <= 1.0):
                 raise ValueError(
@@ -245,7 +284,21 @@ class RevenueStream:
                 f"({self.stream_type.value}) must declare an explicit volume_share; "
                 "only a MERCHANT stream may take the residual (None)"
             )
-        # Price-authority presence per type.
+        self._validate_price_authority(sid)
+        self._validate_economic_numbers(sid)
+
+    # ------------------------------------------------------------------
+    # Validation helpers
+    # ------------------------------------------------------------------
+
+    def _require_finite_non_negative(self, sid: str, label: str, value: float) -> None:
+        if not math.isfinite(float(value)) or float(value) < 0.0:
+            raise ValueError(
+                f"REVENUE_STREAM_VALUE_INVALID: stream {sid!r} {label} must be "
+                f"finite and non-negative, got {value!r}"
+            )
+
+    def _validate_price_authority(self, sid: str) -> None:
         needs = {
             RevenueStreamType.PPA: ("ppa", self.ppa),
             RevenueStreamType.MERCHANT: ("merchant", self.merchant),
@@ -259,74 +312,112 @@ class RevenueStream:
                 raise ValueError(
                     f"REVENUE_STREAM_INDEXED_FIT_BASE_TARIFF_REQUIRED: stream {sid!r}"
                 )
-            if not math.isfinite(self.indexed_fit_base_tariff_eur_mwh) or (
-                self.indexed_fit_base_tariff_eur_mwh < 0.0
-            ):
-                raise ValueError(
-                    f"REVENUE_STREAM_INDEXED_FIT_TARIFF_INVALID: stream {sid!r} base "
-                    "tariff must be finite and non-negative"
-                )
             if not self.indexed_fit_index_factors:
                 raise ValueError(
                     f"REVENUE_STREAM_INDEX_FACTORS_REQUIRED: stream {sid!r} needs an "
                     "explicit index factor schedule (no silent implicit index)"
                 )
-            if any((not math.isfinite(f)) or f < 0.0 for f in self.indexed_fit_index_factors):
-                raise ValueError(
-                    f"REVENUE_STREAM_INDEX_FACTORS_INVALID: stream {sid!r} index "
-                    "factors must be finite and non-negative"
-                )
-        else:
-            attr, authority = needs[self.stream_type]
-            if authority is None:
-                raise ValueError(
-                    f"REVENUE_STREAM_PRICE_AUTHORITY_REQUIRED: stream {sid!r} "
-                    f"({self.stream_type.value}) requires the {attr!r} price authority"
-                )
-        # Overlay streams need a reachable reference market price authority.
-        if self.stream_type in SETTLEMENT_OVERLAY_TYPES and self.reference_stream_id:
-            if self.reference_stream_id == self.stream_id:
-                raise ValueError(
-                    f"REVENUE_STREAM_REFERENCE_SELF: stream {sid!r} cannot reference "
-                    "itself as its market-price authority"
-                )
-        # Negative price authorities where policy disallows them.
-        if self.ppa is not None and self.ppa.ppa_base_price_eur_mwh < 0.0:
+            return
+        attr, authority = needs[self.stream_type]
+        if authority is None:
             raise ValueError(
-                f"REVENUE_STREAM_PPA_PRICE_NEGATIVE: stream {sid!r}"
+                f"REVENUE_STREAM_PRICE_AUTHORITY_REQUIRED: stream {sid!r} "
+                f"({self.stream_type.value}) requires the {attr!r} price authority"
             )
-        if self.merchant is not None and self.merchant.base_price_eur_mwh < 0.0:
+        # Contract type / price authority alignment (fail closed).
+        if self.stream_type is RevenueStreamType.PPA:
+            if self.ppa.ppa_type not in SUPPORTED_PPA_TYPES:
+                raise ValueError(
+                    f"REVENUE_STREAM_PPA_TYPE_UNSUPPORTED: stream {sid!r} declares "
+                    f"ppa_type={self.ppa.ppa_type!r}; Workflow 02 supports "
+                    f"{sorted(SUPPORTED_PPA_TYPES)} only — baseload/shaped/synthetic "
+                    "delivery would be silently priced as pay-as-produced"
+                )
+        if self.stream_type is RevenueStreamType.FIT_FIXED and self.fit.fit_type != "fixed_fit":
             raise ValueError(
-                f"REVENUE_STREAM_MERCHANT_PRICE_NEGATIVE: stream {sid!r}"
+                f"REVENUE_STREAM_FIT_TYPE_MISMATCH: FIT_FIXED stream {sid!r} requires "
+                f"fit_type='fixed_fit', got {self.fit.fit_type!r}"
             )
-        if self.fit is not None and (
-            self.fit.fit_price_eur_mwh < 0.0 or self.fit.premium_eur_mwh < 0.0
+        if self.stream_type is RevenueStreamType.FIT_PREMIUM and self.fit.fit_type != "premium":
+            raise ValueError(
+                f"REVENUE_STREAM_FIT_TYPE_MISMATCH: FIT_PREMIUM stream {sid!r} requires "
+                f"fit_type='premium', got {self.fit.fit_type!r}"
+            )
+        if self.stream_type is RevenueStreamType.AUCTION_AWARDED_TARIFF and (
+            self.fit.fit_type != "fixed_fit"
         ):
             raise ValueError(
-                f"REVENUE_STREAM_FIT_PRICE_NEGATIVE: stream {sid!r}"
+                f"REVENUE_STREAM_AUCTION_AUTHORITY_MISMATCH: awarded-tariff stream "
+                f"{sid!r} uses the fixed-tariff price authority "
+                f"(fit_type='fixed_fit'), got {self.fit.fit_type!r}"
             )
-        if self.cfd is not None and self.cfd.strike_price_eur_mwh < 0.0:
-            raise ValueError(
-                f"REVENUE_STREAM_CFD_STRIKE_NEGATIVE: stream {sid!r}"
-            )
-        if self.fit is not None and (
-            self.fit.premium_floor_eur_mwh > 0.0
-            and self.fit.premium_cap_eur_mwh > 0.0
-            and self.fit.premium_floor_eur_mwh > self.fit.premium_cap_eur_mwh
-        ):
-            raise ValueError(
-                f"REVENUE_STREAM_FLOOR_ABOVE_CAP: stream {sid!r} premium floor "
-                "exceeds premium cap"
-            )
-        if self.ppa is not None and (
-            self.ppa.ppa_price_floor > 0.0
-            and self.ppa.ppa_price_cap > 0.0
-            and self.ppa.ppa_price_floor > self.ppa.ppa_price_cap
-        ):
-            raise ValueError(
-                f"REVENUE_STREAM_FLOOR_ABOVE_CAP: stream {sid!r} PPA price floor "
-                "exceeds price cap"
-            )
+
+    def _validate_economic_numbers(self, sid: str) -> None:
+        if self.ppa is not None:
+            self._require_finite_non_negative(sid, "ppa_base_price_eur_mwh",
+                                              self.ppa.ppa_base_price_eur_mwh)
+            self._require_finite_non_negative(sid, "ppa_price_index",
+                                              self.ppa.ppa_price_index)
+            self._require_finite_non_negative(sid, "ppa_price_floor",
+                                              self.ppa.ppa_price_floor)
+            self._require_finite_non_negative(sid, "ppa_price_cap",
+                                              self.ppa.ppa_price_cap)
+            if not math.isfinite(self.ppa.balancing_cost_pct) or not (
+                0.0 <= self.ppa.balancing_cost_pct <= 1.0
+            ):
+                raise ValueError(
+                    f"REVENUE_STREAM_VALUE_INVALID: stream {sid!r} balancing_cost_pct "
+                    f"must be within [0, 1], got {self.ppa.balancing_cost_pct!r}"
+                )
+            if (self.ppa.ppa_price_floor > 0.0 and self.ppa.ppa_price_cap > 0.0
+                    and self.ppa.ppa_price_floor > self.ppa.ppa_price_cap):
+                raise ValueError(
+                    f"REVENUE_STREAM_FLOOR_ABOVE_CAP: stream {sid!r} PPA price floor "
+                    "exceeds price cap"
+                )
+        if self.merchant is not None:
+            self._require_finite_non_negative(sid, "merchant_base_price_eur_mwh",
+                                              self.merchant.base_price_eur_mwh)
+            self._require_finite_non_negative(sid, "price_escalation_annual",
+                                              self.merchant.price_escalation_annual)
+            self._require_finite_non_negative(sid, "price_cannibalization_pct",
+                                              self.merchant.price_cannibalization_pct)
+            for i, p in enumerate(self.merchant.custom_price_curve):
+                self._require_finite_non_negative(sid, f"custom_price_curve[{i}]", p)
+            for label, rate in (
+                ("capture_rate_solar", self.merchant.capture_rate_solar),
+                ("capture_rate_wind", self.merchant.capture_rate_wind),
+                ("capture_rate_bess", self.merchant.capture_rate_bess),
+            ):
+                if not math.isfinite(rate) or not (0.0 <= rate <= 1.0):
+                    raise ValueError(
+                        f"REVENUE_STREAM_VALUE_INVALID: stream {sid!r} {label} must "
+                        f"be within [0, 1], got {rate!r}"
+                    )
+        if self.fit is not None:
+            self._require_finite_non_negative(sid, "fit_price_eur_mwh",
+                                              self.fit.fit_price_eur_mwh)
+            self._require_finite_non_negative(sid, "fit_index", self.fit.fit_index)
+            self._require_finite_non_negative(sid, "premium_eur_mwh",
+                                              self.fit.premium_eur_mwh)
+            self._require_finite_non_negative(sid, "premium_floor_eur_mwh",
+                                              self.fit.premium_floor_eur_mwh)
+            self._require_finite_non_negative(sid, "premium_cap_eur_mwh",
+                                              self.fit.premium_cap_eur_mwh)
+            if (self.fit.premium_floor_eur_mwh > 0.0 and self.fit.premium_cap_eur_mwh > 0.0
+                    and self.fit.premium_floor_eur_mwh > self.fit.premium_cap_eur_mwh):
+                raise ValueError(
+                    f"REVENUE_STREAM_FLOOR_ABOVE_CAP: stream {sid!r} premium floor "
+                    "exceeds premium cap"
+                )
+        if self.cfd is not None:
+            self._require_finite_non_negative(sid, "strike_price_eur_mwh",
+                                              self.cfd.strike_price_eur_mwh)
+        if self.stream_type is RevenueStreamType.INDEXED_FIT:
+            self._require_finite_non_negative(sid, "indexed_fit_base_tariff_eur_mwh",
+                                              self.indexed_fit_base_tariff_eur_mwh)
+            for i, f in enumerate(self.indexed_fit_index_factors):
+                self._require_finite_non_negative(sid, f"index_factor[{i}]", f)
 
 
 @dataclass(frozen=True)
@@ -335,7 +426,7 @@ class RevenuePlan:
 
     Validation is fail-closed at construction via ``RevenuePlan.create``;
     the raw constructor stays permissive for dataclass tooling but every
-    evaluation entry point re-checks ``validated`` first.
+    evaluation entry point re-checks first.
     """
 
     streams: tuple[RevenueStream, ...]
@@ -364,8 +455,7 @@ class RevenuePlan:
         return plan
 
     def validate(self) -> None:
-        """Fail-closed plan validation (duplicate ids, allocation capacity,
-        overlay reference reachability)."""
+        """Fail-closed plan validation."""
         seen: set[str] = set()
         for stream in self.streams:
             stream.validate()
@@ -376,26 +466,83 @@ class RevenuePlan:
                 )
             seen.add(stream.stream_id)
 
-        # Allocation capacity: primary streams share group eligible volume.
-        shares_by_group: dict[str, float] = {}
+        self._validate_allocation_groups()
+        self._validate_time_aware_allocation()
+        self._validate_residual_merchant_uniqueness()
+        self._validate_overlay_references(seen)
+
+    def _validate_allocation_groups(self) -> None:
+        """One effective allocation group in this phase (fail closed)."""
+        declared_ids = [g.group_id for g in self.allocation_groups]
+        if len(declared_ids) != len(set(declared_ids)):
+            raise ValueError(
+                "REVENUE_ALLOCATION_GROUP_DUPLICATE: allocation_groups declare "
+                f"duplicate ids {sorted(declared_ids)}"
+            )
+        stream_groups = {s.allocation_group for s in self.streams}
+        if len(stream_groups) > 1:
+            raise ValueError(
+                f"REVENUE_PLAN_MULTIPLE_ALLOCATION_GROUPS_DEFERRED: streams span "
+                f"groups {sorted(stream_groups)}; Workflow 02 evaluates ONE "
+                "effective generation allocation group and refuses to silently "
+                "reuse a single generation scalar across multiple pools"
+            )
+        if declared_ids:
+            undeclared = stream_groups - set(declared_ids)
+            if undeclared:
+                raise ValueError(
+                    f"REVENUE_ALLOCATION_GROUP_UNDECLARED: streams reference group(s) "
+                    f"{sorted(undeclared)} missing from allocation_groups"
+                )
+            unused = set(declared_ids) - stream_groups
+            if unused:
+                raise ValueError(
+                    f"REVENUE_ALLOCATION_GROUP_UNUSED: declared group(s) "
+                    f"{sorted(unused)} are not referenced by any stream"
+                )
+
+    def _validate_time_aware_allocation(self) -> None:
+        """Deterministic time-aware overlap validation.
+
+        Coverage of explicit primary shares only increases at contract start
+        years, so checking every start year finds every simultaneous-coverage
+        maximum. Sequential contracts (A ends before B starts) never overlap;
+        partial overlaps beyond 100% fail closed with the first offending
+        year. Residual merchants do not count toward the explicit cap.
+        """
+        explicit = [
+            s for s in self.streams
+            if s.contract_role is ContractRole.PRIMARY_ALLOCATION
+            and s.enabled
+            and s.volume_share is not None
+        ]
+        by_group: dict[str, list[RevenueStream]] = {}
+        for s in explicit:
+            by_group.setdefault(s.allocation_group, []).append(s)
+        for group, members in by_group.items():
+            candidate_years = sorted({m.start_year for m in members})
+            for year in candidate_years:
+                active_share = sum(
+                    float(m.volume_share) for m in members if m.is_active(year)
+                )
+                if active_share > 1.0 + _ALLOCATION_TOLERANCE:
+                    raise ValueError(
+                        "REVENUE_ALLOCATION_EXCEEDS_ELIGIBLE_GENERATION: allocation "
+                        f"group {group!r} contracts {active_share:.6f} of eligible "
+                        f"generation in model year {year} (explicit shares are never "
+                        "normalized; only simultaneously ACTIVE contracts count)"
+                    )
+
+    def _validate_residual_merchant_uniqueness(self) -> None:
         residual_by_group: dict[str, int] = {}
         for stream in self.streams:
-            if stream.contract_role is not ContractRole.PRIMARY_ALLOCATION:
-                continue
-            if not stream.enabled:
-                continue
-            group = stream.allocation_group
-            if stream.volume_share is None:
-                # residual merchant: at most one per group
-                residual_by_group[group] = residual_by_group.get(group, 0) + 1
-                continue
-            shares_by_group[group] = shares_by_group.get(group, 0.0) + float(stream.volume_share)
-        for group, total in shares_by_group.items():
-            if total > 1.0 + 1e-12:
-                raise ValueError(
-                    f"REVENUE_ALLOCATION_EXCEEDS_ELIGIBLE_GENERATION: allocation "
-                    f"group {group!r} contracts {total:.6f} of eligible generation "
-                    "(explicit shares are never normalized)"
+            if (
+                stream.contract_role is ContractRole.PRIMARY_ALLOCATION
+                and stream.enabled
+                and stream.volume_share is None
+            ):
+                residual_by_group[stream.allocation_group] = (
+                    residual_by_group.get(stream.allocation_group, 0) + 1
                 )
         for group, count in residual_by_group.items():
             if count > 1:
@@ -405,26 +552,41 @@ class RevenuePlan:
                     "streams; at most one residual merchant per group"
                 )
 
-        # Overlay reference routing must resolve.
-        overlay_refs = {
-            s.reference_stream_id
-            for s in self.streams
-            if s.contract_role is ContractRole.SETTLEMENT_OVERLAY and s.reference_stream_id
-        }
-        missing = overlay_refs - seen
-        if missing:
-            raise ValueError(
-                f"REVENUE_OVERLAY_REFERENCE_UNRESOLVABLE: overlay streams reference "
-                f"unknown stream ids {sorted(missing)}"
-            )
+    def _validate_overlay_references(self, known_ids: set[str]) -> None:
+        """Overlay references must resolve structurally to a merchant price
+        authority — not discovered at evaluation time."""
         for s in self.streams:
-            if s.contract_role is ContractRole.SETTLEMENT_OVERLAY and s.reference_stream_id is None:
-                if self.market_price is None:
+            if s.contract_role is not ContractRole.SETTLEMENT_OVERLAY:
+                continue
+            if s.reference_stream_id is not None:
+                if s.reference_stream_id == s.stream_id:
                     raise ValueError(
-                        "REVENUE_OVERLAY_REFERENCE_MARKET_REQUIRED: overlay stream "
-                        f"{s.stream_id!r} has no reference_stream_id and the plan has "
-                        "no plan-level market price authority"
+                        f"REVENUE_STREAM_REFERENCE_SELF: stream {s.stream_id!r} "
+                        "cannot reference itself as its market-price authority"
                     )
+                if s.reference_stream_id not in known_ids:
+                    raise ValueError(
+                        "REVENUE_OVERLAY_REFERENCE_UNRESOLVABLE: overlay stream "
+                        f"{s.stream_id!r} references unknown stream id "
+                        f"{s.reference_stream_id!r}"
+                    )
+                ref = self.stream_by_id(s.reference_stream_id)
+                if (
+                    ref.stream_type is not RevenueStreamType.MERCHANT
+                    or ref.merchant is None
+                    or not ref.merchant.merchant_enabled
+                ):
+                    raise ValueError(
+                        "REVENUE_OVERLAY_REFERENCE_NOT_A_MARKET_AUTHORITY: overlay "
+                        f"stream {s.stream_id!r} references {s.reference_stream_id!r}, "
+                        "which cannot provide the required market reference price"
+                    )
+            elif self.market_price is None:
+                raise ValueError(
+                    "REVENUE_OVERLAY_REFERENCE_MARKET_REQUIRED: overlay stream "
+                    f"{s.stream_id!r} has no reference_stream_id and the plan has "
+                    "no plan-level market price authority"
+                )
 
     # ------------------------------------------------------------------
     # Convenience accessors (deterministic ordering: by stream id)

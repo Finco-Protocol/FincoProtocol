@@ -7,18 +7,29 @@ the existing domain authorities (``PPAParams.price_at_year``,
 this module orchestrates volume allocation and composition and never
 re-implements their formulas.
 
+Lifecycle authority: ``RevenueStream.start_year`` / ``term_years`` exclusively
+decide activity. The legacy nested CfD term clock is neutralized by evaluating
+the existing settlement formula with a term that covers the stream's own
+active window — the CfD formula keeps owning strike-reference settlement and
+two-way/one-way direction; the stream owns start/term.
+
 Economic invariants (deterministic, tested):
 
-- Total Revenue = Σ active stream revenues for every period.
+- Time-aware primary allocation: only primary streams ACTIVE in the evaluated
+  year consume (or free) allocation capacity, so a residual merchant holds
+  100% before a delayed PPA starts and after it expires.
+- Total revenue semantics: when any stream is UNAVAILABLE the canonical
+  ``total_revenue_keur`` is None (MISSING != ZERO); the sum of available
+  streams is exposed separately as ``available_revenue_subtotal_keur`` and is
+  never presented as the complete total. Unknown component economics
+  (underlying market revenue, support/settlement) are None, never 0.0.
+  Inactive / disabled / expired streams keep their explicit zero
+  contribution, distinct from unavailable.
 - Σ allocated primary generation + unallocated generation
   = eligible generation (within tolerance).
 - Overlay streams (CfD, premium) add ONLY their settlement/support payment;
   the underlying market revenue on the settled volume is displayed as a
   component, never counted twice.
-- A residual (share=None) merchant stream receives exactly the unallocated
-  volume of its group, floor zero.
-- INACTIVE / EXPIRED / DISABLED streams contribute nothing but carry their
-  typed status; UNAVAILABLE carries revenue=None (never a silent zero).
 """
 from __future__ import annotations
 
@@ -37,6 +48,11 @@ from domain.revenue.revenue_config import CfDParams
 # Generation identity tolerance (MWh).
 _ALLOCATION_TOLERANCE_MWH = 1e-9
 
+# Neutralized nested-CfD term: the RevenueStream owns lifecycle; this bound
+# simply makes the legacy nested clock a no-op inside the stream's active
+# window (the stream status gates NOT_STARTED / EXPIRED before evaluation).
+_CFD_NESTED_TERM_NEUTRALIZED = 10_000_000
+
 
 class StreamPeriodStatus(str, Enum):
     """Typed per-period stream status. MISSING/UNAVAILABLE are never ZERO."""
@@ -53,12 +69,18 @@ class PlanPeriodStatus(str, Enum):
 
     OK = "ok"
     PARTIALLY_UNALLOCATED = "partially_unallocated"  # generation left unsold
-    HAS_UNAVAILABLE_STREAMS = "has_unavailable_streams"
+    HAS_UNAVAILABLE_STREAMS = "has_unavailable_streams"  # total revenue is None
 
 
 @dataclass(frozen=True)
 class RevenueStreamPeriodResult:
-    """One stream's typed result for one period."""
+    """One stream's typed result for one period.
+
+    ``underlying_market_revenue_keur`` and ``support_or_settlement_keur`` are
+    None when their economics are unknown (UNAVAILABLE) — unknown is never
+    encoded as economic 0.0. Inactive/disabled/expired periods carry explicit
+    0.0 contributions and a typed status.
+    """
 
     stream_id: str
     stream_type: RevenueStreamType
@@ -73,9 +95,9 @@ class RevenueStreamPeriodResult:
     # Resolved contract/reference price (EUR/MWh); None when unavailable.
     price_eur_mwh: float | None
     # Market revenue on the contracted volume before support (kEUR).
-    underlying_market_revenue_keur: float
+    underlying_market_revenue_keur: float | None
     # CfD settlement / premium support payment (kEUR; signed for CfD).
-    support_or_settlement_keur: float
+    support_or_settlement_keur: float | None
     # The stream's economic addition for the period (kEUR); None when
     # unavailable — never a silent zero.
     stream_revenue_keur: float | None
@@ -83,12 +105,18 @@ class RevenueStreamPeriodResult:
 
 @dataclass(frozen=True)
 class RevenuePlanPeriodResult:
-    """One period's aggregated plan result."""
+    """One period's aggregated plan result.
+
+    ``total_revenue_keur`` is None when any stream is UNAVAILABLE in this
+    period (the total is unknown, not zero). ``available_revenue_subtotal_keur``
+    sums only the available streams and is never a substitute for the total.
+    """
 
     year: int
     total_eligible_generation_mwh: float
     stream_results: tuple[RevenueStreamPeriodResult, ...]  # ordered by stream_id
-    total_revenue_keur: float
+    total_revenue_keur: float | None
+    available_revenue_subtotal_keur: float
     unallocated_generation_mwh: float
     status: PlanPeriodStatus
 
@@ -110,22 +138,43 @@ def _reference_price_eur_mwh(
     return None
 
 
+def _active_explicit_primary_shares(
+    plan: RevenuePlan,
+    year: int,
+) -> dict[str, float]:
+    """Sum of explicit shares per group, counting ONLY primary streams that
+    are ACTIVE in the evaluated year (time-aware allocation)."""
+    shares: dict[str, float] = {}
+    for stream in plan.streams:
+        if (
+            stream.contract_role is ContractRole.PRIMARY_ALLOCATION
+            and stream.enabled
+            and stream.volume_share is not None
+            and stream.is_active(year)
+        ):
+            shares[stream.allocation_group] = (
+                shares.get(stream.allocation_group, 0.0) + float(stream.volume_share)
+            )
+    return shares
+
+
 def _stream_volume_mwh(
     stream: RevenueStream,
     eligible_generation_mwh: float,
-    explicit_primary_shares: dict[str, float],
+    active_explicit_shares: dict[str, float],
 ) -> float:
     """Contracted volume for this stream/period.
 
-    Primary residual merchant: eligible − Σ explicit primary shares, floor 0.
+    Primary residual merchant: eligible − Σ ACTIVE explicit primary shares,
+    floor zero (a dormant PPA frees its share back to the merchant).
     Primary explicit share: eligible × share.
     Overlay: eligible × share (contractual settlement volume; consumes no
     allocation capacity).
     """
     if stream.contract_role is ContractRole.PRIMARY_ALLOCATION:
         if stream.volume_share is None:
-            explicit = explicit_primary_shares.get(stream.allocation_group, 0.0)
-            return max(0.0, eligible_generation_mwh - explicit * eligible_generation_mwh)
+            explicit = active_explicit_shares.get(stream.allocation_group, 0.0)
+            return max(0.0, (1.0 - explicit) * eligible_generation_mwh)
         return max(0.0, eligible_generation_mwh * float(stream.volume_share))
     # Overlay
     return max(0.0, eligible_generation_mwh * float(stream.volume_share or 0.0))
@@ -136,9 +185,52 @@ def _period_status(stream: RevenueStream, year: int) -> StreamPeriodStatus:
         return StreamPeriodStatus.DISABLED
     if year < stream.start_year:
         return StreamPeriodStatus.NOT_STARTED
-    if stream.term_years is not None and year > stream.start_year + stream.term_years - 1:
+    if not stream.is_active(year):
         return StreamPeriodStatus.EXPIRED
     return StreamPeriodStatus.ACTIVE
+
+
+def _inactive_result(
+    stream: RevenueStream,
+    year: int,
+    status: StreamPeriodStatus,
+) -> RevenueStreamPeriodResult:
+    """Explicit zero contribution for a known-inactive period (NOT unavailable)."""
+    return RevenueStreamPeriodResult(
+        stream_id=stream.stream_id,
+        stream_type=stream.stream_type,
+        contract_role=stream.contract_role,
+        year=year,
+        status=status,
+        allocated_generation_mwh=0.0,
+        eligible_generation_mwh=0.0,
+        price_eur_mwh=None,
+        underlying_market_revenue_keur=0.0,
+        support_or_settlement_keur=0.0,
+        stream_revenue_keur=0.0,
+    )
+
+
+def _unavailable_result(
+    stream: RevenueStream,
+    year: int,
+    volume_mwh: float,
+    group_eligible: float,
+) -> RevenueStreamPeriodResult:
+    """Typed unavailable result — every unknown economic component is None."""
+    return RevenueStreamPeriodResult(
+        stream_id=stream.stream_id,
+        stream_type=stream.stream_type,
+        contract_role=stream.contract_role,
+        year=year,
+        status=StreamPeriodStatus.UNAVAILABLE,
+        allocated_generation_mwh=volume_mwh,
+        eligible_generation_mwh=group_eligible,
+        price_eur_mwh=None,
+        underlying_market_revenue_keur=None,
+        support_or_settlement_keur=None,
+        stream_revenue_keur=None,
+    )
 
 
 def _evaluate_primary_stream(
@@ -146,22 +238,13 @@ def _evaluate_primary_stream(
     year: int,
     status: StreamPeriodStatus,
     volume_mwh: float,
+    group_eligible: float,
     technology: str,
 ) -> RevenueStreamPeriodResult:
+    if status is StreamPeriodStatus.UNAVAILABLE:
+        return _unavailable_result(stream, year, volume_mwh, group_eligible)
     if status is not StreamPeriodStatus.ACTIVE:
-        return RevenueStreamPeriodResult(
-            stream_id=stream.stream_id,
-            stream_type=stream.stream_type,
-            contract_role=stream.contract_role,
-            year=year,
-            status=status,
-            allocated_generation_mwh=0.0,
-            eligible_generation_mwh=0.0,
-            price_eur_mwh=None,
-            underlying_market_revenue_keur=0.0,
-            support_or_settlement_keur=0.0,
-            stream_revenue_keur=None if status is StreamPeriodStatus.UNAVAILABLE else 0.0,
-        )
+        return _inactive_result(stream, year, status)
 
     if stream.stream_type is RevenueStreamType.PPA:
         price = stream.ppa.price_at_year(year)
@@ -175,7 +258,7 @@ def _evaluate_primary_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=price,
             underlying_market_revenue_keur=gross_keur,
             support_or_settlement_keur=0.0,
@@ -193,7 +276,7 @@ def _evaluate_primary_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=price,
             underlying_market_revenue_keur=revenue_keur,
             support_or_settlement_keur=0.0,
@@ -210,7 +293,7 @@ def _evaluate_primary_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=price,
             underlying_market_revenue_keur=revenue_keur,
             support_or_settlement_keur=0.0,
@@ -222,19 +305,7 @@ def _evaluate_primary_stream(
         if idx >= len(stream.indexed_fit_index_factors):
             # Missing index authority for this year: typed unavailable, never
             # a silent extrapolation or zero.
-            return RevenueStreamPeriodResult(
-                stream_id=stream.stream_id,
-                stream_type=stream.stream_type,
-                contract_role=stream.contract_role,
-                year=year,
-                status=StreamPeriodStatus.UNAVAILABLE,
-                allocated_generation_mwh=volume_mwh,
-                eligible_generation_mwh=volume_mwh,  # refined by caller
-                price_eur_mwh=None,
-                underlying_market_revenue_keur=0.0,
-                support_or_settlement_keur=0.0,
-                stream_revenue_keur=None,
-            )
+            return _unavailable_result(stream, year, volume_mwh, group_eligible)
         price = stream.indexed_fit_base_tariff_eur_mwh * stream.indexed_fit_index_factors[idx]
         revenue_keur = volume_mwh * price / 1000.0
         return RevenueStreamPeriodResult(
@@ -244,7 +315,7 @@ def _evaluate_primary_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=price,
             underlying_market_revenue_keur=revenue_keur,
             support_or_settlement_keur=0.0,
@@ -262,47 +333,28 @@ def _evaluate_overlay_stream(
     year: int,
     status: StreamPeriodStatus,
     volume_mwh: float,
+    group_eligible: float,
 ) -> RevenueStreamPeriodResult:
+    if status is StreamPeriodStatus.UNAVAILABLE:
+        return _unavailable_result(stream, year, volume_mwh, group_eligible)
     if status is not StreamPeriodStatus.ACTIVE:
-        return RevenueStreamPeriodResult(
-            stream_id=stream.stream_id,
-            stream_type=stream.stream_type,
-            contract_role=stream.contract_role,
-            year=year,
-            status=status,
-            allocated_generation_mwh=0.0,
-            eligible_generation_mwh=0.0,
-            price_eur_mwh=None,
-            underlying_market_revenue_keur=0.0,
-            support_or_settlement_keur=0.0,
-            stream_revenue_keur=None if status is StreamPeriodStatus.UNAVAILABLE else 0.0,
-        )
+        return _inactive_result(stream, year, status)
 
     reference = _reference_price_eur_mwh(plan, stream, year)
     if reference is None:
-        return RevenueStreamPeriodResult(
-            stream_id=stream.stream_id,
-            stream_type=stream.stream_type,
-            contract_role=stream.contract_role,
-            year=year,
-            status=StreamPeriodStatus.UNAVAILABLE,
-            allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
-            price_eur_mwh=None,
-            underlying_market_revenue_keur=0.0,
-            support_or_settlement_keur=0.0,
-            stream_revenue_keur=None,
-        )
+        return _unavailable_result(stream, year, volume_mwh, group_eligible)
 
     if stream.stream_type is RevenueStreamType.CFD:
         # Reuse the existing CfD settlement formula authority: derive a
-        # CfDParams carrying THIS period's contractual volume and call the
-        # existing two-way/one-way payment math unchanged.
+        # CfDParams carrying THIS period's contractual volume and a
+        # neutralized nested term (the RevenueStream owns lifecycle; the
+        # formula owns strike-reference settlement and two-way/one-way
+        # direction — unchanged).
         period_cfd = CfDParams(
             cfd_enabled=True,
             strike_price_eur_mwh=stream.cfd.strike_price_eur_mwh,
             reference_price_type=stream.cfd.reference_price_type,
-            cfd_term_years=stream.cfd.cfd_term_years,
+            cfd_term_years=_CFD_NESTED_TERM_NEUTRALIZED,
             cfd_volume_mwh_annual=volume_mwh,
             two_way_cfd=stream.cfd.two_way_cfd,
             cfd_counterparty=stream.cfd.cfd_counterparty,
@@ -317,7 +369,7 @@ def _evaluate_overlay_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=stream.cfd.strike_price_eur_mwh,
             underlying_market_revenue_keur=underlying_keur,
             support_or_settlement_keur=settlement_keur,
@@ -337,7 +389,7 @@ def _evaluate_overlay_stream(
             year=year,
             status=status,
             allocated_generation_mwh=volume_mwh,
-            eligible_generation_mwh=volume_mwh,  # refined by caller
+            eligible_generation_mwh=group_eligible,
             price_eur_mwh=supported_price,
             underlying_market_revenue_keur=underlying_keur,
             support_or_settlement_keur=support_keur,
@@ -359,81 +411,56 @@ def evaluate_revenue_plan(
 ) -> RevenuePlanPeriodResult:
     """Evaluate the plan for one model year. Deterministic and order-safe.
 
-    ``year`` is the 1-based model year used by the existing domain revenue
-    math; ``eligible_generation_mwh`` is the group generation for the year.
-    Re-validates the plan (fail closed) before any arithmetic.
+    ``year`` must be a positive integer (1-based model year, per the existing
+    domain revenue math) and ``eligible_generation_mwh`` a finite
+    non-negative generation scalar for the plan's single effective
+    allocation group. Re-validates the plan (fail closed) first.
     """
     plan.validate()
+    if not isinstance(year, int) or isinstance(year, bool) or year < 1:
+        raise ValueError(
+            f"REVENUE_PLAN_YEAR_INVALID: year must be a positive integer "
+            f"(1-based model year), got {year!r}"
+        )
     if not math.isfinite(eligible_generation_mwh) or eligible_generation_mwh < 0.0:
         raise ValueError(
             f"REVENUE_PLAN_ELIGIBLE_GENERATION_INVALID: {eligible_generation_mwh!r}"
         )
 
-    # Explicit primary shares per group (enabled streams only) — the residual
-    # merchant and the unallocated volume both derive from this sum, so the
-    # result is independent of stream declaration order.
-    explicit_primary_shares: dict[str, float] = {}
-    for stream in plan.streams:
-        if (
-            stream.contract_role is ContractRole.PRIMARY_ALLOCATION
-            and stream.enabled
-            and stream.volume_share is not None
-        ):
-            explicit_primary_shares[stream.allocation_group] = (
-                explicit_primary_shares.get(stream.allocation_group, 0.0)
-                + float(stream.volume_share)
-            )
+    active_explicit_shares = _active_explicit_primary_shares(plan, year)
 
     results: list[RevenueStreamPeriodResult] = []
-    allocated_by_group: dict[str, float] = {}
-    eligible_by_group: dict[str, float] = {}
+    allocated_total = 0.0
     for stream in plan.streams:
         status = _period_status(stream, year)
-        volume = _stream_volume_mwh(
-            stream, eligible_generation_mwh, explicit_primary_shares
-        )
+        volume = _stream_volume_mwh(stream, eligible_generation_mwh, active_explicit_shares)
         if stream.contract_role is ContractRole.PRIMARY_ALLOCATION:
             if status is StreamPeriodStatus.ACTIVE:
-                allocated_by_group[stream.allocation_group] = (
-                    allocated_by_group.get(stream.allocation_group, 0.0) + volume
-                )
-            eligible_by_group.setdefault(stream.allocation_group, eligible_generation_mwh)
-            result = _evaluate_primary_stream(stream, year, status, volume, technology)
+                allocated_total += volume
+            result = _evaluate_primary_stream(
+                stream, year, status, volume, eligible_generation_mwh, technology)
         else:
-            eligible_by_group.setdefault(stream.allocation_group, eligible_generation_mwh)
-            result = _evaluate_overlay_stream(plan, stream, year, status, volume)
-
-        # Fill the group-eligible context on active results.
-        if status is StreamPeriodStatus.ACTIVE:
-            group_eligible = eligible_by_group.get(stream.allocation_group, eligible_generation_mwh)
-            result = RevenueStreamPeriodResult(
-                stream_id=result.stream_id,
-                stream_type=result.stream_type,
-                contract_role=result.contract_role,
-                year=result.year,
-                status=result.status,
-                allocated_generation_mwh=result.allocated_generation_mwh,
-                eligible_generation_mwh=group_eligible,
-                price_eur_mwh=result.price_eur_mwh,
-                underlying_market_revenue_keur=result.underlying_market_revenue_keur,
-                support_or_settlement_keur=result.support_or_settlement_keur,
-                stream_revenue_keur=result.stream_revenue_keur,
-            )
+            result = _evaluate_overlay_stream(
+                plan, stream, year, status, volume, eligible_generation_mwh)
         results.append(result)
 
     ordered = sorted(results, key=lambda r: r.stream_id)
-    total_revenue = sum(
+    available_subtotal = sum(
         r.stream_revenue_keur for r in ordered if r.stream_revenue_keur is not None
     )
-    total_allocated = sum(allocated_by_group.values())
-    unallocated = max(0.0, eligible_generation_mwh - total_allocated)
+    has_unavailable = any(
+        r.status is StreamPeriodStatus.UNAVAILABLE for r in ordered
+    )
+    total_revenue: float | None = None if has_unavailable else available_subtotal
+
+    unallocated = max(0.0, eligible_generation_mwh - allocated_total)
     # Generation identity guard (float safety, fail loud on a real breach).
-    if abs(total_allocated + unallocated - eligible_generation_mwh) > _ALLOCATION_TOLERANCE_MWH:
+    if abs(allocated_total + unallocated - eligible_generation_mwh) > _ALLOCATION_TOLERANCE_MWH:
         raise ValueError(
             "REVENUE_ALLOCATION_IDENTITY_BROKEN: allocated + unallocated != eligible"
         )
 
-    if any(r.status is StreamPeriodStatus.UNAVAILABLE for r in ordered):
+    if has_unavailable:
         status = PlanPeriodStatus.HAS_UNAVAILABLE_STREAMS
     elif unallocated > _ALLOCATION_TOLERANCE_MWH:
         status = PlanPeriodStatus.PARTIALLY_UNALLOCATED
@@ -445,6 +472,7 @@ def evaluate_revenue_plan(
         total_eligible_generation_mwh=eligible_generation_mwh,
         stream_results=tuple(ordered),
         total_revenue_keur=total_revenue,
+        available_revenue_subtotal_keur=available_subtotal,
         unallocated_generation_mwh=unallocated,
         status=status,
     )

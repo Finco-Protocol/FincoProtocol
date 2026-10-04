@@ -329,9 +329,14 @@ def test_q_indexed_fit_explicit_factors_and_unavailable_beyond_schedule():
     assert r4.status is StreamPeriodStatus.UNAVAILABLE
     assert r4.stream_revenue_keur is None  # MISSING != ZERO
     assert r4.price_eur_mwh is None
+    assert r4.underlying_market_revenue_keur is None
+    assert r4.support_or_settlement_keur is None
     plan_result = evaluate_revenue_plan(plan, 4, 100_000.0)
     assert plan_result.status is PlanPeriodStatus.HAS_UNAVAILABLE_STREAMS
-    assert plan_result.total_revenue_keur == pytest.approx(0.0, abs=TOL)
+    # MISSING != ZERO at plan level: the canonical total is UNAVAILABLE...
+    assert plan_result.total_revenue_keur is None
+    # ...and the available subtotal (empty here) is exposed separately.
+    assert plan_result.available_revenue_subtotal_keur == pytest.approx(0.0, abs=TOL)
 
 
 def test_r_auction_awarded_tariff_behaves_like_tariff_contract():
@@ -400,17 +405,12 @@ def test_u_generation_allocation_identity():
 # ---------------------------------------------------------------------------
 
 def test_v_legacy_ppa_merchant_adapter_equivalent_and_deterministic():
+    """LEGACY_EQUIVALENCE (K): plan total == legacy total, asserted directly."""
     legacy = RevenueConfig.create_ppa_merchant_mix(ppa_share=0.7, ppa_price=57.0, merchant_price=65.0)
     plan = revenue_plan_from_legacy_config(legacy)
     r = evaluate_revenue_plan(plan, 1, 100_000.0, technology="solar")
     legacy_total = legacy.total_annual_revenue_keur(100_000.0, 1, technology="solar")
-    assert r.total_revenue_keur * 1000 == pytest.approx(legacy_total * 1000 / 1000, abs=1e-6) or True
-    # exact component check instead of relying on legacy rounding:
-    by_id = {s.stream_id: s for s in r.stream_results}
-    assert by_id["ppa"].stream_revenue_keur == pytest.approx(
-        70_000 * 57.0 * (1 - 0.025) / 1000, abs=1e-6)
-    assert by_id["merchant"].stream_revenue_keur == pytest.approx(
-        30_000 * 65.0 * 0.85 / 1000, abs=1e-6)
+    assert r.total_revenue_keur == pytest.approx(legacy_total, abs=1e-9)
     # deterministic: same input → identical plan evaluation
     plan2 = revenue_plan_from_legacy_config(RevenueConfig.create_ppa_merchant_mix(0.7, 57.0, 65.0))
     r2 = evaluate_revenue_plan(plan2, 1, 100_000.0, technology="solar")
@@ -439,7 +439,7 @@ def test_v2_legacy_adapter_fail_closed_limitations():
         revenue_plan_from_legacy_config(bess)
 
 
-def test_v3_legacy_cfd_overlay_and_premium_representable():
+def test_v3_legacy_cfd_overlay_representable_and_premium_fails_closed():
     legacy = RevenueConfig(
         merchant=MerchantParams(merchant_enabled=True, base_price_eur_mwh=65.0),
         cfd=CfDParams(cfd_enabled=True, strike_price_eur_mwh=70.0, cfd_term_years=10),
@@ -449,13 +449,14 @@ def test_v3_legacy_cfd_overlay_and_premium_representable():
     by_id = {s.stream_id: s for s in r.stream_results}
     assert by_id["cfd"].support_or_settlement_keur == pytest.approx(500.0, abs=TOL)
 
+    # Legacy premium stacks supported-price revenue on the FULL generation on
+    # top of the merchant full-generation sale: not equivalent → fail closed.
     premium_legacy = RevenueConfig(
         merchant=MerchantParams(merchant_enabled=True, base_price_eur_mwh=65.0),
         fit=FeedInTariffParams(fit_enabled=True, fit_type="premium", premium_eur_mwh=12.0),
     )
-    r2 = evaluate_revenue_plan(revenue_plan_from_legacy_config(premium_legacy), 1, 100_000.0)
-    prem = {s.stream_id: s for s in r2.stream_results}["fit_premium"]
-    assert prem.support_or_settlement_keur == pytest.approx(12.0 * 100_000 / 1000, abs=TOL)
+    with pytest.raises(ValueError, match="LEGACY_PREMIUM_NOT_EQUIVALENT"):
+        revenue_plan_from_legacy_config(premium_legacy)
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +508,7 @@ def test_w_malformed_contracts_fail_closed():
             "ppa", RevenueStreamType.PPA, volume_share=1.0,
             ppa=_ppa(floor=90.0, cap=80.0)),))
     # negative prices where disallowed
-    with pytest.raises(ValueError, match="REVENUE_STREAM_PPA_PRICE_NEGATIVE"):
+    with pytest.raises(ValueError, match="REVENUE_STREAM_VALUE_INVALID"):
         RevenuePlan.create((_stream("ppa", RevenueStreamType.PPA, volume_share=1.0, ppa=_ppa(price=-5.0)),))
     # non-finite values
     with pytest.raises(ValueError, match="REVENUE_STREAM_VOLUME_SHARE_INVALID"):
@@ -567,16 +568,10 @@ def test_x_existing_revenue_authority_untouched():
         + 30_000 * 65.0 * 0.85 / 1000           # residual merchant × capture
     )
     assert total == pytest.approx(expected, abs=1e-9)
-    # tariff.py pure functions unchanged
-    from domain.revenue.tariff import market_price_at_period, ppa_tariff_at_period
-    assert ppa_tariff_at_period(57.0, 0.02, 2) == pytest.approx(58.14, abs=TOL)
-    assert market_price_at_period(4, (60.0, 61.0, 62.0), 0.02) == pytest.approx(62.0 * 1.02, abs=TOL)
 
 
 def test_x2_contracts_are_domain_only():
     """No ProjectInputs / adapter / factory / engine imports in the new modules."""
-    import subprocess
-    import sys
     from pathlib import Path
 
     repo = Path(__file__).resolve().parents[1]
@@ -586,3 +581,9 @@ def test_x2_contracts_are_domain_only():
         for forbidden in ("finco_core", "financial_engine", "app.", "ProjectInputs",
                           "input_adapter", "project_factories"):
             assert forbidden not in src, f"{module} references {forbidden}"
+    # tariff.py pure functions unchanged
+    from domain.revenue.tariff import market_price_at_period, ppa_tariff_at_period
+    assert ppa_tariff_at_period(57.0, 0.02, 2) == pytest.approx(58.14, abs=TOL)
+    assert market_price_at_period(4, (60.0, 61.0, 62.0), 0.02) == pytest.approx(62.0 * 1.02, abs=TOL)
+
+
