@@ -244,3 +244,23 @@ def representation_conflicts(registry, *, limit: int = 500) -> list[dict]:
         if len(rows) >= limit:
             break
     return rows
+
+
+def resolved_taxonomy_disagreements(registry) -> list[dict]:
+    """Exact representations that several sources agreed on but classified differently.
+
+    The disagreement is descriptive (instrument_type is not identity-defining); the economic identity is one
+    row, and every source's own assertion stays inspectable here (audit view). Nothing is deleted.
+    """
+    rows = []
+    for entry in registry._entries:
+        types = {a.instrument_type for a in entry.source_assertions}
+        if len(types) > 1:
+            rows.append({
+                "chain": entry.chain_id if entry.chain_id is not None else entry.network,
+                "contract": entry.contract_address,
+                "representation": entry.representation_symbol,
+                "resolved_instrument_type": entry.instrument_type,
+                "assertions": [(a.source, a.source_ref, a.instrument_type) for a in entry.source_assertions],
+            })
+    return sorted(rows, key=lambda r: (str(r["chain"]), r["contract"] or ""))

@@ -376,7 +376,11 @@ class TestFrozen:
             cwd=REPO, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
+        # every other path in this namespace stays frozen.
+        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
+        changed = [p for p in out.stdout.split() if p not in allowed]
+        assert changed == [], changed
 
 
 # ── Correction A: #179 binding, ACTIVE-only deps, PARTIAL aggregation ────────

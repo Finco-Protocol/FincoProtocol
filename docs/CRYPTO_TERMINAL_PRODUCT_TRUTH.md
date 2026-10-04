@@ -76,12 +76,14 @@ product; every other state is labelled PREVIEW / DATA COLLECTION NOT ACTIVE.
 
 ## Known data limitations (public, plain language)
 
-- The seeded registry records both a `debt-security` and a `tokenized-equity`
-  type for the same exact chain+contract of the reviewed R-LIVE Robinhood
-  tokens. The live collector requires exactly one exact identity match, so
-  until that identity conflict is resolved by a reviewed decision the
-  live-collector eligible count is 0 and Tokenized Markets stays in
-  `IDENTITY_ONLY`. No fuzzy correction is applied.
+- Two seed sources describe each reviewed R-LIVE Robinhood token (same chain,
+  contract, symbol and underlying) but classify it differently
+  (`debt-security` vs `tokenized-equity`). Instrument type is descriptive, not
+  identity-defining, so the registry resolves them to one exact representation
+  and keeps both source assertions (audit view). The live-collector eligible
+  count is 13; with the collector never run, Tokenized Markets is
+  `COLLECTOR_NOT_STARTED`, not live. Sources that disagree on contract or
+  underlying are never merged.
 - R-LIVE chart ranges are shown as stored. No generic outlier rule is defined
   yet (a defensible bound needs a reviewed data-quality decision), so extreme
   observations are neither deleted nor flagged automatically.
