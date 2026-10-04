@@ -105,6 +105,11 @@
     {% for symbol in reviewed_symbols %}<a class="fs-chip" href="/radar/tokenized-markets/{{ symbol }}">{{ symbol }}</a>{% endfor %}
   </div>
   {% endif %}
+  {% set stale_rows = rows | selectattr('best_price') | list %}
+  {% if stale_rows %}
+  <p class="fs-note" data-testid="tm-empty-stale">{{ stale_rows | length }} reviewed asset(s) have persisted observations that are no longer fresh;
+    their stored evidence stays available on each asset page.</p>
+  {% endif %}
   <p class="fs-note" data-testid="tm-empty-collector">Collector: {{ collector_health.health_state }}{% if collector_health.last_attempt_at %} · last attempt {{ collector_health.last_attempt_at[:16] }} UTC{% endif %}</p>
   {% if rlive_source %}
   <p class="fs-note" data-testid="tm-empty-rlive">R-LIVE source state:

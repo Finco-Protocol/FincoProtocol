@@ -313,7 +313,7 @@ class TestLandingBatchedReference:
 
         db_path = tmp_path / "venues.db"
         store = VenueMarketStore(db_path)
-        stamp = NOW - timedelta(seconds=30)
+        stamp = datetime.now(timezone.utc) - timedelta(seconds=30)   # priced-now is judged against the real clock
         for ticker in ("AAPL", "NVDA", "MSFT"):
             store.append_observation(MarketObservation(
                 ts=stamp.isoformat(),
