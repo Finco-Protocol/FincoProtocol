@@ -1,0 +1,45 @@
+{
+  "program": "MODEL_V2",
+  "branch": "epic/model-saas-v2",
+  "base_sha": "2f963a77bbad7bda23ca5bac5d6efbe9a11d2b0b",
+  "status": "ACTIVE",
+  "retirement": "ACTIVE only while epic/model-saas-v2 is under development. Must be deleted or set to status=RETIRED before the final epic-to-main release merge; enforced by tests/test_model_v2_governance.py::test_active_epic_scope_must_not_reach_main (MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE).",
+  "approved_engine_paths": [
+    "financial_engine/financial_statements/assembly.py",
+    "financial_engine/financial_statements/contracts.py"
+  ],
+  "approved_support_paths": [
+    "app/model_v2/__init__.py",
+    "app/model_v2/flags.py",
+    "app/model_v2/project_metadata.py",
+    "app/persistence/db.py",
+    "app/persistence/records.py",
+    "app/persistence/projects_repository.py",
+    "app/services/project_save_as_service.py",
+    "domain/models.py",
+    "docs/model_v2/IMPLEMENTATION_GUARDRAILS.md",
+    "docs/model_v2/ACTIVE_EPIC_SCOPE.json",
+    "tests/model_v2_governance.py",
+    "tests/test_model_v2_governance.py",
+    "tests/finance_integrity_governance.py",
+    "tests/test_p0a_model_execution.py",
+    "tests/test_radar_crypto_surface_coherence.py",
+    "tests/test_model_market_bridge.py",
+    "tests/test_crypto_p0_product_reality_reset.py",
+    "tests/test_crypto_roadmap_q4_q1.py",
+    "tests/test_model_v2_foundation.py",
+    "tests/test_model_v2_metadata.py"
+  ],
+  "strictly_frozen_prefixes": [
+    "finco_core/",
+    "domain/revenue/",
+    "domain/analytics/",
+    "finco_radar/",
+    "finco_yield/",
+    "app/radar_rwa/",
+    "app/model_validation/",
+    "app/verified/",
+    "app/crypto_access.py",
+    "app/crypto_resource_access.py"
+  ]
+}
