@@ -302,10 +302,94 @@ def test_rlive_landing_already_keeps_market_and_oracle_age_separate():
     assert '"Market " + market + " · Oracle " + oracle' in js
 
 
-def test_rlive_chart_points_are_chronological_and_deterministic():
+HISTORY_ORDER_JS = ROOT / "static" / "radar" / "r_live_history_order.js"
+
+
+def _run_order(points: list[dict], which: str) -> list[str]:
+    """Execute the real presentation helper under Node with deliberately shuffled canonical points."""
+    import json
+    import shutil
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not available")
+    script = (
+        "const h=require(%s);const pts=JSON.parse(process.argv[1]);"
+        "console.log(JSON.stringify(h.%s(pts).map(p=>p.id)));" % (json.dumps(str(HISTORY_ORDER_JS)), which))
+    out = subprocess.run([node, "-e", script, json.dumps(points)], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def _pt(identifier, collected, observed=None, **extra):
+    return {"id": identifier, "collected_at": collected, "observed_at": observed, **extra}
+
+
+SHUFFLED = [
+    _pt("t1003", "2026-10-04T10:03:00Z"),
+    _pt("t1001", "2026-10-04T10:01:00Z"),
+    _pt("t1002", "2026-10-04T10:02:00Z"),
+]
+
+
+def test_history_table_is_newest_first_for_deliberately_shuffled_points():
+    assert _run_order(SHUFFLED, "tableOrder") == ["t1003", "t1002", "t1001"]
+
+
+def test_history_chart_is_oldest_first_for_the_same_points():
+    assert _run_order(SHUFFLED, "chartOrder") == ["t1001", "t1002", "t1003"]
+
+
+@pytest.mark.parametrize("permutation", [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)])
+def test_history_order_is_independent_of_input_order_for_distinct_times(permutation):
+    points = [SHUFFLED[i] for i in permutation]
+    assert _run_order(points, "tableOrder") == ["t1003", "t1002", "t1001"]
+    assert _run_order(points, "chartOrder") == ["t1001", "t1002", "t1003"]
+
+
+def test_equal_timestamps_keep_a_stable_deterministic_order():
+    tied = [_pt("a", "2026-10-04T10:00:00Z"), _pt("b", "2026-10-04T10:00:00Z"),
+            _pt("c", "2026-10-04T10:00:00Z"), _pt("old", "2026-10-04T09:00:00Z")]
+    # table: ties keep input order (stable); chart: ties reverse the newest-first API order (stable)
+    assert _run_order(tied, "tableOrder") == ["a", "b", "c", "old"]
+    assert _run_order(tied, "chartOrder") == ["old", "c", "b", "a"]
+    # repeated runs give the identical result
+    assert _run_order(tied, "tableOrder") == _run_order(tied, "tableOrder")
+
+
+def test_history_order_uses_canonical_timestamps_with_observed_at_fallback_and_missing_last():
+    points = [
+        _pt("no_time", None, None),
+        _pt("fallback", "not-a-date", "2026-10-04T10:05:00Z"),     # collected_at invalid -> observed_at
+        _pt("collected", "2026-10-04T10:02:00Z", "2026-10-04T12:00:00Z"),   # collected_at wins over observed_at
+        _pt("offset", "2026-10-04T12:04:00+02:00"),                # same instant as 10:04Z, different offset
+    ]
+    assert _run_order(points, "tableOrder") == ["fallback", "offset", "collected", "no_time"]
+    assert _run_order(points, "chartOrder") == ["collected", "offset", "fallback", "no_time"]
+
+
+def test_history_helper_does_not_mutate_points_or_input_array():
+    import json
+    import shutil
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not available")
+    script = (
+        "const h=require(%s);const pts=JSON.parse(process.argv[1]);const copy=JSON.stringify(pts);"
+        "h.tableOrder(pts);h.chartOrder(pts);console.log(JSON.stringify(JSON.stringify(pts)===copy));"
+        % json.dumps(str(HISTORY_ORDER_JS)))
+    out = subprocess.run([node, "-e", script, json.dumps(SHUFFLED)], capture_output=True, text=True, check=True)
+    assert json.loads(out.stdout) is True
+
+
+def test_rlive_detail_wires_table_newest_first_and_chart_oldest_first_through_the_helper():
     html = (TEMPLATES / "radar" / "r_live_detail.html").read_text()
-    body = html.split("function chart_points(points, picker) {", 1)[1].split("// Signed bps formatter", 1)[0]
-    assert "indexed.sort(" in body and "Date.parse" in body and "return b.i - a.i" in body
+    assert '<script src="/static/radar/r_live_history_order.js"></script>' in html
+    table_body = html.split("function build_history_table(points) {", 1)[1].split("fetch(HIST_URL)", 1)[0]
+    assert "FincoRLiveHistoryOrder.tableOrder(points).slice(0, 20)" in table_body
+    assert "points.slice(0, 20)" not in table_body.replace("tableOrder(points).slice(0, 20)", "")
+    chart_body = html.split("function chart_points(points, picker) {", 1)[1].split("// Signed bps formatter", 1)[0]
+    assert "FincoRLiveHistoryOrder.chartOrder(points)" in chart_body
+    # the helper is served as a static asset
+    assert HISTORY_ORDER_JS.is_file()
 
 
 # ── product-truth documentation ──────────────────────────────────────────────────────────────────

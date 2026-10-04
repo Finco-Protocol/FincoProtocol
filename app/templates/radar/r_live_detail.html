@@ -265,6 +265,7 @@
 {% endif %}
 
 {% if row.approved %}
+<script src="/static/radar/r_live_history_order.js"></script>
 <script>
 (function() {
   // SNAPSHOT FIRST, CONTINUOUSLY FRESH, READ-ONLY.
@@ -523,7 +524,8 @@
     thead.appendChild(hrow);
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    points.slice(0, 20).forEach(function(pt) {
+    // TABLE order: newest canonical observation first (the chart below uses the opposite, oldest-first axis).
+    FincoRLiveHistoryOrder.tableOrder(points).slice(0, 20).forEach(function(pt) {
       var tr = document.createElement("tr");
       // Canonical B1.3 history schema: nested objects, camelCase token reference.
       var basis_val = (pt.robinhood_basis && pt.robinhood_basis.price_usd_per_token != null)
@@ -631,17 +633,10 @@
   // table above shows: gaps stay gaps, values are never altered, no
   // interpolation, no synthetic points, timestamps never rewritten.
   function chart_points(points, picker) {
-    // The history API returns newest-first (table order). Charts need a chronological, deterministic
-    // axis: sort ascending by collection time; equal/unparseable times keep the API's reverse order.
-    var indexed = points.map(function(pt, i) { return { pt: pt, i: i }; });
-    indexed.sort(function(a, b) {
-      var ta = Date.parse(a.pt.collected_at || ""), tb = Date.parse(b.pt.collected_at || "");
-      var ka = isNaN(ta) ? null : ta, kb = isNaN(tb) ? null : tb;
-      if (ka !== null && kb !== null && ka !== kb) return ka - kb;
-      return b.i - a.i;
-    });
-    return indexed.map(function(entry) {
-      return { t: entry.pt.collected_at || "", v: picker(entry.pt) };
+    // CHART order: oldest -> newest (natural left-to-right time axis). The history TABLE deliberately uses the
+    // opposite, newest-first order. Both come from the one tested helper in /static/radar/r_live_history_order.js.
+    return FincoRLiveHistoryOrder.chartOrder(points).map(function(pt) {
+      return { t: pt.collected_at || "", v: picker(pt) };
     });
   }
 
