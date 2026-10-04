@@ -56,6 +56,30 @@ class EvidenceLeg:
     def symbol(self) -> str:             # presentation only, after exact identity is established
         return APPROVED_BY_CANONICAL_ID[self.canonical_id].symbol
 
+    def authority_context(self) -> dict[str, Any] | None:
+        """Deterministic authority facts that change the MEANING of an ORACLE observation (None for other roles).
+
+        Part of the digest so identical price evidence collected under a materially different authority context is a new
+        auditable row, while identical evidence under the same context still dedupes. Deliberately excludes poll-specific
+        metadata (block number/hash/timestamp, retrieval clock, round id) so a normal repeat poll never appends history.
+        ``sequencerStartedAt``/``sequencerAnswer`` change only when the sequencer's status changes (e.g. after an outage).
+        """
+        if self.role is not EvidenceRole.ORACLE:
+            return None
+        e = self.evidence
+        return {
+            "feed_proxy": e.get("feedProxy"), "heartbeat_seconds": e.get("heartbeatSeconds"),
+            "binding_provenance": e.get("bindingProvenance"), "binding_reviewed_at": e.get("bindingReviewedAt"),
+            "sequencer_authority_state": e.get("sequencerAuthorityState"),
+            "sequencer_checked": e.get("sequencerChecked"),
+            "l2_liveness_guard": e.get("l2LivenessGuard"),
+            "sequencer_grace_protection": e.get("sequencerGraceProtection"),
+            "sequencer_feed": e.get("sequencerFeed"),
+            "sequencer_grace_seconds": e.get("sequencerGraceSeconds"),
+            "sequencer_answer": e.get("sequencerAnswer"),
+            "sequencer_started_at": e.get("sequencerStartedAt"),
+        }
+
     def digest(self) -> str:
         """Content digest over what the SOURCE said. collected_at is excluded so identical evidence dedupes."""
         body = {
@@ -65,6 +89,9 @@ class EvidenceLeg:
             "source_timestamp": self.source_timestamp.isoformat() if self.source_timestamp else None,
             "state": self.state, "reason": self.reason,
         }
+        context = self.authority_context()
+        if context is not None:
+            body["authority_context"] = context
         return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -284,6 +311,45 @@ def _parse_aware(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc) if parsed.tzinfo and parsed.utcoffset() is not None else None
 
 
+_SEQ_KEYS = ("sequencerAuthorityState", "sequencerChecked", "l2LivenessGuard", "sequencerGraceProtection")
+
+
+def _sequencer_continuity(payload: Mapping[str, Any], oracle_registry: Any) -> tuple[str, str] | None:
+    """Does the CURRENT reviewed sequencer authority still stand behind a persisted ORACLE observation?
+
+    Returns None when compatible, else (effective_state, typed_reason). Degrade-only and strict: the recorded facts are read
+    verbatim from the persisted evidence and are never inferred; missing or contradictory facts fail closed; an observation
+    that was never checked against a sequencer feed is never retro-actively treated as if it had been.
+    """
+    from .stock_token_oracle_registry import (
+        SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED, SEQUENCER_SOURCE_PROVEN,
+    )
+    current = oracle_registry.sequencer_authority_state
+    if current == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED or current == SEQUENCER_SOURCE_PROVEN:
+        if not any(key in payload for key in _SEQ_KEYS):
+            return "UNAVAILABLE", "ORACLE_SEQUENCER_EVIDENCE_MISSING"
+    else:  # UNREVIEWED: no current authority stands behind any persisted observation
+        return "UNAVAILABLE", "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE"
+
+    recorded = payload.get("sequencerAuthorityState")
+    checked = payload.get("sequencerChecked")
+    mismatch = ("UNAVAILABLE", "ORACLE_SEQUENCER_EVIDENCE_POLICY_MISMATCH")
+    if current == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED:
+        compatible = (recorded == SEQUENCER_OFFICIAL_FEED_NOT_PUBLISHED and checked is False
+                      and payload.get("l2LivenessGuard") == "PINNED_BLOCK_FRESHNESS_ONLY"
+                      and payload.get("sequencerGraceProtection") is False)
+        return None if compatible else mismatch
+    # current == SOURCE_PROVEN: the persisted observation must prove the same reviewed feed was actually checked
+    binding = oracle_registry.sequencer
+    compatible = (
+        recorded == SEQUENCER_SOURCE_PROVEN and checked is True and payload.get("sequencerGraceProtection") is True
+        and isinstance(payload.get("sequencerFeed"), str)
+        and payload["sequencerFeed"].lower() == binding.feed_proxy.lower()
+        and payload.get("sequencerGraceSeconds") == binding.grace_period_seconds
+        and payload.get("sequencerAnswer") == 0)
+    return None if compatible else mismatch
+
+
 def evaluate_effective_state(
     role: EvidenceRole, *, canonical_id: str, persisted_state: str, persisted_reason: str | None,
     source_timestamp: datetime | None, payload: Mapping[str, Any], now: datetime, oracle_registry: Any | None = None,
@@ -310,6 +376,9 @@ def evaluate_effective_state(
             return "UNAVAILABLE", "ORACLE_FEED_NOT_REVIEWED"
         if binding.heartbeat_seconds is None:
             return "UNAVAILABLE", "ORACLE_HEARTBEAT_NOT_REVIEWED"
+        incompatible = _sequencer_continuity(payload, oracle_registry)   # CURRENT sequencer authority, before age
+        if incompatible is not None:
+            return incompatible
         if source_timestamp is None:
             return "UNAVAILABLE", "ORACLE_SOURCE_TIMESTAMP_UNAVAILABLE"
         age = (now - source_timestamp).total_seconds()
