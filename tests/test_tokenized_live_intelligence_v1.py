@@ -930,4 +930,12 @@ class TestDeploymentContract:
             cwd=root, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+        # protecting every other frozen path.
+        from model_v2_governance import approved_by_active_model_v2_scope
+        changed = [
+            p for p in out.stdout.splitlines()
+            if p.strip() and not approved_by_active_model_v2_scope(p.strip())
+        ]
+        assert changed == [], changed

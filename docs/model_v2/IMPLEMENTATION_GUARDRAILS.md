@@ -95,12 +95,28 @@ before adapters.
 ## 6b. Active epic scope (temporary governance authority)
 
 `docs/model_v2/ACTIVE_EPIC_SCOPE.json` declares the explicit Model V2 epic
-scope: program, base SHA, the exact engine files the epic is authorized to
-change, the exact reviewed support files, and the strictly frozen namespaces
-(`finco_core/`, `domain/revenue/`, `domain/analytics/`, Radar/Yield/Crypto
-authorities, `app/model_validation/`, `app/verified/`). It replaces the false
-blanket "authorities are always zero-diff vs main" assumption for the duration
-of the epic only.
+scope: program, base SHA, approved engine files, approved support files, and
+two distinct freeze concepts. It replaces the false blanket "authorities are
+always zero-diff vs main" assumption for the duration of the epic only.
+
+The two freeze concepts:
+
+- **Permanent Model V2 hard deny** (`PERMANENT_HARD_DENY_PREFIXES` in
+  `tests/model_v2_governance.py`, mirrored exactly in the JSON): other
+  product authorities — `finco_radar/`, `finco_yield/`, `app/radar_rwa/`,
+  `app/crypto_access.py`, `app/crypto_resource_access.py`. These are
+  code-level and tamper-proof: no scope file, current or future, can approve
+  them for Model V2. Changing them requires a completely separate governance
+  decision.
+- **Current epic-phase frozen prefixes** (`current_frozen_prefixes` in the
+  JSON): Model namespaces frozen FOR THE CURRENT PHASE because no reviewed
+  workflow has authorized them yet (C0 state: `finco_core/`,
+  `domain/revenue/`, `domain/analytics/`, `app/model_validation/`,
+  `app/verified/`). A future reviewed workflow authorizes its work by
+  (1) removing the specific relevant prefix from this set, (2) adding exact
+  approved files, and (3) remaining fail-closed for every other file. No
+  namespace-wide wildcards exist; approving a file under a still-frozen
+  prefix fails scope validation.
 
 Lifecycle rules:
 
@@ -108,13 +124,11 @@ Lifecycle rules:
 - Authority never comes from a branch name and never from wildcards; every
   future file needs an explicit, committed scope update
   (`tests/test_model_v2_governance.py::test_g_future_files_require_explicit_scope_authorization`).
-- Frozen namespaces can never be approved — rejected by scope validation and
-  hard-denied in `tests/model_v2_governance.py`.
-- **The marker must be deleted (or set `status=RETIRED`) before the final
-  epic-to-main release merge.** This is enforced by
+- **The marker must be retired before the final epic-to-main release merge.**
+  Both documented retirement paths pass the gate — DELETE the file, or set
+  `status=RETIRED`; an ACTIVE marker at the main tip fails
   `test_active_epic_scope_must_not_reach_main`
-  (acceptance marker `MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE`), which
-  fails on any main-tip checkout carrying an ACTIVE marker.
+  (acceptance marker `MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE`).
 
 ## 7. Implementation neutrality
 

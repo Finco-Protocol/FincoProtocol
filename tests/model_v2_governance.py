@@ -7,25 +7,43 @@ cannot hold during an explicitly authorized Model V2 epic that legitimately
 modifies Model financial authority.
 
 This module replaces the false blanket assumption with an explicit, committed,
-deterministic scope declaration (docs/model_v2/ACTIVE_EPIC_SCOPE.json):
+deterministic scope declaration (docs/model_v2/ACTIVE_EPIC_SCOPE.json) built
+on TWO distinct concepts:
 
-  - the program and its base SHA;
-  - the exact engine files the epic is authorized to change (no wildcards);
-  - the exact support files (app / domain / docs / tests) already reviewed;
-  - the namespaces that stay STRICTLY FROZEN for Model V2.
+A. PERMANENT MODEL-V2 HARD DENY (code-level, immutable here)
+   Other product authorities Model V2 must never alter without a completely
+   separate governance decision: ``finco_radar/``, ``finco_yield/``,
+   ``app/radar_rwa/``, ``app/crypto_access.py``,
+   ``app/crypto_resource_access.py``. These live in
+   ``PERMANENT_HARD_DENY_PREFIXES`` below and are enforced even against a
+   tampered scope file. No future Model V2 workflow can authorize them by
+   editing the scope JSON.
+
+B. CURRENT EPIC-PHASE FROZEN PREFIXES (scope-file level, explicit per phase)
+   Model namespaces that are frozen FOR THE CURRENT PHASE because no reviewed
+   workflow has authorized them yet (for the C0 foundation state:
+   ``finco_core/``, ``domain/revenue/``, ``domain/analytics/``,
+   ``app/model_validation/``, ``app/verified/``). A future reviewed workflow
+   authorizes work by (1) removing the specific relevant prefix from the
+   current frozen set, (2) adding exact approved files, and (3) remaining
+   fail-closed for every other file. No namespace-wide wildcards exist.
 
 Fail-closed properties enforced here:
 
   - authority never comes from a Git branch name;
-  - approved paths are explicit files, never wildcards;
-  - a frozen namespace can never appear in the approved lists (cross-checked
-    AND hard-denied in code even if the JSON were corrupted);
+  - approved paths are exact files, never wildcards or directories;
+  - the code-level permanent hard deny can never be approved, even by a
+    tampered scope; the scope file's mirror of the permanent set must EQUAL
+    the code set (drift fails validation);
+  - approved paths cannot fall under the current frozen prefixes either —
+    a workflow must first move the prefix out of the frozen set explicitly;
   - when the marker is absent or status != ACTIVE, nothing is approved and
     every historical guard behaves exactly as before.
 
 Lifecycle: the ACTIVE scope marker exists ONLY while epic/model-saas-v2 is
-under development. It must be removed or retired before the final
-epic-to-main release merge (enforced by the retirement gate test).
+under development. Before the final epic-to-main release merge it must be
+DELETED or set to status RETIRED — both retirement paths pass the gate;
+an ACTIVE marker at the main tip fails it (enforcement gate test).
 """
 from __future__ import annotations
 
@@ -39,24 +57,24 @@ SCOPE_JSON_PATH = REPO / "docs" / "model_v2" / "ACTIVE_EPIC_SCOPE.json"
 
 ENGINE_PREFIX = "financial_engine/"
 
-# Defense in depth: these namespaces can never be approved for Model V2,
-# regardless of what a corrupted scope file claims. Radar/Yield/Crypto
-# calculation authorities, the core, and the deferred revenue/analytics
-# domains stay frozen for the epic.
-MODEL_V2_HARD_DENY_PREFIXES = (
-    "finco_core/",
-    "domain/revenue/",
-    "domain/analytics/",
+# ── A. PERMANENT MODEL-V2 HARD DENY (code-level authority boundary) ──────────
+# Other product authorities. Model V2 must not alter these without a
+# completely separate governance decision. This tuple is the authority; the
+# scope JSON only mirrors it (and must mirror it exactly).
+PERMANENT_HARD_DENY_PREFIXES = (
     "finco_radar/",
     "finco_yield/",
     "app/radar_rwa/",
-    "app/model_validation/",
-    "app/verified/",
     "app/crypto_access.py",
     "app/crypto_resource_access.py",
 )
 
+# Backwards-compatible alias for readers predating Correction C.
+MODEL_V2_HARD_DENY_PREFIXES = PERMANENT_HARD_DENY_PREFIXES
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
+
+_VALID_STATUSES = ("ACTIVE", "RETIRED")
 
 
 # ---------------------------------------------------------------------------
@@ -91,16 +109,34 @@ def scope_problem(data: dict) -> str | None:
     base = data.get("base_sha")
     if not isinstance(base, str) or not _SHA40.match(base):
         return f"base_sha must be a 40-hex SHA, got {base!r}"
-    if data.get("status") not in ("ACTIVE", "RETIRED"):
-        return f"status must be ACTIVE or RETIRED, got {data.get('status')!r}"
+    if data.get("status") not in _VALID_STATUSES:
+        return f"status must be one of {_VALID_STATUSES}, got {data.get('status')!r}"
 
-    frozen = data.get("strictly_frozen_prefixes")
-    if not isinstance(frozen, list) or not frozen:
-        return "strictly_frozen_prefixes must be a non-empty list"
+    # The scope file's mirror of the PERMANENT hard deny must equal the
+    # code-level set exactly — documentation drift fails validation, and the
+    # code-level set is what is actually enforced.
+    mirrored = data.get("permanent_hard_deny_prefixes")
+    if not isinstance(mirrored, list) or sorted(map(str, mirrored)) != sorted(
+        PERMANENT_HARD_DENY_PREFIXES
+    ):
+        return (
+            "permanent_hard_deny_prefixes must exactly mirror the code-level "
+            f"PERMANENT_HARD_DENY_PREFIXES {sorted(PERMANENT_HARD_DENY_PREFIXES)}, "
+            f"got {mirrored!r}"
+        )
+
+    frozen = data.get("current_frozen_prefixes")
+    if not isinstance(frozen, list):
+        return "current_frozen_prefixes must be a list"
     for entry in frozen:
         problem = _path_problem(entry, must_exist=False, allow_directory=True)
         if problem:
-            return f"strictly_frozen_prefixes entry {entry!r}: {problem}"
+            return f"current_frozen_prefixes entry {entry!r}: {problem}"
+        if _under_any_prefix(entry, list(PERMANENT_HARD_DENY_PREFIXES)):
+            return (
+                f"current_frozen_prefixes entry {entry!r} duplicates a "
+                "permanent hard-deny authority"
+            )
 
     for key in ("approved_engine_paths", "approved_support_paths"):
         paths = data.get(key)
@@ -121,9 +157,20 @@ def scope_problem(data: dict) -> str | None:
                     f"{key} entry {path!r} is not under {ENGINE_PREFIX}: only "
                     "engine files may be engine-authorized"
                 )
-            # A frozen namespace can never be approved.
+            # A permanently denied authority can never be approved.
+            if _under_any_prefix(path, list(PERMANENT_HARD_DENY_PREFIXES)):
+                return (
+                    f"{key} entry {path!r} falls under a PERMANENT Model V2 "
+                    "hard-deny authority"
+                )
+            # A currently frozen prefix must be explicitly unfrozen (removed
+            # from current_frozen_prefixes) before its files can be approved.
             if _under_any_prefix(path, frozen):
-                return f"{key} entry {path!r} falls under a strictly frozen namespace"
+                return (
+                    f"{key} entry {path!r} falls under a currently frozen "
+                    "namespace: remove that prefix from current_frozen_prefixes "
+                    "in the same reviewed scope change first"
+                )
     return None
 
 
@@ -168,24 +215,17 @@ def _approved_paths(scope: dict) -> frozenset[str]:
     )
 
 
-def authorized_engine_files() -> set[str]:
-    """The exact engine files the ACTIVE scope authorizes (empty when none)."""
-    scope = active_scope()
-    if scope is None:
-        return set()
-    return set(scope.get("approved_engine_paths", []))
-
-
 def approved_by_active_model_v2_scope(path: str) -> bool:
     """True only when an ACTIVE scope explicitly authorizes this exact file.
 
-    Hard-denied namespaces are never approved, even if the scope file claimed
-    otherwise (the scope validation test also rejects such a file).
+    Permanently denied product authorities are never approved — the code-level
+    PERMANENT_HARD_DENY_PREFIXES check wins even over a tampered scope file
+    (scope validation also rejects such a file).
     """
     scope = active_scope()
     if scope is None:
         return False
-    if path.startswith(MODEL_V2_HARD_DENY_PREFIXES):
+    if path.startswith(PERMANENT_HARD_DENY_PREFIXES):
         return False
     return path in _approved_paths(scope)
 
@@ -203,6 +243,14 @@ def changed_paths_vs_main() -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def authorized_engine_files() -> set[str]:
+    """The exact engine files the ACTIVE scope authorizes (empty when none)."""
+    scope = active_scope()
+    if scope is None:
+        return set()
+    return set(scope.get("approved_engine_paths", []))
+
+
 def model_v2_unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
     """Engine files changed vs main that the ACTIVE Model V2 scope does not
     explicitly authorize."""
@@ -217,18 +265,15 @@ def model_v2_unapproved_engine_changes(changed: list[str] | None = None) -> list
 
 
 def model_v2_frozen_violations(changed: list[str] | None = None) -> list[str]:
-    """Changed paths under namespaces that stay strictly frozen for Model V2.
-
-    Hard-denied prefixes always count as violations; additionally any prefix
-    the scope file declares as frozen counts, even beyond the hard list.
-    """
+    """Changed paths under frozen namespaces: the code-level permanent hard
+    deny PLUS the scope's current epic-phase frozen prefixes."""
     changed = changed_paths_vs_main() if changed is None else changed
     scope = active_scope()
-    declared = tuple(scope.get("strictly_frozen_prefixes", [])) if scope else ()
-    prefixes = tuple(set(MODEL_V2_HARD_DENY_PREFIXES) | set(declared))
+    declared = list(scope.get("current_frozen_prefixes", [])) if scope else []
+    prefixes = list(PERMANENT_HARD_DENY_PREFIXES) + declared
     return sorted(
         f for f in changed
-        if _under_any_prefix(f, list(prefixes))
+        if _under_any_prefix(f, prefixes)
     )
 
 
@@ -244,3 +289,20 @@ def unauthorized_model_v2_changes(changed: list[str] | None = None) -> list[str]
         return sorted(changed)
     approved = _approved_paths(scope)
     return sorted(f for f in changed if f not in approved)
+
+
+# ---------------------------------------------------------------------------
+# Retirement gate (pure helper + test-facing check)
+# ---------------------------------------------------------------------------
+
+def retirement_gate_pass(*, marker_present: bool, marker_status: str | None,
+                         is_main_tip: bool) -> bool:
+    """MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE semantics.
+
+    During epic development an ACTIVE marker is allowed (and required).
+    At the main tip an ACTIVE marker FAILS the release gate; both retirement
+    paths pass — marker DELETED, or status RETIRED.
+    """
+    if not is_main_tip:
+        return True
+    return not (marker_present and marker_status == "ACTIVE")
