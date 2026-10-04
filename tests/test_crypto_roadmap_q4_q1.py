@@ -69,10 +69,12 @@ def test_protocol_layer_is_explicit_and_separate():
 
 def test_shared_navigation_exposes_primary_products_and_active_contracts():
     nav = _flat("app/templates/partials/_protocol_nav.html")
-    # Primary navigation (compact): R-LIVE · Radar · Model · API · Docs. Yield / account & access / roadmap /
+    # Primary navigation (compact): Radar · Model · API · Docs (Radar opens R-LIVE, the default Radar surface; the
+    # Radar domain nav carries R-LIVE · Tokenized · Stocks · Crypto · Economy). Yield / account & access / roadmap /
     # $FINCO stay reachable through the secondary "More" menu, not as equal top-level products.
     primary, secondary = nav.split('data-testid="proto-nav-secondary"', 1)
-    for label, href in (("R-LIVE", "/radar/r-live"), ("Radar", "/radar"), ("Model", "/library"),
+    assert 'href="/radar/r-live"' not in primary          # no duplicate global R-LIVE entry
+    for label, href in (("Radar", "/radar"), ("Model", "/library"),
                         ("API", "/api"), ("Docs", "/docs")):
         assert f'href="{href}"' in primary, label
         assert f"> {label} </a>" in primary, label

@@ -3,159 +3,173 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FINCO Crypto</title>
+  <title>FINCO — Account &amp; access</title>
   <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/radar/radar.css">
   <link rel="stylesheet" href="/static/css/protocol-shell.css">
+  <link rel="stylesheet" href="/static/css/finco-surface.css">
 </head>
-<body class="protocol">
+<body class="radar">
 {% with proto_active_page="crypto" %}{% include "partials/_protocol_nav.html" %}{% endwith %}
-
-{% with crypto_domain="overview" %}{% include "partials/_crypto_domain_nav.html" %}{% endwith %}
-<main class="radar-main" style="padding:24px;max-width:960px;margin:0 auto">
-  <header style="margin-bottom:20px">
-    <p class="muted small" style="margin:0">FINCO PROTOCOL / CRYPTO</p>
-    <h1 style="font-size:20px;font-weight:700;margin:4px 0 6px">FINCO Crypto</h1>
-    <p class="muted small" style="margin:0;max-width:680px">
-      Wallet state, $FINCO access state, saved Yield opportunities and in-app Yield Alerts in one place.
-      States come from FINCO's authoritative backend decisions — this page never derives access from a
-      frontend balance, and missing evidence is never shown as zero.
+{# Presentation only: every state below comes from FINCO's authoritative backend decisions. #}
+{% set _gated = access.resources.values() | selectattr('state', 'in', ['LOCKED', 'UNLOCKED']) | list %}
+<main class="radar-main fs-main" style="max-width:960px">
+  <header>
+    <p class="fs-eyebrow">FINCO Protocol · Account &amp; access</p>
+    <h1 class="fs-title">Account &amp; access</h1>
+    <p class="fs-lede">
+      Your wallet, saved Yield items and in-app alerts in one place. States come from FINCO's authoritative
+      backend decisions — this page never derives access from a frontend balance, and missing evidence is never shown as zero.
     </p>
   </header>
 
-  <section class="panel" data-testid="crypto-wallet" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Wallet</h2>
-    <p style="margin:0">State: <span class="badge">{{ wallet_state }}</span></p>
-    <p class="muted small" style="margin:6px 0 0">
+  <div class="fs-kpis" data-testid="crypto-summary">
+    <div class="fs-kpi"><span class="k">Wallet</span><div class="v">{{ wallet_state | replace('_', ' ') | title }}</div></div>
+    <div class="fs-kpi"><span class="k">Access</span><div class="v">{% if _gated %}Gated{% else %}Open{% endif %}</div>
+      <div class="m">{% if _gated %}Some capabilities use an active access gate.{% else %}No production $FINCO access gate is currently active.{% endif %}</div></div>
+    <div class="fs-kpi"><span class="k">Saved items</span><div class="v">{% if watchlist_state == 'UNAVAILABLE' %}—{% else %}{{ watchlist_count }}{% endif %}</div></div>
+    <div class="fs-kpi"><span class="k">Unread alerts</span><div class="v">{% if alerts.unread_count is not none %}{{ alerts.unread_count }}{% else %}—{% endif %}</div></div>
+  </div>
+
+  <section class="fs-panel" data-testid="crypto-wallet">
+    <h2>Wallet</h2>
+    <p>State: <span class="fs-badge">{{ wallet_state }}</span></p>
+    <p class="fs-note">
       {% if wallet_state == "VERIFIED" %}Wallet ownership verified via the existing signed-challenge flow.
       {% elif wallet_state == "UNVERIFIED" %}Signed in, but no verified wallet is linked yet. Verify ownership on the
         <a href="/protocol/finco">$FINCO page</a>. Ownership ≠ entitlement.
       {% elif wallet_state == "UNAVAILABLE" %}<span data-testid="wallet-unavailable">The wallet store is currently unavailable. No wallet state is inferred and nothing is counted as zero.</span>
-      {% else %}No wallet session. Connect and verify a wallet on the
-        <a href="/protocol/finco">$FINCO page</a>.{% endif %}
+      {% else %}No wallet session. Connect and verify a wallet on the <a href="/protocol/finco">$FINCO page</a>.{% endif %}
     </p>
   </section>
 
-  <section class="panel" data-testid="crypto-access" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">$FINCO access state</h2>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr><th style="text-align:left;padding:6px 8px">Capability</th><th style="text-align:left;padding:6px 8px">State</th><th style="text-align:left;padding:6px 8px">Why</th></tr></thead>
-      <tbody>
-      {% for key, resource in access.resources.items() %}
-        <tr data-testid="crypto-access-row-{{ key }}" style="border-top:1px solid rgba(255,255,255,.08)">
-          <td style="padding:8px"><strong>{{ resource.display_name }}</strong><br><span class="muted small mono">{{ key }}</span></td>
-          <td style="padding:8px"><span class="badge">{{ resource.state }}</span>
-            {% if resource.balance %}<br><span class="mono small">Observed balance {{ resource.balance.observed_balance }} (chain {{ resource.balance.chain_id }})</span>{% endif %}
-            {% if resource.note %}<br><span class="muted small">{{ resource.note }}</span>{% endif %}</td>
-          <td style="padding:8px"><span class="mono small">{{ resource.reason or '—' }}</span></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    <p class="muted small" style="margin:10px 0 0">
-      Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating
-      is not active by default, so gated capabilities are not enforced today. States stay distinct:
-      NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means the token gate is not active for that capability — it does not mean the Alerts backend is unavailable.
-      Ownership ≠ entitlement; entitlement ≠ execution, metering, staking, or burns.
-    </p>
+  <section class="fs-panel" data-testid="crypto-access">
+    <h2>Access</h2>
+    <p>{% if _gated %}Some capabilities use an active access gate; technical status below lists each one.{% else %}No production $FINCO access gate is currently active. Everything available today is open to you.{% endif %}</p>
+    <p class="fs-note">Ownership ≠ entitlement; entitlement ≠ execution, metering, staking, or burns.</p>
   </section>
 
-  <section class="panel" data-testid="crypto-watchlist" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Yield Watchlist
+  <section class="fs-panel" data-testid="crypto-watchlist">
+    <h2>Saved items
       {%- if watchlist_state == 'UNAVAILABLE' %}
-        <span class="badge" data-testid="watchlist-count">—</span>
-        <span class="badge" data-testid="watchlist-unavailable">UNAVAILABLE</span>
+        <span class="fs-badge" data-testid="watchlist-count">—</span>
+        <span class="fs-badge fs-badge--warn" data-testid="watchlist-unavailable">UNAVAILABLE</span>
       {%- else %}
-        <span class="badge" data-testid="watchlist-count">{{ watchlist_count }}</span>
+        <span class="fs-badge" data-testid="watchlist-count">{{ watchlist_count }}</span>
       {%- endif %}</h2>
     {% if watchlist %}
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr><th style="text-align:left;padding:6px 8px">Opportunity</th><th style="text-align:left;padding:6px 8px">Canonical identity</th><th style="text-align:left;padding:6px 8px">Saved</th></tr></thead>
+    <div class="fs-table-wrap"><table class="fs-table">
+      <thead><tr><th>Opportunity</th><th>Canonical identity</th><th>Saved</th></tr></thead>
       <tbody>
       {% for item in watchlist %}
-        <tr data-testid="crypto-watchlist-row" style="border-top:1px solid rgba(255,255,255,.08)">
-          <td style="padding:8px">{{ item.display_name }}</td>
-          <td style="padding:8px"><span class="mono small">{{ item.opportunity_uid }}</span><br><span class="muted small">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
-          <td style="padding:8px"><span class="mono small">{{ item.saved_at }}</span></td>
+        <tr data-testid="crypto-watchlist-row">
+          <td>{{ item.display_name }}</td>
+          <td><span class="mono small">{{ item.opportunity_uid }}</span><span class="fs-sub">{{ item.protocol }} · chain {{ item.chain_id }} · {{ item.product_type }}</span></td>
+          <td><span class="mono small">{{ item.saved_at }}</span></td>
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% elif watchlist_state == 'UNAVAILABLE' %}
-    <p class="muted small" data-testid="watchlist-unavailable-note" style="margin:0">The watchlist store is currently unavailable. Saved opportunities cannot be read right now and are NOT counted as zero.</p>
+    <p class="fs-note" data-testid="watchlist-unavailable-note">The watchlist store is currently unavailable. Saved opportunities cannot be read right now and are NOT counted as zero.</p>
     {% else %}
-    <p class="muted small" data-testid="watchlist-empty" style="margin:0">Nothing saved yet. Save opportunities by their canonical identity from the <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.</p>
+    <p class="fs-note" data-testid="watchlist-empty">Nothing saved yet. Save opportunities by their canonical identity from the <a href="/yield">Yield table</a>. The canonical Watchlist feeds in-app alerts.</p>
     {% endif %}
-    <p class="muted small" style="margin:10px 0 0">Manage saved items on the <a href="/yield/monitor">Wallet Monitor</a>.</p>
+    <p class="fs-note">Manage saved items on the <a href="/yield/monitor">Wallet Monitor</a>.</p>
   </section>
 
-  <section class="panel" data-testid="crypto-alerts" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Yield Alerts</h2>
+  <section class="fs-panel" data-testid="crypto-alerts">
+    <h2>Alerts</h2>
     {% if alerts_notice %}
-    <div class="warn" data-testid="alerts-notice" style="margin:0 0 8px">
+    <div class="fs-warn" data-testid="alerts-notice">
       <strong>Refresh not applied.</strong> {{ alerts_notice }}
       <span class="mono small" data-testid="alerts-notice-reason">{{ alerts_notice_reason }}</span>
     </div>
     {% endif %}
-    <p style="margin:0">State: <span class="badge" data-testid="alerts-state">{{ alerts.state }}</span>
-       <span class="badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
-    {% if alerts.reason %}<p class="mono small" style="margin:6px 0 0">{{ alerts.reason }}</p>{% endif %}
+    <p>State: <span class="fs-badge" data-testid="alerts-state">{{ alerts.state }}</span>
+       <span class="fs-badge" data-testid="alerts-unread">{% if alerts.unread_count is not none %}unread {{ alerts.unread_count }}{% else %}unread —{% endif %}</span></p>
 
     {% if alerts.available %}
-    <p class="small" style="margin:8px 0 0">In-app alerts: available</p>
+    <p class="small">In-app alerts: available</p>
+    <div class="fs-actions">
     {% if alerts.can_refresh %}
-    <form method="post" action="/crypto/alerts/refresh" style="margin-top:8px">
+    <form method="post" action="/crypto/alerts/refresh">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" data-testid="alerts-refresh">Refresh alerts</button>
+      <button type="submit" class="fs-btn" data-testid="alerts-refresh">Refresh alerts</button>
     </form>
-    <p class="muted small" style="margin:5px 0 0">First refresh establishes a baseline and does not replay historical changes.</p>
+    <p class="fs-note">First refresh establishes a baseline and does not replay historical changes.</p>
     {% endif %}
-    <p class="muted small" style="margin:5px 0 0" data-testid="alerts-automation" data-automation="{{ 'configured' if alerts_automation_configured else 'disabled' }}">
+    </div>
+    <p class="fs-note" data-testid="alerts-automation" data-automation="{{ 'configured' if alerts_automation_configured else 'disabled' }}">
       {% if alerts_automation_configured %}Automated monitoring: enabled by configuration for this environment (in-app alerts only; your alerts also update when you press Refresh).{% else %}Automated monitoring: disabled in this environment. Alerts update only when you press Refresh.{% endif %}
     </p>
 
     {% if alerts['items'] %}
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
-      <thead><tr><th style="text-align:left;padding:6px 8px">Alert</th><th style="text-align:left;padding:6px 8px">Opportunity</th><th style="text-align:left;padding:6px 8px">Observed change</th><th style="text-align:left;padding:6px 8px">Detected</th><th style="text-align:left;padding:6px 8px">State</th></tr></thead>
+    <div class="fs-table-wrap"><table class="fs-table">
+      <thead><tr><th>Alert</th><th>Opportunity</th><th>Observed change</th><th>Detected</th><th>State</th></tr></thead>
       <tbody>
       {% for alert in alerts['items'] %}
-        <tr data-testid="alerts-item" style="border-top:1px solid rgba(255,255,255,.08)">
-          <td style="padding:8px"><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span><br><span class="small">{{ alert.label or alert.summary or '—' }}</span></td>
-          <td style="padding:8px">{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}{% if alert.opportunity_display %}<br><span class="small">{{ alert.opportunity_display }}</span>{% endif %}</td>
-          <td style="padding:8px">
-            {% if alert.field %}<span class="mono small">{{ alert.field }}</span><br><span class="small">{{ alert.previous if alert.previous is not none else 'missing' }} → {{ alert.current if alert.current is not none else 'missing' }}</span>
+        <tr data-testid="alerts-item">
+          <td><span class="mono small">{{ alert.alert_type or 'ALERT' }}</span><span class="fs-sub">{{ alert.label or alert.summary or '—' }}</span></td>
+          <td>{% if alert.opportunity_uid %}<span class="mono small">{{ alert.opportunity_uid }}</span>{% endif %}{% if alert.opportunity_display %}<span class="fs-sub">{{ alert.opportunity_display }}</span>{% endif %}</td>
+          <td>
+            {% if alert.field %}<span class="mono small">{{ alert.field }}</span><span class="fs-sub">{{ alert.previous if alert.previous is not none else 'missing' }} → {{ alert.current if alert.current is not none else 'missing' }}</span>
             {% elif alert.value %}<span class="small">{{ alert.value }}</span>
             {% else %}<span class="small">—</span>{% endif %}
           </td>
-          <td style="padding:8px"><span class="mono small">{{ alert.detected_at or alert.created_at or alert.observed_at or '—' }}</span></td>
-          <td style="padding:8px"><span class="badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
-            {% if not alert.read %}<form method="post" action="/crypto/alerts/{{ alert.alert_id }}/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" data-testid="alert-mark-read">Mark read</button></form>{% endif %}
+          <td><span class="mono small">{{ alert.detected_at or alert.created_at or alert.observed_at or '—' }}</span></td>
+          <td><span class="fs-badge">{{ 'READ' if alert.read else 'UNREAD' }}</span>
+            {% if not alert.read %}<form method="post" action="/crypto/alerts/{{ alert.alert_id }}/read"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="fs-btn" data-testid="alert-mark-read">Mark read</button></form>{% endif %}
           </td>
         </tr>
       {% endfor %}
       </tbody>
-    </table>
-    {% if alerts.unread_count %}<form method="post" action="/crypto/alerts/read-all" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" data-testid="alerts-mark-all-read">Mark all read</button></form>{% endif %}
+    </table></div>
+    {% if alerts.unread_count %}<form method="post" action="/crypto/alerts/read-all"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="fs-btn" data-testid="alerts-mark-all-read">Mark all read</button></form>{% endif %}
     {% else %}
-    <p class="muted small" style="margin:8px 0 0">No alerts for your account yet.</p>
+    <p class="fs-note">No alerts for your account yet.</p>
     {% endif %}
     {% else %}
-    <p class="small" style="margin:8px 0 0">
+    <p>
       {% if alerts.reason == 'ALERTS_AUTH_REQUIRED' %}Sign in to view your alerts.
-      {% else %}In-app alerts backend is currently unavailable.{% endif %}
+      {% else %}In-app alerts are currently unavailable.{% endif %}
     </p>
-    <p class="muted small" style="margin:5px 0 0">Legacy test-state label: integration pending. It is retained only for unavailable/test coverage; the integrated product uses the real Yield Alerts backend.</p>
     {% endif %}
-
-    <p class="muted small" style="margin:10px 0 0">In-app Watchlist, alert persistence/read state and manual Refresh are implemented. {% if alerts_automation_configured %}Automated monitoring = ENABLED by configuration (in-app only){% else %}Background scheduler = NOT SHIPPED{% endif %} · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.</p>
   </section>
 
-  <section class="panel" data-testid="crypto-execution" style="padding:14px;margin-bottom:14px">
-    <h2 style="font-size:14px;margin:0 0 8px">Execution</h2>
-    <p style="margin:0">Yield execution: <span class="badge">{{ execution_state }}</span></p>
-    <p class="muted small" style="margin:6px 0 0">Execution planning is a separately gated capability and is OFF by default. This surface shows status only — it never signs, custodies, or broadcasts, and no buy/swap action exists here.</p>
-  </section>
+  <details class="fs-details" data-testid="crypto-technical-status">
+    <summary>Technical status</summary>
+    <div class="fs-body">
+      {% if alerts.reason %}<p class="mono small">Alerts: {{ alerts.reason }}</p>{% endif %}
+      {% if not alerts.available %}<p class="fs-note">Legacy test-state label: integration pending. It is retained only for unavailable/test coverage; the integrated product uses the real Yield Alerts backend.</p>{% endif %}
+      <p class="fs-note">In-app Watchlist, alert persistence/read state and manual Refresh are implemented. {% if alerts_automation_configured %}Automated monitoring = ENABLED by configuration (in-app only){% else %}Background scheduler = NOT SHIPPED{% endif %} · Email = NOT SHIPPED · Telegram = NOT SHIPPED · Discord = NOT SHIPPED · Push = NOT SHIPPED.</p>
+      <div class="fs-table-wrap"><table class="fs-table">
+        <thead><tr><th>Capability</th><th>State</th><th>Why</th></tr></thead>
+        <tbody>
+        {% for key, resource in access.resources.items() %}
+          <tr data-testid="crypto-access-row-{{ key }}">
+            <td><strong>{{ resource.display_name }}</strong><span class="fs-sub mono">{{ key }}</span></td>
+            <td><span class="fs-badge">{{ resource.state }}</span>
+              {% if resource.balance %}<span class="fs-sub mono">Observed balance {{ resource.balance.observed_balance }} (chain {{ resource.balance.chain_id }})</span>{% endif %}
+              {% if resource.note %}<span class="fs-sub">{{ resource.note }}</span>{% endif %}</td>
+            <td><span class="mono small">{{ resource.reason or '—' }}</span></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <p class="fs-note">
+        Product truth: the production $FINCO token deployment is NOT CONFIGURED and token gating is not active by default, so gated
+        capabilities are not enforced today. States stay distinct: NOT CONFIGURED ≠ UNAVAILABLE ≠ LOCKED ≠ UNLOCKED. NOT_ACTIVATED means the token gate is not active for that capability — it does not mean the Alerts backend is unavailable.
+      </p>
+      <div data-testid="crypto-execution">
+        <p>Yield execution: <span class="fs-badge">{{ execution_state }}</span></p>
+        <p class="fs-note">Execution planning is a separately gated capability and is OFF by default. This surface shows status only — it never signs, custodies, or broadcasts, and no buy/swap action exists here.</p>
+      </div>
+    </div>
+  </details>
 
-  <footer class="muted small" style="padding:8px 0 20px">Factual status surface. No yield promises, guarantees, or purchase solicitations. <a href="/yield">Yield</a> · <a href="/yield/monitor">Wallet Monitor</a> · <a href="/protocol/finco">$FINCO</a></footer>
+  <p class="fs-note">Factual status surface. No yield promises, guarantees, or purchase solicitations.
+    <a href="/yield">Yield</a> · <a href="/yield/monitor">Wallet Monitor</a> · <a href="/protocol/finco">$FINCO</a></p>
 </main>
 </body>
 </html>

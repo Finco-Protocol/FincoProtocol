@@ -64,6 +64,22 @@ def _collector_health():
         }
 
 
+def _rlive_source_summary():
+    """Read-only summary of the existing R-LIVE snapshot authority (never acquires; None when unavailable)."""
+    try:
+        from app.radar_rwa.r_live_snapshot_view import build_snapshot_view
+        view = build_snapshot_view()
+        if view.get("state") != "AVAILABLE":
+            return None
+        counts: dict[str, int] = {}
+        for row in view.get("rows", []):
+            state = str(row.get("state") or "UNKNOWN")
+            counts[state] = counts.get(state, 0) + 1
+        return {"total": sum(counts.values()), "states": dict(sorted(counts.items()))}
+    except Exception:
+        return None
+
+
 def _collector_health_object():
     """Typed collector health (read-only); a read failure is NEVER_RUN-equivalent UNHEALTHY, never healthy."""
     try:
@@ -214,6 +230,8 @@ async def tokenized_markets_landing(request: Request):
             "showing": len(composed),
             "history_available": store is not None and store.count() > 0,
             "collector_health": _collector_health(),
+            "rlive_source": _rlive_source_summary() if mode == "primary" else None,
+            "reviewed_symbols": sorted(eligible_symbols),
             "access": gates.public_view(),
         },
     )

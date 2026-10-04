@@ -1,0 +1,64 @@
+/* FINCO surface primitives — dark terminal language shared by Tokenized Markets and Account & access.
+   Built on the Radar tokens (radar.css); no framework, no new colours. */
+.fs-main { max-width: 1180px; margin: 0 auto; padding: 22px 22px 56px; min-width: 0; }
+.fs-eyebrow { margin: 0 0 4px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--radar-muted); }
+.fs-title { margin: 0 0 6px; font-size: 20px; font-weight: 700; color: var(--radar-text); }
+.fs-lede { margin: 0 0 16px; max-width: 720px; color: var(--radar-muted); font-size: 13px; }
+.fs-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin: 0 0 14px; padding: 10px 14px;
+  border: 1px solid var(--radar-border); border-radius: 3px; background: var(--radar-panel); }
+.fs-state strong { font-size: 13px; letter-spacing: .02em; }
+.fs-state span { color: var(--radar-muted); font-size: 12px; }
+.fs-state[data-tone="ok"] { border-color: color-mix(in srgb, var(--radar-green) 45%, var(--radar-border)); }
+.fs-state[data-tone="ok"] strong { color: var(--radar-green); }
+.fs-state[data-tone="warn"] { border-color: color-mix(in srgb, var(--radar-gold) 45%, var(--radar-border)); }
+.fs-state[data-tone="warn"] strong { color: var(--radar-gold); }
+.fs-state[data-tone="muted"] strong { color: var(--radar-text); }
+.fs-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.fs-kpi { background: var(--radar-panel); border: 1px solid var(--radar-border); border-radius: 3px; padding: 10px 12px; min-width: 0; }
+.fs-kpi .k { display: block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--radar-muted); }
+.fs-kpi .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+.fs-kpi .m { font-size: 11px; color: var(--radar-muted); margin-top: 2px; }
+.fs-panel { background: var(--radar-panel); border: 1px solid var(--radar-border); border-radius: 3px; padding: 14px 16px; margin: 0 0 14px; }
+.fs-panel h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--radar-muted);
+  border-bottom: 1px solid var(--radar-border); padding-bottom: 6px; }
+.fs-panel p { margin: 0 0 8px; }
+.fs-empty h2 { color: var(--radar-text); border: 0; text-transform: none; letter-spacing: 0; font-size: 15px; padding: 0; }
+.fs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.fs-chip { border: 1px solid var(--radar-border); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--radar-text); text-decoration: none; }
+.fs-chip:hover { border-color: var(--radar-teal); }
+.fs-cta { display: inline-block; border: 1px solid var(--radar-teal); color: var(--radar-teal); border-radius: 3px; padding: 6px 12px;
+  font-size: 12px; font-weight: 650; text-decoration: none; }
+.fs-cta:hover { background: color-mix(in srgb, var(--radar-teal) 14%, transparent); }
+.fs-note { color: var(--radar-muted); font-size: 12px; margin: 0 0 10px; }
+.fs-note a, .fs-panel a, .fs-details a { color: var(--radar-teal); }
+.fs-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 14px; }
+.fs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fs-table th { text-align: left; padding: 8px 10px; color: var(--radar-muted); font-weight: 600; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; border-bottom: 1px solid var(--radar-border); white-space: nowrap; }
+.fs-table td { padding: 8px 10px; border-bottom: 1px solid var(--radar-border); vertical-align: top; }
+.fs-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fs-table a { color: var(--radar-text); font-weight: 650; text-decoration: none; border-bottom: 1px dotted var(--radar-teal); }
+.fs-sub { display: block; font-size: 11px; color: var(--radar-muted); }
+.fs-missing { color: var(--radar-muted); }
+.fs-badge { display: inline-block; border: 1px solid var(--radar-border); border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 650; color: var(--radar-muted); }
+.fs-badge--ok { color: var(--radar-green); border-color: color-mix(in srgb, var(--radar-green) 45%, var(--radar-border)); }
+.fs-badge--warn { color: var(--radar-gold); border-color: color-mix(in srgb, var(--radar-gold) 45%, var(--radar-border)); }
+.fs-badge--bad { color: var(--radar-red); border-color: color-mix(in srgb, var(--radar-red) 45%, var(--radar-border)); }
+.fs-details { border: 1px solid var(--radar-border); border-radius: 3px; background: var(--radar-panel); margin: 0 0 14px; }
+.fs-details > summary { cursor: pointer; padding: 9px 14px; font-size: 12px; color: var(--radar-muted); }
+.fs-details > summary:hover { color: var(--radar-text); }
+.fs-details[open] > summary { border-bottom: 1px solid var(--radar-border); }
+.fs-details > .fs-body { padding: 12px 14px; font-size: 12px; }
+.fs-kv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 12px; margin: 0; }
+.fs-kv dt { color: var(--radar-muted); overflow-wrap: anywhere; }
+.fs-kv dd { margin: 0; overflow-wrap: anywhere; }
+.fs-actions form { display: inline; }
+.fs-btn { background: transparent; border: 1px solid var(--radar-border); color: var(--radar-text); border-radius: 3px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.fs-btn:hover { border-color: var(--radar-teal); }
+.fs-warn { border: 1px solid color-mix(in srgb, var(--radar-gold) 45%, var(--radar-border)); border-radius: 3px; padding: 8px 12px; margin: 0 0 10px; font-size: 12px; }
+@media (max-width: 640px) { .fs-main { padding: 16px 14px 40px; } .fs-kv { grid-template-columns: 1fr; } }
+.fs-header { margin: 0 0 14px; }
+.fs-header h1 { margin: 0 0 6px; font-size: 20px; font-weight: 700; color: var(--radar-text); }
+.fs-section { margin: 0 0 16px; }
+.fs-section h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--radar-muted);
+  border-bottom: 1px solid var(--radar-border); padding-bottom: 6px; }

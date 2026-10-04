@@ -34,19 +34,39 @@ class TokenizedOperationalState(str, Enum):
 #: states in which the surface may present itself as an operating market-intelligence product
 OPERATING_STATES = frozenset({TokenizedOperationalState.PARTIAL_LIVE, TokenizedOperationalState.LIVE})
 
+# User-facing state grammar. Only the state itself decides the wording: a collector that has run (even
+# unhealthily) is never described as "not active", and only a never-run collector is a preview.
+STATE_LABELS = {
+    TokenizedOperationalState.IDENTITY_ONLY: "Preview · identity only",
+    TokenizedOperationalState.COLLECTOR_NOT_STARTED: "Preview · collection has not started",
+    TokenizedOperationalState.COLLECTOR_UNHEALTHY: "Collecting · current source evidence unavailable",
+    TokenizedOperationalState.NO_PRICED_OBSERVATIONS: "Collecting · no fresh priced observations yet",
+    TokenizedOperationalState.PARTIAL_LIVE: "Partially live",
+    TokenizedOperationalState.LIVE: "Live",
+}
+
+STATE_TONES = {
+    TokenizedOperationalState.IDENTITY_ONLY: "muted",
+    TokenizedOperationalState.COLLECTOR_NOT_STARTED: "muted",
+    TokenizedOperationalState.COLLECTOR_UNHEALTHY: "warn",
+    TokenizedOperationalState.NO_PRICED_OBSERVATIONS: "warn",
+    TokenizedOperationalState.PARTIAL_LIVE: "ok",
+    TokenizedOperationalState.LIVE: "ok",
+}
+
 STATE_HEADLINES = {
     TokenizedOperationalState.IDENTITY_ONLY:
-        "Preview — identity catalog only. No reviewed live-collection universe is active.",
+        "No reviewed live-collection universe is active; only research identities are available.",
     TokenizedOperationalState.COLLECTOR_NOT_STARTED:
-        "Preview — data collection is not active. The collector has never run.",
+        "The reviewed universe is ready, but the collector has not run yet.",
     TokenizedOperationalState.COLLECTOR_UNHEALTHY:
-        "Preview — data collection is unhealthy. Displayed evidence may be missing or stale.",
+        "The collector is running, but its current source evidence is unavailable or unhealthy.",
     TokenizedOperationalState.NO_PRICED_OBSERVATIONS:
-        "Preview — the collector is running but no priced observations are stored yet.",
+        "The collector is running, but no fresh priced observations are stored yet.",
     TokenizedOperationalState.PARTIAL_LIVE:
-        "Partially live — only part of the reviewed universe currently has fresh priced evidence.",
+        "Only part of the reviewed universe currently has fresh priced evidence.",
     TokenizedOperationalState.LIVE:
-        "Live — every reviewed asset currently has fresh priced evidence.",
+        "Every reviewed asset currently has fresh priced evidence.",
 }
 
 
@@ -70,6 +90,14 @@ class TokenizedOperationalView:
     @property
     def operating(self) -> bool:
         return self.state in OPERATING_STATES
+
+    @property
+    def label(self) -> str:
+        return STATE_LABELS[self.state]
+
+    @property
+    def tone(self) -> str:
+        return STATE_TONES[self.state]
 
 
 # ── public identity eligibility ──────────────────────────────────────────────────────────────────

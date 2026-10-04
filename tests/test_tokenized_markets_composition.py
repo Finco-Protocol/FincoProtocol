@@ -304,18 +304,19 @@ class TestTokenizedMarketsSurface:
     def test_landing_renders_with_empty_history(self, client):
         page = client.get("/radar/tokenized-markets")
         assert page.status_code == 200
-        assert 'data-testid="tokenized-markets-table"' in page.text
+        # No persisted priced evidence → compact collecting state, not a mostly-empty market table.
+        assert 'data-testid="tokenized-markets-table"' not in page.text
+        assert 'data-testid="tm-empty"' in page.text
         assert "economic underlying" in page.text  # lede (capitalized in copy)
-        assert 'data-testid="tm-history-note"' in page.text
 
     def test_landing_primary_list_excludes_identity_only_rows_and_catalog_keeps_them(self, client):
-        # Product-reality contract: only reviewed collector-eligible assets (13, unpriced until the collector
-        # runs) are primary rows; every other identity stays in the research identity catalog.
+        # Product-reality contract: with no priced evidence the landing is a compact collecting state (no row for any
+        # identity); every identity stays reachable through the research catalog and the detail deep link.
         import re
         page = client.get("/radar/tokenized-markets")
-        assert len(re.findall(r'data-testid="tm-row-', page.text)) == 13
-        assert 'data-testid="tm-row-NVDA"' in page.text      # reviewed eligible, still unpriced
-        assert 'data-testid="tm-row-ZZZZ"' not in page.text
+        assert len(re.findall(r'data-testid="tm-row-', page.text)) == 0
+        assert 'data-testid="tm-empty"' in page.text
+        assert 'href="/radar/tokenized-markets/NVDA"' in page.text      # reviewed asset chip
         catalog = client.get("/radar/tokenized-markets?view=catalog")
         assert 'href="/radar/tokenized-markets/NVDA"' in catalog.text
         assert 'data-testid="tm-catalog-row-NVDA"' in catalog.text
