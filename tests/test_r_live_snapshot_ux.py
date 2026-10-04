@@ -431,7 +431,7 @@ def test_rwa_overview_has_no_duplicate_aapl_premium_panel(client_for_rwa):
     assert 'id="r-live-aapl"' not in html
     assert "Premium history" not in html
     # replaced by one small informational link card to the canonical terminal
-    assert "Robinhood tokenized equities" in html
+    assert "Robinhood Stock Tokens" in html
     assert 'href="/radar/r-live"' in html
     assert "View R-LIVE" in html
     # the duplicate live-acquisition wiring is gone from this page

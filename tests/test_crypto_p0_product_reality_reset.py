@@ -269,7 +269,7 @@ def test_homepage_carries_no_internal_activation_or_status_copy(home):
 
 def test_rlive_is_the_prominent_public_product_and_reachable(home):
     text = home.get("/").text
-    assert 'data-testid="home-primary-message"' in text and "tokenized equities" in text
+    assert 'data-testid="home-primary-message"' in text and "Stock Tokens" in text
     assert 'href="/radar/r-live" class="proto-cta proto-cta--primary"' in text
     assert 'data-testid="home-product-rlive"' in text
     assert home.get("/radar/r-live").status_code == 200
