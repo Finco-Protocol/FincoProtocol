@@ -23,7 +23,7 @@ from app.radar_rwa.multi_source_evidence import (
 )
 from app.radar_rwa.stock_token_oracle import (
     SEL_DECIMALS, SEL_DESCRIPTION, SEL_LATEST_ROUND, SEL_ORACLE_PAUSED, SequencerStatus, check_sequencer,
-    read_stock_token_oracle,
+    pin_oracle_block, read_stock_token_oracle,
 )
 from app.radar_rwa.stock_token_oracle_registry import (
     ORACLE_FEED_NOT_REVIEWED, SOURCE_PROVEN, FeedBinding, OracleRegistry, OracleRegistryError, Provenance,
@@ -55,15 +55,23 @@ def abi_string(text: str) -> str:
     return "0x" + word(32) + word(len(raw)) + raw.hex().ljust(((len(raw) + 31) // 32) * 64, "0")
 
 
+def block_hash_for(number: int) -> str:
+    return f"0x{number:064x}"
+
+
 class FakeRpc:
-    """Deterministic EVM read double. Records every (address, selector) read so tests can prove what was NOT called."""
+    """Deterministic EVM read double. Records every read (address, selector, block tag) so tests can prove what was
+    NOT called. ``advance`` makes every further ``latest`` read return the NEXT block number."""
 
     def __init__(self, *, answer=190_00000000, updated_at=BLOCK_TS - 60, decimals=8, description="NVDA / USD",
                  paused=0, seq_answer=0, seq_started=BLOCK_TS - 86400, round_id=7, answered_in=7, block_ts=BLOCK_TS,
-                 fail=()):
+                 fail=(), first_block=1000, advance=False, reorg=False, extra=None):
         self.calls: list[tuple[str, str]] = []
+        self.tags: list[str] = []                 # block tag of every eth_call
+        self.block_reads: list[str] = []          # first param of every eth_getBlockByNumber
         self.fail = set(fail)
-        self.block = {"number": hex(1000), "timestamp": hex(block_ts), "hash": "0x" + "ab" * 32}
+        self.first_block, self.advance, self.reorg, self.block_ts = first_block, advance, reorg, block_ts
+        self.latest_calls = 0
         self.map = {
             (FEED, SEL_DESCRIPTION): abi_string(description),
             (FEED, SEL_DECIMALS): "0x" + word(decimals),
@@ -71,15 +79,25 @@ class FakeRpc:
             (NVDA_TOKEN, SEL_ORACLE_PAUSED): "0x" + word(paused),
             (SEQ, SEL_LATEST_ROUND): "0x" + word(1) + word(seq_answer) + word(seq_started) + word(seq_started) + word(1),
         }
+        self.map.update(extra or {})
+
+    def _block(self, number: int, *, altered=False) -> dict:
+        digest = block_hash_for(number if not altered else number + 10**6)
+        return {"number": hex(number), "timestamp": hex(self.block_ts), "hash": digest}
 
     def call(self, method, params):
         if method == "eth_getBlockByNumber":
+            self.block_reads.append(params[0])
             if "block" in self.fail:
                 raise RpcUnavailable("RPC_TRANSPORT_UNAVAILABLE")
-            return dict(self.block)
+            if params[0] == "latest":
+                self.latest_calls += 1
+                return self._block(self.first_block + (self.latest_calls - 1 if self.advance else 0))
+            return self._block(int(params[0], 16), altered=self.reorg)
         assert method == "eth_call"
         to, data = params[0]["to"].lower(), params[0]["data"]
         self.calls.append((to, data))
+        self.tags.append(params[1])
         if (to, data) in {(a, b) for a, b in self.fail if isinstance(a, str)}:
             raise RpcUnavailable("RPC_RESPONSE_UNAVAILABLE")
         return self.map[(to, data)]
@@ -242,12 +260,9 @@ def test_sequencer_without_reviewed_authority_fails_closed():
 
 
 def test_sequencer_unreadable_or_invalid_fails_closed():
-    assert check_sequencer(FakeRpc(fail={(SEQ, SEL_LATEST_ROUND)}), registry().sequencer, tag="0x3e8",
-                           block_time=BLOCK_TS).reason == "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE"
-    assert check_sequencer(FakeRpc(seq_answer=7), registry().sequencer, tag="0x3e8",
-                           block_time=BLOCK_TS).reason == "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE"
-    assert check_sequencer(FakeRpc(seq_started=0), registry().sequencer, tag="0x3e8",
-                           block_time=BLOCK_TS).reason == "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE"
+    for rpc in (FakeRpc(fail={(SEQ, SEL_LATEST_ROUND)}), FakeRpc(seq_answer=7), FakeRpc(seq_started=0)):
+        ctx = pin_oracle_block(rpc, as_of=NOW)
+        assert check_sequencer(rpc, registry().sequencer, ctx).reason == "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE"
 
 
 def test_oracle_paused_is_unavailable_even_with_a_readable_fresh_round():

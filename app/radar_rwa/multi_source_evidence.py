@@ -266,15 +266,103 @@ def build_matrix(legs_by_asset: Mapping[str, Mapping[EvidenceRole, EvidenceLeg]]
     return rows
 
 
+_STATE_RANK = {"AVAILABLE": 0, "STALE": 1, "UNAVAILABLE": 2, "IDENTITY_UNAVAILABLE": 3}
+
+
+def _worse(persisted: str, computed: str) -> str:
+    """Degrade-only: effective status can match or fall below the persisted status, never rise above it."""
+    return computed if _STATE_RANK.get(computed, 2) >= _STATE_RANK.get(persisted, 2) else persisted
+
+
+def _parse_aware(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo and parsed.utcoffset() is not None else None
+
+
+def evaluate_effective_state(
+    role: EvidenceRole, *, canonical_id: str, persisted_state: str, persisted_reason: str | None,
+    source_timestamp: datetime | None, payload: Mapping[str, Any], now: datetime, oracle_registry: Any | None = None,
+) -> tuple[str, str | None]:
+    """READ-TIME status of one persisted leg: (effective_state, effective_reason). Pure; writes nothing.
+
+    collection-time AVAILABLE does not imply read-time AVAILABLE. The result may preserve or degrade the persisted state and
+    NEVER upgrades it (a persisted STALE/UNAVAILABLE row stays so even if policy later changed). ``collected_at`` is never
+    used as evidence time. Only EXISTING policy is reused; no new TTL exists here:
+      MARKET             -> the R-LIVE snapshot re-evaluation contract (block / pool activity / USDG-USD quote limits)
+      OFFICIAL_REFERENCE -> the R-LIVE authority ``max_reference_age_seconds`` via the authority engine's own age test
+      ORACLE             -> the CURRENT reviewed registry binding's feed-specific heartbeat
+    """
+    if persisted_state != "AVAILABLE":
+        # Never promote; an unreviewed oracle is still reported as unreviewed rather than as a stored value.
+        if role is EvidenceRole.ORACLE and oracle_registry is not None \
+                and oracle_registry.binding_for(canonical_id) is None:
+            return "UNAVAILABLE", "ORACLE_FEED_NOT_REVIEWED"
+        return persisted_state, persisted_reason
+
+    if role is EvidenceRole.ORACLE:
+        binding = oracle_registry.binding_for(canonical_id) if oracle_registry is not None else None
+        if binding is None:
+            return "UNAVAILABLE", "ORACLE_FEED_NOT_REVIEWED"
+        if binding.heartbeat_seconds is None:
+            return "UNAVAILABLE", "ORACLE_HEARTBEAT_NOT_REVIEWED"
+        if source_timestamp is None:
+            return "UNAVAILABLE", "ORACLE_SOURCE_TIMESTAMP_UNAVAILABLE"
+        age = (now - source_timestamp).total_seconds()
+        if age < 0 or age > binding.heartbeat_seconds:
+            return "STALE", "ORACLE_HEARTBEAT_EXCEEDED"
+        return "AVAILABLE", None
+
+    if role is EvidenceRole.OFFICIAL_REFERENCE:
+        if source_timestamp is None:
+            return "UNAVAILABLE", "REFERENCE_SOURCE_TIMESTAMP_UNAVAILABLE"
+        from finco_radar.authority.engine import _state as authority_age_state
+        from .r_live_service import R_LIVE_AUTHORITY_POLICY
+        state = authority_age_state(source_timestamp, now, R_LIVE_AUTHORITY_POLICY.max_reference_age_seconds)
+        if state is AuthorityState.AVAILABLE:
+            return "AVAILABLE", None
+        return "STALE", "REFERENCE_STALE"
+
+    # MARKET: reuse the existing snapshot re-evaluation (evidence timestamps only; never collected_at).
+    from .r_live_snapshot_view import reevaluate_snapshot_row
+    freshness = {
+        "block_timestamp": payload.get("blockTimestamp") if isinstance(payload.get("blockTimestamp"), str) else None,
+        "last_pool_activity_at": payload.get("lastPoolActivityAt"),
+        "quote_updated_at": payload.get("quoteUpdatedAt"),
+    }
+    if freshness["block_timestamp"] is None and isinstance(payload.get("blockTimestamp"), (int, float)):
+        freshness["block_timestamp"] = datetime.fromtimestamp(payload["blockTimestamp"], timezone.utc).isoformat()
+    row = reevaluate_snapshot_row(
+        {"canonical_id": canonical_id, "collected_at": None,
+         "payload": {"canonical_id": canonical_id, "state": persisted_state, "data": {"freshness": freshness}}},
+        now=now)
+    state = str(row.get("state") or "UNAVAILABLE")
+    return _worse(persisted_state, state), row.get("reason") if state != "AVAILABLE" else None
+
+
 def read_latest_legs_readonly(canonical_id: str, *, path: str | Path | None = None,
-                              now: datetime | None = None) -> dict:
+                              now: datetime | None = None, oracle_registry: Any | None = None) -> dict:
     """Network-free, write-free read of the latest persisted leg per role for one exact reviewed asset.
 
-    Never creates the database, never calls a provider. Missing store/rows -> role reported as not collected.
+    ``state`` is the EFFECTIVE status evaluated at read time by the server (no browser-clock authority);
+    ``persisted_state`` is what the collector recorded and is never modified. Never creates the database, never calls a
+    provider. Missing store/rows -> role reported as not collected.
     """
     if canonical_id not in APPROVED_BY_CANONICAL_ID:
         raise ValueError("EVIDENCE_EXACT_ASSETKEY_NOT_APPROVED")
     clock = now or datetime.now(timezone.utc)
+    if clock.tzinfo is None or clock.utcoffset() is None:
+        raise ValueError("EVIDENCE_READ_CLOCK_MUST_BE_AWARE")
+    if oracle_registry is None:
+        from .stock_token_oracle_registry import load_registry
+        try:
+            oracle_registry = load_registry()
+        except Exception:
+            oracle_registry = None
     target = Path(path or default_db_path())
     out: dict[str, dict | None] = {role.value: None for role in EvidenceRole}
     if target.is_file():
@@ -286,17 +374,29 @@ def read_latest_legs_readonly(canonical_id: str, *, path: str | Path | None = No
                     row = conn.execute(
                         "SELECT * FROM source_evidence WHERE canonical_id=? AND evidence_role=? "
                         "ORDER BY seq DESC LIMIT 1", (canonical_id, role.value)).fetchone()
-                    if row is not None:
-                        ts = row["source_timestamp"]
-                        parsed = datetime.fromisoformat(ts) if ts else None
+                    if row is None:
+                        continue
+                    parsed = _parse_aware(row["source_timestamp"])
+                    try:
                         payload = json.loads(row["payload"] or "{}")
-                        out[role.value] = {
-                            "state": row["state"], "value": row["value"], "unit": row["unit"], "reason": row["reason"],
-                            "source_timestamp": ts, "collected_at": row["collected_at"],
-                            "age_seconds": _age(clock, parsed) if parsed else None,
-                            "source_authority": row["source_authority"], "source_instrument": row["source_instrument"],
-                            "heartbeat_seconds": payload.get("heartbeatSeconds"),
-                        }
+                    except ValueError:
+                        payload = {}
+                    effective, reason = evaluate_effective_state(
+                        role, canonical_id=canonical_id, persisted_state=row["state"], persisted_reason=row["reason"],
+                        source_timestamp=parsed, payload=payload if isinstance(payload, dict) else {}, now=clock,
+                        oracle_registry=oracle_registry)
+                    heartbeat = None
+                    if role is EvidenceRole.ORACLE and oracle_registry is not None:
+                        binding = oracle_registry.binding_for(canonical_id)
+                        heartbeat = binding.heartbeat_seconds if binding else None   # CURRENT reviewed policy
+                    out[role.value] = {
+                        "state": effective, "persisted_state": row["state"], "value": row["value"],
+                        "unit": row["unit"], "reason": reason, "persisted_reason": row["reason"],
+                        "source_timestamp": row["source_timestamp"], "collected_at": row["collected_at"],
+                        "age_seconds": _age(clock, parsed) if parsed else None,
+                        "source_authority": row["source_authority"], "source_instrument": row["source_instrument"],
+                        "heartbeat_seconds": heartbeat,
+                    }
             finally:
                 conn.close()
         except (sqlite3.Error, ValueError):

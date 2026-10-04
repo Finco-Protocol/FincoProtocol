@@ -289,9 +289,35 @@
     })
     .catch(function () { unavailable("JEV_TRANSPORT_UNAVAILABLE"); });
 
-  // ── Source legs (read-only, network-free: reads the persisted per-role evidence only) ──
+})();
+</script>
+{% endif %}
+
+{# Source legs: canonical source-evidence presentation. Gated ONLY on an approved asset — never on JEV visibility. #}
+{% if row.approved %}
+<script>
+(function () {
+  "use strict";
+  // Read-only, network-free route: the server evaluates EFFECTIVE status at read time (no browser-clock authority).
+  var CANONICAL_ID = {{ row.canonical_id | tojson }};
   var EVIDENCE_URL = "/radar/r-live/" + encodeURIComponent(CANONICAL_ID) + "/evidence";
   var LEG_LABELS = { MARKET: "Market", OFFICIAL_REFERENCE: "Reference", ORACLE: "Oracle" };
+  var REASON_TEXT = {
+    ORACLE_FEED_NOT_REVIEWED: "Not reviewed — no official oracle feed binding yet",
+    ORACLE_HEARTBEAT_NOT_REVIEWED: "Heartbeat not reviewed",
+    ORACLE_HEARTBEAT_EXCEEDED: "Older than the feed heartbeat",
+    ORACLE_SOURCE_TIMESTAMP_UNAVAILABLE: "Source timestamp unavailable",
+    REFERENCE_STALE: "Older than the reference policy",
+    REFERENCE_SOURCE_TIMESTAMP_UNAVAILABLE: "Source timestamp unavailable"
+  };
+
+  function fmt_age(secs) {
+    if (secs == null) return "—";
+    if (secs < 60) return secs + "s";
+    if (secs < 3600) return Math.floor(secs / 60) + "m";
+    return Math.floor(secs / 3600) + "h";
+  }
+
   function render_source_legs(payload) {
     var legs = (payload && payload.legs) || {};
     Object.keys(LEG_LABELS).forEach(function (role) {
@@ -299,22 +325,50 @@
       if (!row) return;
       var leg = legs[role];
       var cells = row.querySelectorAll("td");
-      var state = leg ? leg.state : "NOT COLLECTED";
-      var detail = leg ? (leg.reason || "") : (role === "ORACLE" && payload && payload.oracle_binding
-        ? payload.oracle_binding : "No persisted evidence yet");
-      var value = leg && leg.value != null ? parse_num(leg.value) : null;
+      var state, detail, value = null, age = "—";
+      if (!leg) {
+        state = role === "ORACLE" && payload.oracle_binding === "ORACLE_FEED_NOT_REVIEWED" ? "NOT REVIEWED" : "NOT COLLECTED";
+        detail = role === "ORACLE" ? REASON_TEXT.ORACLE_FEED_NOT_REVIEWED.replace(/^Not reviewed — /, "") : "No persisted evidence yet";
+        if (role === "ORACLE" && payload.oracle_binding !== "ORACLE_FEED_NOT_REVIEWED") detail = "No persisted evidence yet";
+      } else {
+        state = leg.reason === "ORACLE_FEED_NOT_REVIEWED" ? "NOT REVIEWED" : leg.state;
+        detail = (leg.reason && (REASON_TEXT[leg.reason] || leg.reason)) || "";
+        if (leg.state === "AVAILABLE" && leg.value != null && !isNaN(parseFloat(leg.value))) {
+          value = parseFloat(leg.value);          // numbers are shown only while the EFFECTIVE status is AVAILABLE
+        }
+        age = fmt_age(leg.age_seconds);
+        if (leg.collected_at) {
+          detail += (detail ? " · " : "") + "collected " + String(leg.collected_at).replace("T", " ").slice(0, 16) + " UTC";
+        }
+      }
       cells[1].textContent = state;
       cells[2].textContent = value != null ? "$" + value.toFixed(4) : "—";
-      cells[2].style.textAlign = "right";
-      cells[3].textContent = leg && leg.age_seconds != null ? fmt_age(leg.age_seconds) : "—";
-      cells[4].textContent = detail + (leg && leg.collected_at ? (detail ? " · " : "") + "collected " + String(leg.collected_at).replace("T", " ").slice(0, 16) + " UTC" : "");
-      cells.forEach(function (cell) { cell.style.padding = "8px 10px"; });
+      cells[3].textContent = age;
+      cells[4].textContent = detail;
+      row.setAttribute("data-effective-state", state);
     });
+    var note = document.getElementById("source-legs-note");
+    if (note) note.textContent = "";
   }
+
+  function render_unavailable() {
+    Object.keys(LEG_LABELS).forEach(function (role) {
+      var row = document.querySelector("#source-legs-table tr[data-leg='" + role + "']");
+      if (!row) return;
+      var cells = row.querySelectorAll("td");
+      cells[1].textContent = "UNAVAILABLE";
+      cells[2].textContent = "—";
+      cells[3].textContent = "—";
+      cells[4].textContent = "Source legs could not be loaded";
+    });
+    var note = document.getElementById("source-legs-note");
+    if (note) note.textContent = "Source legs are unavailable right now.";
+  }
+
   fetch(EVIDENCE_URL, { headers: { accept: "application/json" } })
     .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (payload) { if (payload) render_source_legs(payload); })
-    .catch(function () { set_text("source-legs-note", "Source legs are unavailable right now."); });
+    .then(function (payload) { if (payload) render_source_legs(payload); else render_unavailable(); })
+    .catch(render_unavailable);
 })();
 </script>
 {% endif %}

@@ -63,38 +63,87 @@ def _fail(canonical_id: str, reason: str, *, state: AuthorityState = AuthoritySt
 
 
 @dataclass(frozen=True)
+class OracleBlockContext:
+    """One immutable pinned chain state for an oracle cycle: every oracle read uses ``tag``, never ``latest``."""
+
+    number: int
+    tag: str            # exact hex block tag, e.g. "0x3e8"
+    block_hash: str
+    timestamp: int
+
+
+@dataclass(frozen=True)
+class OracleBlockFailure:
+    reason: str         # typed: ORACLE_RPC_UNAVAILABLE / ORACLE_CHAIN_BLOCK_STALE
+
+
+def pin_oracle_block(rpc: Rpc, *, as_of: datetime) -> OracleBlockContext | OracleBlockFailure:
+    """Read ``latest`` exactly once, validate canonical block freshness once, and return the pinned context."""
+    try:
+        head = rpc.call("eth_getBlockByNumber", ["latest", False])
+        if not isinstance(head, dict):
+            raise _BadEvidence("BLOCK_UNAVAILABLE")
+        number = _uint(head.get("number"))
+        timestamp = _uint(head.get("timestamp"))
+        block_hash = head.get("hash")
+        if not isinstance(block_hash, str):
+            raise _BadEvidence("BLOCK_UNAVAILABLE")
+    except (_BadEvidence, RpcUnavailable, ValueError, TypeError):
+        return OracleBlockFailure("ORACLE_RPC_UNAVAILABLE")
+    if int(as_of.timestamp()) - timestamp > MAX_BLOCK_AGE_SECONDS:
+        return OracleBlockFailure("ORACLE_CHAIN_BLOCK_STALE")
+    return OracleBlockContext(number, f"0x{number:x}", block_hash, timestamp)
+
+
+def verify_oracle_block(rpc: Rpc, block: OracleBlockContext) -> bool:
+    """Re-read the pinned block BY EXACT TAG; False when its hash changed (reorg) or it cannot be read."""
+    try:
+        again = rpc.call("eth_getBlockByNumber", [block.tag, False])
+    except (RpcUnavailable, ValueError, TypeError):
+        return False
+    return isinstance(again, dict) and again.get("hash") == block.block_hash
+
+
+@dataclass(frozen=True)
 class SequencerStatus:
     ok: bool
     reason: str | None
     evidence: Mapping[str, Any]
+    block_hash: str | None = None   # the pinned block this status was evaluated at
 
 
-def check_sequencer(rpc: Rpc, sequencer: SequencerBinding | None, *, tag: str, block_time: int) -> SequencerStatus:
-    """Official Chainlink L2 Sequencer Uptime Feed: answer 0 = UP, 1 = DOWN; startedAt = when the status began."""
+def check_sequencer(rpc: Rpc, sequencer: SequencerBinding | None, block: OracleBlockContext) -> SequencerStatus:
+    """Official Chainlink L2 Sequencer Uptime Feed at the PINNED block: answer 0 = UP, 1 = DOWN."""
     if sequencer is None:
-        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {})
+        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {}, block.block_hash)
     try:
         round_id, answer, started_at, updated_at, answered_in = _words(
-            _call(rpc, sequencer.feed_proxy, SEL_LATEST_ROUND, tag), 5)
+            _call(rpc, sequencer.feed_proxy, SEL_LATEST_ROUND, block.tag), 5)
         answer = _signed(answer)
     except (_BadEvidence, RpcUnavailable, ValueError, TypeError):
-        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {})
+        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {}, block.block_hash)
     evidence = {"sequencerFeed": sequencer.feed_proxy, "sequencerAnswer": answer,
                 "sequencerStartedAt": started_at, "sequencerGraceSeconds": sequencer.grace_period_seconds}
-    if round_id <= 0 or started_at <= 0 or started_at > block_time + MAX_BLOCK_FUTURE_SKEW_SECONDS or answer not in (0, 1):
-        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", evidence)
+    if (round_id <= 0 or started_at <= 0 or started_at > block.timestamp + MAX_BLOCK_FUTURE_SKEW_SECONDS
+            or answer not in (0, 1)):
+        return SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", evidence, block.block_hash)
     if answer == 1:
-        return SequencerStatus(False, "ORACLE_SEQUENCER_DOWN", evidence)
-    if block_time - started_at <= sequencer.grace_period_seconds:
-        return SequencerStatus(False, "ORACLE_SEQUENCER_GRACE_PERIOD", evidence)
-    return SequencerStatus(True, None, evidence)
+        return SequencerStatus(False, "ORACLE_SEQUENCER_DOWN", evidence, block.block_hash)
+    if block.timestamp - started_at <= sequencer.grace_period_seconds:
+        return SequencerStatus(False, "ORACLE_SEQUENCER_GRACE_PERIOD", evidence, block.block_hash)
+    return SequencerStatus(True, None, evidence, block.block_hash)
 
 
 def read_stock_token_oracle(
     *, rpc: Rpc, registry: OracleRegistry, canonical_id: str, as_of: datetime,
+    block: OracleBlockContext | OracleBlockFailure | None = None,
     sequencer: SequencerStatus | None = None,
 ) -> OracleObservation:
-    """One exact reviewed Stock Token -> its oracle leg. ``sequencer`` may be shared across assets of one cycle."""
+    """One exact reviewed Stock Token -> its oracle leg.
+
+    ``block`` / ``sequencer`` may be shared across all assets of one cycle (one pinned block, one sequencer reading at that
+    block). Called alone, this function pins its own block and evaluates the sequencer at the SAME block. ``latest`` is never
+    read again: sequencer, ``oraclePaused()`` and feed description/decimals/latestRoundData all use the pinned tag."""
     if as_of.tzinfo is None or as_of.utcoffset() is None:
         raise ValueError("ORACLE_CLOCK_MUST_BE_AWARE")
     policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
@@ -110,22 +159,14 @@ def read_stock_token_oracle(
     if binding.heartbeat_seconds is None:
         return _fail(canonical_id, "ORACLE_HEARTBEAT_NOT_REVIEWED", binding=binding)
 
-    try:
-        block = rpc.call("eth_getBlockByNumber", ["latest", False])
-        if not isinstance(block, dict):
-            raise _BadEvidence("BLOCK_UNAVAILABLE")
-        number = _uint(block.get("number"))
-        block_time = _uint(block.get("timestamp"))
-        block_hash = block.get("hash")
-        if not isinstance(block_hash, str):
-            raise _BadEvidence("BLOCK_UNAVAILABLE")
-    except (_BadEvidence, RpcUnavailable, ValueError, TypeError):
-        return _fail(canonical_id, "ORACLE_RPC_UNAVAILABLE", binding=binding)
-    tag = f"0x{number:x}"
-    if int(as_of.timestamp()) - block_time > MAX_BLOCK_AGE_SECONDS:
-        return _fail(canonical_id, "ORACLE_CHAIN_BLOCK_STALE", binding=binding, evidence={"blockNumber": number})
+    pinned = block if block is not None else pin_oracle_block(rpc, as_of=as_of)
+    if isinstance(pinned, OracleBlockFailure):
+        return _fail(canonical_id, pinned.reason, binding=binding)
+    tag = pinned.tag
 
-    status = sequencer or check_sequencer(rpc, registry.sequencer, tag=tag, block_time=block_time)
+    status = sequencer if sequencer is not None else check_sequencer(rpc, registry.sequencer, pinned)
+    if status.block_hash != pinned.block_hash:
+        return _fail(canonical_id, "ORACLE_SEQUENCER_BLOCK_MISMATCH", binding=binding)
     if not status.ok:
         return _fail(canonical_id, status.reason or "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE",
                      binding=binding, evidence=status.evidence)
@@ -138,7 +179,7 @@ def read_stock_token_oracle(
         return _fail(canonical_id, "ORACLE_PAUSE_STATE_UNAVAILABLE", binding=binding)
     if paused == 1:
         return _fail(canonical_id, "ORACLE_CORPORATE_ACTION_PAUSED", binding=binding,
-                     evidence={"oraclePaused": True, "blockNumber": number})
+                     evidence={"oraclePaused": True, "blockNumber": pinned.number})
 
     try:
         description = _abi_string(_call(rpc, binding.feed_proxy, SEL_DESCRIPTION, tag))
@@ -146,11 +187,11 @@ def read_stock_token_oracle(
         round_id, raw_answer, started_at, updated_at, answered_in = _words(
             _call(rpc, binding.feed_proxy, SEL_LATEST_ROUND, tag), 5)
         raw_answer = _signed(raw_answer)
-        again = rpc.call("eth_getBlockByNumber", [tag, False])
     except (_BadEvidence, RpcUnavailable, ValueError, TypeError):
         return _fail(canonical_id, "ORACLE_RPC_UNAVAILABLE", binding=binding)
-    if not isinstance(again, dict) or again.get("hash") != block_hash:
+    if not verify_oracle_block(rpc, pinned):          # reorg protection: the pinned block must still be canonical
         return _fail(canonical_id, "ORACLE_BLOCK_REORG_OR_MISMATCH", binding=binding)
+    block_time, number, block_hash = pinned.timestamp, pinned.number, pinned.block_hash
 
     evidence: dict[str, Any] = {
         "feedProxy": binding.feed_proxy, "feedDescription": description, "feedDecimals": decimals,

@@ -23,7 +23,10 @@ from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
 from .multi_source_evidence import (
     EvidenceLeg, EvidenceRole, SourceEvidenceStore, build_matrix, market_leg, oracle_leg, reference_leg,
 )
-from .stock_token_oracle import SequencerStatus, check_sequencer, read_stock_token_oracle
+from .stock_token_oracle import (
+    OracleBlockContext, OracleBlockFailure, SequencerStatus, check_sequencer, pin_oracle_block,
+    read_stock_token_oracle,
+)
 from .stock_token_oracle_registry import OracleRegistry, load_registry
 
 # acquire_asset(canonical_id) -> (MARKET leg, OFFICIAL_REFERENCE leg). Both come from the existing R-LIVE authority.
@@ -94,15 +97,14 @@ def collect_multi_source_once(
     if len(selected) != len(set(selected)) or any(c not in APPROVED_BY_CANONICAL_ID for c in selected):
         raise ValueError("EVIDENCE_EXACT_ASSETKEY_NOT_APPROVED")
 
+    # ONE pinned block per oracle cycle: validated once, the sequencer is evaluated at exactly that block, and every
+    # bound asset reads oraclePaused()/description()/decimals()/latestRoundData() at that same tag (never ``latest`` again).
+    pinned: OracleBlockContext | OracleBlockFailure | None = None
     sequencer: SequencerStatus | None = None
     if any(oracle_registry.binding_for(c) is not None for c in selected):
-        try:
-            block = oracle_rpc.call("eth_getBlockByNumber", ["latest", False])
-            number = int(block["number"], 16)
-            sequencer = check_sequencer(oracle_rpc, oracle_registry.sequencer, tag=f"0x{number:x}",
-                                        block_time=int(block["timestamp"], 16))
-        except Exception:
-            sequencer = SequencerStatus(False, "ORACLE_SEQUENCER_AUTHORITY_UNAVAILABLE", {})
+        pinned = pin_oracle_block(oracle_rpc, as_of=as_of)
+        if isinstance(pinned, OracleBlockContext):
+            sequencer = check_sequencer(oracle_rpc, oracle_registry.sequencer, pinned)
 
     def one(canonical_id: str) -> dict[EvidenceRole, EvidenceLeg]:
         legs: dict[EvidenceRole, EvidenceLeg] = {}
@@ -113,7 +115,8 @@ def collect_multi_source_once(
         legs[EvidenceRole.MARKET], legs[EvidenceRole.OFFICIAL_REFERENCE] = market, reference
         try:
             observation = read_stock_token_oracle(
-                rpc=oracle_rpc, registry=oracle_registry, canonical_id=canonical_id, as_of=as_of, sequencer=sequencer)
+                rpc=oracle_rpc, registry=oracle_registry, canonical_id=canonical_id, as_of=as_of,
+                block=pinned, sequencer=sequencer)
         except Exception:
             from .stock_token_oracle import OracleObservation
             from finco_radar.authority.contracts import AuthorityState
