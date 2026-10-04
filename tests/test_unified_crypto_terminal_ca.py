@@ -259,7 +259,8 @@ def test_meta_declares_crypto_api_configurable_but_inactive(api_client):
     assert body["crypto_api"]["state"] == "CONFIGURABLE_BUT_INACTIVE"
     assert body["crypto_api"]["activation_authority"] == "crypto.api"
     for capability in ("crypto.tokenized.read", "crypto.tokenized.history.read",
-                       "crypto.tokenized.dislocation.read", "crypto.yield.read"):
+                       "crypto.tokenized.dislocation.read",
+                       "crypto.tokenized.integrity.read", "crypto.yield.read"):
         assert capability in body["capabilities"]
 
 
@@ -363,7 +364,7 @@ def test_crypto_api_handlers_are_plain_def():
     import inspect
     from app.api.v1.crypto_router import router
     endpoints = [r for r in router.routes if hasattr(r, "endpoint")]
-    assert len(endpoints) == 6
+    assert len(endpoints) == 7
     for route in endpoints:
         assert not asyncio.iscoroutinefunction(route.endpoint), (
             f"Handler {route.endpoint.__name__!r} must be a plain def")

@@ -328,6 +328,18 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
                     "points": points,
                 })
 
+    # RWA Integrity is factual/public product evidence.  It reuses the exact
+    # registry/store/reference context above and has no additional entitlement
+    # or acquisition path.  Any evidence-dimension failure degrades fail-soft.
+    integrity = None
+    try:
+        from app.crypto_terminal.integrity_read import detail_data
+        integrity = detail_data(
+            canonical_asset_id, now=now, registry=registry, store=store,
+            reference_evidence_reader=reference_reader)
+    except Exception:
+        integrity = None
+
     return _templates.TemplateResponse(
         request=request,
         name="radar/tokenized_markets_detail.html",
@@ -341,6 +353,7 @@ async def tokenized_markets_detail(request: Request, canonical_asset_id: str):
             "intelligence": intelligence,
             "basis_series": basis_series[:2],
             "collector_health": _collector_health(),
+            "integrity": integrity,
             "access": gates.public_view(),
         },
     )
