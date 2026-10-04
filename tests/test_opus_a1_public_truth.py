@@ -38,13 +38,18 @@ def test_a1_01_homepage_no_p4_entitlement_rail():
 
 
 def test_a1_02_homepage_finco_description_is_product_language():
-    """$FINCO description on homepage uses product language, not internal codes."""
+    """Product-reality reset: while no production $FINCO token exists the homepage does not feature it.
+
+    The former contract required a product-language description plus a "not yet launched" notice on the
+    homepage; that status copy was internal-facing and is removed from the primary surface. The token stays
+    described on /protocol/finco, which keeps the plain "not necessarily production-active" statement.
+    """
     html = (REPO / "app/templates/protocol_home.html").read_text()
     lower = html.lower()
-    # Must describe it as access/entitlement layer
-    assert "service-entitlement" in lower or "access and service" in lower or "entitlement layer" in lower
-    # Must say token not yet launched
-    assert "token is not yet launched" in lower or "not yet launched" in lower
+    assert "$finco" not in lower
+    assert "activation" not in lower and "deployment count" not in lower
+    page = (REPO / "app/templates/protocol/finco.html").read_text().lower()
+    assert "not necessarily production-active" in page
 
 
 def test_a1_03_homepage_evidence_claim_is_bounded():

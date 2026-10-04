@@ -156,12 +156,12 @@ class TestHomepagePostP5:
         assert "View Verified Assets" not in text
         assert 'href="/verified"' not in text
 
-    def test_homepage_trust_chain_present(self):
-        """Homepage must include the NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION chain."""
+    def test_homepage_does_not_claim_model_to_market_trust_chain(self):
+        """Product-reality reset: the Model is a separate product line and is not connected to the market
+        data, so the homepage no longer advertises a NUMBER → LINEAGE → EVIDENCE → MARKET OBSERVATION chain."""
         text = _home_template_text()
-        assert "MARKET OBSERVATION" in text, (
-            "Homepage must include MARKET OBSERVATION in the trust chain"
-        )
+        assert "MARKET OBSERVATION" not in text
+        assert "not connected to the market data" in text
 
     def test_homepage_architecture_includes_verify(self):
         """Homepage architecture section must include VERIFY surface."""
