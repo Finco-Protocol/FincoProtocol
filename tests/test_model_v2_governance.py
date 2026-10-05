@@ -140,20 +140,22 @@ def test_permanent_hard_deny_is_code_level_and_tamper_proof(scope):
 def test_current_phase_freeze_state(scope):
     """MODEL_V2_SCOPE_CURRENT_PHASE_FREEZE = PASS — Correction C §2/§5.
 
-    For the C0 foundation state finco_core, domain/revenue, domain/analytics,
-    app/model_validation and app/verified are frozen by the SCOPE CONTRACT
-    (not by code), and none of them may currently have approved files.
+    The CURRENT-phase freeze is scope-file level and explicitly movable by a
+    reviewed workflow. The namespaces that must stay frozen unless a future
+    reviewed scope explicitly unfreezes them are checked as a subset; a
+    reviewed phase authorization (e.g. Workflow 02 unfreezing domain/revenue
+    with exact approved files) is legitimate and verified structurally.
     """
-    assert sorted(scope["current_frozen_prefixes"]) == [
+    required_still_frozen = {
+        "finco_core/",
+        "domain/analytics/",
         "app/model_validation/",
         "app/verified/",
-        "domain/analytics/",
-        "domain/revenue/",
-        "finco_core/",
-    ]
+    }
+    assert required_still_frozen <= set(scope["current_frozen_prefixes"])
+
     for frozen_file in (
         "finco_core/inputs/_models.py",
-        "domain/revenue/revenue_config.py",
         "domain/analytics/lcoe.py",
         "app/model_validation/runner.py",
         "app/verified/asset_registry.py",
@@ -161,7 +163,15 @@ def test_current_phase_freeze_state(scope):
         assert frozen_file in model_v2_frozen_violations([frozen_file])
         assert not approved_by_active_model_v2_scope(frozen_file)
         assert frozen_file in unauthorized_model_v2_changes([frozen_file])
-    # And the current branch actually has zero changes in all of them:
+
+    # Any file approved under a namespace must exist, and its namespace must
+    # not be currently frozen (enforced by scope_problem) — spot-check the
+    # revenue authorization when present.
+    if "domain/revenue/plan.py" in scope["approved_support_paths"]:
+        assert "domain/revenue/" not in scope["current_frozen_prefixes"]
+        assert approved_by_active_model_v2_scope("domain/revenue/plan.py")
+
+    # No currently-frozen namespace may have changed files on this branch.
     assert model_v2_frozen_violations() == []
 
 
