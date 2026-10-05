@@ -414,6 +414,11 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
     # reconciled from the ACTIVE children even when that active set is empty
     # (all children OFF -> canonical parent amount 0, assumptions retained).
     decomposition_present: dict[str, bool] = {}
+    # Correction F (defect: decomposed parent applicability): tracks whether
+    # ANY ACTIVE decomposition child exists for the canonical key. Presence
+    # alone establishes replacement authority; applicability follows the
+    # active set — all children OFF → parent amount 0 AND parent inactive.
+    active_child_present: dict[str, bool] = {}
     decomposition_children: dict[str, float] = {}
     for r in resolved.opex:
         if not r.item.replaces_parent or r.resolved_y1_amount_keur is None:
@@ -422,6 +427,7 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
         decomposition_present[key] = True
         if not r.item.default_active:
             continue  # inactive child: retained, excluded from the subtotal
+        active_child_present[key] = True
         decomposition_children[key] = (
             decomposition_children.get(key, 0.0) + float(r.resolved_y1_amount_keur))
 
@@ -474,6 +480,18 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
                       if item.canonical_parent_key else item.label)
         if parent_key in decomposition_present:
             y1 = decomposition_children.get(parent_key, 0.0)
+            # Correction F: decomposed parent applicability = ANY(active
+            # decomposition child) — all children OFF → parent 0 AND
+            # inactive, never an active parent over an empty active set.
+            plans.append(OpexItemPlan(
+                parent_code=item.parent_code,
+                name=item.label,
+                y1_amount_keur=y1,
+                annual_inflation=float(item.annual_inflation),
+                step_changes=tuple(item.step_changes),
+                is_active=active_child_present.get(parent_key, False),
+            ))
+            continue
         elif r.resolved_y1_amount_keur is None:
             raise ValueError(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
