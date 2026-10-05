@@ -146,6 +146,32 @@ class CostProjectState:
         # Correction A (defect 7): NaN / +Inf / -Inf must fail closed.
         import math as _math
 
+        # Correction D (defect 6): applicability is strict boolean state.
+        for state_row in list(self.capex_fields) + list(self.opex_items):
+            value = getattr(state_row, "is_active", None)
+            if value is not None and type(value) is not bool:
+                raise ValueError(
+                    f"COST_STATE_APPLICABILITY_INVALID: "
+                    f"{type(state_row).__name__}.is_active must be a strict "
+                    f"boolean, got {value!r}"
+                )
+        for state_row in list(self.capex_sub_lines) + list(self.opex_sub_lines):
+            value = getattr(state_row, "is_active", None)
+            if value is not None and type(value) is not bool:
+                raise ValueError(
+                    f"COST_STATE_APPLICABILITY_INVALID: "
+                    f"{type(state_row).__name__}.is_active must be a strict "
+                    f"boolean, got {value!r}"
+                )
+        if self.contingency is not None:
+            for flag in ("capex_active", "opex_active"):
+                value = getattr(self.contingency, flag)
+                if type(value) is not bool:
+                    raise ValueError(
+                        f"COST_STATE_APPLICABILITY_INVALID: ContingencyState."
+                        f"{flag} must be a strict boolean, got {value!r}"
+                    )
+
         if isinstance(self.capacity_mw, bool) \
                 or not isinstance(self.capacity_mw, (int, float)) \
                 or not _math.isfinite(float(self.capacity_mw)) \
@@ -225,6 +251,9 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
+            # Correction D (defect 1): exact-snapshot applicability — the
+            # source project row's active state is preserved, never inferred.
+            default_active=bool(f.is_active),
         ))
         if f.parent_code in sub_parents:
             continue  # children fully decompose this field; captured below
@@ -233,8 +262,8 @@ def extract_client_cost_template(
     # approved CAPEX scalar metadata is sanitized with the existing FINCO
     # authority and carried losslessly. Correction A (defect 3): C.NN.NN
     # presentation rows DECOMPOSE/REPLACE their canonical parent (existing
-    # reference-seed replacement semantics); C.NN.U### user rows are
-    # additive.
+    # reference-seed replacement semantics); Correction B: C.NN.U### user
+    # rows participate in the SAME replacement/breakdown semantics.
     from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
 
     for s in state.capex_sub_lines:
@@ -309,6 +338,8 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
+            # Correction D (defect 1): exact-snapshot applicability.
+            default_active=bool(o.is_active),
         ))
     import re as _re
     for s in state.opex_sub_lines:
@@ -331,13 +362,12 @@ def extract_client_cost_template(
             # extraction. User B.NN.U### rows are ADDITIVE (both unset).
             canonical_parent_key=s.canonical_parent_key if is_detail else None,
             reference_seed=bool(s.reference_seed) if is_detail else False,
-            # Correction C (defect 3): the original persisted runtime row
-            # source is carried so materialized rows stay
-            # runtime-compatible replacements.
+            # Correction D (defect 5): additive U-rows carry the explicit
+            # additive persisted source; replacement rows keep the original
+            # persisted runtime row source.
             persisted_source=(
-                s.persisted_source
-                or (s.source if is_detail else None)
-            ) if is_detail else None,
+                s.persisted_source or s.source
+            ) if is_detail else "user",
             default_active=bool(s.is_active),
         ))
 

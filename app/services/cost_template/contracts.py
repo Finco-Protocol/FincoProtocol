@@ -126,6 +126,16 @@ def _finite(value: float, code: str, label: str) -> float:
     return float(value)
 
 
+def _strict_bool(value: object, code: str, label: str) -> None:
+    """Applicability is a financial state: only True/False are accepted.
+    0/1/"false"/None and similar truthy/falsy values fail closed."""
+    if type(value) is not bool:
+        raise ValueError(
+            f"{code}: {label} must be a strict boolean (True/False), "
+            f"got {value!r}"
+        )
+
+
 def _percent_points(value: float, code: str, label: str) -> float:
     """Percentage-point validation mirroring the canonical contingency
     authority: strict finite 0..100 (6.0 means 6%)."""
@@ -270,6 +280,9 @@ class CapexTemplateItem:
                 self, "scalar_metadata",
                 _types.MappingProxyType({}),
             )
+        # Correction D (defect 6): applicability is strict boolean state.
+        _strict_bool(self.default_active, "COST_TEMPLATE_APPLICABILITY_INVALID",
+                     f"item {sid!r} default_active")
         if self.classification is ItemClassification.DERIVED_RUNTIME:
             if self.driver is not CostDriver.DERIVED_RUNTIME:
                 raise ValueError(
@@ -389,6 +402,9 @@ class OpexTemplateItem:
             )
         if self.driver not in CostDriver:
             raise ValueError(f"COST_TEMPLATE_DRIVER_UNKNOWN: {self.driver!r} on {sid!r}")
+        # Correction D (defect 6): applicability is strict boolean state.
+        _strict_bool(self.default_active, "COST_TEMPLATE_APPLICABILITY_INVALID",
+                     f"item {sid!r} default_active")
         if self.classification is ItemClassification.DERIVED_RUNTIME:
             if self.driver is not CostDriver.DERIVED_RUNTIME:
                 raise ValueError(
@@ -482,6 +498,26 @@ class OpexTemplateItem:
                     f"canonical_parent_key {self.canonical_parent_key!r} looks like "
                     "a group code; use the exact canonical OpexItem name"
                 )
+            # Correction D (defect 5): the replacement contract must produce a
+            # row the EXISTING runtime fold recognizes:
+            #   source in {reference_seed, user_override}
+            #   AND reference_seed is True
+            #   AND canonical_key present.
+            # Any incompatible combination fails closed here instead of
+            # silently materializing a row the runtime would count twice.
+            if not self.reference_seed:
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_PROVENANCE_INVALID: replacement "
+                    f"item {sid!r} must set reference_seed=True (the runtime fold "
+                    "requires reference_seed=True + canonical_key)"
+                )
+            if self.persisted_source not in ("reference_seed", "user_override"):
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_SOURCE_INVALID: replacement item "
+                    f"{sid!r} persisted_source must be 'reference_seed' or "
+                    f"'user_override' (runtime-recognized replacement sources), "
+                    f"got {self.persisted_source!r}"
+                )
 
 
 @dataclass(frozen=True)
@@ -533,6 +569,13 @@ class CostTemplate:
                     f"COST_TEMPLATE_VALUE_INVALID: reference_capacity_mw must be "
                     f"strictly positive, got {self.reference_capacity_mw!r}"
                 )
+        # Correction D (defect 6): applicability flags are strict booleans.
+        _strict_bool(self.capex_contingency_active,
+                     "COST_TEMPLATE_APPLICABILITY_INVALID",
+                     "capex_contingency_active")
+        _strict_bool(self.opex_contingency_active,
+                     "COST_TEMPLATE_APPLICABILITY_INVALID",
+                     "opex_contingency_active")
         seen: set[str] = set()
         for item in self.capex_items:
             item.validate()
@@ -557,6 +600,28 @@ class CostTemplate:
                 )
             seen_opex.add(item.item_id)
             seen.add(item.item_id)
+        # Correction D (defect 4): exactly ONE contingency applicability
+        # authority — the contingency ITEM's default_active. The template
+        # envelope flags are serialized mirrors and must agree; divergence
+        # fails closed.
+        c13 = next((i for i in self.capex_items
+                    if i.driver is CostDriver.PERCENT_OF_ELIGIBLE_CAPEX), None)
+        if c13 is not None and self.capex_contingency_active != c13.default_active:
+            raise ValueError(
+                f"COST_TEMPLATE_CONTINGENCY_AUTHORITY_DIVERGENT: C.13 item "
+                f"default_active={c13.default_active!r} contradicts template "
+                f"capex_contingency_active={self.capex_contingency_active!r}; "
+                "the item applicability is the canonical authority"
+            )
+        b13 = next((i for i in self.opex_items
+                    if i.driver is CostDriver.PERCENT_OF_OPEX), None)
+        if b13 is not None and self.opex_contingency_active != b13.default_active:
+            raise ValueError(
+                f"COST_TEMPLATE_CONTINGENCY_AUTHORITY_DIVERGENT: B.13 item "
+                f"default_active={b13.default_active!r} contradicts template "
+                f"opex_contingency_active={self.opex_contingency_active!r}; "
+                "the item applicability is the canonical authority"
+            )
 
     @staticmethod
     def create(

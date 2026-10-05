@@ -675,6 +675,9 @@ def rescale_materialization_plan(
                 asset_class=p.asset_class,
                 useful_life_override=p.useful_life_override,
                 is_depreciable=p.is_depreciable,
+                # Correction D (defect 3A): latent value may rescale, the
+                # project-owned applicability never flips to active.
+                is_active=p.is_active,
             )
 
     capex_sub_lines = []
@@ -729,6 +732,8 @@ def rescale_materialization_plan(
                 annual_inflation=p.annual_inflation,
                 step_changes=p.step_changes,
                 percentage_of_opex=p.percentage_of_opex,
+                # Correction D (defect 3A): latent rescale never reactivates.
+                is_active=p.is_active,
             )
 
     opex_sub_lines = []
@@ -766,6 +771,7 @@ def rescale_materialization_plan(
     field_key_by_category = dict(CAPEX_CATEGORY_TO_FIELD)
     final_capex_children: dict[str, float] = {}
     final_capex_present: set[str] = set()
+    final_capex_active_child: dict[str, bool] = {}
     for s in capex_sub_lines:
         if not s.replay_metadata.get("replaces_parent"):
             continue
@@ -776,6 +782,9 @@ def rescale_materialization_plan(
         # decomposition child; only ACTIVE children enter the sum. All
         # children OFF -> field amount 0.
         final_capex_present.add(field_key)
+        # Correction D (defect 3B): parent applicability = ANY(active child).
+        final_capex_active_child[field_key] = (
+            final_capex_active_child.get(field_key, False) or s.is_active)
         if s.is_active:
             final_capex_children[field_key] = (
                 final_capex_children.get(field_key, 0.0) + float(s.amount_keur))
@@ -789,18 +798,21 @@ def rescale_materialization_plan(
                 field_name=pf.field_name,
                 parent_code=pf.parent_code,
                 label=pf.label,
-                amount_keur=final_capex_children[children_key],
+                # empty-active-set case (all children OFF) → 0
+                amount_keur=final_capex_children.get(children_key, 0.0),
                 y0_share=pf.y0_share,
                 spending_profile=pf.spending_profile,
                 asset_class=pf.asset_class,
                 useful_life_override=pf.useful_life_override,
                 is_depreciable=pf.is_depreciable,
+                is_active=final_capex_active_child.get(children_key, False),
             ))
         else:
             reconciled_capex_fields.append(pf)
 
     final_opex_children: dict[str, float] = {}
     final_opex_present: set[str] = set()
+    final_opex_active_child: dict[str, bool] = {}
     for s in opex_sub_lines:
         if not s.replay_metadata.get("replaces_parent"):
             continue
@@ -809,6 +821,9 @@ def rescale_materialization_plan(
             continue
         # Correction C (defect 4): presence vs active-sum, as for CAPEX.
         final_opex_present.add(key)
+        # Correction D (defect 3B): parent applicability = ANY(active child).
+        final_opex_active_child[key] = (
+            final_opex_active_child.get(key, False) or s.is_active)
         if s.is_active:
             final_opex_children[key] = (
                 final_opex_children.get(key, 0.0) + float(s.amount_keur))
@@ -824,6 +839,7 @@ def rescale_materialization_plan(
                 annual_inflation=of_.annual_inflation,
                 step_changes=of_.step_changes,
                 percentage_of_opex=of_.percentage_of_opex,
+                is_active=final_opex_active_child.get(of_.name, False),
             ))
         else:
             reconciled_opex_items.append(of_)
@@ -865,6 +881,8 @@ def plan_to_project_state(
             asset_class=p.asset_class,
             useful_life_override=p.useful_life_override,
             is_depreciable=p.is_depreciable,
+            # Correction D (defect 2): parent applicability round-trips.
+            is_active=p.is_active,
         )
         for p in plan.capex_fields
     )

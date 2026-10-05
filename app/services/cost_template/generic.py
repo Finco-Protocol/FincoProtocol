@@ -226,6 +226,10 @@ def _generic_opex_items(pi: Any, technology: str) -> tuple[OpexTemplateItem, ...
                 source_ref=PUBLIC_GENERIC_DETAIL_V1,
                 replaces_parent=True,
                 canonical_parent_key=name,
+                # Correction D (defect 5): generic detail rows explicitly
+                # satisfy the runtime replacement contract.
+                reference_seed=True,
+                persisted_source="reference_seed",
             ))
     return tuple(items)
 
