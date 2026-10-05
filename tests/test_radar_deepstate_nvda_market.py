@@ -481,8 +481,11 @@ def test_tickmath_all_nibble_tables_include_pinned_default_15():
     ]
     for i, value in enumerate(expected):
         table = getattr(dsl, f"_TICKMATH_FACTOR{i}")
-        assert set(table) == set(range(16))
+        expected_keys = set(range(16)) if i == 0 else set(range(1, 16))
+        assert set(table) == expected_keys
         assert table[15] == value
+        if i > 0:
+            assert 0 not in table
     assert dsl._TICKMATH_RESIDUAL == {
         1: 0xffffffd3a37a05e383e14c90273c94f5,
         2: 0xffffffa746f41376f74124cd483186d4,
