@@ -32,6 +32,7 @@ from app.radar_rwa.stock_token_oracle_registry import (
 from finco_radar.authority.contracts import AuthorityState, ReferenceLayer
 from finco_radar.authority.r_live_onchain import OnchainReferenceObservation, RpcUnavailable
 from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 5, 14, 0, 0, tzinfo=timezone.utc)
@@ -526,7 +527,7 @@ def test_rlive_detail_shows_status_first_source_legs_panel():
 
 @pytest.mark.parametrize("path", ["financial_engine", "finco_core", "finco_yield"])
 def test_frozen_namespaces_have_zero_diff(path):
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main..HEAD", "--", path], cwd=ROOT,
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", path], cwd=ROOT,
                          capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
@@ -548,7 +549,7 @@ def test_existing_authorities_are_not_modified():
         ":(exclude)app/radar_rwa/stock_token_oracle.py", ":(exclude)app/radar_rwa/stock_token_oracle_registry.py",
         ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
         ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json"]
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", "origin/main..HEAD", "--",
+    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", f"{merge_base_ref()}..HEAD", "--",
                           "finco_radar", "app/radar_rwa", "app/crypto_resource_access.py", *excluded], cwd=ROOT,
                          capture_output=True, text=True)
     if out.returncode != 0:

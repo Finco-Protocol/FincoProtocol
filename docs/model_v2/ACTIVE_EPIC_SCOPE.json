@@ -65,6 +65,7 @@
     "tests/test_multi_source_evidence_v2.py",
     "tests/test_opus_c1_product_truth.py",
     "tests/test_p0a_model_execution.py",
+    "tests/test_parallel_stream_frozen_diff.py",
     "tests/test_radar_crypto_surface_coherence.py",
     "tests/test_rwa_integrity.py",
     "tests/test_staging_product_truth.py",

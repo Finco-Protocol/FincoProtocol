@@ -44,6 +44,7 @@ from app.rwa_integrity.read_model import (
 from finco_radar.venues.models import RegistryStatus, RepresentationEntry
 from finco_radar.venues.registry import VenueRegistry, parse_underlying
 from finco_radar.venues.store import VenueMarketStore
+from model_v2_governance import merge_base_ref
 
 NOW = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -372,7 +373,7 @@ class TestFrozen:
                                            "finco_radar/venues"])
     def test_zero_diff(self, namespace):
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
             cwd=REPO, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")

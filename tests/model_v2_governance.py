@@ -230,6 +230,26 @@ def approved_by_active_model_v2_scope(path: str) -> bool:
     return path in _approved_paths(scope)
 
 
+def merge_base_ref(main_ref: str = "origin/main",
+                   head_ref: str = "HEAD",
+                   repo: "str | Path | None" = None) -> str:
+    """Resolve the branch-side comparison boundary: the merge-base of the
+    main ref and HEAD. Files introduced only on main after the branch
+    diverged are main-side additions and never appear in a diff from this
+    boundary. Raises RuntimeError (fail closed) when unresolvable."""
+    cwd = str(repo) if repo else str(REPO)
+    result = subprocess.run(
+        ["git", "merge-base", main_ref, head_ref],
+        capture_output=True, text=True, cwd=cwd,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        raise RuntimeError(
+            "PARALLEL_STREAM_MERGE_BASE_UNRESOLVABLE: cannot derive the "
+            f"branch-side comparison boundary from main ref {main_ref!r}"
+        )
+    return result.stdout.strip()
+
+
 def changed_paths_vs_main() -> list[str]:
     """Paths changed on the Model V2 lineage, excluding main-only advances.
 
@@ -241,17 +261,12 @@ def changed_paths_vs_main() -> list[str]:
     convention.
     """
     try:
-        base = subprocess.run(
-            ["git", "merge-base", "HEAD", "origin/main"],
-            capture_output=True, text=True, cwd=str(REPO), check=True,
-        ).stdout.strip()
-        if not base:
-            base = "origin/main"
+        base = merge_base_ref("origin/main", "HEAD", repo=str(REPO))
         result = subprocess.run(
             ["git", "diff", base, "--name-only"],
             capture_output=True, text=True, cwd=str(REPO), check=True,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, RuntimeError):
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
@@ -319,3 +334,44 @@ def retirement_gate_pass(*, marker_present: bool, marker_status: str | None,
     if not is_main_tip:
         return True
     return not (marker_present and marker_status == "ACTIVE")
+
+
+# ---------------------------------------------------------------------------
+# CI parallel-stream frozen-diff helper (Correction: governance closeout)
+# ---------------------------------------------------------------------------
+
+def parallel_stream_frozen_changes(
+    frozen_path: str,
+    *,
+    main_ref: str = "origin/main",
+    head_ref: str = "HEAD",
+    allowed: "frozenset[str] | set[str] | tuple[str, ...]" = (),
+    repo: "str | Path | None" = None,
+) -> "list[str]":
+    """Return branch-side changed paths under ``frozen_path``, comparing
+    against the MERGE-BASE of ``main_ref`` and HEAD.
+
+    Files introduced only on main after the branch diverged are main-side
+    additions, never branch-side frozen-path changes. Allowed-path rules
+    and the ACTIVE Model V2 scope exemptions still filter the result. Fails
+    closed (RuntimeError) when the merge-base cannot be resolved.
+    """
+    cwd = str(repo) if repo else str(REPO)
+    base = subprocess.run(
+        ["git", "merge-base", main_ref, head_ref],
+        capture_output=True, text=True, cwd=cwd,
+    )
+    if base.returncode != 0 or not base.stdout.strip():
+        raise RuntimeError(
+            "PARALLEL_STREAM_MERGE_BASE_UNRESOLVABLE: cannot derive the "
+            f"branch-side comparison boundary from main ref {main_ref!r}"
+        )
+    diff = subprocess.run(
+        ["git", "diff", "--name-only",
+         f"{base.stdout.strip()}..{head_ref}", "--", frozen_path],
+        capture_output=True, text=True, cwd=cwd, check=True,
+    )
+    return [
+        p for p in diff.stdout.split()
+        if p and p not in allowed and not approved_by_active_model_v2_scope(p)
+    ]
