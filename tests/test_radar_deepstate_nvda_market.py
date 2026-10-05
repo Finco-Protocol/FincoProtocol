@@ -643,3 +643,30 @@ def test_deferred_usdg_normalization_is_truthful_runtime_state():
     assert "usdg_usd_timestamp" not in observation.payload
     assert "effective_evidence_timestamp" not in observation.payload
     assert "usdg_usd_authority" not in observation.payload
+
+
+def test_normalization_fields_appear_when_evidence_is_supplied():
+    observed_at = datetime(2026, 9, 28, 1, 49, 30, tzinfo=timezone.utc)
+    observation = dsl.match_to_observations(
+        _decoded(), collected_at=COLLECTED,
+        block_timestamp=int(BLOCK_TIME.timestamp()),
+        usdg_usd=(Decimal("1.0001"), observed_at),
+    )[0]
+    assert Decimal(observation.payload["normalized_usd_price"]) == (
+        Decimal(observation.price) * Decimal("1.0001"))
+    assert observation.payload["usdg_usd_value"] == "1.0001"
+    assert observation.payload["usdg_usd_timestamp"] == observed_at.isoformat()
+    assert observation.payload["effective_evidence_timestamp"] == observed_at.isoformat()
+
+
+def test_same_canonical_sub_event_recollects_as_dedupe(tmp_path):
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=tmp_path / "dedupe.db")
+    observations = dsl.match_to_observations(
+        _decoded(), collected_at=COLLECTED,
+        block_timestamp=int(BLOCK_TIME.timestamp()))
+    first = store.append_many_batched(observations)
+    second = store.append_many_batched(observations)
+    assert first[0][1] is True
+    assert second[0][1] is False
+    assert store.count(venue_id="DEEPSTATE") == 1
