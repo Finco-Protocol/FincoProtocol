@@ -13,7 +13,7 @@ that a template existed.
 | C-code map | `app/persistence/capex_sub_lines.py` (`CAPEX_CATEGORY_TO_FIELD`) | C.NN ↔ CapexStructure field, with the intentional C.08/C.11 alias (C.11 non-owning alias folds into `audit_legal`) |
 | CAPEX child taxonomy | `app/reference_detail_catalog.py` (`PUBLIC_GENERIC_DETAIL_V1`) | per-technology children `C.NN.NN` with integer weights → deterministic shares; no amounts of its own |
 | `CapexSubLine` | `app/persistence/capex_sub_lines.py` | `sub_line_id, parent_category_code, business_code (C.NN.U### user / C.NN.NN reference-detail), display_order, label, amount_keur, schedule_json, scalar_metadata, source ("user"|"reference_seed"), replay_metadata, is_active` (soft delete) |
-| CAPEX fold | `fold_sub_lines_into_capex` | pure; additive into the parent field; unknown category raises; active-only |
+| CAPEX fold | `fold_sub_lines_into_capex` + `_fold_user_sub_lines_replacing_base` | pure; Correction B authority: sub-lines are a BREAKDOWN/REPLACEMENT of the canonical field (zero base + fold) — ALL active sub-lines including C.NN.U### user rows participate; unknown category raises; active-only |
 | `OpexItem` | `finco_core/inputs/_models.py` | `name, y1_amount_keur, annual_inflation, step_changes ((year, amount)…), percentage_of_opex` (mutually exclusive with steps) |
 | OPEX taxonomy | `app/reference_detail_catalog.py` | children `B.NN.NN` per technology (B.01 Technical Management: B.01.01 Asset Management Contract … B.01.06 SCADA / Monitoring Platform) |
 | `OpexSubLine` | `app/persistence/opex_sub_lines.py` | `parent_group_code, business_code (B.NN.U###), label, amount_keur (Y1), inflation_pct, source, replay_metadata, is_active` |
