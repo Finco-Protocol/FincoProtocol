@@ -179,10 +179,16 @@ class CapexTemplateItem:
     # rows (C.NN.U###) are additive and never set it.
     replaces_parent: bool = False
     # Correction A (defect 2): approved CAPEX scalar metadata (VAT / WHT /
-    # depreciation vocabulary of APPROVED_SCALAR_CAPEX_METADATA_KEYS),
-    # validated by the existing sanitizer at the extraction/plan boundary
-    # and carried losslessly through the roundtrip.
+    # depreciation vocabulary of APPROVED_SCALAR_CAPEX_METADATA_KEYS).
+    # Correction B (defect 6): re-validated through the existing sanitizer
+    # authority at EVERY consumption boundary (create / validate / serialize
+    # / resolve) - unknown or invalid keys always fail closed, and an
+    # in-place mutation of this dict can never reach serialization or
+    # materialization.
     scalar_metadata: dict = field(default_factory=dict)
+    # Applicability addendum (A2): template default applicability. TRUE by
+    # default; projects own their post-materialization is_active state.
+    default_active: bool = True
     # Inactive Development-Costs migration seam (C.15). Never active here.
     devex_candidate: bool = False
 
@@ -221,13 +227,23 @@ class CapexTemplateItem:
                     "replaces_parent but carries no child row code"
                 )
             import re as _re
-            if not _re.match(r"^C\.\d{2}\.\d{2}$", self.child_code):
+            # Correction B (defect 1): the CAPEX runtime treats EVERY active
+            # sub-line as a breakdown/replacement of the canonical field
+            # (zero base + fold), including user-created C.NN.U### rows.
+            if not _re.match(r"^C\.\d{2}\.(?:\d{2}|U\d{3})$", self.child_code):
                 raise ValueError(
                     f"COST_TEMPLATE_REPLACEMENT_CODE_INVALID: item {sid!r} marks "
-                    f"replaces_parent with non-presentation child code "
-                    f"{self.child_code!r}; only C.NN.NN detail rows decompose a "
-                    "canonical parent (user C.NN.U### rows are additive)"
+                    f"replaces_parent with unrecognized child code "
+                    f"{self.child_code!r}; expected C.NN.NN or C.NN.U###"
                 )
+        # Correction B (defect 6): fail closed on unknown/invalid scalar
+        # metadata using the EXISTING FINCO sanitizer authority.
+        if self.scalar_metadata:
+            from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
+            object.__setattr__(
+                self, "scalar_metadata",
+                sanitize_scalar_capex_metadata(self.scalar_metadata),
+            )
         if self.classification is ItemClassification.DERIVED_RUNTIME:
             if self.driver is not CostDriver.DERIVED_RUNTIME:
                 raise ValueError(
@@ -302,6 +318,17 @@ class OpexTemplateItem:
     # canonical parent OpexItem (presentation codes B.NN.NN); user rows
     # (B.NN.U###) are additive and never set it.
     replaces_parent: bool = False
+    # Correction B (defect 3): the CANONICAL OpexItem identity (its exact
+    # name) that a decomposition row replaces - never the B.NN group code.
+    # Required by the existing OPEX replacement fold
+    # (source in {reference_seed, user_override} + reference_seed=True +
+    # canonical_key=<canonical name>).
+    canonical_parent_key: Optional[str] = None
+    # Correction B (defect 3): mirrors the runtime replacement vocabulary
+    # (source in {reference_seed, user_override} + reference_seed=True).
+    reference_seed: bool = False
+    # Applicability addendum (A2).
+    default_active: bool = True
 
     def validate(self) -> None:
         sid = self.item_id or "<missing-id>"
@@ -390,6 +417,21 @@ class OpexTemplateItem:
                     f"{self.child_code!r}; only B.NN.NN detail rows decompose a "
                     "canonical parent (user B.NN.U### rows are additive)"
                 )
+            # Correction B (defect 3): the replacement fold keys on the
+            # CANONICAL OpexItem identity (its exact name), never on the
+            # B.NN group presentation code.
+            if not self.canonical_parent_key or not self.canonical_parent_key.strip():
+                raise ValueError(
+                    f"COST_TEMPLATE_CANONICAL_PARENT_KEY_REQUIRED: decomposition "
+                    f"item {sid!r} must name the canonical OpexItem it replaces "
+                    "(canonical_parent_key), not the B.NN group code"
+                )
+            if self.canonical_parent_key.startswith("B.") and "." in self.canonical_parent_key:
+                raise ValueError(
+                    f"COST_TEMPLATE_CANONICAL_PARENT_KEY_INVALID: item {sid!r} "
+                    f"canonical_parent_key {self.canonical_parent_key!r} looks like "
+                    "a group code; use the exact canonical OpexItem name"
+                )
 
 
 @dataclass(frozen=True)
@@ -412,6 +454,12 @@ class CostTemplate:
     created_at: str = ""                 # ISO timestamp (informational)
     reference_capacity_mw: Optional[float] = None   # GENERIC templates
     source_project_ref: Optional[str] = None        # CLIENT templates
+    # Applicability addendum (A9): contingency applicability. INACTIVE
+    # retains the configured percentage but the authority is not applied —
+    # never conflated with an explicit 0.0% authority. C.17/C.18 have no
+    # user applicability at all (runtime-derived).
+    capex_contingency_active: bool = True
+    opex_contingency_active: bool = True
     _schema: str = "finco-cost-template-1"
 
     def validate(self) -> None:

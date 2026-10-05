@@ -64,7 +64,12 @@ class OpexItemState:
 
 @dataclass(frozen=True)
 class CapexSubLineState:
-    """Active CAPEX sub-line (child row) with its persistent identity."""
+    """CAPEX sub-line (child row) with its persistent identity.
+
+    Applicability addendum (A5/A10): ``is_active`` is the project-owned
+    applicability of the row (existing persistence authority); inactive rows
+    are preserved with their economics, never dropped or zeroed.
+    """
 
     parent_category_code: str
     business_code: str            # C.NN.NN (reference detail) or C.NN.U###
@@ -73,6 +78,7 @@ class CapexSubLineState:
     schedule_json: str = "{}"
     scalar_metadata: dict[str, Any] = field(default_factory=dict)
     source: str = "user"
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -85,6 +91,14 @@ class OpexSubLineState:
     amount_keur: float            # Y1
     inflation_pct: float = 0.0    # percent (existing persistence unit)
     source: str = "user"
+    # Applicability addendum (A5/A10): project-owned ON/OFF, preserved
+    # through extraction; inactive rows retain their economics.
+    is_active: bool = True
+    # Correction B (defect 5): replacement provenance — the exact canonical
+    # OpexItem name this detail row replaces (seeded/detail B.NN.NN rows);
+    # user B.NN.U### rows are ADDITIVE and leave both unset.
+    canonical_parent_key: Optional[str] = None
+    reference_seed: bool = False
 
 
 @dataclass(frozen=True)
@@ -98,6 +112,10 @@ class ContingencyState:
 
     capex_pct: Optional[float] = None    # percent points, authority unit
     opex_pct: Optional[float] = None     # percent points, authority unit
+    # Applicability addendum (A9): an authority may be INACTIVE (config
+    # retained, not applied) - distinct from an explicit 0.0% authority.
+    capex_active: bool = True
+    opex_active: bool = True
     lineage: dict[str, Any] = field(default_factory=dict)
 
 
@@ -203,10 +221,13 @@ def extract_client_cost_template(
     # presentation rows DECOMPOSE/REPLACE their canonical parent (existing
     # reference-seed replacement semantics); C.NN.U### user rows are
     # additive.
-    import re as _re
     from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
 
     for s in state.capex_sub_lines:
+        # Correction B (defect 1): EVERY CAPEX sub-line participates in the
+        # existing replacing-base breakdown (zero base + fold), including
+        # user-created C.NN.U### rows - they are never additive CAPEX
+        # economics. Applicability addendum (A10): is_active is preserved.
         capex_items.append(CapexTemplateItem(
             item_id=f"capex.subline.{s.business_code}",
             parent_code=s.parent_category_code,
@@ -218,22 +239,29 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
-            replaces_parent=bool(_re.match(r"^C\.\d{2}\.\d{2}$", s.business_code)),
+            replaces_parent=True,
             scalar_metadata=sanitize_scalar_capex_metadata(s.scalar_metadata),
+            default_active=bool(s.is_active),
         ))
 
     opex_items: list[OpexTemplateItem] = []
     opex_sub_parents = {s.parent_group_code for s in state.opex_sub_lines}
     for o in state.opex_items:
-        if float(o.percentage_of_opex or 0):
-            # Core OpexItem stores a FRACTION (0.06 = 6%); the template
-            # authority stores PERCENT POINTS (6.0) - convert exactly once.
+        # Correction B (defect 5): the TYPED contingency authority is the
+        # primary source - an explicit 0.0% authority must survive (never
+        # collapse into an ordinary ABSOLUTE row via truthiness). The core
+        # OpexItem fraction (0.06) converts to percent points (6.0) once.
+        pct_fraction = float(o.percentage_of_opex or 0.0)
+        typed_active = (state.contingency is not None
+                        and state.contingency.opex_pct is not None
+                        and state.contingency.opex_active)
+        if pct_fraction > 0 or (typed_active and o.parent_code == "B.13"):
             opex_items.append(OpexTemplateItem(
                 item_id=f"opex.{o.name}",
                 parent_code=o.parent_code,
                 label=o.name,
                 driver=CostDriver.PERCENT_OF_OPEX,
-                driver_value=float(o.percentage_of_opex) * 100.0,
+                driver_value=pct_fraction * 100.0,
                 scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
                 source=TemplateSource.CLIENT_EXTRACT,
                 source_ref=state.project_ref,
@@ -253,6 +281,7 @@ def extract_client_cost_template(
         ))
     import re as _re
     for s in state.opex_sub_lines:
+        is_detail = bool(_re.match(r"^B\.\d{2}\.\d{2}$", s.business_code))
         opex_items.append(OpexTemplateItem(
             item_id=f"opex.subline.{s.business_code}",
             parent_code=s.parent_group_code,
@@ -266,7 +295,12 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
-            replaces_parent=bool(_re.match(r"^B\.\d{2}\.\d{2}$", s.business_code)),
+            replaces_parent=is_detail,
+            # Correction B (defect 5): replacement provenance survives
+            # extraction. User B.NN.U### rows are ADDITIVE (both unset).
+            canonical_parent_key=s.canonical_parent_key if is_detail else None,
+            reference_seed=bool(s.reference_seed) if is_detail else False,
+            default_active=bool(s.is_active),
         ))
 
     return CostTemplate.create(
@@ -279,4 +313,10 @@ def extract_client_cost_template(
         opex_items=tuple(opex_items),
         provenance="Extracted from project cost state (exact snapshot)",
         source_project_ref=state.project_ref,
+        # Applicability addendum (A9): INACTIVE retains the configured
+        # percentage but the authority is not applied.
+        capex_contingency_active=(
+            state.contingency.capex_active if state.contingency else True),
+        opex_contingency_active=(
+            state.contingency.opex_active if state.contingency else True),
     )

@@ -207,6 +207,8 @@ def _generic_opex_items(pi: Any, technology: str) -> tuple[OpexTemplateItem, ...
             source_ref=PUBLIC_GENERIC_DETAIL_V1,
         ))
         # Child detail rows: EUR_PER_MW with per-line inflation preserved.
+        # Correction B (defect 3): the replacement identity is the CANONICAL
+        # OpexItem name (the existing fold authority), never the B.NN code.
         for child, child_amount in allocate_parent_amount(
                 amount, opex_children(group, technology)):
             items.append(OpexTemplateItem(
@@ -223,6 +225,7 @@ def _generic_opex_items(pi: Any, technology: str) -> tuple[OpexTemplateItem, ...
                 source=TemplateSource.GENERIC_TEMPLATE,
                 source_ref=PUBLIC_GENERIC_DETAIL_V1,
                 replaces_parent=True,
+                canonical_parent_key=name,
             ))
     return tuple(items)
 

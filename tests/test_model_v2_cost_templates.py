@@ -305,6 +305,16 @@ def test_client_roundtrip_capex_and_identity():
             # never frozen into a field amount (authority boundary)
             continue
         rb = rebuilt_by_code[f.parent_code]
+        if f.parent_code == "C.01":
+            # Correction B (defect 1): ALL CAPEX child rows (detail +
+            # user U-codes) replace the canonical base, so the field
+            # authority = sum of ALL active children = 3000 + 250 = 3250
+            children_sum = sum(
+                s.amount_keur for s in state.capex_sub_lines
+                if s.parent_category_code == "C.01")
+            assert rb.amount_keur == pytest.approx(children_sum, abs=1e-9)
+            assert rb.amount_keur == pytest.approx(3250.0, abs=1e-9)
+            continue
         assert rb.amount_keur == pytest.approx(f.amount_keur, abs=1e-9), f.parent_code
         assert rb.asset_class == f.asset_class
         assert rb.useful_life_override == f.useful_life_override
