@@ -1,25 +1,15 @@
 """One-shot Deepstate NVDA/USDG live collector (V1 vertical slice).
 
-Runtime architecture (mirrors tokenized_collect):
-canonical Deepstate router logs (read-only RPC) -> bounded exact decode
--> block canonicality validation -> MarketObservation -> append-only
-VenueMarketStore.
+Canonical Router logs -> initial block canonicality -> exact decode in memory
+-> FINAL block-hash recheck -> ONE append-only batch persistence -> operational
+checkpoint advance.
 
-Only canonical executed Deepstate matches on the reviewed NVDA/USDG book
-become observations.  No quotes, no order-book midpoints, no wallet, no
-signing, no scheduler in-process.  Environment:
+The operational scan checkpoint is mutable and separate from market evidence.
+It advances only after a complete bounded range passes acquisition, decode,
+final canonicality and atomic observation persistence. Market observations
+remain append-only and are never used to infer scan completeness.
 
-    FINCO_DEEPSTATE_COLLECTOR_ENABLED   1 to allow a run (default off)
-    ROBINHOOD_RPC_URL                   read-only chain RPC (required)
-    FINCO_VENUE_DB_PATH                 VenueMarketStore path (required)
-    FINCO_DEEPSTATE_START_BLOCK         explicit bootstrap block (required
-                                        when the store is empty; there is
-                                        NO silent genesis scan)
-    FINCO_DEEPSTATE_MAX_BLOCKS_PER_REQ  getLogs chunk size (default 20000)
-    FINCO_DEEPSTATE_MAX_REQUESTS        per-run request budget (default 40)
-
-Exit codes: 0 OK (bounded run completed), 2 wrong chain, 4 DISABLED/
-CONFIG_ERROR, 6 reorg/canonicality failure (fail closed).
+No deploy/scheduler is configured here.
 """
 from __future__ import annotations
 
@@ -27,6 +17,7 @@ from datetime import datetime, timezone
 import json
 import os
 import sys
+import urllib.request as _urllib_request
 
 from finco_radar.venues.store import VenueMarketStore
 
@@ -34,35 +25,55 @@ from app.radar_rwa.deepstate_chain import ensure_chain, eth_block_number
 from finco_radar.venues.deepstate_live import (
     DEEPSTATE_BOOK_ID,
     DEEPSTATE_CHAIN_ID,
-    DEEPSTATE_VENUE,
     decode_match_log,
-    fetch_block_timestamp,
     fetch_match_logs,
     match_to_observations,
 )
 
+_CHECKPOINT_KEY = "DEEPSTATE_NVDA_USDG_V1"
+_CHECKPOINT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS collector_checkpoints (
+    collector_key      TEXT PRIMARY KEY,
+    last_scanned_block INTEGER NOT NULL,
+    updated_at         TEXT NOT NULL
+)
+"""
 
-def _latest_block_number(store: VenueMarketStore) -> int | None:
-    latest = 0
+
+def _checkpoint_block(store: VenueMarketStore) -> int | None:
     conn = store._connect()
     try:
-        rows = conn.execute(
-            "SELECT payload FROM market_observations WHERE venue_id=?",
-            (DEEPSTATE_VENUE,)).fetchall()
+        conn.execute(_CHECKPOINT_SCHEMA)
+        row = conn.execute(
+            "SELECT last_scanned_block FROM collector_checkpoints "
+            "WHERE collector_key=?", (_CHECKPOINT_KEY,)).fetchone()
+        conn.commit()
+        return int(row[0]) if row is not None else None
     finally:
         conn.close()
-    for (payload_text,) in rows:
-        try:
-            payload = json.loads(payload_text)
-            latest = max(latest, int(payload.get("block_number") or 0))
-        except Exception:
-            continue
-    return latest or None
+
+
+def _advance_checkpoint(store: VenueMarketStore, block_number: int) -> None:
+    """Advance mutable operational state monotonically; never market evidence."""
+    conn = store._connect()
+    try:
+        conn.execute(_CHECKPOINT_SCHEMA)
+        conn.execute(
+            "INSERT INTO collector_checkpoints "
+            "(collector_key,last_scanned_block,updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(collector_key) DO UPDATE SET "
+            "last_scanned_block=excluded.last_scanned_block, "
+            "updated_at=excluded.updated_at "
+            "WHERE excluded.last_scanned_block > collector_checkpoints.last_scanned_block",
+            (_CHECKPOINT_KEY, int(block_number), datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _chunked_logs(rpc_url: str, from_block: int, to_block: int,
                   max_blocks: int, max_requests: int) -> tuple[list[dict], int, bool]:
-    """Bounded chunked getLogs.  Returns (logs, requests, lag_remaining)."""
+    """Bounded chunked getLogs. Returns (logs, requests, lag_remaining)."""
     logs: list[dict] = []
     requests = 0
     start = from_block
@@ -76,26 +87,25 @@ def _chunked_logs(rpc_url: str, from_block: int, to_block: int,
 
 def _canonical_block(rpc_url: str, block_number: int, expected_hash: str,
                      timeout: int = 25) -> tuple[bool, int | None]:
-    """Prove the block is still canonical: hash-by-number == persisted hash.
-
-    Returns (ok, block_timestamp_from_the_same_validated_block).
-    """
+    """Hash-by-number canonicality plus timestamp from the SAME block."""
     payload = json.dumps({"jsonrpc": "2.0", "id": 1,
                           "method": "eth_getBlockByNumber",
                           "params": [hex(block_number), False]}).encode()
-    request = urllib_request.Request(
+    request = _urllib_request.Request(
         rpc_url, data=payload, headers={"Content-Type": "application/json"})
-    import urllib.request as _u
-    with _u.urlopen(request, timeout=timeout) as response:
+    with _urllib_request.urlopen(request, timeout=timeout) as response:
         body = json.load(response)
     block = body.get("result") or {}
     if block.get("hash") != expected_hash:
         return False, None
     ts = int(block["timestamp"], 16) if block.get("timestamp") else None
-    return True, ts
+    return (ts is not None), ts
 
 
-import urllib.request as _urllib_request  # noqa: E402  (used above)
+def _reorg_report(reason: str, rejected_logs: int = 0) -> int:
+    print(json.dumps({"state": "REORG_DETECTED", "reason": reason,
+                      "rejected_logs": rejected_logs, "exit_code": 6}), flush=True)
+    return 6
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,66 +126,94 @@ def main(argv: list[str] | None = None) -> int:
 
     max_blocks = int(os.getenv("FINCO_DEEPSTATE_MAX_BLOCKS_PER_REQ") or 20000)
     max_requests = int(os.getenv("FINCO_DEEPSTATE_MAX_REQUESTS") or 40)
+    if max_blocks <= 0 or max_requests <= 0:
+        print(json.dumps({"state": "CONFIG_ERROR", "exit_code": 4}), flush=True)
+        return 4
+
     collected_at = datetime.now(timezone.utc)
     store = VenueMarketStore(path=db_path)
-
-    latest = _latest_block_number(store)
-    if latest is None:
+    checkpoint = _checkpoint_block(store)
+    if checkpoint is None:
         bootstrap = int(os.getenv("FINCO_DEEPSTATE_START_BLOCK") or "0")
         if not bootstrap:
             print(json.dumps({
                 "state": "BOOTSTRAP_REQUIRED",
-                "reason": ("empty Deepstate store: set FINCO_DEEPSTATE_START_BLOCK "
-                           "to an explicit reviewed start block (no genesis scan)"),
+                "reason": ("no operational checkpoint: set FINCO_DEEPSTATE_START_BLOCK "
+                           "to an explicit reviewed start block"),
                 "exit_code": 4}), flush=True)
             return 4
         from_block = bootstrap
     else:
-        from_block = latest + 1
+        from_block = checkpoint + 1
+
     current_head = eth_block_number(rpc_url)
+    if from_block > current_head:
+        report = {
+            "schema": "FINCO_DEEPSTATE_LIVE_INTELLIGENCE_V1",
+            "state": "OK", "book": DEEPSTATE_BOOK_ID,
+            "chain_id": DEEPSTATE_CHAIN_ID, "from_block": from_block,
+            "to_block": current_head, "current_head": current_head,
+            "getlogs_requests": 0, "lag_blocks_remaining": 0,
+            "lag_truthfully_reported": False, "logs_seen": 0,
+            "observations_persisted": 0, "duplicates_skipped": 0,
+            "operational_checkpoint_block": checkpoint,
+            "market_observations_total": _total(store), "exit_code": 0,
+        }
+        print(json.dumps(report), flush=True)
+        return 0
+
     to_block = min(current_head, from_block + max_blocks * max_requests - 1)
-    logs, requests, lag = _chunked_logs(rpc_url, from_block, to_block,
-                                        max_blocks, max_requests)
+    logs, requests, _ = _chunked_logs(
+        rpc_url, from_block, to_block, max_blocks, max_requests)
 
-    # block canonicality BEFORE persistence (fail closed on reorg)
-    canonical_blocks: dict[int, int] = {}
-    rejected_reorg = 0
-    accepted_logs = []
+    # Initial canonicality: every acquired log in one block must name the
+    # exact same hash, and the hash-by-number read must agree.
+    validated_blocks: dict[int, dict[str, int | str]] = {}
     for log in logs:
-        block_number = int(log["blockNumber"], 16)
-        if block_number not in canonical_blocks:
-            ok, _ = _canonical_block(rpc_url, block_number, log["blockHash"])
-            canonical_blocks[block_number] = 1 if ok else 0
-        if canonical_blocks[block_number]:
-            canonical_blocks[block_number] = max(canonical_blocks[block_number], 1)
-            accepted_logs.append(log)
-        else:
-            rejected_reorg += 1
-    if canonical_blocks and 0 in canonical_blocks.values():
-        print(json.dumps({"state": "REORG_DETECTED",
-                          "reason": "block hash no longer canonical",
-                          "rejected_logs": rejected_reorg,
-                          "exit_code": 6}), flush=True)
-        return 6
+        try:
+            block_number = int(log["blockNumber"], 16)
+            expected_hash = str(log["blockHash"])
+        except (KeyError, TypeError, ValueError):
+            return _reorg_report("malformed canonical log identity", 1)
+        previous = validated_blocks.get(block_number)
+        if previous is not None and previous["hash"] != expected_hash:
+            return _reorg_report("conflicting block hashes inside acquired range", 1)
+        if previous is None:
+            ok, timestamp = _canonical_block(
+                rpc_url, block_number, expected_hash)
+            if not ok or timestamp is None:
+                return _reorg_report("block hash no longer canonical", 1)
+            validated_blocks[block_number] = {
+                "hash": expected_hash, "timestamp": timestamp}
 
+    # Decode in memory using only timestamps from initially validated blocks.
     observations = []
-    for log in accepted_logs:
+    for log in logs:
         decoded = decode_match_log(log)
         if decoded is None:
             continue
-        block_ts = canonical_blocks.get(decoded["block_number"])
-        ok, block_timestamp = _canonical_block(
-            rpc_url, decoded["block_number"], log["blockHash"]) if block_timestamp is None \
-            else (True, block_timestamp)
+        block = validated_blocks.get(decoded["block_number"])
+        if block is None:
+            return _reorg_report("validated block timestamp unavailable", 1)
         observations.extend(match_to_observations(
-            decoded, collected_at=collected_at, block_timestamp=block_timestamp))
+            decoded, collected_at=collected_at,
+            block_timestamp=int(block["timestamp"])))
 
-    persisted = 0
-    duplicates = 0
-    for observation in observations:
-        _, created = store.append_observation(observation)
-        persisted += 1 if created else 0
-        duplicates += 0 if created else 1
+    # FINAL canonicality immediately before persistence. Any changed accepted
+    # block invalidates the whole run: ZERO observations are persisted.
+    for block_number in sorted(validated_blocks):
+        block = validated_blocks[block_number]
+        ok, timestamp = _canonical_block(
+            rpc_url, block_number, str(block["hash"]))
+        if not ok or timestamp != block["timestamp"]:
+            return _reorg_report("final block canonicality changed", len(logs))
+
+    # One atomic evidence batch; only after success may the operational
+    # checkpoint advance. Crash-before-checkpoint => safe retry + digest dedupe.
+    created = store.append_many_batched(observations)
+    persisted = sum(1 for _digest, was_created in created if was_created)
+    duplicates = len(created) - persisted
+    _advance_checkpoint(store, to_block)
 
     remaining_lag = max(0, current_head - to_block)
     report = {
@@ -192,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         "logs_seen": len(logs),
         "observations_persisted": persisted,
         "duplicates_skipped": duplicates,
+        "operational_checkpoint_block": _checkpoint_block(store),
         "market_observations_total": _total(store),
         "exit_code": 0,
     }
