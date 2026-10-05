@@ -33,6 +33,7 @@ from app.radar_rwa.deepstate_chain import ensure_chain, eth_block_number
 from finco_radar.venues.deepstate_live import (
     DEEPSTATE_BOOK_ID,
     DEEPSTATE_CHAIN_ID,
+    DEEPSTATE_RPC_HEADERS,
     decode_match_log,
     fetch_match_logs,
     match_to_observations,
@@ -101,7 +102,7 @@ def _canonical_block(rpc_url: str, block_number: int, expected_hash: str,
                           "method": "eth_getBlockByNumber",
                           "params": [hex(block_number), False]}).encode()
     request = _urllib_request.Request(
-        rpc_url, data=payload, headers={"Content-Type": "application/json"})
+        rpc_url, data=payload, headers=DEEPSTATE_RPC_HEADERS)
     with _urllib_request.urlopen(request, timeout=timeout) as response:
         body = json.load(response)
     block = body.get("result") or {}
