@@ -460,8 +460,36 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
                 is_active=item.default_active,
             ))
             continue
+        # Correction G: decomposition authority takes PRECEDENCE over
+        # parent-level applicability, and BOTH must use the same canonical
+        # parent identity (the canonical OpexItem name — never the B.NN
+        # presentation group code). The previous check queried
+        # decomposition_present (keyed by canonical names) with
+        # item.parent_code ("B.01"), so a decomposed parent with
+        # default_active=False could wrongly enter the non-decomposed
+        # branch before the decomposition authority was evaluated.
+        parent_key = (item.canonical_parent_key
+                      if item.canonical_parent_key else item.label)
+        if parent_key in decomposition_present:
+            # WHEN DECOMPOSITION EXISTS, child applicability and child
+            # economics are authoritative:
+            #   parent amount  = sum(active decomposition children)
+            #   parent active  = any(active decomposition child)
+            # including the empty-active-set case (all children OFF →
+            # parent 0 AND inactive). Parent-level default_active is NOT an
+            # independent economic authority once decomposition exists.
+            y1 = decomposition_children.get(parent_key, 0.0)
+            plans.append(OpexItemPlan(
+                parent_code=item.parent_code,
+                name=item.label,
+                y1_amount_keur=y1,
+                annual_inflation=float(item.annual_inflation),
+                step_changes=tuple(item.step_changes),
+                is_active=active_child_present.get(parent_key, False),
+            ))
+            continue
         # Correction C (defect 5): non-decomposed parent applicability.
-        if not item.default_active and item.parent_code not in decomposition_present:
+        if not item.default_active:
             if r.resolved_y1_amount_keur is None:
                 raise ValueError(
                     f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} "
@@ -476,29 +504,12 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
                 is_active=False,
             ))
             continue
-        parent_key = (item.canonical_parent_key
-                      if item.canonical_parent_key else item.label)
-        if parent_key in decomposition_present:
-            y1 = decomposition_children.get(parent_key, 0.0)
-            # Correction F: decomposed parent applicability = ANY(active
-            # decomposition child) — all children OFF → parent 0 AND
-            # inactive, never an active parent over an empty active set.
-            plans.append(OpexItemPlan(
-                parent_code=item.parent_code,
-                name=item.label,
-                y1_amount_keur=y1,
-                annual_inflation=float(item.annual_inflation),
-                step_changes=tuple(item.step_changes),
-                is_active=active_child_present.get(parent_key, False),
-            ))
-            continue
-        elif r.resolved_y1_amount_keur is None:
+        if r.resolved_y1_amount_keur is None:
             raise ValueError(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
                 "to no amount (MISSING is not ZERO)"
             )
-        else:
-            y1 = float(r.resolved_y1_amount_keur)
+        y1 = float(r.resolved_y1_amount_keur)
         plans.append(OpexItemPlan(
             parent_code=item.parent_code,
             name=item.label,

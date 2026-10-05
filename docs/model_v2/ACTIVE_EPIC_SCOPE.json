@@ -53,6 +53,8 @@
     "tests/test_model_v2_cost_templates_cc.py",
     "tests/test_model_v2_cost_templates_cd.py",
     "tests/test_model_v2_cost_templates_ce.py",
+    "tests/test_model_v2_cost_templates_cf.py",
+    "tests/test_model_v2_cost_templates_cg.py",
     "tests/test_model_v2_foundation.py",
     "tests/test_model_v2_governance.py",
     "tests/test_model_v2_metadata.py",

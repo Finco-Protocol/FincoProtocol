@@ -119,6 +119,67 @@ workflow (zero economic change). `CapexTemplateItem` carries an optional
 `devex_candidate` classification flag (inactive) recording the future
 Development-Costs migration seam; no DEVEX engine is built here.
 
+## 7b. Hardening conventions (Corrections A-F, consolidated)
+
+The sections below document the CURRENT executable semantics of the
+materialization layer; earlier per-correction section text that diverged
+from the code has been consolidated here to keep documentation equal to
+implementation.
+
+- **Authority precedence on decomposed OPEX parents (Correction G)**:
+  decomposition is evaluated FIRST, keyed by the canonical OpexItem
+  identity (`canonical_parent_key`, falling back to the item label for
+  generic builders - never the B.NN group code). When decomposition exists,
+  `parent amount = sum(active children)` and
+  `parent is_active = any(active child)` - including the empty-active-set
+  case (all children OFF -> parent 0 AND inactive, assumptions retained).
+  Parent-level `default_active` is NOT an independent economic authority
+  once decomposition exists and can never short-circuit it; the result is
+  identical for parent items flagged active or inactive. Non-decomposed
+  parents keep the Correction C behavior: `default_active=False` retains
+  the stored amount/inflation/steps with `is_active=False`.
+- **CAPEX breakdown/replacement**: EVERY active CAPEX sub-line under a
+  canonical field - `C.NN.NN` detail rows AND user `C.NN.U###` rows -
+  participates in the existing replacing-base fold (zero base + fold).
+  Reconciliation is keyed by the CANONICAL CapexStructure field through
+  `CAPEX_CATEGORY_TO_FIELD`, so the C.08/C.11 alias collapses into one
+  `audit_legal` authority (summed exactly once).
+- **OPEX replacement provenance**: decomposition rows carry the exact
+  runtime fold vocabulary - `reference_seed=True`,
+  `canonical_key=<canonical OpexItem name>`, `detail_code`, `scaling_mode`
+  and template lineage - and the ORIGINAL persisted runtime row source
+  (`persisted_source`: reference_seed | user_override | user). A
+  `replaces_parent` item must set `reference_seed=True` and a
+  `persisted_source` of reference_seed/user_override; any runtime-
+  incompatible combination fails closed at the contract boundary. User
+  `B.NN.U###` rows remain additive with `persisted_source=user`.
+- **Percentage units**: template contingency drivers use canonical FINCO
+  PERCENT POINTS (6.0 = 6%, strict 0..100); the core
+  `OpexItem.percentage_of_opex` remains a FRACTION (0.06); conversion
+  happens exactly once at each boundary. `PERCENT_OF_OPEX` requires an
+  explicit `driver_value` (None fails closed; 0 is an explicit zero).
+- **Typed contingency authority is primary**: when
+  `ContingencyState.opex_pct`/`capex_pct` exists, C.13/B.13 become
+  PERCENT authorities with that exact value regardless of the active
+  flag; item `default_active` mirrors the active flag; the template
+  envelope flags are serialized MIRRORS validated to equal the item
+  applicability (divergence fails closed with
+  COST_TEMPLATE_CONTINGENCY_AUTHORITY_DIVERGENT).
+- **Applicability strictness**: `default_active`, the envelope contingency
+  flags and all pure-state `is_active` fields accept only strict
+  True/False; 0/1/strings/None fail closed. MISSING != ZERO != INACTIVE.
+- **Scalar metadata immutability**: CAPEX scalar metadata is sanitized
+  with the existing FINCO authority and snapshotted at item construction
+  into an immutable MappingProxyType; external mutation cannot leak in,
+  direct mutation raises, and the sanitizer re-validates at every
+  consumption boundary.
+- **Rescale reconciliation**: after row-level scaling/override decisions,
+  canonical parents are RECOMPUTED from the final active child set (CAPEX
+  by canonical field, OPEX by canonical key). Inactive rows keep their
+  latent template-derived values updated with capacity but never enter
+  the subtotal and never reactivate implicitly; overridden rows keep
+  their project-owned amounts.
+
 ## 8. Persistence
 
 Version-payload persistence (`cost_template` / `cost_template_version`
