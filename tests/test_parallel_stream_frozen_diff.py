@@ -47,7 +47,7 @@ def diverged_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-b", "main")
-    _git(repo, "config", "user.email", "test@finco.local")
+    _git(repo, "config", "user.email", "finco-test")
     _git(repo, "config", "user.name", "Finco Test")
     (repo / FROZEN_DIR).mkdir(parents=True)
     (repo / SCOPE_EXEMPT_DIR).mkdir(parents=True)
