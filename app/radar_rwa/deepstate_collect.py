@@ -9,6 +9,14 @@ It advances only after a complete bounded range passes acquisition, decode,
 final canonicality and atomic observation persistence. Market observations
 remain append-only and are never used to infer scan completeness.
 
+Every subsequent run re-scans a small deterministic overlap before the
+checkpoint. This is operational shallow-reorg safety only; it is NOT a chain
+finality claim. The explicit reviewed bootstrap remains the hard lower bound.
+
+Environment:
+    FINCO_DEEPSTATE_START_BLOCK   explicit reviewed bootstrap (always required)
+    FINCO_DEEPSTATE_RESCAN_BLOCKS overlap size (default 16; operational only)
+
 No deploy/scheduler is configured here.
 """
 from __future__ import annotations
@@ -31,6 +39,7 @@ from finco_radar.venues.deepstate_live import (
 )
 
 _CHECKPOINT_KEY = "DEEPSTATE_NVDA_USDG_V1"
+_DEFAULT_RESCAN_BLOCKS = 16
 _CHECKPOINT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS collector_checkpoints (
     collector_key      TEXT PRIMARY KEY,
@@ -126,25 +135,36 @@ def main(argv: list[str] | None = None) -> int:
 
     max_blocks = int(os.getenv("FINCO_DEEPSTATE_MAX_BLOCKS_PER_REQ") or 20000)
     max_requests = int(os.getenv("FINCO_DEEPSTATE_MAX_REQUESTS") or 40)
-    if max_blocks <= 0 or max_requests <= 0:
-        print(json.dumps({"state": "CONFIG_ERROR", "exit_code": 4}), flush=True)
+    rescan_blocks = int(os.getenv("FINCO_DEEPSTATE_RESCAN_BLOCKS")
+                        or _DEFAULT_RESCAN_BLOCKS)
+    bootstrap = int(os.getenv("FINCO_DEEPSTATE_START_BLOCK") or "0")
+    if not bootstrap:
+        print(json.dumps({
+            "state": "BOOTSTRAP_REQUIRED",
+            "reason": ("set FINCO_DEEPSTATE_START_BLOCK to an explicit "
+                       "reviewed start block; there is no genesis fallback"),
+            "exit_code": 4}), flush=True)
+        return 4
+    scan_capacity = max_blocks * max_requests
+    if (max_blocks <= 0 or max_requests <= 0 or rescan_blocks <= 0
+            or rescan_blocks >= scan_capacity):
+        print(json.dumps({
+            "state": "CONFIG_ERROR",
+            "reason": ("positive scan bounds required and "
+                       "FINCO_DEEPSTATE_RESCAN_BLOCKS must be smaller "
+                       "than per-run scan capacity"),
+            "exit_code": 4}), flush=True)
         return 4
 
     collected_at = datetime.now(timezone.utc)
     store = VenueMarketStore(path=db_path)
     checkpoint = _checkpoint_block(store)
     if checkpoint is None:
-        bootstrap = int(os.getenv("FINCO_DEEPSTATE_START_BLOCK") or "0")
-        if not bootstrap:
-            print(json.dumps({
-                "state": "BOOTSTRAP_REQUIRED",
-                "reason": ("no operational checkpoint: set FINCO_DEEPSTATE_START_BLOCK "
-                           "to an explicit reviewed start block"),
-                "exit_code": 4}), flush=True)
-            return 4
         from_block = bootstrap
     else:
-        from_block = checkpoint + 1
+        # Operational shallow-reorg safety. Re-read the checkpoint tail so a
+        # replacement of a previously empty block can surface new match logs.
+        from_block = max(bootstrap, checkpoint - rescan_blocks + 1)
 
     current_head = eth_block_number(rpc_url)
     if from_block > current_head:
@@ -157,12 +177,14 @@ def main(argv: list[str] | None = None) -> int:
             "lag_truthfully_reported": False, "logs_seen": 0,
             "observations_persisted": 0, "duplicates_skipped": 0,
             "operational_checkpoint_block": checkpoint,
+            "reviewed_bootstrap_start": bootstrap,
+            "rescan_blocks": rescan_blocks,
             "market_observations_total": _total(store), "exit_code": 0,
         }
         print(json.dumps(report), flush=True)
         return 0
 
-    to_block = min(current_head, from_block + max_blocks * max_requests - 1)
+    to_block = min(current_head, from_block + scan_capacity - 1)
     logs, requests, _ = _chunked_logs(
         rpc_url, from_block, to_block, max_blocks, max_requests)
 
@@ -229,6 +251,8 @@ def main(argv: list[str] | None = None) -> int:
         "observations_persisted": persisted,
         "duplicates_skipped": duplicates,
         "operational_checkpoint_block": _checkpoint_block(store),
+        "reviewed_bootstrap_start": bootstrap,
+        "rescan_blocks": rescan_blocks,
         "market_observations_total": _total(store),
         "exit_code": 0,
     }
