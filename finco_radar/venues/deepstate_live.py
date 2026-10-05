@@ -49,6 +49,11 @@ DEEPSTATE_USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
 NVDA_DECIMALS = 18
 USDG_DECIMALS = 6
 
+DEEPSTATE_RPC_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "FINCO-Protocol/Deepstate-Collector",
+}
+
 ASK_MATCHED_SIG = "AskMatched(bytes32,bytes32)"
 BID_MATCHED_SIG = "BidMatched(bytes32,bytes32)"
 
@@ -367,7 +372,7 @@ def fetch_match_logs(rpc_url: str, from_block: int, to_block: int,
         }],
     }).encode()
     request = urllib.request.Request(
-        rpc_url, data=payload, headers={"Content-Type": "application/json"})
+        rpc_url, data=payload, headers=DEEPSTATE_RPC_HEADERS)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         body = json.load(response)
     if body.get("error"):
@@ -383,7 +388,7 @@ def fetch_block_timestamp(rpc_url: str, block_number: int,
         "params": [hex(block_number), False],
     }).encode()
     request = urllib.request.Request(
-        rpc_url, data=payload, headers={"Content-Type": "application/json"})
+        rpc_url, data=payload, headers=DEEPSTATE_RPC_HEADERS)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         body = json.load(response)
     block = body.get("result") or {}

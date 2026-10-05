@@ -855,3 +855,97 @@ def test_checkpoint_does_not_remove_bootstrap_requirement(
     report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert report["state"] == "BOOTSTRAP_REQUIRED"
     assert dc._checkpoint_block(store) == 105
+
+# ── Post-merge staging Correction A: urllib RPC header compatibility ─────────
+
+class _RpcJsonResponse:
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode()
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+def _assert_deepstate_rpc_request_headers(request):
+    assert request.get_header("Content-type") == "application/json"
+    user_agent = request.get_header("User-agent")
+    assert user_agent
+    assert user_agent == "FINCO-Protocol/Deepstate-Collector"
+    assert "rpc.invalid" not in user_agent
+    assert "token" not in user_agent.lower()
+    assert "key" not in user_agent.lower()
+
+
+def test_deepstate_chain_rpc_requests_send_content_type_and_user_agent(monkeypatch):
+    import app.radar_rwa.deepstate_chain as chain
+
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        method = json.loads(request.data.decode())["method"]
+        result = "0x1237" if method == "eth_chainId" else "0x46f80e3"
+        return _RpcJsonResponse({"jsonrpc": "2.0", "id": 1, "result": result})
+
+    monkeypatch.setattr(chain.urllib.request, "urlopen", fake_urlopen)
+    assert chain.ensure_chain("https://rpc.invalid", expected_chain_id=4663)
+    assert chain.eth_block_number("https://rpc.invalid") == 74416355
+    assert len(requests) == 2
+    for request in requests:
+        _assert_deepstate_rpc_request_headers(request)
+
+
+def test_deepstate_live_rpc_requests_send_content_type_and_user_agent(monkeypatch):
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        method = json.loads(request.data.decode())["method"]
+        if method == "eth_getLogs":
+            result = []
+        elif method == "eth_getBlockByNumber":
+            result = {"timestamp": hex(int(BLOCK_TIME.timestamp()))}
+        else:
+            raise AssertionError(f"unexpected RPC method: {method}")
+        return _RpcJsonResponse({"jsonrpc": "2.0", "id": 1, "result": result})
+
+    monkeypatch.setattr(dsl.urllib.request, "urlopen", fake_urlopen)
+    assert dsl.fetch_match_logs("https://rpc.invalid", 74416350, 74416360) == []
+    assert dsl.fetch_block_timestamp("https://rpc.invalid", 74416355) == int(
+        BLOCK_TIME.timestamp())
+    assert len(requests) == 2
+    for request in requests:
+        _assert_deepstate_rpc_request_headers(request)
+
+
+def test_deepstate_collector_canonical_block_request_sends_headers(monkeypatch):
+    import app.radar_rwa.deepstate_collect as dc
+
+    expected_hash = FIXTURE_LOG["blockHash"]
+    captured = []
+
+    def fake_urlopen(request, timeout):
+        captured.append(request)
+        assert json.loads(request.data.decode())["method"] == "eth_getBlockByNumber"
+        return _RpcJsonResponse({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "hash": expected_hash,
+                "timestamp": hex(int(BLOCK_TIME.timestamp())),
+            },
+        })
+
+    monkeypatch.setattr(dc._urllib_request, "urlopen", fake_urlopen)
+    assert dc._canonical_block(
+        "https://rpc.invalid", 74416355, expected_hash) == (
+            True, int(BLOCK_TIME.timestamp()))
+    assert len(captured) == 1
+    _assert_deepstate_rpc_request_headers(captured[0])
+
