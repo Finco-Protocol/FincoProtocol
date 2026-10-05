@@ -121,14 +121,12 @@ def test_malformed_node_rejected():
 # ── A: exact TickMath32 integer semantics ────────────────────────────────────
 
 def test_tick_math32_tick_zero_represents_one_to_one():
-    """Pinned: tick 0 → factor 2^128+1 @ shift 128; floor quote == quantity."""
+    """Pinned Solidity: tick 0 -> exactly Q128, not Q128+1."""
     factor, shift = price_factor_at_tick(0)
     assert shift == 128
-    assert factor == 2**128 + 1
+    assert factor == 2**128
     assert quote_at_factor(factor, shift, 1033735644, round_up=False) == 1033735644
-    # round_up carries the pinned factor imprecision: (q*(2^128+1)) >> 128 == q,
-    # remainder q != 0 → +1 (contract integer semantics, kept verbatim)
-    assert quote_at_factor(factor, shift, 1033735644, round_up=True) == 1033735645
+    assert quote_at_factor(factor, shift, 1033735644, round_up=True) == 1033735644
 
 
 def test_tick_math32_shift_replicates_pinned_algorithm():
@@ -292,20 +290,41 @@ def test_bids_matched_multi_node_decode():
     assert len(decoded["matches"]) == 2
 
 
-def test_subtree_decode_uses_emitted_aggregates():
-    ask_sub = dsl.topic0("AskSubtreeMatched(bytes32,bytes32,uint160,uint256)")
+def _subtree_log(event_topic, *, usdg_raw=1033735644,
+                 nvda_raw=4597241934232839072, log_index="0x6"):
     data = (DEEPSTATE_BOOK_ID[2:].lower()
             + "ab" * 32
-            + hex(4597241934232839072)[2:].rjust(64, "0")   # uint160 word
-            + hex(1033735644)[2:].rjust(64, "0"))           # uint256 word
-    decoded = decode_match_log({"address": DEEPSTATE_ROUTER, "topics": [ask_sub],
-                                "data": "0x" + data, "blockNumber": "0x46f80e3",
-                                "transactionHash": FIXTURE_LOG["transactionHash"],
-                                "blockHash": FIXTURE_LOG["blockHash"], "logIndex": "0x6"})
+            + hex(usdg_raw)[2:].rjust(64, "0")   # token0 quantity = USDG raw
+            + hex(nvda_raw)[2:].rjust(64, "0"))  # token1 quoteAmount = NVDA raw
+    return {"address": DEEPSTATE_ROUTER, "topics": [event_topic],
+            "data": "0x" + data, "blockNumber": "0x46f80e3",
+            "transactionHash": FIXTURE_LOG["transactionHash"],
+            "blockHash": FIXTURE_LOG["blockHash"], "logIndex": log_index}
+
+
+def test_ask_subtree_contract_orientation_maps_to_finco_nvda_usdg():
+    event = dsl.topic0("AskSubtreeMatched(bytes32,bytes32,uint160,uint256)")
+    decoded = decode_match_log(_subtree_log(event))
     assert decoded is not None
     m = decoded["matches"][0]
-    assert m["quantity_base_raw"] == 4597241934232839072
-    assert m["quote_amount_quote_raw"] == 1033735644
+    assert m["quantity_token0_raw"] == 1033735644
+    assert m["quote_amount_token1_raw"] == 4597241934232839072
+    observation = dsl.match_to_observations(
+        decoded, collected_at=COLLECTED,
+        block_timestamp=int(BLOCK_TIME.timestamp()))[0]
+    assert observation.payload["gross_base_amount_nvda"] == "4597241934232839072"
+    assert observation.payload["gross_quote_amount_usdg"] == 1033735644
+
+
+def test_bid_subtree_contract_orientation_maps_to_finco_nvda_usdg():
+    event = dsl.topic0("BidSubtreeMatched(bytes32,bytes32,uint160,uint256)")
+    decoded = decode_match_log(_subtree_log(event, log_index="0x7"))
+    assert decoded is not None
+    observation = dsl.match_to_observations(
+        decoded, collected_at=COLLECTED,
+        block_timestamp=int(BLOCK_TIME.timestamp()))[0]
+    assert observation.payload["gross_base_amount_nvda"] == "4597241934232839072"
+    assert observation.payload["gross_quote_amount_usdg"] == 1033735644
 
 
 def test_batch_sub_event_dedupe_identity_distinct(tmp_path):
@@ -383,14 +402,7 @@ def test_lag_truthfully_reported_when_budget_exhausted(monkeypatch, tmp_path, ca
     db = str(tmp_path / "v.db")
     store = VenueMarketStore(path=db)
     latest = 80000000
-    conn = store._connect()
-    conn.execute(
-        "INSERT INTO market_observations (digest, ts, collected_at, canonical_asset_id,"
-        " venue_id, instrument_id, instrument_type, price, source, freshness_state,"
-        " observation_status, payload) VALUES ('x', NULL, ?, 'NVDA', 'DEEPSTATE', 'p',"
-        " 't', '1', 's', 'AVAILABLE', 'OK', ?)",
-        ("2026-10-04T00:00:00+00:00", json.dumps({"block_number": latest})))
-    conn.commit(); conn.close()
+    dc._advance_checkpoint(store, latest)
     monkeypatch.setenv("FINCO_DEEPSTATE_MAX_BLOCKS_PER_REQ", "1000")
     monkeypatch.setenv("FINCO_DEEPSTATE_MAX_REQUESTS", "2")
     monkeypatch.setattr(dc, "eth_block_number", lambda *a, **k: latest + 99999)
@@ -409,14 +421,7 @@ def test_catchup_reaches_current_head(monkeypatch, tmp_path, capsys):
     db = str(tmp_path / "v.db")
     store = VenueMarketStore(path=db)
     latest = 80000000
-    conn = store._connect()
-    conn.execute(
-        "INSERT INTO market_observations (digest, ts, collected_at, canonical_asset_id,"
-        " venue_id, instrument_id, instrument_type, price, source, freshness_state,"
-        " observation_status, payload) VALUES ('x', NULL, ?, 'NVDA', 'DEEPSTATE', 'p',"
-        " 't', '1', 's', 'AVAILABLE', 'OK', ?)",
-        ("2026-10-04T00:00:00+00:00", json.dumps({"block_number": latest})))
-    conn.commit(); conn.close()
+    dc._advance_checkpoint(store, latest)
     monkeypatch.setattr(dc, "eth_block_number", lambda *a, **k: latest + 1500)
     monkeypatch.setattr(dc, "fetch_match_logs", lambda *a, **k: [])
     monkeypatch.setattr(dc, "_canonical_block", lambda *a, **k: (True, 1780000000))
@@ -441,3 +446,200 @@ def test_reorged_evidence_not_persisted(monkeypatch, tmp_path):
     conn = store._connect()
     assert conn.execute("SELECT count(*) FROM market_observations").fetchone()[0] == 0
     conn.close()
+
+
+# ── Correction B: byte/integer conformance + fail-closed runtime ─────────────
+
+def test_tickmath_inverse_uses_max_uint256_semantics():
+    assert ((2**256 - 1) // (2**128)) + 1 == 2**128
+    assert price_factor_at_tick(0) == (2**128, 128)
+
+
+@pytest.mark.parametrize("tick,expected_factor", [
+    (-49, 340281850264288272068178212455338505136),
+    (-50, 340281839720283170798433562459963554929),
+    (-47, 340281871352299454760279964182336241080),
+])
+def test_tickmath_residual_vectors_match_pinned_solidity(tick, expected_factor):
+    factor, shift = price_factor_at_tick(tick)
+    assert factor == expected_factor
+    assert shift == 128
+
+
+def test_tickmath_all_nibble_tables_include_pinned_default_15():
+    expected = [
+        0xfffff59a50ce87c017af4391fc7bd1b4,
+        0xffff59a53f94ab936ae8cc833ff1a560,
+        0xfff59a86a4cb5e55dfd877cc112a9619,
+        0xff59db0ae05450ba1ecf379840cb103d,
+        0xf5cfa433e653729065e4527c9e33781c,
+        0x85aac367cc487b14c5c95b8c2154c1b0,
+    ]
+    for i, value in enumerate(expected):
+        table = getattr(dsl, f"_TICKMATH_FACTOR{i}")
+        assert set(table) == set(range(16))
+        assert table[15] == value
+    assert dsl._TICKMATH_RESIDUAL == {
+        1: 0xffffffd3a37a05e383e14c90273c94f5,
+        2: 0xffffffa746f41376f74124cd483186d4,
+        3: 0xffffff7aea6e28ba5a1e33b2f9234215,
+    }
+
+
+def test_tickmath_fraction_branch_vectors_match_pinned_solidity():
+    assert price_factor_at_tick(-12000000) == (
+        469228483368501207124397082768245158967, 129)
+    assert price_factor_at_tick(-11135801) == (
+        240981650533380289779414885556838269951, 128)
+
+
+def test_quote_boundary_uint160_at_tick_zero_is_exact():
+    quantity = (1 << 160) - 1
+    factor, shift = price_factor_at_tick(0)
+    assert quote_at_factor(factor, shift, quantity, False) == quantity
+    assert quote_at_factor(factor, shift, quantity, True) == quantity
+
+
+def test_fetch_match_logs_requests_all_six_canonical_topics(monkeypatch):
+    captured = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"jsonrpc":"2.0","id":1,"result":[]}'
+
+    def fake_urlopen(request, timeout):
+        captured["payload"] = json.loads(request.data.decode())
+        return Response()
+
+    monkeypatch.setattr(dsl.urllib.request, "urlopen", fake_urlopen)
+    assert dsl.fetch_match_logs("http://rpc.invalid", 1, 2) == []
+    topics = captured["payload"]["params"][0]["topics"][0]
+    assert set(topics) == set(dsl.SUPPORTED_MATCH_TOPICS)
+    assert len(topics) == 6
+
+
+def test_single_event_rejects_trailing_abi_word():
+    log = dict(FIXTURE_LOG)
+    log["data"] = FIXTURE_LOG["data"] + "00" * 32
+    assert decode_match_log(log) is None
+
+
+def test_batch_rejects_truncation_and_trailing_words():
+    topic = dsl.topic0("AsksMatched(bytes32,bytes32[])")
+    good = _batch_log(topic, [(716952049 << 224) | (100 << 64) | (1 << 32)])
+    truncated = dict(good)
+    truncated["data"] = good["data"][:-64]
+    trailing = dict(good)
+    trailing["data"] = good["data"] + "00" * 32
+    assert decode_match_log(truncated) is None
+    assert decode_match_log(trailing) is None
+
+
+def test_subtree_rejects_nonzero_uint160_high_bits():
+    topic = dsl.topic0("AskSubtreeMatched(bytes32,bytes32,uint160,uint256)")
+    bad_quantity = (1 << 160) + 1
+    data = (DEEPSTATE_BOOK_ID[2:].lower() + "ab" * 32
+            + hex(bad_quantity)[2:].rjust(64, "0")
+            + hex(123)[2:].rjust(64, "0"))
+    log = _subtree_log(topic)
+    log["data"] = "0x" + data
+    assert decode_match_log(log) is None
+
+
+def test_collector_happy_path_uses_validated_timestamp_and_batched_persistence(
+        monkeypatch, tmp_path, capsys):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "74416355")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 74416355)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [FIXTURE_LOG])
+    monkeypatch.setattr(
+        dc, "_canonical_block",
+        lambda *_a, **_k: (True, int(BLOCK_TIME.timestamp())))
+    assert dc.main([]) == 0
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["observations_persisted"] == 1
+    assert report["operational_checkpoint_block"] == 74416355
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    row = store.get_latest_for_underlying("NVDA", venue_id="DEEPSTATE")
+    assert row is not None
+    assert row.ts == BLOCK_TIME.isoformat()
+
+
+def test_final_hash_change_persists_zero_and_does_not_advance_checkpoint(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "74416355")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 74416355)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [FIXTURE_LOG])
+    calls = {"n": 0}
+
+    def canonical(*_a, **_k):
+        calls["n"] += 1
+        return ((True, int(BLOCK_TIME.timestamp()))
+                if calls["n"] == 1 else (False, None))
+
+    monkeypatch.setattr(dc, "_canonical_block", canonical)
+    assert dc.main([]) == 6
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    assert store.count(venue_id="DEEPSTATE") == 0
+    assert dc._checkpoint_block(store) is None
+
+
+def test_empty_successful_range_advances_operational_checkpoint(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 105)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [])
+    assert dc.main([]) == 0
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    assert dc._checkpoint_block(store) == 105
+
+
+def test_interrupted_batch_cannot_advance_checkpoint_or_skip_same_block(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "74416355")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 74416355)
+    two = [FIXTURE_LOG, dict(FIXTURE_LOG, logIndex="0x5")]
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: two)
+    monkeypatch.setattr(
+        dc, "_canonical_block",
+        lambda *_a, **_k: (True, int(BLOCK_TIME.timestamp())))
+
+    original = dc.VenueMarketStore.append_many_batched
+
+    def interrupted(self, observations):
+        assert len(list(observations)) == 2
+        raise RuntimeError("simulated interrupted persistence")
+
+    monkeypatch.setattr(dc.VenueMarketStore, "append_many_batched", interrupted)
+    with pytest.raises(RuntimeError):
+        dc.main([])
+    store = dc.VenueMarketStore(path=str(tmp_path / "v.db"))
+    assert dc._checkpoint_block(store) is None
+    assert store.count(venue_id="DEEPSTATE") == 0
+
+    monkeypatch.setattr(dc.VenueMarketStore, "append_many_batched", original)
+    assert dc.main([]) == 0
+    store = dc.VenueMarketStore(path=str(tmp_path / "v.db"))
+    assert dc._checkpoint_block(store) == 74416355
+    assert store.count(venue_id="DEEPSTATE") == 2
+    assert dc.main([]) == 0
+    assert store.count(venue_id="DEEPSTATE") == 2
+
+
+def test_deferred_usdg_normalization_is_truthful_runtime_state():
+    observation = _observations()
+    assert "normalized_usd_price" not in observation.payload
+    assert "usdg_usd_value" not in observation.payload
+    assert "usdg_usd_timestamp" not in observation.payload
+    assert "effective_evidence_timestamp" not in observation.payload
+    assert "usdg_usd_authority" not in observation.payload
