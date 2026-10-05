@@ -272,7 +272,7 @@ def _solar_like_state() -> CostProjectState:
         capex_sub_lines=tuple(sub_lines),
         opex_items=tuple(opex_items),
         opex_sub_lines=tuple(opex_sub),
-        contingency=ContingencyState(capex_pct=0.06, lineage={"basis": "eligible_capex"}),
+        contingency=ContingencyState(capex_pct=6.0, lineage={"basis": "eligible_capex"}),
     )
 
 
@@ -446,11 +446,11 @@ def test_contingency_percentage_preserved_not_frozen():
         state, template_id="CLIENT_A_SOLAR_COST", version=1)
     c13 = next(i for i in template.capex_items if i.parent_code == "C.13")
     assert c13.driver is CostDriver.PERCENT_OF_ELIGIBLE_CAPEX
-    assert c13.driver_value == pytest.approx(0.06, abs=1e-12)
+    assert c13.driver_value == pytest.approx(6.0, abs=1e-12)
     plan = build_materialization_plan(resolve_cost_template(
         template, MaterializationContext(capacity_mw=64.0)))
     assert plan.contingency is not None
-    assert plan.contingency.capex_pct == pytest.approx(0.06, abs=1e-12)
+    assert plan.contingency.capex_pct == pytest.approx(6.0, abs=1e-12)
     # C.13 is NOT in the field plans (the authority applies the percentage)
     assert all(f.parent_code != "C.13" for f in plan.capex_fields)
 
@@ -474,7 +474,7 @@ def test_contingency_no_recursive_basis():
             capex_items=(CapexTemplateItem(
                 item_id="capex.contingencies", parent_code="C.13",
                 label="Contingency", driver=CostDriver.PERCENT_OF_ELIGIBLE_CAPEX,
-                driver_value=1.5),),
+                driver_value=150.0),),
         )
 
 
@@ -550,13 +550,16 @@ def test_validation_fail_closed_matrix():
                             capex_items=(CapexTemplateItem(
                                 item_id="capex.a", parent_code="C.02", label="EPC",
                                 driver=CostDriver.ABSOLUTE_KEUR),),)
-    # negative / non-finite
-    with pytest.raises(ValueError, match="COST_TEMPLATE_VALUE_INVALID"):
-        CostTemplate.create(template_id="T", version=1, name="T", technology="solar",
-                            kind=TemplateKind.GENERIC,
-                            capex_items=(CapexTemplateItem(
-                                item_id="capex.a", parent_code="C.02", label="EPC",
-                                driver=CostDriver.ABSOLUTE_KEUR, amount_keur=-5.0),),)
+    # finite signed amounts are ACCEPTED (Correction A defect 8: existing
+    # FINCO cost authorities accept finite signed values; exact client
+    # snapshot compatibility) - non-finite still fails
+    signed = CostTemplate.create(
+        template_id="T", version=1, name="T", technology="solar",
+        kind=TemplateKind.GENERIC,
+        capex_items=(CapexTemplateItem(
+            item_id="capex.a", parent_code="C.02", label="EPC",
+            driver=CostDriver.ABSOLUTE_KEUR, amount_keur=-5.0),),)
+    assert next(i for i in signed.capex_items).amount_keur == -5.0
     with pytest.raises(ValueError, match="COST_TEMPLATE_VALUE_INVALID"):
         CostTemplate.create(template_id="T", version=1, name="T", technology="solar",
                             kind=TemplateKind.GENERIC,
@@ -592,7 +595,7 @@ def test_missing_is_not_zero_in_materialization():
         kind=TemplateKind.GENERIC,
         capex_items=(CapexTemplateItem(
             item_id="capex.percentage", parent_code="C.13", label="Contingency",
-            driver=CostDriver.PERCENT_OF_ELIGIBLE_CAPEX, driver_value=0.06),),
+            driver=CostDriver.PERCENT_OF_ELIGIBLE_CAPEX, driver_value=6.0),),
     )
     # C.13 percentage rows are excluded from field plans (authority-owned);
     # requesting a field plan for them would be MISSING — the plan simply
@@ -600,16 +603,19 @@ def test_missing_is_not_zero_in_materialization():
     plan = build_materialization_plan(resolve_cost_template(
         template, MaterializationContext(capacity_mw=64.0)))
     assert all(f.parent_code != "C.13" for f in plan.capex_fields)
-    assert plan.contingency.capex_pct == pytest.approx(0.06, abs=1e-12)
+    assert plan.contingency.capex_pct == pytest.approx(6.0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
 # A. Presentation codes never become financial identity
 # ---------------------------------------------------------------------------
 
-def test_presentation_code_is_not_identity():
-    """Two template items may share a presentation code only if their stable
-    identities differ — and identity, not label, drives materialization."""
+def test_duplicate_materialized_business_code_fails_closed():
+    """Correction A (defect 1): persistence enforces
+    UNIQUE(project_id, business_code) — two simultaneously materialized rows
+    may never share one business code. Fail closed; no silent merge, no
+    silent renumbering; labels are never identity. Distinct codes materialize
+    both rows."""
     a = CapexTemplateItem(item_id="capex.one", parent_code="C.01",
                           child_code="C.01.01", label="PV Modules",
                           driver=CostDriver.ABSOLUTE_KEUR, amount_keur=10.0)
@@ -618,14 +624,193 @@ def test_presentation_code_is_not_identity():
                           driver=CostDriver.ABSOLUTE_KEUR, amount_keur=20.0)
     t = CostTemplate.create(template_id="T", version=1, name="T", technology="solar",
                             kind=TemplateKind.GENERIC, capex_items=(a, b))
+    with pytest.raises(ValueError, match="COST_TEMPLATE_BUSINESS_CODE_COLLISION"):
+        build_materialization_plan(resolve_cost_template(
+            t, MaterializationContext(capacity_mw=64.0)))
+    # the same guarantee holds for OPEX rows
+    oa = OpexTemplateItem(item_id="opex.one", parent_code="B.01",
+                          child_code="B.01.01", label="AM Contract",
+                          driver=CostDriver.ABSOLUTE_KEUR, y1_amount_keur=10.0)
+    ob = OpexTemplateItem(item_id="opex.two", parent_code="B.01",
+                          child_code="B.01.01", label="AM Contract (renamed)",
+                          driver=CostDriver.ABSOLUTE_KEUR, y1_amount_keur=20.0)
+    t2 = CostTemplate.create(template_id="T", version=1, name="T", technology="solar",
+                             kind=TemplateKind.GENERIC, opex_items=(oa, ob))
+    with pytest.raises(ValueError, match="COST_TEMPLATE_BUSINESS_CODE_COLLISION"):
+        build_materialization_plan(resolve_cost_template(
+            t2, MaterializationContext(capacity_mw=64.0)))
+    # distinct business codes materialize both rows — labels are not identity
+    b2 = CapexTemplateItem(item_id="capex.two", parent_code="C.01",
+                           child_code="C.01.02", label="PV Modules (renamed)",
+                           driver=CostDriver.ABSOLUTE_KEUR, amount_keur=20.0)
+    t3 = CostTemplate.create(template_id="T", version=1, name="T", technology="solar",
+                             kind=TemplateKind.GENERIC, capex_items=(a, b2))
     plan = build_materialization_plan(resolve_cost_template(
-        t, MaterializationContext(capacity_mw=64.0)))
-    codes = [s.business_code for s in plan.capex_sub_lines]
-    assert codes.count("C.01.01") == 2   # both rows materialize under their code
-    amounts = sorted(s.amount_keur for s in plan.capex_sub_lines
-                     if s.business_code == "C.01.01")
-    assert amounts == [10.0, 20.0]       # label change did not merge identities
+        t3, MaterializationContext(capacity_mw=64.0)))
+    assert len([s for s in plan.capex_sub_lines
+                if s.parent_category_code == "C.01"]) == 2
 
+
+def test_generic_decomposition_is_one_economic_amount():
+    """Correction A (defect 3/4): at reference capacity parent economics ==
+    sum of decomposition children; at another capacity the same invariant
+    holds; the plan represents ONE economic amount (no parent + children
+    double count); children carry the reference-seed replacement
+    provenance."""
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+
+    t = build_generic_cost_template("generic_solar_reference")
+    for capacity in (64.0, 128.0):
+        plan = build_materialization_plan(resolve_cost_template(
+            t, MaterializationContext(capacity_mw=capacity)))
+        for f in plan.capex_fields:
+            children = [s for s in plan.capex_sub_lines
+                        if s.parent_category_code == f.parent_code
+                        and s.replay_metadata.get("replaces_parent")]
+            if children:
+                # field amount IS the children sum — counted once
+                assert f.amount_keur == pytest.approx(
+                    sum(c.amount_keur for c in children), abs=1e-6), f.parent_code
+                assert children[0].replay_metadata["canonical_parent_field"] == \
+                    CAPEX_CATEGORY_TO_FIELD.get(f.parent_code)
+                assert children[0].replay_metadata["scaling_mode"] == "per_mw"
+    plan64 = build_materialization_plan(resolve_cost_template(
+        t, MaterializationContext(capacity_mw=64.0)))
+    plan128 = build_materialization_plan(resolve_cost_template(
+        t, MaterializationContext(capacity_mw=128.0)))
+    f64 = {f.field_name: f.amount_keur for f in plan64.capex_fields}
+    f128 = {f.field_name: f.amount_keur for f in plan128.capex_fields}
+    for name, v64 in f64.items():
+        assert f128[name] == pytest.approx(v64 * 2, abs=1e-6), name
+    s64 = {(s.parent_category_code, s.business_code): s.amount_keur
+           for s in plan64.capex_sub_lines}
+    s128 = {(s.parent_category_code, s.business_code): s.amount_keur
+            for s in plan128.capex_sub_lines}
+    for key, v64 in s64.items():
+        assert s128[key] == pytest.approx(v64 * 2, abs=1e-6), key
+
+
+def test_capex_scalar_metadata_roundtrip():
+    """Correction A (defect 2): approved CAPEX scalar metadata (VAT / WHT /
+    depreciation vocabulary) survives state → template → JSON → resolve →
+    plan → rebuilt state losslessly, via the existing sanitizer authority."""
+    from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
+
+    metadata = sanitize_scalar_capex_metadata({
+        "vat_rate_pct": 25.0,
+        "vat_recoverable_flag": True,
+        "wht_rate_pct": 10.0,
+        "wht_treatment_mode": "gross",
+        "depreciation_asset_class": "solar_panels",
+        "depreciable_flag": True,
+    })
+    assert metadata  # sanitizer returned approved keys
+    state = CostProjectState(
+        capacity_mw=64.0,
+        project_ref="proj-meta",
+        capex_sub_lines=(CapexSubLineState(
+            parent_category_code="C.01", business_code="C.01.U007",
+            label="Client PV supply", amount_keur=900.0,
+            scalar_metadata=metadata,
+        ),),
+    )
+    template = extract_client_cost_template(
+        state, template_id="CLIENT_META", version=1)
+    payload = cost_template_to_json(template)  # JSON boundary
+    rebuilt_template = cost_template_from_json(payload)
+    plan = build_materialization_plan(resolve_cost_template(
+        rebuilt_template, MaterializationContext(capacity_mw=64.0)))
+    rebuilt = plan_to_project_state(
+        plan, capacity_mw=64.0, project_ref="proj-meta")
+    sub = next(s for s in rebuilt.capex_sub_lines
+               if s.business_code == "C.01.U007")
+    assert sub.scalar_metadata == metadata
+
+
+def test_percent_of_opex_units_roundtrip():
+    """Correction A (defect 5, OPEX): core fraction 0.06 → template 6.0
+    percent points → materialization boundary → core fraction 0.06."""
+    state = CostProjectState(
+        capacity_mw=64.0,
+        project_ref="proj-pct",
+        opex_items=(OpexItemState(
+            name="OPEX Contingency", parent_code="B.13",
+            y1_amount_keur=0.0, percentage_of_opex=0.06,
+        ),),
+    )
+    template = extract_client_cost_template(
+        state, template_id="CLIENT_PCT", version=1)
+    item = next(i for i in template.opex_items if i.parent_code == "B.13")
+    assert item.driver_value == pytest.approx(6.0, abs=1e-12)
+    plan = build_materialization_plan(resolve_cost_template(
+        template, MaterializationContext(capacity_mw=64.0)))
+    assert plan.opex_items[0].percentage_of_opex == pytest.approx(0.06, abs=1e-12)
+
+
+def test_percent_of_opex_missing_vs_zero():
+    """Correction A (defect 6): None fails closed; explicit 0 is a valid
+    zero, distinct from MISSING; out-of-range percent points fail."""
+    with pytest.raises(ValueError, match="COST_TEMPLATE_VALUE_REQUIRED"):
+        CostTemplate.create(
+            template_id="T", version=1, name="T", technology="solar",
+            kind=TemplateKind.GENERIC,
+            opex_items=(OpexTemplateItem(
+                item_id="opex.c", parent_code="B.13", label="OPEX Contingency",
+                driver=CostDriver.PERCENT_OF_OPEX, driver_value=None),),
+        )
+    t0 = CostTemplate.create(
+        template_id="T", version=1, name="T", technology="solar",
+        kind=TemplateKind.GENERIC,
+        opex_items=(OpexTemplateItem(
+            item_id="opex.c", parent_code="B.13", label="OPEX Contingency",
+            driver=CostDriver.PERCENT_OF_OPEX, driver_value=0.0),),
+    )
+    plan = build_materialization_plan(resolve_cost_template(
+        t0, MaterializationContext(capacity_mw=64.0)))
+    assert plan.opex_items[0].percentage_of_opex == pytest.approx(0.0, abs=1e-15)
+    with pytest.raises(ValueError, match="COST_TEMPLATE_VALUE_INVALID"):
+        CostTemplate.create(
+            template_id="T", version=1, name="T", technology="solar",
+            kind=TemplateKind.GENERIC,
+            opex_items=(OpexTemplateItem(
+                item_id="opex.c", parent_code="B.13", label="OPEX Contingency",
+                driver=CostDriver.PERCENT_OF_OPEX, driver_value=150.0),),
+        )
+
+
+def test_capacity_finite_validation():
+    """Correction A (defect 7): NaN / +Inf / -Inf / 0 / negative all fail;
+    positive finite passes."""
+    t = build_generic_cost_template("generic_solar_reference")
+    for bad in (float("nan"), float("inf"), float("-inf"), 0, -5.0):
+        with pytest.raises(ValueError, match="MATERIALIZATION_CONTEXT_INVALID"):
+            resolve_cost_template(t, MaterializationContext(capacity_mw=bad))
+    with pytest.raises(ValueError, match="COST_STATE_CAPACITY_INVALID"):
+        extract_client_cost_template(
+            CostProjectState(capacity_mw=float("nan"), project_ref="p"),
+            template_id="T")
+
+
+def test_signed_values_roundtrip_compatibility():
+    """Correction A (defect 8): existing FINCO authorities accept finite
+    signed OPEX inflation — client extraction must not reject them."""
+    state = CostProjectState(
+        capacity_mw=64.0,
+        project_ref="proj-signed",
+        opex_items=(OpexItemState(
+            name="Contracted Services (rate decrease)", parent_code="B.01",
+            y1_amount_keur=100.0, annual_inflation=-0.01,
+        ),),
+    )
+    template = extract_client_cost_template(
+        state, template_id="CLIENT_SIGNED", version=1)
+    plan = build_materialization_plan(resolve_cost_template(
+        template, MaterializationContext(capacity_mw=64.0)))
+    rebuilt = plan_to_project_state(
+        plan, capacity_mw=64.0, project_ref="proj-signed")
+    item = rebuilt.opex_items[0]
+    assert item.annual_inflation == pytest.approx(-0.01, abs=1e-15)
+    assert item.y1_amount_keur == pytest.approx(100.0, abs=1e-12)
 
 # ---------------------------------------------------------------------------
 # I. Non-interference

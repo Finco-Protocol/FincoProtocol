@@ -89,15 +89,38 @@ def _generic_capex_items(pi: Any, technology: str) -> tuple[CapexTemplateItem, .
             from app.contingency_authority import read_authority
             contingency_pct = read_authority(
                 getattr(capex_item, "replay_metadata", None) or {}, "capex")
-        driver = (CostDriver.PERCENT_OF_ELIGIBLE_CAPEX
-                  if contingency_pct is not None else CostDriver.ABSOLUTE_KEUR)
+        amount = float(capex_item.amount_keur)
+        if contingency_pct is not None:
+            # Correction A (defect 5): the contingency authority stores
+            # PERCENT POINTS (6.0 = 6%); carried through in that unit.
+            items.append(CapexTemplateItem(
+                item_id=f"capex.{field_name}",
+                parent_code=parent_code,
+                label=capex_item.name,
+                driver=CostDriver.PERCENT_OF_ELIGIBLE_CAPEX,
+                driver_value=float(contingency_pct),
+                amount_keur=amount,
+                y0_share=float(getattr(capex_item, "y0_share", 0.0) or 0.0),
+                spending_profile=tuple(float(s) for s in (getattr(capex_item, "spending_profile", ()) or ())),
+                asset_class=(capex_item.asset_class.value
+                             if getattr(capex_item, "asset_class", None) is not None else None),
+                useful_life_override=getattr(capex_item, "useful_life_override", None),
+                is_depreciable=bool(getattr(capex_item, "is_depreciable", True)),
+                scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
+                source=TemplateSource.GENERIC_TEMPLATE,
+                source_ref=PUBLIC_GENERIC_DETAIL_V1,
+            ))
+            continue
+        # Correction A (defect 4): parents are TRUE PER_MW-resolved rows
+        # (rate = reference amount / reference capacity), so parent and
+        # decomposition children scale consistently with capacity.
         items.append(CapexTemplateItem(
             item_id=f"capex.{field_name}",
             parent_code=parent_code,
             label=capex_item.name,
-            driver=driver,
-            driver_value=contingency_pct,
-            amount_keur=float(capex_item.amount_keur),
+            driver=CostDriver.EUR_PER_MW,
+            driver_value=amount / reference_capacity,
+            amount_keur=amount,
             y0_share=float(getattr(capex_item, "y0_share", 0.0) or 0.0),
             spending_profile=tuple(float(s) for s in (getattr(capex_item, "spending_profile", ()) or ())),
             asset_class=(capex_item.asset_class.value
@@ -126,6 +149,7 @@ def _generic_capex_items(pi: Any, technology: str) -> tuple[CapexTemplateItem, .
                 scaling_basis=ScalingBasis.PER_MW,
                 source=TemplateSource.GENERIC_TEMPLATE,
                 source_ref=PUBLIC_GENERIC_DETAIL_V1,
+                replaces_parent=True,
             ))
     return tuple(items)
 
@@ -144,7 +168,10 @@ def _generic_opex_items(pi: Any, technology: str) -> tuple[OpexTemplateItem, ...
                 parent_code="B.13",
                 label=name,
                 driver=CostDriver.PERCENT_OF_OPEX,
-                driver_value=float(opex_item.percentage_of_opex),
+                # Core OpexItem stores a FRACTION (0.06 = 6%); the template
+                # authority stores PERCENT POINTS (6.0) - convert exactly
+                # once here (Correction A, defect 5).
+                driver_value=float(opex_item.percentage_of_opex) * 100.0,
                 scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
                 source=TemplateSource.GENERIC_TEMPLATE,
                 source_ref=PUBLIC_GENERIC_DETAIL_V1,
@@ -195,6 +222,7 @@ def _generic_opex_items(pi: Any, technology: str) -> tuple[OpexTemplateItem, ...
                 scaling_basis=ScalingBasis.PER_MW,
                 source=TemplateSource.GENERIC_TEMPLATE,
                 source_ref=PUBLIC_GENERIC_DETAIL_V1,
+                replaces_parent=True,
             ))
     return tuple(items)
 

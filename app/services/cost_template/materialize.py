@@ -21,6 +21,7 @@ Deterministic and declaration-order independent (outputs are sorted).
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,11 +44,15 @@ class MaterializationContext:
     eligible_capex_basis_keur: Optional[float] = None
 
     def validate(self) -> None:
-        if not isinstance(self.capacity_mw, (int, float)) or isinstance(self.capacity_mw, bool) \
-                or self.capacity_mw <= 0:
+        # Correction A (defect 7): NaN / +Inf / -Inf must fail closed, not
+        # bypass a naive > 0 comparison.
+        if isinstance(self.capacity_mw, bool) \
+                or not isinstance(self.capacity_mw, (int, float)) \
+                or not math.isfinite(float(self.capacity_mw)) \
+                or float(self.capacity_mw) <= 0:
             raise ValueError(
-                f"MATERIALIZATION_CONTEXT_INVALID: capacity_mw must be a positive "
-                f"number, got {self.capacity_mw!r}"
+                f"MATERIALIZATION_CONTEXT_INVALID: capacity_mw must be a finite "
+                f"number strictly greater than zero, got {self.capacity_mw!r}"
             )
 
 
@@ -159,6 +164,12 @@ class CapexSubLinePlan:
     schedule_json: str = "{}"
     source: str = "user"
     replay_metadata: dict = field(default_factory=dict)
+    # Correction A (defect 2): approved CAPEX scalar metadata (VAT / WHT /
+    # depreciation vocabulary), carried losslessly through the roundtrip.
+    scalar_metadata: dict = field(default_factory=dict)
+    # Correction A (defect 2): approved CAPEX scalar metadata (VAT / WHT /
+    # depreciation vocabulary), carried losslessly through the roundtrip.
+    scalar_metadata: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -208,6 +219,17 @@ def _parent_capex_field_plans(
     from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
 
     category_to_field = dict(CAPEX_CATEGORY_TO_FIELD)
+    # Correction A (defect 3): decomposition children REPLACE their canonical
+    # parent. When a parent has decomposition children, the field plan amount
+    # is the SUM of the children — exactly ONE economic amount per category
+    # (never parent + children).
+    decomposition_children: dict[str, float] = {}
+    for r in resolved.capex:
+        if r.item.replaces_parent and r.resolved_amount_keur is not None:
+            decomposition_children[r.item.parent_code] = (
+                decomposition_children.get(r.item.parent_code, 0.0)
+                + float(r.resolved_amount_keur))
+
     plans: list[CapexFieldPlan] = []
     for r in resolved.capex:
         item = r.item
@@ -217,22 +239,26 @@ def _parent_capex_field_plans(
             continue  # C.17/C.18 stay runtime-derived; never plan inputs
         if item.driver is CostDriver.PERCENT_OF_ELIGIBLE_CAPEX:
             continue  # contingency handled by the contingency plan entry
-        if r.resolved_amount_keur is None:
-            raise ValueError(
-                f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
-                "to no amount (MISSING is not ZERO)"
-            )
         field_name = category_to_field.get(item.parent_code)
         if field_name is None:
             raise ValueError(
                 f"MATERIALIZATION_PARENT_UNMAPPED: {item.parent_code!r} has no "
                 "CapexStructure field authority"
             )
+        if item.parent_code in decomposition_children:
+            amount = decomposition_children[item.parent_code]
+        elif r.resolved_amount_keur is None:
+            raise ValueError(
+                f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
+                "to no amount (MISSING is not ZERO)"
+            )
+        else:
+            amount = float(r.resolved_amount_keur)
         plans.append(CapexFieldPlan(
             field_name=field_name,
             parent_code=item.parent_code,
             label=item.label,
-            amount_keur=float(r.resolved_amount_keur),
+            amount_keur=amount,
             y0_share=item.y0_share,
             spending_profile=item.spending_profile,
             asset_class=item.asset_class,
@@ -246,7 +272,10 @@ def _capex_sub_line_plans(
     template: CostTemplate,
     resolved: ResolvedCostTemplate,
 ) -> tuple[CapexSubLinePlan, ...]:
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+
     plans: list[CapexSubLinePlan] = []
+    seen_codes: dict[str, str] = {}
     for r in resolved.capex:
         item = r.item
         if item.child_code is None or item.classification is ItemClassification.DERIVED_RUNTIME:
@@ -256,6 +285,36 @@ def _capex_sub_line_plans(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
                 "to no amount (MISSING is not ZERO)"
             )
+        # Correction A (defect 1): persistence enforces
+        # UNIQUE(project_id, business_code); two simultaneously materialized
+        # rows may never share one business code — fail closed, no silent
+        # merge, no silent renumbering.
+        if item.child_code in seen_codes:
+            raise ValueError(
+                f"COST_TEMPLATE_BUSINESS_CODE_COLLISION: items "
+                f"{seen_codes[item.child_code]!r} and {item.item_id!r} would both "
+                f"materialize to business code {item.child_code!r}"
+            )
+        seen_codes[item.child_code] = item.item_id
+        replay: dict = {
+            "cost_template_id": template.template_id,
+            "cost_template_version": template.version,
+            "cost_template_item_id": item.item_id,
+            "template_derived": True,
+            "scaling_basis": item.scaling_basis.value,
+        }
+        if item.replaces_parent:
+            # Correction A (defect 3): reuse the existing reference-seed
+            # replacement vocabulary so the runtime's established
+            # decomposition/replacement semantics apply unchanged.
+            replay.update({
+                "replaces_parent": True,
+                "canonical_parent_field": CAPEX_CATEGORY_TO_FIELD.get(item.parent_code),
+                "canonical_key": (
+                    f"{CAPEX_CATEGORY_TO_FIELD.get(item.parent_code)}:{item.child_code}"),
+                "detail_code": item.child_code,
+                "scaling_mode": item.scaling_basis.value,
+            })
         plans.append(CapexSubLinePlan(
             parent_category_code=item.parent_code,
             business_code=item.child_code,
@@ -263,18 +322,22 @@ def _capex_sub_line_plans(
             amount_keur=float(r.resolved_amount_keur),
             schedule_json=item.schedule_json or "{}",
             source="user",
-            replay_metadata={
-                "cost_template_id": template.template_id,
-                "cost_template_version": template.version,
-                "cost_template_item_id": item.item_id,
-                "template_derived": True,
-                "scaling_basis": item.scaling_basis.value,
-            },
+            replay_metadata=replay,
+            scalar_metadata=dict(item.scalar_metadata),
         ))
     return tuple(sorted(plans, key=lambda p: (p.parent_category_code, p.business_code)))
 
 
 def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]:
+    # Correction A (defect 3): decomposition children REPLACE their canonical
+    # parent OpexItem — one economic amount per parent (sum of children).
+    decomposition_children: dict[str, float] = {}
+    for r in resolved.opex:
+        if r.item.replaces_parent and r.resolved_y1_amount_keur is not None:
+            decomposition_children[r.item.parent_code] = (
+                decomposition_children.get(r.item.parent_code, 0.0)
+                + float(r.resolved_y1_amount_keur))
+
     plans: list[OpexItemPlan] = []
     for r in resolved.opex:
         item = r.item
@@ -283,24 +346,36 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
         if item.classification is ItemClassification.DERIVED_RUNTIME:
             continue
         if item.driver is CostDriver.PERCENT_OF_OPEX:
+            # Correction A (defect 6): driver_value is REQUIRED (validated at
+            # the contract boundary); None never collapses to zero here.
+            if item.driver_value is None:
+                raise ValueError(
+                    f"MATERIALIZATION_AMOUNT_MISSING: PERCENT_OF_OPEX item "
+                    f"{item.item_id!r} has no driver_value (MISSING is not ZERO)"
+                )
+            # Boundary conversion: template percent points -> core fraction.
             plans.append(OpexItemPlan(
                 parent_code=item.parent_code,
                 name=item.label,
                 y1_amount_keur=0.0,
                 annual_inflation=0.0,
                 step_changes=(),
-                percentage_of_opex=float(item.driver_value or 0.0),
+                percentage_of_opex=float(item.driver_value) / 100.0,
             ))
             continue
-        if r.resolved_y1_amount_keur is None:
+        if item.parent_code in decomposition_children:
+            y1 = decomposition_children[item.parent_code]
+        elif r.resolved_y1_amount_keur is None:
             raise ValueError(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
                 "to no amount (MISSING is not ZERO)"
             )
+        else:
+            y1 = float(r.resolved_y1_amount_keur)
         plans.append(OpexItemPlan(
             parent_code=item.parent_code,
             name=item.label,
-            y1_amount_keur=float(r.resolved_y1_amount_keur),
+            y1_amount_keur=y1,
             annual_inflation=float(item.annual_inflation),
             step_changes=tuple(item.step_changes),
         ))
@@ -312,6 +387,7 @@ def _opex_sub_line_plans(
     resolved: ResolvedCostTemplate,
 ) -> tuple[OpexSubLinePlan, ...]:
     plans: list[OpexSubLinePlan] = []
+    seen_codes: dict[str, str] = {}
     for r in resolved.opex:
         item = r.item
         if item.child_code is None or item.classification is ItemClassification.DERIVED_RUNTIME:
@@ -321,6 +397,31 @@ def _opex_sub_line_plans(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
                 "to no amount (MISSING is not ZERO)"
             )
+        # Correction A (defect 1): same UNIQUE(project_id, business_code)
+        # guarantee as CAPEX — fail closed on collisions.
+        if item.child_code in seen_codes:
+            raise ValueError(
+                f"COST_TEMPLATE_BUSINESS_CODE_COLLISION: items "
+                f"{seen_codes[item.child_code]!r} and {item.item_id!r} would both "
+                f"materialize to business code {item.child_code!r}"
+            )
+        seen_codes[item.child_code] = item.item_id
+        replay: dict = {
+            "cost_template_id": template.template_id,
+            "cost_template_version": template.version,
+            "cost_template_item_id": item.item_id,
+            "template_derived": True,
+            "scaling_basis": item.scaling_basis.value,
+        }
+        if item.replaces_parent:
+            # Correction A (defect 3): existing reference-seed replacement
+            # vocabulary (canonical_parent_key / detail_code / scaling_mode).
+            replay.update({
+                "replaces_parent": True,
+                "canonical_parent_key": item.parent_code,
+                "detail_code": item.child_code,
+                "scaling_mode": item.scaling_basis.value,
+            })
         plans.append(OpexSubLinePlan(
             parent_group_code=item.parent_code,
             business_code=item.child_code,
@@ -329,13 +430,7 @@ def _opex_sub_line_plans(
             # Persistence unit is percent; the template stores the fraction.
             inflation_pct=float(item.annual_inflation) * 100.0,
             source="user",
-            replay_metadata={
-                "cost_template_id": template.template_id,
-                "cost_template_version": template.version,
-                "cost_template_item_id": item.item_id,
-                "template_derived": True,
-                "scaling_basis": item.scaling_basis.value,
-            },
+            replay_metadata=replay,
         ))
     return tuple(sorted(plans, key=lambda p: (p.parent_group_code, p.business_code)))
 
@@ -564,7 +659,9 @@ def plan_to_project_state(
             label=s.label,
             amount_keur=s.amount_keur,
             schedule_json=s.schedule_json,
-            scalar_metadata=dict(s.replay_metadata),
+            # Correction A (defect 2): approved scalar metadata restored
+            # losslessly (never hidden inside lineage fields).
+            scalar_metadata=dict(s.scalar_metadata),
             source=s.source,
         )
         for s in plan.capex_sub_lines

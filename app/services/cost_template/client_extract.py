@@ -89,10 +89,15 @@ class OpexSubLineState:
 
 @dataclass(frozen=True)
 class ContingencyState:
-    """Typed contingency authority state (percentage + basis + lineage)."""
+    """Typed contingency authority state (percentage + basis + lineage).
 
-    capex_pct: Optional[float] = None    # fraction, from contingency authority
-    opex_pct: Optional[float] = None
+    Correction A (defect 5): percent values use the canonical FINCO
+    contingency-authority unit — PERCENT POINTS (6.0 means 6%), strict
+    0..100 — exactly as `contingency_authority.validate_pct` stores them.
+    """
+
+    capex_pct: Optional[float] = None    # percent points, authority unit
+    opex_pct: Optional[float] = None     # percent points, authority unit
     lineage: dict[str, Any] = field(default_factory=dict)
 
 
@@ -109,11 +114,16 @@ class CostProjectState:
     contingency: Optional[ContingencyState] = None
 
     def validate(self) -> None:
-        if not isinstance(self.capacity_mw, (int, float)) or isinstance(self.capacity_mw, bool) \
-                or self.capacity_mw <= 0:
+        # Correction A (defect 7): NaN / +Inf / -Inf must fail closed.
+        import math as _math
+
+        if isinstance(self.capacity_mw, bool) \
+                or not isinstance(self.capacity_mw, (int, float)) \
+                or not _math.isfinite(float(self.capacity_mw)) \
+                or float(self.capacity_mw) <= 0:
             raise ValueError(
-                f"COST_STATE_CAPACITY_INVALID: capacity_mw must be a positive "
-                f"number, got {self.capacity_mw!r}"
+                f"COST_STATE_CAPACITY_INVALID: capacity_mw must be a finite "
+                f"number strictly greater than zero, got {self.capacity_mw!r}"
             )
 
 
@@ -187,7 +197,15 @@ def extract_client_cost_template(
         if f.parent_code in sub_parents:
             continue  # children fully decompose this field; captured below
     # Child rows verbatim (persistent identities preserved; presentation
-    # codes carried as-is; PER_MW never inferred).
+    # codes carried as-is; PER_MW never inferred). Correction A (defect 2):
+    # approved CAPEX scalar metadata is sanitized with the existing FINCO
+    # authority and carried losslessly. Correction A (defect 3): C.NN.NN
+    # presentation rows DECOMPOSE/REPLACE their canonical parent (existing
+    # reference-seed replacement semantics); C.NN.U### user rows are
+    # additive.
+    import re as _re
+    from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
+
     for s in state.capex_sub_lines:
         capex_items.append(CapexTemplateItem(
             item_id=f"capex.subline.{s.business_code}",
@@ -200,18 +218,22 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
+            replaces_parent=bool(_re.match(r"^C\.\d{2}\.\d{2}$", s.business_code)),
+            scalar_metadata=sanitize_scalar_capex_metadata(s.scalar_metadata),
         ))
 
     opex_items: list[OpexTemplateItem] = []
     opex_sub_parents = {s.parent_group_code for s in state.opex_sub_lines}
     for o in state.opex_items:
         if float(o.percentage_of_opex or 0):
+            # Core OpexItem stores a FRACTION (0.06 = 6%); the template
+            # authority stores PERCENT POINTS (6.0) - convert exactly once.
             opex_items.append(OpexTemplateItem(
                 item_id=f"opex.{o.name}",
                 parent_code=o.parent_code,
                 label=o.name,
                 driver=CostDriver.PERCENT_OF_OPEX,
-                driver_value=float(o.percentage_of_opex),
+                driver_value=float(o.percentage_of_opex) * 100.0,
                 scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
                 source=TemplateSource.CLIENT_EXTRACT,
                 source_ref=state.project_ref,
@@ -229,6 +251,7 @@ def extract_client_cost_template(
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
         ))
+    import re as _re
     for s in state.opex_sub_lines:
         opex_items.append(OpexTemplateItem(
             item_id=f"opex.subline.{s.business_code}",
@@ -243,6 +266,7 @@ def extract_client_cost_template(
             scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
             source=TemplateSource.CLIENT_EXTRACT,
             source_ref=state.project_ref,
+            replaces_parent=bool(_re.match(r"^B\.\d{2}\.\d{2}$", s.business_code)),
         ))
 
     return CostTemplate.create(

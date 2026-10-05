@@ -110,11 +110,31 @@ class TemplateSource(str, Enum):
     USER = "user"
 
 
-def _finite_non_negative(value: float, code: str, label: str) -> float:
+def _finite(value: float, code: str, label: str) -> float:
+    """Finite numeric check (signed allowed).
+
+    Correction A (defect 8): existing FINCO cost authorities accept finite
+    signed amounts / inflation (e.g. the OPEX sub-line persistence authority
+    validates numeric type only), so the template layer must not invent a
+    blanket non-negative rule that would break exact client roundtrip.
+    Percentage drivers keep their canonical bounds; capacity keeps its
+    strict positive-finite bound.
+    """
     if not isinstance(value, (int, float)) or isinstance(value, bool) \
-            or not math.isfinite(float(value)) or float(value) < 0.0:
-        raise ValueError(f"{code}: {label} must be finite and non-negative, got {value!r}")
+            or not math.isfinite(float(value)):
+        raise ValueError(f"{code}: {label} must be a finite number, got {value!r}")
     return float(value)
+
+
+def _percent_points(value: float, code: str, label: str) -> float:
+    """Percentage-point validation mirroring the canonical contingency
+    authority: strict finite 0..100 (6.0 means 6%)."""
+    v = _finite(value, code, label)
+    if v < 0.0 or v > 100.0:
+        raise ValueError(
+            f"{code}: {label} must be within 0..100 percent points, got {value!r}"
+        )
+    return v
 
 
 @dataclass(frozen=True)
@@ -152,6 +172,17 @@ class CapexTemplateItem:
     classification: ItemClassification = ItemClassification.ACTIVE
     source: TemplateSource = TemplateSource.GENERIC_TEMPLATE
     source_ref: str = ""                    # project / template lineage note
+    # Correction A (defect 3): detail rows that DECOMPOSE / REPLACE their
+    # canonical parent (presentation codes C.NN.NN / B.NN.NN) carry this
+    # flag so materialization represents ONE economic amount and reuses the
+    # existing reference-seed replacement semantics. User-added persistent
+    # rows (C.NN.U###) are additive and never set it.
+    replaces_parent: bool = False
+    # Correction A (defect 2): approved CAPEX scalar metadata (VAT / WHT /
+    # depreciation vocabulary of APPROVED_SCALAR_CAPEX_METADATA_KEYS),
+    # validated by the existing sanitizer at the extraction/plan boundary
+    # and carried losslessly through the roundtrip.
+    scalar_metadata: dict = field(default_factory=dict)
     # Inactive Development-Costs migration seam (C.15). Never active here.
     devex_candidate: bool = False
 
@@ -172,17 +203,31 @@ class CapexTemplateItem:
                     f"COST_TEMPLATE_CHILD_PARENT_MISMATCH: child {self.child_code!r} "
                     f"does not belong to parent {self.parent_code!r} (item {sid!r})"
                 )
-        _finite_non_negative(self.y0_share, "COST_TEMPLATE_VALUE_INVALID",
-                             f"item {sid!r} y0_share")
+        _finite(self.y0_share, "COST_TEMPLATE_VALUE_INVALID",
+                f"item {sid!r} y0_share")
         for i, share in enumerate(self.spending_profile):
-            _finite_non_negative(share, "COST_TEMPLATE_VALUE_INVALID",
-                                 f"item {sid!r} spending_profile[{i}]")
+            _finite(share, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} spending_profile[{i}]")
         if self.amount_keur is not None:
-            _finite_non_negative(self.amount_keur, "COST_TEMPLATE_VALUE_INVALID",
-                                 f"item {sid!r} amount_keur")
+            _finite(self.amount_keur, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} amount_keur")
         if self.driver_value is not None:
-            _finite_non_negative(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
-                                 f"item {sid!r} driver_value")
+            _finite(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} driver_value")
+        if self.replaces_parent:
+            if self.child_code is None:
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_NEEDS_CHILD: item {sid!r} marks "
+                    "replaces_parent but carries no child row code"
+                )
+            import re as _re
+            if not _re.match(r"^C\.\d{2}\.\d{2}$", self.child_code):
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_CODE_INVALID: item {sid!r} marks "
+                    f"replaces_parent with non-presentation child code "
+                    f"{self.child_code!r}; only C.NN.NN detail rows decompose a "
+                    "canonical parent (user C.NN.U### rows are additive)"
+                )
         if self.classification is ItemClassification.DERIVED_RUNTIME:
             if self.driver is not CostDriver.DERIVED_RUNTIME:
                 raise ValueError(
@@ -203,17 +248,23 @@ class CapexTemplateItem:
                     f"is a C.13 contingency driver, used on {sid!r} "
                     f"({self.parent_code})"
                 )
-            if self.driver_value is None or not (0.0 < self.driver_value <= 1.0):
+            # Correction A (defect 5): canonical FINCO percent points
+            # (6.0 means 6%), strict 0..100 like the contingency authority.
+            if self.driver_value is None:
                 raise ValueError(
                     f"COST_TEMPLATE_VALUE_INVALID: item {sid!r} contingency "
-                    "driver_value must be a fraction within (0, 1]"
+                    "driver_value is required (MISSING is not ZERO)"
                 )
+            _percent_points(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
+                            f"item {sid!r} contingency driver_value")
         elif self.driver is CostDriver.EUR_PER_MW:
             if self.driver_value is None:
                 raise ValueError(
                     f"COST_TEMPLATE_DRIVER_VALUE_REQUIRED: EUR_PER_MW item {sid!r} "
                     "needs driver_value (kEUR per MW)"
                 )
+            _finite(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} driver_value")
         elif self.driver is CostDriver.ABSOLUTE_KEUR:
             if self.amount_keur is None:
                 raise ValueError(
@@ -247,6 +298,10 @@ class OpexTemplateItem:
     classification: ItemClassification = ItemClassification.ACTIVE
     source: TemplateSource = TemplateSource.GENERIC_TEMPLATE
     source_ref: str = ""
+    # Correction A (defect 3): detail rows that DECOMPOSE / REPLACE their
+    # canonical parent OpexItem (presentation codes B.NN.NN); user rows
+    # (B.NN.U###) are additive and never set it.
+    replaces_parent: bool = False
 
     def validate(self) -> None:
         sid = self.item_id or "<missing-id>"
@@ -282,31 +337,59 @@ class OpexTemplateItem:
                     f"COST_TEMPLATE_DRIVER_CLASS_ILLEGAL: PERCENT_OF_OPEX is a "
                     f"B.13 contingency driver, used on {sid!r} ({self.parent_code})"
                 )
-        elif self.driver is CostDriver.EUR_PER_MW and self.driver_value is None:
-            raise ValueError(
-                f"COST_TEMPLATE_DRIVER_VALUE_REQUIRED: EUR_PER_MW item {sid!r} "
-                "needs driver_value (kEUR per MW)"
-            )
+            # Correction A (defect 6): an explicit percentage value is
+            # REQUIRED — None never collapses to zero. Canonical FINCO
+            # percent points (6.0 means 6%); explicit 0 is a valid zero.
+            if self.driver_value is None:
+                raise ValueError(
+                    f"COST_TEMPLATE_VALUE_REQUIRED: PERCENT_OF_OPEX item {sid!r} "
+                    "needs driver_value in percent points (MISSING is not ZERO)"
+                )
+            _percent_points(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
+                            f"item {sid!r} percentage driver_value")
+        elif self.driver is CostDriver.EUR_PER_MW:
+            if self.driver_value is None:
+                raise ValueError(
+                    f"COST_TEMPLATE_DRIVER_VALUE_REQUIRED: EUR_PER_MW item {sid!r} "
+                    "needs driver_value (kEUR per MW)"
+                )
+            _finite(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} driver_value")
         elif self.driver is CostDriver.ABSOLUTE_KEUR and self.y1_amount_keur is None:
             raise ValueError(
                 f"COST_TEMPLATE_AMOUNT_REQUIRED: ABSOLUTE_KEUR item {sid!r} needs "
                 "y1_amount_keur (MISSING is not ZERO)"
             )
-        _finite_non_negative(self.y1_amount_keur if self.y1_amount_keur is not None else 0.0,
-                             "COST_TEMPLATE_VALUE_INVALID", f"item {sid!r} y1_amount_keur")
-        _finite_non_negative(self.annual_inflation, "COST_TEMPLATE_VALUE_INVALID",
-                             f"item {sid!r} annual_inflation")
-        if self.driver_value is not None:
-            _finite_non_negative(self.driver_value, "COST_TEMPLATE_VALUE_INVALID",
-                                 f"item {sid!r} driver_value")
+        # Correction A (defect 8): finite-only for amounts / inflation /
+        # steps — existing FINCO authorities accept finite signed values
+        # (e.g. negative inflation), so no blanket non-negative rule.
+        if self.y1_amount_keur is not None:
+            _finite(self.y1_amount_keur, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} y1_amount_keur")
+        _finite(self.annual_inflation, "COST_TEMPLATE_VALUE_INVALID",
+                f"item {sid!r} annual_inflation")
         for step_year, step_amount in self.step_changes:
             if not isinstance(step_year, int) or isinstance(step_year, bool) or step_year < 1:
                 raise ValueError(
                     f"COST_TEMPLATE_STEP_INVALID: item {sid!r} step year must be a "
                     f"positive integer, got {step_year!r}"
                 )
-            _finite_non_negative(step_amount, "COST_TEMPLATE_VALUE_INVALID",
-                                 f"item {sid!r} step_changes[{step_year}]")
+            _finite(step_amount, "COST_TEMPLATE_VALUE_INVALID",
+                    f"item {sid!r} step_changes[{step_year}]")
+        if self.replaces_parent:
+            if self.child_code is None:
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_NEEDS_CHILD: item {sid!r} marks "
+                    "replaces_parent but carries no child row code"
+                )
+            import re as _re
+            if not _re.match(r"^B\.\d{2}\.\d{2}$", self.child_code):
+                raise ValueError(
+                    f"COST_TEMPLATE_REPLACEMENT_CODE_INVALID: item {sid!r} marks "
+                    f"replaces_parent with non-presentation child code "
+                    f"{self.child_code!r}; only B.NN.NN detail rows decompose a "
+                    "canonical parent (user B.NN.U### rows are additive)"
+                )
 
 
 @dataclass(frozen=True)
@@ -345,8 +428,13 @@ class CostTemplate:
                 "record its source project reference"
             )
         if self.reference_capacity_mw is not None:
-            _finite_non_negative(self.reference_capacity_mw, "COST_TEMPLATE_VALUE_INVALID",
-                                 "reference_capacity_mw")
+            _finite(self.reference_capacity_mw, "COST_TEMPLATE_VALUE_INVALID",
+                    "reference_capacity_mw")
+            if self.reference_capacity_mw <= 0:
+                raise ValueError(
+                    f"COST_TEMPLATE_VALUE_INVALID: reference_capacity_mw must be "
+                    f"strictly positive, got {self.reference_capacity_mw!r}"
+                )
         seen: set[str] = set()
         for item in self.capex_items:
             item.validate()
