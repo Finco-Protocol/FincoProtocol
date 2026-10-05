@@ -254,18 +254,13 @@ def test_shipped_registry_records_the_reviewed_absence_and_invents_no_address():
     assert authority.provenance.reference_url == "https://docs.chain.link/data-feeds/l2-sequencer-feeds"
     assert authority.provenance.reviewed_at == "2026-10-04"
     raw = json.loads(REGISTRY_FILE.read_text(encoding="utf-8"))
-    assert raw["sequencer"] is None and len(raw["bindings"]) == 8
-    # Addresses are expected now: 8 source-proven feed proxies.
-    assert len(re.findall(r"0x[0-9a-fA-F]{40}", REGISTRY_FILE.read_text(encoding="utf-8"))) >= 8
+    assert raw["sequencer"] is None and raw["bindings"] == []
+    assert not re.search(r"0x[0-9a-fA-F]{40}", REGISTRY_FILE.read_text(encoding="utf-8"))   # no address of any kind
 
 
-def test_shipped_registry_has_eight_source_proven_bindings():
+def test_shipped_registry_still_has_zero_stock_token_bindings():
     coverage = load_registry().coverage()
-    source_proven = {k for k, v in coverage.items() if v == "SOURCE_PROVEN"}
-    not_reviewed = {k for k, v in coverage.items() if v == "ORACLE_FEED_NOT_REVIEWED"}
-    assert len(source_proven) == 8
-    assert len(not_reviewed) == 5
-    assert len(coverage) == 13
+    assert len(coverage) == 13 and set(coverage.values()) == {"ORACLE_FEED_NOT_REVIEWED"}
 
 
 # ── cycle + read path ────────────────────────────────────────────────────────────────────────────
