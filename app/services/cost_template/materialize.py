@@ -153,6 +153,10 @@ class CapexFieldPlan:
     asset_class: Optional[str] = None
     useful_life_override: Optional[int] = None
     is_depreciable: bool = True
+    # Applicability addendum (A7, Correction C defect 5): non-decomposed
+    # parent applicability — stored economics retained, excluded from
+    # current project economics while inactive.
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -180,6 +184,11 @@ class OpexItemPlan:
     annual_inflation: float = 0.0
     step_changes: tuple[tuple[int, float], ...] = ()
     percentage_of_opex: float = 0.0
+    # Applicability addendum (A7, Correction C defect 5): project-owned
+    # ON/OFF for non-decomposed parent assumptions. Stored economics are
+    # NEVER zeroed by applicability; an inactive item contributes zero to
+    # current economics and reactivates with its exact stored values.
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -230,20 +239,27 @@ def _parent_capex_field_plans(
     # CANONICAL CapexStructure FIELD (via CAPEX_CATEGORY_TO_FIELD), not the
     # presentation category code - the C.08/C.11 alias both map to
     # audit_legal and must reconcile into ONE field amount. Applicability
-    # addendum (A13): only ACTIVE rows enter the subtotal; inactive rows are
-    # preserved in the plan with their economics but excluded here.
+    # addendum (A13) + Correction C (defect 4): decomposition PRESENCE
+    # establishes the replacement authority - the field amount is the sum of
+    # ACTIVE children INCLUDING the empty-active-set case (all children OFF
+    # -> field amount 0, assumptions retained). Inactive rows are preserved
+    # in the plan with their economics but excluded here.
+    decomposition_present: set[str] = set()
     decomposition_children: dict[str, float] = {}
+    active_child_count: dict[str, int] = {}
     for r in resolved.capex:
         if not r.item.replaces_parent or r.resolved_amount_keur is None:
             continue
-        if not r.item.default_active:
-            continue  # inactive: retained, never in the canonical subtotal
         field_name = category_to_field.get(r.item.parent_code)
         if field_name is None:
             raise ValueError(
                 f"MATERIALIZATION_PARENT_UNMAPPED: {r.item.parent_code!r} has no "
                 "CapexStructure field authority"
             )
+        decomposition_present.add(field_name)
+        if not r.item.default_active:
+            continue  # inactive: retained, never in the canonical subtotal
+        active_child_count[field_name] = active_child_count.get(field_name, 0) + 1
         decomposition_children[field_name] = (
             decomposition_children.get(field_name, 0.0)
             + float(r.resolved_amount_keur))
@@ -263,20 +279,58 @@ def _parent_capex_field_plans(
                 f"MATERIALIZATION_PARENT_UNMAPPED: {item.parent_code!r} has no "
                 "CapexStructure field authority"
             )
-        if field_name in decomposition_children:
-            amount = decomposition_children[field_name]
-        elif r.resolved_amount_keur is None:
+        if field_name in decomposition_present:
+            # Correction C (defect 4): decomposition presence ESTABLISHES the
+            # authority - the amount is the active-children sum, including
+            # the valid empty-active-set case (all children OFF -> 0). Never
+            # fall back to the parent's own reference amount. Parent
+            # applicability follows the children: active iff any active
+            # child exists.
+            plans.append(CapexFieldPlan(
+                field_name=field_name,
+                parent_code=item.parent_code,
+                label=item.label,
+                amount_keur=decomposition_children.get(field_name, 0.0),
+                y0_share=item.y0_share,
+                spending_profile=item.spending_profile,
+                asset_class=item.asset_class,
+                useful_life_override=item.useful_life_override,
+                is_depreciable=item.is_depreciable,
+                is_active=active_child_count.get(field_name, 0) > 0,
+            ))
+            continue
+        if not item.default_active:
+            # Correction C (defect 5): non-decomposed parent applicability -
+            # stored economics retained in the plan, excluded from current
+            # project economics via is_active.
+            if r.resolved_amount_keur is None:
+                raise ValueError(
+                    f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} "
+                    "resolved to no amount (MISSING is not ZERO)"
+                )
+            plans.append(CapexFieldPlan(
+                field_name=field_name,
+                parent_code=item.parent_code,
+                label=item.label,
+                amount_keur=float(r.resolved_amount_keur),
+                y0_share=item.y0_share,
+                spending_profile=item.spending_profile,
+                asset_class=item.asset_class,
+                useful_life_override=item.useful_life_override,
+                is_depreciable=item.is_depreciable,
+                is_active=False,
+            ))
+            continue
+        if r.resolved_amount_keur is None:
             raise ValueError(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
                 "to no amount (MISSING is not ZERO)"
             )
-        else:
-            amount = float(r.resolved_amount_keur)
         plans.append(CapexFieldPlan(
             field_name=field_name,
             parent_code=item.parent_code,
             label=item.label,
-            amount_keur=amount,
+            amount_keur=float(r.resolved_amount_keur),
             y0_share=item.y0_share,
             spending_profile=item.spending_profile,
             asset_class=item.asset_class,
@@ -355,13 +409,19 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
     # Correction B (defect 4) + applicability (A13): reconciliation happens
     # over the FINAL ACTIVE child set; inactive children are preserved in
     # the sub-line plans but excluded from the canonical subtotal.
+    # Correction C (defect 4): decomposition PRESENCE establishes the
+    # replacement authority - a canonical key with decomposition children is
+    # reconciled from the ACTIVE children even when that active set is empty
+    # (all children OFF -> canonical parent amount 0, assumptions retained).
+    decomposition_present: dict[str, bool] = {}
     decomposition_children: dict[str, float] = {}
     for r in resolved.opex:
         if not r.item.replaces_parent or r.resolved_y1_amount_keur is None:
             continue
-        if not r.item.default_active:
-            continue
         key = r.item.canonical_parent_key
+        decomposition_present[key] = True
+        if not r.item.default_active:
+            continue  # inactive child: retained, excluded from the subtotal
         decomposition_children[key] = (
             decomposition_children.get(key, 0.0) + float(r.resolved_y1_amount_keur))
 
@@ -381,6 +441,9 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
                     f"{item.item_id!r} has no driver_value (MISSING is not ZERO)"
                 )
             # Boundary conversion: template percent points -> core fraction.
+            # Applicability (A9): an inactive contingency plan row keeps the
+            # configured percentage with is_active=False (authority not
+            # applied at runtime).
             plans.append(OpexItemPlan(
                 parent_code=item.parent_code,
                 name=item.label,
@@ -388,12 +451,29 @@ def _opex_item_plans(resolved: ResolvedCostTemplate) -> tuple[OpexItemPlan, ...]
                 annual_inflation=0.0,
                 step_changes=(),
                 percentage_of_opex=float(item.driver_value) / 100.0,
+                is_active=item.default_active,
+            ))
+            continue
+        # Correction C (defect 5): non-decomposed parent applicability.
+        if not item.default_active and item.parent_code not in decomposition_present:
+            if r.resolved_y1_amount_keur is None:
+                raise ValueError(
+                    f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} "
+                    "resolved to no amount (MISSING is not ZERO)"
+                )
+            plans.append(OpexItemPlan(
+                parent_code=item.parent_code,
+                name=item.label,
+                y1_amount_keur=float(r.resolved_y1_amount_keur),
+                annual_inflation=float(item.annual_inflation),
+                step_changes=tuple(item.step_changes),
+                is_active=False,
             ))
             continue
         parent_key = (item.canonical_parent_key
                       if item.canonical_parent_key else item.label)
-        if parent_key in decomposition_children:
-            y1 = decomposition_children[parent_key]
+        if parent_key in decomposition_present:
+            y1 = decomposition_children.get(parent_key, 0.0)
         elif r.resolved_y1_amount_keur is None:
             raise ValueError(
                 f"MATERIALIZATION_AMOUNT_MISSING: item {item.item_id!r} resolved "
@@ -451,12 +531,16 @@ def _opex_sub_line_plans(
                 "detail_code": item.child_code,
                 "scaling_mode": item.scaling_basis.value,
             })
-        # Correction B (defect 3): decomposition rows carry the EXACT runtime
-        # replacement vocabulary - reference_seed=True + canonical_key=<the
-        # canonical OpexItem name> - so the existing fold removes the
-        # canonical parent exactly once. Seeded/detail rows keep
-        # source="reference_seed"; user_override provenance is preserved
-        # through client extraction lineage.
+        # Correction B (defect 3) + Correction C (defect 3): decomposition
+        # rows carry the EXACT runtime replacement vocabulary -
+        # reference_seed=True + canonical_key=<the canonical OpexItem name> -
+        # AND the original persisted runtime row source
+        # (reference_seed / user_override), because the existing fold
+        # recognizes replacement rows by source in
+        # {"reference_seed", "user_override"} + reference_seed=True +
+        # canonical_key. Generic templates materialize reference_seed;
+        # client-extracted rows keep their persisted source. A user
+        # B.NN.U### row is additive with source="user".
         if item.replaces_parent:
             replay = dict(replay)
             replay.update({
@@ -464,11 +548,12 @@ def _opex_sub_line_plans(
                 "canonical_key": item.canonical_parent_key,
                 "canonical_label": item.canonical_parent_key,
             })
-        opex_source = (
-            "reference_seed"
-            if item.replaces_parent and item.source.value == "generic_template"
-            else "user"
-        )
+        opex_source = "user"
+        if item.replaces_parent:
+            if item.persisted_source in {"reference_seed", "user_override"}:
+                opex_source = item.persisted_source
+            elif item.source.value == "generic_template":
+                opex_source = "reference_seed"
         plans.append(OpexSubLinePlan(
             parent_group_code=item.parent_code,
             business_code=item.child_code,
@@ -680,11 +765,18 @@ def rescale_materialization_plan(
 
     field_key_by_category = dict(CAPEX_CATEGORY_TO_FIELD)
     final_capex_children: dict[str, float] = {}
+    final_capex_present: set[str] = set()
     for s in capex_sub_lines:
-        if not s.replay_metadata.get("replaces_parent") or not s.is_active:
+        if not s.replay_metadata.get("replaces_parent"):
             continue
         field_key = field_key_by_category.get(s.parent_category_code)
-        if field_key:
+        if not field_key:
+            continue
+        # Correction C (defect 4): presence is established by ANY
+        # decomposition child; only ACTIVE children enter the sum. All
+        # children OFF -> field amount 0.
+        final_capex_present.add(field_key)
+        if s.is_active:
             final_capex_children[field_key] = (
                 final_capex_children.get(field_key, 0.0) + float(s.amount_keur))
     reconciled_capex_fields = []
@@ -692,7 +784,7 @@ def rescale_materialization_plan(
         # the canonical field IS the reconciliation key (C.08/C.11 aliases
         # collapse into audit_legal before this lookup)
         children_key = pf.field_name
-        if children_key in final_capex_children:
+        if children_key in final_capex_present:
             reconciled_capex_fields.append(CapexFieldPlan(
                 field_name=pf.field_name,
                 parent_code=pf.parent_code,
@@ -708,22 +800,27 @@ def rescale_materialization_plan(
             reconciled_capex_fields.append(pf)
 
     final_opex_children: dict[str, float] = {}
+    final_opex_present: set[str] = set()
     for s in opex_sub_lines:
-        if not s.replay_metadata.get("replaces_parent") or not s.is_active:
+        if not s.replay_metadata.get("replaces_parent"):
             continue
         key = s.replay_metadata.get("canonical_key")
-        if key:
+        if not key:
+            continue
+        # Correction C (defect 4): presence vs active-sum, as for CAPEX.
+        final_opex_present.add(key)
+        if s.is_active:
             final_opex_children[key] = (
                 final_opex_children.get(key, 0.0) + float(s.amount_keur))
     reconciled_opex_items = []
     for of_ in opex_items:
         # a parent OpexItem is reconciled when ANY of its decomposition
         # children names it as canonical parent (by exact item name)
-        if of_.name in final_opex_children:
+        if of_.name in final_opex_present:
             reconciled_opex_items.append(OpexItemPlan(
                 parent_code=of_.parent_code,
                 name=of_.name,
-                y1_amount_keur=final_opex_children[of_.name],
+                y1_amount_keur=final_opex_children.get(of_.name, 0.0),
                 annual_inflation=of_.annual_inflation,
                 step_changes=of_.step_changes,
                 percentage_of_opex=of_.percentage_of_opex,
@@ -794,6 +891,7 @@ def plan_to_project_state(
             annual_inflation=p.annual_inflation,
             step_changes=tuple(p.step_changes),
             percentage_of_opex=p.percentage_of_opex,
+            is_active=p.is_active,
         )
         for p in plan.opex_items
     )
@@ -816,9 +914,13 @@ def plan_to_project_state(
     )
     contingency = None
     if plan.contingency is not None:
+        # Correction C (defect 1): applicability flags round-trip exactly —
+        # inactive 6% must never come back as active 6%.
         contingency = ContingencyState(
             capex_pct=plan.contingency.capex_pct,
             opex_pct=plan.contingency.opex_pct,
+            capex_active=plan.contingency.capex_active,
+            opex_active=plan.contingency.opex_active,
             lineage=dict(plan.contingency.lineage),
         )
     return CostProjectState(

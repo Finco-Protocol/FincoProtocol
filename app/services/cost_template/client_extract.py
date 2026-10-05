@@ -37,7 +37,12 @@ from app.services.cost_template.contracts import (
 
 @dataclass(frozen=True)
 class CapexFieldState:
-    """Parent-level CAPEX field state (a CapexItem on its C.NN field)."""
+    """Parent-level CAPEX field state (a CapexItem on its C.NN field).
+
+    Applicability addendum (A7): a non-decomposed parent assumption may
+    carry project applicability directly; stored economics are never zeroed
+    by applicability.
+    """
 
     field_name: str
     parent_code: str
@@ -48,11 +53,12 @@ class CapexFieldState:
     asset_class: Optional[str] = None
     useful_life_override: Optional[int] = None
     is_depreciable: bool = True
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
 class OpexItemState:
-    """Parent-level OPEX item state."""
+    """Parent-level OPEX item state (A7: may carry applicability)."""
 
     name: str
     parent_code: str
@@ -60,6 +66,7 @@ class OpexItemState:
     annual_inflation: float = 0.0
     step_changes: tuple[tuple[int, float], ...] = ()
     percentage_of_opex: float = 0.0
+    is_active: bool = True
 
 
 @dataclass(frozen=True)
@@ -99,6 +106,10 @@ class OpexSubLineState:
     # user B.NN.U### rows are ADDITIVE and leave both unset.
     canonical_parent_key: Optional[str] = None
     reference_seed: bool = False
+    # Correction C (defect 3): the original persisted runtime row source
+    # ("reference_seed" | "user_override" | "user") so client-extracted
+    # decomposition rows stay runtime-compatible replacements.
+    persisted_source: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -179,7 +190,9 @@ def extract_client_cost_template(
         if f.parent_code == "C.13" and state.contingency is not None \
                 and state.contingency.capex_pct is not None:
             # Percentage rule: preserve pct + basis + lineage, never freeze
-            # the derived amount as a primary cost.
+            # the derived amount as a primary cost. Applicability (A9): the
+            # item's default_active mirrors the authority active flag —
+            # INACTIVE retains the configured pct but is not applied.
             capex_items.append(CapexTemplateItem(
                 item_id=f"capex.{f.field_name}",
                 parent_code=f.parent_code,
@@ -195,6 +208,7 @@ def extract_client_cost_template(
                 scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
                 source=TemplateSource.CLIENT_EXTRACT,
                 source_ref=state.project_ref,
+                default_active=bool(state.contingency.capex_active),
             ))
             continue
         capex_items.append(CapexTemplateItem(
@@ -247,15 +261,32 @@ def extract_client_cost_template(
     opex_items: list[OpexTemplateItem] = []
     opex_sub_parents = {s.parent_group_code for s in state.opex_sub_lines}
     for o in state.opex_items:
-        # Correction B (defect 5): the TYPED contingency authority is the
-        # primary source - an explicit 0.0% authority must survive (never
-        # collapse into an ordinary ABSOLUTE row via truthiness). The core
-        # OpexItem fraction (0.06) converts to percent points (6.0) once.
+        # Correction C (defect 2): the TYPED contingency authority is
+        # PRIMARY. When state.contingency.opex_pct exists, B.13 is
+        # PERCENT_OF_OPEX with that EXACT value regardless of the active
+        # flag - INACTIVE retains economics, it never forgets them (and
+        # 6.0% inactive stays 6.0%, never the runtime OpexItem fraction).
+        # The core OpexItem fraction is only a backward-compatible fallback
+        # when the typed authority is genuinely absent.
+        typed_pct = (state.contingency.opex_pct
+                     if state.contingency is not None else None)
+        if o.parent_code == "B.13" and typed_pct is not None:
+            opex_items.append(OpexTemplateItem(
+                item_id=f"opex.{o.name}",
+                parent_code=o.parent_code,
+                label=o.name,
+                driver=CostDriver.PERCENT_OF_OPEX,
+                driver_value=float(typed_pct),
+                scaling_basis=ScalingBasis.EXACT_SNAPSHOT,
+                source=TemplateSource.CLIENT_EXTRACT,
+                source_ref=state.project_ref,
+                # Applicability (A9): item applicability mirrors the typed
+                # authority active flag; INACTIVE retains the percentage.
+                default_active=bool(state.contingency.opex_active),
+            ))
+            continue
         pct_fraction = float(o.percentage_of_opex or 0.0)
-        typed_active = (state.contingency is not None
-                        and state.contingency.opex_pct is not None
-                        and state.contingency.opex_active)
-        if pct_fraction > 0 or (typed_active and o.parent_code == "B.13"):
+        if pct_fraction > 0:
             opex_items.append(OpexTemplateItem(
                 item_id=f"opex.{o.name}",
                 parent_code=o.parent_code,
@@ -300,6 +331,13 @@ def extract_client_cost_template(
             # extraction. User B.NN.U### rows are ADDITIVE (both unset).
             canonical_parent_key=s.canonical_parent_key if is_detail else None,
             reference_seed=bool(s.reference_seed) if is_detail else False,
+            # Correction C (defect 3): the original persisted runtime row
+            # source is carried so materialized rows stay
+            # runtime-compatible replacements.
+            persisted_source=(
+                s.persisted_source
+                or (s.source if is_detail else None)
+            ) if is_detail else None,
             default_active=bool(s.is_active),
         ))
 

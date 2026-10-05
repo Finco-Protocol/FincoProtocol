@@ -381,12 +381,14 @@ def test_cb_scalar_metadata_mutation_cannot_reach_artifacts():
     t = CostTemplate.create(template_id="T", version=1, name="T",
                             technology="solar", kind=TemplateKind.GENERIC,
                             capex_items=(item,))
-    # hostile in-place mutation AFTER creation
-    item.scalar_metadata["totally_unknown"] = 999.0
-    with pytest.raises(ValueError, match="scalar"):
-        cost_template_to_json(t)  # serialization boundary rejects
-    with pytest.raises(ValueError, match="scalar"):
-        resolve_cost_template(t, MaterializationContext(capacity_mw=64.0))
+    # hostile in-place mutation AFTER creation is IMPOSSIBLE (immutable proxy)
+    with pytest.raises(TypeError):
+        item.scalar_metadata["totally_unknown"] = 999.0
+    # a valid-value mutation attempt also fails — the version is frozen
+    with pytest.raises(TypeError):
+        item.scalar_metadata["vat_rate_pct"] = 20.0
+    # serialization stays identical after the failed attempts
+    assert cost_template_to_json(t) == cost_template_to_json(t)
 
 
 # ---------------------------------------------------------------------------

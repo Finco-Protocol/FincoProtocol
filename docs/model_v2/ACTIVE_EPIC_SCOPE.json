@@ -50,6 +50,7 @@
     "tests/test_model_market_bridge.py",
     "tests/test_model_v2_cost_templates.py",
     "tests/test_model_v2_cost_templates_cb.py",
+    "tests/test_model_v2_cost_templates_cc.py",
     "tests/test_model_v2_foundation.py",
     "tests/test_model_v2_governance.py",
     "tests/test_model_v2_metadata.py",

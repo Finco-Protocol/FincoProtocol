@@ -153,7 +153,8 @@ class CapexTemplateItem:
     driver: CostDriver
     child_code: Optional[str] = None
     # Rate for EUR_PER_MW (kEUR per MW — the seed V0 unit); the percentage
-    # for PERCENT_OF_ELIGIBLE_CAPEX (fraction 0..1). None otherwise.
+    # for PERCENT_OF_ELIGIBLE_CAPEX in canonical FINCO PERCENT POINTS
+    # (6.0 = 6%, strict 0..100). None otherwise.
     driver_value: Optional[float] = None
     # Absolute/reference amount (kEUR) for ABSOLUTE_KEUR rows; the recorded
     # reference amount on rate rows. None = absent (MISSING != ZERO).
@@ -191,6 +192,20 @@ class CapexTemplateItem:
     default_active: bool = True
     # Inactive Development-Costs migration seam (C.15). Never active here.
     devex_candidate: bool = False
+
+    def __post_init__(self) -> None:
+        # Correction C (defect 7): snapshot the caller's metadata dict into a
+        # genuinely immutable proxy IMMEDIATELY at construction — external
+        # mutation of the source dict can never reach the template item, and
+        # direct item-field mutation raises (MappingProxyType). validate()
+        # later re-runs the FINCO sanitizer so unknown/invalid keys still
+        # fail closed at every consumption boundary.
+        import types as _types
+
+        object.__setattr__(
+            self, "scalar_metadata",
+            _types.MappingProxyType(dict(self.scalar_metadata or {})),
+        )
 
     def validate(self) -> None:
         sid = self.item_id or "<missing-id>"
@@ -236,19 +251,39 @@ class CapexTemplateItem:
                     f"replaces_parent with unrecognized child code "
                     f"{self.child_code!r}; expected C.NN.NN or C.NN.U###"
                 )
-        # Correction B (defect 6): fail closed on unknown/invalid scalar
-        # metadata using the EXISTING FINCO sanitizer authority.
+        # Correction B (defect 6) + Correction C (defect 7): fail closed on
+        # unknown/invalid scalar metadata using the EXISTING FINCO sanitizer
+        # authority, then store a GENUINELY IMMUTABLE snapshot
+        # (MappingProxyType over a fresh sanitized copy) so neither the
+        # caller's original dict nor the item field can mutate a created
+        # template version.
+        import types as _types
+        from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
         if self.scalar_metadata:
-            from app.persistence.capex_sub_lines import sanitize_scalar_capex_metadata
             object.__setattr__(
                 self, "scalar_metadata",
-                sanitize_scalar_capex_metadata(self.scalar_metadata),
+                _types.MappingProxyType(
+                    dict(sanitize_scalar_capex_metadata(self.scalar_metadata))),
+            )
+        else:
+            object.__setattr__(
+                self, "scalar_metadata",
+                _types.MappingProxyType({}),
             )
         if self.classification is ItemClassification.DERIVED_RUNTIME:
             if self.driver is not CostDriver.DERIVED_RUNTIME:
                 raise ValueError(
                     f"COST_TEMPLATE_DRIVER_CLASS_ILLEGAL: DERIVED_RUNTIME item "
                     f"{sid!r} must use the DERIVED_RUNTIME driver"
+                )
+            # Correction C (defect 6): derived-runtime authorities (C.17 /
+            # C.18 and derived metadata lines) have NO user applicability —
+            # they can never be disabled through ordinary ON/OFF semantics.
+            if not self.default_active:
+                raise ValueError(
+                    f"COST_TEMPLATE_DERIVED_APPLICABILITY_ILLEGAL: DERIVED_RUNTIME "
+                    f"item {sid!r} cannot be default_active=False; its economics "
+                    "belong to the canonical runtime authority"
                 )
             return  # derived metadata rows carry no editable economics
         # Active rows: driver/class and driver/value consistency.
@@ -327,6 +362,14 @@ class OpexTemplateItem:
     # Correction B (defect 3): mirrors the runtime replacement vocabulary
     # (source in {reference_seed, user_override} + reference_seed=True).
     reference_seed: bool = False
+    # Correction C (defect 3): the PERSISTED runtime row source of the
+    # original project row ("reference_seed" | "user_override" | "user"),
+    # kept separate from TemplateSource provenance. The OPEX replacement
+    # fold recognizes replacement rows by source IN
+    # {"reference_seed", "user_override"} + reference_seed=True +
+    # canonical_key - so client-extracted decomposition rows must carry the
+    # original persisted source, not a generic template marker.
+    persisted_source: Optional[str] = None
     # Applicability addendum (A2).
     default_active: bool = True
 
@@ -351,6 +394,13 @@ class OpexTemplateItem:
                 raise ValueError(
                     f"COST_TEMPLATE_DRIVER_CLASS_ILLEGAL: DERIVED_RUNTIME item "
                     f"{sid!r} must use the DERIVED_RUNTIME driver"
+                )
+            # Correction C (defect 6): no user applicability on derived rows.
+            if not self.default_active:
+                raise ValueError(
+                    f"COST_TEMPLATE_DERIVED_APPLICABILITY_ILLEGAL: DERIVED_RUNTIME "
+                    f"item {sid!r} cannot be default_active=False; its economics "
+                    "belong to the canonical runtime authority"
                 )
             return
         if self.driver not in ACTIVE_OPEX_DRIVERS:

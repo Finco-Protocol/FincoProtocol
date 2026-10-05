@@ -25,8 +25,17 @@ from app.services.cost_template.contracts import (
 
 
 def _encode(obj: Any) -> Any:
+    # Correction C (defect 7): scalar metadata is stored as an immutable
+    # MappingProxyType; asdict()/deepcopy cannot pickle it, so dataclass
+    # conversion here is manual-safe: encode field-by-field for dataclasses.
+    import types as _types
     if is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _encode(v) for k, v in asdict(obj).items()}
+        return {
+            f: _encode(getattr(obj, f))
+            for f in obj.__dataclass_fields__
+        }
+    if isinstance(obj, _types.MappingProxyType):
+        return {k: _encode(v) for k, v in obj.items()}
     if isinstance(obj, (TemplateKind, TemplateStatus, CostDriver,
                         ScalingBasis, ItemClassification, TemplateSource)):
         return obj.value
@@ -68,6 +77,7 @@ def cost_template_from_json(payload: str) -> CostTemplate:
         d["source"] = TemplateSource(d["source"])
         d["spending_profile"] = tuple(
             float(s) for s in (d.get("spending_profile") or ()))
+        # validate() wraps scalar_metadata into the immutable proxy
         return CapexTemplateItem(**d)
 
     def opex_item(d: dict) -> OpexTemplateItem:
@@ -92,6 +102,10 @@ def cost_template_from_json(payload: str) -> CostTemplate:
         created_at=t.get("created_at", ""),
         reference_capacity_mw=t.get("reference_capacity_mw"),
         source_project_ref=t.get("source_project_ref"),
+        # Applicability addendum (A9): contingency applicability flags are
+        # part of the immutable version payload.
+        capex_contingency_active=t.get("capex_contingency_active", True),
+        opex_contingency_active=t.get("opex_contingency_active", True),
         _schema=t["_schema"],
     )
     template.validate()
