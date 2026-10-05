@@ -384,6 +384,8 @@ def _collect_env(monkeypatch, tmp_path, extra=None):
     monkeypatch.setenv("FINCO_DEEPSTATE_COLLECTOR_ENABLED", "1")
     monkeypatch.setenv("ROBINHOOD_RPC_URL", "http://localhost:1")
     monkeypatch.setenv("FINCO_VENUE_DB_PATH", str(tmp_path / "v.db"))
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.delenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", raising=False)
     monkeypatch.setattr(dc, "ensure_chain", lambda *a, **k: True)
     return dc
 
@@ -393,7 +395,9 @@ def test_empty_store_bootstrap_requires_explicit_start_block(monkeypatch, tmp_pa
     monkeypatch.delenv("FINCO_DEEPSTATE_START_BLOCK", raising=False)
     rc = dc.main([])
     assert rc == 4  # BOOTSTRAP_REQUIRED — no silent genesis scan
-    assert "BOOTSTRAP_REQUIRED" in capsys.readouterr().out
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["state"] == "BOOTSTRAP_REQUIRED"
+    assert report["exit_code"] == 4
 
 
 def test_lag_truthfully_reported_when_budget_exhausted(monkeypatch, tmp_path, capsys):
@@ -670,3 +674,181 @@ def test_same_canonical_sub_event_recollects_as_dedupe(tmp_path):
     assert first[0][1] is True
     assert second[0][1] is False
     assert store.count(venue_id="DEEPSTATE") == 1
+
+
+# ── Correction B addendum: bounded checkpoint overlap / empty-block reorg ────
+
+def _log_at(block_number, *, tx_hash=None, log_index="0x4", block_hash=None):
+    log = dict(FIXTURE_LOG)
+    log["blockNumber"] = hex(block_number)
+    if tx_hash is not None:
+        log["transactionHash"] = tx_hash
+    if log_index is not None:
+        log["logIndex"] = log_index
+    if block_hash is not None:
+        log["blockHash"] = block_hash
+    return log
+
+
+def test_checkpoint_next_run_rescans_configured_overlap(monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    dc._advance_checkpoint(store, 105)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "4")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 110)
+    calls = []
+    def fetch(_rpc, start, end):
+        calls.append((start, end))
+        return []
+    monkeypatch.setattr(dc, "fetch_match_logs", fetch)
+    assert dc.main([]) == 0
+    assert calls == [(102, 110)]
+    assert dc._checkpoint_block(store) == 110
+
+
+def test_overlap_captures_event_that_appears_after_prior_empty_scan(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    # Prior run completed 100..105 with no Deepstate logs.
+    dc._advance_checkpoint(store, 105)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "4")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 106)
+    late = _log_at(104)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [late])
+    monkeypatch.setattr(
+        dc, "_canonical_block",
+        lambda *_a, **_k: (True, int(BLOCK_TIME.timestamp())))
+    assert dc.main([]) == 0
+    assert store.count(venue_id="DEEPSTATE") == 1
+    row = store.get_latest_for_underlying("NVDA", venue_id="DEEPSTATE")
+    assert row is not None
+    assert row.payload["block_number"] == 104
+    assert dc._checkpoint_block(store) == 106
+
+
+def test_previously_persisted_event_inside_overlap_dedupes(
+        monkeypatch, tmp_path, capsys):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "4")
+    log = _log_at(104)
+    head = {"value": 105}
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: head["value"])
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [log])
+    monkeypatch.setattr(
+        dc, "_canonical_block",
+        lambda *_a, **_k: (True, int(BLOCK_TIME.timestamp())))
+    assert dc.main([]) == 0
+    capsys.readouterr()
+    head["value"] = 106
+    assert dc.main([]) == 0
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    assert store.count(venue_id="DEEPSTATE") == 1
+    assert report["observations_persisted"] == 0
+    assert report["duplicates_skipped"] == 1
+    assert dc._checkpoint_block(store) == 106
+
+
+def test_new_event_in_already_scanned_reorged_block_appends(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "4")
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+
+    old = _log_at(
+        104,
+        tx_hash="0x" + "11" * 32,
+        block_hash="0x" + "aa" * 32,
+    )
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 105)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [old])
+    monkeypatch.setattr(
+        dc, "_canonical_block",
+        lambda _rpc, _n, expected_hash, **_k:
+            (True, int(BLOCK_TIME.timestamp())))
+    assert dc.main([]) == 0
+    assert store.count(venue_id="DEEPSTATE") == 1
+
+    # The previously scanned block is replaced and now carries a distinct
+    # canonical match. Overlap makes it observable; append-only identity
+    # retains both historical evidence rows rather than mutating the first.
+    new = _log_at(
+        104,
+        tx_hash="0x" + "22" * 32,
+        log_index="0x8",
+        block_hash="0x" + "bb" * 32,
+    )
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 106)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [new])
+    assert dc.main([]) == 0
+    assert store.count(venue_id="DEEPSTATE") == 2
+    assert dc._checkpoint_block(store) == 106
+
+
+def test_checkpoint_advances_only_after_final_canonicality_and_atomic_persistence(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "74416355")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "4")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 74416355)
+    monkeypatch.setattr(dc, "fetch_match_logs", lambda *_a, **_k: [FIXTURE_LOG])
+    order = []
+    def canonical(*_a, **_k):
+        order.append("canonical")
+        return True, int(BLOCK_TIME.timestamp())
+    monkeypatch.setattr(dc, "_canonical_block", canonical)
+
+    original_append = dc.VenueMarketStore.append_many_batched
+    def append(self, observations):
+        order.append("persist")
+        return original_append(self, observations)
+    monkeypatch.setattr(dc.VenueMarketStore, "append_many_batched", append)
+
+    original_advance = dc._advance_checkpoint
+    def advance(store, block):
+        order.append("checkpoint")
+        return original_advance(store, block)
+    monkeypatch.setattr(dc, "_advance_checkpoint", advance)
+
+    assert dc.main([]) == 0
+    assert order == ["canonical", "canonical", "persist", "checkpoint"]
+
+
+def test_overlap_never_scans_before_reviewed_bootstrap_boundary(
+        monkeypatch, tmp_path):
+    dc = _collect_env(monkeypatch, tmp_path)
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    dc._advance_checkpoint(store, 102)
+    monkeypatch.setenv("FINCO_DEEPSTATE_START_BLOCK", "100")
+    monkeypatch.setenv("FINCO_DEEPSTATE_RESCAN_BLOCKS", "16")
+    monkeypatch.setattr(dc, "eth_block_number", lambda *_a, **_k: 104)
+    calls = []
+    monkeypatch.setattr(
+        dc, "fetch_match_logs",
+        lambda _rpc, start, end: calls.append((start, end)) or [])
+    assert dc.main([]) == 0
+    assert calls == [(100, 104)]
+    assert dc._checkpoint_block(store) == 104
+
+
+def test_checkpoint_does_not_remove_bootstrap_requirement(
+        monkeypatch, tmp_path, capsys):
+    dc = _collect_env(monkeypatch, tmp_path)
+    from finco_radar.venues.store import VenueMarketStore
+    store = VenueMarketStore(path=str(tmp_path / "v.db"))
+    dc._advance_checkpoint(store, 105)
+    monkeypatch.delenv("FINCO_DEEPSTATE_START_BLOCK", raising=False)
+    assert dc.main([]) == 4
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["state"] == "BOOTSTRAP_REQUIRED"
+    assert dc._checkpoint_block(store) == 105
