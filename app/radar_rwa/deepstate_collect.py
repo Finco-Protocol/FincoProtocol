@@ -166,8 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     logs, requests, _ = _chunked_logs(
         rpc_url, from_block, to_block, max_blocks, max_requests)
 
-    # Initial canonicality: every acquired log in one block must name the
-    # exact same hash, and the hash-by-number read must agree.
+    # Initial canonicality. Every log in a block must identify one block hash.
     validated_blocks: dict[int, dict[str, int | str]] = {}
     for log in logs:
         try:
@@ -179,14 +178,13 @@ def main(argv: list[str] | None = None) -> int:
         if previous is not None and previous["hash"] != expected_hash:
             return _reorg_report("conflicting block hashes inside acquired range", 1)
         if previous is None:
-            ok, timestamp = _canonical_block(
-                rpc_url, block_number, expected_hash)
+            ok, timestamp = _canonical_block(rpc_url, block_number, expected_hash)
             if not ok or timestamp is None:
                 return _reorg_report("block hash no longer canonical", 1)
             validated_blocks[block_number] = {
                 "hash": expected_hash, "timestamp": timestamp}
 
-    # Decode in memory using only timestamps from initially validated blocks.
+    # Decode all observations in memory using only timestamps from validated blocks.
     observations = []
     for log in logs:
         decoded = decode_match_log(log)
@@ -199,8 +197,8 @@ def main(argv: list[str] | None = None) -> int:
             decoded, collected_at=collected_at,
             block_timestamp=int(block["timestamp"])))
 
-    # FINAL canonicality immediately before persistence. Any changed accepted
-    # block invalidates the whole run: ZERO observations are persisted.
+    # FINAL canonicality immediately before persistence. A changed block
+    # invalidates the entire run; ZERO observations are persisted.
     for block_number in sorted(validated_blocks):
         block = validated_blocks[block_number]
         ok, timestamp = _canonical_block(
@@ -208,8 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         if not ok or timestamp != block["timestamp"]:
             return _reorg_report("final block canonicality changed", len(logs))
 
-    # One atomic evidence batch; only after success may the operational
-    # checkpoint advance. Crash-before-checkpoint => safe retry + digest dedupe.
+    # One atomic evidence batch. Only after success may operational state advance.
+    # A crash after commit but before checkpoint causes a safe retry/dedupe.
     created = store.append_many_batched(observations)
     persisted = sum(1 for _digest, was_created in created if was_created)
     duplicates = len(created) - persisted
