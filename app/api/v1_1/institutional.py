@@ -409,78 +409,35 @@ def _r_live_freshness(evidence: Any) -> dict:
 
 
 def get_r_live(uid: str) -> Tuple[str, dict]:
-    """Return (state, data) for R-LIVE exact AssetKey reference.
+    """Return the latest trustworthy R-LIVE price for one exact AssetKey.
 
-    /radar/r-live/{uid} — delegates to app.radar_rwa.r_live_service.
-    GET performs zero history writes (persist_history=False).
-    Validates the exact reviewed canonical AssetKey — no ticker/fuzzy identity.
-
-    State parity (Correction B):
-      AVAILABLE — all four current components (onchain, token, underlying, premium) are AVAILABLE.
-      STALE     — any component is STALE; none is UNAVAILABLE.
-      UNAVAILABLE — any component is UNAVAILABLE/IDENTITY_UNAVAILABLE, or no RPC, or invalid UID.
-
-    When state != AVAILABLE, current price/value fields are suppressed to None.
+    The acquisition path stays strict: stale pool activity is not admitted as
+    a new observation and GET performs zero history writes. If no new current
+    observation exists, the read surface may return the latest verified
+    canonical B1.3 snapshot with its original source timestamps and true age.
     """
-    from finco_radar.authority.r_live_policy import AAPL_KEY, APPROVED_BY_CANONICAL_ID
+    from finco_radar.authority.r_live_policy import APPROVED_BY_CANONICAL_ID
+    from app.radar_rwa.r_live_service import (
+        format_r_live_result, read_last_canonical_r_live,
+    )
+
     policy = APPROVED_BY_CANONICAL_ID.get(uid)
     if policy is None:
         return STATE_UNAVAILABLE, {"reason": "ASSET_UID_INVALID"}
 
     rpc_url = os.getenv("ROBINHOOD_RPC_URL")
     if not rpc_url:
-        return STATE_UNAVAILABLE, {"reason": "RPC_NOT_CONFIGURED"}
+        fallback = read_last_canonical_r_live(uid)
+        return fallback or (STATE_UNAVAILABLE, {"reason": "RPC_NOT_CONFIGURED"})
 
-    # P0-B: every live RPC read goes through the one bounded, coalescing coordinator. Overload is a
-    # typed ``RLiveServiceBusy`` (never a market state) that callers translate to 429 / typed busy.
+    # P0-B: every live RPC read goes through the one bounded, coalescing coordinator.
     from app.radar_rwa.r_live_public_acquisition import RLiveServiceBusy, acquire_single_current
     try:
         result = acquire_single_current(uid, rpc_url)
     except RLiveServiceBusy:
         raise
     except Exception:
-        return STATE_UNAVAILABLE, {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
+        fallback = read_last_canonical_r_live(uid)
+        return fallback or (STATE_UNAVAILABLE, {"reason": "RADAR_AUTHORITY_UNAVAILABLE"})
 
-    from finco_radar.authority.contracts import AuthorityState
-    authority = result.authority
-    onchain = result.onchain
-    token = authority.token
-    underlying = authority.underlying
-    premium = authority.premium
-
-    state = _r_live_composite_state(
-        onchain.state, token.state, underlying.state, premium.state,
-    )
-    is_current = (state == STATE_AVAILABLE)
-
-    data = {
-        "exact_asset_key": {
-            "canonical_id": policy.asset_key.canonical_id,
-            "chain_id": policy.asset_key.chain_id,
-            "contract_address": policy.asset_key.contract_address,
-        },
-        "economic_asset_uid": authority.economic_asset_uid or policy.economic_asset_uid,
-        "token_reference": {
-            "state": token.state.value,
-            "price_usd_per_token": str(token.price_usd_per_token) if (is_current and token.price_usd_per_token is not None) else None,
-            "source": token.source,
-            "observed_at": token.observed_at.isoformat() if token.observed_at else None,
-            "reason": token.reason,
-        },
-        "robinhood_basis": {
-            "state": underlying.state.value,
-            "price_usd_per_token": str(underlying.price_usd_per_token) if (is_current and underlying.price_usd_per_token is not None) else None,
-            "source": underlying.source,
-            "observed_at": underlying.observed_at.isoformat() if underlying.observed_at else None,
-            "reason": underlying.reason,
-        },
-        "b1_0_premium": {
-            "state": premium.state.value,
-            "value_bps": str(premium.value_bps) if (is_current and premium.value_bps is not None) else None,
-            "formula": premium.formula,
-            "reason": premium.reason,
-        },
-        "observed_at": onchain.observed_at.isoformat() if onchain.observed_at else None,
-        "freshness": _r_live_freshness(onchain.evidence),
-    }
-    return state, data
+    return format_r_live_result(uid, result)
