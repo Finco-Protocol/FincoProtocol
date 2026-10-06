@@ -271,3 +271,6 @@ def test_detail_uses_live_product_status_without_claiming_old_price_is_fresh():
     assert 'presentation_source !== "CANONICAL_B1_3_HISTORY"' in template
     assert 'populate(row.state, row.data, row.read_time_ages, row.source)' in template
     assert 'populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION")' in template
+    assert 'if (state === "AVAILABLE")' in template
+    assert "Keeping the latest canonical on-chain price." in template
+    assert "return refresh_snapshot();" in template
