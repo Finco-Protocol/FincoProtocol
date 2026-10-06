@@ -645,6 +645,145 @@ class TestSeams:
 
 
 # ---------------------------------------------------------------------------
+# Correction B — merchant count / lifecycle / allocation, PPA floor/cap
+# ---------------------------------------------------------------------------
+
+class TestMerchantExpressibilityBoundary:
+    def _merchant(self, price=65.0, **stream_kw):
+        return RevenueStream(
+            "m", RevenueStreamType.MERCHANT,
+            merchant=MerchantParams(merchant_enabled=True,
+                                    base_price_eur_mwh=price),
+            **stream_kw)
+
+    def test_two_explicit_merchant_streams_fail_closed(self):
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MULTIPLE_MERCHANT_STREAMS_UNSUPPORTED"):
+            _compose(RevenuePlan.create((
+                self._merchant(60.0, volume_share=0.5),
+                RevenueStream("m2", RevenueStreamType.MERCHANT,
+                              volume_share=0.5,
+                              merchant=MerchantParams(
+                                  merchant_enabled=True,
+                                  base_price_eur_mwh=70.0)),
+            )))
+
+    def test_residual_plus_explicit_merchant_fails_closed(self):
+        """The domain permits a residual + explicit merchant pair; the
+        runtime has ONE merchant price path — fail closed."""
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MULTIPLE_MERCHANT_STREAMS_UNSUPPORTED"):
+            _compose(RevenuePlan.create((
+                self._merchant(60.0, volume_share=None),
+                RevenueStream("m2", RevenueStreamType.MERCHANT,
+                              volume_share=0.5,
+                              merchant=MerchantParams(
+                                  merchant_enabled=True,
+                                  base_price_eur_mwh=70.0)),
+            )))
+
+    def test_merchant_only_explicit_half_fails_closed(self):
+        """Merchant-only explicit 0.5: the plan leaves 50% unallocated
+        (zero revenue); the runtime would sell 100% — fail closed."""
+        plan = RevenuePlan.create((
+            self._merchant(65.0, volume_share=0.5),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MERCHANT_ALLOCATION_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_explicit_merchant_alongside_tariff_fails_closed(self):
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        balancing_cost_pct=0.0)),
+            self._merchant(65.0, volume_share=0.3),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MERCHANT_ALLOCATION_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_merchant_only_explicit_full_volume_supported(self):
+        """Merchant-only explicit 1.0 == the runtime residual — supported,
+        production-proven."""
+        plan = RevenuePlan.create((
+            self._merchant(70.0, volume_share=1.0),
+        ))
+        composed = _compose(plan).project_inputs
+        assert _production_revenue_keur(composed) == pytest.approx(
+            _expected_plan_revenue_keur(plan, composed), rel=1e-9)
+
+    def test_delayed_merchant_fails_closed(self):
+        plan = RevenuePlan.create((
+            self._merchant(65.0, volume_share=None, start_year=3),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MERCHANT_LIFECYCLE_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_finite_term_merchant_fails_closed(self):
+        plan = RevenuePlan.create((
+            self._merchant(65.0, volume_share=None, term_years=10),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MERCHANT_LIFECYCLE_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_finite_term_merchant_with_tariff_fails_closed(self):
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        balancing_cost_pct=0.0)),
+            self._merchant(65.0, volume_share=None, term_years=15),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_MERCHANT_LIFECYCLE_SEAM_MISSING"):
+            _compose(plan)
+
+
+class TestPPAFloorCap:
+    def test_nonzero_floor_fails_closed(self):
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=1.0,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        ppa_price_floor=45.0,
+                                        balancing_cost_pct=0.0)),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_PPA_FLOOR_CAP_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_nonzero_cap_fails_closed(self):
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=1.0,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        ppa_price_cap=70.0,
+                                        balancing_cost_pct=0.0)),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_PPA_FLOOR_CAP_SEAM_MISSING"):
+            _compose(plan)
+
+    def test_zero_floor_cap_ppa_e2e_remains_green(self):
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=1.0,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        ppa_price_floor=0.0,
+                                        ppa_price_cap=0.0,
+                                        ppa_price_index=0.02,
+                                        balancing_cost_pct=0.0)),
+        ))
+        composed = _compose(plan).project_inputs
+        assert _production_revenue_keur(composed) == pytest.approx(
+            _expected_plan_revenue_keur(plan, composed), rel=1e-9)
+
+
+# ---------------------------------------------------------------------------
 # Identity — economic hash semantics
 # ---------------------------------------------------------------------------
 

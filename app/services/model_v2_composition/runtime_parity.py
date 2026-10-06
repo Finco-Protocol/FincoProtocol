@@ -216,9 +216,52 @@ def bridge_plan_to_runtime_revenue(
             "schedules could be concatenated"
         )
 
-    merchant = next((s.merchant for s in enabled
-                     if s.stream_type is RevenueStreamType.MERCHANT
-                     and s.merchant is not None), None)
+    # ---- Merchant stream boundary (Correction B1/B2) -----------------------
+    # The runtime has ONE residual merchant path (generation minus the
+    # tariff share, at one price curve); Workflow 02 evaluates each active
+    # merchant stream independently. More than one enabled merchant stream
+    # is therefore never mapped by picking the first.
+    merchant_streams = [s for s in enabled
+                        if s.stream_type is RevenueStreamType.MERCHANT]
+    if len(merchant_streams) > 1:
+        ids = sorted(s.stream_id for s in merchant_streams)
+        raise RevenueRuntimeSeamMissing(
+            "RUNTIME_MULTIPLE_MERCHANT_STREAMS_UNSUPPORTED: the canonical "
+            "runtime has ONE merchant price path while the plan evaluates "
+            f"each merchant stream independently; streams {ids} cannot be "
+            "mapped without averaging or combining curves (forbidden)"
+        )
+    merchant_stream = merchant_streams[0] if merchant_streams else None
+    if merchant_stream is not None:
+        if merchant_stream.start_year != 1 or \
+                merchant_stream.term_years is not None:
+            raise RevenueRuntimeSeamMissing(
+                "RUNTIME_MERCHANT_LIFECYCLE_SEAM_MISSING: merchant stream "
+                f"{merchant_stream.stream_id!r} carries start_year="
+                f"{merchant_stream.start_year} / term_years="
+                f"{merchant_stream.term_years}; the runtime residual "
+                "merchant path sells from COD to horizon end and cannot "
+                "open late, stop early, or gap"
+            )
+        if merchant_stream.volume_share is not None:
+            # Explicit merchant volume: the runtime allocation is the
+            # RESIDUAL (1 − tariff share, or 100% with no tariff). Exact
+            # only for the merchant-only full-volume case; any other
+            # explicit share would mis-allocate (e.g. 0.5 → runtime sells
+            # 100%).
+            if tariff_streams or merchant_stream.volume_share != 1.0:
+                raise RevenueRuntimeSeamMissing(
+                    "RUNTIME_MERCHANT_ALLOCATION_SEAM_MISSING: merchant "
+                    f"stream {merchant_stream.stream_id!r} declares "
+                    f"volume_share={merchant_stream.volume_share!r} "
+                    "(tariff stream present: "
+                    f"{bool(tariff_streams)}); the runtime merchant path "
+                    "sells exactly the un-tariffed residual and cannot "
+                    "express an independent explicit merchant volume"
+                )
+
+    merchant = (merchant_stream.merchant
+                if merchant_stream is not None else None)
 
     # ---- Explicit supersession of every plan-governed base field ----------
     overrides: dict[str, Any] = {
@@ -285,6 +328,21 @@ def bridge_plan_to_runtime_revenue(
                 )
             base_tariff = float(ppa.ppa_base_price_eur_mwh)
             index = float(ppa.ppa_price_index)
+            # Plan price_at_year applies floor/cap AFTER geometric
+            # indexation; the runtime analytic authority has no floor/cap
+            # field, and pre-expanding into ppa_tariff_by_operating_period
+            # is forbidden (Correction A: that field never reaches the
+            # clean production engine).
+            if float(ppa.ppa_price_floor) != 0.0 or \
+                    float(ppa.ppa_price_cap) != 0.0:
+                raise RevenueRuntimeSeamMissing(
+                    "RUNTIME_PPA_FLOOR_CAP_SEAM_MISSING: plan PPA carries "
+                    f"price_floor={ppa.ppa_price_floor!r} / "
+                    f"price_cap={ppa.ppa_price_cap!r}; the runtime "
+                    "analytic tariff path has no floor/cap authority and "
+                    "per-period schedules do not reach the clean "
+                    "production engine"
+                )
         elif s.stream_type is RevenueStreamType.INDEXED_FIT:
             factors = tuple(s.indexed_fit_index_factors or ())
             if s.indexed_fit_base_tariff_eur_mwh is None or not factors:

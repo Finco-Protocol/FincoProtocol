@@ -51,17 +51,23 @@ bridge writes a COMPLETE plan-governed override set (explicit supersession
 
 ## Expressible structures (exact economics, production-proven)
 
-- **Merchant-only** — `market_prices_curve` expanded per horizon year
-  through `MerchantParams.price_at_year` (the SAME authority plan_engine
-  uses; escalation and cannibalization baked in), technology capture rate
+- **Merchant-only** — exactly ONE enabled merchant stream, `start_year=1`,
+  unlimited term; `volume_share=None` (residual) or `1.0`
+  (Correction B2: an explicit share below 1.0 would leave plan-unallocated
+  volume that the runtime would still sell — fail closed).
+  `market_prices_curve` expanded per horizon year through
+  `MerchantParams.price_at_year` (the SAME authority plan_engine uses;
+  escalation and cannibalization baked in), technology capture rate
   embedded (solar 0.85 / wind 0.90 / per-stream override).
 - **One fixed-tariff contract, starting year 1**: PPA, FIT_FIXED or
   AUCTION_AWARDED_TARIFF on the analytic authority —
   `ppa_base_tariff` (contract price), `ppa_index` (PPA `ppa_price_index`
   or FiT `fit_index`), `ppa_production_share` (stream `volume_share`),
   `ppa_term_years` (stream term; unlimited → full horizon).
-- **PPA + residual merchant** — share < 1 with the merchant curve carrying
-  the residual.
+- **PPA / FiT + residual merchant** (`volume_share=None`, year 1,
+  unlimited — Correction B2) — share < 1 with the merchant curve carrying
+  the residual. An EXPLICIT merchant share alongside a tariff stream is
+  not the runtime residual semantics — fail closed.
 - **Term-limited tariff** — only when the term anniversary coincides with
   a period START on the project's actual calendar axis (the engine window
   is DATE-anchored: COD + term; a mid-period anniversary would price a
@@ -93,6 +99,10 @@ reimplemented in the tests.
 | `RUNTIME_UNALLOCATED_VOLUME_WITHOUT_MERCHANT` | Partial-share or term-limited tariff without a selected merchant authority. |
 | `RUNTIME_INDEXED_FIT_AUTHORITY_MISSING` | An ACTIVE indexed-FiT year without a factor — MISSING ≠ ZERO, never a zero tariff, never extrapolation (the plan contract itself refuses a stream without a base tariff). |
 | `RUNTIME_INDEXED_FIT_SCHEDULE_SEAM_MISSING` | Indexed FiT with complete factors — needs a per-year tariff schedule, which the production adapter does not forward. |
+| `RUNTIME_MULTIPLE_MERCHANT_STREAMS_UNSUPPORTED` | More than one enabled merchant stream — the runtime has ONE merchant price path; plan_engine evaluates each independently. Curves are never averaged or combined (Correction B1). |
+| `RUNTIME_MERCHANT_LIFECYCLE_SEAM_MISSING` | Merchant stream with `start_year > 1` or finite `term_years` — the runtime residual path sells from COD to horizon end; it cannot open late, stop early, or gap (Correction B2). |
+| `RUNTIME_MERCHANT_ALLOCATION_SEAM_MISSING` | Merchant `volume_share` explicit below 1.0 (plan-unallocated volume would still be sold by the runtime), or an explicit merchant share alongside a tariff stream (Correction B2). |
+| `RUNTIME_PPA_FLOOR_CAP_SEAM_MISSING` | Non-zero PPA `ppa_price_floor` / `ppa_price_cap` — plan `price_at_year` applies them after indexation; the runtime analytic path has no floor/cap field and per-period schedules do not reach the production engine (Correction B3). |
 | `RUNTIME_PPA_BALANCING_SEAM_MISSING` | Non-zero plan `balancing_cost_pct` / `imbalance_penalty_pct` — plan semantics deduct it from PPA revenue; the frozen core deducts `balancing_cost_pv` from MERCHANT revenue only (Excel CF row 40). Different deduction bases: NOT mappable (Correction A §7). |
 | `RUNTIME_MERCHANT_PRICE_INVALID` / `RUNTIME_CAPTURE_RATE_INVALID` / `RUNTIME_TARIFF_VALUE_NON_FINITE` / `RUNTIME_PERIOD_FREQUENCY_UNSUPPORTED` / `RUNTIME_HORIZON_INVALID` | Degenerate inputs. |
 
@@ -118,7 +128,7 @@ authority (solar/wind). Wind compositions must pass `technology="wind"`.
 
 ## Regression matrix
 
-`tests/test_model_v2_revenue_runtime_parity.py` — 43 tests, markers
+`tests/test_model_v2_revenue_runtime_parity.py` — 54 tests, markers
 `RUNTIME_PARITY_*`: production-path contract, supersession (adversarial
 stale base), PPA/merchant/FiT/auction parity, allocation and lifecycle,
 indexed-FiT MISSING≠ZERO, all seams, identity, period axis, production
