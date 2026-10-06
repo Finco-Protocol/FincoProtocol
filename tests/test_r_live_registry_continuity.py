@@ -386,6 +386,66 @@ def test_collect_single_corrupt_store_fails_closed(monkeypatch):
     assert result["registry"] is None
 
 
+def test_collect_single_valid_live_survives_retained_read_failure(monkeypatch):
+    class BrokenReadStore:
+        def __init__(self):
+            self.writes = 0
+
+        def load_latest(self):
+            raise ValueError("corrupt retained storage")
+
+        def put(self, snapshot):
+            self.writes += 1
+            assert snapshot is live
+            return "digest"
+
+    live = _snapshot(NVDA, observed_at=T0)
+    adapter = _FakeAdapter(live=live)
+    store = BrokenReadStore()
+    captured = []
+    _patch_single(monkeypatch, adapter, captured)
+
+    result = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=T0,
+        registry_store=store,
+    )
+    assert result["registry"] is live
+    assert store.writes == 1
+
+
+def test_collect_single_never_substitutes_ticker_for_missing_exact_key(monkeypatch):
+    wrong_address = "0x" + "12" * 20
+    wrong = RobinhoodAssetRegistryAdapter.parse_snapshot(
+        {"assets": [{
+            **_asset_row(NVDA),
+            "deployments": [{
+                "chainId": NVDA.asset_key.chain_id,
+                "contractAddress": wrong_address,
+            }],
+        }]},
+        observed_at=T0,
+    )
+    assert wrong.find_by_symbol("NVDA")
+    assert wrong.get_by_key(NVDA.asset_key) is None
+
+    adapter = _FakeAdapter(live_error=True)
+    store = _CountingStore(wrong)
+    captured = []
+    _patch_single(monkeypatch, adapter, captured)
+    result = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=T0,
+        registry_store=store,
+    )
+
+    assert result["registry"] is wrong
+    assert result["underlying"] is None
+    assert adapter.bound_calls == 0
+
+
 def _patch_batch(monkeypatch, adapter, selected_registries):
     monkeypatch.setattr(service, "RobinhoodAssetRegistryAdapter", lambda: adapter)
     monkeypatch.setattr(service, "JsonRpc", _FakeRpc)
@@ -459,6 +519,96 @@ def test_batch_live_wins_over_retained_and_is_retained_once(monkeypatch):
     assert store.writes == 1
     assert store.written is live
     assert all(registry is live for registry in selected)
+
+
+def test_batch_rejects_stale_retained_fallback_once_for_whole_batch(monkeypatch):
+    retained = _snapshot(NVDA, AAPL, observed_at=T0 - timedelta(seconds=301))
+    adapter = _FakeAdapter(live_error=True)
+    store = _CountingStore(retained)
+    selected = []
+    _patch_batch(monkeypatch, adapter, selected)
+
+    rows = list(service.collect_r_live_batch(
+        rpc_url="https://rpc.invalid",
+        workers=2,
+        as_of=T0,
+        canonical_ids=(NVDA.asset_key.canonical_id, AAPL.asset_key.canonical_id),
+        registry_store=store,
+    ))
+
+    assert adapter.fetch_calls == 1
+    assert store.reads == 1
+    assert store.writes == 0
+    assert len(rows) == 2
+    assert selected == [None, None]
+
+
+def test_batch_preserves_nvda_exact_identity_in_shared_fallback(monkeypatch):
+    retained = _snapshot(NVDA, AAPL, observed_at=T0 - timedelta(seconds=120))
+    adapter = _FakeAdapter(live_error=True)
+    store = _CountingStore(retained)
+    selected = []
+    _patch_batch(monkeypatch, adapter, selected)
+
+    list(service.collect_r_live_batch(
+        rpc_url="https://rpc.invalid",
+        workers=2,
+        as_of=T0,
+        canonical_ids=(NVDA.asset_key.canonical_id, AAPL.asset_key.canonical_id),
+        registry_store=store,
+    ))
+
+    assert selected
+    for registry in selected:
+        assert registry is retained
+        assert registry.require_by_key(NVDA.asset_key).asset_uid == NVDA.economic_asset_uid
+    assert NVDA.asset_key.canonical_id == (
+        "4663:0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec"
+    )
+
+
+def test_batch_sibling_failure_remains_isolated_after_shared_selection(monkeypatch):
+    retained = _snapshot(NVDA, AAPL, observed_at=T0 - timedelta(seconds=120))
+    adapter = _FakeAdapter(live_error=True)
+    store = _CountingStore(retained)
+    monkeypatch.setattr(service, "RobinhoodAssetRegistryAdapter", lambda: adapter)
+    monkeypatch.setattr(service, "JsonRpc", _FakeRpc)
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+
+    def fake_compose(**kwargs):
+        assert kwargs["registry"] is retained
+        if kwargs["key"] == NVDA.asset_key:
+            raise RuntimeError("NVDA independent evidence unavailable")
+        return kwargs["registry"]
+
+    monkeypatch.setattr(service, "compose_r_live", fake_compose)
+    monkeypatch.setattr(
+        service,
+        "format_r_live_result",
+        lambda canonical_id, _result: ("AVAILABLE", {"canonical_id": canonical_id}),
+    )
+
+    rows = list(service.collect_r_live_batch(
+        rpc_url="https://rpc.invalid",
+        workers=2,
+        as_of=T0,
+        canonical_ids=(NVDA.asset_key.canonical_id, AAPL.asset_key.canonical_id),
+        registry_store=store,
+    ))
+    by_id = {canonical_id: state for canonical_id, state, _data in rows}
+    assert by_id[NVDA.asset_key.canonical_id] == "UNAVAILABLE"
+    assert by_id[AAPL.asset_key.canonical_id] == "AVAILABLE"
+    assert adapter.fetch_calls == 1
+    assert store.reads == 1
 
 
 def test_fresh_registry_fallback_does_not_make_stale_market_current():
