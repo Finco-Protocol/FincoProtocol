@@ -50,14 +50,22 @@ from app.services.cost_template.materialize import CapexFieldPlan, OpexItemPlan
 
 
 def _plan(ppa_price=57.0, merchant_price=65.0):
+    # Correction 05B-A: zero PPA balancing — the plan-level deduction has no
+    # runtime seam (balancing_cost_pv hits MERCHANT revenue only) and would
+    # fail closed; these tests assert the exact mapping, not the seam.
     ppa = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=ppa_price,
-                    ppa_term_years=15, ppa_volume_share=0.7, ppa_price_index=0.02)
+                    ppa_term_years=15, ppa_volume_share=0.7, ppa_price_index=0.02,
+                    balancing_cost_pct=0.0)
     mkt = MerchantParams(merchant_enabled=True, base_price_eur_mwh=merchant_price,
                          price_escalation_annual=0.02)
     from domain.revenue.plan import ContractRole  # noqa: F401
     return RevenuePlan.create((
+        # Correction 05B-A: unlimited stream term — the reference project's
+        # COD (mid-month) never coincides with a period boundary, so a
+        # finite term cannot compose exactly (RUNTIME_TARIFF_TERM_ALIGNMENT
+        # seam); the partial-share + residual structure itself is unlimited.
         RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7,
-                      ppa=ppa, term_years=15),
+                      ppa=ppa),
         RevenueStream("merchant", RevenueStreamType.MERCHANT,
                       volume_share=None, merchant=mkt),
     ))
@@ -128,7 +136,8 @@ class TestRevenueBridge:
         assert result.status is CompositionStatus.COMPOSED
         rev = result.project_inputs.revenue
         assert rev.ppa_base_tariff == pytest.approx(57.0, abs=1e-12)
-        assert rev.ppa_term_years == pytest.approx(15.0, abs=1e-12)
+        # unlimited stream term → full-horizon runtime window
+        assert rev.ppa_term_years == pytest.approx(25.0, abs=1e-12)
         assert rev.ppa_index == pytest.approx(0.02, abs=1e-12)
         assert rev.ppa_production_share == pytest.approx(0.7, abs=1e-12)
         # merchant curve expanded through the existing price_at_year authority

@@ -30,17 +30,16 @@ calculation authority; composition resolves inputs BEFORE engine execution.
 
 ## Revenue bridge (fail-closed)
 
-- Engine-expressible today: ONE enabled PPA stream (base tariff / term /
-  index / production share) and merchant sales (price curve expanded
-  through the existing `MerchantParams.price_at_year` authority for the
-  project horizon; custom curves honored; missing custom curve fails
-  closed).
-- Not engine-expressible yet: CfD, FiT (fixed/premium), indexed FiT,
-  auction-awarded tariff streams → `REVENUE_PLAN_STREAM_UNSUPPORTED`
-  (composition refuses to approximate their economics). Reserved Storage
-  stream types fail closed at the Workflow 02 contract boundary already.
-- No PPA mathematics duplicated: PPAParams fields are copied onto
-  `RevenueParams` verbatim.
+- Workflow 05B (Correction A) replaced this section's provisional bridge
+  with the PRODUCTION-PATH-VERIFIED runtime-parity authority: see
+  `REVENUE_RUNTIME_PARITY_CONTRACT.md` for the authoritative structure
+  list, the full supersession field table and the fail-closed seam
+  registry. Summary: one year-1-start fixed-tariff contract (PPA /
+  FIT_FIXED / auction) + one merchant curve compose exactly; CfD and
+  premium overlays, indexed-FiT schedules, delayed starts, multiple or
+  misaligned tariff paths and non-zero PPA balancing fail closed with
+  typed seams; a selected plan fully supersedes the plan-governed base
+  revenue authority.
 
 ## Cost bridge (fail-closed)
 

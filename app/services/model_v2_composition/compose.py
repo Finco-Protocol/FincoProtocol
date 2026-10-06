@@ -72,20 +72,17 @@ def _revenue_params_from_plan(
     technology: str = "solar",
 ) -> Any:
     """Bridge a validated RevenuePlan onto the canonical RevenueParams
-    fields the engine already reads. Engine-expressible structures only:
-    one PPA stream + merchant sales. Everything else fails closed."""
+    fields the production path reads (Correction A: verified through
+    from_project_inputs → RevenueInput → orchestrator). The runtime-parity
+    authority returns a COMPLETE plan-governed override set — explicit
+    supersession of every plan-governed base field — and fails closed on
+    structures the production chain cannot express exactly."""
     from domain.revenue.plan import (
-        ContractRole,
         RevenueStreamType,
     )
 
-    ppa_streams = [s for s in plan.ordered_streams()
-                   if s.stream_type is RevenueStreamType.PPA and s.enabled]
-    merchant_streams = [s for s in plan.ordered_streams()
-                        if s.stream_type is RevenueStreamType.MERCHANT and s.enabled]
-    # Correction 05B: expressible stream types bridge through the
-    # runtime-parity authority; genuinely unsupported overlays fail closed
-    # with the documented seam-missing marker.
+    # Overlay stream types have no additive field in the frozen core
+    # RevenueParams: fail closed before any field is touched.
     unsupported = [
         s for s in plan.ordered_streams()
         if s.enabled and s.stream_type in (
@@ -99,21 +96,13 @@ def _revenue_params_from_plan(
             f"RevenueParams: {sorted(s.stream_type.value for s in unsupported)}; "
             "composition refuses to approximate their economics"
         )
-    if len(ppa_streams) > 1:
-        raise RevenuePlanBridgeError(
-            CompositionErrorCode.REVENUE_PLAN_STREAM_UNSUPPORTED,
-            "the canonical RevenueParams authority expresses exactly one PPA; "
-            f"the plan carries {len(ppa_streams)} enabled PPA streams"
-        )
 
     revenue = base_inputs.revenue
 
-    # Correction 05B: the runtime-parity authority bridges expressible
-    # stream types onto existing canonical fields (per-operating-period
-    # tariff schedule for delayed/expiring PPAs, explicit indexed FiT
-    # factor schedules, auction fixed-tariff authority) and fails closed
-    # on genuinely unsupported overlays (CfD / premium settlement seams
-    # are documented frozen-core gaps, not approximated here).
+    # Correction A: the runtime-parity authority produces the COMPLETE
+    # plan-governed override set (explicit supersession — no stale base
+    # PPA / merchant / schedule authority survives a selection) and fails
+    # closed on structures the production chain cannot express exactly.
     from app.services.model_v2_composition.runtime_parity import (
         bridge_plan_to_runtime_revenue, RevenueRuntimeSeamMissing,
     )
@@ -129,38 +118,10 @@ def _revenue_params_from_plan(
     diag.append(CompositionDiagnostic(
         layer="revenue_plan",
         detail="resolved plan streams onto canonical RevenueParams fields "
-               "via the runtime-parity authority",
+               "via the runtime-parity authority (full supersession)",
         source_ref="domain.revenue.plan",
     ))
 
-    if ppa_streams:
-        ppa = ppa_streams[0].ppa
-        revenue = replace(
-            revenue,
-            ppa_base_tariff=_finite(
-                ppa.ppa_base_price_eur_mwh,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_base_price_eur_mwh"),
-            ppa_term_years=_finite(
-                ppa.ppa_term_years if ppa.ppa_term_years > 0 else 0.0,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_term_years"),
-            ppa_index=_finite(
-                ppa.ppa_price_index,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_price_index"),
-            ppa_production_share=_finite(
-                ppa.ppa_volume_share,
-                CompositionErrorCode.REVENUE_PLAN_VALUE_NON_FINITE,
-                "ppa_volume_share"),
-        )
-        diag.append(CompositionDiagnostic(
-            layer="revenue_plan",
-            detail="PPA stream applied (base tariff / term / index / share)",
-        ))
-
-    # Apply the runtime-parity bridge overrides LAST (they carry the
-    # authoritative per-period tariff schedule and merchant curve).
     for field_name, value in runtime_overrides.items():
         revenue = replace(revenue, **{field_name: value})
 
