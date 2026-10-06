@@ -237,22 +237,33 @@ def test_rlive_landing_title_is_user_facing_and_never_claims_executable_prices()
     assert "not tradeable or executable prices" in page
 
 
-def test_rlive_detail_labels_history_when_current_state_is_not_available():
+def test_rlive_last_canonical_price_is_live_without_separate_landing_historical_badge():
     page = (TEMPLATES / "radar/r_live_detail.html").read_text(encoding="utf-8")
-    assert 'data-testid="history-historical-note"' in page
-    assert "Historical · last observed history" in page
-    assert "hist_note.hidden = is_current" in page
+    assert 'badge.textContent = live ? "LIVE" : "UNAVAILABLE"' in page
+    assert 'var product_state = is_current ? "LIVE" : "UNAVAILABLE";' in page
+    assert 'populate(row.state, row.data, row.read_time_ages, row.source)' in page
+    assert 'presentation_source !== "CANONICAL_B1_3_HISTORY"' in page
+    assert "latest canonical on-chain price · original evidence age shown above" in page
+
     table = (ROOT / "static/radar/r_live_table.js").read_text(encoding="utf-8")
-    assert 'mark_historical(row_el, ["trend", "range_1h", "range_24h"])' in table
-    assert "if (!is_current) mark_historical" in table
+    assert 'badge.textContent = live ? "LIVE" : "UNAVAILABLE"' in table
+    assert 'presentation_source: view_row.source' in table
+    assert 'mark_historical(row_el, ["trend", "range_1h", "range_24h"])' not in table
+    assert "if (!is_current) mark_historical" not in table
+    assert "Market " in table and "Oracle " in table
 
 
-def test_rlive_legs_show_state_and_age_and_only_claim_available_when_canonical_state_is_available():
+def test_rlive_legs_show_age_but_only_policy_fresh_acquisition_claims_available():
     page = (TEMPLATES / "radar/r_live_detail.html").read_text(encoding="utf-8")
-    assert 'var leg_state = is_current ? "AVAILABLE · " : "";' in page
+    assert 'var is_current = (state === "AVAILABLE");' in page
+    assert 'var is_policy_fresh = is_current && presentation_source !== "CANONICAL_B1_3_HISTORY";' in page
+    assert 'var leg_state = is_policy_fresh ? "AVAILABLE · " : "";' in page
+    assert 'var leg_state = is_current ? "AVAILABLE · " : "";' not in page
     assert 'legs.push("Market " + leg_state + fmt_age(market_age));' in page
     assert 'legs.push("Oracle " + leg_state + fmt_age(quote_age_kpi));' in page
+    assert 'is_policy_fresh ? "each leg within its source freshness policy · " : ""' in page
     assert "within source heartbeat policy" in page
+    assert "read_time_ages" in page
 
 
 # ── NVDA data path: R-LIVE leg ages vs the Tokenized observation clock ───────────────────────────
