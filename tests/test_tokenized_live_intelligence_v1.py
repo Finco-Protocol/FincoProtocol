@@ -44,6 +44,7 @@ from finco_radar.venues.robinhood_live import (
     market_observation_from_r_live,
 )
 from finco_radar.venues.store import VenueMarketStore
+from model_v2_governance import merge_base_ref
 from tests.test_tokenized_markets_composition import (
     ROBINHOOD_NVDA,
     _entry,
@@ -926,7 +927,7 @@ class TestDeploymentContract:
         import subprocess
         root = Path(__file__).resolve().parents[1]
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
             cwd=root, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")

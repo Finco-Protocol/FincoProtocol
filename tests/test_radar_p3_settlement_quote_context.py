@@ -685,13 +685,19 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # permitting the already-approved equity sub-package, without opening an
     # unbounded whitelist that would let unknown future paths bypass the gate.
     import subprocess
-    try:
-        changed = subprocess.run(
-            ["git", "diff", "--name-only",
-             "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
-            capture_output=True, text=True, check=True).stdout.splitlines()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pytest.skip("base commit unavailable in shallow checkout")
+    # ACTIVE Model V2 epic: evaluate what THIS branch changed (merge-base
+    # boundary) instead of the historical hard-coded baseline, which would
+    # attribute main-only Radar evolution to the Model branch.
+    from model_v2_governance import branch_owned_changes_if_model_v2_active
+    changed = branch_owned_changes_if_model_v2_active()
+    if changed is None:
+        try:
+            changed = subprocess.run(
+                ["git", "diff", "--name-only",
+                 "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
+                capture_output=True, text=True, check=True).stdout.splitlines()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pytest.skip("base commit unavailable in shallow checkout")
     violations = [
         p for p in changed
         if p.startswith("finco_radar/")

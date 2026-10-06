@@ -477,12 +477,9 @@ def test_DC_A3_ZERO_DIFF_FINCO_CORE():
 
     DC vertical implementation must not touch the core waterfall engine.
     """
-    import subprocess
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main", "--", "finco_core/"],
-        capture_output=True, text=True, cwd=str(pathlib.Path.cwd()),
-    )
-    changed = [f for f in result.stdout.strip().split("\n") if f.strip()]
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
+    from finance_integrity_governance import changed_paths_vs_main
+    changed = [f for f in changed_paths_vs_main() if f.startswith("finco_core/")]
     assert changed == [], (
         f"A3.1 authority boundary: finco_core/** must have ZERO diff from main. "
         f"Changed files: {changed}"

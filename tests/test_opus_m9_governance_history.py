@@ -196,7 +196,11 @@ def test_m9_workflow_uses_full_history_only_for_governance_job() -> None:
 
     public_safety = (ROOT / ".github/workflows/public_safety_and_smoke.yml").read_text(encoding="utf-8")
     compile_gate = (ROOT / ".github/workflows/pr_compile_and_safety.yml").read_text(encoding="utf-8")
-    assert "fetch-depth: 0" not in public_safety
+    # Model V2 Correction J: Public Safety and Model Smoke now checks out
+    # FULL history because its merge-base-aware frozen-diff governance
+    # (merge-base(origin/main, HEAD), fail-closed) legitimately requires
+    # repository ancestry; the compile gate stays shallow.
+    assert "fetch-depth: 0" in public_safety
     assert "fetch-depth: 0" not in compile_gate
 
 

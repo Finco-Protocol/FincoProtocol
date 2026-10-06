@@ -39,11 +39,20 @@ STRICTLY_FROZEN_PREFIXES = ("finco_core/", "finco_radar/")
 
 
 def changed_paths_vs_main() -> list[str]:
+    # CI parallel-stream correction: compare against the merge-base of
+    # origin/main and HEAD, so unrelated changes that landed only on main
+    # after this branch diverged are never reported as branch-side changes.
+    # Fails closed (returns no paths) only when git itself is unavailable;
+    # an unresolvable merge-base raises via check=True.
+    base = subprocess.run(
+        ["git", "merge-base", "origin/main", "HEAD"],
+        capture_output=True, text=True, cwd=str(REPO), check=True,
+    ).stdout.strip()
     result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True, cwd=str(REPO),
+        ["git", "diff", base, "--name-only"],
+        capture_output=True, text=True, cwd=str(REPO), check=True,
     )
-    return [line for line in result.stdout.strip().splitlines() if line.strip()]
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:

@@ -23,6 +23,7 @@ from app.tokenized_access import TokenizedResource as R
 from finco_radar.venues.store import VenueMarketStore
 from tests.test_tokenized_live_intelligence_v1 import _market_obs
 from tests.test_tokenized_markets_composition import ROBINHOOD_NVDA
+from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -226,7 +227,7 @@ def test_market_data_authority_does_not_consult_access_authority():
 
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
