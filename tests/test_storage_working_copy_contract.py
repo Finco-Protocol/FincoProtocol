@@ -204,7 +204,7 @@ def test_library_reference_card_clone_state(client_contract, template_source, ex
     if expect_unavailable:
         assert f'data-testid="clone-unavailable-{template_source}-reference"' in html
         assert f'data-testid="clone-{template_source}-reference"' not in html
-        assert "Working-copy runtime coming soon" in html
+        assert "Editable runtime not yet supported" in html
 
 
 def test_library_storage_reference_view_link_present(client_contract):
