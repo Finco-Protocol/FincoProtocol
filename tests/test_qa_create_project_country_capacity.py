@@ -250,12 +250,10 @@ class TestVerifiedAssetsSurface:
         assert response.headers["location"] == "/verify"
 
     def test_verified_authority_modules_untouched(self):
-        import subprocess
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", "app/verified"],
-            cwd=REPO, capture_output=True, text=True,
-        )
-        assert out.stdout.strip() == "", out.stdout
+        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main..HEAD`.
+        from finance_integrity_governance import changed_paths_vs_main
+        changed = [p for p in changed_paths_vs_main() if p.startswith("app/verified")]
+        assert changed == [], changed
 
 
 # ── G: Yield staging freshness — truthful Last Observed presentation ──────────

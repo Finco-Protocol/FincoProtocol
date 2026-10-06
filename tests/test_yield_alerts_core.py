@@ -35,6 +35,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from model_v2_governance import merge_base_ref
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -960,7 +961,7 @@ class TestFrozenAuthorities:
         import subprocess
 
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", frozen],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", frozen],
             cwd=REPO, capture_output=True, text=True,
         )
         if out.returncode != 0:

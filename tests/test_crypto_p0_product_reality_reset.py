@@ -22,6 +22,7 @@ from finco_radar.venues.registry import VenueRegistry
 from finco_radar.venues.store import VenueMarketStore
 from tests.test_tokenized_live_intelligence_v1 import _market_obs
 from tests.test_tokenized_markets_composition import ROBINHOOD_NVDA, _entry, _registry
+from model_v2_governance import merge_base_ref
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATES = ROOT / "app" / "templates"
@@ -410,7 +411,7 @@ def test_product_truth_separates_code_capability_from_operational_availability()
 # ── frozen boundaries ────────────────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core", "finco_radar/venues"])
 def test_frozen_namespaces_zero_diff(namespace):
-    out = subprocess.run(["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+    out = subprocess.run(["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")

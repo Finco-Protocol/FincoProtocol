@@ -1001,6 +1001,13 @@ class TestB15FrozenP3Gate:
 
     def _get_changed_files(self):
         import subprocess
+        # ACTIVE Model V2 epic: evaluate what THIS branch changed (merge-base
+        # boundary) instead of the historical hard-coded baseline, which would
+        # attribute main-only Radar evolution to the Model branch.
+        from model_v2_governance import branch_owned_changes_if_model_v2_active
+        owned = branch_owned_changes_if_model_v2_active()
+        if owned is not None:
+            return owned
         try:
             result = subprocess.run(
                 ["git", "diff", "--name-only",
@@ -1045,6 +1052,12 @@ class TestB15FrozenP3Gate:
     def test_b15_equity_additions_are_permitted(self):
         """Gate does NOT flag finco_radar/equity/** changes."""
         changed = self._get_changed_files()
+        from model_v2_governance import branch_owned_changes_if_model_v2_active
+        if branch_owned_changes_if_model_v2_active() is not None:
+            # Branch-owned scope never contains the historical E2 equity
+            # additions (they predate the epic), so exercise the permit rule
+            # with a synthetic permitted path instead of skipping the test.
+            changed = changed + ["finco_radar/equity/batch_synthetic.py"]
         equity_changes = [
             p for p in changed if p.startswith("finco_radar/equity/")
         ]

@@ -456,24 +456,20 @@ class TestFrozenAuthoritiesZeroDiff:
         FINCO_P5_COMPOSED_NOT_CALCULATED: the composition layer never touches
         the financial engine.
         """
-        result = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--", "financial_engine/"],
-            capture_output=True, text=True, cwd=REPO,
-        )
+        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         # Opus Finance Integrity governance: allow-listed engine modules only.
-        from finance_integrity_governance import unapproved_engine_changes
-        changed = unapproved_engine_changes([f for f in result.stdout.strip().splitlines() if f])
+        from finance_integrity_governance import changed_paths_vs_main, unapproved_engine_changes
+        changed = unapproved_engine_changes(
+            [f for f in changed_paths_vs_main() if f.startswith("financial_engine/")])
         assert changed == [], (
             f"unapproved financial_engine changes vs main: {changed}"
         )
 
     def test_finco_core_zero_diff(self):
         """finco_core/** must have zero diff vs main."""
-        result = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--", "finco_core/"],
-            capture_output=True, text=True, cwd=REPO,
-        )
-        changed = [f for f in result.stdout.strip().splitlines() if f]
+        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
+        from finance_integrity_governance import changed_paths_vs_main
+        changed = [f for f in changed_paths_vs_main() if f.startswith("finco_core/")]
         assert changed == [], (
             f"finco_core must have zero diff vs main; changed: {changed}"
         )

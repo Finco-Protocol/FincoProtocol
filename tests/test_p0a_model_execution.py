@@ -672,9 +672,10 @@ def test_main_web_legacy_async_routes_offload_every_direct_model_call():
 
 
 def test_frozen_engine_and_core_are_untouched_by_this_stream():
-    import subprocess
-    changed = subprocess.run(["git", "diff", "origin/main", "--name-only", "--", "financial_engine", "finco_core"],
-                             capture_output=True, text=True, cwd=str(REPO)).stdout.split()
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
+    from model_v2_governance import changed_paths_vs_main
+    changed = [p for p in changed_paths_vs_main()
+               if p.startswith(("financial_engine/", "finco_core/"))]
     # Explicitly authorized Model V2 epic engine files are governed by the
     # Model V2 scope contract (tests/model_v2_governance.py), not this stream.
     from model_v2_governance import approved_by_active_model_v2_scope
