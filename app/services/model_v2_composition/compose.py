@@ -173,16 +173,66 @@ def _revenue_params_from_plan(
     return revenue
 
 
+def _finite_cost(value: Any, code: CompositionErrorCode, label: str) -> float:
+    """Correction A (defect E): strict finite guard for economically
+    relevant materialization values — NaN / +Inf / -Inf fail closed with a
+    stable typed composition error; booleans are never numeric economics."""
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)) \
+            or not math.isfinite(float(value)):
+        raise CostBridgeError(
+            code, f"{label} must be a finite number, got {value!r}")
+    return float(value)
+
+
 def _capex_opex_from_cost_template(
     selection: CostTemplateSelection,
     base_inputs: Any,
     diag: list[CompositionDiagnostic],
+    *,
+    context: ModelV2CompositionContext,
 ) -> tuple[Any, Any]:
     """Apply a Workflow 03 materialization plan onto the canonical
-    CapexStructure / OpexItem tuple (existing engine authorities)."""
+    CapexStructure / OpexItem tuple (existing engine authorities).
+
+    Correction A (defect A): inactive plan rows contribute ZERO to the
+    composed canonical economics while their latent configured values stay
+    preserved in the plan (never mutated) — reactivation re-composes the
+    exact stored economics from the authoritative plan.
+    Correction A (defect B): plan.contingency is authoritative and applied
+    through the EXISTING FINCO contingency authority (percentage
+    validation, eligible basis, percentage-to-amount materialization);
+    inactive contingency contributes zero while retaining the configured
+    percentage in the plan; missing contingency never invents one.
+    Correction A (defect E): every applied economic value is
+    finite-validated before constructing canonical inputs.
+    """
     from finco_core.inputs import OpexItem
+    from finco_core.inputs._models import AssetClass, CapexItem
+    from app.contingency_authority import (
+        apply_capex_contingency, apply_opex_contingency,
+    )
 
     plan = selection.materialization_plan
+
+    # Correction A (defect C guard): lineage identity must match the plan
+    # being applied.
+    if getattr(plan, "template_id", selection.template_id) != selection.template_id:
+        raise CostBridgeError(
+            CompositionErrorCode.COST_TEMPLATE_UNRESOLVED,
+            f"selection template_id {selection.template_id!r} does not match "
+            f"the materialization plan identity "
+            f"{getattr(plan, 'template_id', None)!r}"
+        )
+    if getattr(plan, "template_version", selection.version) != selection.version:
+        raise CostBridgeError(
+            CompositionErrorCode.COST_TEMPLATE_UNRESOLVED,
+            f"selection version {selection.version!r} does not match the "
+            f"materialization plan version "
+            f"{getattr(plan, 'template_version', None)!r}"
+        )
+
     capex = base_inputs.capex
     opex = base_inputs.opex
 
@@ -200,8 +250,22 @@ def _capex_opex_from_cost_template(
                 f"materialization plan names unknown CapexStructure field "
                 f"{field_name!r}"
             )
-        from finco_core.inputs._models import CapexItem, AssetClass
-
+        # Correction A (defect A): inactive field contributes ZERO; the
+        # latent configured amount stays preserved in the plan only.
+        if fp.is_active:
+            amount = _finite_cost(
+                fp.amount_keur,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"CAPEX {field_name}.amount_keur")
+            _finite_cost(fp.y0_share,
+                         CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                         f"CAPEX {field_name}.y0_share")
+            for i, share in enumerate(fp.spending_profile or ()):
+                _finite_cost(share,
+                             CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                             f"CAPEX {field_name}.spending_profile[{i}]")
+        else:
+            amount = 0.0
         asset_class = None
         if fp.asset_class:
             try:
@@ -213,7 +277,7 @@ def _capex_opex_from_cost_template(
                 )
         capex_updates[field_name] = CapexItem(
             name=fp.label,
-            amount_keur=float(fp.amount_keur),
+            amount_keur=amount,
             y0_share=float(fp.y0_share or 0.0),
             spending_profile=tuple(float(s) for s in (fp.spending_profile or ())),
             asset_class=asset_class,
@@ -228,21 +292,158 @@ def _capex_opex_from_cost_template(
             source_ref=f"{selection.template_id} v{selection.version}",
         ))
 
-    opex_items: list[Any] = []
-    for op in plan.opex_items:
-        steps = tuple((int(y), float(a)) for y, a in (op.step_changes or ()))
-        opex_items.append(OpexItem(
-            name=op.name,
-            y1_amount_keur=float(op.y1_amount_keur),
-            annual_inflation=float(op.annual_inflation),
-            step_changes=steps,
-            percentage_of_opex=float(op.percentage_of_opex or 0.0),
-        ))
-    if opex_items:
-        opex = tuple(opex_items)
+    # Correction A (defect B): the plan contingency is authoritative and is
+    # applied through the EXISTING FINCO contingency authority (percentage
+    # validation, eligible basis, percentage-to-amount materialization).
+    # INACTIVE contingency retains the configured percentage in the plan and
+    # contributes zero here (explicit 0.0 application, not MISSING).
+    if plan.contingency is not None and plan.contingency.capex_pct is not None:
+        cont = plan.contingency
+        capex = apply_capex_contingency(
+            capex, float(cont.capex_pct) if cont.capex_active else 0.0)
         diag.append(CompositionDiagnostic(
             layer="cost_template",
-            detail=f"applied {len(opex_items)} canonical OPEX item plans",
+            detail=(
+                "CAPEX contingency authority applied: "
+                f"{cont.capex_pct}% (active={cont.capex_active})"),
+            source_ref=f"{selection.template_id} v{selection.version}",
+        ))
+
+    opex_items: list[Any] = []
+    for op in plan.opex_items:
+        # Correction A (defect A): inactive OPEX contributes ZERO with
+        # economics preserved in the plan.
+        if op.is_active:
+            y1 = _finite_cost(
+                op.y1_amount_keur,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.y1_amount_keur")
+            inflation = _finite_cost(
+                op.annual_inflation,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.annual_inflation")
+            steps = tuple(
+                (int(step_year), _finite_cost(
+                    step_amount,
+                    CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                    f"OPEX {op.name!r}.step_changes[{step_year}]"))
+                for step_year, step_amount in (op.step_changes or ()))
+            pct = _finite_cost(
+                op.percentage_of_opex,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.percentage_of_opex") \
+                if op.percentage_of_opex else 0.0
+        else:
+            y1, inflation, steps, pct = 0.0, 0.0, (), 0.0
+        opex_items.append(OpexItem(
+            name=op.name,
+            y1_amount_keur=y1,
+            annual_inflation=inflation,
+            step_changes=steps,
+            percentage_of_opex=pct,
+        ))
+    # Correction A (defect D): the Workflow 03 MaterializationPlan is NOT
+    # contractually guaranteed to be a COMPLETE replacement of every
+    # canonical OPEX item (client templates may be extracted from partial
+    # states). Reconcile plan items onto the base OPEX tuple by the
+    # canonical identity the existing fold uses (item name); base entries
+    # the plan does not govern survive unchanged; no base entry is deleted
+    # (MISSING must not become zero/deletion).
+    reconciled: list[Any] = []
+    plan_by_name: dict[str, Any] = {}
+    for op in plan.opex_items:
+        plan_by_name[op.name] = op
+    applied = 0
+    for existing in opex:
+        op = plan_by_name.get(existing.name)
+        if op is None:
+            reconciled.append(existing)  # genuinely untouched base entry
+            continue
+        # Correction A (defect A): inactive OPEX contributes ZERO with
+        # economics preserved in the plan.
+        if op.is_active:
+            y1 = _finite_cost(
+                op.y1_amount_keur,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.y1_amount_keur")
+            inflation = _finite_cost(
+                op.annual_inflation,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.annual_inflation")
+            steps = tuple(
+                (int(step_year), _finite_cost(
+                    step_amount,
+                    CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                    f"OPEX {op.name!r}.step_changes[{step_year}]"))
+                for step_year, step_amount in (op.step_changes or ()))
+            pct = _finite_cost(
+                op.percentage_of_opex,
+                CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                f"OPEX {op.name!r}.percentage_of_opex") \
+                if op.percentage_of_opex else 0.0
+        else:
+            y1, inflation, steps, pct = 0.0, 0.0, (), 0.0
+        reconciled.append(OpexItem(
+            name=existing.name,
+            y1_amount_keur=y1,
+            annual_inflation=inflation,
+            step_changes=steps,
+            percentage_of_opex=pct,
+        ))
+        applied += 1
+    # NEW plan items the base tuple does not carry are appended (the
+    # existing fold appends custom OPEX items the same way).
+    for op in plan.opex_items:
+        if op.name not in {e.name for e in reconciled}:
+            if op.is_active:
+                y1 = _finite_cost(
+                    op.y1_amount_keur,
+                    CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                    f"OPEX {op.name!r}.y1_amount_keur")
+                inflation = _finite_cost(
+                    op.annual_inflation,
+                    CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                    f"OPEX {op.name!r}.annual_inflation")
+                steps = tuple(
+                    (int(step_year), _finite_cost(
+                        step_amount,
+                        CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                        f"OPEX {op.name!r}.step_changes[{step_year}]"))
+                    for step_year, step_amount in (op.step_changes or ()))
+                pct = _finite_cost(
+                    op.percentage_of_opex,
+                    CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+                    f"OPEX {op.name!r}.percentage_of_opex") \
+                    if op.percentage_of_opex else 0.0
+            else:
+                y1, inflation, steps, pct = 0.0, 0.0, (), 0.0
+            reconciled.append(OpexItem(
+                name=op.name,
+                y1_amount_keur=y1,
+                annual_inflation=inflation,
+                step_changes=steps,
+                percentage_of_opex=pct,
+            ))
+            applied += 1
+    if applied:
+        opex = tuple(reconciled)
+        diag.append(CompositionDiagnostic(
+            layer="cost_template",
+            detail=f"reconciled {applied} canonical OPEX item plans onto the "
+                   "base OPEX authority",
+            source_ref=f"{selection.template_id} v{selection.version}",
+        ))
+
+    # Correction A (defect B): OPEX contingency authority (same boundaries).
+    if plan.contingency is not None and plan.contingency.opex_pct is not None:
+        cont = plan.contingency
+        opex = apply_opex_contingency(
+            opex, float(cont.opex_pct) if cont.opex_active else 0.0)
+        diag.append(CompositionDiagnostic(
+            layer="cost_template",
+            detail=(
+                "OPEX contingency authority applied: "
+                f"{cont.opex_pct}% (active={cont.opex_active})"),
             source_ref=f"{selection.template_id} v{selection.version}",
         ))
 
@@ -257,8 +458,8 @@ def _scenario_diagnostics(
     return [CompositionDiagnostic(
         layer="scenario",
         detail=f"scenario overrides present ({len(dict(context.scenario_overrides))} keys); "
-               "applied per the existing scenario authority, never persisted "
-               "back to the base Working Copy",
+               "carried for the downstream scenario authority, never "
+               "persisted back to the base Working Copy",
         source_ref=context.scenario_id or "",
     )]
 
@@ -286,9 +487,16 @@ def _composition_hash(
             state.selection_digest() and _selection_plan_json(
                 state.revenue_plan_selection.plan))
     if state.cost_template_selection is not None:
+        # Correction A (defect C): the materialization plan is economically
+        # authoritative — bind its full payload (amounts, applicability,
+        # contingency, rescaled values), not just the identity.
+        from app.services.model_v2_composition.contracts import _plan_payload
+
         payload["cost_template"] = {
             "template_id": state.cost_template_selection.template_id,
             "version": state.cost_template_selection.version,
+            "materialization_plan": _plan_payload(
+                state.cost_template_selection.materialization_plan),
         }
     canonical = json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -357,7 +565,8 @@ def compose_project_inputs(
     if state.cost_template_selection is not None:
         selection = state.cost_template_selection
         try:
-            capex, opex = _capex_opex_from_cost_template(selection, inputs, diag)
+            capex, opex = _capex_opex_from_cost_template(
+            selection, inputs, diag, context=context)
         except CostBridgeError:
             raise
         inputs = replace(inputs, capex=capex, opex=opex)

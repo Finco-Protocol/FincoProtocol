@@ -243,6 +243,7 @@ class _FakeMaterializationPlan:
         self.capex_sub_lines = ()
         self.opex_items = opex_items
         self.opex_sub_lines = ()
+        # Correction A (defect B): contingency authority carrier.
         self.contingency = None
 
 

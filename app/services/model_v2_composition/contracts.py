@@ -215,21 +215,25 @@ def _plan_canonical_json(plan: Any) -> str:
 
 def _plan_payload(materialization_plan: Any) -> Any:
     """Canonical payload for a Workflow 03 MaterializationPlan (deterministic
-    dataclass tree)."""
-    from dataclasses import asdict, is_dataclass
+    tree). Dataclasses are encoded field-by-field; plain objects (e.g. test
+    doubles) are encoded via their public attributes; enums via value."""
+    from dataclasses import is_dataclass, fields, asdict
+    from enum import Enum
+    import types as _types
 
     def enc(o: Any) -> Any:
         if is_dataclass(o) and not isinstance(o, type):
-            return {k: enc(v) for k, v in asdict(o).items()}
-        from enum import Enum
+            return {f.name: enc(getattr(o, f.name)) for f in fields(o)}
         if isinstance(o, Enum):
             return o.value
-        if isinstance(o, tuple):
-            return [enc(v) for v in o]
-        if isinstance(o, list):
-            return [enc(v) for v in o]
+        if isinstance(o, (_types.MappingProxyType,)):
+            return {k: enc(v) for k, v in o.items()}
         if isinstance(o, dict):
             return {k: enc(v) for k, v in o.items()}
+        if isinstance(o, (tuple, list)):
+            return [enc(v) for v in o]
+        if hasattr(o, "__dict__"):
+            return {k: enc(v) for k, v in vars(o).items()}
         return o
 
     return enc(materialization_plan)
