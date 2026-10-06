@@ -133,7 +133,9 @@ class TestRevenueBridge:
         assert rev.ppa_production_share == pytest.approx(0.7, abs=1e-12)
         # merchant curve expanded through the existing price_at_year authority
         assert len(rev.market_prices_curve) == pi.info.horizon_years
-        assert rev.market_prices_curve[0] == pytest.approx(65.0, abs=1e-12)
+        # capture rate (0.85 for solar) embedded into the runtime curve
+        assert rev.market_prices_curve[0] == pytest.approx(
+            65.0 * 0.85, abs=1e-12)
         # provenance exposed
         layers = {d.layer for d in result.diagnostics}
         assert "revenue_plan" in layers
@@ -164,18 +166,21 @@ class TestRevenueBridge:
                 _state(plan), ModelV2CompositionContext(**_CTX),
                 create_generic_solar_reference())
 
-    def test_revenue_bridge_fit_fails_closed(self):
+    def test_revenue_bridge_fit_fixed_composes_through_tariff_path(self):
+        """Correction 05B: FIT_FIXED composes through the canonical fixed-
+        tariff authority (PPA tariff path with indexation)."""
+        pi = create_generic_solar_reference()
         plan = RevenuePlan.create((
             RevenueStream("fit", RevenueStreamType.FIT_FIXED, volume_share=1.0,
                           fit=FeedInTariffParams(fit_enabled=True,
                                                  fit_type="fixed_fit",
                                                  fit_price_eur_mwh=80.0)),
         ))
-        with pytest.raises(RevenuePlanBridgeError,
-                           match="REVENUE_PLAN_STREAM_UNSUPPORTED"):
-            compose_project_inputs(
-                _state(plan), ModelV2CompositionContext(**_CTX),
-                create_generic_solar_reference())
+        result = compose_project_inputs(
+            _state(plan), ModelV2CompositionContext(**_CTX), pi)
+        assert result.status is CompositionStatus.COMPOSED
+        # FiT composed through the canonical fixed-tariff authority
+        assert result.project_inputs.revenue.ppa_base_tariff == pytest.approx(80.0, abs=1e-12)
 
     def test_revenue_bridge_nonfinite_fails_closed(self):
         bad_ppa = PPAParams(ppa_enabled=True,
