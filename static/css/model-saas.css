@@ -870,3 +870,107 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   UX Foundation — Model Home (UX-1). Additive only; consumes --fo-* tokens.
+   Model entry is library-first: hero + New Project primary, search
+   subordinate, populated Recent Projects first, onboarding empty state.
+   ========================================================================== */
+
+.fo-library-header--home {
+  padding: var(--fo-s4) 0 var(--fo-s2);
+  border-bottom: 1px solid var(--fo-line, #e5e7eb);
+  margin-bottom: var(--fo-s3);
+}
+
+.fo-library-title--home {
+  font-size: 1.6rem;
+  letter-spacing: 0.02em;
+  margin: 0 0 var(--fo-s1);
+}
+
+.fo-library-filter-bar--secondary {
+  opacity: 0.92;
+}
+
+.fo-library-table--recent td,
+.fo-library-table--recent th {
+  white-space: nowrap;
+}
+
+.fo-library-col-action {
+  text-align: right;
+}
+
+.fo-library-cell-lastrun {
+  font-variant-numeric: tabular-nums;
+}
+
+.fo-library-lastrun {
+  font-size: var(--fo-text-sm, 0.8125rem);
+  color: var(--fo-ink, #111827);
+}
+
+.fo-library-lastrun--none {
+  color: var(--fo-ink-muted, #6b7280);
+}
+
+.fo-library-empty--onboarding {
+  border: 1px dashed var(--fo-line, #d1d5db);
+  padding: var(--fo-s3);
+  color: var(--fo-ink-muted, #6b7280);
+}
+
+.fo-library-reference-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fo-s2);
+}
+
+.fo-library-badge--preview {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: var(--fo-r-sm, 5px);
+  border: 1px solid var(--fo-amber, #b45309);
+  color: var(--fo-amber, #b45309);
+  background: transparent;
+}
+
+.fo-library-reference-preview-note {
+  font-size: var(--fo-text-sm, 0.8125rem);
+  color: var(--fo-ink-muted, #6b7280);
+  margin: 0 0 var(--fo-s2);
+}
+
+.fo-library-reference-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--fo-s2);
+  margin: 0 0 var(--fo-s2);
+  padding: var(--fo-s2) 0;
+  border-top: 1px solid var(--fo-line, #e5e7eb);
+  border-bottom: 1px solid var(--fo-line, #e5e7eb);
+}
+
+.fo-library-reference-kpi dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fo-ink-muted, #6b7280);
+}
+
+.fo-library-reference-kpi dd {
+  margin: 2px 0 0;
+  font-size: var(--fo-text-md, 0.875rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .fo-library-reference-kpis {
+    grid-template-columns: 1fr;
+  }
+}
