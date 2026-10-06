@@ -260,3 +260,14 @@ def test_fallback_read_creates_no_history_snapshot_or_checkpoint_writes(
     assert row["state"] == "AVAILABLE"
     assert _history_count(history) == before_count
     assert not snapshot.exists()
+
+
+def test_detail_uses_live_product_status_without_claiming_old_price_is_fresh():
+    template = (
+        Path(__file__).resolve().parents[1]
+        / "app/templates/radar/r_live_detail.html"
+    ).read_text(encoding="utf-8")
+    assert 'badge.textContent = live ? "LIVE" : "UNAVAILABLE"' in template
+    assert 'presentation_source !== "CANONICAL_B1_3_HISTORY"' in template
+    assert 'populate(row.state, row.data, row.read_time_ages, row.source)' in template
+    assert 'populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION")' in template
