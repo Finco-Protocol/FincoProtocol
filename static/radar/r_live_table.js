@@ -14,7 +14,8 @@
  * Identity authority is canonical_id from registry-rendered rows, never symbol.
  *
  * Read-only: never writes R-LIVE history, never modifies authority state.
- * STALE/UNAVAILABLE numeric values are suppressed (missing != 0).
+ * The snapshot read model already resolves current-vs-last-canonical evidence;
+ * presentation exposes only LIVE or UNAVAILABLE while evidence age carries recency.
  * API response data is only ever assigned via textContent — no raw HTML
  * injection path exists in this script.
  */
@@ -64,43 +65,12 @@
     window.FoCharts.renderElement(box);
   }
 
-  function set_historical_cell(row_el, field, text, collected_at) {
-    var cell = row_el.querySelector("[data-field='" + field + "']");
-    if (!cell || text == null) return;
-    cell.textContent = "";
-    var value = document.createElement("span");
-    value.className = "rlive-historical-value";
-    value.textContent = text;
-    var note = document.createElement("small");
-    note.className = "rlive-historical-label";
-    var time = collected_at ? new Date(collected_at).getTime() : NaN;
-    var age = isFinite(time) ? fmt_age(Math.max(0, Math.floor((Date.now() - time) / 1000))) : null;
-    note.textContent = "HISTORICAL · Last available" + (age ? " · " + age + " ago" : " · time unavailable");
-    cell.appendChild(value);
-    cell.appendChild(note);
-  }
-
-  function mark_historical(row_el, fields) {
-    // When the CURRENT state is not AVAILABLE, stored 24h trend / range visuals are legitimate history but must not read as
-    // current. Presentation only: no value is removed, hidden or recomputed.
-    fields.forEach(function (field) {
-      var cell = row_el.querySelector("[data-field='" + field + "']");
-      if (!cell) return;
-      var previous = cell.querySelector(".rlive-historical-flag");
-      if (previous) previous.remove();
-      var tag = document.createElement("small");
-      tag.className = "rlive-historical-label rlive-historical-flag";
-      tag.style.display = "block";
-      tag.textContent = "Historical";
-      cell.appendChild(tag);
-    });
-  }
-
   function set_badge(row_el, state) {
     var badge = row_el.querySelector("[data-testid^='rlive-status-']");
     if (!badge) return;
-    badge.className = "rlive-badge rlive-badge--" + state.toLowerCase();
-    badge.textContent = state;
+    var live = state === "AVAILABLE";
+    badge.className = "rlive-badge rlive-badge--" + (live ? "available" : "unavailable");
+    badge.textContent = live ? "LIVE" : "UNAVAILABLE";
   }
 
   function fmt_range(summary) {
@@ -140,15 +110,6 @@
     if (is_current && prem) prem_txt = fmt_bps(prem.value_bps);
     set_cell(row_el, "premium_bps", prem_txt);
 
-    // Display-only fallback for an exact-key STALE market. Never change the
-    // current badge or feed historical values into current calculations.
-    var last = ranges && ranges.last_available;
-    if (snap_state === "STALE" && last) {
-      set_historical_cell(row_el, "basis_price", fmt_usd(last.basis_price_usd_per_token), last.collected_at);
-      set_historical_cell(row_el, "reference_price", fmt_usd(last.token_price_usd_per_token), last.collected_at);
-      set_historical_cell(row_el, "premium_bps", fmt_bps(last.premium_bps), last.collected_at);
-    }
-
     set_cell(row_el, "range_1h", fmt_range(ranges && ranges.range_1h));
     set_cell(row_el, "range_24h_text", fmt_range(ranges && ranges.range_24h));
 
@@ -174,11 +135,9 @@
       chart_cell(row_el, "range_24h", null);
     }
 
-    if (!is_current) mark_historical(row_el, ["trend", "range_1h", "range_24h"]);
-
-    // Market activity and oracle ages are distinct. Read-time ages from the
-    // snapshot view are preferred; observed_at is the conservative oldest
-    // evidence timestamp, not market-activity age.
+    // Market activity and oracle ages are distinct. For a last-canonical
+    // fallback these ages are computed from that observation's ORIGINAL
+    // evidence clocks; no collection/read timestamp can make it look newer.
     var freshness_txt = null;
     var freshness = (read_time_ages && read_time_ages.market_activity_age_seconds != null)
       ? read_time_ages : snap_data.freshness;
@@ -219,7 +178,7 @@
       var rank = function(row) {
         var snap = snapshots[row.getAttribute("data-canonical-id")];
         if (!snap) return 1; // LOADING is UI-only, not an authority state.
-        return snap.state === "AVAILABLE" ? 0 : snap.state === "STALE" ? 2 : 3;
+        return snap.state === "AVAILABLE" ? 0 : 3;
       };
       ordered.sort(function(a, b) {
         var ra = rank(a), rb = rank(b);
