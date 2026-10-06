@@ -25,7 +25,8 @@ from finco_radar.gap.contracts import BoundReferencePrice
 from finco_radar.gap.engine import build_bound_reference_price
 
 from .bnb_history import (BnbIntelligenceHistoryStore, make_r_live_history_point,
-                          read_r_live_points_readonly, read_r_live_range_summary_readonly)
+                          read_r_live_last_canonical_readonly, read_r_live_points_readonly,
+                          read_r_live_range_summary_readonly)
 from .robinhood_registry_snapshot_store import RobinhoodRegistrySnapshotStore
 
 
@@ -190,6 +191,77 @@ def read_r_live_history(canonical_asset_id: str, *, limit: int = 30,
 _CURRENT_WORKERS = 2  # Benchmark with 2, 3, 4 before raising; do not exceed 4.
 
 
+def _aware_clock_from_evidence(evidence) -> datetime | None:
+    fields = evidence if isinstance(evidence, dict) else dict(evidence or {})
+    raw = fields.get("retrievedAt")
+    if not isinstance(raw, str):
+        return None
+    try:
+        value = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if value.tzinfo is None or value.utcoffset() is None:
+        return None
+    return value.astimezone(timezone.utc)
+
+
+def read_last_canonical_r_live(
+    canonical_id: str, *, as_of: datetime | None = None,
+) -> tuple[str, dict] | None:
+    """Read the latest source-proven canonical R-LIVE snapshot, without writes."""
+    policy = APPROVED_BY_CANONICAL_ID.get(canonical_id)
+    if policy is None:
+        return None
+    try:
+        point = read_r_live_last_canonical_readonly(
+            policy.economic_asset_uid, policy.asset_key,
+        )
+    except Exception:
+        return None
+    if point is None:
+        return None
+
+    reference = point["independent_token_reference"]
+    basis = point["robinhood_basis"]
+    evidence = reference["evidence"]
+    clock = as_of or datetime.now(timezone.utc)
+    if clock.tzinfo is None or clock.utcoffset() is None:
+        return None
+    clock = clock.astimezone(timezone.utc)
+
+    data = {
+        "exact_asset_key": {
+            "canonical_id": policy.asset_key.canonical_id,
+            "chain_id": policy.asset_key.chain_id,
+            "contract_address": policy.asset_key.contract_address,
+        },
+        "economic_asset_uid": policy.economic_asset_uid,
+        "token_reference": {
+            "state": "AVAILABLE",
+            "price_usd_per_token": str(reference["priceUsdPerToken"]),
+            "source": "UNISWAP_V3_TWAP_CHAINLINK_USDG_USD",
+            "observed_at": reference["observedAt"],
+            "reason": None,
+        },
+        "robinhood_basis": {
+            "state": "AVAILABLE",
+            "price_usd_per_token": str(basis["price_usd_per_token"]),
+            "source": basis.get("source"),
+            "observed_at": basis.get("observed_at"),
+            "reason": None,
+        },
+        "b1_0_premium": {
+            "state": "AVAILABLE",
+            "value_bps": str(point["reference_premium_bps"]),
+            "formula": None,
+            "reason": None,
+        },
+        "observed_at": reference["observedAt"],
+        "freshness": _format_freshness(evidence, reference_clock=clock),
+    }
+    return "AVAILABLE", data
+
+
 def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, dict]:
     """Serialize an RLiveResult for API response.
 
@@ -220,6 +292,12 @@ def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, d
         state = "STALE"
 
     is_current = (state == "AVAILABLE")
+    if not is_current:
+        fallback = read_last_canonical_r_live(
+            canonical_id, as_of=_aware_clock_from_evidence(onchain.evidence),
+        )
+        if fallback is not None:
+            return fallback
 
     data: dict = {
         "exact_asset_key": {
@@ -254,10 +332,12 @@ def format_r_live_result(canonical_id: str, result: RLiveResult) -> tuple[str, d
     return state, data
 
 
-def _format_freshness(evidence) -> dict:
+def _format_freshness(evidence, *, reference_clock: datetime | None = None) -> dict:
     """Presentation-only ages from canonical on-chain evidence timestamps.
 
-    Mirrors institutional._r_live_freshness; Market/Oracle ages are distinct.
+    Current observations use their source acquisition clock. Historical
+    fallback may supply the present read clock so age continues increasing,
+    while every original source timestamp remains unchanged.
     """
     fields = evidence if isinstance(evidence, dict) else dict(evidence or {})
 
@@ -272,12 +352,17 @@ def _format_freshness(evidence) -> dict:
         return value.astimezone(timezone.utc) if (value.tzinfo and value.utcoffset() is not None) else None
 
     retrieved = parsed("retrievedAt")
+    clock = reference_clock or retrieved
+    if clock is not None and (clock.tzinfo is None or clock.utcoffset() is None):
+        clock = None
+    elif clock is not None:
+        clock = clock.astimezone(timezone.utc)
 
     def age(name: str) -> int | None:
         source = parsed(name)
-        if source is None or retrieved is None:
+        if source is None or clock is None:
             return None
-        seconds = (retrieved - source).total_seconds()
+        seconds = (clock - source).total_seconds()
         return int(seconds) if seconds >= 0 else None
 
     return {
@@ -376,6 +461,9 @@ def collect_r_live_batch(
                         rpc=rpc, as_of=clock, history=None, key=key,
                     )
                 except Exception:
+                    fallback = read_last_canonical_r_live(canonical_id, as_of=clock)
+                    if fallback is not None:
+                        return canonical_id, fallback[0], fallback[1]
                     return canonical_id, "UNAVAILABLE", {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}
 
                 state, data = format_r_live_result(canonical_id, result)
