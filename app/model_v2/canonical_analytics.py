@@ -253,6 +253,43 @@ def _future_metric(metric_id, category, unit, note):
     )
 
 
+def _prove_scenario_identity(run_scenario, scenario_id):
+    """Repository-native scenario consistency rule (Correction A1).
+
+    The canonical scenario designation of a clean production run is the
+    scenario registry name carried by ``clean_run.scenario`` (the exact
+    tokens of app/scenario_manager.py, e.g. "Base", "Downside", "Upside",
+    "Bank"); no normalization convention exists or is invented here. When
+    the caller supplies ``RunIdentity.scenario_id``, it must be exactly
+    that canonical designation - a snapshot may never carry mutually
+    contradictory scenario identities.
+    """
+    if scenario_id is None or run_scenario is None:
+        return
+    if scenario_id != run_scenario:
+        raise ValueError(
+            "ANALYTICS_SCENARIO_IDENTITY_MISMATCH: run identity declares "
+            f"scenario_id {scenario_id!r} but the clean run's canonical "
+            f"scenario designation is {run_scenario!r}; a snapshot may not "
+            "combine contradictory scenario identities."
+        )
+
+
+# Schema-v1 canonical metric manifest: metric_id -> (category, unit).
+_CANONICAL_MANIFEST: dict[str, tuple[str, str]] = {
+    metric_id: (category, unit)
+    for metric_id, category, unit in _TRACE_BACKED_METRICS
+}
+_CANONICAL_MANIFEST.update(
+    (metric_id, (category, unit))
+    for metric_id, category, unit, _attribute in _G2C_METRICS
+)
+_CANONICAL_MANIFEST.update(
+    (metric_id, (category, unit))
+    for metric_id, category, unit in _FUTURE_METRICS
+)
+
+
 def build_canonical_analytics(clean_run, *, run_identity, trace=None,
                               composition_hash=None):
     """Build the run-bound canonical analytics snapshot for one clean run.
@@ -271,6 +308,7 @@ def build_canonical_analytics(clean_run, *, run_identity, trace=None,
     from app.model_v2.assumption_register import _validate_run_identity
 
     _validate_run_identity(run_identity)
+    _prove_scenario_identity(clean_run.scenario, run_identity.scenario_id)
     if trace is None:
         trace = build_calculation_trace(
             clean_run,
@@ -290,6 +328,16 @@ def build_canonical_analytics(clean_run, *, run_identity, trace=None,
             raise ValueError(
                 "ANALYTICS_TRACE_IDENTITY_MISMATCH: supplied trace was built "
                 "for a different run identity; refusing to mix lineages."
+            )
+        if trace.engine_version != run_identity.engine_version \
+                or trace.workbook_version != run_identity.workbook_version:
+            raise ValueError(
+                "ANALYTICS_TRACE_VERSION_MISMATCH: supplied trace carries "
+                f"engine/workbook versions {trace.engine_version!r}/"
+                f"{trace.workbook_version!r} which contradict the run "
+                f"identity's {run_identity.engine_version!r}/"
+                f"{run_identity.workbook_version!r}; refusing contradictory "
+                "version metadata."
             )
     entries = []
     for metric_id, category, unit in _TRACE_BACKED_METRICS:
@@ -391,12 +439,64 @@ class CanonicalAnalyticsSnapshot:
         from app.model_v2.assumption_register import _validate_run_identity
 
         _validate_run_identity(identity)
+        # Correction A3: the deserialized document must be internally
+        # consistent - duplicated identity metadata may never contradict
+        # itself. No silent repair.
+        document_engine = str(raw.get("engine_version", "unknown"))
+        document_workbook = str(raw.get("workbook_version", "unknown"))
+        if document_engine != identity.engine_version \
+                or document_workbook != identity.workbook_version:
+            raise ValueError(
+                "ANALYTICS_IDENTITY_CONTRADICTION: document versions "
+                f"{document_engine!r}/{document_workbook!r} contradict the "
+                f"run identity's {identity.engine_version!r}/"
+                f"{identity.workbook_version!r}."
+            )
+        _prove_scenario_identity(raw.get("scenario"), identity.scenario_id)
         metrics_raw = raw.get("metrics")
         if not isinstance(metrics_raw, list):
             raise ValueError("ANALYTICS_DESERIALIZE_INVALID: metrics missing")
+        # Correction A4: schema-v1 must be the canonical Workflow 06 metric
+        # manifest - exact id set, canonical categories and units.
+        manifest = _CANONICAL_MANIFEST
+        seen = set()
+        for item in metrics_raw:
+            metric_id = (item or {}).get("metric_id")
+            if metric_id in seen:
+                raise ValueError(
+                    f"ANALYTICS_METRIC_DUPLICATE: {metric_id!r} appears twice."
+                )
+            seen.add(metric_id)
+            if metric_id not in manifest:
+                raise ValueError(
+                    f"ANALYTICS_METRIC_UNKNOWN: {metric_id!r} is not part of "
+                    "the canonical Workflow 06 metric set."
+                )
+        missing = sorted(mid for mid in manifest if mid not in seen)
+        if missing:
+            raise ValueError(
+                f"ANALYTICS_METRIC_MISSING: {missing} absent from the "
+                "canonical metric set."
+            )
+        if raw.get("metric_count") != len(metrics_raw):
+            raise ValueError(
+                "ANALYTICS_METRIC_COUNT_MISMATCH: declared metric_count "
+                f"{raw.get('metric_count')!r} != {len(metrics_raw)} metrics."
+            )
         metrics = []
         for item in metrics_raw:
-            metrics.append(_metric_from_dict(item))
+            metric = _metric_from_dict(item)
+            expected_category, expected_unit = manifest[metric.metric_id]
+            if metric.category != expected_category \
+                    or metric.unit != expected_unit:
+                raise ValueError(
+                    "ANALYTICS_METRIC_MANIFEST_MISMATCH: "
+                    f"{metric.metric_id!r} declares "
+                    f"({metric.category!r}, {metric.unit!r}) but the "
+                    f"canonical manifest requires "
+                    f"({expected_category!r}, {expected_unit!r})."
+                )
+            metrics.append(metric)
         return cls(
             schema_id=CANONICAL_ANALYTICS_SCHEMA_ID,
             schema_version=CANONICAL_ANALYTICS_SCHEMA_VERSION,
@@ -461,6 +561,11 @@ def _metric_from_dict(item):
         raise ValueError(
             f"ANALYTICS_METRIC_INVALID: {item['metric_id']!r} is AVAILABLE "
             "without a value."
+        )
+    if isinstance(value, bool):
+        raise ValueError(
+            f"ANALYTICS_VALUE_TYPE_INVALID: {item['metric_id']!r} carries a "
+            "bool; metric values are numbers or null."
         )
     if isinstance(value, float) and (
         value != value or value in (float("inf"), float("-inf"))

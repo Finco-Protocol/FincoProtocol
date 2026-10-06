@@ -43,7 +43,7 @@ from app.services.production_financial_authority import (
 )
 
 
-def _identity(snapshot_id="W06-A", scenario_id="base"):
+def _identity(snapshot_id="W06-A", scenario_id="Base"):
     return RunIdentity(
         snapshot_id=snapshot_id,
         composite_hash="hash-" + snapshot_id,
@@ -215,15 +215,30 @@ def test_working_copy_edit_never_rewrites_history(solar):
 
 
 def test_scenario_identity_remains_distinct(solar):
-    """CANONICAL_ANALYTICS_RUN_BOUND: scenario ids never blend."""
-    _, run, _snapshot = solar
+    """CANONICAL_ANALYTICS_RUN_BOUND + CORRECTION A1: scenario ids never
+    blend; a contradictory scenario identity fails closed."""
+    inputs, run, _snapshot = solar
+    # same Base run, canonical token matches: accepted
     base = build_canonical_analytics(run, run_identity=_identity())
-    high = build_canonical_analytics(
-        run, run_identity=_identity("W06-HIGH", scenario_id="high")
+    assert base.scenario == "Base"
+    assert base.run_identity.scenario_id == "Base"
+    # same Base run wrapped as a different scenario: FAIL CLOSED
+    with pytest.raises(ValueError, match="ANALYTICS_SCENARIO_IDENTITY_MISMATCH"):
+        build_canonical_analytics(
+            run, run_identity=_identity("W06-DOWN", scenario_id="Downside")
+        )
+    # genuine non-Base canonical run: matching identity accepted
+    downside_run = run_clean_production(inputs, "Downside", project_type="solar")
+    downside = build_canonical_analytics(
+        downside_run, run_identity=_identity("W06-DOWN2", scenario_id="Downside")
     )
-    assert base.run_identity.scenario_id == "base"
-    assert high.run_identity.scenario_id == "high"
-    assert base.to_json() != high.to_json()
+    assert downside.scenario == "Downside"
+    assert downside.to_json() != base.to_json()
+    # and the reverse wrap fails closed too
+    with pytest.raises(ValueError, match="ANALYTICS_SCENARIO_IDENTITY_MISMATCH"):
+        build_canonical_analytics(
+            downside_run, run_identity=_identity("W06-BASE2", scenario_id="Base")
+        )
 
 
 def test_failed_run_cannot_replace_snapshot(solar):
@@ -377,3 +392,119 @@ def test_future_metrics_honestly_unsupported(solar):
     assert snapshot.metric("payback").unit == "years"
     assert snapshot.metric("discounted_payback").unit == "years"
     assert snapshot.metric("cash_yield").unit == "fraction"
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION A: identity + manifest integrity
+# ---------------------------------------------------------------------------
+
+
+def test_a2_trace_version_contradiction_fails_closed(solar):
+    """CORRECTION A2: supplied trace versions must match run identity."""
+    import dataclasses
+
+    inputs, run, _snapshot = solar
+    identity = _identity()
+    trace = build_calculation_trace(
+        run,
+        context=RegisterContext.for_run_bound(
+            run_identity=identity,
+            state_provenance=AssumptionSourceKind.UNKNOWN,
+        ),
+    )
+    tampered = dataclasses.replace(trace, engine_version="engine-rogue-v1")
+    with pytest.raises(ValueError, match="ANALYTICS_TRACE_VERSION_MISMATCH"):
+        build_canonical_analytics(
+            run, run_identity=identity, trace=tampered
+        )
+    tampered_workbook = dataclasses.replace(
+        trace, workbook_version="9.9.9-rogue"
+    )
+    with pytest.raises(ValueError, match="ANALYTICS_TRACE_VERSION_MISMATCH"):
+        build_canonical_analytics(
+            run, run_identity=identity, trace=tampered_workbook
+        )
+
+
+def test_a3_deserialized_identity_contradiction_fails_closed(solar):
+    """CORRECTION A3: serialized identity metadata must be self-consistent."""
+    _, _, snapshot = solar
+    payload = snapshot.to_dict()
+    with pytest.raises(ValueError, match="ANALYTICS_IDENTITY_CONTRADICTION"):
+        CanonicalAnalyticsSnapshot.from_dict(
+            {**payload, "engine_version": "engine-rogue-v1"}
+        )
+    with pytest.raises(ValueError, match="ANALYTICS_IDENTITY_CONTRADICTION"):
+        CanonicalAnalyticsSnapshot.from_dict(
+            {**payload, "workbook_version": "9.9.9-rogue"}
+        )
+    with pytest.raises(
+        ValueError, match="ANALYTICS_SCENARIO_IDENTITY_MISMATCH"
+    ):
+        CanonicalAnalyticsSnapshot.from_dict(
+            {**payload, "scenario": "Downside"}
+        )
+
+
+def test_a4_metric_manifest_is_canonical(solar):
+    """CORRECTION A4: schema v1 accepts only the canonical metric set."""
+    _, _, snapshot = solar
+    payload = snapshot.to_dict()
+    metrics = payload["metrics"]
+
+    def with_metrics(new_metrics, **overrides):
+        forged = {
+            **payload,
+            "metrics": new_metrics,
+            "metric_count": overrides.pop(
+                "metric_count", len(new_metrics)
+            ),
+            **overrides,
+        }
+        return CanonicalAnalyticsSnapshot.from_dict(forged)
+
+    # duplicate metric_id
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_DUPLICATE"):
+        with_metrics(metrics + [dict(metrics[0])])
+    # missing required metric_id
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_MISSING"):
+        with_metrics(metrics[:-1])
+    # unknown metric_id
+    rogue = dict(metrics[0], metric_id="revenue_multiple_rogue")
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_UNKNOWN"):
+        with_metrics(metrics + [rogue])
+    # metric_count mismatch
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_COUNT_MISMATCH"):
+        with_metrics(metrics, metric_count=len(metrics) + 1)
+    # wrong canonical category / unit for a known metric
+    wrong_category = [dict(m) for m in metrics]
+    next(
+        m for m in wrong_category if m["metric_id"] == "project_xirr"
+    )["category"] = "OPERATING"
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_MANIFEST_MISMATCH"):
+        with_metrics(wrong_category)
+    wrong_unit = [dict(m) for m in metrics]
+    next(
+        m for m in wrong_unit if m["metric_id"] == "senior_debt_keur"
+    )["unit"] = "EUR"
+    with pytest.raises(ValueError, match="ANALYTICS_METRIC_MANIFEST_MISMATCH"):
+        with_metrics(wrong_unit)
+    # bool is not a numeric metric value
+    bool_value = [dict(m) for m in metrics]
+    next(
+        m for m in bool_value if m["metric_id"] == "senior_debt_keur"
+    )["value"] = True
+    with pytest.raises(ValueError, match="ANALYTICS_VALUE_TYPE_INVALID"):
+        with_metrics(bool_value)
+    # NaN / +Inf / -Inf stay rejected
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        bad_value = [dict(m) for m in metrics]
+        next(
+            m for m in bad_value if m["metric_id"] == "senior_debt_keur"
+        )["value"] = bad
+        with pytest.raises(ValueError, match="ANALYTICS_VALUE_NOT_FINITE"):
+            with_metrics(bad_value)
+    # the untouched canonical payload still deserializes byte-stably
+    assert CanonicalAnalyticsSnapshot.from_dict(payload).to_json() == (
+        snapshot.to_json()
+    )
