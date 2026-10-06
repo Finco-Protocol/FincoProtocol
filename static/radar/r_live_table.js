@@ -149,8 +149,10 @@
       }
     }
     set_cell(row_el, "freshness", freshness_txt);
-    if (is_current && freshness_txt) {
-      // AVAILABLE is only ever assigned when every leg is within its reviewed freshness policy.
+    if (is_current && freshness_txt && snap_data.presentation_source === "LATEST_SNAPSHOT") {
+      // Only a genuinely current acquisition earns the within-policy note.
+      // Last-canonical history is LIVE product data but its age is intentionally
+      // allowed to exceed the NEW-observation admission window.
       var fresh_cell = row_el.querySelector("[data-field='freshness']");
       if (fresh_cell) {
         var policy_note = document.createElement("small");
@@ -237,7 +239,10 @@
       rows_data.forEach(function(view_row) {
         var row = byId[view_row.canonical_id];
         if (!row) return;
-        var snap = Object.assign({state: view_row.state}, view_row.data || {});
+        var snap = Object.assign(
+          {state: view_row.state, presentation_source: view_row.source},
+          view_row.data || {}
+        );
         snapshots[view_row.canonical_id] = snap;
         populate_row(row, snap, history[view_row.canonical_id], view_row.read_time_ages);
       });
