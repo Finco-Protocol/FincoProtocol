@@ -317,6 +317,10 @@ def _init_schema(conn):
     #   re-reading mutable live tables.
     _ensure_column(conn, "workspace_states", "last_runtime_composite_hash", "TEXT")
     _ensure_column(conn, "workspace_states", "last_runtime_identity_json", "TEXT")
+    # Workflow 07: Model V2 Working Copy selections — versioned typed payload
+    # (app.model_v2.persistence). '' (empty) means NO Model V2 state: the exact
+    # legacy absence. Rows are never defaulted with invented V2 economics.
+    _ensure_column(conn, "workspace_states", "model_v2_working_state_json", "TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
