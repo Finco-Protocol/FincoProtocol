@@ -48,6 +48,7 @@ an ACTIVE marker at the main tip fails it (enforcement gate test).
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -250,6 +251,10 @@ def merge_base_ref(main_ref: str = "origin/main",
     return result.stdout.strip()
 
 
+def _running_in_ci() -> bool:
+    return bool(os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"))
+
+
 def changed_paths_vs_main() -> list[str]:
     """Paths changed on the Model V2 lineage, excluding main-only advances.
 
@@ -257,8 +262,12 @@ def changed_paths_vs_main() -> list[str]:
     This keeps cumulative Model V2 changes visible to the ACTIVE scope while
     ignoring unrelated commits that landed only on main after the last
     reviewed main -> epic sync (for example Radar/Crypto/Yield work).
-    Empty when git is unavailable, matching the historical guards' skip
-    convention.
+
+    Fail-closed in CI: an unresolvable merge-base (missing origin/main,
+    shallow checkout) must never silently become "zero changes", so the
+    error propagates when GITHUB_ACTIONS / CI is set. Outside CI (a local
+    checkout without origin/main) it returns an empty list, matching the
+    historical guards' skip convention.
     """
     try:
         base = merge_base_ref("origin/main", "HEAD", repo=str(REPO))
@@ -267,8 +276,23 @@ def changed_paths_vs_main() -> list[str]:
             capture_output=True, text=True, cwd=str(REPO), check=True,
         )
     except (OSError, subprocess.CalledProcessError, RuntimeError):
+        if _running_in_ci():
+            raise
         return []
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def branch_owned_changes_if_model_v2_active() -> "list[str] | None":
+    """Branch-owned changed paths when an ACTIVE Model V2 scope exists, else None.
+
+    Historical Radar-stream guards use this to keep their original hard-coded
+    baseline semantics outside the Model V2 epic, while inside it they ask the
+    only meaningful question: did THIS branch change the file? Authority comes
+    from the committed scope marker, never from a branch name.
+    """
+    if active_scope() is None:
+        return None
+    return changed_paths_vs_main()
 
 
 def authorized_engine_files() -> set[str]:

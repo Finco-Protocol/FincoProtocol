@@ -138,3 +138,72 @@ def test_ce_real_repo_guards_green_against_current_main():
 def test_ce_no_frozen_production_namespace_modified_by_this_fix():
     """E: this governance fix modifies no frozen production namespace."""
     assert model_v2_frozen_violations() == []
+
+
+# ---------------------------------------------------------------------------
+# Branch-owned boundary for the shared governance helpers (CI parity correction)
+# ---------------------------------------------------------------------------
+
+import model_v2_governance as _mv2
+import finance_integrity_governance as _fig
+
+
+def _patch_repo(monkeypatch, repo: Path) -> None:
+    monkeypatch.setattr(_mv2, "REPO", repo)
+    monkeypatch.setattr(_fig, "REPO", repo)
+    monkeypatch.setattr(_mv2, "SCOPE_JSON_PATH", repo / "docs" / "model_v2" / "ACTIVE_EPIC_SCOPE.json")
+    # Fixture has no origin; alias the main branch as origin/main.
+    _git(repo, "update-ref", "refs/remotes/origin/main", "main")
+
+
+def test_f_main_only_radar_change_is_not_branch_owned(diverged_repo, monkeypatch):
+    _patch_repo(monkeypatch, diverged_repo)
+    assert _mv2.changed_paths_vs_main() == []
+    assert _fig.changed_paths_vs_main() == []
+    assert _fig.strictly_frozen_changes() == []
+
+
+def test_g_real_branch_radar_change_is_branch_owned_and_flagged(diverged_repo, monkeypatch):
+    _patch_repo(monkeypatch, diverged_repo)
+    (diverged_repo / FROZEN_DIR / "existing.py").write_text("# branch edit\n")
+    _feature_commit(diverged_repo, "branch edits frozen radar file")
+    assert _mv2.changed_paths_vs_main() == [f"{FROZEN_DIR}/existing.py"]
+    assert _fig.strictly_frozen_changes() == [f"{FROZEN_DIR}/existing.py"]
+    assert _mv2.model_v2_frozen_violations() == [f"{FROZEN_DIR}/existing.py"]
+
+
+def test_h_real_unapproved_engine_change_is_flagged(diverged_repo, monkeypatch):
+    _patch_repo(monkeypatch, diverged_repo)
+    (diverged_repo / SCOPE_EXEMPT_FILE).write_text("# branch engine edit\n")
+    _feature_commit(diverged_repo, "branch edits engine file")
+    assert _fig.unapproved_engine_changes() == [SCOPE_EXEMPT_FILE]
+
+
+def test_i_missing_merge_base_fails_closed_in_ci(tmp_path, monkeypatch):
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "finco-test")
+    _git(repo, "config", "user.name", "Finco Test")
+    (repo / "a.txt").write_text("x\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "only")           # no origin/main ref at all
+    monkeypatch.setattr(_mv2, "REPO", repo)
+    monkeypatch.setattr(_fig, "REPO", repo)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(RuntimeError, match="PARALLEL_STREAM_MERGE_BASE_UNRESOLVABLE"):
+        _mv2.changed_paths_vs_main()
+    with pytest.raises(subprocess.CalledProcessError):
+        _fig.changed_paths_vs_main()
+    monkeypatch.delenv("GITHUB_ACTIONS")
+    monkeypatch.delenv("CI", raising=False)
+    assert _mv2.changed_paths_vs_main() == []     # local checkout without origin: historical skip convention
+
+
+def test_j_radar_historical_guard_only_switches_on_committed_scope(monkeypatch):
+    # authority comes from the committed scope marker, never a branch name
+    monkeypatch.setattr(_mv2, "active_scope", lambda: None)
+    assert _mv2.branch_owned_changes_if_model_v2_active() is None
+    monkeypatch.setattr(_mv2, "active_scope", lambda: {"status": "ACTIVE"})
+    monkeypatch.setattr(_mv2, "changed_paths_vs_main", lambda: ["finco_radar/x.py"])
+    assert _mv2.branch_owned_changes_if_model_v2_active() == ["finco_radar/x.py"]
