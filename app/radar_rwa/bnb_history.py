@@ -556,6 +556,88 @@ def read_r_live_points_readonly(uid: str, key: AssetKey, *, limit: int = 30,
     return points
 
 
+
+def read_r_live_last_canonical_readonly(uid: str, key: AssetKey, *,
+                                        path: str | None = None) -> dict | None:
+    """Return the newest verified AVAILABLE R-LIVE snapshot for one exact identity.
+
+    This is a read-only view over the existing B1.3 append-only ledger. It
+    never opens a writer, never restamps evidence and never substitutes a
+    ticker or collected_at for the canonical identity/source timestamps.
+    """
+    if key.chain_id != 4663:
+        raise ValueError("exact Robinhood key required")
+    identity = normalize_asset_uid(uid)
+    location = path or os.getenv("RADAR_BNB_INTELLIGENCE_DB_PATH", DEFAULT_DB_PATH)
+    if location == ":memory:":
+        return None
+    db_path = Path(location)
+    if not db_path.is_file():
+        return None
+    with sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5) as conn:
+        row = conn.execute(
+            "SELECT digest, payload FROM bnb_intelligence_history "
+            "WHERE economic_asset_uid = ? AND asset_key = ? "
+            "AND json_extract(payload, '$.state') = 'AVAILABLE' "
+            "ORDER BY COALESCE(json_extract(payload, '$.collected_at'), "
+            "json_extract(payload, '$.independent_token_reference.evidence.retrievedAt'), "
+            "observed_at) DESC, digest DESC LIMIT 1",
+            (identity, key.canonical_id),
+        ).fetchone()
+    if row is None:
+        return None
+    digest, payload = row
+    if hashlib.sha256(payload.encode("utf-8")).hexdigest() != digest:
+        raise ValueError("history digest does not reconstruct")
+    try:
+        point = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("history payload is invalid JSON") from exc
+
+    try:
+        point_uid = normalize_asset_uid(point.get("economic_asset_uid"))
+    except (TypeError, ValueError):
+        return None
+    if (point_uid != identity or point.get("asset_key") != key.canonical_id
+            or point.get("state") != "AVAILABLE"):
+        return None
+
+    reference = point.get("independent_token_reference")
+    basis = point.get("robinhood_basis")
+    if not isinstance(reference, dict) or not isinstance(basis, dict):
+        return None
+    try:
+        reference_uid = normalize_asset_uid(reference.get("assetUid"))
+    except (TypeError, ValueError):
+        return None
+    if reference.get("assetKey") != key.canonical_id or reference_uid != identity:
+        return None
+    if reference.get("state") != "AVAILABLE":
+        return None
+    if reference.get("priceUsdPerToken") is None or basis.get("price_usd_per_token") is None:
+        return None
+    try:
+        token_price = Decimal(str(reference["priceUsdPerToken"]))
+        basis_price = Decimal(str(basis["price_usd_per_token"]))
+        premium = Decimal(str(point["reference_premium_bps"]))
+    except (KeyError, InvalidOperation, TypeError, ValueError):
+        return None
+    if not token_price.is_finite() or not basis_price.is_finite() or not premium.is_finite():
+        return None
+
+    for raw in (reference.get("observedAt"), basis.get("observed_at"), point.get("observed_at")):
+        if not isinstance(raw, str):
+            return None
+        try:
+            timestamp = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            return None
+    if not isinstance(reference.get("evidence"), dict):
+        return None
+    return point
+
 def make_history_point(binding: CrossChainIdentityBinding, intelligence: dict, observed_at: str) -> dict | None:
     """Only an available premium earns a numeric history point."""
     if binding.economic_asset_uid is None or binding.external_asset_key is None:
