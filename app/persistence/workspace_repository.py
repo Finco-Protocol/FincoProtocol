@@ -75,6 +75,29 @@ def _model_v2_state_json(
     return working_state_to_json(model_v2_working_state)
 
 
+def _payload_working_copy_ref(raw_payload: str) -> str:
+    """Extract the working_copy_ref of a persisted V2 payload (fail closed
+    on anything unreadable). Used to police project_code changes that would
+    otherwise silently retain a payload bound to another working copy."""
+    import json as _json
+
+    from app.model_v2.persistence import ModelV2PersistenceError
+    try:
+        payload = _json.loads(raw_payload)
+    except ValueError as exc:
+        raise ModelV2PersistenceError(
+            f"MODEL_V2_PERSISTENCE_MALFORMED: persisted Model V2 payload is "
+            f"not valid JSON ({exc})"
+        ) from None
+    if not isinstance(payload, dict) \
+            or not isinstance(payload.get("working_copy_ref"), str):
+        raise ModelV2PersistenceError(
+            "MODEL_V2_PERSISTENCE_MALFORMED: persisted Model V2 payload "
+            "carries no readable working_copy_ref"
+        )
+    return payload["working_copy_ref"]
+
+
 # -----------------------------------------------------------------
 # get_workspace_state
 # -----------------------------------------------------------------
@@ -243,6 +266,37 @@ def save_workspace_state(
     _V2_ONLY_SNAPSHOT_KEYS = frozenset({"tax_corporate_rate_pct", "tax_loss_carryforward_years"})
 
     existing = get_workspace_state(user_id, project_id)
+    # Correction A (A3): EVERY write path that stores a supplied Model V2
+    # state enforces the same working-copy identity rule as
+    # set_workspace_model_v2_state — a foreign state fails closed before
+    # any mutation.
+    if model_v2_working_state is not None:
+        from app.model_v2.persistence import ModelV2PersistenceError as _MV2Err
+        if model_v2_working_state.working_copy_ref != project_code:
+            raise _MV2Err(
+                f"MODEL_V2_WORKING_COPY_REF_MISMATCH: supplied Model V2 "
+                f"state is bound to working_copy_ref "
+                f"{model_v2_working_state.working_copy_ref!r} but this save "
+                f"targets project_code {project_code!r}"
+            )
+        model_v2_working_state.validate()
+    # Correction A (A3): a project_code change must never silently retain a
+    # merge-preserved V2 payload bound to the OLD working-copy identity —
+    # require an explicit correctly rebound state (or an explicit clear).
+    if existing is not None and project_code != existing.project_code \
+            and model_v2_working_state is None \
+            and existing.model_v2_working_state_json:
+        _prev_ref = _payload_working_copy_ref(
+            existing.model_v2_working_state_json)
+        if _prev_ref != project_code:
+            from app.model_v2.persistence import ModelV2PersistenceError as _MV2Err
+            raise _MV2Err(
+                f"MODEL_V2_WORKING_COPY_REF_REBIND_REQUIRED: project_code "
+                f"changed {existing.project_code!r} -> {project_code!r} but "
+                f"the persisted Model V2 payload is bound to {_prev_ref!r}; "
+                "clear_workspace_model_v2_state or save an explicitly "
+                "rebound Model V2 state with this save"
+            )
     if existing is not None:
         workspace_id = existing.workspace_id
         created_at = existing.created_at
@@ -795,6 +849,9 @@ def v2_atomic_run_commit(
         # never replaced by a partially identified run.
         if model_v2_run_binding is not None:
             from app.model_v2.persistence import (
+                working_state_from_json as _decode_v2_state,
+            )
+            from app.model_v2.persistence import (
                 validate_run_binding_payload as _validate_v2_binding,
             )
             _v2_binding = _validate_v2_binding(dict(model_v2_run_binding))
@@ -811,6 +868,62 @@ def v2_atomic_run_commit(
                     f"correlates with snapshot "
                     f"{_v2_binding['snapshot_id']!r} but this commit is "
                     f"writing snapshot {runtime_snapshot_id!r}"
+                )
+            # Correction A (A1): the V2 Working Copy payload is NOT part of
+            # the workbook composite hash, so a concurrent V2 edit during
+            # the engine run would pass the composite CAS silently. Inside
+            # the SAME exclusive transaction: decode the CURRENT persisted
+            # V2 state and require its economic identity to still equal the
+            # identity the run was composed from.
+            _v2_raw = (row["model_v2_working_state_json"]
+                       if "model_v2_working_state_json" in row.keys() else "") or ""
+            try:
+                _current_v2_state = _decode_v2_state(_v2_raw)
+            except Exception as _exc:
+                raise V2RunCommitConflictError(
+                    "MODEL_V2_RUN_COMMIT_V2_STATE_UNREADABLE: the persisted "
+                    f"Model V2 Working Copy state could not be decoded "
+                    f"during run commit: {_exc}"
+                ) from _exc
+            if _current_v2_state is None:
+                raise V2RunCommitConflictError(
+                    "MODEL_V2_RUN_COMMIT_V2_STATE_MISSING: a Model V2 run "
+                    "binding was supplied but the workspace carries no "
+                    "persisted Model V2 state"
+                )
+            if _current_v2_state.working_copy_ref != row["project_code"]:
+                raise V2RunCommitConflictError(
+                    f"MODEL_V2_WORKING_COPY_REF_MISMATCH: persisted Model V2 "
+                    f"state is bound to "
+                    f"{_current_v2_state.working_copy_ref!r} but the "
+                    f"workspace belongs to project_code "
+                    f"{row['project_code']!r}"
+                )
+            _current_v2_identity = _current_v2_state.selection_digest()
+            if _current_v2_identity != _v2_binding["economic_identity"]:
+                raise V2RunCommitConflictError(
+                    "MODEL_V2_RUN_COMMIT_STALE_V2_STATE: the persisted Model "
+                    "V2 Working Copy state changed while the engine was "
+                    f"running (run composed identity "
+                    f"{_v2_binding['economic_identity'][:8]}…, current "
+                    f"{_current_v2_identity[:8]}…); the run is discarded — "
+                    "please re-run"
+                )
+            # Correction A (A2): the binding scenario must be the scenario
+            # this commit actually persists for the Last Run
+            # (last_runtime_scenario_id with the existing active_scenario_id
+            # fallback). No new scenario naming convention is invented.
+            _committed_scenario_id = (
+                last_runtime_scenario_id
+                if last_runtime_scenario_id is not None
+                else active_scenario_id
+            )
+            if _v2_binding["scenario_id"] != _committed_scenario_id:
+                raise ValueError(
+                    f"MODEL_V2_RUN_BINDING_SCENARIO_MISMATCH: run binding "
+                    f"names scenario {_v2_binding['scenario_id']!r} but this "
+                    f"commit persists Last Run scenario "
+                    f"{_committed_scenario_id!r}"
                 )
             _identity_payload["model_v2"] = _v2_binding
 

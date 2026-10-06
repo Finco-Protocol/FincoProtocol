@@ -262,6 +262,24 @@ def _schema_header(payload: dict, schema: str, version: int, where: str) -> None
 
 
 def _encode_ppa_params(ppa: PPAParams) -> dict:
+    # Correction A (A6): encode-side validation mirrors the decoder exactly —
+    # the encoder must never coerce a look-alike (bool("false") is True) or
+    # write a payload the decoder would immediately reject.
+    _strict_bool(ppa.ppa_enabled, "ppa.ppa_enabled")
+    _strict_str(ppa.ppa_counterparty, "ppa.ppa_counterparty")
+    _strict_str(ppa.ppa_type, "ppa.ppa_type")
+    _strict_number(ppa.ppa_base_price_eur_mwh, "ppa.ppa_base_price_eur_mwh")
+    _strict_number(ppa.ppa_price_index, "ppa.ppa_price_index")
+    _strict_number(ppa.ppa_price_floor, "ppa.ppa_price_floor")
+    _strict_number(ppa.ppa_price_cap, "ppa.ppa_price_cap")
+    _strict_int(ppa.ppa_start_year, "ppa.ppa_start_year")
+    _strict_number(ppa.ppa_term_years, "ppa.ppa_term_years")
+    _strict_number(ppa.ppa_volume_share, "ppa.ppa_volume_share")
+    _decode_untyped_tuple(list(ppa.ppa_shape_hours), "ppa.ppa_shape_hours")
+    _strict_number(ppa.balancing_cost_pct, "ppa.balancing_cost_pct")
+    _strict_number(ppa.imbalance_penalty_pct, "ppa.imbalance_penalty_pct")
+    _strict_str(ppa.offtaker_credit_rating, "ppa.offtaker_credit_rating")
+    _strict_number(ppa.termination_fee_keur, "ppa.termination_fee_keur")
     return {
         "ppa_enabled": bool(ppa.ppa_enabled),
         "ppa_counterparty": ppa.ppa_counterparty,
@@ -304,6 +322,18 @@ def _decode_ppa_params(payload: Any, where: str) -> PPAParams:
 
 
 def _encode_merchant_params(mp: MerchantParams) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_bool(mp.merchant_enabled, "merchant.merchant_enabled")
+    _strict_str(mp.market_zone, "merchant.market_zone")
+    _strict_number(mp.base_price_eur_mwh, "merchant.base_price_eur_mwh")
+    _strict_number(mp.price_escalation_annual, "merchant.price_escalation_annual")
+    _strict_number(mp.price_volatility_pct, "merchant.price_volatility_pct")
+    _strict_number(mp.price_cannibalization_pct, "merchant.price_cannibalization_pct")
+    _strict_number(mp.capture_rate_solar, "merchant.capture_rate_solar")
+    _strict_number(mp.capture_rate_wind, "merchant.capture_rate_wind")
+    _strict_number(mp.capture_rate_bess, "merchant.capture_rate_bess")
+    _strict_str(mp.price_scenario, "merchant.price_scenario")
+    _decode_untyped_tuple(list(mp.custom_price_curve), "merchant.custom_price_curve")
     return {
         "merchant_enabled": bool(mp.merchant_enabled),
         "market_zone": mp.market_zone,
@@ -338,6 +368,18 @@ def _decode_merchant_params(payload: Any, where: str) -> MerchantParams:
 
 
 def _encode_fit_params(fit: FeedInTariffParams) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_bool(fit.fit_enabled, "fit.fit_enabled")
+    _strict_str(fit.fit_type, "fit.fit_type")
+    _strict_number(fit.fit_price_eur_mwh, "fit.fit_price_eur_mwh")
+    _strict_int(fit.fit_term_years, "fit.fit_term_years")
+    _strict_number(fit.fit_index, "fit.fit_index")
+    _strict_number(fit.premium_eur_mwh, "fit.premium_eur_mwh")
+    _strict_number(fit.premium_cap_eur_mwh, "fit.premium_cap_eur_mwh")
+    _strict_number(fit.premium_floor_eur_mwh, "fit.premium_floor_eur_mwh")
+    _strict_str(fit.fit_scheme, "fit.fit_scheme")
+    _strict_number(fit.eligible_capacity_mw, "fit.eligible_capacity_mw")
+    _strict_number(fit.annual_production_cap_mwh, "fit.annual_production_cap_mwh")
     return {
         "fit_enabled": bool(fit.fit_enabled),
         "fit_type": fit.fit_type,
@@ -372,6 +414,15 @@ def _decode_fit_params(payload: Any, where: str) -> FeedInTariffParams:
 
 
 def _encode_cfd_params(cfd: CfDParams) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_bool(cfd.cfd_enabled, "cfd.cfd_enabled")
+    _strict_number(cfd.strike_price_eur_mwh, "cfd.strike_price_eur_mwh")
+    _strict_str(cfd.reference_price_type, "cfd.reference_price_type")
+    _strict_int(cfd.cfd_term_years, "cfd.cfd_term_years")
+    _strict_number(cfd.cfd_volume_mwh_annual, "cfd.cfd_volume_mwh_annual")
+    _strict_bool(cfd.two_way_cfd, "cfd.two_way_cfd")
+    _strict_str(cfd.cfd_counterparty, "cfd.cfd_counterparty")
+    _strict_str(cfd.cfd_guarantee, "cfd.cfd_guarantee")
     return {
         "cfd_enabled": bool(cfd.cfd_enabled),
         "strike_price_eur_mwh": cfd.strike_price_eur_mwh,
@@ -425,6 +476,28 @@ _STREAM_KEYS = frozenset({
 
 
 def _encode_stream(stream: RevenueStream) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_str(stream.stream_id, "stream.stream_id")
+    if not isinstance(stream.stream_type, RevenueStreamType):
+        raise _fail("stream.stream_type", "a RevenueStreamType member",
+                    stream.stream_type)
+    _strict_str(stream.name, "stream.name")
+    _strict_bool(stream.enabled, "stream.enabled")
+    _strict_int(stream.start_year, "stream.start_year")
+    if stream.term_years is not None:
+        _strict_number(stream.term_years, "stream.term_years")
+    _strict_str(stream.allocation_group, "stream.allocation_group")
+    if stream.volume_share is not None:
+        _strict_number(stream.volume_share, "stream.volume_share")
+    if stream.indexed_fit_base_tariff_eur_mwh is not None:
+        _strict_number(stream.indexed_fit_base_tariff_eur_mwh,
+                       "stream.indexed_fit_base_tariff_eur_mwh")
+    for i, factor in enumerate(stream.indexed_fit_index_factors):
+        _strict_number(factor, f"stream.indexed_fit_index_factors[{i}]")
+    if stream.reference_stream_id is not None:
+        _strict_str(stream.reference_stream_id, "stream.reference_stream_id")
+    _strict_bool(stream.lender_eligible, "stream.lender_eligible")
+    _strict_str(stream.counterparty, "stream.counterparty")
     return {
         "stream_id": stream.stream_id,
         "stream_type": stream.stream_type.value,
@@ -505,7 +578,10 @@ def plan_to_payload(plan: RevenuePlan) -> dict:
         "schema_version": MODEL_V2_REVENUE_PLAN_SCHEMA_VERSION,
         "streams": [_encode_stream(s) for s in plan.ordered_streams()],
         "allocation_groups": [
-            {"group_id": g.group_id, "description": g.description}
+            {
+                "group_id": _strict_str(g.group_id, "allocation_groups.group_id"),
+                "description": _strict_str(g.description, "allocation_groups.description"),
+            }
             for g in sorted(plan.allocation_groups, key=lambda g: g.group_id)
         ],
         "market_price": (
@@ -557,12 +633,20 @@ def plan_from_payload(payload: Any) -> RevenuePlan:
 
 
 def _encode_capex_field(fp: CapexFieldPlan) -> dict:
-    # Encode-side strictness mirrors the decoder: a payload this boundary
-    # writes must always be decodable (no permanently unreadable rows).
+    # Correction A (A6): encode-side strictness mirrors the decoder — the
+    # encoder must never coerce a look-alike or write a payload the decoder
+    # would immediately reject (no permanently unreadable rows).
+    _strict_str(fp.field_name, "capex_fields.field_name")
+    _strict_str(fp.parent_code, "capex_fields.parent_code")
+    _strict_str(fp.label, "capex_fields.label")
     for i, value in enumerate(fp.spending_profile):
         _strict_number(value, f"capex_fields.spending_profile[{i}]")
+    if fp.asset_class is not None:
+        _strict_str(fp.asset_class, "capex_fields.asset_class")
     if fp.useful_life_override is not None:
         _strict_int(fp.useful_life_override, "capex_fields.useful_life_override")
+    _strict_bool(fp.is_depreciable, "capex_fields.is_depreciable")
+    _strict_bool(fp.is_active, "capex_fields.is_active")
     _strict_number(fp.amount_keur, "capex_fields.amount_keur")
     _strict_number(fp.y0_share, "capex_fields.y0_share")
     return {
@@ -605,6 +689,16 @@ def _decode_capex_field(payload: Any, where: str) -> CapexFieldPlan:
 
 
 def _encode_capex_sub_line(s: CapexSubLinePlan) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_str(s.parent_category_code, "capex_sub_lines.parent_category_code")
+    _strict_str(s.business_code, "capex_sub_lines.business_code")
+    _strict_str(s.label, "capex_sub_lines.label")
+    _strict_number(s.amount_keur, "capex_sub_lines.amount_keur")
+    _strict_str(s.schedule_json, "capex_sub_lines.schedule_json")
+    _strict_str(s.source, "capex_sub_lines.source")
+    _decode_json_dict(dict(s.replay_metadata), "capex_sub_lines.replay_metadata")
+    _decode_json_dict(dict(s.scalar_metadata), "capex_sub_lines.scalar_metadata")
+    _strict_bool(s.is_active, "capex_sub_lines.is_active")
     return {
         "parent_category_code": s.parent_category_code,
         "business_code": s.business_code,
@@ -635,10 +729,13 @@ def _decode_capex_sub_line(payload: Any, where: str) -> CapexSubLinePlan:
 
 
 def _encode_opex_item(op: OpexItemPlan) -> dict:
-    # Encode-side strictness mirrors the decoder (see _encode_capex_field).
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_str(op.parent_code, "opex_items.parent_code")
+    _strict_str(op.name, "opex_items.name")
     for i, (year, amount) in enumerate(op.step_changes):
         _strict_int(year, f"opex_items.step_changes[{i}].year")
         _strict_number(amount, f"opex_items.step_changes[{i}].amount")
+    _strict_bool(op.is_active, "opex_items.is_active")
     _strict_number(op.y1_amount_keur, "opex_items.y1_amount_keur")
     _strict_number(op.annual_inflation, "opex_items.annual_inflation")
     _strict_number(op.percentage_of_opex, "opex_items.percentage_of_opex")
@@ -671,6 +768,15 @@ def _decode_opex_item(payload: Any, where: str) -> OpexItemPlan:
 
 
 def _encode_opex_sub_line(s: OpexSubLinePlan) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    _strict_str(s.parent_group_code, "opex_sub_lines.parent_group_code")
+    _strict_str(s.business_code, "opex_sub_lines.business_code")
+    _strict_str(s.label, "opex_sub_lines.label")
+    _strict_number(s.amount_keur, "opex_sub_lines.amount_keur")
+    _strict_number(s.inflation_pct, "opex_sub_lines.inflation_pct")
+    _strict_str(s.source, "opex_sub_lines.source")
+    _decode_json_dict(dict(s.replay_metadata), "opex_sub_lines.replay_metadata")
+    _strict_bool(s.is_active, "opex_sub_lines.is_active")
     return {
         "parent_group_code": s.parent_group_code,
         "business_code": s.business_code,
@@ -699,6 +805,17 @@ def _decode_opex_sub_line(payload: Any, where: str) -> OpexSubLinePlan:
 
 
 def _encode_contingency(c: ContingencyPlan) -> dict:
+    # Correction A (A6): strict encode-side validation (mirrors decoder).
+    if c.capex_pct is not None:
+        _strict_number(c.capex_pct, "contingency.capex_pct")
+    if c.opex_pct is not None:
+        _strict_number(c.opex_pct, "contingency.opex_pct")
+    if c.eligible_capex_basis_keur is not None:
+        _strict_number(c.eligible_capex_basis_keur,
+                       "contingency.eligible_capex_basis_keur")
+    _decode_json_dict(dict(c.lineage), "contingency.lineage")
+    _strict_bool(c.capex_active, "contingency.capex_active")
+    _strict_bool(c.opex_active, "contingency.opex_active")
     return {
         "capex_pct": c.capex_pct,
         "opex_pct": c.opex_pct,
@@ -756,6 +873,8 @@ def materialization_plan_to_payload(plan: MaterializationPlan) -> dict:
             f"an app.services.cost_template.materialize.MaterializationPlan, "
             f"got {type(plan).__name__}"
         )
+    _strict_str(plan.template_id, "materialization_plan.template_id")
+    _strict_int(plan.template_version, "materialization_plan.template_version")
     return {
         "_schema": MODEL_V2_MATERIALIZATION_PLAN_SCHEMA,
         "schema_version": MODEL_V2_MATERIALIZATION_PLAN_SCHEMA_VERSION,
@@ -815,6 +934,28 @@ def materialization_plan_from_payload(payload: Any) -> MaterializationPlan:
 # ---------------------------------------------------------------------------
 
 
+def _expect_cost_identity_consistent(
+    *, selection_template_id: str, selection_version: int, plan: Any,
+    where: str,
+) -> None:
+    """Correction A (A7): a CostTemplateSelection and its
+    MaterializationPlan must name the SAME template identity — on encode
+    and on decode. Workflow 05 would reject a contradictory pair at
+    composition time (COST_TEMPLATE_UNRESOLVED); the persistence boundary
+    refuses to store one in the first place."""
+    plan_template_id = getattr(plan, "template_id", None)
+    plan_template_version = getattr(plan, "template_version", None)
+    if plan_template_id != selection_template_id \
+            or plan_template_version != selection_version:
+        raise ModelV2PersistenceError(
+            f"MODEL_V2_COST_IDENTITY_INCONSISTENT: {where} names template "
+            f"{selection_template_id!r} v{selection_version} but its "
+            f"materialization plan names {plan_template_id!r} "
+            f"v{plan_template_version!r}; refusing to persist a "
+            "contradictory cost authority"
+        )
+
+
 def working_state_to_payload(state: ModelV2WorkingState) -> dict:
     """Encode the V2 Working Copy selection state into its versioned
     payload. The state (and any selections) are validated before writing —
@@ -829,6 +970,15 @@ def working_state_to_payload(state: ModelV2WorkingState) -> dict:
         }
     cost = None
     if state.cost_template_selection is not None:
+        # Correction A (A7): the selection identity and the materialization
+        # plan identity must agree at the persistence boundary — a
+        # structurally contradictory cost authority is never persistable.
+        _expect_cost_identity_consistent(
+            selection_template_id=state.cost_template_selection.template_id,
+            selection_version=state.cost_template_selection.version,
+            plan=state.cost_template_selection.materialization_plan,
+            where="cost_template_selection",
+        )
         cost = {
             "template_id": state.cost_template_selection.template_id,
             "version": state.cost_template_selection.version,
@@ -884,6 +1034,13 @@ def working_state_from_payload(payload: Any) -> ModelV2WorkingState:
                 cost_raw["materialization_plan"]),
             source_ref=_strict_str(
                 cost_raw["source_ref"], f"{where}.cost_template_selection.source_ref"),
+        )
+        # Correction A (A7): same identity consistency on restore.
+        _expect_cost_identity_consistent(
+            selection_template_id=cost.template_id,
+            selection_version=cost.version,
+            plan=cost.materialization_plan,
+            where=f"{where}.cost_template_selection",
         )
 
     state = ModelV2WorkingState(
@@ -956,6 +1113,16 @@ def build_run_binding_payload(
     no V2 binding at all (there is no V2 economic state to prove).
     """
     state.validate()
+    if state.revenue_plan_selection is None and state.cost_template_selection is None:
+        # Correction A (A5): a selection-less state is the LEGACY
+        # PASSTHROUGH state — it carries no V2 economic state, so a run
+        # produced from it must be represented by the ABSENCE of a
+        # model_v2 binding, never by an empty binding.
+        raise ModelV2PersistenceError(
+            "MODEL_V2_RUN_BINDING_EMPTY_STATE: a Model V2 run binding "
+            "requires at least one V2 selection; a legacy-passthrough run "
+            "is represented by the absence of a model_v2 binding"
+        )
     if not isinstance(composition_hash, str) or not _HEX64.match(composition_hash):
         raise ModelV2PersistenceError(
             f"MODEL_V2_PERSISTENCE_MALFORMED: composition_hash must be a "
@@ -1098,10 +1265,13 @@ def resolve_model_v2_staleness(
     )
 
 
+_CURRENT_STATE_UNSET = object()
+
+
 def resolve_workspace_model_v2_staleness(
     *,
     workspace_record: Any,
-    current_state: Optional[ModelV2WorkingState] = None,
+    current_state: Any = _CURRENT_STATE_UNSET,
 ) -> ModelV2Staleness:
     """Workspace-level staleness authority.
 
@@ -1113,9 +1283,15 @@ def resolve_workspace_model_v2_staleness(
     provenance of the current Last Run — the result is NOT_APPLICABLE (the
     legacy freshness authorities govern that run).
 
-    Pass ``current_state`` explicitly (or let it be decoded from the
-    record's persisted payload via
-    ``workspace_repository.get_workspace_model_v2_state``).
+    ``current_state`` semantics (Correction A, A4):
+    - OMITTED: the persisted Working Copy payload
+      (``workspace_record.model_v2_working_state_json``) is decoded through
+      the canonical decoder and its ``working_copy_ref`` verified against
+      ``workspace_record.project_code`` (fail closed) — the resolver then
+      answers from the PERSISTED state;
+    - explicit ``None``: the V2 selections are treated as removed
+      (STALE when a correlated binding exists);
+    - an explicit ``ModelV2WorkingState`` is used verbatim.
     """
     binding = read_workspace_run_binding(
         getattr(workspace_record, "last_runtime_identity", None))
@@ -1134,5 +1310,18 @@ def resolve_workspace_model_v2_staleness(
             bound_economic_identity=binding["economic_identity"],
             bound_scenario_id=binding["scenario_id"],
         )
+    if current_state is _CURRENT_STATE_UNSET:
+        state = working_state_from_json(
+            getattr(workspace_record, "model_v2_working_state_json", "") or None)
+        if state is not None and state.working_copy_ref != getattr(
+                workspace_record, "project_code", None):
+            raise ModelV2PersistenceError(
+                f"MODEL_V2_WORKING_COPY_REF_MISMATCH: persisted Model V2 "
+                f"state is bound to working_copy_ref "
+                f"{state.working_copy_ref!r} but the workspace belongs to "
+                f"project_code "
+                f"{getattr(workspace_record, 'project_code', None)!r}"
+            )
+        current_state = state
     return resolve_model_v2_staleness(
         current_state=current_state, run_binding=binding)

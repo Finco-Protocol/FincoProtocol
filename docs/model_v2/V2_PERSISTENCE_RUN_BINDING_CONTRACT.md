@@ -63,10 +63,18 @@ analytics, Last Run payloads and presentation metadata have no place here.
 
 **Identity binding.** `working_copy_ref` must equal the workspace's
 `project_code` — the working-copy identity the existing runtime semantics
-already use. Writes with a foreign ref fail closed; a read whose stored ref no
-longer matches the row (e.g. after a project code change) fails closed with
+already use. EVERY path that writes a supplied state enforces this
+(`set_workspace_model_v2_state` AND `save_workspace_state(...,
+model_v2_working_state=...)`); a foreign ref fails closed before any
+mutation. A read whose stored ref no longer matches the row fails closed with
 `MODEL_V2_WORKING_COPY_REF_MISMATCH` instead of composing another working
 copy's economics. There is no alternate project identity system.
+
+`project_code` is not contractually immutable, so a project_code change can
+never silently retain a merge-preserved payload bound to the OLD identity:
+`save_workspace_state` fails closed with
+`MODEL_V2_WORKING_COPY_REF_REBIND_REQUIRED` unless the same save explicitly
+clears the V2 payload or supplies an explicitly rebound state.
 
 ## 2. Serialization schema / version
 
@@ -79,6 +87,13 @@ copy's economics. There is no alternate project identity system.
   non-JSON-native objects, NaN/Infinity tokens and malformed numerics all
   raise `ModelV2PersistenceError` (fail closed — never guessed, never
   defaulted).
+- ENCODE SYMMETRY (Correction A): every encoder validates its input with the
+  same strict rules the decoder applies — applicability/economic flags must
+  be strict booleans (a string `"false"` is never coerced through
+  `bool()`), numerics must be finite non-bool numbers, identity/label
+  strings must be strings — so the encoder and decoder accept exactly the
+  same valid domain and this boundary can never write a payload it could
+  not read back.
 - No raw pickle, no arbitrary Python object representations.
 - **Migration seam.** A future schema change ships a new version constant and
   extends `working_state_from_payload` to accept the old and the new version
@@ -112,6 +127,11 @@ Round-trip is exact for economically authoritative data:
 - `schedule_json` (JSON-inside-JSON) and `replay_metadata` / `scalar_metadata`
   / `lineage` dicts are carried verbatim; repeated decodes never share nested
   mutable objects.
+- COST IDENTITY CONSISTENCY (Correction A): a `CostTemplateSelection` and its
+  `MaterializationPlan` must name the SAME `(template_id, version)` on encode
+  and on decode (`MODEL_V2_COST_IDENTITY_INCONSISTENT` otherwise) — a
+  structurally contradictory cost authority is never persisted merely because
+  Workflow 05 would reject it later.
 
 ## 4. Legacy absence semantics
 
@@ -152,6 +172,30 @@ replaces the Last Run evidence without touching `last_runtime_identity_json`,
 and the stale binding then refers to an OLDER run — it must never be reported
 as the provenance of the current Last Run.
 
+**Atomic V2-state CAS (Correction A).** The V2 Working Copy payload is NOT
+part of the workbook composite hash, so a concurrent V2 edit during the
+engine run would pass the legacy composite CAS silently. Inside the SAME
+`BEGIN EXCLUSIVE` transaction, whenever a binding is supplied the commit
+additionally: decodes the CURRENT persisted `model_v2_working_state_json`,
+requires it to exist and be readable, requires its `working_copy_ref` to
+match the row, and requires its `selection_digest()` to equal the binding's
+`economic_identity`. Any mismatch raises the typed
+`V2RunCommitConflictError` (`MODEL_V2_RUN_COMMIT_STALE_V2_STATE` /
+`_V2_STATE_MISSING` / `_V2_STATE_UNREADABLE`) and rolls the whole commit
+back — a run is never committed against stale V2 state.
+
+**Scenario binding (Correction A).** The binding's `scenario_id` must equal
+the scenario the commit actually persists for the Last Run — the existing
+`last_runtime_scenario_id` authority with its `active_scenario_id` fallback.
+A scenario binding on a base run, or a base binding on a scenario run, fails
+closed (`MODEL_V2_RUN_BINDING_SCENARIO_MISMATCH`, full rollback). No new
+scenario naming convention is invented.
+
+**Legacy-passthrough binding rejection (Correction A).**
+`build_run_binding_payload` fails closed on a selection-less state — a
+legacy-passthrough run is represented by the ABSENCE of a `model_v2`
+binding, never by an empty one.
+
 The relationship is therefore: Last Run → identifies the exact canonical run
 (snapshot id / composite hash / engine version) → identifies the composed V2
 input state (composition hash + economic identity) → comparable against the
@@ -173,9 +217,15 @@ CAS). Required eligibility is unchanged: composition success + engine success
 revenue bridge; invalid cost materialization; engine exception; timeout;
 validation failure; run-evidence failure; persistence failure) leaves the
 prior successful Last Run untouched. The commit itself validates the binding
-payload and its `working_copy_ref` against the row; an invalid or foreign
-binding aborts the whole transaction (rollback — no partial Last Run, no
-clearing of the old evidence). The commit never writes the V2 Working Copy
+payload, its `working_copy_ref`, its `snapshot_id`, its `scenario_id`
+against the row/commit, AND the current persisted V2 state's economic
+identity (Correction A) inside the same exclusive transaction; any of those
+checks failing aborts the whole transaction (rollback — no partial Last Run,
+no clearing of the old evidence). The complete proven failure matrix: legacy
+workbook CAS conflict, concurrent Model V2 economic edit, corrupt binding,
+foreign working_copy_ref, snapshot mismatch, scenario mismatch, and
+persistence/decode failure — after each, the prior Last Run, its identity,
+and the current Working Copy V2 state are unchanged. The commit never writes the V2 Working Copy
 payload column — promotion of draft→saved applies to the legacy snapshot
 only; V2 selections are independent Working Copy state.
 
@@ -187,7 +237,12 @@ first verifies the binding still describes the CURRENT Last Run
 (`binding["snapshot_id"] == last_runtime_snapshot_id`); if the binding
 belongs to an older run (a legacy run replaced the Last Run evidence), the
 result is `NOT_APPLICABLE` — the legacy freshness authorities govern that
-run. Only a correlated binding is compared economically.
+run. Only a correlated binding is compared economically. `current_state`
+semantics: OMITTED → the persisted payload is decoded through the canonical
+decoder (ref verified against the row, fail closed) and the answer comes
+from the PERSISTED state; explicit `None` → the selections are treated as
+removed; an explicit state is used verbatim. The omitted form and the
+explicitly decoded form always agree.
 
 The pure comparison,
 `resolve_model_v2_staleness(current_state, run_binding)`, is deterministic

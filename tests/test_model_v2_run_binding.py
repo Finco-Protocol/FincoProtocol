@@ -34,6 +34,7 @@ from app.model_v2.persistence import (
     resolve_model_v2_staleness,
     resolve_workspace_model_v2_staleness,
     working_state_from_json,
+    working_state_to_payload,
 )
 from app.persistence.db import init_db
 from app.persistence.projects_repository import save_project
@@ -84,6 +85,18 @@ def _state(ref=CODE, **plan_kwargs):
             plan=_plan(**plan_kwargs), source_ref="test"))
 
 
+
+def _real_scenario(project_id, name="Downside"):
+    """Create a REAL scenario row — last_runtime_scenario_id carries a FK to
+    scenarios(scenario_id), so scenario-binding tests must use real ids."""
+    from app.persistence.scenarios_repository import save_scenario
+    record = save_scenario(
+        user_id=USER, project_id=project_id, scenario_name=name,
+        project_code=CODE, source_project_template="generic_solar_reference",
+        snapshot={"active_project": CODE})
+    return record.scenario_id
+
+
 def _composite_hash(user_id: str, project_id: str) -> str:
     from app.workbook.registry import WORKBOOK
     from app.workbook.workbook_identity import assemble_consistent_for_get
@@ -130,6 +143,7 @@ def _run_and_commit(project_id, *, state, snapshot_id, scenario_id=None,
         financial_statements={}, debt_schedule={}, tax_schedule={},
         distribution_schedule={}, sponsor_schedule={},
         active_scenario_id=None, active_scenario_name=None,
+        last_runtime_scenario_id=scenario_id,
         ran_at=ran_at or datetime.datetime.now(datetime.timezone.utc),
         model_v2_run_binding=binding,
     ), composed
@@ -343,9 +357,10 @@ class TestScenarioDistinction:
     def test_scenario_run_binding_is_distinct_from_base_run(self, workspace):
         base_record, base_composed = _run_and_commit(
             workspace.project_id, state=_state(), snapshot_id="snap-base")
+        real_scenario = _real_scenario(workspace.project_id)
         scenario_record, scenario_composed = _run_and_commit(
             workspace.project_id, state=_state(), snapshot_id="snap-sc",
-            scenario_id="sc-9")
+            scenario_id=real_scenario)
         base_binding = read_workspace_run_binding(
             base_record.last_runtime_identity)
         scenario_binding = read_workspace_run_binding(
@@ -357,7 +372,7 @@ class TestScenarioDistinction:
             base_binding["economic_identity"]
         assert scenario_binding["composition_hash"] != \
             base_binding["composition_hash"]
-        assert scenario_binding["scenario_id"] == "sc-9"
+        assert scenario_binding["scenario_id"] == real_scenario
         assert base_binding["scenario_id"] is None
         # the base Working Copy state is never mutated by a scenario run
         assert get_workspace_model_v2_state(USER, workspace.project_id) \
@@ -621,3 +636,510 @@ class TestBindingPersistenceInterplay:
             current_state=persisted,
             run_binding=read_workspace_run_binding(record.last_runtime_identity))
         assert result.state is ModelV2RunStaleness.STALE
+
+
+# ---------------------------------------------------------------------------
+# Correction A — atomic V2 run CAS + binding / persistence integrity
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectionAAtomicRunCAS:
+    """A1: the V2 Working Copy payload is not part of the workbook
+    composite hash — a concurrent V2 edit during the engine run must fail
+    the commit INSIDE the same exclusive transaction."""
+
+    def test_concurrent_v2_edit_aborts_commit_and_preserves_everything(
+            self, workspace):
+        # Run A succeeds
+        w1 = _state()
+        record_a, _ = _run_and_commit(workspace.project_id, state=w1,
+                                      snapshot_id="snap-A")
+        # Working Copy moves to W2 while "the engine is running": a binding
+        # for W1 exists, the W2 state is persisted, and the LEGACY workbook
+        # composite hash is unchanged (the V2 payload is outside it)
+        w1_binding = build_run_binding_payload(
+            state=w1, composition_hash="a" * 64, snapshot_id="snap-B")
+        w2 = _state(merchant_price=88.0)
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id,
+                                     state=w2)
+        composite_unchanged = _composite_hash(USER, workspace.project_id)
+        with pytest.raises(V2RunCommitConflictError, match="STALE_V2_STATE"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=composite_unchanged,
+                runtime_snapshot_id="snap-B", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None,
+                ran_at=datetime.datetime.now(datetime.timezone.utc),
+                model_v2_run_binding=w1_binding,
+            )
+        # prior Last Run unchanged, identity unchanged, W2 preserved
+        record = get_workspace_state(USER, workspace.project_id)
+        assert record.last_runtime_snapshot_id == "snap-A"
+        assert record.last_runtime_identity["model_v2"]["snapshot_id"] == "snap-A"
+        assert get_workspace_model_v2_state(USER, workspace.project_id) \
+            .selection_digest() == w2.selection_digest()
+
+    def test_unreadable_v2_state_aborts_commit(self, workspace):
+        _run_and_commit(workspace.project_id, state=_state(),
+                        snapshot_id="snap-A")
+        from app.persistence.db import get_cursor
+        ws_row = get_workspace_state(USER, workspace.project_id)
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE workspace_states SET model_v2_working_state_json="
+                "'{corrupt' WHERE workspace_id=?",
+                (ws_row.workspace_id,))
+        binding = build_run_binding_payload(
+            state=_state(), composition_hash="a" * 64, snapshot_id="snap-B")
+        with pytest.raises(V2RunCommitConflictError, match="V2_STATE_UNREADABLE"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=_composite_hash(USER, workspace.project_id),
+                runtime_snapshot_id="snap-B", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None,
+                ran_at=datetime.datetime.now(datetime.timezone.utc),
+                model_v2_run_binding=binding,
+            )
+        record = get_workspace_state(USER, workspace.project_id)
+        assert record.last_runtime_snapshot_id == "snap-A"
+
+    def test_binding_without_persisted_v2_state_aborts_commit(self, workspace):
+        binding = build_run_binding_payload(
+            state=_state(), composition_hash="a" * 64, snapshot_id="snap-B")
+        with pytest.raises(V2RunCommitConflictError, match="V2_STATE_MISSING"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=_composite_hash(USER, workspace.project_id),
+                runtime_snapshot_id="snap-B", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None,
+                ran_at=datetime.datetime.now(datetime.timezone.utc),
+                model_v2_run_binding=binding,
+            )
+        assert get_workspace_state(USER, workspace.project_id) \
+            .any_run_committed is False
+
+
+class TestCorrectionAScenarioBinding:
+    """A2: the binding scenario must equal the scenario the commit actually
+    persists for the Last Run (last_runtime_scenario_id with the existing
+    active_scenario_id fallback)."""
+
+    def _commit_with(self, project_id, *, state, snapshot_id, binding_scenario,
+                     committed_scenario):
+        return v2_atomic_run_commit(
+            user_id=USER, project_id=project_id, project_code=CODE,
+            expected_composite_hash=_composite_hash(USER, project_id),
+            runtime_snapshot_id=snapshot_id, runtime_origin="v2_run",
+            runtime_summary={}, financial_statements={}, debt_schedule={},
+            tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+            active_scenario_id=None, active_scenario_name=None,
+            last_runtime_scenario_id=committed_scenario,
+            ran_at=datetime.datetime.now(datetime.timezone.utc),
+            model_v2_run_binding=build_run_binding_payload(
+                state=state, composition_hash="a" * 64,
+                snapshot_id=snapshot_id, scenario_id=binding_scenario),
+        )
+
+    def test_matching_scenario_binding_commits(self, workspace):
+        w1 = _state()
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id,
+                                     state=w1)
+        real_scenario = _real_scenario(workspace.project_id)
+        record = self._commit_with(
+            workspace.project_id, state=w1, snapshot_id="snap-sc",
+            binding_scenario=real_scenario, committed_scenario=real_scenario)
+        assert record.last_runtime_scenario_id == real_scenario
+        assert read_workspace_run_binding(
+            record.last_runtime_identity)["scenario_id"] == real_scenario
+
+    def test_scenario_binding_on_base_run_fails(self, workspace):
+        w1 = _state()
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id,
+                                     state=w1)
+        real_scenario = _real_scenario(workspace.project_id)
+        with pytest.raises(ValueError, match="SCENARIO_MISMATCH"):
+            self._commit_with(workspace.project_id, state=w1,
+                              snapshot_id="snap-x",
+                              binding_scenario=real_scenario,
+                              committed_scenario=None)
+        assert get_workspace_state(USER, workspace.project_id) \
+            .any_run_committed is False
+
+    def test_base_binding_on_scenario_run_fails(self, workspace):
+        w1 = _state()
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id,
+                                     state=w1)
+        real_scenario = _real_scenario(workspace.project_id)
+        with pytest.raises(ValueError, match="SCENARIO_MISMATCH"):
+            self._commit_with(workspace.project_id, state=w1,
+                              snapshot_id="snap-x", binding_scenario=None,
+                              committed_scenario=real_scenario)
+        assert get_workspace_state(USER, workspace.project_id) \
+            .any_run_committed is False
+
+
+class TestCorrectionAWritePathIdentity:
+    """A3: every path that writes a supplied Model V2 state enforces the
+    working-copy identity rule; a project_code change can never silently
+    retain a payload bound to the old identity."""
+
+    def test_save_workspace_state_foreign_state_fails_closed(self, workspace):
+        foreign = _state(ref="another-project")
+        from app.model_v2.persistence import ModelV2PersistenceError
+        from app.persistence.workspace_repository import save_workspace_state
+        with pytest.raises(ModelV2PersistenceError, match="REF_MISMATCH"):
+            save_workspace_state(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                draft_snapshot={}, saved_snapshot={},
+                model_v2_working_state=foreign)
+        assert get_workspace_model_v2_state(USER, workspace.project_id) is None
+
+    def test_project_code_change_requires_explicit_rebind(self, workspace):
+        from app.model_v2.persistence import ModelV2PersistenceError
+        from app.persistence.workspace_repository import save_workspace_state
+        w1 = _state()
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id, state=w1)
+        # rename without touching the V2 payload -> fail closed
+        with pytest.raises(ModelV2PersistenceError, match="REBIND_REQUIRED"):
+            save_workspace_state(
+                user_id=USER, project_id=workspace.project_id,
+                project_code="renamed-plant", draft_snapshot={}, saved_snapshot={})
+        # explicit rebind with a correctly bound state succeeds
+        save_workspace_state(
+            user_id=USER, project_id=workspace.project_id,
+            project_code="renamed-plant", draft_snapshot={}, saved_snapshot={},
+            model_v2_working_state=_state(ref="renamed-plant"))
+        assert get_workspace_model_v2_state(USER, workspace.project_id) \
+            .working_copy_ref == "renamed-plant"
+
+    def test_project_code_change_with_explicit_clear_succeeds(self, workspace):
+        from app.persistence.workspace_repository import (
+            clear_workspace_model_v2_state, save_workspace_state,
+        )
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id, state=_state())
+        clear_workspace_model_v2_state(user_id=USER,
+                                       project_id=workspace.project_id)
+        save_workspace_state(
+            user_id=USER, project_id=workspace.project_id,
+            project_code="renamed-plant", draft_snapshot={}, saved_snapshot={})
+        assert get_workspace_model_v2_state(USER, workspace.project_id) is None
+
+
+class TestCorrectionAStalenessResolver:
+    """A4: omitting current_state decodes the PERSISTED payload — the
+    resolver must answer from persisted state, never treat it as removed."""
+
+    def test_omitted_current_state_equals_explicitly_decoded(self, workspace):
+        w1 = _state()
+        _run_and_commit(workspace.project_id, state=w1, snapshot_id="snap-A")
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id,
+                                     state=_state(merchant_price=77.0))
+        record = get_workspace_state(USER, workspace.project_id)
+        omitted = resolve_workspace_model_v2_staleness(workspace_record=record)
+        explicit = resolve_workspace_model_v2_staleness(
+            workspace_record=record,
+            current_state=working_state_from_json(
+                record.model_v2_working_state_json))
+        assert omitted.state is ModelV2RunStaleness.STALE
+        assert omitted.state is explicit.state
+        assert omitted.current_economic_identity == explicit.current_economic_identity
+
+    def test_omitted_current_state_reports_current_when_unchanged(self, workspace):
+        _run_and_commit(workspace.project_id, state=_state(),
+                        snapshot_id="snap-A")
+        record = get_workspace_state(USER, workspace.project_id)
+        result = resolve_workspace_model_v2_staleness(workspace_record=record)
+        assert result.state is ModelV2RunStaleness.CURRENT
+
+    def test_explicit_none_means_removed(self, workspace):
+        _run_and_commit(workspace.project_id, state=_state(),
+                        snapshot_id="snap-A")
+        record = get_workspace_state(USER, workspace.project_id)
+        result = resolve_workspace_model_v2_staleness(
+            workspace_record=record, current_state=None)
+        assert result.state is ModelV2RunStaleness.STALE
+        assert "removed" in result.reason
+
+
+class TestCorrectionALegacyPassthroughBinding:
+    """A5: a selection-less (legacy passthrough) state can never produce a
+    V2 run binding."""
+
+    def test_empty_state_cannot_build_binding(self):
+        from app.model_v2.persistence import ModelV2PersistenceError
+        with pytest.raises(ModelV2PersistenceError, match="EMPTY_STATE"):
+            build_run_binding_payload(
+                state=ModelV2WorkingState(working_copy_ref=CODE),
+                composition_hash="a" * 64, snapshot_id="snap-1")
+
+
+class TestCorrectionAStrictEncode:
+    """A6: the encoder never coerces look-alikes and never writes a payload
+    the decoder would reject — encoder and decoder accept the same domain."""
+
+    def test_string_flag_on_stream_fails_closed_on_encode(self):
+        from app.model_v2.persistence import ModelV2PersistenceError, working_state_to_payload
+
+        stream = RevenueStream("merchant", RevenueStreamType.MERCHANT,
+                               volume_share=None,
+                               merchant=MerchantParams(merchant_enabled=True,
+                                                       base_price_eur_mwh=65.0))
+        # smuggle a non-bool flag into the frozen dataclass
+        object.__setattr__(stream, "enabled", "false")
+        with pytest.raises(ModelV2PersistenceError, match="stream.enabled"):
+            working_state_to_payload(ModelV2WorkingState(
+                working_copy_ref=CODE,
+                revenue_plan_selection=RevenuePlanSelection(
+                    plan=RevenuePlan((stream,)))))
+
+    def test_string_amount_on_sub_line_fails_closed_on_encode(self):
+        from app.model_v2.persistence import ModelV2PersistenceError, working_state_to_payload
+        from app.services.cost_template.materialize import CapexSubLinePlan
+        from app.services.model_v2_composition import CostTemplateSelection
+        from app.services.cost_template.materialize import MaterializationPlan
+
+        sub = CapexSubLinePlan(parent_category_code="C.01",
+                               business_code="C.01.U001", label="x",
+                               amount_keur="1200.0")
+        with pytest.raises(ModelV2PersistenceError, match="amount_keur"):
+            working_state_to_payload(ModelV2WorkingState(
+                working_copy_ref=CODE,
+                cost_template_selection=CostTemplateSelection(
+                    template_id="T", version=1,
+                    materialization_plan=MaterializationPlan(
+                        template_id="T", template_version=1, capex_fields=(),
+                        capex_sub_lines=(sub,), opex_items=(),
+                        opex_sub_lines=(), contingency=None))))
+
+    def test_bad_contingency_flags_and_pct_fail_on_encode(self):
+        from app.model_v2.persistence import ModelV2PersistenceError, working_state_to_payload
+        from app.services.cost_template.materialize import ContingencyPlan
+        from app.services.model_v2_composition import CostTemplateSelection
+        from app.services.cost_template.materialize import MaterializationPlan
+
+        bad = MaterializationPlan(
+            template_id="T", template_version=1, capex_fields=(),
+            capex_sub_lines=(), opex_items=(), opex_sub_lines=(),
+            contingency=ContingencyPlan(capex_pct="6.0", opex_pct=None,
+                                        capex_active="yes", opex_active=True))
+        with pytest.raises(ModelV2PersistenceError, match="contingency"):
+            working_state_to_payload(ModelV2WorkingState(
+                working_copy_ref=CODE,
+                cost_template_selection=CostTemplateSelection(
+                    template_id="T", version=1, materialization_plan=bad)))
+
+    def test_opex_sub_line_inflation_pct_fails_closed_on_encode(self):
+        from app.model_v2.persistence import ModelV2PersistenceError, working_state_to_payload
+        from app.services.cost_template.materialize import OpexSubLinePlan
+        from app.services.model_v2_composition import CostTemplateSelection
+        from app.services.cost_template.materialize import MaterializationPlan
+
+        sub = OpexSubLinePlan(parent_group_code="B.01",
+                              business_code="B.01.U001", label="x",
+                              amount_keur=10.0, inflation_pct=object())
+        with pytest.raises(ModelV2PersistenceError, match="inflation_pct"):
+            working_state_to_payload(ModelV2WorkingState(
+                working_copy_ref=CODE,
+                cost_template_selection=CostTemplateSelection(
+                    template_id="T", version=1,
+                    materialization_plan=MaterializationPlan(
+                        template_id="T", template_version=1, capex_fields=(),
+                        capex_sub_lines=(), opex_items=(),
+                        opex_sub_lines=(sub,), contingency=None))))
+
+
+class TestCorrectionACostIdentityConsistency:
+    """A7: selection identity and materialization plan identity must agree
+    at the persistence boundary — encode AND decode."""
+
+    def _mismatched_selection(self):
+        from app.services.model_v2_composition import CostTemplateSelection
+        from app.services.cost_template.materialize import MaterializationPlan
+        return CostTemplateSelection(
+            template_id="T-OTHER", version=9,
+            materialization_plan=MaterializationPlan(
+                template_id="T-COST", template_version=3, capex_fields=(),
+                capex_sub_lines=(), opex_items=(), opex_sub_lines=(),
+                contingency=None))
+
+    def test_mismatched_identity_fails_on_encode(self):
+        from app.model_v2.persistence import ModelV2PersistenceError, working_state_to_payload
+        with pytest.raises(ModelV2PersistenceError, match="COST_IDENTITY_INCONSISTENT"):
+            working_state_to_payload(ModelV2WorkingState(
+                working_copy_ref=CODE,
+                cost_template_selection=self._mismatched_selection()))
+
+    def test_mismatched_identity_fails_on_decode(self):
+        from app.model_v2.persistence import (
+            ModelV2PersistenceError, working_state_from_payload,
+            working_state_to_payload,
+        )
+        from app.services.model_v2_composition import CostTemplateSelection
+        from app.services.cost_template.materialize import MaterializationPlan
+        matched = ModelV2WorkingState(
+            working_copy_ref=CODE,
+            cost_template_selection=CostTemplateSelection(
+                template_id="T-COST", version=3,
+                materialization_plan=MaterializationPlan(
+                    template_id="T-COST", template_version=3,
+                    capex_fields=(), capex_sub_lines=(), opex_items=(),
+                    opex_sub_lines=(), contingency=None)))
+        payload = working_state_to_payload(matched)
+        payload["cost_template_selection"]["template_id"] = "T-FORGED"
+        with pytest.raises(ModelV2PersistenceError, match="COST_IDENTITY_INCONSISTENT"):
+            working_state_from_payload(payload)
+
+
+class TestCorrectionAAtomicityMatrix:
+    """Correction A §9: after Run A, every failure mode leaves the prior
+    Last Run, its identity, and the current Working Copy V2 state
+    untouched."""
+
+    def test_every_failure_mode_preserves_last_run(self, workspace):
+        w1 = _state()
+        record_a, composed_a = _run_and_commit(
+            workspace.project_id, state=w1, snapshot_id="snap-A")
+
+        def _assert_last_run_intact():
+            record = get_workspace_state(USER, workspace.project_id)
+            assert record.last_runtime_snapshot_id == "snap-A"
+            assert record.last_runtime_identity["model_v2"][
+                "composition_hash"] == composed_a.composition_hash
+            # the current Working Copy V2 state is preserved exactly as it
+            # was when the failures started (W2 — unchanged by any failure)
+            assert get_workspace_model_v2_state(USER, workspace.project_id) \
+                .selection_digest() == wc_digest_before_failures
+            return record
+
+        w2 = _state(merchant_price=80.0)
+        set_workspace_model_v2_state(user_id=USER,
+                                     project_id=workspace.project_id, state=w2)
+        wc_digest_before_failures = get_workspace_model_v2_state(
+            USER, workspace.project_id).selection_digest()
+        other_scenario = _real_scenario(workspace.project_id, "OtherCase")
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # 1. legacy workbook CAS conflict
+        with pytest.raises(V2RunCommitConflictError):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash="wrong" + "0" * 60,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=None)
+        _assert_last_run_intact()
+
+        good_hash = _composite_hash(USER, workspace.project_id)
+
+        # 2. concurrent Model V2 economic edit (binding still claims W1)
+        with pytest.raises(V2RunCommitConflictError, match="STALE_V2_STATE"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=build_run_binding_payload(
+                    state=w1, composition_hash="a" * 64, snapshot_id="snap-X"))
+        _assert_last_run_intact()
+
+        # 3. corrupt binding
+        corrupt = build_run_binding_payload(
+            state=w2, composition_hash="b" * 64, snapshot_id="snap-X")
+        corrupt["economic_identity"] = "zz"
+        with pytest.raises(ModelV2PersistenceError):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=corrupt)
+        _assert_last_run_intact()
+
+        # 4. foreign working_copy_ref
+        foreign = build_run_binding_payload(
+            state=w2, composition_hash="b" * 64, snapshot_id="snap-X")
+        foreign["working_copy_ref"] = "elsewhere"
+        with pytest.raises(ValueError, match="REF_MISMATCH"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=foreign)
+        _assert_last_run_intact()
+
+        # 5. snapshot mismatch
+        shifted = build_run_binding_payload(
+            state=w2, composition_hash="b" * 64, snapshot_id="snap-OTHER")
+        with pytest.raises(ValueError, match="SNAPSHOT_MISMATCH"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=shifted)
+        _assert_last_run_intact()
+
+        # 6. scenario mismatch (commit persists a different scenario id)
+        with pytest.raises(ValueError, match="SCENARIO_MISMATCH"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None,
+                last_runtime_scenario_id=other_scenario, ran_at=now,
+                model_v2_run_binding=build_run_binding_payload(
+                    state=w2, composition_hash="b" * 64, snapshot_id="snap-X"))
+        _assert_last_run_intact()
+
+        # 7. persistence/decode failure (corrupt persisted V2 payload)
+        from app.persistence.db import get_cursor as _gc
+        ws_row = get_workspace_state(USER, workspace.project_id)
+        with _gc() as cur:
+            cur.execute(
+                "UPDATE workspace_states SET model_v2_working_state_json="
+                "'not-json' WHERE workspace_id=?", (ws_row.workspace_id,))
+        with pytest.raises(V2RunCommitConflictError, match="V2_STATE_UNREADABLE"):
+            v2_atomic_run_commit(
+                user_id=USER, project_id=workspace.project_id, project_code=CODE,
+                expected_composite_hash=good_hash,
+                runtime_snapshot_id="snap-X", runtime_origin="v2_run",
+                runtime_summary={}, financial_statements={}, debt_schedule={},
+                tax_schedule={}, distribution_schedule={}, sponsor_schedule={},
+                active_scenario_id=None, active_scenario_name=None, ran_at=now,
+                model_v2_run_binding=build_run_binding_payload(
+                    state=w2, composition_hash="b" * 64, snapshot_id="snap-X"))
+        record = get_workspace_state(USER, workspace.project_id)
+        # prior Last Run + identity unchanged (asserted on raw identity data;
+        # decoding the corrupt V2 payload is exactly what fails closed)
+        assert record.last_runtime_snapshot_id == "snap-A"
+        assert record.last_runtime_identity["model_v2"][
+            "composition_hash"] == composed_a.composition_hash
+        # the corrupted payload itself is exactly as the failure left it
+        assert record.model_v2_working_state_json == "not-json"
