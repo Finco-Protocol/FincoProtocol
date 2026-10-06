@@ -83,3 +83,28 @@ __all__ = [
     "build_calculation_trace",
     "canonical_json",
 ]
+
+
+# Workflow 06: run-bound canonical analytics surface. Productization of
+# canonical outputs (verbatim pass-through via the Workflow 04 Calculation
+# Trace); never a calculator, never a second authority.
+from app.model_v2.canonical_analytics import (  # noqa: E402,F401
+    CANONICAL_ANALYTICS_SCHEMA_ID,
+    CANONICAL_ANALYTICS_SCHEMA_VERSION,
+    CanonicalAnalyticsSnapshot,
+    CanonicalMetric,
+    CanonicalMetricStatus,
+    MetricCategory,
+    build_canonical_analytics,
+)
+
+__all__ = [
+    *__all__,
+    "CANONICAL_ANALYTICS_SCHEMA_ID",
+    "CANONICAL_ANALYTICS_SCHEMA_VERSION",
+    "CanonicalAnalyticsSnapshot",
+    "CanonicalMetric",
+    "CanonicalMetricStatus",
+    "MetricCategory",
+    "build_canonical_analytics",
+]

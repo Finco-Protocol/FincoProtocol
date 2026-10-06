@@ -248,6 +248,11 @@ class WorkspaceStateRecord:
     last_runtime_identity: Optional[dict] = None  # decoded last_runtime_identity_json
     # H-4b: Run Integrity evidence recorded at commit ({} for Last Runs committed earlier).
     last_integrity_evidence: dict[str, Any] = field(default_factory=dict)
+    # Workflow 07: raw Model V2 Working Copy selection payload (versioned JSON
+    # typed by app.model_v2.persistence). '' = no Model V2 state (legacy
+    # absence). Decoding is lazy + fail-closed — see
+    # workspace_repository.get_workspace_model_v2_state.
+    model_v2_working_state_json: str = ""
 
     @classmethod
     def from_row(cls, row) -> "WorkspaceStateRecord":
@@ -280,6 +285,7 @@ class WorkspaceStateRecord:
             last_runtime_composite_hash=row["last_runtime_composite_hash"] if "last_runtime_composite_hash" in row.keys() else None,
             last_runtime_identity=_from_json(row["last_runtime_identity_json"] if "last_runtime_identity_json" in row.keys() else None, None),
             last_integrity_evidence=_from_json(row["last_integrity_evidence_json"] if "last_integrity_evidence_json" in row.keys() else "{}", {}),
+            model_v2_working_state_json=(row["model_v2_working_state_json"] if "model_v2_working_state_json" in row.keys() else "") or "",
         )
 
 
