@@ -34,3 +34,52 @@ __all__ = [
     "stage_value",
     "perspective_value",
 ]
+
+
+# Workflow 04: read-only observability foundations (Assumption Register and
+# Calculation Trace). Pure builders over canonical authorities; no engine,
+# persistence or Workflow 02 RevenuePlan code is modified.
+from app.model_v2.assumption_register import (  # noqa: E402,F401
+    ASSUMPTION_REGISTER_SCHEMA_ID,
+    ASSUMPTION_REGISTER_SCHEMA_VERSION,
+    AssumptionContextKind,
+    AssumptionEntry,
+    AssumptionRegister,
+    AssumptionSourceKind,
+    ContingencyAuthorityRef,
+    RegisterContext,
+    RunIdentity,
+    ValuePresence,
+    build_assumption_register,
+    canonical_json,
+)
+from app.model_v2.calculation_trace import (  # noqa: E402,F401
+    CALCULATION_TRACE_SCHEMA_ID,
+    CALCULATION_TRACE_SCHEMA_VERSION,
+    CalculationTrace,
+    TraceCompleteness,
+    TraceEntry,
+    build_calculation_trace,
+)
+
+__all__ = [
+    *__all__,
+    "ASSUMPTION_REGISTER_SCHEMA_ID",
+    "ASSUMPTION_REGISTER_SCHEMA_VERSION",
+    "AssumptionContextKind",
+    "AssumptionEntry",
+    "AssumptionRegister",
+    "AssumptionSourceKind",
+    "CALCULATION_TRACE_SCHEMA_ID",
+    "CALCULATION_TRACE_SCHEMA_VERSION",
+    "CalculationTrace",
+    "ContingencyAuthorityRef",
+    "RegisterContext",
+    "RunIdentity",
+    "TraceCompleteness",
+    "TraceEntry",
+    "ValuePresence",
+    "build_assumption_register",
+    "build_calculation_trace",
+    "canonical_json",
+]
