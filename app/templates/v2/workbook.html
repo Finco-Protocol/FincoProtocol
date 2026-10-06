@@ -61,12 +61,24 @@
     </div>
     {% endif %}
   </div>
+
+  {# ── UX Foundation: compact workspace header (UX-2) — state from the
+     canonical freshness authority; Run binds #v2-canonical-run-form. ── #}
+  {% include "partials/_model_workspace_header.html" %}
+
   {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
   <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">
     <span class="fc-value-bar-addr" id="fc-value-bar-addr" aria-label="Cell address"></span>
     <span class="fc-value-bar-sep" aria-hidden="true">›</span>
     <span class="fc-value-bar-value" id="fc-value-bar-value" aria-label="Cell value"></span>
   </div>
+
+  {# ── UX Foundation: workspace body — persistent left navigation (UX-2)
+     beside the existing sheet surface (#model-workspace-main). The nav
+     owns no economics; every available item activates an existing tab. ── #}
+  <div class="v2-workspace-body">
+  {% include "partials/_model_workspace_nav.html" %}
+  <div id="model-workspace-main" class="v2-workspace-main">
 
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
@@ -212,6 +224,12 @@
     </div>
 
   </div>{# v2-workbook-shell #}
+
+  {# ── UX Foundation: contextual Smart Panel (UX-3) — availability +
+     navigation only; links activate existing tabs. ── #}
+  {% include "partials/_model_smart_panel.html" %}
+  </div>{# model-workspace-main #}
+  </div>{# v2-workspace-body #}
 
   <script src="/static/js/workbook_v2.js"></script>
 

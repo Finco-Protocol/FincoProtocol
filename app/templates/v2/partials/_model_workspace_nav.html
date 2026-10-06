@@ -1,0 +1,54 @@
+{#
+  Persistent finance workspace navigation (UX-2 WORKSPACE SHELL).
+  Ownership: UX-2 — docs/model_v2/UX_FOUNDATION_CONTRACT.md.
+
+  Groups map onto EXISTING workbook sheet tabs only.  Items without a safe
+  current presentation seam render disabled with a truthful title — they
+  are never presented as shipped pages.  Clicking an item activates the
+  real tab (the same tab buttons as the sheet bar); the hash is kept in
+  sync for deep links where the existing architecture supports it.
+  Rendered from `ws_nav_groups` (workspace_nav_groups()).
+#}
+<nav id="model-workspace-nav" class="v2-ws-nav" aria-label="Workspace sections" data-testid="workspace-nav">
+  {% for group in ws_nav_groups %}
+  <div class="v2-ws-nav-group">
+    <div class="v2-ws-nav-group-label">{{ group.label }}</div>
+    {% for item in group.items %}
+      {% if item.available %}
+      <button type="button" class="v2-ws-nav-item" data-nav-tab="{{ item.tab_id }}"
+              data-testid="nav-{{ item.label | lower | replace(' ', '-') }}"
+              title="{{ item.label }}">{{ item.label }}</button>
+      {% else %}
+      <button type="button" class="v2-ws-nav-item v2-ws-nav-item--future" disabled
+              data-testid="nav-future-{{ item.label | lower | replace(' ', '-') }}"
+              title="{{ item.label }} — not yet available">{{ item.label }}</button>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+</nav>
+<script>
+(function () {
+  var nav = document.getElementById('model-workspace-nav');
+  if (!nav) return;
+  function activate(tabId, setHash) {
+    var tab = document.getElementById(tabId);
+    if (!tab) return;
+    tab.click();
+    if (setHash && history.replaceState) {
+      history.replaceState(null, '', '#' + tabId.replace(/^tab-/, ''));
+    }
+  }
+  nav.addEventListener('click', function (evt) {
+    var btn = evt.target.closest('[data-nav-tab]');
+    if (!btn || btn.disabled) return;
+    activate(btn.getAttribute('data-nav-tab'), true);
+  });
+  // Deep link: /v2/workbook?project=...#revenue activates Revenue on load.
+  var hash = (location.hash || '').replace(/^#/, '');
+  if (hash) {
+    var target = document.getElementById('tab-' + hash);
+    if (target) { activate('tab-' + hash, false); }
+  }
+})();
+</script>

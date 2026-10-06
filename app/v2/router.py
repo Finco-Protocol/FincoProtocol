@@ -1513,6 +1513,36 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         _rr, runtime_freshness.is_stale, pis,
         active_scenario_name=ws.active_scenario_name or "")
 
+    # UX Foundation: compact workspace header + persistent left navigation.
+    # Presentation projections only — identity comes from the same pis the
+    # overview uses; state comes from the canonical freshness authority.
+    from app.v2.workspace_shell_projection import (
+        build_workspace_header_projection,
+        workspace_nav_groups,
+    )
+    context["header"] = build_workspace_header_projection(
+        project_name=project_record.project_name or project,
+        technology=context.get("project_type", ""),
+        country_iso=getattr(context.get("overview"), "country_iso", ""),
+        capacity_mw=getattr(context.get("overview"), "capacity_mw", None),
+        project_editable=context.get("project_editable", True),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        last_runtime_at_display=context.get("last_runtime_at", "") or "",
+        active_scenario_name=context.get("active_scenario_name", "") or "",
+    )
+    context["ws_nav_groups"] = workspace_nav_groups()
+
+    # UX Foundation Phase C: contextual Smart Panel (availability +
+    # navigation over existing authorities; never an engine call).
+    from app.v2.smart_panel_projection import build_smart_panel_projection
+    context["smart_panel"] = build_smart_panel_projection(
+        trust_pack=context.get("trust_pack"),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        project_key=str(getattr(pis, "template_source", "") or ""),
+    )
+
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path
     # apply the same canonical freshness decision to scenario cards.

@@ -126,6 +126,11 @@ KPI_CATALOG: list[tuple] = [
     ("total_revenue_keur", "Total Revenue",  "kEUR", "keur",  "runtime_summary"),
     ("total_ebitda_keur",  "Total EBITDA",   "kEUR", "keur",  "runtime_summary"),
     ("total_cfads_keur",   "Total CFADS",    "kEUR", "keur",  "runtime_summary"),
+    # UX Foundation: sponsor MOIC from the persisted sponsor-schedule
+    # summary (same source family as sponsor_irr).  Pure-equity MOIC has no
+    # persisted summary seam in RuntimeResult yet — documented gap, stays
+    # typed-unavailable (never manufactured).
+    ("sponsor_moic",       "Total Sponsor MOIC", "x", "ratio", "sponsor_schedule.summary"),
     ("equity_npv_keur",    "Equity NPV",     "kEUR", "keur",  "runtime_summary"),
     ("project_npv_keur",   "Project NPV",    "kEUR", "keur",  "runtime_summary"),
 ]

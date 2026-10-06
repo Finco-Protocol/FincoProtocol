@@ -2484,3 +2484,340 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-unsupported-runtime__note { color: #9ca3af; }
   .v2-unsupported-runtime__btn--secondary { color: #d1d5db; border-color: #4b5563; }
 }
+
+/* ==========================================================================
+   UX Foundation — workspace shell (UX-2). Additive section.
+   Compact persistent header + finance-native left navigation.
+   Density-first: 32-40px nav rows, small chips, restrained cards.
+   ========================================================================== */
+
+/* Workspace body: left nav + main surface. */
+.v2-workspace-body {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+}
+
+.v2-workspace-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ── Compact project header ─────────────────────────────────────────── */
+.v2-ws-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #d1d5db;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.v2-ws-header-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.v2-ws-header-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-ws-header-meta {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.v2-ws-header-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.v2-ws-header-badge--reference {
+  border-color: #b45309;
+  color: #b45309;
+}
+
+.v2-ws-header-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.v2-ws-header-state-chip {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.v2-ws-header-state--current {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.v2-ws-header-state--stale {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.v2-ws-header-state--not_run {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.v2-ws-header-state-detail {
+  font-size: 0.8125rem;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v2-ws-header-scenario {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.v2-ws-header-actions {
+  margin-left: auto;
+}
+
+.v2-ws-header-run {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 5px;
+  border: 1px solid #111827;
+  background: #111827;
+  color: #fff;
+  cursor: pointer;
+}
+
+.v2-ws-header-run:hover {
+  background: #374151;
+}
+
+/* ── Left workspace navigation ──────────────────────────────────────── */
+.v2-ws-nav {
+  flex: 0 0 200px;
+  border-right: 1px solid #e5e7eb;
+  background: #fafafa;
+  padding: 8px 0 24px;
+  align-self: flex-start;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.v2-ws-nav-group {
+  margin-bottom: 10px;
+}
+
+.v2-ws-nav-group-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  padding: 6px 14px 4px;
+}
+
+.v2-ws-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: #111827;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  padding: 7px 14px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.v2-ws-nav-item:hover {
+  background: #f3f4f6;
+  border-left-color: #9ca3af;
+}
+
+.v2-ws-nav-item--future {
+  color: #9ca3af;
+  cursor: default;
+}
+
+.v2-ws-nav-item--future:hover {
+  background: transparent;
+  border-left-color: transparent;
+}
+
+@media (max-width: 1100px) {
+  .v2-ws-nav {
+    flex-basis: 56px;
+  }
+
+  .v2-ws-nav .v2-ws-nav-item,
+  .v2-ws-nav .v2-ws-nav-group-label {
+    font-size: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .v2-ws-nav .v2-ws-nav-item::first-letter {
+    font-size: 0.8125rem;
+  }
+}
+
+/* ── UX Foundation: overview decision groups ─────────────────────────── */
+.v2-kpi-group {
+  margin-bottom: 12px;
+}
+
+.v2-kpi-group-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+/* ── UX Foundation: Smart Panel (UX-3) ───────────────────────────────── */
+.v2-smart-panel {
+  flex: 0 0 264px;
+  border-left: 1px solid #e5e7eb;
+  background: #fafafa;
+  padding: 10px 12px 24px;
+  align-self: flex-start;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+}
+
+.v2-smart-panel-note {
+  font-size: 0.75rem;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.v2-smart-panel-note--stale {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.v2-smart-panel-note--not_run {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.v2-smart-panel-section {
+  margin-bottom: 14px;
+}
+
+.v2-smart-panel-section-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  padding: 4px 0;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 6px;
+}
+
+.v2-smart-panel-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.v2-smart-panel-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 5px 2px;
+  font-size: 0.75rem;
+}
+
+.v2-smart-panel-row-label {
+  color: #374151;
+}
+
+.v2-smart-panel-row-value {
+  font-weight: 600;
+  color: #111827;
+  text-align: right;
+}
+
+.v2-smart-panel-row-detail {
+  grid-column: 1 / -1;
+  color: #9ca3af;
+  font-size: 0.6875rem;
+}
+
+.v2-smart-panel-row--fail .v2-smart-panel-row-value {
+  color: #b91c1c;
+}
+
+.v2-smart-panel-row--warn .v2-smart-panel-row-value {
+  color: #b45309;
+}
+
+.v2-smart-panel-row--pass .v2-smart-panel-row-value {
+  color: #047857;
+}
+
+.v2-smart-panel-empty {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  padding: 4px 2px;
+}
+
+.v2-smart-panel-link {
+  font-size: 0.75rem;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.v2-smart-panel-link:hover {
+  background: #f3f4f6;
+}
+
+@media (max-width: 1280px) {
+  .v2-smart-panel {
+    position: static;
+    max-height: none;
+    flex-basis: 100%;
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+  }
+}
