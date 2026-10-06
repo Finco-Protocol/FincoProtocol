@@ -93,6 +93,8 @@ def test_landing_is_snapshot_first_and_never_streams_live_acquisition():
     assert 'snap_state === "AVAILABLE"' in js
     assert 'set_badge(row_el, snap_state)' in js
     assert 'badge.textContent = live ? "LIVE" : "UNAVAILABLE"' in js
+    assert 'presentation_source: view_row.source' in js
+    assert 'snap_data.presentation_source === "LATEST_SNAPSHOT"' in js
     assert 'snap_data.b1_0_premium' in js
     assert 'Math.abs(parseFloat(premium_a.value_bps))' in js
     # cold-start polling reads the snapshot ONLY — never live acquisition
