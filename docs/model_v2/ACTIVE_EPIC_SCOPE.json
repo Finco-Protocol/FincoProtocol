@@ -62,6 +62,7 @@
     "tests/test_model_v2_assumption_register.py",
     "tests/test_model_v2_assumption_trace_references.py",
     "tests/test_model_v2_calculation_trace.py",
+    "tests/test_model_v2_composition_correction_a.py",
     "tests/test_model_v2_cost_templates.py",
     "tests/test_model_v2_cost_templates_cb.py",
     "tests/test_model_v2_cost_templates_cc.py",

@@ -22,9 +22,11 @@ calculation authority; composition resolves inputs BEFORE engine execution.
    presence/active reconciled; contingency delegated to its authority).
 3. **RevenuePlan** (when a selection exists) — bridges engine-expressible
    streams onto canonical `RevenueParams` fields.
-4. **Scenario overrides** — recorded in the result provenance and applied
-   per the existing scenario authority for a scenario run; never persisted
-   back into the base Working Copy.
+4. **Scenario overrides** — CARRIED in the per-run composition context
+   (and recorded in the result diagnostics). Workflow 05 does NOT
+   interpret or apply their financial mathematics: the downstream
+   canonical scenario authority owns their application. They never mutate
+   the base Working Copy or the base ProjectInputs.
 
 ## Revenue bridge (fail-closed)
 
@@ -50,14 +52,35 @@ calculation authority; composition resolves inputs BEFORE engine execution.
   non-finite values → fail closed.
 - Decomposition is already reconciled by Workflow 03 (parent = sum of
   active children); the bridge applies field-level economics only.
+- **Plan identity** — the materialization plan MUST expose `template_id`
+  and `template_version`, and both must equal the selection exactly. An
+  absent or mismatched identity fails closed (`COST_TEMPLATE_UNRESOLVED`);
+  identity is never defaulted from the selection wrapper.
+- **Contingency** — the configured percentages are validated in their
+  ORIGINAL type through `app.contingency_authority.validate_pct` (bool,
+  str, NaN, ±Inf, out-of-range → `COST_TEMPLATE_VALUE_INVALID`) even when
+  the contingency is inactive; `capex_active` / `opex_active` must be
+  strict `bool`. Only after validation does an inactive contingency
+  resolve to an effective 0.0 (configured value retained in the plan); an
+  active one is applied through the existing contingency authority.
 
 ## Composition identity
 
 `composition_hash` = deterministic SHA-256 over: schema marker,
 `working_copy_ref`, the canonical RevenuePlan payload (ordered streams),
-cost template identity (template_id + version), scenario id and
-scenario overrides. Presentation-only metadata is excluded. Same state →
-same hash; any economically relevant V2 state change → different hash.
+the **economic CostTemplate materialization payload**, scenario id and
+the scenario overrides carried in the context.
+
+The economic cost payload binds exactly what the cost bridge consumes:
+template identity; per CAPEX field the canonical field identity, amount,
+y0 share, spending profile, asset class, useful-life override, depreciable
+flag and applicability; per OPEX item the canonical identity (name), Y1
+amount, inflation, step changes, percentage-of-OPEX and applicability; the
+configured contingency percentages and active flags. Configured values of
+inactive rows remain bound. Presentation-only and non-consumed metadata
+(labels, parent codes, sub-line persistence granules, contingency lineage,
+eligible-basis metadata) is excluded. Same economics → same hash; any
+economically relevant V2 state change → different hash.
 
 ## Legacy passthrough
 

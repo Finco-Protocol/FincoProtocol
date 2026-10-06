@@ -23,12 +23,15 @@ Concretely in this composition layer:
   3. an explicitly selected CostTemplate materialization is applied over
      it (cost bridge) — absent a template, existing cost state passes
      through untouched;
-  4. scenario overrides are applied last for a scenario run, into the
-     composed result only — never back into the base Working Copy.
+  4. scenario overrides are CARRIED in the per-run composition context.
+     Workflow 05 does not interpret or apply their financial mathematics;
+     the downstream canonical scenario authority owns their application,
+     and they never mutate the base Working Copy.
 
 MISSING != ZERO: absent optional V2 state is `None`, never silently zero.
 The canonical composition hash covers economically authoritative V2 state
-only (plan payload, template identity, scenario overrides, schema marker).
+only (revenue plan payload, the economic CostTemplate materialization
+payload, carried scenario context, schema marker).
 """
 from __future__ import annotations
 
@@ -160,8 +163,8 @@ class ModelV2WorkingState:
 
     def selection_digest(self) -> str:
         """Deterministic digest of the economically authoritative V2
-        selection state (plan payload, template identity + payload, schema).
-        Labels and non-economic metadata are excluded."""
+        selection state (revenue plan payload, economic cost composition
+        payload, schema). Labels and non-economic metadata are excluded."""
         payload = {"_schema": self.schema, "working_copy_ref": self.working_copy_ref}
         if self.revenue_plan_selection is not None:
             from app.services.cost_template.serialize import cost_template_to_json  # noqa: F401
@@ -170,12 +173,8 @@ class ModelV2WorkingState:
             payload["revenue_plan"] = json.loads(
                 _plan_canonical_json(plan))
         if self.cost_template_selection is not None:
-            payload["cost_template"] = {
-                "template_id": self.cost_template_selection.template_id,
-                "version": self.cost_template_selection.version,
-                "materialization_plan": _plan_payload(
-                    self.cost_template_selection.materialization_plan),
-            }
+            payload["cost_template"] = economic_cost_payload(
+                self.cost_template_selection)
         canonical = json.dumps(payload, sort_keys=True, indent=2,
                                ensure_ascii=True)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -213,6 +212,73 @@ def _plan_canonical_json(plan: Any) -> str:
     return json.dumps(doc, sort_keys=True, indent=2, ensure_ascii=True)
 
 
+def _econ_num(value: Any) -> Any:
+    """Numeric normalisation for identity: 9000 and 9000.0 are the same
+    economics. Non-numeric values (and bool) are kept verbatim so invalid
+    input can never alias a valid number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    return float(value)
+
+
+def economic_cost_payload(selection: "CostTemplateSelection") -> dict[str, Any]:
+    """Deterministic ECONOMIC payload of a CostTemplate selection
+    (Correction B, defect B3).
+
+    Binds exactly what the Workflow 05 cost bridge consumes to compose
+    canonical economics: template identity; per CAPEX field the canonical
+    field identity, amount, y0 share, spending profile, depreciation asset
+    class, useful-life override, depreciable flag and applicability; per
+    OPEX item the canonical OPEX identity (name), Y1 amount, inflation, step
+    changes, percentage-of-OPEX and applicability; the configured
+    contingency percentages and their active flags. Configured values of
+    inactive rows stay bound (latent economics reactivate exactly).
+
+    Excluded as non-economic for this composition: labels, parent codes,
+    sub-line persistence granules, contingency lineage and the eligible
+    basis metadata (the contingency authority derives its own basis).
+    """
+    plan = selection.materialization_plan
+    contingency = getattr(plan, "contingency", None)
+    return {
+        "template_id": selection.template_id,
+        "version": selection.version,
+        "capex_fields": [
+            {
+                "field_name": fp.field_name,
+                "amount_keur": _econ_num(fp.amount_keur),
+                "y0_share": _econ_num(fp.y0_share),
+                "spending_profile": [
+                    _econ_num(v) for v in (fp.spending_profile or ())],
+                "asset_class": fp.asset_class,
+                "useful_life_override": fp.useful_life_override,
+                "is_depreciable": fp.is_depreciable,
+                "is_active": fp.is_active,
+            }
+            for fp in plan.capex_fields
+        ],
+        "opex_items": [
+            {
+                "name": op.name,
+                "y1_amount_keur": _econ_num(op.y1_amount_keur),
+                "annual_inflation": _econ_num(op.annual_inflation),
+                "step_changes": [
+                    [_econ_num(year), _econ_num(amount)]
+                    for year, amount in (op.step_changes or ())],
+                "percentage_of_opex": _econ_num(op.percentage_of_opex),
+                "is_active": op.is_active,
+            }
+            for op in plan.opex_items
+        ],
+        "contingency": None if contingency is None else {
+            "capex_pct": _econ_num(getattr(contingency, "capex_pct", None)),
+            "opex_pct": _econ_num(getattr(contingency, "opex_pct", None)),
+            "capex_active": getattr(contingency, "capex_active", None),
+            "opex_active": getattr(contingency, "opex_active", None),
+        },
+    }
+
+
 def _plan_payload(materialization_plan: Any) -> Any:
     """Canonical payload for a Workflow 03 MaterializationPlan (deterministic
     tree). Dataclasses are encoded field-by-field; plain objects (e.g. test
@@ -242,8 +308,9 @@ def _plan_payload(materialization_plan: Any) -> Any:
 @dataclass(frozen=True)
 class ModelV2CompositionContext:
     """Per-run composition context. Scenario overrides ride HERE — they are
-    applied to the composed result only and never persist back into the
-    base Working Copy state (scenario isolation)."""
+    CARRIED for the downstream canonical scenario authority (composition
+    neither interprets nor applies their mathematics) and never persist back
+    into the base Working Copy state (scenario isolation)."""
 
     capacity_mw: float
     scenario_id: Optional[str] = None

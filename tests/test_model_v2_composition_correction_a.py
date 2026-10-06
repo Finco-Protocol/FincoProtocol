@@ -486,3 +486,322 @@ def test_ca_scenario_context_carried_not_applied():
     assert carried and "carried" in carried[0].detail
     assert result.context.scenario_overrides == ctx.scenario_overrides
     assert result.context.scenario_id == "S1"
+
+
+# ===========================================================================
+# CORRECTION B — fail-closed contingency types, plan identity, economic hash,
+# scenario-contract wording
+# ===========================================================================
+
+import math
+from pathlib import Path
+from types import SimpleNamespace
+
+from app.contingency_authority import apply_capex_contingency, apply_opex_contingency
+from app.services.cost_template.materialize import ContingencyPlan
+from app.services.model_v2_composition import CompositionErrorCode
+
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def _code(exc_info) -> CompositionErrorCode:
+    return exc_info.value.code
+
+
+def _selection_with_contingency(**cont_kw):
+    plan = _FakeMaterializationPlan(
+        capex_fields=(CapexFieldPlan(field_name="production_units",
+                                     parent_code="C.01", label="PV",
+                                     amount_keur=3000.0),),
+        contingency=_FakeContingencyPlan(**cont_kw))
+    return CostTemplateSelection(template_id="CLIENT_T", version=1,
+                                 materialization_plan=plan, source_ref="t")
+
+
+# ---- B1: contingency type coercion fails closed ---------------------------
+
+_BAD_PCTS = [True, False, "6", "6.0", float("nan"), float("inf"),
+             float("-inf"), -0.5, 100.5, None.__class__, [6.0]]
+
+
+@pytest.mark.parametrize("bad", _BAD_PCTS)
+def test_cb_b1_bad_capex_pct_fails_closed(bad):
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(_selection_with_contingency(capex_pct=bad),
+                      create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID
+    assert "COST_TEMPLATE_VALUE_INVALID" in str(exc.value)
+
+
+@pytest.mark.parametrize("bad", _BAD_PCTS)
+def test_cb_b1_bad_opex_pct_fails_closed(bad):
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(_selection_with_contingency(opex_pct=bad),
+                      create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID
+
+
+@pytest.mark.parametrize("kw", [
+    dict(capex_pct=True, capex_active=False),
+    dict(capex_pct="6", capex_active=False),
+    dict(capex_pct=float("nan"), capex_active=False),
+    dict(opex_pct=True, opex_active=False),
+    dict(opex_pct=float("inf"), opex_active=False),
+])
+def test_cb_b1_inactive_contingency_is_still_validated(kw):
+    """Latent economics of an INACTIVE contingency must still be valid."""
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(_selection_with_contingency(**kw),
+                      create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID
+
+
+@pytest.mark.parametrize("kw", [
+    dict(capex_pct=6.0, capex_active="false"),
+    dict(capex_pct=6.0, capex_active=1),
+    dict(capex_pct=6.0, capex_active=0),
+    dict(capex_pct=6.0, capex_active=None),
+    dict(opex_pct=2.0, opex_active=1),
+    dict(opex_pct=2.0, opex_active="true"),
+    dict(opex_pct=2.0, opex_active=None),
+])
+def test_cb_b1_non_bool_active_flags_fail_closed(kw):
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(_selection_with_contingency(**kw),
+                      create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID
+
+
+def test_cb_b1_absent_active_flag_attribute_fails_closed():
+    plan = _FakeMaterializationPlan(
+        contingency=SimpleNamespace(capex_pct=6.0, opex_pct=None,
+                                    opex_active=True))      # capex_active absent
+    selection = CostTemplateSelection(template_id="CLIENT_T", version=1,
+                                      materialization_plan=plan, source_ref="t")
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(selection, create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID
+
+
+def test_cb_b1_valid_inactive_pct_retained_zero_contribution():
+    pi = create_generic_solar_reference()
+    selection = _selection_with_contingency(capex_pct=6.0, capex_active=False,
+                                            opex_pct=2.0, opex_active=False)
+    result = _compose_cost(selection, pi)
+    assert selection.materialization_plan.contingency.capex_pct == 6.0   # retained
+    assert selection.materialization_plan.contingency.opex_pct == 2.0
+    assert result.project_inputs.capex.contingencies.amount_keur == 0.0
+    assert all(float(o.percentage_of_opex or 0.0) == 0.0
+               for o in result.project_inputs.opex
+               if o.name == "Contingency")
+
+
+def test_cb_b1_valid_active_applied_exactly_by_existing_authority():
+    pi = create_generic_solar_reference()
+    selection = _selection_with_contingency(capex_pct=6.0, opex_pct=2.0)
+    result = _compose_cost(selection, pi)
+    # Reproduce through the existing authority from the same pre-contingency inputs.
+    pre = _compose_cost(_selection_with_contingency(), pi).project_inputs
+    expected_capex = apply_capex_contingency(pre.capex, 6.0)
+    expected_opex = apply_opex_contingency(pre.opex, 2.0)
+    assert result.project_inputs.capex.contingencies.amount_keur == \
+        expected_capex.contingencies.amount_keur
+    assert result.project_inputs.opex == expected_opex
+
+
+def test_cb_b1_int_percentage_is_valid_and_exact():
+    pi = create_generic_solar_reference()
+    a = _compose_cost(_selection_with_contingency(capex_pct=6), pi)
+    b = _compose_cost(_selection_with_contingency(capex_pct=6.0), pi)
+    assert a.project_inputs.capex.contingencies.amount_keur == \
+        b.project_inputs.capex.contingencies.amount_keur
+
+
+# ---- B2: plan identity must be present and exact --------------------------
+
+def _plan_without(attr):
+    plan = _FakeMaterializationPlan()
+    delattr(plan, attr)
+    return plan
+
+
+@pytest.mark.parametrize("attr", ["template_id", "template_version"])
+def test_cb_b2_missing_plan_identity_fails_closed(attr):
+    selection = CostTemplateSelection(
+        template_id="CLIENT_T", version=1,
+        materialization_plan=_plan_without(attr), source_ref="t")
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(selection, create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_UNRESOLVED
+    assert "<absent>" in str(exc.value)
+
+
+def test_cb_b2_mismatched_plan_identity_fails_closed():
+    pi = create_generic_solar_reference()
+    for plan, sel_id, sel_ver in (
+            (_FakeMaterializationPlan(template_id="OTHER"), "CLIENT_T", 1),
+            (_FakeMaterializationPlan(version=2), "CLIENT_T", 1)):
+        selection = CostTemplateSelection(
+            template_id=sel_id, version=sel_ver, materialization_plan=plan,
+            source_ref="t")
+        with pytest.raises(CostBridgeError) as exc:
+            _compose_cost(selection, pi)
+        assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_UNRESOLVED
+
+
+def test_cb_b2_bool_plan_version_does_not_alias_integer_one():
+    plan = _FakeMaterializationPlan()
+    plan.template_version = True            # True == 1 must not satisfy identity
+    selection = CostTemplateSelection(template_id="CLIENT_T", version=1,
+                                      materialization_plan=plan, source_ref="t")
+    with pytest.raises(CostBridgeError) as exc:
+        _compose_cost(selection, create_generic_solar_reference())
+    assert _code(exc) is CompositionErrorCode.COST_TEMPLATE_UNRESOLVED
+
+
+def test_cb_b2_exact_identity_succeeds():
+    result = _compose_cost(
+        CostTemplateSelection(template_id="CLIENT_T", version=1,
+                              materialization_plan=_FakeMaterializationPlan(),
+                              source_ref="t"),
+        create_generic_solar_reference())
+    assert result.cost_template_identity == ("CLIENT_T", 1)
+
+
+# ---- B3: composition hash binds economics, not presentation ---------------
+
+def _hash_plan(*, label="PV Supply", parent_code="C.01", amount=9000.0,
+               y0=0.0, profile=(), asset_class=None, life=None,
+               depreciable=True, capex_active=True,
+               opex_name="Insurance", opex_parent="B.01", opex_amount=100.0,
+               inflation=0.01, steps=((5, 120.0),), opex_pct=0.0,
+               opex_active=True, cont_capex=6.0, cont_opex=2.0,
+               cont_capex_active=True, cont_opex_active=True,
+               lineage=None, basis=None, sub_lines=(), template_id="CLIENT_T",
+               version=1, source_ref="t", scalar_metadata=None):
+    plan = _FakeMaterializationPlan(
+        capex_fields=(CapexFieldPlan(
+            field_name="production_units", parent_code=parent_code,
+            label=label, amount_keur=amount, y0_share=y0,
+            spending_profile=profile, asset_class=asset_class,
+            useful_life_override=life, is_depreciable=depreciable,
+            is_active=capex_active),),
+        opex_items=(OpexItemPlan(
+            parent_code=opex_parent, name=opex_name, y1_amount_keur=opex_amount,
+            annual_inflation=inflation, step_changes=steps,
+            percentage_of_opex=opex_pct, is_active=opex_active),),
+        contingency=ContingencyPlan(
+            capex_pct=cont_capex, opex_pct=cont_opex,
+            eligible_capex_basis_keur=basis, lineage=lineage or {},
+            capex_active=cont_capex_active, opex_active=cont_opex_active),
+        template_id=template_id, version=version)
+    plan.capex_sub_lines = sub_lines
+    return CostTemplateSelection(template_id=template_id, version=version,
+                                 materialization_plan=plan, source_ref=source_ref)
+
+
+def _h(**kw):
+    return _compose_cost(_hash_plan(**kw),
+                         create_generic_solar_reference()).composition_hash
+
+
+def test_cb_b3_presentation_only_changes_keep_the_same_hash():
+    base = _h()
+    assert _h(label="Totally different label") == base
+    assert _h(parent_code="C.99") == base            # not consumed by composition
+    assert _h(opex_parent="B.99") == base
+    assert _h(lineage={"note": "x", "src": "y"}) == base
+    assert _h(basis=12345.0) == base                 # authority derives its own basis
+    assert _h(sub_lines=("granule",)) == base        # persistence-side only
+    assert _h(source_ref="other") == base            # lineage wrapper metadata
+    assert _h(amount=9000) == base                   # 9000 == 9000.0 economics
+
+
+@pytest.mark.parametrize("kw", [
+    dict(amount=8000.0),
+    dict(y0=0.4, profile=(0.6,)),
+    dict(profile=(0.5, 0.5)),
+    dict(asset_class="solar_panels"),
+    dict(life=20),
+    dict(depreciable=False),
+    dict(capex_active=False),
+    dict(opex_amount=101.0),
+    dict(inflation=0.02),
+    dict(steps=((5, 130.0),)),
+    dict(steps=((6, 120.0),)),
+    dict(steps=()),
+    dict(opex_pct=0.05),
+    dict(opex_active=False),
+    dict(opex_name="Other Insurance"),
+    dict(cont_capex=3.0),
+    dict(cont_opex=1.0),
+    dict(cont_capex_active=False),
+    dict(cont_opex_active=False),
+    dict(template_id="CLIENT_T2"),
+    dict(version=2),
+])
+def test_cb_b3_economic_changes_change_the_hash(kw):
+    assert _h(**kw) != _h()
+
+
+def test_cb_b3_identical_state_byte_identical_hash_and_digest():
+    pi = create_generic_solar_reference()
+    s1, s2 = _hash_plan(), _hash_plan()
+    a = compose_project_inputs(_state(cost_selection=s1),
+                               ModelV2CompositionContext(**_CTX), pi)
+    b = compose_project_inputs(_state(cost_selection=s2),
+                               ModelV2CompositionContext(**_CTX), pi)
+    assert a.composition_hash == b.composition_hash
+    assert _state(cost_selection=s1).selection_digest() == \
+        _state(cost_selection=s2).selection_digest()
+    # label-only change is invisible to BOTH identity digests
+    assert _state(cost_selection=_hash_plan(label="x")).selection_digest() == \
+        _state(cost_selection=s1).selection_digest()
+
+
+def test_cb_b3_payload_excludes_presentation_fields():
+    from app.services.model_v2_composition.contracts import economic_cost_payload
+    blob = json.dumps(economic_cost_payload(
+        _hash_plan(label="LABEL_SENTINEL", lineage={"k": "LINEAGE_SENTINEL"},
+                   sub_lines=("SUBLINE_SENTINEL",))), sort_keys=True)
+    for sentinel in ("LABEL_SENTINEL", "LINEAGE_SENTINEL", "SUBLINE_SENTINEL"):
+        assert sentinel not in blob
+    assert "production_units" in blob and "Insurance" in blob   # identities kept
+
+
+# ---- B4: scenario contract wording matches the code -----------------------
+
+_W05_FILES = (
+    "app/services/model_v2_composition/contracts.py",
+    "app/services/model_v2_composition/compose.py",
+    "app/services/model_v2_composition/__init__.py",
+    "docs/model_v2/RUNTIME_COMPOSITION_CONTRACT.md",
+)
+
+
+def test_cb_b4_no_stale_scenario_apply_wording():
+    for rel in _W05_FILES:
+        text = (_REPO / rel).read_text(encoding="utf-8").lower()
+        for stale in ("applied last", "applied to the composed",
+                      "applied to the composed result",
+                      "are applied last", "into the composed result only"):
+            assert stale not in text, (rel, stale)
+
+
+def test_cb_b4_contract_states_carried_not_applied_and_economic_hash():
+    doc = (_REPO / "docs/model_v2/RUNTIME_COMPOSITION_CONTRACT.md"
+           ).read_text(encoding="utf-8")
+    assert "CARRIED" in doc and "does NOT" in doc and "downstream" in doc
+    assert "economic CostTemplate materialization payload" in doc
+    assert "COST_TEMPLATE_UNRESOLVED" in doc and "strict" in doc
+
+
+def test_cb_b4_compose_has_no_scenario_mathematics():
+    pi = create_generic_solar_reference()
+    ctx = ModelV2CompositionContext(
+        capacity_mw=64.0, scenario_id="S1",
+        scenario_overrides={"capex.production_units.amount_keur": 1.0})
+    result = compose_project_inputs(_state(cost_selection=_hash_plan()), ctx, pi)
+    # the carried override is NOT applied: composed amount equals the plan's amount
+    assert result.project_inputs.capex.production_units.amount_keur == 9000.0
+    assert result.context.scenario_overrides == ctx.scenario_overrides

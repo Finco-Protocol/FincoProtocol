@@ -186,6 +186,39 @@ def _finite_cost(value: Any, code: CompositionErrorCode, label: str) -> float:
     return float(value)
 
 
+_ABSENT = object()
+
+
+def _strict_bool(owner: Any, attr: str, label: str) -> bool:
+    """Correction B (defect B1): applicability flags must be strict bool.
+    Truthy/falsy look-alikes ("false", 1, 0, None) and absent attributes
+    fail closed instead of being interpreted."""
+    value = getattr(owner, attr, _ABSENT)
+    if not isinstance(value, bool):
+        raise CostBridgeError(
+            CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+            f"{label} must be a strict bool, got "
+            f"{'<absent>' if value is _ABSENT else repr(value)}")
+    return value
+
+
+def _validated_contingency_pct(raw: Any, label: str) -> Optional[float]:
+    """Correction B (defect B1): validate the configured contingency
+    percentage in its ORIGINAL type through the existing contingency
+    authority (bool / str / NaN / Inf / out-of-range are rejected). None
+    means "no configured percentage" and is never invented."""
+    if raw is None:
+        return None
+    from app.contingency_authority import validate_pct
+
+    try:
+        return validate_pct(raw)
+    except ValueError as exc:
+        raise CostBridgeError(
+            CompositionErrorCode.COST_TEMPLATE_VALUE_INVALID,
+            f"{label}: {exc}; got {raw!r}") from None
+
+
 def _capex_opex_from_cost_template(
     selection: CostTemplateSelection,
     base_inputs: Any,
@@ -216,22 +249,45 @@ def _capex_opex_from_cost_template(
 
     plan = selection.materialization_plan
 
-    # Correction A (defect C guard): lineage identity must match the plan
-    # being applied.
-    if getattr(plan, "template_id", selection.template_id) != selection.template_id:
+    # Correction B (defect B2): lineage identity must be PRESENT on the plan
+    # and match the selection exactly. An absent plan identity never
+    # defaults from the selection wrapper (fail closed).
+    plan_template_id = getattr(plan, "template_id", _ABSENT)
+    if not isinstance(plan_template_id, str) \
+            or plan_template_id != selection.template_id:
         raise CostBridgeError(
             CompositionErrorCode.COST_TEMPLATE_UNRESOLVED,
             f"selection template_id {selection.template_id!r} does not match "
             f"the materialization plan identity "
-            f"{getattr(plan, 'template_id', None)!r}"
+            f"{'<absent>' if plan_template_id is _ABSENT else repr(plan_template_id)}"
         )
-    if getattr(plan, "template_version", selection.version) != selection.version:
+    plan_template_version = getattr(plan, "template_version", _ABSENT)
+    if isinstance(plan_template_version, bool) \
+            or not isinstance(plan_template_version, int) \
+            or plan_template_version != selection.version:
         raise CostBridgeError(
             CompositionErrorCode.COST_TEMPLATE_UNRESOLVED,
             f"selection version {selection.version!r} does not match the "
             f"materialization plan version "
-            f"{getattr(plan, 'template_version', None)!r}"
+            f"{'<absent>' if plan_template_version is _ABSENT else repr(plan_template_version)}"
         )
+
+    # Correction B (defect B1): validate the configured contingency BEFORE
+    # any economics are composed, in the ORIGINAL types, even when the
+    # contingency is inactive (latent economics must still be valid).
+    contingency = plan.contingency
+    capex_pct: Optional[float] = None
+    opex_pct: Optional[float] = None
+    capex_active = opex_active = True
+    if contingency is not None:
+        capex_pct = _validated_contingency_pct(
+            getattr(contingency, "capex_pct", None), "contingency.capex_pct")
+        opex_pct = _validated_contingency_pct(
+            getattr(contingency, "opex_pct", None), "contingency.opex_pct")
+        capex_active = _strict_bool(
+            contingency, "capex_active", "contingency.capex_active")
+        opex_active = _strict_bool(
+            contingency, "opex_active", "contingency.opex_active")
 
     capex = base_inputs.capex
     opex = base_inputs.opex
@@ -297,15 +353,14 @@ def _capex_opex_from_cost_template(
     # validation, eligible basis, percentage-to-amount materialization).
     # INACTIVE contingency retains the configured percentage in the plan and
     # contributes zero here (explicit 0.0 application, not MISSING).
-    if plan.contingency is not None and plan.contingency.capex_pct is not None:
-        cont = plan.contingency
+    if capex_pct is not None:
         capex = apply_capex_contingency(
-            capex, float(cont.capex_pct) if cont.capex_active else 0.0)
+            capex, capex_pct if capex_active else 0.0)
         diag.append(CompositionDiagnostic(
             layer="cost_template",
             detail=(
                 "CAPEX contingency authority applied: "
-                f"{cont.capex_pct}% (active={cont.capex_active})"),
+                f"{capex_pct}% (active={capex_active})"),
             source_ref=f"{selection.template_id} v{selection.version}",
         ))
 
@@ -435,15 +490,14 @@ def _capex_opex_from_cost_template(
         ))
 
     # Correction A (defect B): OPEX contingency authority (same boundaries).
-    if plan.contingency is not None and plan.contingency.opex_pct is not None:
-        cont = plan.contingency
+    if opex_pct is not None:
         opex = apply_opex_contingency(
-            opex, float(cont.opex_pct) if cont.opex_active else 0.0)
+            opex, opex_pct if opex_active else 0.0)
         diag.append(CompositionDiagnostic(
             layer="cost_template",
             detail=(
                 "OPEX contingency authority applied: "
-                f"{cont.opex_pct}% (active={cont.opex_active})"),
+                f"{opex_pct}% (active={opex_active})"),
             source_ref=f"{selection.template_id} v{selection.version}",
         ))
 
@@ -469,8 +523,10 @@ def _composition_hash(
     context: ModelV2CompositionContext,
 ) -> str:
     """Deterministic SHA-256 over economically authoritative V2 state:
-    plan payload, cost template identity + payload, scenario overrides,
-    schema marker. Presentation-only metadata is excluded."""
+    revenue plan payload, the ECONOMIC cost composition payload (template
+    identity + the values the cost bridge actually consumes), scenario
+    context carried for the downstream authority, schema marker.
+    Presentation-only metadata is excluded."""
     payload: dict[str, Any] = {
         "_schema": MODEL_V2_COMPOSITION_SCHEMA,
         "working_copy_ref": state.working_copy_ref,
@@ -487,17 +543,15 @@ def _composition_hash(
             state.selection_digest() and _selection_plan_json(
                 state.revenue_plan_selection.plan))
     if state.cost_template_selection is not None:
-        # Correction A (defect C): the materialization plan is economically
-        # authoritative — bind its full payload (amounts, applicability,
-        # contingency, rescaled values), not just the identity.
-        from app.services.model_v2_composition.contracts import _plan_payload
+        # Correction B (defect B3): bind the ECONOMIC cost composition
+        # payload only (what Workflow 05 actually consumes); labels, parent
+        # codes, sub-line granules, lineage and basis metadata are excluded.
+        from app.services.model_v2_composition.contracts import (
+            economic_cost_payload,
+        )
 
-        payload["cost_template"] = {
-            "template_id": state.cost_template_selection.template_id,
-            "version": state.cost_template_selection.version,
-            "materialization_plan": _plan_payload(
-                state.cost_template_selection.materialization_plan),
-        }
+        payload["cost_template"] = economic_cost_payload(
+            state.cost_template_selection)
     canonical = json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
