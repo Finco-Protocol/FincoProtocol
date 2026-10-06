@@ -1,5 +1,5 @@
 """Network-free V2 admission, exact binding and read-surface regressions."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -8,7 +8,8 @@ import pytest
 from app.api.v1_1 import institutional
 from app.api.v1_1 import router as api_router
 from app.radar_rwa.bnb_history import BnbIntelligenceHistoryStore, read_r_live_points_readonly
-from app.radar_rwa.r_live_service import compose_r_live, read_r_live_history
+from app.radar_rwa.r_live_service import (compose_r_live, format_r_live_result,
+                                          read_last_canonical_r_live, read_r_live_history)
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.contracts import AssetKey
 from finco_radar.authority.contracts import AuthorityState
@@ -282,3 +283,119 @@ def test_generic_b1_premium_and_b13_idempotent_available_only():
         assert payload["b1_0_premium"]["value_bps"] is None
     finally:
         ledger.close()
+
+
+
+def _persist_one_canonical_snapshot(path, policy, *, basis_price="100"):
+    basis = BoundReferencePrice(
+        asset_uid=policy.economic_asset_uid, asset_key=policy.asset_key, symbol=policy.symbol,
+        raw_bid_usd_per_share=Decimal(basis_price),
+        raw_ask_usd_per_share=Decimal(basis_price),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME - 10, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+    ledger = BnbIntelligenceHistoryStore(str(path), allowed_chain_id=4663)
+    clock = datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc)
+    result = compose_r_live(
+        registry=_registry(policy), underlying=basis, rpc=ReviewedPoolRpc(policy),
+        as_of=clock, history=ledger, key=policy.asset_key,
+    )
+    assert result.history_digest is not None
+    ledger.close()
+    return result
+
+
+@pytest.mark.parametrize("age", [timedelta(minutes=20), timedelta(hours=6)])
+def test_last_canonical_price_remains_available_with_true_age_and_no_restamp(
+        tmp_path, monkeypatch, age):
+    policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    path = tmp_path / "history.db"
+    fresh = _persist_one_canonical_snapshot(path, policy)
+    original = fresh.onchain.observed_at.isoformat()
+    monkeypatch.setenv("RADAR_BNB_INTELLIGENCE_DB_PATH", str(path))
+
+    before = read_r_live_points_readonly(
+        policy.economic_asset_uid, policy.asset_key, path=str(path))
+    state, data = read_last_canonical_r_live(
+        policy.asset_key.canonical_id,
+        as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc) + age,
+    )
+    after = read_r_live_points_readonly(
+        policy.economic_asset_uid, policy.asset_key, path=str(path))
+
+    assert state == "AVAILABLE"
+    assert data["token_reference"]["price_usd_per_token"] is not None
+    assert data["token_reference"]["observed_at"] == original
+    assert data["observed_at"] == original
+    expected = int(age.total_seconds()) + 1
+    assert data["freshness"]["market_activity_age_seconds"] == expected
+    assert before == after
+    assert len(after) == 1
+
+
+def test_stale_acquisition_falls_back_to_same_historical_snapshot_not_fresh_basis(
+        tmp_path, monkeypatch):
+    policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    path = tmp_path / "history.db"
+    _persist_one_canonical_snapshot(path, policy, basis_price="100")
+    monkeypatch.setenv("RADAR_BNB_INTELLIGENCE_DB_PATH", str(path))
+
+    fresh_but_different_basis = BoundReferencePrice(
+        asset_uid=policy.economic_asset_uid, asset_key=policy.asset_key, symbol=policy.symbol,
+        raw_bid_usd_per_share=Decimal("200"), raw_ask_usd_per_share=Decimal("200"),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME + 1190, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+    current_clock = datetime.fromtimestamp(BLOCK_TIME + 1200, timezone.utc)
+    stale = compose_r_live(
+        registry=_registry(policy), underlying=fresh_but_different_basis,
+        rpc=ReviewedPoolRpc(policy, activity_age_seconds=301),
+        as_of=current_clock, history=None, key=policy.asset_key,
+    )
+    assert stale.onchain.state is AuthorityState.STALE
+
+    state, data = format_r_live_result(policy.asset_key.canonical_id, stale)
+    assert state == "AVAILABLE"
+    assert data["robinhood_basis"]["price_usd_per_token"] == "100"
+    assert data["b1_0_premium"]["value_bps"] is not None
+    assert data["robinhood_basis"]["observed_at"] == datetime.fromtimestamp(
+        BLOCK_TIME - 10, timezone.utc).isoformat()
+    assert data["freshness"]["market_activity_age_seconds"] == 1200
+
+
+def test_no_canonical_history_keeps_stale_result_unavailable_to_product_number(
+        tmp_path, monkeypatch):
+    policy = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    monkeypatch.setenv("RADAR_BNB_INTELLIGENCE_DB_PATH", str(tmp_path / "missing.db"))
+    basis = BoundReferencePrice(
+        asset_uid=policy.economic_asset_uid, asset_key=policy.asset_key, symbol=policy.symbol,
+        raw_bid_usd_per_share=Decimal("100"), raw_ask_usd_per_share=Decimal("100"),
+        current_multiplier=Decimal("1"), currency="USD",
+        generated_at=datetime.fromtimestamp(BLOCK_TIME - 10, timezone.utc),
+        is_trading_halt=False, source="ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+    )
+    stale = compose_r_live(
+        registry=_registry(policy), underlying=basis,
+        rpc=ReviewedPoolRpc(policy, activity_age_seconds=301),
+        as_of=datetime.fromtimestamp(BLOCK_TIME + 1, timezone.utc),
+        history=None, key=policy.asset_key,
+    )
+    state, data = format_r_live_result(policy.asset_key.canonical_id, stale)
+    assert state == "STALE"
+    assert data["token_reference"]["price_usd_per_token"] is None
+    assert not (tmp_path / "missing.db").exists()
+
+
+def test_last_canonical_lookup_never_crosses_exact_asset_identity(tmp_path, monkeypatch):
+    nvda = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "NVDA")
+    aapl = next(p for p in APPROVED_RLIVE_ASSETS.values() if p.symbol == "AAPL")
+    path = tmp_path / "history.db"
+    _persist_one_canonical_snapshot(path, aapl)
+    monkeypatch.setenv("RADAR_BNB_INTELLIGENCE_DB_PATH", str(path))
+
+    assert read_last_canonical_r_live(nvda.asset_key.canonical_id) is None
+    state, data = read_last_canonical_r_live(aapl.asset_key.canonical_id)
+    assert state == "AVAILABLE"
+    assert data["exact_asset_key"]["canonical_id"] == aapl.asset_key.canonical_id
