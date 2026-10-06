@@ -3,7 +3,7 @@
   "branch": "epic/model-saas-v2",
   "base_sha": "2f963a77bbad7bda23ca5bac5d6efbe9a11d2b0b",
   "status": "ACTIVE",
-  "retirement": "ACTIVE only while epic/model-saas-v2 is under development. Before the final epic-to-main release merge the marker must be DELETED, or its status set to RETIRED — both paths pass the retirement gate; an ACTIVE marker at the main tip fails it (tests/test_model_v2_governance.py::test_active_epic_scope_must_not_reach_main, MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE).",
+  "retirement": "ACTIVE only while epic/model-saas-v2 is under development. Before the final epic-to-main release merge the marker must be DELETED, or its status set to RETIRED \u2014 both paths pass the retirement gate; an ACTIVE marker at the main tip fails it (tests/test_model_v2_governance.py::test_active_epic_scope_must_not_reach_main, MODEL_V2_EPIC_SCOPE_MARKER_RETIREMENT_GATE).",
   "permanent_hard_deny_prefixes": [
     "finco_radar/",
     "finco_yield/",
