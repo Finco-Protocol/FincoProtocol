@@ -102,16 +102,32 @@ def test_above_capacity_fails_fast_typed_busy_with_no_queue(mode):
 
 def test_no_unbounded_queue_exactly_capacity_is_admitted():
     executor = make(2, "thread")
+    helpers.RELEASE.clear()
 
     async def go():
-        tasks = [asyncio.create_task(executor.run_process(helpers.spin, 0.8)) for _ in range(6)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return results
+        occupants = [
+            asyncio.create_task(executor.run_process(helpers.hold_until_released))
+            for _ in range(2)
+        ]
+        try:
+            deadline = time.monotonic() + 5
+            while executor.stats()["active"] != 2 and time.monotonic() < deadline:
+                await asyncio.sleep(0.01)
+            assert executor.stats()["active"] == 2
 
-    results = asyncio.run(go())
-    assert sum(isinstance(r, ModelExecutionBusy) for r in results) == 4
-    assert sum(isinstance(r, int) for r in results) == 2
-    assert executor.stats()["active"] == 0
+            for _ in range(4):
+                with pytest.raises(ModelExecutionBusy):
+                    await executor.run_process(helpers.add, 1, 1)
+        finally:
+            helpers.RELEASE.set()
+            await asyncio.gather(*occupants)
+
+    asyncio.run(go())
+    stats = executor.stats()
+    assert stats["admitted"] == 2
+    assert stats["busy_rejected"] == 4
+    assert stats["completed"] == 2
+    assert stats["active"] == 0
 
 
 def test_busy_error_exposes_no_internals():
