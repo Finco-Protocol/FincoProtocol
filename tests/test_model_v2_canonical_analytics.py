@@ -508,3 +508,63 @@ def test_a4_metric_manifest_is_canonical(solar):
     assert CanonicalAnalyticsSnapshot.from_dict(payload).to_json() == (
         snapshot.to_json()
     )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION B: version proof for auto-built traces + strict value types
+# ---------------------------------------------------------------------------
+
+
+def test_b1_auto_built_trace_version_proof(solar):
+    """CORRECTION B1: the version invariant also binds auto-built traces.
+
+    A syntactically complete RunIdentity that lies about engine/workbook
+    versions must fail closed even when no trace is supplied (the
+    auto-built canonical trace carries the true repository versions).
+    """
+    _, run, _snapshot = solar
+    rogue_engine = RunIdentity(
+        snapshot_id="B1-E", composite_hash="h1",
+        workbook_version="2.3.0", engine_version="engine-rogue-v9",
+    )
+    with pytest.raises(ValueError, match="ANALYTICS_TRACE_VERSION_MISMATCH"):
+        build_canonical_analytics(run, run_identity=rogue_engine)
+    rogue_workbook = RunIdentity(
+        snapshot_id="B1-W", composite_hash="h2",
+        workbook_version="9.9.9-rogue", engine_version="clean_senior_debt_v0",
+    )
+    with pytest.raises(ValueError, match="ANALYTICS_TRACE_VERSION_MISMATCH"):
+        build_canonical_analytics(run, run_identity=rogue_workbook)
+    # truthful identity + auto-built trace succeeds
+    honest = RunIdentity(
+        snapshot_id="B1-OK", composite_hash="h3",
+        workbook_version="2.3.0", engine_version="clean_senior_debt_v0",
+    )
+    snapshot = build_canonical_analytics(run, run_identity=honest)
+    assert snapshot.engine_version == "clean_senior_debt_v0"
+    assert snapshot.workbook_version == "2.3.0"
+
+
+def test_b2_metric_values_strict_numeric_or_null(solar):
+    """CORRECTION B2: AVAILABLE values are strict numbers or null."""
+    _, _, snapshot = solar
+    payload = snapshot.to_dict()
+
+    def with_value(metric_id, value):
+        forged = [dict(m) for m in payload["metrics"]]
+        target = next(m for m in forged if m["metric_id"] == metric_id)
+        target["value"] = value
+        return CanonicalAnalyticsSnapshot.from_dict(
+            {**payload, "metrics": forged}
+        )
+
+    senior = "senior_debt_keur"
+    for bad in ("12.3", [], {}, {"v": 1}):
+        with pytest.raises(ValueError, match="ANALYTICS_VALUE_TYPE_INVALID"):
+            with_value(senior, bad)
+    # strict numbers succeed, including a legitimate economic 0.0
+    assert with_value(senior, 27000).metric(senior).value == 27000
+    assert with_value(senior, 26983.33).metric(senior).value == 26983.33
+    zero = with_value(senior, 0.0)
+    assert zero.metric(senior).value == 0.0
+    assert zero.metric(senior).status is CanonicalMetricStatus.AVAILABLE

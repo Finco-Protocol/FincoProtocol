@@ -329,16 +329,19 @@ def build_canonical_analytics(clean_run, *, run_identity, trace=None,
                 "ANALYTICS_TRACE_IDENTITY_MISMATCH: supplied trace was built "
                 "for a different run identity; refusing to mix lineages."
             )
-        if trace.engine_version != run_identity.engine_version \
-                or trace.workbook_version != run_identity.workbook_version:
-            raise ValueError(
-                "ANALYTICS_TRACE_VERSION_MISMATCH: supplied trace carries "
-                f"engine/workbook versions {trace.engine_version!r}/"
-                f"{trace.workbook_version!r} which contradict the run "
-                f"identity's {run_identity.engine_version!r}/"
-                f"{run_identity.workbook_version!r}; refusing contradictory "
-                "version metadata."
-            )
+    # Shared invariant (Correction B1): applies whether the trace was
+    # supplied or auto-built - the run identity's declared versions must be
+    # the versions the trace (and therefore the metrics) actually carry.
+    if trace.engine_version != run_identity.engine_version \
+            or trace.workbook_version != run_identity.workbook_version:
+        raise ValueError(
+            "ANALYTICS_TRACE_VERSION_MISMATCH: trace carries "
+            f"engine/workbook versions {trace.engine_version!r}/"
+            f"{trace.workbook_version!r} which contradict the run "
+            f"identity's {run_identity.engine_version!r}/"
+            f"{run_identity.workbook_version!r}; refusing contradictory "
+            "version metadata."
+        )
     entries = []
     for metric_id, category, unit in _TRACE_BACKED_METRICS:
         entries.append(_metric_from_trace_entry(trace.entry(metric_id),
@@ -562,15 +565,24 @@ def _metric_from_dict(item):
             f"ANALYTICS_METRIC_INVALID: {item['metric_id']!r} is AVAILABLE "
             "without a value."
         )
-    if isinstance(value, bool):
-        raise ValueError(
-            f"ANALYTICS_VALUE_TYPE_INVALID: {item['metric_id']!r} carries a "
-            "bool; metric values are numbers or null."
-        )
-    if isinstance(value, float) and (
-        value != value or value in (float("inf"), float("-inf"))
-    ):
-        raise ValueError(f"ANALYTICS_VALUE_NOT_FINITE: {item['metric_id']!r}")
+    if value is not None:
+        if isinstance(value, bool):
+            raise ValueError(
+                f"ANALYTICS_VALUE_TYPE_INVALID: {item['metric_id']!r} carries "
+                "a bool; metric values are numbers or null."
+            )
+        if not isinstance(value, (int, float)):
+            raise ValueError(
+                f"ANALYTICS_VALUE_TYPE_INVALID: {item['metric_id']!r} carries "
+                f"{type(value).__name__}; metric values are strict numbers "
+                "or null (Correction B2)."
+            )
+        if isinstance(value, float) and (
+            value != value or value in (float("inf"), float("-inf"))
+        ):
+            raise ValueError(
+                f"ANALYTICS_VALUE_NOT_FINITE: {item['metric_id']!r}"
+            )
     return CanonicalMetric(
         metric_id=item["metric_id"],
         category=item["category"],
