@@ -643,6 +643,23 @@ class TestSeams:
                            match="RUNTIME_PPA_BALANCING_SEAM_MISSING"):
             _compose(plan)
 
+    def test_ppa_imbalance_penalty_semantic_mismatch_fails_closed(self):
+        """A non-zero imbalance penalty shares the same PPA-only deduction
+        basis mismatch and must never be mapped to merchant balancing."""
+        plan = RevenuePlan.create((
+            RevenueStream("ppa", RevenueStreamType.PPA, volume_share=1.0,
+                          ppa=PPAParams(ppa_enabled=True,
+                                        ppa_base_price_eur_mwh=57.0,
+                                        balancing_cost_pct=0.0,
+                                        imbalance_penalty_pct=0.01)),
+            RevenueStream("m", RevenueStreamType.MERCHANT, volume_share=None,
+                          merchant=MerchantParams(merchant_enabled=True,
+                                                  base_price_eur_mwh=65.0)),
+        ))
+        with pytest.raises(RevenuePlanBridgeError,
+                           match="RUNTIME_PPA_BALANCING_SEAM_MISSING"):
+            _compose(plan)
+
 
 # ---------------------------------------------------------------------------
 # Correction B — merchant count / lifecycle / allocation, PPA floor/cap

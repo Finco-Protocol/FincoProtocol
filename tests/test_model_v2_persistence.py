@@ -151,6 +151,30 @@ def _plan_ppa_merchant():
     ))
 
 
+def _plan_ppa_merchant_runtime_compatible():
+    """Full PPA+merchant economics with only unavailable runtime seams zeroed.
+
+    The rich _ppa() fixture remains unchanged for persistence/serialization
+    coverage. This helper is reserved for tests that must successfully cross
+    the Workflow 05B production composition boundary.
+    """
+    return RevenuePlan.create((
+        RevenueStream(
+            "ppa", RevenueStreamType.PPA, volume_share=0.7,
+            ppa=_ppa(
+                ppa_price_floor=0.0,
+                ppa_price_cap=0.0,
+                balancing_cost_pct=0.0,
+                imbalance_penalty_pct=0.0,
+            ),
+            term_years=15,
+            counterparty="Utility Co",
+        ),
+        RevenueStream("merchant", RevenueStreamType.MERCHANT,
+                      volume_share=None, merchant=_merchant()),
+    ))
+
+
 def _cost_plan(**contingency_over):
     contingency = None
     if contingency_over.get("present", True):
@@ -654,9 +678,30 @@ class TestIdentityStability:
             template_id=template.template_id, version=template.version,
             materialization_plan=real_plan, source_ref="generic")
 
-        state = _state(_plan_ppa_merchant(), cost_selection=real_selection)
+        state = _state(
+            _plan_ppa_merchant_runtime_compatible(),
+            cost_selection=real_selection,
+        )
         context = ModelV2CompositionContext(capacity_mw=64.0)
+
+        # Preserve the fixture's economically meaningful 15-year tariff term.
+        # Generic Solar's normal COD (1 March) makes that term anniversary fall
+        # inside a semestrial runtime period, which is a separate fail-closed
+        # seam unrelated to persistence identity. Align only this composition
+        # fixture's period axis so the unchanged 15-year term is expressible.
+        import datetime
+        from dataclasses import replace
+
         base = create_generic_solar_reference()
+        base = replace(
+            base,
+            info=replace(
+                base.info,
+                financial_close=datetime.date(2029, 12, 31),
+                construction_months=12,
+                cod_date=datetime.date(2030, 12, 31),
+            ),
+        )
         before = compose_project_inputs(state, context, base)
 
         restored = working_state_from_json(working_state_to_json(state))
