@@ -602,13 +602,18 @@
       })
       .then(function(env) {
         var state = (env && env.state || "UNAVAILABLE").toUpperCase();
-        // Observation timestamps inside env.data remain authoritative; a
-        // completed request never rewrites them into "new" data.
-        populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION");
-        set_status(state === "AVAILABLE"
-          ? "Live observation acquired · timestamps above are canonical."
-          : "Live request completed — canonical state is " + state
-            + ". Previous values were never overwritten.");
+        // A raw acquisition result is NOT the product last-price read model.
+        // Render it directly only when it is genuinely AVAILABLE. If it is
+        // STALE/UNAVAILABLE, preserve the existing canonical display and
+        // re-read the snapshot endpoint, which applies last-canonical fallback.
+        if (state === "AVAILABLE") {
+          populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION");
+          set_status("Live observation acquired · timestamps above are canonical.");
+          return refresh_snapshot();
+        }
+        set_status("Live request completed — no new fresh observation. "
+          + "Keeping the latest canonical on-chain price.");
+        return refresh_snapshot();
       })
       .catch(function(err) {
         // Fail closed: the prior canonical render stays exactly as it was.
