@@ -8,6 +8,9 @@ import sqlite3
 import pytest
 
 import app.radar_rwa.r_live_service as service
+import app.radar_rwa.tokenized_collect as tokenized_collect
+from finco_radar.venues.store import VenueMarketStore
+from tests.test_tokenized_markets_composition import _entry, _registry as _venue_registry
 from app.radar_rwa.robinhood_registry_snapshot_store import RobinhoodRegistrySnapshotStore
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.registry import RegistrySnapshot
@@ -609,6 +612,272 @@ def test_batch_sibling_failure_remains_isolated_after_shared_selection(monkeypat
     assert by_id[AAPL.asset_key.canonical_id] == "AVAILABLE"
     assert adapter.fetch_calls == 1
     assert store.reads == 1
+
+
+class _OperationalClock:
+    @classmethod
+    def now(cls, tz=None):
+        value = T0 + timedelta(seconds=2)
+        return value if tz is None else value.astimezone(tz)
+
+
+def test_single_normal_runtime_uses_post_fetch_authority_clock(monkeypatch):
+    live = _snapshot(NVDA, observed_at=T0 + timedelta(seconds=1))
+    adapter = _FakeAdapter(live=live)
+    store = _CountingStore()
+    captured = []
+    _patch_single(monkeypatch, adapter, captured)
+    monkeypatch.setattr(service, "datetime", _OperationalClock)
+
+    result = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=None,
+        registry_store=store,
+    )
+
+    assert result["registry"] is live
+    assert result["as_of"] == T0 + timedelta(seconds=2)
+    assert store.writes == 1
+    assert store.written is live
+    assert live.observed_at == T0 + timedelta(seconds=1)
+
+
+def test_single_explicit_historical_clock_still_rejects_future_live(monkeypatch):
+    live = _snapshot(NVDA, observed_at=T0 + timedelta(seconds=1))
+    adapter = _FakeAdapter(live=live)
+    store = _CountingStore()
+    captured = []
+    _patch_single(monkeypatch, adapter, captured)
+    monkeypatch.setattr(service, "datetime", _OperationalClock)
+
+    result = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=T0,
+        registry_store=store,
+    )
+
+    assert result["registry"] is None
+    assert result["as_of"] == T0
+    assert store.writes == 0
+
+
+def test_tokenized_normal_runtime_hands_none_to_real_batch_and_bootstraps_store(
+        tmp_path, monkeypatch):
+    live = _snapshot(NVDA, observed_at=T0 + timedelta(seconds=1))
+    adapter = _FakeAdapter(live=live)
+    snapshot_store = RobinhoodRegistrySnapshotStore(str(tmp_path / "registry.db"))
+    market_store = VenueMarketStore(tmp_path / "market.db")
+    venue_registry = _venue_registry([_entry()])
+    provider_as_of = []
+
+    monkeypatch.setattr(service, "RobinhoodAssetRegistryAdapter", lambda: adapter)
+    monkeypatch.setattr(service, "datetime", _OperationalClock)
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr(service, "JsonRpc", _FakeRpc)
+    monkeypatch.setattr(service, "compose_r_live", lambda **kwargs: kwargs["registry"])
+    monkeypatch.setattr(
+        service,
+        "format_r_live_result",
+        lambda canonical_id, result: (
+            "AVAILABLE",
+            {
+                "exact_asset_key": {
+                    "canonical_id": canonical_id,
+                    "chain_id": NVDA.asset_key.chain_id,
+                    "contract_address": NVDA.asset_key.contract_address,
+                },
+                "economic_asset_uid": NVDA.economic_asset_uid,
+                "token_reference": {
+                    "state": "AVAILABLE",
+                    "price_usd_per_token": "102",
+                    "source": "UNISWAP_V3_TWAP_CHAINLINK_USDG_USD",
+                    "observed_at": T0.isoformat(),
+                    "reason": None,
+                },
+                "robinhood_basis": {
+                    "state": "AVAILABLE",
+                    "price_usd_per_token": "100",
+                    "source": "ROBINHOOD_STOCK_TOKEN_BOUND_PRICE",
+                    "observed_at": T0.isoformat(),
+                    "reason": None,
+                },
+                "b1_0_premium": {
+                    "state": "AVAILABLE",
+                    "value_bps": "200",
+                    "formula": "test",
+                    "reason": None,
+                },
+                "observed_at": T0.isoformat(),
+                "freshness": {},
+            },
+        ),
+    )
+
+    def real_batch(**kwargs):
+        provider_as_of.append(kwargs["as_of"])
+        return service.collect_r_live_batch(
+            **kwargs,
+            registry_store=snapshot_store,
+        )
+
+    report, _code = tokenized_collect.collect_once(
+        rpc_url="https://rpc.invalid",
+        as_of=None,
+        registry=venue_registry,
+        store=market_store,
+        batch_provider=real_batch,
+        retries=0,
+    )
+
+    retained = snapshot_store.load_latest()
+    assert provider_as_of == [None]
+    assert adapter.fetch_calls == 1
+    assert retained == live
+    assert retained.observed_at == T0 + timedelta(seconds=1)
+    assert report["unavailable"] == 0
+
+
+def test_tokenized_explicit_clock_is_forwarded_and_future_live_fails_closed(
+        tmp_path, monkeypatch):
+    live = _snapshot(NVDA, observed_at=T0 + timedelta(seconds=1))
+    adapter = _FakeAdapter(live=live)
+    snapshot_store = RobinhoodRegistrySnapshotStore(str(tmp_path / "registry.db"))
+    market_store = VenueMarketStore(tmp_path / "market.db")
+    venue_registry = _venue_registry([_entry()])
+    provider_as_of = []
+
+    monkeypatch.setattr(service, "RobinhoodAssetRegistryAdapter", lambda: adapter)
+    monkeypatch.setattr(service, "datetime", _OperationalClock)
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def close(self):
+            pass
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", FakeClient)
+    monkeypatch.setattr(service, "JsonRpc", _FakeRpc)
+    monkeypatch.setattr(service, "compose_r_live", lambda **kwargs: kwargs["registry"])
+    monkeypatch.setattr(
+        service,
+        "format_r_live_result",
+        lambda canonical_id, result: (
+            "AVAILABLE" if result is not None else "UNAVAILABLE",
+            {"reason": None if result is not None else "IDENTITY_UNAVAILABLE"},
+        ),
+    )
+
+    def real_batch(**kwargs):
+        provider_as_of.append(kwargs["as_of"])
+        return service.collect_r_live_batch(
+            **kwargs,
+            registry_store=snapshot_store,
+        )
+
+    report, _code = tokenized_collect.collect_once(
+        rpc_url="https://rpc.invalid",
+        as_of=T0,
+        registry=venue_registry,
+        store=market_store,
+        batch_provider=real_batch,
+        retries=0,
+    )
+
+    assert provider_as_of == [T0]
+    assert snapshot_store.load_latest() is None
+    assert report["unavailable"] == 1
+
+
+def test_tokenized_retry_preserves_none_or_explicit_requested_clock(tmp_path):
+    venue_registry = _venue_registry([_entry()])
+
+    def unavailable_batch(**_kwargs):
+        return [(
+            NVDA.asset_key.canonical_id,
+            "UNAVAILABLE",
+            {"reason": "RPC_UNAVAILABLE"},
+        )]
+
+    normal_retry_as_of = []
+
+    def normal_retry(**kwargs):
+        normal_retry_as_of.append(kwargs["as_of"])
+        raise RuntimeError("retry unavailable")
+
+    tokenized_collect.collect_once(
+        rpc_url="https://rpc.invalid",
+        as_of=None,
+        registry=venue_registry,
+        store=VenueMarketStore(tmp_path / "normal.db"),
+        batch_provider=unavailable_batch,
+        acquire_one=normal_retry,
+        retries=1,
+        backoff_seconds=0,
+        sleeper=lambda _seconds: None,
+    )
+    assert normal_retry_as_of == [None]
+
+    explicit_retry_as_of = []
+
+    def explicit_retry(**kwargs):
+        explicit_retry_as_of.append(kwargs["as_of"])
+        raise RuntimeError("retry unavailable")
+
+    tokenized_collect.collect_once(
+        rpc_url="https://rpc.invalid",
+        as_of=T0,
+        registry=venue_registry,
+        store=VenueMarketStore(tmp_path / "explicit.db"),
+        batch_provider=unavailable_batch,
+        acquire_one=explicit_retry,
+        retries=1,
+        backoff_seconds=0,
+        sleeper=lambda _seconds: None,
+    )
+    assert explicit_retry_as_of == [T0]
+
+
+def test_bootstrap_retained_snapshot_then_fresh_fallback_then_301s_rejection(
+        tmp_path, monkeypatch):
+    live = _snapshot(NVDA, observed_at=T0)
+    store = RobinhoodRegistrySnapshotStore(str(tmp_path / "registry.db"))
+    store.put(live)
+    assert store.load_latest().observed_at == T0
+
+    failing_adapter = _FakeAdapter(live_error=True)
+    captured = []
+    _patch_single(monkeypatch, failing_adapter, captured)
+
+    fresh = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=T0 + timedelta(seconds=300),
+        registry_store=store,
+    )
+    assert fresh["registry"].observed_at == T0
+    assert fresh["registry"].require_by_key(NVDA.asset_key).asset_uid == NVDA.economic_asset_uid
+
+    stale = service.collect_r_live(
+        canonical_asset_id=NVDA.asset_key.canonical_id,
+        rpc_url="https://rpc.invalid",
+        as_of=T0 + timedelta(seconds=301),
+        registry_store=store,
+    )
+    assert stale["registry"] is None
+    assert store.load_latest().observed_at == T0
 
 
 def test_fresh_registry_fallback_does_not_make_stale_market_current():
