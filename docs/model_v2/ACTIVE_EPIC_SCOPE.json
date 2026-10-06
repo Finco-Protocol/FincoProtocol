@@ -22,6 +22,7 @@
     "financial_engine/financial_statements/contracts.py"
   ],
   "approved_support_paths": [
+    ".github/workflows/public_safety_and_smoke.yml",
     "app/model_v2/__init__.py",
     "app/model_v2/flags.py",
     "app/model_v2/project_metadata.py",
