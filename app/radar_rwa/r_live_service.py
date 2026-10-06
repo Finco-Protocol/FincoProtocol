@@ -7,12 +7,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 from typing import Iterator
 
 from finco_radar.assets.adapters.robinhood import RobinhoodAssetRegistryAdapter
 from finco_radar.assets.registry import RegistrySnapshot
 from finco_radar.authority.contracts import AuthorityPolicy, AuthoritySnapshot
-from finco_radar.authority.engine import build_authority_snapshot
+from finco_radar.authority.engine import build_authority_snapshot, select_robinhood_registry
 from finco_radar.authority.r_live_onchain import (
     JsonRpc, OnchainReferenceObservation, Rpc, observe_onchain_reference,
 )
@@ -25,6 +26,7 @@ from finco_radar.gap.engine import build_bound_reference_price
 
 from .bnb_history import (BnbIntelligenceHistoryStore, make_r_live_history_point,
                           read_r_live_points_readonly, read_r_live_range_summary_readonly)
+from .robinhood_registry_snapshot_store import RobinhoodRegistrySnapshotStore
 
 
 R_LIVE_AUTHORITY_POLICY = AuthorityPolicy(
@@ -34,6 +36,58 @@ R_LIVE_AUTHORITY_POLICY = AuthorityPolicy(
     max_evidence_skew_seconds=MAX_QUOTE_AGE_SECONDS,
     approved_token_reference_sources=frozenset({"UNISWAP_V3_TWAP_CHAINLINK_USDG_USD"}),
 )
+
+
+_REGISTRY_SNAPSHOT_DB_ENV = "R_LIVE_REGISTRY_SNAPSHOT_DB_PATH"
+
+
+def _configured_registry_snapshot_store() -> RobinhoodRegistrySnapshotStore | None:
+    path = os.getenv(_REGISTRY_SNAPSHOT_DB_ENV)
+    return RobinhoodRegistrySnapshotStore(path) if path else None
+
+
+def _select_registry_snapshot(
+    adapter: RobinhoodAssetRegistryAdapter,
+    store: RobinhoodRegistrySnapshotStore | None,
+    *,
+    as_of: datetime | None,
+    max_age_seconds: int,
+) -> tuple[RegistrySnapshot | None, datetime]:
+    """Select live-first Robinhood identity with retained source-proven continuity."""
+    retained = None
+    if store is not None:
+        try:
+            retained = store.load_latest()
+        except Exception:
+            retained = None
+
+    live = None
+    try:
+        live = adapter.fetch_snapshot()
+    except Exception:
+        live = None
+
+    clock = as_of or datetime.now(timezone.utc)
+
+    def fetch_live() -> RegistrySnapshot:
+        if live is None:
+            raise RuntimeError("ROBINHOOD_REGISTRY_LIVE_UNAVAILABLE")
+        return live
+
+    selected = select_robinhood_registry(
+        fetch_live,
+        retained,
+        as_of=clock,
+        max_age_seconds=max_age_seconds,
+    )
+
+    if store is not None and live is not None and selected is live:
+        try:
+            store.put(live)
+        except Exception:
+            pass  # retention failure cannot erase a valid live authority
+
+    return selected, clock
 
 
 @dataclass(frozen=True)
@@ -70,7 +124,8 @@ def compose_r_live(
 
 def collect_r_live(*, canonical_asset_id: str, rpc_url: str, as_of: datetime | None = None,
                    persist_history: bool = False,
-                   history: BnbIntelligenceHistoryStore | None = None) -> RLiveResult:
+                   history: BnbIntelligenceHistoryStore | None = None,
+                   registry_store: RobinhoodRegistrySnapshotStore | None = None) -> RLiveResult:
     """Acquire an approved exact identity; persistence is opt-in for jobs only."""
     policy = APPROVED_BY_CANONICAL_ID.get(canonical_asset_id)
     if policy is None:
@@ -78,9 +133,13 @@ def collect_r_live(*, canonical_asset_id: str, rpc_url: str, as_of: datetime | N
     key = policy.asset_key
     if history is not None and not persist_history:
         raise ValueError("HISTORY_REQUIRES_EXPLICIT_PERSISTENCE")
+    store = registry_store or _configured_registry_snapshot_store()
     with RobinhoodAssetRegistryAdapter() as adapter:
-        registry = adapter.fetch_snapshot()
-        asset = registry.get_by_key(key)
+        registry, clock = _select_registry_snapshot(
+            adapter, store, as_of=as_of,
+            max_age_seconds=policy.max_registry_age_seconds,
+        )
+        asset = registry.get_by_key(key) if registry is not None else None
         underlying = None
         if asset is not None and asset.asset_uid == policy.economic_asset_uid:
             try:
@@ -98,7 +157,7 @@ def collect_r_live(*, canonical_asset_id: str, rpc_url: str, as_of: datetime | N
             ledger = None
     try:
         return compose_r_live(registry=registry, underlying=underlying, rpc=rpc,
-                              as_of=as_of, history=ledger, key=key)
+                              as_of=clock, history=ledger, key=key)
     finally:
         rpc.close()
         if owned_history and ledger is not None:
@@ -248,6 +307,7 @@ def collect_r_live_batch(
     workers: int = _CURRENT_WORKERS,
     as_of: datetime | None = None,
     canonical_ids: tuple[str, ...] | None = None,
+    registry_store: RobinhoodRegistrySnapshotStore | None = None,
 ) -> Iterator[tuple[str, str, dict]]:
     """Acquire an explicit approved R-LIVE subset, or all approved assets.
 
@@ -259,7 +319,8 @@ def collect_r_live_batch(
     ONE shared httpx.Client is used for RPC calls across all assets.
     Per-asset acquisition exceptions produce UNAVAILABLE for that asset; the
     remaining assets are still attempted.
-    Registry acquisition failure is fail-closed: all assets resolve UNAVAILABLE.
+    Registry selection is live-first with a source-proven retained fallback only
+    inside the canonical registry-age window. Failure of both remains fail-closed.
     Zero history writes (persist_history is always False).
     The shared RPC client is closed exactly once in the finally block.
 
@@ -281,16 +342,14 @@ def collect_r_live_batch(
                for canonical_id in selected_ids):
             raise ValueError("R_LIVE_BATCH_EXACT_ASSETKEY_NOT_APPROVED")
     shared_rpc_client = httpx.Client(timeout=15)
+    store = registry_store or _configured_registry_snapshot_store()
 
     try:
         with RobinhoodAssetRegistryAdapter() as adapter:
-            try:
-                registry: RegistrySnapshot | None = adapter.fetch_snapshot()
-            except Exception:
-                # Fail-closed: registry unavailable means no asset can be AVAILABLE.
-                # Pass registry=None through compose_r_live; the existing
-                # observe_onchain_reference contract returns CANONICAL_REGISTRY_UNAVAILABLE.
-                registry = None
+            registry, clock = _select_registry_snapshot(
+                adapter, store, as_of=as_of,
+                max_age_seconds=R_LIVE_AUTHORITY_POLICY.max_registry_age_seconds,
+            )
 
             def _acquire_one(canonical_id: str) -> tuple[str, str, dict]:
                 policy = APPROVED_BY_CANONICAL_ID[canonical_id]
@@ -314,7 +373,7 @@ def collect_r_live_batch(
                 try:
                     result = compose_r_live(
                         registry=registry, underlying=underlying,
-                        rpc=rpc, as_of=as_of, history=None, key=key,
+                        rpc=rpc, as_of=clock, history=None, key=key,
                     )
                 except Exception:
                     return canonical_id, "UNAVAILABLE", {"reason": "RADAR_AUTHORITY_UNAVAILABLE"}

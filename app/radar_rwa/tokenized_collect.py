@@ -96,7 +96,7 @@ def _retry_one(
     canonical_id: str,
     *,
     rpc_url: str,
-    as_of: datetime,
+    as_of: datetime | None,
     retries: int,
     backoff_seconds: float,
     acquire_one: Callable = collect_r_live,
@@ -148,7 +148,8 @@ def collect_once(
     one append-only batch. A failed provider cannot delete or overwrite prior
     history. Health metadata is operational only.
     """
-    now = as_of or datetime.now(timezone.utc)
+    requested_as_of = as_of
+    now = requested_as_of or datetime.now(timezone.utc)
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError("TOKENIZED_COLLECTION_CLOCK_MUST_BE_AWARE")
     now = now.astimezone(timezone.utc)
@@ -214,7 +215,7 @@ def collect_once(
         # per-asset isolation. The approved universe is bounded above before
         # this call and every returned row is exact-key filtered below.
         for canonical_id, state, data in batch_provider(
-                rpc_url=rpc_url, workers=workers, as_of=now,
+                rpc_url=rpc_url, workers=workers, as_of=requested_as_of,
                 canonical_ids=targets):
             if canonical_id in target_set and canonical_id not in rows:
                 rows[canonical_id] = (canonical_id, state, data)
@@ -234,7 +235,7 @@ def collect_once(
                     _retry_one,
                     canonical_id,
                     rpc_url=rpc_url,
-                    as_of=now,
+                    as_of=requested_as_of,
                     retries=retries,
                     backoff_seconds=backoff_seconds,
                     acquire_one=acquire_one,
