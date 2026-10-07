@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "tools/model_runtime_v4_probe.py"
+      - "tools/bench_first_request.py"
       - "financial_engine/**"
       - "app/runtime/**"
       - "app/services/production_financial_authority.py"
@@ -37,3 +38,7 @@ jobs:
         env:
           FINCO_MODEL_WORKERS: "2"
         run: python tools/model_runtime_v4_probe.py
+      - name: Measure real workbook route
+        env:
+          FINCO_MODEL_WORKERS: "2"
+        run: python tools/bench_first_request.py
