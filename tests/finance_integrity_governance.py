@@ -38,8 +38,8 @@ APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS = frozenset({
     # remove redundant work (numeric-only cash-tax path for the solver loop, cached period-axis
     # geometry, incremental SHL chain, run-scoped exact-key memo); every output is verified
     # bit-identical to the previous implementation (tests/test_perf_model_runtime_equivalence.py).
-    # orchestrator.py and shareholder_waterfall/model.py are already approved above.
-    "financial_engine/tax/engine.py",
+    # orchestrator.py and shareholder_waterfall/model.py are already approved above.\n    # V4 shares the exact scalar CFADS primitive between full and solver-only assembly.\n    "financial_engine/tax/engine.py",
+    "financial_engine/cfads.py",
     "financial_engine/tax/tax_year.py",
     "financial_engine/tax/loss_ledger.py",
     "financial_engine/shl/production.py",
