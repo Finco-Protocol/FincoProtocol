@@ -1,0 +1,57 @@
+{#
+  Run Intelligence V1 — historical run detail (read-only).
+  Root: #v2-run-detail.  Renders persisted canonical information only:
+  identity, KPI/runtime summary through the OutputMetricProjection catalog
+  (unavailable stays '—', legitimate zero stays zero), integrity evidence.
+  No restore / overwrite / delete / rerun-from-history functionality.
+#}
+<div id="v2-run-detail" class="v2-run-detail" data-testid="run-detail">
+  <div class="v2-rh-head">
+    <span class="v2-rh-title">Historical Run Detail</span>
+    <span class="v2-rh-sub">Read-only · immutable record</span>
+    <button type="button" class="v2-rh-link"
+            hx-get="/v2/workbook/run-history?project={{ project_code }}"
+            hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+            data-testid="run-detail-back">← Back to Run History</button>
+  </div>
+
+  <div class="v2-rh-detail-grid" data-testid="run-detail-identity">
+    <div class="v2-rh-kv"><span class="v2-rh-k">Ran at</span><span class="v2-rh-v">{{ ran_at_display }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Scenario</span><span class="v2-rh-v">{{ scenario_name }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Origin</span><span class="v2-rh-v">{{ origin }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Engine version</span><span class="v2-rh-v">{{ engine_version }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Workbook version</span><span class="v2-rh-v">{{ workbook_version }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Snapshot</span><span class="v2-rh-v v2-rh-mono">{{ snapshot_short }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Composite identity</span><span class="v2-rh-v v2-rh-mono">{{ composite_short }}</span></div>
+    <div class="v2-rh-kv"><span class="v2-rh-k">Status</span><span class="v2-rh-v"><span class="v2-rh-chip v2-rh-chip--historical">HISTORICAL</span></span></div>
+  </div>
+
+  <div class="v2-rh-section-title">Key metrics (persisted)</div>
+  <table class="v2-rh-table" data-testid="run-detail-kpis">
+    <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+    <tbody>
+      {% for key, label, display in metrics %}
+      <tr data-kpi-key="{{ key }}">
+        <td>{{ label }}</td>
+        <td class="v2-rh-mono">{{ display }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="v2-rh-section-title">Integrity evidence</div>
+  {% if integrity_items %}
+  <table class="v2-rh-table" data-testid="run-detail-integrity">
+    <tbody>
+      {% for k, v in integrity_items %}
+      <tr><td>{{ k }}</td><td class="v2-rh-mono">{{ v }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="v2-rh-empty">No integrity evidence recorded for this run.</div>
+  {% endif %}
+
+  <div class="v2-rh-note">Read-only historical record — no restore, rerun or
+  mutation functionality exists for Run History.</div>
+</div>

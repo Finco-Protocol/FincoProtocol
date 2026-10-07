@@ -123,17 +123,30 @@
 
   function _markSaving(form) {
     var row = form.closest('.v2-field-row');
-    if (row) { row.classList.add('v2-field-saving'); row.classList.remove('v2-field-pending', 'v2-field-error'); }
+    if (row) {
+      row.classList.add('v2-field-saving');
+      row.classList.remove('v2-field-pending', 'v2-field-error');
+      row.setAttribute('aria-busy', 'true');
+    }
   }
 
   function _markSaved(form) {
     var row = form.closest('.v2-field-row');
-    if (row) { row.classList.remove('v2-field-saving', 'v2-field-pending'); }
+    if (row) { row.classList.remove('v2-field-saving', 'v2-field-pending'); row.removeAttribute('aria-busy'); }
   }
 
   function _markError(form) {
     var row = form.closest('.v2-field-row');
-    if (row) { row.classList.add('v2-field-error'); row.classList.remove('v2-field-saving', 'v2-field-pending'); }
+    if (row) {
+      row.classList.add('v2-field-error');
+      row.classList.remove('v2-field-saving', 'v2-field-pending');
+      row.removeAttribute('aria-busy');
+    }
+  }
+
+  function _fieldIdOf(node) {
+    var row = node && node.closest ? node.closest('.v2-field-row') : null;
+    return row ? row.getAttribute('data-field-id') : null;
   }
 
   function _hasPendingOrSaving() {
@@ -214,6 +227,7 @@
       var original = input.getAttribute('data-original-value');
       if (original !== null) input.value = original;
       v2ClearPending(input);
+      if (window.v2FieldValidationUx) window.v2FieldValidationUx.clear(_fieldIdOf(input));
       input.blur();
     }
   };
@@ -232,6 +246,10 @@
     _inFlightSaveCount++;
     _markSaving(form);
     var input = form.querySelector('.v2-field-input');
+    var idEl = form.querySelector('input[name="field_id"]');
+    if (input && idEl && window.v2FieldValidationUx) {
+      window.v2FieldValidationUx.noteSubmitted(idEl.value, input.value);
+    }
     if (input) v2ClearPending(input);
   });
 
@@ -265,6 +283,13 @@
       _tryFireQueuedRun();
     } else {
       _markError(form);
+      var failedIdEl = form.querySelector('input[name="field_id"]');
+      if (failedIdEl && window.v2FieldValidationUx) {
+        window.v2FieldValidationUx.registerIfAbsent(failedIdEl.value, {
+          message: 'The save could not be completed. Check your connection and try again.',
+          untyped: true   // transport failure: no value verdict exists from anyone
+        });
+      }
       if (_runQueued) {
         _runQueued = false;
         _setRunBtnState(null, false);
@@ -275,6 +300,7 @@
   // Listen for server save signals (HX-Trigger headers)
   document.addEventListener('workbook-field-saved', function (e) {
     var detail = e.detail || {};
+    if (detail.field_id && window.v2FieldValidationUx) window.v2FieldValidationUx.clear(detail.field_id);
     var newHash = detail.new_hash;
     if (newHash) {
       // Update all hash inputs in Run form and shell
@@ -287,7 +313,16 @@
     _tryFireQueuedRun();
   });
 
-  document.addEventListener('workbook-field-error', function () {
+  document.addEventListener('workbook-field-error', function (e) {
+    var detail = (e && e.detail) || {};
+    if (detail.field_id && window.v2FieldValidationUx) {
+      window.v2FieldValidationUx.register(detail.field_id, {
+        message: detail.message,
+        // `error_class` present (even null) means the server spoke: it is the only authority.
+        hasServerClass: Object.prototype.hasOwnProperty.call(detail, 'error_class'),
+        errorClass: detail.error_class
+      });
+    }
     if (_runQueued) {
       _runQueued = false;
       _setRunBtnState(null, false);
@@ -554,4 +589,329 @@ document.addEventListener('htmx:afterSettle', function (e) {
       merchantGridInit();
     }
   });
+})();
+
+// ── Workspace productivity v1: field validation UX + jump-to-field ────────
+// Presentation only.  Reuses the existing `workbook-field-error` /
+// `workbook-field-saved` HX-Trigger events (no second transport).
+//
+// Authority chain: FieldValidationError.error_class (server) -> HX event
+// `error_class` -> row state -> Smart Panel summary.  When the event carries
+// the key, the server is the ONLY authority: a canonical class is used as-is,
+// `null` (stale draft, protected project, non-editable field, authority gate)
+// and any unrecognised value become SAVE_REJECTED — never a guessed input
+// class and never an arbitrary string in a CSS/data attribute.  Only when NO
+// server authority exists (transport failure, an emitter without the key) does
+// the field's own constraints (browser constraint validation: required / min /
+// max / badInput) serve as a fallback; a transport failure is SAVE_REJECTED.  The human-readable message is display
+// text and is never parsed.
+(function () {
+  'use strict';
+  if (window.v2FieldValidationUx) return;
+
+  var CLASS_LABELS = {
+    REQUIRED_MISSING: 'Required',
+    INVALID: 'Invalid',
+    OUT_OF_BOUNDS: 'Out of bounds',
+    SAVE_REJECTED: 'Save rejected'
+  };
+  var SUMMARY_CLASSES = ['REQUIRED_MISSING', 'INVALID', 'OUT_OF_BOUNDS', 'SAVE_REJECTED'];
+  var INTEGER_TYPES = { int: true, months: true, years: true };
+
+  var _errors = {};     // field_id -> { fieldId, message, value, errorClass, reannounce }
+  var _submitted = {};  // field_id -> raw value sent with the most recent save
+
+  function _rowFor(fieldId) {
+    var rows = document.querySelectorAll('.v2-field-row[data-fc-row][data-field-id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].getAttribute('data-field-id') === fieldId) return rows[i];
+    }
+    return null;
+  }
+
+  function _inputOf(row) { return row ? row.querySelector('.v2-field-input') : null; }
+
+  function _msgId(fieldId) { return 'v2-err-' + String(fieldId).replace(/[^A-Za-z0-9_-]/g, '_'); }
+
+  // Deterministic, string-free classification of what was submitted.
+  function classify(input, row) {
+    if (!input) return 'SAVE_REJECTED';
+    var raw = String(input.value == null ? '' : input.value).trim();
+    var required = !!(input.required || (row && row.getAttribute('data-required') === 'true'));
+    if (raw === '') return required ? 'REQUIRED_MISSING' : 'SAVE_REJECTED';
+    var v = input.validity;
+    if (v) {
+      if (v.rangeUnderflow || v.rangeOverflow) return 'OUT_OF_BOUNDS';
+      if (v.badInput || v.typeMismatch) return 'INVALID';
+      var t = row ? row.getAttribute('data-field-type') : '';
+      if (v.stepMismatch && INTEGER_TYPES[t]) return 'INVALID';
+    }
+    return 'SAVE_REJECTED';
+  }
+
+  var SERVER_CLASSES = { REQUIRED_MISSING: true, INVALID: true, OUT_OF_BOUNDS: true };
+
+  // The server's typed class wins; only an absent server verdict falls back.
+  function _resolveClass(info, row, value) {
+    if (info && info.untyped) return 'SAVE_REJECTED';
+    if (info && info.hasServerClass) {
+      var c = info.errorClass;
+      return (typeof c === 'string' && Object.prototype.hasOwnProperty.call(SERVER_CLASSES, c))
+        ? c : 'SAVE_REJECTED';
+    }
+    return _classifySubmitted(row, value);
+  }
+
+  function _classifySubmitted(row, value) {
+    var input = _inputOf(row);
+    if (!input || input.tagName !== 'INPUT') {
+      // <select>/bool controls can only submit one of their own options.
+      return (input && input.required && String(value == null ? '' : value).trim() === '')
+        ? 'REQUIRED_MISSING' : 'SAVE_REJECTED';
+    }
+    var probe = input.cloneNode(false);   // detached copy keeps min/max/step/required
+    probe.value = value == null ? '' : value;
+    return classify(probe, row);
+  }
+
+  function _decorate(entry, announce) {
+    var row = _rowFor(entry.fieldId);
+    if (!row) return false;
+    var input = _inputOf(row);
+    var id = _msgId(entry.fieldId);
+    if (input) {
+      // Preserve what the user entered (the sheet re-render shows the persisted
+      // value).  It is NOT an unsaved edit, so it must not auto-resubmit on blur.
+      if (entry.value != null && input.value !== entry.value) input.value = entry.value;
+      input.setAttribute('data-pending', 'false');
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', id);
+    }
+    row.classList.add('v2-field-error');
+    row.classList.remove('v2-field-pending', 'v2-field-saving');
+    row.removeAttribute('aria-busy');
+    row.setAttribute('data-error-class', entry.errorClass);
+
+    var msg = row.querySelector('.v2-field-error-msg');
+    if (!msg) {
+      msg = document.createElement('span');
+      msg.className = 'v2-field-error-msg';
+      msg.id = id;
+      if (announce) msg.setAttribute('role', 'alert');
+      row.appendChild(msg);
+    }
+    msg.textContent = '';
+    var label = document.createElement('span');
+    label.className = 'v2-field-error-msg-class';
+    label.textContent = CLASS_LABELS[entry.errorClass] + ': ';
+    msg.appendChild(label);
+    msg.appendChild(document.createTextNode(entry.message || 'This value was not saved.'));
+    return true;
+  }
+
+  function _undecorate(fieldId) {
+    var row = _rowFor(fieldId);
+    if (!row) return;
+    var input = _inputOf(row);
+    if (input) {
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+    }
+    row.classList.remove('v2-field-error');
+    row.removeAttribute('data-error-class');
+    var msg = row.querySelector('.v2-field-error-msg');
+    if (msg) msg.remove();
+  }
+
+  function _tabLabelFor(row) {
+    var panel = row.closest('.v2-sheet-panel');
+    if (!panel) return '';
+    var tab = document.querySelector('#v2-sheet-tabs .v2-tab[aria-controls="' + panel.id + '"]');
+    return tab ? tab.textContent.trim() : '';
+  }
+
+  function renderSummary() {
+    var panel = document.getElementById('model-smart-panel');
+    if (!panel) return;
+    var keys = Object.keys(_errors);
+    var any = false;
+    SUMMARY_CLASSES.forEach(function (cls) {
+      var li = panel.querySelector('[data-summary-class="' + cls + '"]');
+      if (!li) return;
+      var entries = keys.map(function (k) { return _errors[k]; })
+        .filter(function (e) { return e.errorClass === cls && _rowFor(e.fieldId); });
+      li.hidden = entries.length === 0;
+      var count = li.querySelector('[data-summary-count]');
+      if (count) count.textContent = String(entries.length);
+      var list = li.querySelector('[data-summary-fields]');
+      if (list) {
+        list.textContent = '';
+        entries.forEach(function (e) {
+          var row = _rowFor(e.fieldId);
+          var item = document.createElement('li');
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'v2-smart-panel-jump';
+          btn.setAttribute('data-jump-field', e.fieldId);
+          btn.textContent = (row && row.getAttribute('data-field-label')) || e.fieldId;
+          item.appendChild(btn);
+          var ctx = row ? _tabLabelFor(row) : '';
+          if (ctx) {
+            var c = document.createElement('span');
+            c.className = 'v2-summary-field-context';
+            c.textContent = ctx;
+            item.appendChild(c);
+          }
+          if (e.message) {
+            var m = document.createElement('span');
+            m.className = 'v2-summary-field-message';
+            m.textContent = e.message;
+            item.appendChild(m);
+          }
+          list.appendChild(item);
+        });
+      }
+      if (entries.length) any = true;
+    });
+    var empty = panel.querySelector('[data-summary-empty]');
+    if (empty) empty.hidden = any;
+
+    var ro = panel.querySelector('[data-summary-class="NON_EDITABLE"]');
+    if (ro) {
+      var n = document.querySelectorAll('.v2-field-readonly[data-fc-row][data-field-id]').length;
+      ro.hidden = n === 0;
+      var roCount = ro.querySelector('[data-summary-count]');
+      if (roCount) roCount.textContent = String(n);
+    }
+  }
+
+  function _reapplyAll() {
+    Object.keys(_errors).forEach(function (k) {
+      var entry = _errors[k];
+      // The first decoration after a sheet re-render replaces the node that was
+      // announced at registration time, so announce it once more; unrelated
+      // swaps afterwards stay silent.
+      if (_decorate(entry, entry.reannounce)) entry.reannounce = false;
+    });
+    renderSummary();
+  }
+
+  function noteSubmitted(fieldId, value) {
+    if (fieldId) _submitted[fieldId] = value;
+  }
+
+  function register(fieldId, info) {
+    if (!fieldId) return false;
+    var row = _rowFor(fieldId);
+    // Only editable macro rows can fail a save; locked / calculated / protected
+    // rows stay exactly as rendered.
+    if (!row || !row.classList.contains('v2-field-editable')) return false;
+    var value = Object.prototype.hasOwnProperty.call(_submitted, fieldId)
+      ? _submitted[fieldId] : (_inputOf(row) ? _inputOf(row).value : null);
+    _errors[fieldId] = {
+      fieldId: fieldId,
+      message: (info && info.message) || '',
+      value: value,
+      errorClass: _resolveClass(info, row, value),
+      reannounce: true
+    };
+    _decorate(_errors[fieldId], true);
+    renderSummary();
+    return true;
+  }
+
+  function registerIfAbsent(fieldId, info) {
+    if (!fieldId || _errors[fieldId]) return false;
+    return register(fieldId, info);
+  }
+
+  function clear(fieldId) {
+    if (!fieldId) return;
+    delete _submitted[fieldId];
+    if (_errors[fieldId]) {
+      delete _errors[fieldId];
+      _undecorate(fieldId);
+      renderSummary();
+    }
+  }
+
+  function _highlight(row) {
+    row.classList.remove('v2-field-jump-highlight');
+    void row.offsetWidth;            // restart the animation
+    row.classList.add('v2-field-jump-highlight');
+    if (row.__v2HighlightTimer) clearTimeout(row.__v2HighlightTimer);
+    row.__v2HighlightTimer = setTimeout(function () {
+      row.classList.remove('v2-field-jump-highlight');
+    }, 1900);
+  }
+
+  // Activate the owning sheet tab, open collapsed <details> ancestors, scroll,
+  // focus through the existing C1 registry/focus modules, then highlight.
+  function jump(fieldId) {
+    var row = _rowFor(fieldId);
+    if (!row) return false;
+
+    var panel = row.closest('.v2-sheet-panel');
+    if (panel && panel.hidden) {
+      var tab = document.querySelector('#v2-sheet-tabs .v2-tab[aria-controls="' + panel.id + '"]');
+      if (tab) tab.click();
+    }
+    for (var node = row.parentElement; node; node = node.parentElement) {
+      if (node.tagName === 'DETAILS' && !node.open) node.open = true;
+    }
+
+    var gridRoot = row.closest('[data-fc-grid]');
+    var valueCell = row.querySelector('.v2-fc-value-cell[data-fc-cell]');
+    if (gridRoot && valueCell && window.FcGridRegistry && window.FcActiveCellManager) {
+      var gridId = gridRoot.getAttribute('data-fc-grid');
+      var record = window.FcGridRegistry.getAddr(gridId, valueCell.getAttribute('data-fc-addr'));
+      if (record) window.FcActiveCellManager.setActiveCell(gridId, record);
+    }
+
+    row.scrollIntoView({ block: 'center', inline: 'nearest' });
+    // The value cell is display:contents (not focusable); read-only rows focus
+    // their rendered value so keyboard and screen-reader users still land on
+    // the field — it stays read-only (no control is created).
+    var target = _inputOf(row) || row.querySelector('.v2-field-value') || row.querySelector('.v2-field-label');
+    if (target && typeof target.focus === 'function') {
+      if (!target.hasAttribute('tabindex') && target.tagName !== 'INPUT' && target.tagName !== 'SELECT') {
+        target.setAttribute('tabindex', '-1');
+      }
+      target.focus({ preventScroll: true });
+    }
+    if (window.FcFocusManager && typeof window.FcFocusManager.syncFocus === 'function') {
+      window.FcFocusManager.syncFocus();
+    }
+    _highlight(row);
+    return true;
+  }
+
+  document.addEventListener('click', function (event) {
+    var btn = event.target && event.target.closest ? event.target.closest('[data-jump-field]') : null;
+    if (!btn || btn.disabled) return;
+    event.preventDefault();
+    jump(btn.getAttribute('data-jump-field'));
+  });
+
+  ['htmx:afterSwap', 'htmx:afterSettle', 'htmx:oobAfterSwap'].forEach(function (name) {
+    document.addEventListener(name, _reapplyAll);
+  });
+  document.addEventListener('DOMContentLoaded', renderSummary);
+
+  window.v2FieldValidationUx = {
+    classify: classify,
+    register: register,
+    registerIfAbsent: registerIfAbsent,
+    noteSubmitted: noteSubmitted,
+    clear: clear,
+    jump: jump,
+    renderSummary: renderSummary,
+    state: function () {
+      return Object.keys(_errors).map(function (k) {
+        var e = _errors[k];
+        return { fieldId: e.fieldId, errorClass: e.errorClass, message: e.message, value: e.value };
+      });
+    }
+  };
+  window.v2JumpToField = jump;
 })();

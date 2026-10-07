@@ -2853,3 +2853,257 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   font-size: 0.625rem;
   color: #9ca3af;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Workspace productivity v1 — dense inputs, field state visuals, validation
+   summary, jump-to-field highlight.
+
+   PRESENTATION ONLY.  Nothing below changes semantic field ids, DOM identity,
+   HTMX targets, editability, or any rendered value.  Rules are scoped to
+   macro-rendered rows ([data-fc-row][data-field-id]) so generic notice /
+   empty-state `.v2-field-row` wrappers are untouched.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --v2-dense-input-h: 28px;
+  --v2-dense-label-col: minmax(7.5rem, 42%);
+  --v2-dense-status-col: 5.75rem;   /* badge | Unsaved/Saving/Not saved + Save */
+  --v2-st-pending: #b45309;  --v2-st-pending-bg: #fffbeb;
+  --v2-st-saving:  #1d4ed8;  --v2-st-saving-bg:  #eff6ff;
+  --v2-st-error:   #b91c1c;  --v2-st-error-bg:   #fef2f2;
+  --v2-st-jump:    #2563eb;  --v2-st-jump-bg:    #dbeafe;
+  --v2-st-link:    #1d4ed8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --v2-st-pending: #fbbf24;  --v2-st-pending-bg: #2a2210;
+    --v2-st-saving:  #60a5fa;  --v2-st-saving-bg:  #101c33;
+    --v2-st-error:   #f87171;  --v2-st-error-bg:   #2d1414;
+    --v2-st-jump:    #60a5fa;  --v2-st-jump-bg:    #1e3a5f;
+    --v2-st-link:    #93c5fd;
+  }
+}
+:root[data-theme="dark"] {
+  --v2-st-pending: #fbbf24;  --v2-st-pending-bg: #2a2210;
+  --v2-st-saving:  #60a5fa;  --v2-st-saving-bg:  #101c33;
+  --v2-st-error:   #f87171;  --v2-st-error-bg:   #2d1414;
+  --v2-st-jump:    #60a5fa;  --v2-st-jump-bg:    #1e3a5f;
+  --v2-st-link:    #93c5fd;
+}
+
+/* ── Dense field rows: label | control | status, one line per field ─────── */
+#v2-workbook-shell .v2-field-row[data-fc-row][data-field-id],
+#v2-workbook-shell #v2-sheet-senior-debt .v2-field-row[data-fc-row][data-field-id] {
+  position: relative;
+  grid-template-columns: var(--v2-dense-label-col) minmax(0, 1fr) var(--v2-dense-status-col);
+  align-items: center;
+  align-content: center;
+  column-gap: .6rem;
+  row-gap: 0;
+  min-height: 30px;
+  padding: .1rem .5rem;
+  border-width: 0 0 1px 2px;
+  border-style: solid;
+  border-color: transparent transparent #eef0f3 transparent;
+  border-radius: 0;
+  scroll-margin-top: 8rem;   /* clears the sticky section summary */
+}
+#v2-workbook-shell .v2-field-editable[data-fc-row][data-field-id]:focus-within {
+  border-left-color: var(--v2-st-jump);
+}
+#v2-workbook-shell .v2-field-row[data-fc-row][data-field-id] > .v2-field-label {
+  white-space: normal;          /* never truncate a label in dense mode */
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+  font-size: .82rem;
+}
+#v2-workbook-shell .v2-field-input.v2-field-input {
+  min-height: var(--v2-dense-input-h);
+  padding: .1rem .35rem;
+  border-radius: 4px;
+}
+#v2-workbook-shell .v2-field-readonly[data-fc-row] .v2-field-value {
+  min-height: var(--v2-dense-input-h);
+  display: flex;
+  align-items: center;
+}
+#v2-workbook-shell .v2-field-row[data-fc-row] .v2-binding-badge {
+  margin-left: 0;
+  align-self: center;
+  justify-self: start;
+  padding: .08em .4em;
+  line-height: 1.3;
+}
+/* Save control shares the status cell (it used to consume a whole row): the
+   status text is start-aligned, the control end-aligned.  Still focusable,
+   labelled and keyboard-operable. */
+#v2-workbook-shell .v2-field-row[data-fc-row] .v2-field-save {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  align-self: center;
+  margin: 0;
+  min-width: 1.4rem;
+  padding: .05rem .35rem;
+  line-height: 1.2;
+}
+/* The card rules above use `overflow: hidden`, which turns each <details> into
+   the scroll container of its sticky <summary>: the summary was permanently
+   pushed down by its `top` offset INSIDE the card, covering the first ~77px of
+   fields (whole rows once rows are compact).  `overflow: clip` keeps the
+   rounded clipping without creating a scroll container, so the summary sits in
+   its natural position and only pins while the page scrolls. */
+#v2-workbook-shell #v2-sheet-project-setup .v2-section,
+#v2-workbook-shell #v2-sheet-revenue .v2-inputs-section,
+#v2-workbook-shell #v2-sheet-senior-debt .v2-inputs-section,
+#v2-workbook-shell #v2-sheet-capex .v2-capex-group,
+#v2-workbook-shell #v2-sheet-opex .v2-opex-group { overflow: clip; }
+
+/* Tighter section chrome — same three scopes as the original card layout. */
+#v2-workbook-shell #v2-sheet-project-setup .v2-section,
+#v2-workbook-shell #v2-sheet-revenue .v2-inputs-section,
+#v2-workbook-shell #v2-sheet-senior-debt .v2-inputs-section { margin-bottom: .5rem; }
+#v2-workbook-shell #v2-sheet-project-setup .v2-section-label { padding: .4rem .75rem; }
+#v2-workbook-shell #v2-sheet-project-setup .v2-section-fields,
+#v2-workbook-shell #v2-sheet-revenue .v2-section-fields,
+#v2-workbook-shell #v2-sheet-senior-debt #nav-debt-assumptions + .v2-section-fields {
+  gap: 0 1.25rem;
+  padding: .25rem .6rem .4rem;
+}
+
+/* ── Field state visuals (classes toggled by workbook_v2.js) ───────────── */
+#v2-workbook-shell .v2-field-row.v2-field-pending {
+  background: var(--v2-st-pending-bg);
+  box-shadow: inset 3px 0 0 var(--v2-st-pending);
+}
+#v2-workbook-shell .v2-field-row.v2-field-pending .v2-field-input {
+  border-style: dashed;
+  border-color: var(--v2-st-pending);
+}
+#v2-workbook-shell .v2-field-row.v2-field-saving {
+  background: var(--v2-st-saving-bg);
+  box-shadow: inset 3px 0 0 var(--v2-st-saving);
+}
+#v2-workbook-shell .v2-field-row.v2-field-saving .v2-field-input {
+  border-color: var(--v2-st-saving);
+  background-image: linear-gradient(90deg, transparent 0, rgba(37, 99, 235, .16) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: v2-field-saving-sweep 1.1s linear infinite;
+  cursor: progress;
+}
+@keyframes v2-field-saving-sweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+#v2-workbook-shell .v2-field-row.v2-field-error {
+  background: var(--v2-st-error-bg);
+  box-shadow: inset 3px 0 0 var(--v2-st-error);
+}
+#v2-workbook-shell .v2-field-row.v2-field-error .v2-field-input {
+  border-color: var(--v2-st-error);
+  outline: 2px solid var(--v2-st-error);
+  outline-offset: -1px;
+}
+/* Text status cue (never colour-only). */
+#v2-workbook-shell .v2-field-row.v2-field-pending::after,
+#v2-workbook-shell .v2-field-row.v2-field-saving::after,
+#v2-workbook-shell .v2-field-row.v2-field-error::after {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+  align-self: center;
+  font-size: .66rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+#v2-workbook-shell .v2-field-row.v2-field-pending::after { content: "Unsaved"; color: var(--v2-st-pending); }
+#v2-workbook-shell .v2-field-row.v2-field-saving::after  { content: "Saving…"; color: var(--v2-st-saving); }
+#v2-workbook-shell .v2-field-row.v2-field-error::after   { content: "Not saved"; color: var(--v2-st-error); }
+.v2-field-error-msg {
+  grid-column: 2 / -1;
+  font-size: .72rem;
+  line-height: 1.3;
+  color: var(--v2-st-error);
+  padding: .15rem 0 .25rem;
+}
+.v2-field-error-msg::before { content: "\26A0\FE0E\00A0"; }
+.v2-field-error-msg-class { font-weight: 700; }
+
+/* ── Jump-to-field highlight ────────────────────────────────────────────── */
+#v2-workbook-shell .v2-field-row.v2-field-jump-highlight {
+  outline: 2px solid var(--v2-st-jump);
+  outline-offset: -2px;
+  animation: v2-field-jump-flash 1.8s ease-out 1;
+}
+@keyframes v2-field-jump-flash {
+  0%   { background-color: var(--v2-st-jump-bg); }
+  100% { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #v2-workbook-shell .v2-field-row.v2-field-saving .v2-field-input { animation: none; }
+  #v2-workbook-shell .v2-field-row.v2-field-jump-highlight {
+    animation: none;
+    background-color: var(--v2-st-jump-bg);
+  }
+}
+
+/* ── Narrow screens: stack label over control, keep touch-sized inputs ──── */
+@media (max-width: 700px) {
+  #v2-workbook-shell .v2-field-row[data-fc-row][data-field-id],
+  #v2-workbook-shell #v2-sheet-senior-debt .v2-field-row[data-fc-row][data-field-id] {
+    grid-template-columns: minmax(0, 1fr) var(--v2-dense-status-col);
+    row-gap: .15rem;
+    padding: .3rem .5rem;
+  }
+  #v2-workbook-shell .v2-field-row[data-fc-row] > .v2-field-label { grid-column: 1 / -1; }
+  #v2-workbook-shell .v2-field-input.v2-field-input,
+  #v2-workbook-shell .v2-field-readonly[data-fc-row] .v2-field-value { min-height: 36px; }
+  #v2-workbook-shell .v2-field-row[data-fc-row] .v2-field-save,
+  #v2-workbook-shell .v2-field-row.v2-field-pending::after,
+  #v2-workbook-shell .v2-field-row.v2-field-saving::after,
+  #v2-workbook-shell .v2-field-row.v2-field-error::after { grid-column: 2; grid-row: 2; }
+  .v2-field-error-msg { grid-column: 1 / -1; }
+}
+
+/* ── Smart Panel: validation summary + breakdowns ───────────────────────── */
+.v2-summary-row[hidden], .v2-summary-empty[hidden] { display: none; }
+.v2-summary-row--fail .v2-smart-panel-row-value { color: var(--v2-st-error); }
+.v2-summary-row--warn .v2-smart-panel-row-value { color: var(--v2-st-pending); }
+.v2-summary-fields {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0;
+}
+.v2-summary-fields li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  align-items: baseline;
+  font-size: .6875rem;
+  padding: 2px 0;
+}
+.v2-summary-field-context { color: #9ca3af; }
+.v2-summary-field-message { flex-basis: 100%; color: #6b7280; }
+.v2-smart-panel-jump {
+  font: inherit;
+  font-size: .6875rem;
+  color: var(--v2-st-link);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.v2-smart-panel-jump:focus-visible { outline: 2px solid var(--v2-st-jump); outline-offset: 2px; }
+.v2-summary-empty { font-size: .6875rem; color: #6b7280; padding: 4px 2px; }
+.v2-smart-panel-breakdown { margin: 2px 0 6px; font-size: .6875rem; }
+.v2-smart-panel-breakdown > summary { cursor: pointer; color: #4b5563; padding: 2px 0; }
+.v2-smart-panel-breakdown ul { list-style: none; margin: 0; padding: 0 0 0 8px; }
+.v2-smart-panel-breakdown li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; color: #374151; }
+.v2-smart-panel-breakdown li span:last-child { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A row being re-edited shows its pending state, not the previous failure text. */
+#v2-workbook-shell .v2-field-row.v2-field-pending .v2-field-error-msg { display: none; }
