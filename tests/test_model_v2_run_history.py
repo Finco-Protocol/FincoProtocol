@@ -63,8 +63,7 @@ NOW = datetime.datetime.now(datetime.timezone.utc)
 
 def _plan(merchant_price=65.0):
     ppa = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=57.0,
-                    ppa_term_years=15, ppa_volume_share=0.7,
-                    ppa_price_index=0.02,
+                    ppa_volume_share=0.7, ppa_price_index=0.02,
                     balancing_cost_pct=0.0,
                     imbalance_penalty_pct=0.0,
                     ppa_price_floor=0.0,
@@ -74,7 +73,7 @@ def _plan(merchant_price=65.0):
                          price_escalation_annual=0.02)
     return RevenuePlan.create((
         RevenueStream("ppa", RevenueStreamType.PPA, volume_share=0.7,
-                      ppa=ppa, term_years=15),
+                      ppa=ppa),
         RevenueStream("merchant", RevenueStreamType.MERCHANT,
                       volume_share=None, merchant=mkt),
     ))
@@ -151,6 +150,26 @@ def _v2_run(project_id, snapshot_id, *, merchant_price=65.0,
 def _solar_inputs():
     from app.project_factories import create_generic_solar_reference
     return create_generic_solar_reference()
+
+
+def test_run_history_fixture_is_runtime_compatible():
+    """Run History fixture must not activate unrelated Revenue Runtime seams."""
+    base_state = _state()
+    changed_state = _state(merchant_price=70.0)
+    base = compose_project_inputs(
+        base_state,
+        ModelV2CompositionContext(capacity_mw=64.0),
+        _solar_inputs(),
+    )
+    changed = compose_project_inputs(
+        changed_state,
+        ModelV2CompositionContext(capacity_mw=64.0),
+        _solar_inputs(),
+    )
+    assert base.composed
+    assert changed.composed
+    assert base_state.selection_digest() != changed_state.selection_digest()
+    assert base.composition_hash != changed.composition_hash
 
 
 def _legacy_run(project_id, snapshot_id, **overrides):
