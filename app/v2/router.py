@@ -4262,3 +4262,406 @@ async def v2_scenario_sensitivity_run(
         "request": request,
     }
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Goal Seek / Tender V1 — canonical decision support
+#
+# One calculation contract: solve the canonical scalar revenue-price input
+# (PPA base tariff) for a target canonical return metric, using the SAME
+# canonical run authority as the Workbook. Candidate evaluation is
+# persistence-free (existing sensitivity candidate authority); only the
+# explicit "Apply to Working Copy" action writes anything, through the
+# canonical field-save authority (WorkbookUpdateService.apply_draft_update),
+# which triggers the normal STALE semantics. A Goal Seek candidate run is
+# never presented as the canonical Last Run.
+# "Tender" is a UX label for the same solve (target-return pricing).
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def _render_goal_seek_results(ctx: dict) -> HTMLResponse:
+    return HTMLResponse(
+        content=_templates.get_template("partials/goal_seek_results.html").render(ctx))
+
+
+def _goal_seek_apply_ctx(*, project: str, field_id: str, solved_display: str,
+                         content_hash: str, workbook_version: str,
+                         target_metric: str, target_value: str) -> dict:
+    return {
+        "apply_project": project,
+        "apply_field_id": field_id,
+        "apply_value": solved_display,
+        "apply_content_hash": content_hash,
+        "apply_workbook_version": workbook_version,
+        "target_metric": target_metric,
+        "target_value": target_value,
+    }
+
+
+@router.post("/workbook/goal-seek/run", response_class=HTMLResponse)
+async def v2_workbook_goal_seek_run(
+    request: Request,
+    project: str = Form(...),
+    target_metric: str = Form(...),
+    target_value: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Solve the canonical tariff for a target return metric.
+
+    Candidate evaluations reuse the persistence-free sensitivity candidate
+    authority; nothing is persisted by this route. The returned partial
+    carries the typed result and (when SOLVED) the Apply-to-Working-Copy
+    action wired to the canonical field-save authority.
+    """
+    import math
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.project_library_service import is_protected_reference
+
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+
+    from dataclasses import replace as dc_replace
+
+    from app.services.goal_seek import (
+        GoalSeekModelRunError,
+        GoalSeekStatus,
+        make_canonical_evaluator,
+        resolve_metric,
+        resolve_solve_variable,
+        solve_tariff_for_metric,
+    )
+
+    def _fail(status_code: int, message: str,
+              status: str = GoalSeekStatus.INVALID_REQUEST.value) -> HTMLResponse:
+        return _render_goal_seek_results({
+            "result": {
+                "status": status,
+                "target_metric_label": str(target_metric),
+                "message": message,
+            },
+            "apply": None,
+            "request": request,
+        }) if status_code == 200 else HTMLResponse(
+            content=f"<p>{message}</p>", status_code=status_code)
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content=f"<p>Project {project!r} not found.</p>",
+                            status_code=404)
+    if is_protected_reference(project_record):
+        return HTMLResponse(
+            content="<p>This is a protected reference model. Create a working copy to edit it.</p>",
+            status_code=409)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>Workspace not found.</p>", status_code=404)
+
+    # ── Solve-variable resolution (typed, fail closed) ────────────────────── #
+    project_type_raw = (project_record.project_type or "").strip().lower()
+    if project_type_raw == "solar":
+        runtime_project_key = "Solar"
+    elif project_type_raw == "wind":
+        runtime_project_key = "Wind"
+    elif project_type_raw in ("data center", "data_center", "datacenter"):
+        runtime_project_key = "Generic Data Center Reference"
+    elif project_type_raw in ("ev charging", "ev_charging"):
+        runtime_project_key = "Generic EV Charging Hub Reference"
+    else:
+        runtime_project_key = None
+    variable = resolve_solve_variable(project_type_raw)
+    if runtime_project_key is None or variable is None:
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": str(target_metric),
+                "message": (f"Project type {project_type_raw!r} has no "
+                            "supported scalar revenue-price solve variable in "
+                            "V1 (supported: solar, wind)."),
+            },
+            "apply": None,
+            "request": request,
+        })
+
+    metric = resolve_metric(target_metric)
+    if metric is None:
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": str(target_metric),
+                "message": "Unknown target metric. Supported: Project IRR, "
+                           "Pure Equity IRR, Total Sponsor IRR.",
+            },
+            "apply": None,
+            "request": request,
+        })
+    try:
+        target_pct = float(str(target_value).strip().replace("%", ""))
+        if not math.isfinite(target_pct):
+            raise ValueError("not finite")
+    except (TypeError, ValueError):
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": metric.label,
+                "message": f"Target {target_value!r} is not a valid number.",
+            },
+            "apply": None,
+            "request": request,
+        })
+    target_fraction = target_pct / 100.0
+
+    # ── Canonical input construction (mirrors the canonical Run path) ─────── #
+    pis_draft = WorkbookService.build_draft_input_set_from_workspace(ws)
+    try:
+        override = WorkbookService.to_projectinputs(pis_draft)
+    except Exception as build_exc:
+        import logging
+        logging.getLogger(__name__).exception(
+            "goal-seek: build_project_inputs failed project=%s", project)
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.MODEL_RUN_FAILED.value,
+                "target_metric_label": metric.label,
+                "message": ("Could not build project inputs — "
+                            f"{build_exc}"),
+            },
+            "apply": None,
+            "request": request,
+        })
+
+    _scenario_overrides_for_fold = None
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+        sc_rec = get_scenario(scenario_id=ws.active_scenario_id,
+                              user_id=workspace_owner)
+        if (sc_rec is None or sc_rec.archived
+                or sc_rec.project_id != project_record.project_id):
+            return _render_goal_seek_results({
+                "result": {
+                    "status": GoalSeekStatus.INVALID_REQUEST.value,
+                    "target_metric_label": metric.label,
+                    "message": "Active scenario could not be resolved. "
+                               "Please re-select a scenario and try again.",
+                },
+                "apply": None,
+                "request": request,
+            })
+        _scenario_overrides_for_fold = sc_rec.overrides
+
+    from app.services.capex_sub_lines_integration import (
+        apply_user_sub_lines_replacing_base,
+    )
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+
+    folded_capex = apply_user_sub_lines_replacing_base(
+        override.capex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_capex is not override.capex:
+        override = dc_replace(override, capex=folded_capex)
+    folded_opex = apply_user_sub_lines_to_opex(
+        override.opex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_opex is not override.opex:
+        override = dc_replace(override, opex=folded_opex)
+
+    # ── Current canonical tariff (draft state the user sees) ──────────────── #
+    snapshot_origin = dict(getattr(pis_draft, "snapshot_origin", {}) or {})
+    raw_current = snapshot_origin.get(variable.key and "rev_ppa_base_tariff")
+    apply_field_id = variable.field_id
+    if raw_current is None and variable.fallback_field_id:
+        raw_current = snapshot_origin.get("tariff_eur_mwh")
+        apply_field_id = variable.fallback_field_id or variable.field_id
+    try:
+        current_tariff = float(str(raw_current).strip())
+        if not math.isfinite(current_tariff) or current_tariff <= 0:
+            raise ValueError("non-positive")
+    except (TypeError, ValueError):
+        return _render_goal_seek_results({
+            "result": {
+                "status": GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": metric.label,
+                "message": ("The current tariff on this working copy is "
+                            "missing or not a positive number; Goal Seek "
+                            "cannot derive an adaptive bracket."),
+            },
+            "apply": None,
+            "request": request,
+        })
+
+    # ── Deterministic bracketed solve (persistence-free candidates) ───────── #
+    from app.runtime.model_execution import ModelExecutionBusy
+    evaluator = make_canonical_evaluator(runtime_project_key, override, metric)
+    try:
+        result = await solve_tariff_for_metric(
+            project_type=project_type_raw,
+            current_tariff=current_tariff,
+            target_value=target_fraction,
+            metric_key=metric.key,
+            evaluate_batch=evaluator,
+        )
+    except ModelExecutionBusy:
+        return HTMLResponse(
+            content="<p>The model engine is busy — please retry in a moment.</p>",
+            status_code=429,
+            headers={"Retry-After": "5", "X-Finco-Model-Busy": "1"})
+    except GoalSeekModelRunError as exc:
+        result = GoalSeekResult(
+            status=GoalSeekStatus.MODEL_RUN_FAILED.value,
+            solve_variable=variable.key,
+            solve_variable_label=variable.label,
+            solve_variable_unit=variable.unit,
+            solve_field_id=apply_field_id,
+            target_metric=metric.key,
+            target_metric_label=metric.label,
+            target_value=target_fraction,
+            solved_input_value=None,
+            achieved_metric_value=None,
+            absolute_target_error=None,
+            iterations=0,
+            model_evaluations=0,
+            lower_bound=0.0,
+            upper_bound=0.0,
+            bracket_lower=None,
+            bracket_upper=None,
+            started_from_value=current_tariff,
+            message=f"Canonical model run failed: {exc}")
+
+    apply_ctx = None
+    if result.solved and result.solved_input_value is not None:
+        solved_display = f"{result.solved_input_value:.2f}"
+        content_hash = ""
+        workbook_version = WORKBOOK.version
+        try:
+            identity = assemble_consistent_for_get(
+                user_id=workspace_owner,
+                project_id=project_record.project_id,
+                workbook_version=workbook_version,
+            )
+            content_hash = identity.composite_hash
+        except Exception:
+            content_hash = ""
+        apply_ctx = _goal_seek_apply_ctx(
+            project=project,
+            field_id=apply_field_id,
+            solved_display=solved_display,
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            target_metric=metric.key,
+            target_value=str(target_pct),
+        )
+
+    return _render_goal_seek_results({
+        "result": result,
+        "apply": apply_ctx,
+        "request": request,
+    })
+
+
+@router.post("/workbook/goal-seek/apply", response_class=HTMLResponse)
+async def v2_workbook_goal_seek_apply(
+    request: Request,
+    project: str = Form(...),
+    field_id: str = Form(...),
+    value: str = Form(...),
+    content_hash: str = Form(...),
+    workbook_version: str = Form(...),
+    target_metric: str = Form(default=""),
+    target_value: str = Form(default=""),
+    _: None = Depends(require_v2_active),
+):
+    """Apply a SOLVED Goal Seek tariff to the Working Copy.
+
+    Uses the canonical field-save authority (WorkbookUpdateService
+    → v2_atomic_draft_update CAS). This is the ONLY write in the Goal Seek
+    flow; it triggers the normal STALE semantics — the model stays STALE
+    until the user presses the normal Run button. A Goal Seek candidate run
+    is never written as the canonical Last Run.
+    """
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.goal_seek import GoalSeekStatus
+    from app.services.project_library_service import is_protected_reference
+
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content=f"<p>Project {project!r} not found.</p>",
+                            status_code=404)
+    if is_protected_reference(project_record):
+        return HTMLResponse(
+            content="<p>This is a protected reference model. Create a working copy to edit it.</p>",
+            status_code=409)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>Workspace not found.</p>", status_code=404)
+
+    def _ctx(message: str, *, applied: bool, error: bool = False) -> HTMLResponse:
+        fresh_hash = content_hash
+        try:
+            identity = assemble_consistent_for_get(
+                user_id=workspace_owner,
+                project_id=project_record.project_id,
+                workbook_version=workbook_version,
+            )
+            fresh_hash = identity.composite_hash
+        except Exception:
+            pass
+        return _render_goal_seek_results({
+            "result": {
+                "status": "APPLIED" if applied else GoalSeekStatus.INVALID_REQUEST.value,
+                "target_metric_label": target_metric,
+                "message": message,
+            },
+            "apply": None if applied or error else _goal_seek_apply_ctx(
+                project=project,
+                field_id=field_id,
+                solved_display=value,
+                content_hash=fresh_hash,
+                workbook_version=workbook_version,
+                target_metric=target_metric,
+                target_value=target_value,
+            ),
+            "applied": applied,
+            "applied_value": value,
+            "applied_field_id": field_id,
+            "content_hash": fresh_hash,
+            "workbook_version": workbook_version,
+            "project": project,
+            "request": request,
+        })
+
+    try:
+        WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id=field_id,
+            raw_value=value,
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            project_record=project_record,
+        )
+    except StaleContentError:
+        return _ctx(
+            "Draft changed since the solve — the solved tariff was NOT "
+            "applied (atomic safety). Re-run Goal Seek on the current draft.",
+            applied=False, error=True)
+    except (UnknownFieldError, NonEditableFieldError, FieldValidationError,
+            ProtectedReferenceError, VersionMismatchError) as exc:
+        return _ctx(f"Solved tariff could not be applied: {exc}",
+                    applied=False, error=True)
+
+    return _ctx(
+        f"Applied {field_id} = {value} to the Working Copy. The model is "
+        "now STALE — press Run to make it canonical. (Goal Seek candidate "
+        "runs never wrote Run History or Last Run.)",
+        applied=True)

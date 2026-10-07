@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/css/workbook_v2.css">
   <link rel="stylesheet" href="/static/css/model_v2_run_history.css">
   <link rel="stylesheet" href="/static/css/model_v2_decision_support.css">
+  <link rel="stylesheet" href="/static/css/model_v2_goal_seek.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -100,6 +101,7 @@
             hx-swap="outerHTML"
             hx-include="#v2-compare-picker-form">Compare</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-sensitivity"    id="tab-sensitivity">Sensitivity</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-goal-seek"       id="tab-goal-seek">Goal Seek</button>
     {# SETUP group #}
     <span class="v2-tab-group-sep" aria-hidden="true"></span>
     <span class="v2-tab-group-label" aria-hidden="true">Setup</span>
@@ -163,6 +165,12 @@
         {% with active_scenario_id=active_scenario_id %}
           {% include "partials/sheet_sensitivity.html" %}
         {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-goal-seek" aria-labelledby="tab-goal-seek" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_goal_seek.html" %}
       </div>
     </div>
 

@@ -1,0 +1,76 @@
+/* Goal Seek / Tender V1 — decision-support panel (additive; v2-gs-* namespace).
+   Reuses workbook_v2 tokens and the model_v2_decision_support conventions. */
+
+.v2-gs { padding: 10px 14px 20px; font-size: 0.8125rem; color: #1f2937; }
+
+.v2-gs-section { max-width: 640px; }
+
+.v2-gs-section-title {
+  font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #6b7280;
+  border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 10px;
+}
+
+.v2-gs-note { color: #6b7280; margin: 0 0 12px; line-height: 1.45; }
+.v2-gs-note--ok { color: #166534; }
+
+.v2-gs-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+
+.v2-gs-row { display: flex; align-items: center; gap: 10px; }
+
+.v2-gs-label {
+  flex: 0 0 130px; font-size: 0.6875rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280;
+}
+
+.v2-gs-input {
+  flex: 1 1 auto; max-width: 220px; padding: 6px 8px;
+  border: 1px solid #d1d5db; border-radius: 4px; font-size: 0.8125rem;
+  font-family: inherit; background: #fff; color: #1f2937;
+}
+.v2-gs-input:focus { outline: 2px solid #2563eb33; border-color: #2563eb; }
+
+.v2-gs-static { color: #1f2937; font-weight: 600; }
+
+.v2-gs-loading { display: none; color: #6b7280; margin-top: 8px; }
+.v2-gs-loading.htmx-indicator.htmx-request { display: block; }
+
+.v2-gs-results { margin-top: 4px; }
+
+.v2-gs-result {
+  border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px;
+  background: #fafafa; margin-top: 10px;
+}
+
+.v2-gs-chip {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 0.6875rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.v2-gs-chip--ok    { background: #dcfce7; color: #166534; }
+.v2-gs-chip--warn  { background: #fef3c7; color: #92400e; }
+.v2-gs-chip--error { background: #fee2e2; color: #991b1b; }
+
+.v2-gs-message { margin: 10px 0; line-height: 1.5; }
+
+.v2-gs-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; margin: 12px 0;
+}
+
+.v2-gs-fact {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 4px;
+  padding: 6px 8px; display: flex; flex-direction: column; gap: 2px;
+}
+
+.v2-gs-fact-label {
+  font-size: 0.625rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #6b7280;
+}
+
+.v2-gs-fact-value { font-size: 0.875rem; font-weight: 600; }
+
+.v2-gs-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+
+.v2-gs-apply-form { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.v2-gs-apply-note { color: #6b7280; font-size: 0.75rem; max-width: 340px; line-height: 1.4; }

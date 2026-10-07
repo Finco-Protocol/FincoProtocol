@@ -1,0 +1,84 @@
+<div id="v2-goal-seek-result" class="v2-gs-result" data-testid="gs-result"
+     data-status="{{ result.status }}">
+  {% set s = result.status %}
+  {% if s == 'SOLVED' or s == 'TARGET_ALREADY_MET' or s == 'APPLIED' %}
+    <span class="v2-gs-chip v2-gs-chip--ok" data-testid="gs-status-chip">
+      {% if s == 'SOLVED' %}Solved{% elif s == 'TARGET_ALREADY_MET' %}Target already met{% else %}Applied{% endif %}
+    </span>
+  {% elif s == 'NO_SOLUTION_IN_BOUNDS' or s == 'NON_MONOTONIC_TARGET' %}
+    <span class="v2-gs-chip v2-gs-chip--warn" data-testid="gs-status-chip">
+      {% if s == 'NO_SOLUTION_IN_BOUNDS' %}No solution in bounds{% else %}Non-monotonic target{% endif %}
+    </span>
+  {% else %}
+    <span class="v2-gs-chip v2-gs-chip--error" data-testid="gs-status-chip">{{ s.replace('_', ' ')|title }}</span>
+  {% endif %}
+
+  <p class="v2-gs-message" data-testid="gs-message">{{ result.message }}</p>
+
+  {% if result.solved_input_value is defined and result.solved_input_value is not none %}
+    <div class="v2-gs-facts">
+      <div class="v2-gs-fact">
+        <span class="v2-gs-fact-label">Required tariff</span>
+        <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-solved-value">{{ '%.2f'|format(result.solved_input_value) }} EUR/MWh</span>
+      </div>
+      {% if result.achieved_metric_value is defined and result.achieved_metric_value is not none %}
+        <div class="v2-gs-fact">
+          <span class="v2-gs-fact-label">Achieved {{ result.target_metric_label }}</span>
+          <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-achieved-value">{{ '%.4f'|format(result.achieved_metric_value * 100) }}%</span>
+        </div>
+      {% endif %}
+      {% if result.absolute_target_error is defined and result.absolute_target_error is not none %}
+        <div class="v2-gs-fact">
+          <span class="v2-gs-fact-label">Target error</span>
+          <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-target-error">{{ '%.4f'|format(result.absolute_target_error * 100) }} pp</span>
+        </div>
+      {% endif %}
+      <div class="v2-gs-fact">
+        <span class="v2-gs-fact-label">Iterations</span>
+        <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-iterations">{{ result.iterations }}</span>
+      </div>
+      <div class="v2-gs-fact">
+        <span class="v2-gs-fact-label">Model evaluations</span>
+        <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-evaluations">{{ result.model_evaluations }}</span>
+      </div>
+      <div class="v2-gs-fact">
+        <span class="v2-gs-fact-label">Explored bounds</span>
+        <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-bounds">{{ '%.2f'|format(result.lower_bound) }} – {{ '%.2f'|format(result.upper_bound) }} EUR/MWh</span>
+      </div>
+      <div class="v2-gs-fact">
+        <span class="v2-gs-fact-label">Started from</span>
+        <span class="v2-gs-fact-value v2-gs-mono" data-testid="gs-started-from">{{ '%.2f'|format(result.started_from_value) }} EUR/MWh</span>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if apply %}
+    <form class="v2-gs-apply-form"
+          hx-post="/v2/workbook/goal-seek/apply"
+          hx-target="#v2-goal-seek-results"
+          hx-swap="innerHTML"
+          data-testid="gs-apply-form">
+      <input type="hidden" name="project" value="{{ apply.apply_project }}">
+      <input type="hidden" name="field_id" value="{{ apply.apply_field_id }}">
+      <input type="hidden" name="value" value="{{ apply.apply_value }}">
+      <input type="hidden" name="content_hash" value="{{ apply.apply_content_hash }}">
+      <input type="hidden" name="workbook_version" value="{{ apply.apply_workbook_version }}">
+      <input type="hidden" name="target_metric" value="{{ apply.target_metric }}">
+      <input type="hidden" name="target_value" value="{{ apply.target_value }}">
+      <button class="v2-run-btn" type="submit" data-testid="gs-apply-btn">
+        <span class="v2-run-label">Apply to Working Copy</span>
+        <span class="v2-run-loading" aria-hidden="true">Applying…</span>
+      </button>
+      <span class="v2-gs-apply-note">Writes the solved tariff to the Working Copy (canonical field save). The model becomes STALE until you Run.</span>
+    </form>
+  {% endif %}
+
+  {% if applied is defined and applied %}
+    <p class="v2-gs-note v2-gs-note--ok" data-testid="gs-applied-note">
+      Solved tariff <strong class="v2-gs-mono">{{ applied_value }}</strong> written to
+      <span class="v2-gs-mono">{{ applied_field_id }}</span>. The model is now
+      <strong>STALE</strong> — press the normal <strong>Run</strong> button to make it
+      canonical. Goal Seek candidate runs never touched Run History or Last Run.
+    </p>
+  {% endif %}
+</div>
