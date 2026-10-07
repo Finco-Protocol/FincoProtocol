@@ -90,9 +90,12 @@ No random damping. No mutable global state.
 from __future__ import annotations
 
 import math
+import struct
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Callable, NamedTuple, TYPE_CHECKING
 
+from financial_engine.run_scope import current_run_scope as _current_run_scope
 from financial_engine.senior_debt.interest import (
     build_rate_map,
     period_day_fraction,
