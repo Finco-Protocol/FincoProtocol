@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from finco_core.inputs.construction_financing import ConstructionFinancingInput
     from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestPolicy
     from finco_core.inputs.distribution_accounting_policy import DistributionAccountingPolicy
+    from finco_core.inputs.development import DevelopmentEconomicsInput
 
 
 class PeriodFrequency(Enum):
@@ -1668,6 +1669,9 @@ class ProjectInputs:
     accounting_policy_config: "AccountingPolicyConfig | None" = None
     cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
     distribution_accounting_policy: "DistributionAccountingPolicy | None" = None
+    # Developer Economics V1: separate developer ledger. None/disabled = neutral
+    # no-op (no project use, no fabricated fee, bit-exact existing outputs).
+    development_economics: "DevelopmentEconomicsInput | None" = None
 
     def __post_init__(self) -> None:
         from finco_core.inputs.distribution_accounting_policy import (
@@ -1695,6 +1699,12 @@ def _hash_accounting_policy(apc) -> tuple:
         apc.preconstruction_retained_earnings_keur,
         apc.preconstruction_retained_earnings_authority.value,
     )
+
+
+def _development_economics_cache_key(value) -> "tuple | None":
+    from finco_core.inputs.development import cache_key
+
+    return cache_key(value)
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -1814,4 +1824,6 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
             )
             if inputs.cash_reserve_interest_policy is not None else None
         ),
+        # Developer Economics V1: absent and disabled are the same neutral None.
+        _development_economics_cache_key(inputs.development_economics),
     )

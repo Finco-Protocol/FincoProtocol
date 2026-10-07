@@ -97,6 +97,9 @@ class SourcesAndUses:
     shareholder_loan_cash_keur: float
     total_sources_keur: float
     difference_keur: float  # total_sources - total_uses; must be ~0
+    # Developer Economics V1 typed project uses (part of total_uses_keur; 0.0 = inactive).
+    development_cost_reimbursement_keur: float = 0.0
+    developer_fee_keur: float = 0.0
 
 
 def _is_untouched(pi: ProjectInputs) -> tuple[bool, bool]:
@@ -296,6 +299,8 @@ def build_sources_and_uses(financing_result) -> SourcesAndUses:
         shareholder_loan_cash_keur=float(fin.derived_shl_cash_principal_keur),
         total_sources_keur=total_sources,
         difference_keur=(0.0 if abs(total_sources - total_uses) < 1e-9 else total_sources - total_uses),
+        development_cost_reimbursement_keur=float(uses.development_cost_reimbursement_keur),
+        developer_fee_keur=float(uses.developer_fee_keur),
     )
 
 

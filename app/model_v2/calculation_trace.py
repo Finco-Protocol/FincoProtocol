@@ -30,8 +30,7 @@ canonical result (or of the canonical read-only presentation adapter's
 aggregation of result vectors). No NaN/Inf is ever serialized; provenance
 that cannot be proved is not claimed.
 
-Governance: exact-path authorized support file under
-docs/model_v2/ACTIVE_EPIC_SCOPE.json. No engine, persistence, or Workflow 02
+Governance: released Model V2 support file. No engine, persistence, or Workflow 02
 RevenuePlan code is modified.
 """
 from __future__ import annotations
@@ -349,6 +348,102 @@ _OUTPUT_DEPENDENCIES = {
 }
 
 
+_DEVELOPER_AUTHORITY = (
+    "financial_engine/developer_economics/model.py::compute_developer_economics"
+)
+
+# (output_key, label, unit, result attribute, status attribute, upstream output keys)
+# The chain: spend -> reimbursement -> fee -> receipts -> MOIC / XIRR over the
+# developer's own dated vector. Values are pass-through of the canonical
+# DeveloperEconomicsResult; nothing is recomputed here.
+_DEVELOPER_TARGETS = (
+    ("developer_total_development_spend_keur", "Total Development Spend", "kEUR",
+     "total_development_spend_keur", None, ()),
+    ("developer_reimbursed_development_cost_keur",
+     "Development Cost Reimbursement (project use, paid at FC)", "kEUR",
+     "reimbursed_development_cost_keur", None,
+     ("developer_total_development_spend_keur",)),
+    ("developer_fee_keur", "Developer Fee (project use, paid at FC)", "kEUR",
+     "developer_fee_keur", None, ()),
+    ("developer_total_receipts_keur", "Total Developer Receipts", "kEUR",
+     "total_developer_receipts_keur", None,
+     ("developer_fee_keur", "developer_reimbursed_development_cost_keur")),
+    ("developer_moic", "Developer MOIC", "multiple",
+     "developer_moic", "developer_moic_status",
+     ("developer_total_development_spend_keur", "developer_total_receipts_keur")),
+    ("developer_xirr", "Developer XIRR", "fraction",
+     "developer_xirr", "developer_xirr_status",
+     ("developer_fee_keur", "developer_reimbursed_development_cost_keur",
+      "developer_total_development_spend_keur")),
+)
+
+
+def _developer_references(register, include_hard_capex):
+    if register is None:
+        return ()
+    selected = {
+        entry.assumption_id
+        for entry in register.section("DEVELOPER")
+        if entry.value_presence is ValuePresence.PRESENT
+    }
+    if include_hard_capex:
+        selected.update(
+            entry.assumption_id
+            for entry in register.section("CAPEX")
+            if entry.assumption_id.endswith(".amount_keur")
+        )
+    return tuple(sorted(selected))
+
+
+def _developer_entries(result, register):
+    """Developer Economics V1 trace entries (separate developer ledger)."""
+    pct_basis = result.fee_basis.mode == "PCT_OF_HARD_CAPEX"
+    vector = (
+        f"dated developer cash-flow vector: {len(result.cashflows)} row(s); typed "
+        f"spend dates on or before Financial Close, reimbursement and developer "
+        f"fee settle at the canonical Financial Close date "
+        f"{result.settlement_date.isoformat()}"
+    )
+    entries = []
+    for output_key, label, unit, attribute, status_attribute, upstream in _DEVELOPER_TARGETS:
+        value = getattr(result, attribute)
+        status = _status_text(getattr(result, status_attribute)) \
+            if status_attribute else None
+        present = value is not None
+        if output_key == "developer_fee_keur" and pct_basis:
+            note = (
+                "fee = typed fraction x CapexStructure.hard_capex_keur "
+                f"(basis {result.fee_basis.basis_keur} kEUR; pre-fee, "
+                "pre-financing, non-circular)"
+            )
+        elif output_key in ("developer_moic", "developer_xirr"):
+            note = vector if present else (
+                f"canonical authority reported this metric unavailable "
+                f"({status}); recorded as UNAVAILABLE, never as zero - {vector}"
+            )
+        else:
+            note = "value passed through from the canonical developer-ledger result"
+        entries.append(TraceEntry(
+            trace_id=f"trace.{output_key}",
+            output_key=output_key,
+            output_label=label,
+            output_value=value,
+            value_presence=ValuePresence.PRESENT if present else ValuePresence.MISSING,
+            unit=unit,
+            status=status,
+            methodology_key=None,
+            authority=_DEVELOPER_AUTHORITY,
+            formula_ref=None,
+            referenced_assumption_ids=_developer_references(
+                register, output_key == "developer_fee_keur" and pct_basis),
+            referenced_output_keys=tuple(sorted(upstream)),
+            completeness=(TraceCompleteness.AUTHORITY_ONLY if present
+                          else TraceCompleteness.UNAVAILABLE),
+            notes=note,
+        ))
+    return entries
+
+
 def _collect_references(register, output_key):
     """Deterministic referenced-assumption selection (rule-documented)."""
     if register is None:
@@ -441,6 +536,9 @@ def build_calculation_trace(clean_run, *, context, assumption_register=None):
                 notes=notes,
             )
         )
+    developer_result = getattr(clean_run, "developer_economics_result", None)
+    if developer_result is not None:
+        entries.extend(_developer_entries(developer_result, assumption_register))
     entries.sort(key=lambda e: e.trace_id)
     return CalculationTrace(
         context=context,

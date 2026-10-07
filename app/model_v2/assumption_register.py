@@ -41,8 +41,7 @@ canonical dataclasses document them as derived outputs, not primary
 assumptions. Deprecated non-authorities (``target_min_dscr``,
 ``flat_dscr_target``, ``shl_cap_applies``) are likewise excluded.
 
-Governance: this module is an exact-path authorized support file under
-docs/model_v2/ACTIVE_EPIC_SCOPE.json. No engine, persistence, or Workflow 02
+Governance: this module is a released Model V2 support file. No engine, persistence, or Workflow 02
 RevenuePlan code is modified (RevenuePlan is READ through its public
 contracts).
 """
@@ -1264,6 +1263,56 @@ def _collect_valuation(inputs, sec) -> None:
                  label="Coverage Valuation Authority Label", unit="n/a")
 
 
+def _collect_developer(inputs, sec) -> None:
+    """Developer Economics V1 typed inputs (separate developer ledger).
+
+    Emitted ONLY when the capability is enabled; absent/disabled projects
+    produce an unchanged register. Values are the typed contract verbatim —
+    totals, fee amounts and returns are canonical OUTPUTS and live in the
+    trace / analytics, never here.
+    """
+    config = getattr(inputs, "development_economics", None)
+    if config is None or not config.enabled:
+        return
+    sec.add("developer.enabled", config.enabled,
+            path="development_economics.enabled",
+            label="Developer Economics Enabled", unit="n/a", value_type="bool")
+    sec.enum_add("developer.outcome", config.outcome,
+                 path="development_economics.outcome",
+                 label="Development Outcome")
+    for index, entry in enumerate(config.spend_schedule):
+        sec.add(f"developer.spend[{index}].date", entry.spend_date.isoformat(),
+                path=f"development_economics.spend_schedule[{index}].spend_date",
+                label=f"Development Spend {index + 1} Date", unit="date",
+                value_type="str")
+        sec.add(f"developer.spend[{index}].amount_keur", entry.amount_keur,
+                path=f"development_economics.spend_schedule[{index}].amount_keur",
+                label=f"Development Spend {index + 1}", unit="kEUR")
+    sec.add("developer.reimbursed_development_cost_keur",
+            config.reimbursed_development_cost_keur,
+            path="development_economics.reimbursed_development_cost_keur",
+            label="Development Cost Reimbursed at Financial Close", unit="kEUR")
+    sec.enum_add("developer.fee_mode", config.developer_fee_mode,
+                 path="development_economics.developer_fee_mode",
+                 label="Developer Fee Mode")
+    sec.add("developer.fee_value", config.developer_fee_value,
+            path="development_economics.developer_fee_value",
+            label="Developer Fee Value",
+            unit=("fraction"
+                  if config.developer_fee_mode.value == "PCT_OF_HARD_CAPEX"
+                  else "kEUR"),
+            notes=("PCT_OF_HARD_CAPEX: fraction of CapexStructure.hard_capex_keur "
+                   "(pre-fee, pre-financing basis; non-circular)"
+                   if config.developer_fee_mode.value == "PCT_OF_HARD_CAPEX"
+                   else None))
+    sec.enum_add("developer.settlement", config.settlement,
+                 path="development_economics.settlement",
+                 label="Developer Settlement Authority")
+    sec.enum_add("developer.book_basis_mode", config.book_basis_mode,
+                 path="development_economics.book_basis_mode",
+                 label="Developer Book Basis Treatment")
+
+
 # ---------------------------------------------------------------------------
 # Public builder + register container
 # ---------------------------------------------------------------------------
@@ -1299,6 +1348,7 @@ def build_assumption_register(inputs, context):
     _collect_financing(inputs, collector.section("FINANCING"))
     _collect_tax(inputs, collector.section("TAX"))
     _collect_valuation(inputs, collector.section("VALUATION"))
+    _collect_developer(inputs, collector.section("DEVELOPER"))
     entries = collector.finish()
     register = AssumptionRegister(
         context=context,

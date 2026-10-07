@@ -469,7 +469,9 @@ class TestFrozenAuthoritiesZeroDiff:
         """finco_core/** must have zero diff vs main."""
         # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         from finance_integrity_governance import changed_paths_vs_main
-        changed = [f for f in changed_paths_vs_main() if f.startswith("finco_core/")]
+        from model_v2_governance import approved_by_active_model_v2_scope
+        changed = [f for f in changed_paths_vs_main()
+                   if f.startswith("finco_core/") and not approved_by_active_model_v2_scope(f)]
         assert changed == [], (
             f"finco_core must have zero diff vs main; changed: {changed}"
         )

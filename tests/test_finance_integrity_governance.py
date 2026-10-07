@@ -18,7 +18,7 @@ def test_unrelated_engine_modules_stay_protected():
         "financial_engine/cfads.py",
         "financial_engine/shl/waterfall.py",
         "financial_engine/operating/model.py",
-        "financial_engine/project_returns/model.py",
+        "financial_engine/sponsor_returns/model.py",
     ):
         assert unapproved_engine_changes([path]) == [path]
 

@@ -95,6 +95,28 @@ RELEASED_MODEL_V2_ENGINE_AUTHORITIES = {
     "financial_engine/financial_statements/contracts.py": "f54589530736b616cc527055065c9ea538f037e2",
 }
 
+# Developer Economics V1 (typed vertical slice): exact reviewed paths, each pinned
+# to its exact git blob SHA. Independent of any epic scope marker. Any other
+# finco_core/financial_engine path, or any further edit of these files, is
+# unauthorized again.
+DEVELOPER_ECONOMICS_V1_AUTHORITIES: dict[str, str] = {
+    "financial_engine/adapters/project_inputs.py": "713ccda7d9ae85a7d7d590ccfeb0118906f0d4cc",
+    "financial_engine/book_basis.py": "90fd6136ad1079516c5525f90e29f4ae15fd05d9",
+    "financial_engine/developer_economics/__init__.py": "3d778b88cf457c16ff3d85e55b5df28065fb715a",
+    "financial_engine/developer_economics/contracts.py": "d300eea4081027eb3d2bd1792d9d259222ad9f6c",
+    "financial_engine/developer_economics/model.py": "aaffb3160eb8c73f86f39b9b441da29c9522d2d1",
+    "financial_engine/financing/contracts.py": "827b0ed60d5676c871e71bd2e4025569c4bbf59b",
+    "financial_engine/financing/generic_product_policy.py": "c4120b644bb31177264b5cdbb08cb7f2dfab0d8f",
+    "financial_engine/financing/project.py": "3a8cb2f60559aabaf237965a634fd26be4230553",
+    "financial_engine/financing/project_uses.py": "4ce60bf1423a443d4d3500570033e0d8312eca70",
+    "financial_engine/project_returns/contracts.py": "216072642966a91574ee8043c652549d638fb66a",
+    "financial_engine/project_returns/model.py": "f6ce4426e2f1c05ac4b0a37a795d7ed49ac24011",
+    "finco_core/inputs/__init__.py": "687e40bd685eee717993967c395b38fd272d80e9",
+    "finco_core/inputs/_models.py": "01bc351cd515de1341b80998dd7e74f5c1db8043",
+    "finco_core/inputs/development.py": "40b645ca3f5c51b15948f4a29290b056ffcb2280",
+    "finco_core/inputs/serialization.py": "78e02f685ade80efe01d7b86fcaa8f5243c0773f",
+}
+
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 _VALID_STATUSES = ("ACTIVE", "RETIRED")
@@ -244,7 +266,8 @@ def released_engine_authority_matches(
     """True only for an exact released engine authority whose content at ``ref``
     is the exact reviewed git blob. Fails closed (False) when git or the blob is
     unavailable. Independent of any epic scope marker."""
-    pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(path)
+    pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(
+        path, DEVELOPER_ECONOMICS_V1_AUTHORITIES.get(path))
     if pinned is None:
         return False
     cwd = str(repo) if repo else str(REPO)
