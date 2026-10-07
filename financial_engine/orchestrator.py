@@ -844,26 +844,26 @@ def _make_solver_tax_cfads_fn(
     tax_periodisation_mode_override: str | None = None,
     reset_candidate_components: bool = False,
 ):
-    """Build the senior-solver tax callable with a precomputed merge template.
+    """Build the senior-solver tax callable from one exact static context.
 
-    Runtime V2 (§8): within one senior-debt solve, every merge input EXCEPT
-    the candidate senior-interest map is constant (SHL guess, limitation
-    state, base tax input, policy override).  The merged template is
-    therefore built ONCE per callable — with the exact
-    ``_merge_financing_tax_input`` semantics including the SHL limitation
-    gross-interest validation — and each candidate re-stamps only
-    ``senior_interest_keur`` on the periods the candidate supplies.  For
-    every other field this is identical to the per-call merge:
-      - idx in candidate        → senior = candidate[idx]
-      - idx not in candidate    → senior = base existing senior (kept)
-      - shl/limitation/other    → template (candidate never supplied them)
+    Runtime V4 keeps the canonical typed merge as the boundary authority, then
+    uses a positional SolverTaxPlan for candidate evaluations when the proven
+    lean calendar-year path is available.  Exact repeated candidates are
+    memoised only inside the current engine Run; failures are never cached.
     """
+    import struct as _struct
+    from collections import OrderedDict as _OrderedDict
     from dataclasses import replace as _replace
-    from financial_engine.tax.engine import calculate_cfads_and_cash_tax
+    from financial_engine.run_scope import current_run_scope as _current_run_scope
+    from financial_engine.tax import engine as _tax_engine
+    from financial_engine.tax.engine import (
+        build_solver_tax_plan as _build_solver_tax_plan,
+        calculate_cfads_and_cash_tax,
+    )
 
     template = _merge_financing_tax_input(
         base_tax_input,
-        {},  # the candidate is applied per call below
+        {},
         shl_interest_by_period,
         limitation_by_period,
         tax_periodisation_mode_override=tax_periodisation_mode_override,
@@ -871,17 +871,117 @@ def _make_solver_tax_cfads_fn(
     template_periods = template.period_interest
     template_keys = frozenset(pi.period_index for pi in template_periods)
 
+    _solver_plan = None
+    _solver_plan_unavailable = False
+    _solver_context_key = None
+
+    def _pack_floats(values: tuple[float, ...]) -> bytes:
+        if not values:
+            return b""
+        return _struct.pack("!" + str(len(values)) + "d", *values)
+
+    def _context_key(plan):
+        nonlocal _solver_context_key
+        if _solver_context_key is not None:
+            return _solver_context_key
+
+        period_key = tuple(
+            (
+                p.period_index,
+                p.period_start.toordinal(),
+                p.period_end.toordinal(),
+                float(p.ebitda_keur).hex(),
+                float(p.tax_depreciation_keur).hex(),
+            )
+            for p in periods
+        )
+        opening_key = tuple(
+            (
+                v.origin_tax_year,
+                float(v.amount_keur).hex(),
+                v.source_label,
+            )
+            for v in plan.opening_loss_vintages
+        )
+        _solver_context_key = (
+            period_key,
+            repr(plan.policy),
+            opening_key,
+            tuple(sorted(plan.template_keys)),
+            _pack_floats(plan.base_senior),
+            _pack_floats(plan.other_interest),
+            _pack_floats(plan.shl_tax_eligible),
+            _pack_floats(plan.shl_non_deductible),
+            _pack_floats(plan.reintegration),
+            _pack_floats(plan.financing_income),
+            bool(plan.reset_candidate_components),
+        )
+        return _solver_context_key
+
+    def _candidate_key(
+        plan,
+        senior_interest_by_period: dict[int, float],
+    ):
+        items = tuple(senior_interest_by_period.items())
+        indices = tuple(idx for idx, _value in items)
+        values = tuple(float(value) for _idx, value in items)
+        return (_context_key(plan), indices, _pack_floats(values))
+
+    def _evaluate_fast(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]] | None:
+        nonlocal _solver_plan, _solver_plan_unavailable
+
+        if _solver_plan_unavailable:
+            return None
+        if not template_keys.issuperset(senior_interest_by_period):
+            return None
+        if (
+            _tax_engine.calculate_cfads_and_cash_tax
+            is not _tax_engine._AUTHENTIC_CALCULATE_CFADS_AND_CASH_TAX
+        ):
+            return None
+
+        if _solver_plan is None:
+            _solver_plan = _build_solver_tax_plan(
+                periods,
+                template,
+                reset_candidate_components=reset_candidate_components,
+            )
+            if _solver_plan is None:
+                _solver_plan_unavailable = True
+                return None
+
+        scope = _current_run_scope()
+        if scope is None:
+            return _solver_plan.evaluate(senior_interest_by_period)
+
+        cache = scope.get("solver_tax_exact_v4")
+        if cache is None:
+            cache = scope["solver_tax_exact_v4"] = _OrderedDict()
+        key = _candidate_key(_solver_plan, senior_interest_by_period)
+        hit = cache.get(key)
+        if hit is not None:
+            cache.move_to_end(key)
+            return dict(hit[0]), dict(hit[1])
+
+        result = _solver_plan.evaluate(senior_interest_by_period)
+        cache[key] = (tuple(result[0].items()), tuple(result[1].items()))
+        if len(cache) > 2048:
+            cache.popitem(last=False)
+        return result
+
     def tax_cfads_fn(
         senior_interest_by_period: dict[int, float],
     ) -> tuple[dict[int, float], dict[int, float]]:
+        fast = _evaluate_fast(senior_interest_by_period)
+        if fast is not None:
+            return fast
+
         if not senior_interest_by_period:
-            # empty candidate ≡ merge(base, {}, ...) == template (same inputs)
             return calculate_cfads_and_cash_tax(periods, template)
+
         if not template_keys.issuperset(senior_interest_by_period):
-            # the template does not cover every candidate period (e.g. a
-            # base tax input with no pre-existing interest entries): the
-            # stamp would DROP candidate interest — take the canonical
-            # per-call merge exactly as before.
             tax_input = _merge_financing_tax_input(
                 base_tax_input,
                 senior_interest_by_period,
@@ -890,41 +990,36 @@ def _make_solver_tax_cfads_fn(
                 tax_periodisation_mode_override=tax_periodisation_mode_override,
             )
             return calculate_cfads_and_cash_tax(periods, tax_input)
-        if True:
-            if reset_candidate_components:
-                # bank-debt-sizing semantics: a candidate period is rebuilt
-                # from the bare constructor (senior only) exactly as the
-                # original manual pre-merge did before the merge — every
-                # other component resets to the constructor default.
-                period_interest = tuple(
-                    _replace(
-                        pi,
-                        senior_interest_keur=senior_interest_by_period[idx],
-                        shl_interest_keur=0.0,
-                        other_interest_keur=0.0,
-                        shl_deductible_interest_keur=None,
-                        capitalisation_ratio=None,
-                        capitalisation_gate_active=None,
-                        absolute_limit_component_keur=0.0,
-                        ebitda_limit_component_keur=0.0,
-                        additional_non_deductible_component_keur=0.0,
-                    )
-                    if (idx := pi.period_index) in senior_interest_by_period
-                    else pi
-                    for pi in template_periods
+
+        if reset_candidate_components:
+            period_interest = tuple(
+                _replace(
+                    pi,
+                    senior_interest_keur=senior_interest_by_period[idx],
+                    shl_interest_keur=0.0,
+                    other_interest_keur=0.0,
+                    shl_deductible_interest_keur=None,
+                    capitalisation_ratio=None,
+                    capitalisation_gate_active=None,
+                    absolute_limit_component_keur=0.0,
+                    ebitda_limit_component_keur=0.0,
+                    additional_non_deductible_component_keur=0.0,
                 )
-            else:
-                period_interest = tuple(
-                    _replace(pi, senior_interest_keur=senior_interest_by_period[idx])
-                    if (idx := pi.period_index) in senior_interest_by_period
-                    else pi
-                    for pi in template_periods
-                )
-            tax_input = _replace(template, period_interest=period_interest)
-            return calculate_cfads_and_cash_tax(periods, tax_input)
+                if (idx := pi.period_index) in senior_interest_by_period
+                else pi
+                for pi in template_periods
+            )
+        else:
+            period_interest = tuple(
+                _replace(pi, senior_interest_keur=senior_interest_by_period[idx])
+                if (idx := pi.period_index) in senior_interest_by_period
+                else pi
+                for pi in template_periods
+            )
+        tax_input = _replace(template, period_interest=period_interest)
+        return calculate_cfads_and_cash_tax(periods, tax_input)
 
     return tax_cfads_fn
-
 
 def _merge_financing_tax_input(
     base_tax_input: object,
