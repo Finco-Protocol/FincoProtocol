@@ -321,22 +321,25 @@ def run_clean_production(
         run_project_shareholder_waterfall_model,
     )
 
+    from financial_engine.run_scope import engine_run_scope
+
     policy = DEFAULT_GENERIC_FINANCING_POLICY if financing_policy is None else financing_policy
     try:
         # H-1: apply the project's declared construction financing (IDC, commitment
         # and structuring fees) and DSRA policy. One production calculation; the
         # policy owns the initial-DSRA fixed point around the single engine entry.
-        g2c, effective_inputs, policy_evidence = _memoised_policy_run(
-            effective_inputs,
-            policy,
-            lambda: run_with_generic_financing_policy(
+        with engine_run_scope():
+            g2c, effective_inputs, policy_evidence = _memoised_policy_run(
                 effective_inputs,
-                lambda applied: run_project_shareholder_waterfall_model(
-                    applied, source_id="pr8_clean_production_authority"
-                ),
                 policy,
-            ),
-        )
+                lambda: run_with_generic_financing_policy(
+                    effective_inputs,
+                    lambda applied: run_project_shareholder_waterfall_model(
+                        applied, source_id="pr8_clean_production_authority"
+                    ),
+                    policy,
+                ),
+            )
     except CleanProductionRunUnavailable:
         raise
     except Exception as exc:  # fail closed — never fall back to legacy

@@ -230,60 +230,89 @@ def compute_shl_schedule(
         Any input validation failure from construction inputs, operating period
         inputs, or the underlying period computation functions.
     """
-    if not isinstance(policy, ShlWaterfallPolicy):
-        raise ValueError(
-            f"policy must be ShlWaterfallPolicy, got {type(policy).__name__}"
-        )
+    chain = _ShlOperatingChain(construction, policy)
+    operating_results: list[ShlWaterfallPeriodResult] = [
+        chain.advance(op) for op in operating_periods
+    ]
+    return ShlFullScheduleResult(
+        construction=chain.construction_result,
+        operating=tuple(operating_results),
+    )
 
-    # Rate consistency: construction and operating must use the same annual rate.
-    # For FIXED rate mode, a silently diverging rate introduces unauditable errors.
-    if construction.annual_rate != policy.annual_rate:
-        raise ValueError(
-            f"compute_shl_schedule: construction.annual_rate "
-            f"({construction.annual_rate!r}) != policy.annual_rate "
-            f"({policy.annual_rate!r}). For FIXED SHL rate mode both must "
-            f"be identical. Correct the caller; do not introduce a patch rate."
-        )
 
-    # Step 1: Construction period.
-    if construction.construction_interest_method == ShlConstructionInterestMethod.SIMPLE:
-        constr_result = compute_shl_period(
-            opening_balance_keur=0.0,
-            drawdown_keur=construction.draw_keur,
-            day_count_fraction=construction.dcf,
-            annual_rate=construction.annual_rate,
-            payment_mode=ShlInterestPaymentMode.PIK,
-            scheduled_principal_keur=0.0,
-            period_index=construction.period_index,
-        )
-    elif construction.construction_interest_method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
-        if construction.dcf == 0.0 or construction.draw_keur == 0.0:
-            compound_interest = 0.0
-        else:
-            compound_interest = construction.draw_keur * (
-                (1.0 + construction.annual_rate) ** construction.dcf - 1.0
+class _ShlOperatingChain:
+    """Operating-period roll-forward of ``compute_shl_schedule``, one period at a time.
+
+    Holds the construction result and the running opening balance. ``advance`` evaluates
+    the next operating period from the prior closing balance and moves the chain on;
+    ``evaluate`` does the same arithmetic without moving it. ``compute_shl_schedule`` and
+    the production adapter both use it, so there is one SHL kernel path and the adapter
+    no longer re-derives the whole schedule prefix for every period.
+    """
+
+    __slots__ = ("policy", "construction_result", "opening")
+
+    def __init__(
+        self,
+        construction: ShlConstructionInput,
+        policy: ShlWaterfallPolicy,
+    ) -> None:
+        if not isinstance(policy, ShlWaterfallPolicy):
+            raise ValueError(
+                f"policy must be ShlWaterfallPolicy, got {type(policy).__name__}"
             )
-        constr_result = ShlPeriodResult(
-            period_index=construction.period_index,
-            opening_balance_keur=0.0,
-            gross_accrued_interest_keur=compound_interest,
-            cash_interest_keur=0.0,
-            pik_interest_keur=compound_interest,
-            scheduled_principal_keur=0.0,
-            closing_balance_keur=construction.draw_keur + compound_interest,
-        )
-    else:
-        raise ValueError(
-            f"compute_shl_schedule: unsupported construction_interest_method "
-            f"{construction.construction_interest_method!r}. "
-            f"Supported: SIMPLE, COMPOUND_PERIODIC."
-        )
 
-    # Step 2: Operating periods via C3B3D2B0 waterfall (natural formula).
-    operating_results: list[ShlWaterfallPeriodResult] = []
-    opening = constr_result.closing_balance_keur
+        # Rate consistency: construction and operating must use the same annual rate.
+        # For FIXED rate mode, a silently diverging rate introduces unauditable errors.
+        if construction.annual_rate != policy.annual_rate:
+            raise ValueError(
+                f"compute_shl_schedule: construction.annual_rate "
+                f"({construction.annual_rate!r}) != policy.annual_rate "
+                f"({policy.annual_rate!r}). For FIXED SHL rate mode both must "
+                f"be identical. Correct the caller; do not introduce a patch rate."
+            )
 
-    for op in operating_periods:
+        # Step 1: Construction period.
+        if construction.construction_interest_method == ShlConstructionInterestMethod.SIMPLE:
+            constr_result = compute_shl_period(
+                opening_balance_keur=0.0,
+                drawdown_keur=construction.draw_keur,
+                day_count_fraction=construction.dcf,
+                annual_rate=construction.annual_rate,
+                payment_mode=ShlInterestPaymentMode.PIK,
+                scheduled_principal_keur=0.0,
+                period_index=construction.period_index,
+            )
+        elif construction.construction_interest_method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
+            if construction.dcf == 0.0 or construction.draw_keur == 0.0:
+                compound_interest = 0.0
+            else:
+                compound_interest = construction.draw_keur * (
+                    (1.0 + construction.annual_rate) ** construction.dcf - 1.0
+                )
+            constr_result = ShlPeriodResult(
+                period_index=construction.period_index,
+                opening_balance_keur=0.0,
+                gross_accrued_interest_keur=compound_interest,
+                cash_interest_keur=0.0,
+                pik_interest_keur=compound_interest,
+                scheduled_principal_keur=0.0,
+                closing_balance_keur=construction.draw_keur + compound_interest,
+            )
+        else:
+            raise ValueError(
+                f"compute_shl_schedule: unsupported construction_interest_method "
+                f"{construction.construction_interest_method!r}. "
+                f"Supported: SIMPLE, COMPOUND_PERIODIC."
+            )
+
+        self.policy = policy
+        self.construction_result = constr_result
+        self.opening = constr_result.closing_balance_keur
+
+    def evaluate(self, op: ShlOperatingPeriodInput) -> ShlWaterfallPeriodResult:
+        """One operating period from the current opening balance (does not advance)."""
+        policy = self.policy
         # Validate operating period inputs
         _check_finite("cash_available_for_shl_keur", op.cash_available_for_shl_keur)
         _check_finite("drawdown_keur", op.drawdown_keur)  # type check before value check below
@@ -303,7 +332,7 @@ def compute_shl_schedule(
                 f"Support for operating draws is deferred to a future stage."
             )
 
-        effective_opening = opening
+        effective_opening = self.opening
 
         # Compute day-count fraction from calendar dates via typed convention.
         dcf = (
@@ -312,7 +341,7 @@ def compute_shl_schedule(
             else compute_shl_dcf(op.period_start, op.period_end, policy.day_count_convention)
         )
 
-        result = compute_shl_waterfall_period(
+        return compute_shl_waterfall_period(
             opening_balance_keur=effective_opening,
             annual_rate=policy.annual_rate,
             day_count_fraction=dcf,
@@ -321,13 +350,12 @@ def compute_shl_schedule(
             repayment_mode=op.repayment_mode,
             is_maturity_period=op.is_maturity_period,
         )
-        operating_results.append(result)
-        opening = result.closing_balance_keur
 
-    return ShlFullScheduleResult(
-        construction=constr_result,
-        operating=tuple(operating_results),
-    )
+    def advance(self, op: ShlOperatingPeriodInput) -> ShlWaterfallPeriodResult:
+        """Evaluate one operating period and roll the opening balance forward."""
+        result = self.evaluate(op)
+        self.opening = result.closing_balance_keur
+        return result
 
 
 def _check_finite(name: str, value: object) -> None:
@@ -337,6 +365,37 @@ def _check_finite(name: str, value: object) -> None:
         raise ValueError(f"{name} must be numeric, got {type(value).__name__}")
     if not math.isfinite(value):  # type: ignore[arg-type]
         raise ValueError(f"{name} must be finite, got {value!r}")
+
+
+def _new_operating_chain(
+    shl_input: "ShareholderLoanModelInput",
+    draw_keur: float,
+    dcf: float,
+    draw_period_index: int,
+    prior_operating_inputs: Sequence[ShlOperatingPeriodInput],
+) -> _ShlOperatingChain:
+    """Chain for the current construction parameters, replaying any earlier operating periods.
+
+    The replay is empty on first use; it only runs if the construction parameters change
+    after operating periods were already chained, which reproduces re-deriving the schedule
+    prefix under the new parameters.
+    """
+    chain = _ShlOperatingChain(
+        ShlConstructionInput(
+            draw_keur=draw_keur,
+            annual_rate=shl_input.annual_fixed_rate,
+            dcf=dcf,
+            period_index=draw_period_index,
+            construction_interest_method=shl_input.construction_interest_method,
+        ),
+        ShlWaterfallPolicy(
+            annual_rate=shl_input.annual_fixed_rate,
+            day_count_convention=shl_input.day_count_convention,
+        ),
+    )
+    for earlier in prior_operating_inputs:
+        chain.advance(earlier)
+    return chain
 
 
 def _shl_operating_accrual_start(period: object) -> date:
@@ -417,6 +476,8 @@ def compute_shareholder_loan_schedules(
     draw_period_index = construction_period_indices[-1]
     construction_result: ShlPeriodResult | None = None
     operating_inputs: list[ShlOperatingPeriodInput] = []
+    _op_chain: _ShlOperatingChain | None = None
+    _op_chain_key: tuple | None = None
     underfunded_bullet_residual: float | None = None
 
     # Fix 3 canonical: pre-compute multi-period construction schedule when override provided.
@@ -589,37 +650,31 @@ def compute_shareholder_loan_schedules(
                 shl_input.repayment_mode == ShlRepaymentMode.CASH_SWEEP
                 and p.period_index < shl_input.repayment_start_period_index
             ):
-                preliminary = compute_shl_schedule(
-                    construction=ShlConstructionInput(
-                        draw_keur=_effective_op_draw,
-                        annual_rate=shl_input.annual_fixed_rate,
-                        dcf=_effective_op_dcf,
-                        period_index=draw_period_index,
-                        construction_interest_method=shl_input.construction_interest_method,
-                    ),
-                    operating_periods=tuple(operating_inputs + [
-                        ShlOperatingPeriodInput(
-                            period_index=p.period_index,
-                            period_start=_shl_operating_accrual_start(p),
-                            period_end=p.period_end,
-                            cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
-                            day_count_fraction=(
-                                p.day_fraction
-                                if shl_input.day_count_convention
-                                == ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR
-                                else None
-                            ),
-                            repayment_mode=shl_input.repayment_mode,
-                            is_maturity_period=(
-                                p.period_index == shl_input.maturity_period_index
-                            ),
-                        )
-                    ]),
-                    policy=ShlWaterfallPolicy(
-                        annual_rate=shl_input.annual_fixed_rate,
-                        day_count_convention=shl_input.day_count_convention,
-                    ),
-                ).operating[-1]
+                _chain_key = (_effective_op_draw, _effective_op_dcf, draw_period_index)
+                if _op_chain is None or _op_chain_key != _chain_key:
+                    _op_chain = _new_operating_chain(
+                        shl_input, _effective_op_draw, _effective_op_dcf,
+                        draw_period_index, operating_inputs,
+                    )
+                    _op_chain_key = _chain_key
+                preliminary = _op_chain.evaluate(
+                    ShlOperatingPeriodInput(
+                        period_index=p.period_index,
+                        period_start=_shl_operating_accrual_start(p),
+                        period_end=p.period_end,
+                        cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
+                        day_count_fraction=(
+                            p.day_fraction
+                            if shl_input.day_count_convention
+                            == ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR
+                            else None
+                        ),
+                        repayment_mode=shl_input.repayment_mode,
+                        is_maturity_period=(
+                            p.period_index == shl_input.maturity_period_index
+                        ),
+                    )
+                )
                 cash_eligible_for_current_shl_service = min(
                     raw_cash,
                     preliminary.gross_accrued_interest_keur,
@@ -639,22 +694,15 @@ def compute_shareholder_loan_schedules(
                 repayment_mode=shl_input.repayment_mode,
                 is_maturity_period=(p.period_index == shl_input.maturity_period_index),
             )
+            _chain_key = (_effective_op_draw, _effective_op_dcf, draw_period_index)
+            if _op_chain is None or _op_chain_key != _chain_key:
+                _op_chain = _new_operating_chain(
+                    shl_input, _effective_op_draw, _effective_op_dcf,
+                    draw_period_index, operating_inputs,
+                )
+                _op_chain_key = _chain_key
             operating_inputs.append(op_input)
-            schedule = compute_shl_schedule(
-                construction=ShlConstructionInput(
-                    draw_keur=_effective_op_draw,
-                    annual_rate=shl_input.annual_fixed_rate,
-                    dcf=_effective_op_dcf,
-                    period_index=draw_period_index,
-                    construction_interest_method=shl_input.construction_interest_method,
-                ),
-                operating_periods=tuple(operating_inputs),
-                policy=ShlWaterfallPolicy(
-                    annual_rate=shl_input.annual_fixed_rate,
-                    day_count_convention=shl_input.day_count_convention,
-                ),
-            )
-            result = schedule.operating[-1]
+            result = _op_chain.advance(op_input)
             opening = result.opening_balance_keur
             drawdown = 0.0
             gross = result.gross_accrued_interest_keur

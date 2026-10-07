@@ -144,12 +144,15 @@ def test_ce_real_repo_guards_green_against_current_main():
     """Live proof: the real-repo frozen guards pass with the merge-base
     boundary against current main (the original CI failure class)."""
     for frozen_path in (
-        "finco_radar", "finco_core", "financial_engine",
+        "finco_radar", "finco_core",
         "app/model_validation", "app/verified",
     ):
         changed = parallel_stream_frozen_changes(
             frozen_path, main_ref="origin/main", head_ref="HEAD", repo=str(REPO))
         assert changed == [], (frozen_path, changed)
+    # financial_engine/ may differ only in the explicitly approved modules (shared allow-list).
+    import finance_integrity_governance as fig
+    assert fig.unapproved_engine_changes() == []
 
 
 def test_ce_no_frozen_production_namespace_modified_by_this_fix():

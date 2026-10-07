@@ -188,9 +188,9 @@ class TestFrozen:
         # engine authorities (pinned to their reviewed content) are exempt; every
         # other path in the namespace stays frozen.
         from finance_integrity_governance import changed_paths_vs_main
-        from model_v2_governance import approved_by_active_model_v2_scope
+        from finance_integrity_governance import approved_frozen_path
         changed = [p for p in changed_paths_vs_main()
-                   if p.startswith(namespace + "/") and not approved_by_active_model_v2_scope(p)]
+                   if p.startswith(namespace + "/") and not approved_frozen_path(p)]
         assert changed == [], changed
 
 

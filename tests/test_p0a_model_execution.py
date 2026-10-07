@@ -303,7 +303,7 @@ def test_event_loop_responsive_during_model_run_and_control_proves_the_old_archi
 
 
 def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchanged_output():
-    """A REAL production model run (~20 s) executes in a worker process while /ping stays fast."""
+    """A REAL production model run executes in a worker process while /ping stays fast."""
     from fastapi import FastAPI
     from app.api.router import router as api_router
     from app.api.project_runner import run_project
@@ -326,7 +326,7 @@ def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchange
 
         t = threading.Thread(target=call)
         t.start()
-        time.sleep(1.0)
+        time.sleep(0.3)      # the request is in flight; the engine keeps the worker busy after this
         worst, samples = 0.0, 0
         while t.is_alive():
             started = time.perf_counter()
@@ -336,7 +336,9 @@ def test_real_model_run_in_worker_keeps_the_loop_responsive_and_returns_unchange
             time.sleep(0.1)
         t.join()
         assert holder["r"].status_code == 200, holder["r"].text[:200]
-        assert samples >= 20 and worst < 1.0, f"loop stalled {worst:.2f}s over {samples} probes"
+        # Enough probes to prove responsiveness during the run; the count must not depend on the
+        # run being slow (the engine used to take ~20 s and is now several times faster).
+        assert samples >= 5 and worst < 1.0, f"loop stalled {worst:.2f}s over {samples} probes"
         served = holder["r"].json()["kpis"]
         direct = run_project("Solar", "Base")["kpis"]
         assert served == json.loads(json.dumps(direct, default=str))        # REFERENCE_OUTPUTS_UNCHANGED
@@ -689,11 +691,9 @@ def test_main_web_legacy_async_routes_offload_every_direct_model_call():
 
 def test_frozen_engine_and_core_are_untouched_by_this_stream():
     # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
-    from model_v2_governance import changed_paths_vs_main
-    changed = [p for p in changed_paths_vs_main()
-               if p.startswith(("financial_engine/", "finco_core/"))]
-    # Explicitly authorized Model V2 epic engine files are governed by the
-    # Model V2 scope contract (tests/model_v2_governance.py), not this stream.
-    from model_v2_governance import approved_by_active_model_v2_scope
-    changed = [p for p in changed if not approved_by_active_model_v2_scope(p)]
-    assert changed == []
+    # financial_engine/ may differ only in the explicitly approved modules (shared allow-list,
+    # tests/finance_integrity_governance.py, which also honours the Model V2 scope contract);
+    # finco_core/ and finco_radar/ have no exception.
+    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    assert unapproved_engine_changes() == []
+    assert strictly_frozen_changes() == []

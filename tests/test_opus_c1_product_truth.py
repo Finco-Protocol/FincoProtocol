@@ -412,11 +412,14 @@ class TestBehaviorUnchanged:
         # introduced only on main after this branch diverged are never
         # reported as branch-side frozen-path changes; allowed-path rules
         # and the Model V2 scope exemptions still apply.
+        from finance_integrity_governance import APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
         from model_v2_governance import parallel_stream_frozen_changes
-        changed = parallel_stream_frozen_changes(
-            frozen_path, main_ref=sha, allowed={
-                "finco_radar/venues/registry.py", "finco_radar/venues/models.py"},
-        )
+        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
+        if frozen_path == "financial_engine":
+            # Only the shared, explicitly approved engine modules; finco_core and every other
+            # frozen namespace get no exemption.
+            allowed |= set(APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS)
+        changed = parallel_stream_frozen_changes(frozen_path, main_ref=sha, allowed=allowed)
         assert changed == [], changed
 
     def test_branch_contains_current_origin_main(self):

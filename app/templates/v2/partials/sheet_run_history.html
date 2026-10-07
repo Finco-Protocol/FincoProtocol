@@ -1,0 +1,86 @@
+{#
+  Run Intelligence V1 — Run History listing (read-only).
+  Root: #v2-sheet-run-history (HTMX/OOB refresh target).
+
+  Semantics (canonical): CURRENT/STALE describe ONLY the canonical Last Run
+  relative to the Working Copy; every listed row is HISTORICAL and may carry
+  the presentation-only MATCHES WORKING COPY indicator.  Failed attempts are
+  never recorded in canonical history — stated honestly, never fabricated.
+  No engine execution, no mutation functionality.
+#}
+<div id="v2-sheet-run-history" class="v2-run-history" data-sheet="run-history"
+     data-testid="run-history">
+  <div class="v2-rh-head">
+    <span class="v2-rh-title">Run History</span>
+    <span class="v2-rh-sub">Immutable successful runs · newest first</span>
+    <span class="v2-rh-lastrun"
+          data-testid="run-history-last-run-state-{{ last_run_state | lower }}">
+      Last Run · {% if last_run_state == 'STALE' %}STALE{% elif last_run_state == 'CURRENT' %}CURRENT{% else %}NOT RUN{% endif %}
+      · {{ last_run_at or '—' }}
+    </span>
+  </div>
+
+  {% if not available %}
+  <div class="v2-rh-error" role="alert" data-testid="run-history-error">
+    RUN_HISTORY_PAYLOAD_MALFORMED — history entry could not be decoded; fail-closed (no fabricated rows).
+    <span class="v2-rh-error-code">{{ error_code }}</span>
+  </div>
+  {% elif rows %}
+  <table class="v2-rh-table" data-testid="run-history-table">
+    <thead>
+      <tr>
+        <th>Ran at</th><th>Scenario</th><th>Status</th><th>Origin</th>
+        <th>Engine</th><th>Workbook</th><th>Snapshot</th><th>Identity</th>
+        <th class="v2-rh-col-actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-testid="run-history-row-{{ loop.index }}"
+          data-history-id="{{ row.history_id }}">
+        <td class="v2-rh-ts">{{ row.ran_at_display }}</td>
+        <td>{{ row.scenario_name }}</td>
+        <td>
+          <span class="v2-rh-chip {% if row.is_last_run %}v2-rh-chip--lastrun{% else %}v2-rh-chip--historical{% endif %}"
+                data-testid="run-history-status-{{ loop.index }}">{{ row.status_label }}</span>
+          {% if row.is_last_run %}
+          <span class="v2-rh-chip v2-rh-chip--state">see header</span>
+          {% endif %}
+          {% if row.matches_working_copy %}
+          <span class="v2-rh-chip v2-rh-chip--matches"
+                data-testid="run-history-matches-{{ loop.index }}"
+                title="Stored identity equals the current Working Copy — presentation indicator only; the row remains HISTORICAL.">{{ 'MATCHES WORKING COPY' }}</span>
+          {% endif %}
+        </td>
+        <td>{{ row.origin }}</td>
+        <td>{{ row.engine_version }}</td>
+        <td>{{ row.workbook_version }}</td>
+        <td class="v2-rh-mono">{{ row.snapshot_short }}</td>
+        <td class="v2-rh-mono">{{ row.composite_short }}</td>
+        <td class="v2-rh-col-actions">
+          <button type="button" class="v2-rh-link"
+                  hx-get="{{ row.detail_url }}"
+                  hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+                  data-testid="run-history-detail-{{ loop.index }}">Detail</button>
+          <button type="button" class="v2-rh-link"
+                  hx-get="{{ row.compare_url }}"
+                  hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+                  data-testid="run-history-compare-{{ loop.index }}">Compare</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="v2-rh-empty" data-testid="run-history-empty">
+    No runs recorded yet for this project.
+  </div>
+  {% endif %}
+
+  {% if failed_note %}
+  <div class="v2-rh-note" data-testid="run-history-failed-note">
+    Successful runs are recorded in Run History; failed attempts do not
+    create immutable history entries.
+  </div>
+  {% endif %}
+</div>

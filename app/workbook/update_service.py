@@ -32,6 +32,7 @@ Design invariants
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Optional
 
 from app.workbook.input_set import ProjectInputSet, ProjectInputSetError, _coerce_value
@@ -55,8 +56,27 @@ class NonEditableFieldError(WorkbookUpdateError):
     """Field cannot be edited (DISPLAY_ONLY, TEMPLATE_LOCKED, etc.)."""
 
 
+class FieldErrorClass(str, Enum):
+    """Typed outcome of a failed field-value validation.
+
+    Product behaviour (UI decoration, Smart Panel summary) must branch on this
+    value — never on the human-readable error text, which is presentation only.
+    """
+    REQUIRED_MISSING = "REQUIRED_MISSING"   # required field submitted empty
+    INVALID = "INVALID"                     # not coercible / not an allowed option / semantic reject
+    OUT_OF_BOUNDS = "OUT_OF_BOUNDS"         # coercible but outside registry min/max
+
+
 class FieldValidationError(WorkbookUpdateError):
-    """Value fails type, required, bounds, or options validation."""
+    """Value fails type, required, bounds, or options validation.
+
+    ``error_class`` is None for rejections that are not a value-classification
+    outcome (e.g. the Senior scalar authority gate).
+    """
+
+    def __init__(self, message: str = "", error_class: Optional[FieldErrorClass] = None):
+        super().__init__(message)
+        self.error_class = error_class
 
 
 class StaleContentError(WorkbookUpdateError):
@@ -85,6 +105,13 @@ class FieldValidationResult:
     typed_value: Any          # None if raw is empty/whitespace
     spec: FieldSpec
     error: Optional[str] = None
+    error_class: Optional[FieldErrorClass] = None
+
+    def __post_init__(self) -> None:
+        if (self.error is None) != (self.error_class is None):
+            raise ValueError(
+                "FieldValidationResult: error and error_class must be set together."
+            )
 
     @property
     def is_valid(self) -> bool:
@@ -192,7 +219,8 @@ class WorkbookUpdateService:
             if spec.required:
                 return FieldValidationResult(
                     field_id=field_id, raw_value=raw_value, typed_value=None,
-                    spec=spec, error=f"{spec.label} is required."
+                    spec=spec, error=f"{spec.label} is required.",
+                    error_class=FieldErrorClass.REQUIRED_MISSING,
                 )
             return FieldValidationResult(
                 field_id=field_id, raw_value=raw_value, typed_value=None,
@@ -207,6 +235,7 @@ class WorkbookUpdateService:
                 field_id=field_id, raw_value=raw_value, typed_value=None,
                 spec=spec,
                 error=str(exc),
+                error_class=FieldErrorClass.INVALID,
             )
 
         # --- 4. Options validation (SELECT) ------------------------------
@@ -217,7 +246,8 @@ class WorkbookUpdateService:
                 error=(
                     f"{spec.label}: {typed!r} is not a valid option. "
                     f"Allowed: {', '.join(spec.options)}"
-                )
+                ),
+                error_class=FieldErrorClass.INVALID,
             )
 
         # --- 5. Bounds validation ----------------------------------------
@@ -226,14 +256,16 @@ class WorkbookUpdateService:
                 return FieldValidationResult(
                     field_id=field_id, raw_value=raw_value, typed_value=typed,
                     spec=spec,
-                    error=f"{spec.label} must be ≥ {spec.min_value} (got {typed})."
+                    error=f"{spec.label} must be ≥ {spec.min_value} (got {typed}).",
+                    error_class=FieldErrorClass.OUT_OF_BOUNDS,
                 )
         if spec.max_value is not None and isinstance(typed, (int, float)):
             if typed > spec.max_value:
                 return FieldValidationResult(
                     field_id=field_id, raw_value=raw_value, typed_value=typed,
                     spec=spec,
-                    error=f"{spec.label} must be ≤ {spec.max_value} (got {typed})."
+                    error=f"{spec.label} must be ≤ {spec.max_value} (got {typed}).",
+                    error_class=FieldErrorClass.OUT_OF_BOUNDS,
                 )
 
         # --- 6. Merchant curve semantic validation -----------------------
@@ -246,6 +278,7 @@ class WorkbookUpdateService:
                     field_id=field_id, raw_value=raw_value, typed_value=None,
                     spec=spec,
                     error=f"Merchant Price Curve: {exc}",
+                    error_class=FieldErrorClass.INVALID,
                 )
 
         return FieldValidationResult(
@@ -271,7 +304,7 @@ class WorkbookUpdateService:
             registry drift).
         """
         if not validation.is_valid:
-            raise FieldValidationError(validation.error)
+            raise FieldValidationError(validation.error, validation.error_class)
 
         try:
             return pis.with_value(validation.field_id, validation.typed_value)
@@ -352,7 +385,7 @@ class WorkbookUpdateService:
         # FieldValidationError raised here if value fails type/bounds/options.
         validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
         if not validation.is_valid:
-            raise FieldValidationError(validation.error)
+            raise FieldValidationError(validation.error, validation.error_class)
 
         # --- R8/N02: Senior scalar authority gate (before ANY persistence) --
         # A source-calibrated non-uniform period schedule cannot honour a

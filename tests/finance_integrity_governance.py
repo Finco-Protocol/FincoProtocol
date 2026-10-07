@@ -33,6 +33,17 @@ APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS = frozenset({
     "financial_engine/senior_debt/policy.py",
     "financial_engine/senior_debt/validation.py",
     "financial_engine/provenance.py",
+    # P0 model runtime performance (explicitly approved, semantic-preserving). Profiling showed one
+    # Run spent ~70% in tax evaluation and ~20% in SHL schedule roll-forward. These files only
+    # remove redundant work (numeric-only cash-tax path for the solver loop, cached period-axis
+    # geometry, incremental SHL chain, run-scoped exact-key memo); every output is verified
+    # bit-identical to the previous implementation (tests/test_perf_model_runtime_equivalence.py).
+    # orchestrator.py and shareholder_waterfall/model.py are already approved above.
+    "financial_engine/tax/engine.py",
+    "financial_engine/tax/tax_year.py",
+    "financial_engine/tax/loss_ledger.py",
+    "financial_engine/shl/production.py",
+    "financial_engine/run_scope.py",
 })
 
 STRICTLY_FROZEN_PREFIXES = ("finco_core/", "finco_radar/")
@@ -88,3 +99,15 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
         if f.startswith(STRICTLY_FROZEN_PREFIXES)
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
     )
+
+
+def approved_frozen_path(path: str) -> bool:
+    """Exemption for stream-specific "frozen namespace" guards.
+
+    True when the path is authorised by the ACTIVE Model V2 scope, or is a ``financial_engine``
+    module on the shared approved allow-list above. Nothing else is exempt: ``finco_core/``,
+    ``finco_radar/`` and every other engine module stay frozen for those guards.
+    """
+    from model_v2_governance import approved_by_active_model_v2_scope
+
+    return path in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS or approved_by_active_model_v2_scope(path)
