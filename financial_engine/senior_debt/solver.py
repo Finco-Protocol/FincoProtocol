@@ -330,7 +330,7 @@ def build_roll_plan(
     )
 
 
-def _forward_roll_numeric(
+def _forward_roll_numeric_uncached(
     plan: SeniorDebtRollPlan,
     opening_keur: float,
     cfads_by: dict[int, float],
