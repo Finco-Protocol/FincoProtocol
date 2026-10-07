@@ -1701,7 +1701,7 @@ def _run_senior_debt_model_with_shl(
     from financial_engine.senior_debt.policy import SeniorDebtPolicy
     from financial_engine.senior_debt.solver import solve_senior_debt
     from financial_engine.shl.production import compute_shareholder_loan_schedules
-    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.tax.engine import calculate_cfads_and_cash_tax, calculate_tax
 
     policy: SeniorDebtPolicy = inputs.senior_debt_policy  # type: ignore[assignment]
     sd_inputs: SeniorDebtInputs = inputs.senior_debt_inputs  # type: ignore[assignment]
@@ -1778,15 +1778,7 @@ def _run_senior_debt_model_with_shl(
                 bank_limitation_state.limitation_by_period,
                 tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
             )
-            tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
-            cfads_results = calculate_canonical_cfads(
-                bank_phase2a_result.periods,
-                tax_result.period_results,
-            )
-            return (
-                {cr.period_index: cr.cfads_keur for cr in cfads_results},
-                {pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results},
-            )
+            return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, tax_input)
 
         senior_result = solve_senior_debt(
             policy=policy,
@@ -1971,15 +1963,7 @@ def _run_senior_debt_model_with_shl(
             bank_limitation_state.limitation_by_period,
             tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
         )
-        tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
-        cfads_results = calculate_canonical_cfads(
-            bank_phase2a_result.periods,
-            tax_result.period_results,
-        )
-        return (
-            {cr.period_index: cr.cfads_keur for cr in cfads_results},
-            {pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results},
-        )
+        return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, tax_input)
 
     final_senior_result = solve_senior_debt(
         policy=policy,
@@ -2385,7 +2369,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         return _run_senior_debt_model_with_shl(inputs)
 
     from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
-    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.tax.engine import calculate_cfads_and_cash_tax, calculate_tax
     from financial_engine.cfads import calculate_canonical_cfads
     from financial_engine.senior_debt.solver import solve_senior_debt
     from financial_engine.senior_debt.policy import SeniorDebtPolicy
@@ -2439,13 +2423,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
         )
         # Tax and CFADS computed against bank periods (bank EBITDA drives taxable income).
-        tax_result = calculate_tax(bank_phase2a_result.periods, updated_tax_input)
-        cfads_results = calculate_canonical_cfads(bank_phase2a_result.periods, tax_result.period_results)
-        cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
-        cash_tax_by_period = {
-            pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results
-        }
-        return cfads_by_period, cash_tax_by_period
+        return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, updated_tax_input)
 
     # Step 5: Fixed-point solver against bank periods.
     debt_start = policy.repayment_start_period_index
