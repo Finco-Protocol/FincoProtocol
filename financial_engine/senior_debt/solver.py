@@ -290,13 +290,25 @@ def build_roll_plan(
     availabilities = None
     explicit = None
     if repayment_method_str == "dscr_sculpted":
+        # Lookup-timing contract (Correction A3/C): the authoritative roll
+        # reads dscr_map/availability_map ONLY inside repayment periods.  The
+        # plan resolves those maps for repayment periods only — a missing
+        # NON-repayment entry must not raise earlier than the authoritative
+        # path, while a missing REQUIRED repayment entry raises the same
+        # KeyError the authoritative per-iteration lookup raises.
+        def _dscr_of(idx: int) -> float:
+            return dscr_map[idx] if dscr_map is not None else policy.target_dscr
+
+        def _avail_of(idx: int) -> float:
+            return availability_map[idx] if availability_map is not None else 1.0
+
         dscr_targets = tuple(
-            (dscr_map[idx] if dscr_map is not None else policy.target_dscr)
-            for idx in period_indices
+            _dscr_of(idx) if in_rep else None
+            for idx, in_rep in zip(period_indices, in_repayment)
         )
         availabilities = tuple(
-            (availability_map[idx] if availability_map is not None else 1.0)
-            for idx in period_indices
+            _avail_of(idx) if in_rep else None
+            for idx, in_rep in zip(period_indices, in_repayment)
         )
     elif repayment_method_str == "explicit":
         explicit_source = explicit_by or {}
@@ -360,23 +372,23 @@ def _forward_roll_numeric(
                 else:
                     ds = 0.0
                 ds = ds * scale
+                # authoritative expressions, mirrored EXACTLY (incl. builtin
+                # call shape — max/min are bit-identical to the authoritative
+                # path; conditional rewrites are NOT, e.g. signed zero:
+                # max(0.0, balance - principal) can flip -0.0 -> +0.0 while
+                # `x = a - b; if x < 0` keeps -0.0)
                 principal = max(0.0, ds - interest)
-                if principal > balance:
-                    principal = balance
+                principal = min(principal, balance)  # safety floor
             elif level:
                 installment = opening_keur / n_repayment
-                principal = installment
-                if principal > balance:
-                    principal = balance
+                principal = min(installment, balance)
             elif explicit:
                 principal = explicit_schedule[i]
             else:
                 raise ValueError(f"Unknown repayment_method_str: {method!r}")
         else:
             principal = 0.0
-        closing = balance - principal
-        if closing < 0.0:
-            closing = 0.0
+        closing = max(0.0, balance - principal)
         append(_NumericDebtRow(indices[i], balance, interest, principal, closing))
         balance = closing
 
