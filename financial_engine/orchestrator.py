@@ -958,6 +958,16 @@ def _merge_financing_tax_input(
     )
 
 
+class _IterationCfads:
+    """The two ``TaxAndCfadsSchedules`` fields ``_assemble_post_senior_cash_schedules`` reads."""
+
+    __slots__ = ("period_indices", "cfads_keur")
+
+    def __init__(self, period_indices: tuple[int, ...], cfads_keur: tuple[float, ...]) -> None:
+        self.period_indices = period_indices
+        self.cfads_keur = cfads_keur
+
+
 def _assemble_post_senior_cash_schedules(
     periods: tuple[OperatingPeriodResult, ...],
     tax_and_cfads: object,
@@ -1553,7 +1563,7 @@ def _build_dynamic_interest_limitation_state(
     senior_interest_by_period: dict[int, float],
     shl_gross_interest_by_period: dict[int, float],
     shl_closing_by_period: dict[int, float],
-    tax_result: object | None,
+    tax_result: object | None,   # a TaxAndCfadsResult, or a zero-argument callable producing one
 ) -> _DynamicInterestLimitationState:
     """Build the minimum causal equity state and literal limitation schedule.
 
@@ -1579,6 +1589,9 @@ def _build_dynamic_interest_limitation_state(
         roll_forward_equity_state,
     )
 
+    if callable(tax_result):
+        # Only a limitation policy that is actually enabled needs the full tax result.
+        tax_result = tax_result()
     cit_by_period = (
         {
             pr.period_index: pr.cit_accrual_share_keur
@@ -1801,25 +1814,25 @@ def _run_senior_debt_model_with_shl(
             label="shl_fixed_point.senior_interest",
             expected_indices=senior_axis_shl,
         )
-        base_tax = calculate_tax(
-            phase2b_result.periods,
-            _merge_financing_tax_input(
-                base_tax_input,
-                senior_interest,
-                shl_interest_guess,
-                base_limitation_state.limitation_by_period,
-            ),
+        base_iteration_tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest,
+            shl_interest_guess,
+            base_limitation_state.limitation_by_period,
         )
-        base_cfads = calculate_canonical_cfads(phase2b_result.periods, base_tax.period_results)
-        tax_cfads = _assemble_tax_cfads_schedules(
-            phase2b_result,
-            base_tax,
-            base_tax.period_results,
-            base_cfads,
+        # Within the fixed point the Base tax is consumed only as a CFADS vector (and,
+        # when a limitation policy is enabled, by the limitation state, which asks for the
+        # full result lazily). The reported Base tax/CFADS schedules come from the final
+        # recomputation below.
+        base_cfads_by_period, _ = calculate_cfads_and_cash_tax(
+            phase2b_result.periods, base_iteration_tax_input,
         )
         post_senior_cash = _assemble_post_senior_cash_schedules(
             phase2b_result.periods,
-            tax_cfads,
+            _IterationCfads(
+                period_indices=tuple(base_cfads_by_period),
+                cfads_keur=tuple(base_cfads_by_period.values()),
+            ),
             senior_result,
             senior_axis=senior_axis_shl,
         )
@@ -1853,18 +1866,18 @@ def _run_senior_debt_model_with_shl(
             label="shl_fixed_point.closing_for_interest_limitation",
             expected_indices=full_axis_shl,
         )
-        bank_tax_for_state = calculate_tax(
-            bank_phase2a_result.periods,
-            _merge_financing_tax_input(
-                base_tax_input,
-                senior_interest,
-                shl_interest_guess,
-                bank_limitation_state.limitation_by_period,
-                tax_periodisation_mode_override=(
-                    inputs.debt_sizing_case.tax_periodisation_mode_override
-                ),
+        bank_iteration_tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest,
+            shl_interest_guess,
+            bank_limitation_state.limitation_by_period,
+            tax_periodisation_mode_override=(
+                inputs.debt_sizing_case.tax_periodisation_mode_override
             ),
         )
+        # Same evaluation (and the same fail-closed checks) as before, without building the
+        # full result objects; the limitation state requests the full result only if needed.
+        calculate_cfads_and_cash_tax(bank_phase2a_result.periods, bank_iteration_tax_input)
         new_base_limitation_state = _build_dynamic_interest_limitation_state(
             periods=phase2b_result.periods,
             tax_policy=base_tax_input.policy,
@@ -1872,7 +1885,9 @@ def _run_senior_debt_model_with_shl(
             senior_interest_by_period=senior_interest,
             shl_gross_interest_by_period=new_interest,
             shl_closing_by_period=new_closing,
-            tax_result=base_tax,
+            tax_result=lambda periods=phase2b_result.periods, tax_input=base_iteration_tax_input: (
+                calculate_tax(periods, tax_input)
+            ),
         )
         new_bank_limitation_state = _build_dynamic_interest_limitation_state(
             periods=bank_phase2a_result.periods,
@@ -1881,7 +1896,9 @@ def _run_senior_debt_model_with_shl(
             senior_interest_by_period=senior_interest,
             shl_gross_interest_by_period=new_interest,
             shl_closing_by_period=new_closing,
-            tax_result=bank_tax_for_state,
+            tax_result=lambda periods=bank_phase2a_result.periods, tax_input=bank_iteration_tax_input: (
+                calculate_tax(periods, tax_input)
+            ),
         )
         base_dynamic_delta = _dynamic_interest_limitation_delta(
             base_limitation_state, new_base_limitation_state

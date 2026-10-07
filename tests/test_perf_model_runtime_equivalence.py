@@ -17,8 +17,10 @@ pre-optimisation outputs. No wall-clock assertions except one very loose catastr
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import random
+import sys
 import time
 from datetime import date
 
@@ -39,12 +41,8 @@ from financial_engine.policies.tax import (
     TaxPolicy,
 )
 from financial_engine.results import OperatingPeriodResult
-from financial_engine.run_scope import current_run_scope, engine_run_scope, scoped_memo
 from financial_engine.tax import engine as tax_engine
-from financial_engine.tax.loss_ledger import (
-    run_annual_fifo_ledger,
-    taxable_income_after_lcf_series,
-)
+from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +158,8 @@ def _outcome(fn, *args):
 
 
 def _assert_lean_equals_full(periods, tax_input) -> None:
+    from financial_engine.run_scope import engine_run_scope
+
     expected = _outcome(tax_engine._cfads_and_cash_tax_via_full_tax, periods, tax_input)
     assert _outcome(tax_engine.calculate_cfads_and_cash_tax, periods, tax_input) == expected
     with engine_run_scope():
@@ -219,6 +219,8 @@ def test_lean_path_delegates_unusual_inputs_and_fails_identically():
 
 
 def test_period_axis_plan_is_built_once_per_run_scope(monkeypatch):
+    from financial_engine.run_scope import current_run_scope, engine_run_scope
+
     rng = random.Random("plan")
     periods = _periods(rng, "semiannual")
     tax_input = _tax_input(rng, periods, _policy(rng, tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR))
@@ -239,6 +241,332 @@ def test_period_axis_plan_is_built_once_per_run_scope(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# The reported (full) tax path and the SHL schedule vs the unmodified engine
+# ---------------------------------------------------------------------------
+
+def full_tax_digests(count: int = 60) -> dict[str, str]:
+    """sha256 of ``repr(calculate_tax(...))`` (or of the error) for seeded synthetic cases."""
+    out = {}
+    for seed in range(count):
+        style = ("semiannual", "calendar", "irregular")[seed % 3]
+        rng = random.Random(f"digest-{style}-{seed}")
+        periods = _periods(rng, style)
+        tax_input = _tax_input(rng, periods, _policy(rng))
+        try:
+            payload = repr(tax_engine.calculate_tax(periods, tax_input))
+        except Exception as exc:  # noqa: BLE001 - the error is part of the behaviour
+            payload = f"ERR {type(exc).__name__}: {exc}"
+        out[f"{style}-{seed}"] = hashlib.sha256(payload.encode()).hexdigest()
+    return out
+
+
+def shl_schedule_digests() -> dict[str, str]:
+    from financial_engine.shl.production import compute_shl_schedule
+
+    out = {}
+    for n, (construction, policy, ops) in enumerate(_shl_cases()):
+        out[f"shl-{n}"] = hashlib.sha256(
+            repr(compute_shl_schedule(construction, ops, policy)).encode()).hexdigest()
+    return out
+
+
+# Recorded from the unmodified engine (base 1951e26): first 80 bits of sha256 over ``repr`` of the
+# full result (or of the raised error). Python 3.12 changed float ``sum()`` to compensated
+# summation, so the tax digests are recorded per interpreter family; the SHL schedule has no
+# summation and is version independent.
+_FULL_TAX_DIGESTS_PY311 = {
+    "calendar-1": "a225330bd13dbba99702",
+    "calendar-4": "a220662c05ca90aecae3",
+    "calendar-7": "89ba24b4f6589c155cbd",
+    "calendar-10": "ba123a98bfc3696113d5",
+    "calendar-13": "4da069f755ee607d91a8",
+    "calendar-16": "9259a29e7c15d89d5e11",
+    "calendar-19": "47cc5adb60ea58963a7c",
+    "calendar-22": "0f25fed0bca654f23dcc",
+    "calendar-25": "0910dcfeb378558416b6",
+    "calendar-28": "6300b18567beebb67643",
+    "calendar-31": "3948474c9377eadfbba7",
+    "calendar-34": "7cc4f78d309302cf6723",
+    "calendar-37": "e0b8b7e6453479dac743",
+    "calendar-40": "dc230e91faa053b07377",
+    "calendar-43": "a386320eba90ac978dad",
+    "calendar-46": "f08dff0fc75268615749",
+    "calendar-49": "096d4d0f0e4034ce9d5b",
+    "calendar-52": "c332371db5d3f66f59e7",
+    "calendar-55": "7a25956a3dede0ebdb27",
+    "calendar-58": "603619ff317bd107f17c",
+    "irregular-2": "1c661a60b493e0d7876b",
+    "irregular-5": "90b1fbbf9e0bd39aa6c0",
+    "irregular-8": "4d8244dbb06e5aeef634",
+    "irregular-11": "4b871b608ca815547a17",
+    "irregular-14": "6e8811213c30bfe46419",
+    "irregular-17": "07c7c3f9278b03b2f858",
+    "irregular-20": "6d340d98346c3d85d238",
+    "irregular-23": "afe0ef10b51c60200a75",
+    "irregular-26": "da2db216c5065a43e406",
+    "irregular-29": "a8282bd44d59d925bbee",
+    "irregular-32": "ff24e8eefb6a44005a0c",
+    "irregular-35": "6aa3d9ef08491327492a",
+    "irregular-38": "cb92e55e2a5b751a33ee",
+    "irregular-41": "3edebd4ab19f3a07f686",
+    "irregular-44": "a4f980558b98e35369e1",
+    "irregular-47": "5ed5cc552cfec3ae1aa6",
+    "irregular-50": "c75b406e9bab1f0b79e4",
+    "irregular-53": "c848b825b2dcab492d1e",
+    "irregular-56": "324246a9f6b2e68de377",
+    "irregular-59": "fb7326586c9623655122",
+    "semiannual-0": "9d6089e28b89989b1971",
+    "semiannual-3": "eba0a36d0d15cb9cb466",
+    "semiannual-6": "93809301fe4096b60ea1",
+    "semiannual-9": "cbab8ac8389f70d13d4f",
+    "semiannual-12": "dd9adb16de78b8b0ca2d",
+    "semiannual-15": "33d1cca8a09c29e73292",
+    "semiannual-18": "92e7024552b2cb4fba78",
+    "semiannual-21": "ee32d9d36f2137ff8b09",
+    "semiannual-24": "f169a0367902c256259f",
+    "semiannual-27": "b1f13b05fd22bf0c26b2",
+    "semiannual-30": "1e7081b590671be84b9d",
+    "semiannual-33": "1c21c34205f8d9e0ec29",
+    "semiannual-36": "aee5060b3b8c8ac4d41b",
+    "semiannual-39": "0720af03911673525372",
+    "semiannual-42": "9e2a4333aba502ac040b",
+    "semiannual-45": "84eb0ab04e0b61f517b4",
+    "semiannual-48": "4e27e5c8891175f07ded",
+    "semiannual-51": "8af71d1bdf518f1b8c22",
+    "semiannual-54": "7397e4c3481f5d5c13df",
+    "semiannual-57": "405f49841530516c019e",
+}
+
+_FULL_TAX_DIGESTS_PY312 = {
+    "calendar-1": "a225330bd13dbba99702",
+    "calendar-4": "a220662c05ca90aecae3",
+    "calendar-7": "89ba24b4f6589c155cbd",
+    "calendar-10": "ba123a98bfc3696113d5",
+    "calendar-13": "4da069f755ee607d91a8",
+    "calendar-16": "9259a29e7c15d89d5e11",
+    "calendar-19": "dd97530b63eef3078f7e",
+    "calendar-22": "0f25fed0bca654f23dcc",
+    "calendar-25": "0910dcfeb378558416b6",
+    "calendar-28": "6300b18567beebb67643",
+    "calendar-31": "3948474c9377eadfbba7",
+    "calendar-34": "7cc4f78d309302cf6723",
+    "calendar-37": "e0b8b7e6453479dac743",
+    "calendar-40": "dc230e91faa053b07377",
+    "calendar-43": "a386320eba90ac978dad",
+    "calendar-46": "f08dff0fc75268615749",
+    "calendar-49": "096d4d0f0e4034ce9d5b",
+    "calendar-52": "c332371db5d3f66f59e7",
+    "calendar-55": "7a25956a3dede0ebdb27",
+    "calendar-58": "f126d3a091895941eaad",
+    "irregular-2": "1c661a60b493e0d7876b",
+    "irregular-5": "b90a6521c04e93d54aa2",
+    "irregular-8": "4d8244dbb06e5aeef634",
+    "irregular-11": "79bd988dd0ed688ee836",
+    "irregular-14": "eb129fd6de3266a6690a",
+    "irregular-17": "7e5a703674504f9d02f3",
+    "irregular-20": "39aed48d67a3304d8339",
+    "irregular-23": "afe0ef10b51c60200a75",
+    "irregular-26": "b46206520ce68c1aebfc",
+    "irregular-29": "51b1e1abb9d5d43703df",
+    "irregular-32": "8e72f3e053d2b58b94ca",
+    "irregular-35": "871476cca428422d3c66",
+    "irregular-38": "cb92e55e2a5b751a33ee",
+    "irregular-41": "77df7ecdda4cb6ff5254",
+    "irregular-44": "d330ddd88e21d6c0e39d",
+    "irregular-47": "5ed5cc552cfec3ae1aa6",
+    "irregular-50": "ec74b779d64e5e0bfb47",
+    "irregular-53": "58da1a5d3a8f97fdcac1",
+    "irregular-56": "fcc845d1237b9bad2b96",
+    "irregular-59": "53a35ddd6da9bea284e9",
+    "semiannual-0": "e8c569f801f580b671e1",
+    "semiannual-3": "df7102340f7ac34e43a7",
+    "semiannual-6": "f2fb7d5b9914f6e5ced9",
+    "semiannual-9": "c36e9c2e1ed7cb2e9341",
+    "semiannual-12": "2f8930efcc8c5094e613",
+    "semiannual-15": "953a7d9a1b1aa86a09b5",
+    "semiannual-18": "d8ae34fdc1be8c0a562d",
+    "semiannual-21": "e34cddc836ffaee1ec39",
+    "semiannual-24": "0ffe8c262e7240092b90",
+    "semiannual-27": "c6a4b78b03de032ac11f",
+    "semiannual-30": "cfa485abd253840e5864",
+    "semiannual-33": "c7f67a364aff8007ce6f",
+    "semiannual-36": "6fc47ebe614b3985d36d",
+    "semiannual-39": "e5488f2a96e65f178573",
+    "semiannual-42": "be3fedbe5d1e5904e197",
+    "semiannual-45": "8519da1740b830efb938",
+    "semiannual-48": "200a7e543c62f7c3bb18",
+    "semiannual-51": "b5ba89724036c28bdb21",
+    "semiannual-54": "a9bccc3303fa01b8f3ef",
+    "semiannual-57": "a901cad72211fbee1e4d",
+}
+
+_SHL_SCHEDULE_DIGESTS = {
+    "shl-0": "a9c6efbbf57f543c1da6",
+    "shl-1": "30fbe580faa08c66b230",
+    "shl-2": "433c2f050db0558cf1af",
+    "shl-3": "274d72523f41561feec4",
+    "shl-4": "bd5e9f6f59ebda92f618",
+    "shl-5": "f7ff11ecac1fc9a69d6c",
+    "shl-6": "d0dea4d6975db328ab7f",
+    "shl-7": "e37d3be61ac31638eaaf",
+    "shl-8": "a3a1ec92d19a063ad727",
+    "shl-9": "338d183d1bf4b35879ae",
+    "shl-10": "8a398a72e099707324d7",
+    "shl-11": "c9bb9f00f3a06077e600",
+    "shl-12": "3c0c2636610e96b0954d",
+    "shl-13": "eeda46df34beb19c10eb",
+    "shl-14": "49335b2814610d6638d9",
+    "shl-15": "799725741a9d17c04864",
+    "shl-16": "1ba10fc3857cf935abcf",
+    "shl-17": "5a78f8c0614ff5ab0e1e",
+    "shl-18": "f171d0a1904be9a45c92",
+    "shl-19": "ed3c25842f0396e1ffd7",
+    "shl-20": "93bf1e8e1bc40f2b834c",
+    "shl-21": "e048e0006ee61ea51b55",
+    "shl-22": "5c6a2d09b057442da8f1",
+    "shl-23": "f2bdb8fc047e2fc60a11",
+    "shl-24": "678e860939ba336ef5bd",
+    "shl-25": "0a9297f917323c55bc6e",
+    "shl-26": "12816789ebf25db79796",
+    "shl-27": "0f63189ffa28eb8f6b47",
+    "shl-28": "decb7ece221fca3b8dd6",
+    "shl-29": "92a84f547a3f239c9934",
+    "shl-30": "66ad4d9cf17ca6a557fe",
+    "shl-31": "f8a11a5e397f27261092",
+    "shl-32": "91408d3f609f06043ac8",
+    "shl-33": "2fed1efc75db6880fdc4",
+    "shl-34": "c3ed709bd70344cb9e03",
+    "shl-35": "ee0e9d76397e974b7c2c",
+    "shl-36": "11925c3014a53f7c5021",
+    "shl-37": "24237e9b716e53d3d5b3",
+    "shl-38": "77d17970da6e1bb008d7",
+    "shl-39": "3e89294fecc55acb7d21",
+    "shl-40": "c0d543bd54ed779b2105",
+    "shl-41": "ba0b888793eaa6f4caf6",
+    "shl-42": "0b777366ada91c51d87f",
+    "shl-43": "69104ede1d5a355f155b",
+    "shl-44": "c0d9e0b0e534dc0e887b",
+    "shl-45": "19c35a54fc30b729185a",
+    "shl-46": "2f71f9daeae93497fa8e",
+    "shl-47": "ca615eafdd2d0306d415",
+    "shl-48": "b5b4c93f63f7494e0f8b",
+    "shl-49": "f1e45106eadf06fcb0d4",
+    "shl-50": "33d945bf31c5dba44782",
+    "shl-51": "cdac422ed9cf46870fc7",
+    "shl-52": "e431b190d4c704075831",
+    "shl-53": "776ba7aea4221d7c18c0",
+    "shl-54": "491ce39e407707292c3f",
+    "shl-55": "640a618239a86d4f452a",
+    "shl-56": "ee98690217f24be501e6",
+    "shl-57": "219be87d6d90b8feeb48",
+    "shl-58": "b0e059e7acaba763a780",
+    "shl-59": "06780192dc0ada1a5ffe",
+    "shl-60": "19e570eca6f880179bf3",
+    "shl-61": "827bcbaf17116bbfa445",
+    "shl-62": "63698336114578a05a24",
+    "shl-63": "8181d72f98f4dd74c419",
+    "shl-64": "f1e279b2a7f122329dba",
+    "shl-65": "77b5fa8aa516e85162de",
+    "shl-66": "012bceef413109a95025",
+    "shl-67": "08a652b5f3547ae60149",
+    "shl-68": "e980d52718195826ffae",
+    "shl-69": "63927a221bdb34e0ceef",
+    "shl-70": "3af4df695fd1594383bd",
+    "shl-71": "6f1a692edfa59a6a4448",
+    "shl-72": "dbc23cb586908ed8ff3f",
+    "shl-73": "b58c16f75e75f51c5774",
+    "shl-74": "bfe3b4f9389db9f2b619",
+    "shl-75": "6a4c93bab38b1f0338bc",
+    "shl-76": "cdba4691f610797cee3b",
+    "shl-77": "46744d3680d7354c6c26",
+    "shl-78": "586cd91cf30f937c1f8d",
+    "shl-79": "2db12fadee0e28b606ca",
+    "shl-80": "31dfcf4c1ba238f549be",
+    "shl-81": "917156e8a9c4f730902d",
+    "shl-82": "5843cbfd9c8f66c6361f",
+    "shl-83": "a31c27b2541e8f076af9",
+    "shl-84": "2919dbd79aebe1edb0dd",
+    "shl-85": "a8e09f846b4e55a7b149",
+    "shl-86": "9c7c826ccf2ba95fb9e7",
+    "shl-87": "35960dd670d05ba87f67",
+    "shl-88": "0694d9d19ed98af75dce",
+    "shl-89": "bba3d5556edcf29dc448",
+    "shl-90": "d9aeb9a48017edf26bc0",
+    "shl-91": "52837b40ea3907c7b6f1",
+    "shl-92": "6dd931a2ce3c9f4c6679",
+    "shl-93": "7cfaa01129f6c234f19a",
+    "shl-94": "56b7cff0750c9c345567",
+    "shl-95": "fe8a021aa43104de1cb0",
+    "shl-96": "5a57862a25ce8356b976",
+    "shl-97": "f43aac66a62bcc824308",
+    "shl-98": "4643997eda6692f09d2c",
+    "shl-99": "bea503cf33c2ec95cbb1",
+    "shl-100": "88156b245daeb5c6309b",
+    "shl-101": "63571374b607169d5f37",
+    "shl-102": "96ef20552ec0655126d3",
+    "shl-103": "a6ffac6b82afbf5932be",
+    "shl-104": "4d166b5eb98454b353e1",
+    "shl-105": "2481aff3ff5268bd71ab",
+    "shl-106": "c865397ff38fdda68999",
+    "shl-107": "2874c667126b0640f194",
+    "shl-108": "9333ecc5e8eb1f7760f3",
+    "shl-109": "433739bac70f56aaa0af",
+    "shl-110": "99a6aa8108e60358a5ad",
+    "shl-111": "265ff36986b7fa9e79ec",
+    "shl-112": "7e274580c07ca10ff115",
+    "shl-113": "95adfc2d3ad83b6997ee",
+    "shl-114": "90799facf216d5c53f64",
+    "shl-115": "3d81c79f7165361aba6f",
+    "shl-116": "5c15578db19a86195269",
+    "shl-117": "2f737eb70eb3543b1d83",
+    "shl-118": "df46ef04666592d2656c",
+    "shl-119": "bc41db072256ab6ed3aa",
+    "shl-120": "62c6435b9433945a50e9",
+    "shl-121": "3db5e3ecd3fcdecac2a9",
+    "shl-122": "48f94458cacea4869145",
+    "shl-123": "a3607c8dca2aa5499fd6",
+    "shl-124": "97e25210288e36ab3f68",
+    "shl-125": "ad163f933243f4634218",
+    "shl-126": "40983ad7ec6d87651aab",
+    "shl-127": "3f89dd91c6048b46d533",
+    "shl-128": "3eb69af6237325e15ed6",
+    "shl-129": "7111bb26becbdac8e855",
+    "shl-130": "7fcb8a9931010adc3908",
+    "shl-131": "afc25c0b71697046d0a7",
+    "shl-132": "c231184fb8ac7ead8e30",
+    "shl-133": "c85597e60fab63caa30f",
+    "shl-134": "4fc75acab47aa94cb9f6",
+    "shl-135": "d74ba00c206c3878c893",
+    "shl-136": "b9d9dbd5558a08c4c388",
+    "shl-137": "5f8811cf685f3f780045",
+    "shl-138": "d5be64ceb9c97d5302f7",
+    "shl-139": "72adb6364686010f22e7",
+    "shl-140": "8e8c51acc37237bf0859",
+    "shl-141": "a7576e1e053a86e28960",
+    "shl-142": "01291a908d0d729bcd04",
+    "shl-143": "04a8a2b416b0165b52f9",
+    "shl-144": "2c61c07743db3f2d9014",
+    "shl-145": "e97a95af72d05f4c63a6",
+    "shl-146": "1044156ec47d318af540",
+    "shl-147": "8ef9da80c89458ad7f1b",
+    "shl-148": "ae0a9f10f5ff8f609400",
+    "shl-149": "60781762c4990c436fe5",
+}
+
+
+def test_reported_tax_path_matches_the_unmodified_engine():
+    """calculate_tax feeds every reported tax figure; its refactor must change no bit."""
+    expected = _FULL_TAX_DIGESTS_PY312 if sys.version_info >= (3, 12) else _FULL_TAX_DIGESTS_PY311
+    got = {k: v[:20] for k, v in full_tax_digests().items()}
+    assert got == expected
+
+
+def test_shl_schedule_matches_the_unmodified_engine():
+    got = {k: v[:20] for k, v in shl_schedule_digests().items()}
+    assert got == _SHL_SCHEDULE_DIGESTS
+
+
+# ---------------------------------------------------------------------------
 # Loss ledger twin
 # ---------------------------------------------------------------------------
 
@@ -252,6 +580,8 @@ def _ledger_outcome(fn, **kw):
 
 
 def test_after_loss_series_is_bit_identical_to_the_fifo_ledger():
+    from financial_engine.tax.loss_ledger import taxable_income_after_lcf_series
+
     checked = 0
     for seed in range(400):
         rng = random.Random(f"ledger-{seed}")
@@ -380,6 +710,8 @@ def test_shl_chain_fails_closed_exactly_as_the_schedule_does():
 # ---------------------------------------------------------------------------
 
 def test_scoped_memo_is_inert_outside_a_run_scope_and_exact_inside_one():
+    from financial_engine.run_scope import engine_run_scope, scoped_memo
+
     calls = []
 
     @scoped_memo(maxsize=16)
@@ -404,6 +736,8 @@ def test_scoped_memo_is_inert_outside_a_run_scope_and_exact_inside_one():
 
 
 def test_scoped_memo_never_caches_errors_or_unpicklable_arguments():
+    from financial_engine.run_scope import engine_run_scope, scoped_memo
+
     n = {"calls": 0}
 
     @scoped_memo(maxsize=4)
@@ -431,6 +765,8 @@ def test_scoped_memo_never_caches_errors_or_unpicklable_arguments():
 
 
 def test_scoped_memo_evicts_oldest_beyond_maxsize():
+    from financial_engine.run_scope import engine_run_scope, scoped_memo
+
     calls = []
 
     @scoped_memo(maxsize=2)
