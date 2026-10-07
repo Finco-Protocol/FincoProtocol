@@ -1636,6 +1636,9 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     # UX Foundation Phase C: contextual Smart Panel (availability +
     # navigation over existing authorities; never an engine call).
     from app.v2.smart_panel_projection import build_smart_panel_projection
+    # Run Intelligence V1: read-only run history listing on its own tab.
+    context.update(_run_history_listing_ctx(project_record, ws, pis))
+
     context["smart_panel"] = build_smart_panel_projection(
         trust_pack=context.get("trust_pack"),
         runtime_state=runtime_freshness.state.value,
@@ -3264,6 +3267,237 @@ async def v2_scenario_remove_override(
         return HTMLResponse(content=html + "\n" + _scenario_authority_oob(
             request, ws, project_record, project, workspace_owner))
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Run Intelligence V1 — Run History surface (read-only consumers of the
+# append-only run-history authority).  No engine execution, no mutation,
+# no reconstruction of missing metrics.
+# ---------------------------------------------------------------------------
+
+def _run_history_listing_ctx(project_record, ws, pis):
+    """Shared Run History listing context (workbook GET + OOB + route).
+
+    Read-only composition over the append-only history authority; fails
+    closed to a typed error row set on malformed stored payloads.
+    """
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history,
+    )
+    from app.v2.run_history_projection import (
+        HISTORY_LIST_LIMIT,
+        build_run_history_rows,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+    # the workspace record carries its owner (canonical history key)
+    workspace_owner = getattr(ws, "user_id", None)
+    try:
+        entries = get_run_history(
+            workspace_owner, project_record.project_id,
+            limit=HISTORY_LIST_LIMIT)
+        rows = build_run_history_rows(
+            entries, ws=ws, current_composite_hash=pis.content_hash,
+            project_code=project_record.project_code)
+        available, error_code = True, ""
+    except RunHistoryError as exc:  # malformed stored payload — fail closed
+        rows, available, error_code = [], False, str(exc)
+    return {
+        "rows": rows,
+        "available": available,
+        "error_code": error_code,
+        "failed_note": True,
+        "project_code": project_record.project_code,
+        "project_editable": not is_protected_reference(project_record),
+        "last_run_state": freshness.state.value,
+        "last_run_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        "last_run_snapshot_short": str(
+            getattr(ws, "last_runtime_snapshot_id", "") or "")[:8] or "—",
+        "limit": HISTORY_LIST_LIMIT,
+    }
+
+
+@router.get("/workbook/run-history", response_class=HTMLResponse)
+async def v2_run_history(
+    request: Request,
+    project: Optional[str] = None,
+):
+    """Read-only Run History listing for one project.
+
+    Newest-first immutable successful runs with institutional metadata.
+    CURRENT/STALE describe only the canonical Last Run (rendered by the
+    workspace header/banner authorities); every listed row is HISTORICAL,
+    optionally flagged MATCHES WORKING COPY when its stored identity equals
+    the current Working Copy identity.  No engine execution, no mutation.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project:
+        return HTMLResponse(content="<p>No project specified.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history,
+    )
+    from app.v2.run_history_projection import (
+        HISTORY_LIST_LIMIT,
+        build_run_history_rows,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>No workspace state.</p>", status_code=404)
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    ctx = _run_history_listing_ctx(project_record, ws, pis)
+    return _templates.TemplateResponse(
+        request=request, name="partials/sheet_run_history.html", context=ctx)
+
+
+@router.get("/workbook/run-history/detail", response_class=HTMLResponse)
+async def v2_run_history_detail(
+    request: Request,
+    project: Optional[str] = None,
+    history_id: Optional[str] = None,
+):
+    """Read-only historical run detail: identity, canonical KPIs, integrity
+    evidence.  No restore / rerun / mutation functionality exists."""
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project or not history_id:
+        return HTMLResponse(
+            content="<p>Project and history_id required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history_entry,
+    )
+    from app.v2.run_history_projection import run_history_metrics
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+
+    try:
+        entry = get_run_history_entry(
+            workspace_owner, project_record.project_id, history_id)
+    except RunHistoryError as exc:  # malformed stored payload — fail closed
+        return HTMLResponse(
+            content=f"<p role=\"alert\">RUN_HISTORY_PAYLOAD_MALFORMED: {exc}</p>",
+            status_code=422)
+    if entry is None:  # unknown or foreign id — fail closed
+        return HTMLResponse(
+            content="<p>Run history entry not found.</p>", status_code=404)
+
+    integrity = getattr(entry, "integrity_evidence", None) or {}
+    identity = getattr(entry, "last_runtime_identity", None) or {}
+    ctx = {
+        "entry": entry,
+        "metrics": run_history_metrics(entry),
+        "ran_at_display": str(getattr(entry, "ran_at", "") or "")[:16].replace("T", " "),
+        "scenario_name": getattr(entry, "active_scenario_name", None) or "Base",
+        "origin": str(getattr(entry, "runtime_origin", "") or "—"),
+        "engine_version": str(getattr(entry, "engine_version", "") or "—"),
+        "workbook_version": str(getattr(entry, "workbook_version", "") or "—"),
+        "snapshot_short": str(getattr(entry, "runtime_snapshot_id", "") or "")[:8],
+        "composite_short": str(getattr(entry, "composite_hash", "") or "")[:8],
+        "integrity_items": (
+            sorted(integrity.items()) if isinstance(integrity, dict) else []),
+        "project_code": project_record.project_code,
+    }
+    return _templates.TemplateResponse(
+        request=request, name="partials/run_history_detail.html", context=ctx)
+
+
+@router.get("/workbook/run-history/compare", response_class=HTMLResponse)
+async def v2_run_history_compare(
+    request: Request,
+    project: Optional[str] = None,
+    history_id: Optional[str] = None,
+):
+    """Canonical Last Run vs one selected immutable historical run.
+
+    Read-only data-source substitution over the existing compare machinery —
+    no financial recomputation, no engine execution, UNAVAILABLE stays
+    unavailable.  If the Last Run is STALE relative to the Working Copy that
+    is displayed honestly: the comparison compares persisted runs.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project or not history_id:
+        return HTMLResponse(
+            content="<p>Project and history_id required.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.run_history_repository import (
+        RunHistoryError,
+        get_run_history_entry,
+    )
+    from app.workbook.runtime_authority import resolve_runtime_freshness
+    from app.v2.run_history_projection import (
+        _enriched_kpis,
+        build_run_compare,
+    )
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>No workspace state.</p>", status_code=404)
+
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
+    freshness = resolve_runtime_freshness(ws, current_composite_hash=pis.content_hash)
+
+    try:
+        entry = get_run_history_entry(
+            workspace_owner, project_record.project_id, history_id)
+    except RunHistoryError as exc:
+        return HTMLResponse(
+            content=f"<p role=\"alert\">RUN_HISTORY_PAYLOAD_MALFORMED: {exc}</p>",
+            status_code=422)
+    if entry is None:
+        return HTMLResponse(
+            content="<p>Run history entry not found.</p>", status_code=404)
+
+    class _LastRunView:
+        """Scheduling-source view over the workspace's persisted Last Run."""
+        runtime_summary = dict(getattr(ws, "last_runtime_summary", None) or {})
+        debt_schedule = getattr(ws, "last_debt_schedule", None) or {}
+        sponsor_schedule = getattr(ws, "last_sponsor_schedule", None) or {}
+
+    compare = build_run_compare(
+        last_run_kpis=_enriched_kpis(_LastRunView()),
+        last_run_ran_at=_fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
+        last_run_is_stale=freshness.is_stale,
+        history_entry=entry,
+    )
+    matches = bool(
+        entry.composite_hash and pis.content_hash
+        and str(entry.composite_hash) == str(pis.content_hash)
+    )
+    ctx = {
+        "compare": compare,
+        "history_id": entry.history_id,
+        "project_code": project_record.project_code,
+        "matches_working_copy": matches,
+        "last_run_state": freshness.state.value,
+    }
+    return _templates.TemplateResponse(
+        request=request, name="partials/run_history_compare.html", context=ctx)
 
 
 @router.get("/workbook/scenarios/compare", response_class=HTMLResponse)

@@ -86,7 +86,7 @@ def workspace_nav_groups() -> tuple[WorkspaceNavGroup, ...]:
         )),
         WorkspaceNavGroup("Delivery", (
             WorkspaceNavItem("Exports", None, False),
-            WorkspaceNavItem("Run History", None, False),
+            WorkspaceNavItem("Run History", "tab-run-history", True),
         )),
     )
 
