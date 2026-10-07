@@ -305,3 +305,69 @@ def run_annual_fifo_ledger(
         ))
 
     return tuple(entries)
+
+
+def taxable_income_after_lcf_series(
+    taxable_income_before_lcf: tuple[float, ...],
+    tax_year_indices: tuple[int, ...],
+    opening_inputs: tuple[OpeningTaxLossVintageInput, ...],
+    loss_carryforward_years: int,
+    loss_use_allowed: tuple[bool, ...] | None = None,
+) -> list[float]:
+    """Annual taxable income after loss carry-forward, without the audit records.
+
+    Numeric twin of ``run_annual_fifo_ledger``: same pool construction (so the same
+    opening-vintage fail-closed checks), same expiry-before-use, FIFO consumption,
+    gate and generation rules, same arithmetic in the same order. It returns only
+    ``taxable_income_after_lcf_keur`` per tax year — the one ledger value the senior
+    solver's cash-tax iterations consume — instead of building a vintage record per
+    vintage per year. ``run_annual_fifo_ledger`` remains the authority for reported
+    ledger entries.
+    """
+    if loss_use_allowed is not None and len(loss_use_allowed) != len(tax_year_indices):
+        raise ValueError("loss_use_allowed must match tax_year_indices length")
+
+    first_tax_year = tax_year_indices[0] if tax_year_indices else None
+    pool = _opening_states_from_inputs(opening_inputs, loss_carryforward_years,
+                                       first_tax_year=first_tax_year)
+    after: list[float] = []
+
+    for pos, (tax_year, taxable_before) in enumerate(
+        zip(tax_year_indices, taxable_income_before_lcf)
+    ):
+        # Expire vintages whose window has closed (before use).
+        pool = [s for s in pool if not s.last_usable_tax_year < tax_year]
+
+        if taxable_before <= 0.0:
+            generated_amount = -taxable_before if taxable_before < 0.0 else 0.0
+            if generated_amount > 1e-12:
+                pool.append(_VintageState(
+                    vintage_id="",
+                    origin_tax_year=tax_year,
+                    last_usable_tax_year=tax_year + loss_carryforward_years,
+                    amount_keur=generated_amount,
+                    source_label="",
+                ))
+            after.append(0.0)
+            continue
+
+        if loss_use_allowed is not None and not loss_use_allowed[pos]:
+            after.append(taxable_before)
+            continue
+
+        remaining = taxable_before
+        new_pool: list[_VintageState] = []
+        for s in pool:
+            if remaining <= 1e-12:
+                new_pool.append(s)
+                continue
+            consume = min(s.amount_keur, remaining)
+            remaining -= consume
+            residual = s.amount_keur - consume
+            if residual > 1e-12:
+                s.amount_keur = residual
+                new_pool.append(s)
+        pool = new_pool
+        after.append(max(0.0, remaining))
+
+    return after

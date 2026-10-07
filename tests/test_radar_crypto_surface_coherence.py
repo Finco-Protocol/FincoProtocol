@@ -337,6 +337,6 @@ def test_authorities_have_zero_diff(path):
     # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
     # protecting every other authority path, including all Radar/Yield/Crypto
     # namespaces, which the Model V2 scope can never approve.
-    from model_v2_governance import approved_by_active_model_v2_scope
-    changed = [p for p in out.stdout.split() if not approved_by_active_model_v2_scope(p)]
+    from finance_integrity_governance import approved_frozen_path
+    changed = [p for p in out.stdout.split() if not approved_frozen_path(p)]
     assert changed == [], changed

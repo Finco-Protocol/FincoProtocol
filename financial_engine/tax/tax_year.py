@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, timedelta
+from functools import lru_cache
 
 from financial_engine.inputs import PeriodInterestInput
 from financial_engine.policies.tax import TaxPolicy
@@ -53,6 +54,37 @@ def _resolve_shl_tax_eligible_interest(
     if abs((eligible + non_deductible) - gross) > 1e-10:
         raise ArithmeticError("SHL_DEDUCTIBLE_DISALLOWED_IDENTITY_BROKEN")
     return eligible, non_deductible
+
+
+@lru_cache(maxsize=4096)
+def _period_geometry(
+    period_start: date, period_end: date,
+) -> tuple[tuple[tuple[int, date, date, int], ...], tuple[float, ...], int]:
+    """Date-only calendar-year split of one period: (fragments, fractions, total days).
+
+    A pure function of the two dates, so the tax engine reuses it across the many
+    solver evaluations that share the same period axis. Exceptions are not cached.
+    """
+    fragments: list[tuple[int, date, date, int]] = []
+    cur_start = period_start
+
+    while cur_start < period_end:
+        cur_year = cur_start.year
+        next_jan1 = date(cur_year + 1, 1, 1)
+        frag_end = min(period_end, next_jan1)
+        frag_days = (frag_end - cur_start).days
+        fragments.append((cur_year, cur_start, frag_end, frag_days))
+        cur_start = frag_end  # move to start of next year (= frag_end)
+
+    # Compute fractions; last fraction is adjusted for exact 1.0 sum.
+    total_frag_days = sum(fd for _, _, _, fd in fragments)
+    assert total_frag_days > 0, (
+        f"Internal error: fragments sum to 0 for period "
+        f"({period_start} → {period_end}, total_days={(period_end - period_start).days})"
+    )
+    fracs = [fd / total_frag_days for _, _, _, fd in fragments]
+    fracs[-1] = 1.0 - sum(fracs[:-1])
+    return tuple(fragments), tuple(fracs), total_frag_days
 
 
 def _split_period(
@@ -107,25 +139,11 @@ def _split_period(
             financing_income_keur=financing_income_keur,
         )]
 
-    fragments: list[tuple[int, date, date, int]] = []
-    cur_start = period_start
-
-    while cur_start < period_end:
-        cur_year = cur_start.year
-        next_jan1 = date(cur_year + 1, 1, 1)
-        frag_end = min(period_end, next_jan1)
-        frag_days = (frag_end - cur_start).days
-        fragments.append((cur_year, cur_start, frag_end, frag_days))
-        cur_start = frag_end  # move to start of next year (= frag_end)
-
-    # Compute fractions; last fraction is adjusted for exact 1.0 sum.
-    total_frag_days = sum(fd for _, _, _, fd in fragments)
-    assert total_frag_days > 0, (
+    assert total_days > 0, (
         f"Internal error: fragments sum to 0 for period {period_index} "
         f"({period_start} → {period_end}, total_days={total_days})"
     )
-    fracs = [fd / total_frag_days for _, _, _, fd in fragments]
-    fracs[-1] = 1.0 - sum(fracs[:-1])
+    fragments, fracs, total_frag_days = _period_geometry(period_start, period_end)
 
     result = []
     accumulated_ebitda = 0.0

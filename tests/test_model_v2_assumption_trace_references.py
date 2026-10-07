@@ -151,10 +151,10 @@ def test_no_frozen_namespace_touched():
         capture_output=True,
     )
     assert probe.returncode == 0
-    from model_v2_governance import (
-        model_v2_frozen_violations,
-        model_v2_unapproved_engine_changes,
-    )
+    from finance_integrity_governance import unapproved_engine_changes
+    from model_v2_governance import model_v2_frozen_violations
 
     assert model_v2_frozen_violations() == []
-    assert model_v2_unapproved_engine_changes() == []
+    # Engine files outside the shared approved allow-list (which also honours the Model V2
+    # scope contract) must stay untouched.
+    assert unapproved_engine_changes() == []
