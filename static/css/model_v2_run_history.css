@@ -1,0 +1,208 @@
+/* ==========================================================================
+   Run Intelligence V1 — Run History surface (additive stylesheet).
+   Dense, finance-native presentation for the read-only history listing,
+   historical run detail and current-vs-historical compare.
+   Belongs to feat/model-run-intelligence-v1 (does not touch
+   workbook_v2.css — owned by the parallel Workspace Productivity wave).
+   ========================================================================== */
+
+.v2-run-history,
+.v2-run-detail,
+.v2-run-compare {
+  padding: 10px 14px 20px;
+  font-size: 0.8125rem;
+}
+
+.v2-rh-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.v2-rh-title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  color: #111827;
+}
+
+.v2-rh-sub {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.v2-rh-lastrun {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-rh-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.v2-rh-table th {
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  padding: 4px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.v2-rh-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f0f2f4;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.v2-rh-ts { color: #374151; }
+
+.v2-rh-mono {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.v2-rh-col-actions { text-align: right; }
+
+.v2-rh-link {
+  font-size: 0.75rem;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+.v2-rh-link:hover { background: #f3f4f6; }
+
+/* ── status chips ─────────────────────────────────────────────────────── */
+.v2-rh-chip {
+  display: inline-block;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  border-radius: 4px;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.v2-rh-chip--historical {
+  background: #eef0f3;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.v2-rh-chip--lastrun {
+  background: #e8f1ec;
+  color: #1e6b45;
+}
+
+.v2-rh-chip--state {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.v2-rh-chip--stale {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.v2-rh-chip--matches {
+  background: #eef2ff;
+  color: #3730a3;
+  border: 1px dashed #a5b4fc;
+}
+
+/* ── notes / empty / error ────────────────────────────────────────────── */
+.v2-rh-note {
+  font-size: 0.72rem;
+  color: #6b7280;
+  margin-top: 10px;
+}
+
+.v2-rh-empty {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  padding: 10px 2px;
+}
+
+.v2-rh-error {
+  font-size: 0.75rem;
+  color: #b91c1c;
+  padding: 6px 8px;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.v2-rh-error-code {
+  display: block;
+  color: #9ca3af;
+  font-size: 0.6875rem;
+  word-break: break-all;
+}
+
+/* ── detail ───────────────────────────────────────────────────────────── */
+.v2-rh-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+
+.v2-rh-kv {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.v2-rh-k {
+  color: #6b7280;
+  min-width: 9.5rem;
+}
+
+.v2-rh-v { color: #111827; }
+
+.v2-rh-section-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 3px;
+  margin: 14px 0 6px;
+}
+
+/* ── compare columns ──────────────────────────────────────────────────── */
+.v2-rh-cmp-columns {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.v2-rh-cmp-col {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+
+.v2-rh-cmp-name { font-weight: 600; color: #111827; }
+
+.v2-rh-cmp-ts { color: #6b7280; font-variant-numeric: tabular-nums; }

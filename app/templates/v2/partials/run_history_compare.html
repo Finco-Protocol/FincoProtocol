@@ -1,0 +1,59 @@
+{#
+  Run Intelligence V1 — canonical Last Run vs one selected historical run.
+  Root: #v2-run-compare.  Built on the existing compare machinery
+  (build_scenario_projection / build_compare_rows): read-only data-source
+  substitution, no financial recomputation, no engine execution.
+  UNAVAILABLE stays unavailable; legitimate zero stays zero; deltas are
+  raw-float differences vs the first column (the canonical Last Run).
+#}
+<div id="v2-run-compare" class="v2-run-compare" data-testid="run-compare">
+  <div class="v2-rh-head">
+    <span class="v2-rh-title">Compare · Last Run vs Historical Run</span>
+    <span class="v2-rh-sub">Persisted runs only — no recomputation of the edited Working Copy</span>
+    <button type="button" class="v2-rh-link"
+            hx-get="/v2/workbook/run-history?project={{ project_code }}"
+            hx-target="#v2-sheet-run-history" hx-swap="outerHTML"
+            data-testid="run-compare-back">← Back to Run History</button>
+  </div>
+
+  <div class="v2-rh-cmp-columns" data-testid="run-compare-columns">
+    {% for col in compare.columns %}
+    <div class="v2-rh-cmp-col">
+      <span class="v2-rh-cmp-name">{{ col.label }}</span>
+      <span class="v2-rh-chip {% if col.state == 'STALE' %}v2-rh-chip--stale{% elif col.state == 'HISTORICAL' %}v2-rh-chip--historical{% else %}v2-rh-chip--lastrun{% endif %}"
+            data-testid="run-compare-col-state-{{ loop.index }}">{{ col.state }}</span>
+      <span class="v2-rh-cmp-ts">{{ col.ran_at }}</span>
+      {% if col.state == 'HISTORICAL' and matches_working_copy %}
+      <span class="v2-rh-chip v2-rh-chip--matches">MATCHES WORKING COPY</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <table class="v2-rh-table" data-testid="run-compare-table">
+    <thead>
+      <tr><th>Metric</th>
+        {% for col in compare.columns %}<th>{{ 'Last Run' if loop.index == 1 else 'Historical' }}</th>{% endfor %}
+        <th>Δ (Historical − Last Run)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in compare.rows %}
+      <tr data-kpi-key="{{ row.key }}">
+        <td>{{ row.label }}</td>
+        <td class="v2-rh-mono" data-testid="run-compare-{{ row.key }}-last">{{ row.values[0] }}</td>
+        <td class="v2-rh-mono" data-testid="run-compare-{{ row.key }}-hist">{{ row.values[1] }}</td>
+        <td class="v2-rh-mono" data-testid="run-compare-{{ row.key }}-delta">{{ row.deltas[1] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if last_run_state == 'STALE' %}
+  <div class="v2-rh-note" data-testid="run-compare-stale-note">
+    The canonical Last Run is STALE relative to the current Working Copy —
+    this comparison compares persisted runs; it does not recompute the
+    edited Working Copy.
+  </div>
+  {% endif %}
+</div>

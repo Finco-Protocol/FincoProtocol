@@ -28,6 +28,7 @@ Surfaces refreshed (all runtime-dependent):
     #v2-sheet-returns           persisted sponsor/distribution Last Run evidence
     #v2-sheet-scenarios         per-scenario last-run status (persisted in run step 12b)
     #model-workspace-header     compact header state (UX Foundation)
+    #v2-sheet-run-history       run history listing (Run Intelligence V1)
 
 Inputs-only sheets (project_setup, inputs, revenue, CAPEX, OPEX) are NOT
 refreshed by a Run — they hold no runtime-derived values.
@@ -163,6 +164,12 @@ def build_post_run_ui_state(
         project_editable=not is_protected_reference(project_record),
         freshness=freshness))
 
+    # L. Run History (Run Intelligence V1): the successful run just appended
+    #    an immutable history entry atomically — refresh the listing without
+    #    any engine execution.
+    fragments.append(_build_run_history_oob(
+        ws_fresh, pis_fresh, project_record=project_record))
+
     return "\n".join(fragments)
 
 
@@ -237,6 +244,22 @@ def _build_smart_panel_oob(ws_fresh, *, workspace_owner: str,
     ).render({"smart_panel": panel}).replace(
         '<aside id="model-smart-panel"',
         '<aside id="model-smart-panel" hx-swap-oob="true"', 1)
+
+
+def _build_run_history_oob(ws_fresh, pis_fresh, *, project_record) -> str:
+    """OOB refresh for the Run History listing (#v2-sheet-run-history).
+
+    Same single-read contract as every other post-run fragment: the listing
+    is rebuilt from the freshly persisted workspace + the history rows the
+    run commit itself appended.  Pure read + render — no engine execution.
+    """
+    from app.v2.router import _run_history_listing_ctx, _templates
+    ctx = _run_history_listing_ctx(project_record, ws_fresh, pis_fresh)
+    return _templates.get_template(
+        "partials/sheet_run_history.html"
+    ).render(ctx).replace(
+        '<div id="v2-sheet-run-history"',
+        '<div id="v2-sheet-run-history" hx-swap-oob="true"', 1)
 
 
 def _as_oob(html: str, dom_id: str) -> str:
