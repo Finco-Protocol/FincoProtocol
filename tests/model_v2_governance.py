@@ -28,6 +28,13 @@ B. CURRENT EPIC-PHASE FROZEN PREFIXES (scope-file level, explicit per phase)
    current frozen set, (2) adding exact approved files, and (3) remaining
    fail-closed for every other file. No namespace-wide wildcards exist.
 
+C. RELEASED MODEL V2 ENGINE AUTHORITIES (code-level, exact path + exact content)
+   The two reviewed canonical financial-statement engine files that graduate into
+   the baseline at release (``RELEASED_MODEL_V2_ENGINE_AUTHORITIES``). Exact paths,
+   additionally pinned to the exact reviewed git blob SHA; independent of the
+   temporary epic scope marker, which is deleted at the release candidate. Any other
+   engine path, or any further edit of these two files, is unauthorized again.
+
 Fail-closed properties enforced here:
 
   - authority never comes from a Git branch name;
@@ -72,6 +79,21 @@ PERMANENT_HARD_DENY_PREFIXES = (
 
 # Backwards-compatible alias for readers predating Correction C.
 MODEL_V2_HARD_DENY_PREFIXES = PERMANENT_HARD_DENY_PREFIXES
+
+# ── C. RELEASED MODEL V2 ENGINE AUTHORITIES (code-level, exact path + exact content) ──
+# Model V2 reviewed exactly two financial_engine files (commit 4b63262, "assemble
+# decision-complete statements for EQUITY_ONLY projects without SHL"): they are
+# canonical financial-statement authorities that graduate into the baseline when
+# the epic is released to main, after the temporary epic scope marker is deleted.
+# This is NOT a continuation of the deleted marker: it is an explicit, code-level,
+# EXACT-PATH rule that is additionally pinned to the exact reviewed git blob SHA,
+# so any further edit to either file (or any other financial_engine path) is again
+# an unauthorized engine change. No wildcard and no namespace-wide relaxation.
+# Update here only through an explicit, reviewed governance change.
+RELEASED_MODEL_V2_ENGINE_AUTHORITIES = {
+    "financial_engine/financial_statements/assembly.py": "89d215aef84c1ff0374b94023805b346f34bdf5d",
+    "financial_engine/financial_statements/contracts.py": "f54589530736b616cc527055065c9ea538f037e2",
+}
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
@@ -216,17 +238,44 @@ def _approved_paths(scope: dict) -> frozenset[str]:
     )
 
 
-def approved_by_active_model_v2_scope(path: str) -> bool:
-    """True only when an ACTIVE scope explicitly authorizes this exact file.
+def released_engine_authority_matches(
+    path: str, *, repo: "str | Path | None" = None, ref: str = "HEAD"
+) -> bool:
+    """True only for an exact released engine authority whose content at ``ref``
+    is the exact reviewed git blob. Fails closed (False) when git or the blob is
+    unavailable. Independent of any epic scope marker."""
+    pinned = RELEASED_MODEL_V2_ENGINE_AUTHORITIES.get(path)
+    if pinned is None:
+        return False
+    cwd = str(repo) if repo else str(REPO)
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", f"{ref}:{path}"],
+            capture_output=True, text=True, cwd=cwd,
+        )
+    except OSError:
+        return False
+    return result.returncode == 0 and result.stdout.strip() == pinned
 
-    Permanently denied product authorities are never approved — the code-level
-    PERMANENT_HARD_DENY_PREFIXES check wins even over a tampered scope file
-    (scope validation also rejects such a file).
+
+def approved_by_active_model_v2_scope(
+    path: str, *, repo: "str | Path | None" = None, ref: str = "HEAD"
+) -> bool:
+    """Frozen-guard exemption predicate (legacy name kept for the historical guards).
+
+    True when (a) the path is an exact RELEASED Model V2 engine authority at its
+    exact reviewed content, or (b) an ACTIVE scope explicitly authorizes this
+    exact file. Permanently denied product authorities are never approved — the
+    code-level PERMANENT_HARD_DENY_PREFIXES check wins over everything, including
+    a tampered scope file (scope validation also rejects such a file). With no
+    ACTIVE scope only (a) can apply.
     """
+    if path.startswith(PERMANENT_HARD_DENY_PREFIXES):
+        return False
+    if released_engine_authority_matches(path, repo=repo, ref=ref):
+        return True
     scope = active_scope()
     if scope is None:
-        return False
-    if path.startswith(PERMANENT_HARD_DENY_PREFIXES):
         return False
     return path in _approved_paths(scope)
 
@@ -282,17 +331,30 @@ def changed_paths_vs_main() -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def branch_owned_changes_if_model_v2_active() -> "list[str] | None":
-    """Branch-owned changed paths when an ACTIVE Model V2 scope exists, else None.
+def branch_owned_changes_or_skip() -> list[str]:
+    """Branch-owned changed paths (merge-base(origin/main, HEAD)..HEAD).
 
-    Historical Radar-stream guards use this to keep their original hard-coded
-    baseline semantics outside the Model V2 epic, while inside it they ask the
-    only meaningful question: did THIS branch change the file? Authority comes
-    from the committed scope marker, never from a branch name.
+    For historical stream guards that previously compared against a hard-coded
+    historical commit: that baseline is stale once main legitimately evolves, and
+    it only "passed" in shallow CI because the base was unreachable (skip). The
+    correct question is "what did THIS branch change?". An unresolvable
+    merge-base fails closed in CI and skips (with a reason) in a local checkout
+    that has no origin/main ancestry.
     """
-    if active_scope() is None:
-        return None
-    return changed_paths_vs_main()
+    try:
+        base = merge_base_ref("origin/main", "HEAD", repo=str(REPO))
+        result = subprocess.run(
+            ["git", "diff", base, "--name-only"],
+            capture_output=True, text=True, cwd=str(REPO), check=True,
+        )
+    except (OSError, subprocess.CalledProcessError, RuntimeError):
+        if _running_in_ci():
+            raise
+        import pytest
+
+        pytest.skip("origin/main ancestry unavailable (shallow or no-remote "
+                    "checkout); the authoritative gate runs in full-history CI")
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def authorized_engine_files() -> set[str]:
@@ -313,6 +375,7 @@ def model_v2_unapproved_engine_changes(changed: list[str] | None = None) -> list
         f for f in changed
         if f.startswith(ENGINE_PREFIX)
         and f not in approved
+        and not released_engine_authority_matches(f)
     )
 
 
@@ -397,5 +460,6 @@ def parallel_stream_frozen_changes(
     )
     return [
         p for p in diff.stdout.split()
-        if p and p not in allowed and not approved_by_active_model_v2_scope(p)
+        if p and p not in allowed
+        and not approved_by_active_model_v2_scope(p, repo=cwd, ref=head_ref)
     ]

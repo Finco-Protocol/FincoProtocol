@@ -684,20 +684,12 @@ def test_p3_27_frozen_settlement_contract_untouched():
     # is a violation.  This preserves the original broad freeze intent while
     # permitting the already-approved equity sub-package, without opening an
     # unbounded whitelist that would let unknown future paths bypass the gate.
-    import subprocess
-    # ACTIVE Model V2 epic: evaluate what THIS branch changed (merge-base
-    # boundary) instead of the historical hard-coded baseline, which would
-    # attribute main-only Radar evolution to the Model branch.
-    from model_v2_governance import branch_owned_changes_if_model_v2_active
-    changed = branch_owned_changes_if_model_v2_active()
-    if changed is None:
-        try:
-            changed = subprocess.run(
-                ["git", "diff", "--name-only",
-                 "aca630821ae64dba55c35ae12ae5c48401b6aa67", "HEAD"],
-                capture_output=True, text=True, check=True).stdout.splitlines()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pytest.skip("base commit unavailable in shallow checkout")
+    # Branch-owned changes only: merge-base(origin/main, HEAD)..HEAD. The former
+    # hard-coded historical baseline treated later legitimate main evolution as
+    # changes owned by whatever branch is under test (it was only green in shallow
+    # CI because the base was unreachable and the test skipped).
+    from model_v2_governance import branch_owned_changes_or_skip
+    changed = branch_owned_changes_or_skip()
     violations = [
         p for p in changed
         if p.startswith("finco_radar/")

@@ -127,7 +127,8 @@
     </dl>
     <p class="muted small" style="margin-top:10px">
       Reference observation only — not a tradeable or executable price.
-      Numeric values are suppressed when STALE or UNAVAILABLE.
+      The latest canonical price remains visible with its original evidence age.
+      Missing values are never shown as zero.
     </p>
     <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button type="button" id="detail-refresh-now" data-testid="detail-refresh-now"
@@ -415,8 +416,9 @@
   function set_badge(state) {
     var badge = document.getElementById("detail-status-badge");
     if (!badge) return;
-    badge.className = "rlive-badge rlive-badge--" + state.toLowerCase();
-    badge.textContent = state;
+    var live = state === "AVAILABLE";
+    badge.className = "rlive-badge rlive-badge--" + (live ? "available" : "unavailable");
+    badge.textContent = live ? "LIVE" : "UNAVAILABLE";
   }
 
   function set_text(id, val) {
@@ -429,12 +431,13 @@
     if (el) el.textContent = msg;
   }
 
-  function populate(state, data, read_time_ages) {
+  function populate(state, data, read_time_ages, presentation_source) {
     state = (state || "UNAVAILABLE").toUpperCase();
     data = data || {};
     set_badge(state);
 
     var is_current = (state === "AVAILABLE");
+    var is_policy_fresh = is_current && presentation_source !== "CANONICAL_B1_3_HISTORY";
 
     var ref_txt = null, basis_txt = null, prem_txt = null;
     if (is_current) {
@@ -468,7 +471,7 @@
     set_text("detail-oracle", fresh.quote_updated_at &&
       quote_age != null
       ? fresh.quote_updated_at + " · " + fmt_age(quote_age)
-        + (is_current ? " · AVAILABLE · within source heartbeat policy" : "") : null);
+        + (is_policy_fresh ? " · AVAILABLE · within source heartbeat policy" : "") : null);
     set_text("detail-effective-evidence", fresh.effective_evidence_at);
     // Source provenance: canonical per-observation source labels, shown only
     // when the payload actually carries them — never invented.
@@ -484,8 +487,9 @@
     set_text("kpi-premium", prem_txt);
     var state_chip = document.getElementById("kpi-state");
     if (state_chip) {
-      state_chip.className = "rlive-chip rlive-chip--" + state.toLowerCase();
-      state_chip.textContent = state;
+      var product_state = is_current ? "LIVE" : "UNAVAILABLE";
+      state_chip.className = "rlive-chip rlive-chip--" + (is_current ? "available" : "unavailable");
+      state_chip.textContent = product_state;
     }
     set_text("kpi-basis", basis_txt);
     set_text("kpi-basis-asof", rb && rb.observed_at ? "as of " + String(rb.observed_at).replace("T", " ").slice(0, 16) : null);
@@ -497,12 +501,12 @@
     var legs = [];
     // Source-specific legs: state · age. The AVAILABLE claim is only made when the canonical overall state is AVAILABLE,
     // which is assigned only if EVERY leg is inside its reviewed freshness policy; otherwise only the age is shown.
-    var leg_state = is_current ? "AVAILABLE · " : "";
+    var leg_state = is_policy_fresh ? "AVAILABLE · " : "";
     if (market_age != null) legs.push("Market " + leg_state + fmt_age(market_age));
     if (quote_age_kpi != null) legs.push("Oracle " + leg_state + fmt_age(quote_age_kpi));
     set_text("kpi-freshness", legs.length ? legs.join(" · ") : null);
-    set_text("kpi-source", (is_current ? "each leg within its source freshness policy · " : "")
-      + (tok_source || rb_source || state));
+    set_text("kpi-source", (is_policy_fresh ? "each leg within its source freshness policy · " : "")
+      + (tok_source || rb_source || (is_current ? "LIVE" : "UNAVAILABLE")));
 
     // Historical visuals: when the current state is not AVAILABLE the charts below show stored history, not current evidence.
     var hist_note = document.getElementById("history-current-note");
@@ -554,10 +558,12 @@
       return;
     }
     saw_snapshot_row = true;
-    populate(row.state, row.data, row.read_time_ages);
+    populate(row.state, row.data, row.read_time_ages, row.source);
     if (!row.data || !row.data.freshness) {
       set_status("No canonical observation collected yet for this identity. "
         + "Use Refresh now for an explicit live acquisition.");
+    } else if (row.source === "CANONICAL_B1_3_HISTORY") {
+      set_status("Showing latest canonical on-chain price · original evidence age shown above.");
     } else {
       set_status("Showing latest canonical snapshot · polling for updates.");
     }
@@ -596,13 +602,18 @@
       })
       .then(function(env) {
         var state = (env && env.state || "UNAVAILABLE").toUpperCase();
-        // Observation timestamps inside env.data remain authoritative; a
-        // completed request never rewrites them into "new" data.
-        populate(state, (env && env.data) || {}, null);
-        set_status(state === "AVAILABLE"
-          ? "Live observation acquired · timestamps above are canonical."
-          : "Live request completed — canonical state is " + state
-            + ". Previous values were never overwritten.");
+        // A raw acquisition result is NOT the product last-price read model.
+        // Render it directly only when it is genuinely AVAILABLE. If it is
+        // STALE/UNAVAILABLE, preserve the existing canonical display and
+        // re-read the snapshot endpoint, which applies last-canonical fallback.
+        if (state === "AVAILABLE") {
+          populate(state, (env && env.data) || {}, null, "LIVE_ACQUISITION");
+          set_status("Live observation acquired · timestamps above are canonical.");
+          return refresh_snapshot();
+        }
+        set_status("Live request completed — no new fresh observation. "
+          + "Keeping the latest canonical on-chain price.");
+        return refresh_snapshot();
       })
       .catch(function(err) {
         // Fail closed: the prior canonical render stays exactly as it was.

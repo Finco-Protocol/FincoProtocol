@@ -88,12 +88,13 @@ def test_landing_is_snapshot_first_and_never_streams_live_acquisition():
     assert 'fetch("/api/v1.1/radar/r-live/current"' not in js
     assert "history?limit=100" not in js
     assert "data-canonical-id" in js
-    assert "HISTORICAL · Last available" in js
-    assert 'snap_state === "STALE"' in js
+    assert "HISTORICAL · Last available" not in js
+    assert 'snap_state === "STALE"' not in js
     assert 'snap_state === "AVAILABLE"' in js
     assert 'set_badge(row_el, snap_state)' in js
-    assert 'snap_state === "STALE" && last' in js
-    assert 'snap_state === "UNAVAILABLE" && last' not in js
+    assert 'badge.textContent = live ? "LIVE" : "UNAVAILABLE"' in js
+    assert 'presentation_source: view_row.source' in js
+    assert 'snap_data.presentation_source === "LATEST_SNAPSHOT"' in js
     assert 'snap_data.b1_0_premium' in js
     assert 'Math.abs(parseFloat(premium_a.value_bps))' in js
     # cold-start polling reads the snapshot ONLY — never live acquisition
