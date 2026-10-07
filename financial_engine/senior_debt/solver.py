@@ -438,8 +438,12 @@ def _forward_roll_numeric(
         plan_key = _roll_plan_exact_key(plan)
         plan_keys[id(plan)] = (plan, plan_key)
 
-    cfads_bits = tuple(
-        float(cfads_by.get(idx, 0.0)).hex() for idx in plan.period_indices
+    cfads_values = tuple(
+        float(cfads_by.get(idx, 0.0)) for idx in plan.period_indices
+    )
+    cfads_bits = (
+        struct.pack("!" + str(len(cfads_values)) + "d", *cfads_values)
+        if cfads_values else b""
     )
     key = (plan_key, float(opening_keur).hex(), cfads_bits)
 
