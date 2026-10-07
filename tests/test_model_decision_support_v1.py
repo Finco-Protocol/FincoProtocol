@@ -170,6 +170,50 @@ class TestVarianceArithmetic:
 
 
 # ---------------------------------------------------------------------------
+# Correction — zero / missing numeric semantics (explicit None checks)
+# ---------------------------------------------------------------------------
+
+class TestZeroMissingSemantics:
+    def _rows(self, capex, ebitda, revenue, capacity_mw=10.0):
+        from app.v2.decision_support_projection import build_cross_project_rows
+        return build_cross_project_rows([{
+            "project_code": "z", "project_name": "Z", "technology": "solar",
+            "country": "DE", "capacity_display": "10.0 MW",
+            "capacity_mw": capacity_mw, "runnable": True,
+            "ran_at_display": "2026-10-08 10:00",
+            "runtime_summary": {
+                "total_capex_keur": capex, "total_ebitda_keur": ebitda,
+                "total_revenue_keur": revenue,
+            },
+            "sponsor_summary": {}, "debt_summary": {},
+        }])
+
+    def test_zero_ebitda_positive_revenue_renders_zero_margin(self):
+        row = self._rows(1000.0, 0.0, 20000.0)[0]
+        assert row.ebitda_margin == "0.0%"
+
+    def test_negative_ebitda_renders_negative_margin(self):
+        row = self._rows(1000.0, -500.0, 20000.0)[0]
+        assert row.ebitda_margin == "-2.5%"
+
+    def test_zero_revenue_margin_unavailable(self):
+        row = self._rows(1000.0, 500.0, 0.0)[0]
+        assert row.ebitda_margin == "—"
+
+    def test_missing_ebitda_margin_unavailable(self):
+        row = self._rows(1000.0, None, 20000.0)[0]
+        assert row.ebitda_margin == "—"
+
+    def test_zero_capex_valid_capacity_renders_zero(self):
+        row = self._rows(0.0, 500.0, 20000.0)[0]
+        assert row.metrics.get("capex_per_mw") == "0"
+
+    def test_missing_capex_margin_unavailable(self):
+        row = self._rows(None, 500.0, 20000.0)[0]
+        assert row.metrics.get("capex_per_mw") is None
+
+
+# ---------------------------------------------------------------------------
 # Same-project expanded compare (integration, real persisted runs)
 # ---------------------------------------------------------------------------
 
@@ -270,8 +314,6 @@ class TestCrossProject:
             projects.append(record)
         return clients, projects
 
-    def test_two_project_comparison(self, seeded_db):
-        clients, projects = self._multi.__wrapped__(None) if False else (None, None)
     def _run_all(self, seeded_db):
         made = []
         client = cookies = None
@@ -382,16 +424,72 @@ class TestCrossProject:
         assert resp.status_code == 200
         assert _counts() == before  # zero persistence mutation
 
-    def test_no_engine_invocation_on_cross_project_render(self, seeded_db):
-        made = self._run_all(seeded_db)
-        client, cookies, record = made[0]
-        codes = ",".join(m[2].project_code for m in made)
+    def test_five_project_cap_with_six_accessible(self, seeded_db):
+        """§7 genuine cap test: SIX accessible projects under ONE user, all
+        six requested — exactly CROSS_PROJECT_MAX (5) unique columns render
+        and the sixth accessible project is excluded."""
+        from app.services.reference_seed_service import (
+            create_reference_seeded_project,
+        )
+        client, cookies, _first = _client_for("ds-cap-shared")
+        codes = []
+        for i in range(6):
+            record = create_reference_seeded_project(
+                user_id="ds-cap-shared",
+                template_source="generic_solar_reference",
+                requested_name=f"Cap Project {i}",
+                capacity_mw=10.0 + i,
+            )
+            assert _run_once(client, cookies, record.project_code).status_code == 200
+            codes.append(record.project_code)
+        assert len(codes) == 6
+        html = client.get(
+            f"/v2/compare-projects?projects={','.join(codes)}",
+            cookies=cookies).text
+        shown = re.findall(r'data-testid="ds-col-([^"]+)"', html)
+        assert len(shown) == 5, f"expected exactly 5 columns, got {len(shown)}"
+        excluded = [c for c in codes if c not in shown]
+        assert len(excluded) == 1  # exactly one of the six is excluded
+
+    def test_unknown_prefix_does_not_block_valid_selection(self, seeded_db):
+        """§10: the cap applies AFTER resolution — garbage prefixes never
+        crowd out a valid later code, and duplicates never consume slots."""
+        client, cookies, record = _client_for("ds-unknown-user")
+        assert _run_once(client, cookies, record.project_code).status_code == 200
+        raw = ",".join(["bad1", "bad2", "bad3", "bad4", "bad5",
+                        record.project_code, record.project_code])
+        html = client.get(f"/v2/compare-projects?projects={raw}",
+                          cookies=cookies).text
+        assert 'data-testid="ds-cross-table"' in html
+        assert f'data-testid="ds-col-{record.project_code}"' in html
+
+    def test_access_isolation_between_users(self, seeded_db):
+        """§9: user A owns project A; user B owns project B.  When user A
+        requests A,B — A renders, B exposes nothing (no metadata, no name,
+        no KPI values).  Reference projects keep their established
+        cross-user accessibility."""
+        client_a, cookies_a, record_a = _client_for(
+            "ds-iso-user-a", name="Isolation Alpha")
+        client_b, cookies_b, record_b = _client_for(
+            "ds-iso-user-b", name="Isolation Beta")
+        assert _run_once(client_a, cookies_a, record_a.project_code).status_code == 200
+
+        codes = f"{record_a.project_code},{record_b.project_code}"
+        html = client_a.get(f"/v2/compare-projects?projects={codes}",
+                            cookies=cookies_a).text
+        # A renders with its canonical data…
+        assert record_a.project_code in html
+        assert "Project IRR" in html
+        # …B's project name must NOT leak into the rendered comparison
+        assert record_b.project_name not in html
+
+    def test_no_engine_invocation_on_compare_render(self, seeded_db):
+        client, cookies, record = _client_for("ds-iso-engine-guard")
         with mock.patch("app.api.project_runner.run_project",
                         side_effect=AssertionError("engine ran")), \
              mock.patch("app.services.production_financial_authority.run_clean_production",
                         side_effect=AssertionError("clean engine ran")):
-            resp = client.get(f"/v2/compare-projects?projects={codes}",
-                              cookies=cookies)
+            resp = client.get("/v2/compare-projects", cookies=cookies)
         assert resp.status_code == 200
 
     def test_five_project_cap(self, seeded_db):

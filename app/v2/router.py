@@ -3703,10 +3703,15 @@ def _ds_country(record) -> str:
 
 
 def _ds_capacity(record) -> str:
+    """Capacity display with explicit None semantics — numeric zero is a
+    valid persisted value, never silently treated as missing (Correction
+    §4 of DS post-merge review)."""
     base = getattr(record, "baseline_snapshot", None) or {}
     cap = base.get("capacity_mw")
+    if cap is None:
+        return ""
     try:
-        return f"{float(cap):.1f} MW" if cap else ""
+        return f"{float(cap):.1f} MW"
     except (TypeError, ValueError):
         return ""
 
@@ -3744,28 +3749,33 @@ async def compare_projects_page(
         build_cross_project_rows,
     )
 
-    # Correction A4: normalize selection — strip whitespace, drop empties,
-    # de-duplicate preserving first-seen order, then cap at 5.  A duplicate
-    # code never consumes a second comparison column.
-    selected_codes: list[str] = []
+    # Correction A4/A5(post-merge): normalize selection — strip whitespace,
+    # drop empties, de-duplicate preserving first-seen order over ALL raw
+    # tokens; the CROSS_PROJECT_MAX cap applies AFTER accessibility
+    # resolution, so garbage prefixes (unknown/inaccessible codes) never
+    # crowd out a valid later selection.  Duplicates never consume a second
+    # column.
+    raw_codes: list[str] = []
     for raw_code in (projects or "").split(","):
         code = raw_code.strip()
-        if code and code not in selected_codes:
-            selected_codes.append(code)
-        if len(selected_codes) >= CROSS_PROJECT_MAX:
-            break
+        if code and code not in raw_codes:
+            raw_codes.append(code)
 
-    # Correction A3: resolve each explicitly selected code DIRECTLY through
-    # the existing authorization authority (bounded: max 5 lookups) — no
-    # fixed-size workspace page scan, so selected projects are visible
-    # regardless of list position.  Bootstrap authorities are NEVER invoked:
-    # a GET comparison render performs zero database writes (Correction A2).
+    # Correction A3: resolve each candidate code DIRECTLY through the
+    # existing authorization authority (bounded: raw_codes length is the
+    # only loop bound, resolved rows capped at 5) — no fixed-size page
+    # scan.  Bootstrap authorities are NEVER invoked: a GET comparison
+    # render performs zero database writes.
     payloads: list[dict] = []
-    for code in selected_codes:
+    resolved_count = 0
+    for code in raw_codes:
+        if resolved_count >= CROSS_PROJECT_MAX:
+            break
         project_record, workspace_owner = resolve_accessible_project(
             user.user_id, code)
         if project_record is None:
             continue  # unknown / inaccessible code stays unavailable
+        resolved_count += 1
         try:
             ws = get_workspace_state(workspace_owner, project_record.project_id)
         except Exception:  # evidence read failure == unavailable
@@ -3806,8 +3816,8 @@ async def compare_projects_page(
 
     ctx = {
         "rows": rows,
-        "projects": selected_codes,
-        "selected": selected_codes,
+        "projects": [r.project_code for r in rows],
+        "selected": [r.project_code for r in rows],
         "sort": sort or "",
         "technology_filter": technology or "",
         "technologies": techs,
