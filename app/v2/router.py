@@ -3552,9 +3552,18 @@ def _run_side_view(entry):
 
 
 def _last_run_side(ws, freshness):
-    """The canonical Last Run side from the workspace record."""
+    """The canonical Last Run side from the workspace record.
+
+    Correction A5: the scenario label comes from the PERSISTED run-bound
+    identity (``last_runtime_identity["scenario_name"]``) — never from the
+    workspace's current ``active_scenario_name``, which describes the later,
+    mutable Working Copy selection.  Legacy-safe fallback only when the
+    persisted identity genuinely lacks the field.
+    """
     from app.v2.run_history_projection import _enriched_kpis
 
+    identity = getattr(ws, "last_runtime_identity", None) or {}
+    persisted_scenario = identity.get("scenario_name")
     class _LastView:
         runtime_summary = dict(getattr(ws, "last_runtime_summary", None) or {})
         debt_schedule = getattr(ws, "last_debt_schedule", None) or {}
@@ -3563,9 +3572,10 @@ def _last_run_side(ws, freshness):
     return {
         "kpis": _enriched_kpis(_LastView()),
         "ran_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
-        "scenario": getattr(ws, "active_scenario_name", None) or "Base",
+        "scenario": persisted_scenario or getattr(
+            ws, "active_scenario_name", None) or "Base",
         "snapshot": str(getattr(ws, "last_runtime_snapshot_id", "") or "")[:8],
-        "identity": getattr(ws, "last_runtime_identity", None) or {},
+        "identity": identity,
         "sponsor_summary": (getattr(ws, "last_sponsor_schedule", None) or {}).get("summary", {}),
         "debt_summary": (getattr(ws, "last_debt_schedule", None) or {}).get("summary", {}),
         "state": freshness.state.value,
@@ -3727,53 +3737,52 @@ async def compare_projects_page(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
-    from app.persistence.projects_repository import (
-        get_reference_projects,
-        list_workspace_projects_paged,
-    )
+    from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
-    from app.services.project_library_service import ensure_reference_models
     from app.v2.decision_support_projection import (
         CROSS_PROJECT_MAX,
         build_cross_project_rows,
     )
 
-    ensure_reference_models()
-    selected_codes = [c for c in (projects or "").split(",") if c][:CROSS_PROJECT_MAX]
+    # Correction A4: normalize selection — strip whitespace, drop empties,
+    # de-duplicate preserving first-seen order, then cap at 5.  A duplicate
+    # code never consumes a second comparison column.
+    selected_codes: list[str] = []
+    for raw_code in (projects or "").split(","):
+        code = raw_code.strip()
+        if code and code not in selected_codes:
+            selected_codes.append(code)
+        if len(selected_codes) >= CROSS_PROJECT_MAX:
+            break
 
-    candidates: dict[str, dict] = {}
-    records, _total = list_workspace_projects_paged(
-        user_id=user.user_id, page=1, page_size=200)
-    for record in records:
-        candidates[record.project_code] = {"record": record,
-                                           "owner": user.user_id}
-    for record in get_reference_projects():
-        candidates.setdefault(record.project_code,
-                              {"record": record, "owner": record.user_id})
-
+    # Correction A3: resolve each explicitly selected code DIRECTLY through
+    # the existing authorization authority (bounded: max 5 lookups) — no
+    # fixed-size workspace page scan, so selected projects are visible
+    # regardless of list position.  Bootstrap authorities are NEVER invoked:
+    # a GET comparison render performs zero database writes (Correction A2).
     payloads: list[dict] = []
     for code in selected_codes:
-        cand = candidates.get(code)
-        if cand is None:
-            continue
-        record = cand["record"]
+        project_record, workspace_owner = resolve_accessible_project(
+            user.user_id, code)
+        if project_record is None:
+            continue  # unknown / inaccessible code stays unavailable
         try:
-            ws = get_workspace_state(cand["owner"], record.project_id)
+            ws = get_workspace_state(workspace_owner, project_record.project_id)
         except Exception:  # evidence read failure == unavailable
             ws = None
         ran_at = getattr(ws, "last_runtime_at", None) if ws else None
-        _base = getattr(record, "baseline_snapshot", None) or {}
+        _base = getattr(project_record, "baseline_snapshot", None) or {}
         _cap_raw = _base.get("capacity_mw")
         try:
             _cap_num = float(_cap_raw) if _cap_raw else None
         except (TypeError, ValueError):
             _cap_num = None
         payloads.append({
-            "project_code": record.project_code,
-            "project_name": record.project_name,
-            "technology": record.project_type or "",
-            "country": _ds_country(record),
-            "capacity_display": _ds_capacity(record),
+            "project_code": project_record.project_code,
+            "project_name": project_record.project_name,
+            "technology": project_record.project_type or "",
+            "country": _ds_country(project_record),
+            "capacity_display": _ds_capacity(project_record),
             "capacity_mw": _cap_num,
             "runnable": bool(ran_at is not None),
             "ran_at_display": (str(ran_at)[:16].replace("T", " ")

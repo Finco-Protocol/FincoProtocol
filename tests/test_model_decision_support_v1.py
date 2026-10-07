@@ -317,14 +317,70 @@ class TestCrossProject:
         assert "NO CANONICAL RUN" in html
 
     def test_no_working_copy_leak_into_comparison(self, seeded_db):
+        """DS-X_H strengthened: capture the canonical Project IRR display
+        BEFORE a causal Working Copy edit, re-render after, assert the value
+        is EXACTLY unchanged (canonical Last Run only — no WC leak)."""
+        import re as _re
         made = self._run_all(seeded_db)
         client, cookies, record = made[0]
-        # causal Working Copy edit AFTER the run — must not change comparison
-        _edit_p50(client, cookies, record.project_code, 2300)
-        codes = ",".join(m[2].project_code for m in made)
-        html = client.get(f"/v2/compare-projects?projects={codes}", cookies=cookies).text
-        # canonical Last Run value stays; a WC leak would change the IRR cell
-        assert html.count("Project IRR") >= 1
+        other = made[1][2].project_code
+        codes = f"{other},{record.project_code}"  # runnable project LAST
+
+        def _irr_cell(html):
+            m = _re.search(r'data-ds-metric="project_irr">([^<]*)<', html)
+            return m.group(1) if m else None
+
+        before = _irr_cell(client.get(
+            f"/v2/compare-projects?projects={codes}", cookies=cookies).text)
+        assert before is not None and before != "—", (
+            "runnable project must show canonical IRR")
+        _edit_p50(client, cookies, record.project_code, 2300)  # causal WC edit, no run
+        after = _irr_cell(client.get(
+            f"/v2/compare-projects?projects={codes}", cookies=cookies).text)
+        assert after == before  # canonical value unchanged after WC edit
+
+    def test_compare_get_is_persistence_read_only(self, seeded_db):
+        """DS §7 strengthened: a Compare GET performs ZERO database writes —
+        row counts stable across projects/workspaces/scenarios/references,
+        and known bootstrap/mutation authorities raise if invoked."""
+        from unittest import mock
+
+        import sqlite3
+
+        client, cookies, record = _client_for("ds-ro-user")
+        other = _client_for("ds-ro-user", "generic_wind_reference",
+                            48.0, "DS Wind")[2]
+        codes = f"{record.project_code},{other.project_code}"
+        # seed one canonical run so the "runnable" path is exercised too
+        assert _run_once(client, cookies, record.project_code).status_code == 200
+
+        from app.persistence import db as _db
+
+        def _counts():
+            con = sqlite3.connect(_db.DB_PATH)
+            try:
+                tables = ("projects", "workspace_states", "scenarios",
+                          "model_run_history")
+                return {t: con.execute(
+                    f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                    for t in tables}
+            finally:
+                con.close()
+
+        before = _counts()
+        import app.services.project_library_service as _lib
+        import app.persistence.projects_repository as _repo
+        with mock.patch.object(
+                _lib, "ensure_reference_models",
+                side_effect=AssertionError("bootstrap ran during compare")),              mock.patch.object(
+                 _repo, "save_project",
+                 side_effect=AssertionError("project write during compare")),              mock.patch.object(
+                 _repo, "save_project",
+                 side_effect=AssertionError("project write during compare 2")):
+            resp = client.get(f"/v2/compare-projects?projects={codes}",
+                              cookies=cookies)
+        assert resp.status_code == 200
+        assert _counts() == before  # zero persistence mutation
 
     def test_no_engine_invocation_on_cross_project_render(self, seeded_db):
         made = self._run_all(seeded_db)
