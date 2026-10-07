@@ -1685,15 +1685,11 @@ def test_p1_3_runner_four_vertical_coverage():
 
 def test_p1_3_frozen_namespace():
     """P1_3_FROZEN_NAMESPACE — financial_engine/**, finco_core/**, finco_radar/** = ZERO DIFF."""
-    import subprocess
-    r = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True,
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    changed = r.stdout.strip().splitlines()
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    changed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"P1.3 must not touch frozen namespaces. Changed: {frozen}"
 
@@ -1915,14 +1911,10 @@ def test_finco_p1_3_institutional_validation_pack_complete():
     assert "365" in xirr_src
 
     # 10. Frozen namespace
-    import subprocess
-    r = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True,
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    changed = r.stdout.strip().splitlines()
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    changed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace violated: {frozen}"

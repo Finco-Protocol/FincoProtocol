@@ -326,8 +326,17 @@ def test_authorities_have_zero_diff(path):
         ":(exclude)app/radar_rwa/multi_source_evidence.py", ":(exclude)app/radar_rwa/multi_source_collect.py",
         ":(exclude)app/radar_rwa/keccak.py", ":(exclude)app/radar_rwa/data/stock_token_oracle_feeds.json",
         ":(exclude)app/radar_rwa/data/stock_token_oracle_candidates.json"]   # multi-source modules (#188) have their own guards
-    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD", "origin/main..HEAD", "--", path, *excluded],
+    from model_v2_governance import merge_base_ref
+
+    out = subprocess.run(["git", "diff", "--name-only", "--diff-filter=MD",
+                          f"{merge_base_ref('origin/main')}..HEAD", "--", path, *excluded],
                          cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         pytest.skip("git unavailable")
-    assert out.stdout.strip() == "", out.stdout
+    # Explicitly authorized Model V2 epic engine files are governed by the
+    # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+    # protecting every other authority path, including all Radar/Yield/Crypto
+    # namespaces, which the Model V2 scope can never approve.
+    from model_v2_governance import approved_by_active_model_v2_scope
+    changed = [p for p in out.stdout.split() if not approved_by_active_model_v2_scope(p)]
+    assert changed == [], changed

@@ -406,6 +406,103 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
     return build_inputs_summary(project_record, pis, ws)
 
 
+def _format_assumption_display(value):
+    """UX Correction B1: presentation-only assumption value formatting.
+
+    The canonical ``AssumptionEntry.value`` is NEVER touched — this renders
+    the display string only (no parse-format-reparse, no rounding of stored
+    values, no financial calculation):
+
+    - ``None``           → em dash (missing is never zero)
+    - ``bool``           → Yes / No (truthful display)
+    - ``str`` / ``int``  → verbatim
+    - ``float``          → institutional finite display (max 4 decimals,
+      thousands separators, trailing zeros trimmed); non-finite → em dash
+    - ``list`` / ``dict`` → recursive: numeric leaves formatted the same
+      way, so raw long float reprs never reach the UI
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return "—"
+        rounded = round(value, 4)
+        if rounded == 0:
+            return "0"
+        text = f"{rounded:,.4f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_assumption_display(v) for v in value)
+    if isinstance(value, dict):
+        return ", ".join(
+            f"{k}: {_format_assumption_display(v)}"
+            for k, v in value.items())
+    return str(value)
+
+
+def _build_assumption_register_view(pis):
+    """UX Correction A4/B1/B2: read-only Workflow 04 Assumption Register view.
+
+    Pure construction over the working-copy ProjectInputs
+    (``build_assumption_register`` — no I/O, no engine execution).  Used by
+    the Trust sheet section (#assumption-register).  Fail closed: any
+    construction failure renders a typed UNAVAILABLE view — never a
+    fabricated register.
+
+    B1: values render through the presentation formatter — raw float
+    precision never reaches the UI and stored/canonical values stay
+    byte-identical.  B2: on EV workbooks the register rows pass through the
+    existing EV presentation authority (``app.v2.ev_labels``) — charging
+    terminology for the internal compatibility price fields, and
+    compatibility-only generation/PPA rows omitted (canonical identities
+    unchanged).
+    """
+    try:
+        from app.model_v2.assumption_register import (
+            AssumptionSourceKind,
+            RegisterContext,
+            build_assumption_register,
+        )
+        inputs = pis.to_projectinputs()
+        register = build_assumption_register(
+            inputs,
+            RegisterContext.for_working_copy(
+                state_provenance=AssumptionSourceKind.USER_INPUT,
+                workbook_composite_hash=getattr(pis, "content_hash", None),
+            ),
+        )
+        rows = []
+        for e in register.entries:
+            rows.append({
+                "section": e.section,
+                "path": e.canonical_path,
+                "label": e.label,
+                "value": _format_assumption_display(e.value),
+                "unit": e.unit or "",
+                "source": e.source_ref or e.source_kind.value,
+            })
+        from app.v2.ev_labels import is_ev_pis, apply_ev_register_presentation
+        if is_ev_pis(pis):
+            rows = apply_ev_register_presentation(rows)
+        return {
+            "available": True,
+            "entry_count": len(rows),
+            "fingerprint": register.fingerprint,
+            "rows": rows,
+        }
+    except Exception:
+        return {"available": False, "entry_count": 0,
+                "fingerprint": "", "rows": []}
+
+
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     """Shared context dict for both sheet partials."""
     from app.workbook.registry import is_data_center_project_type as _is_dc_type_bsc
@@ -1474,6 +1571,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.ui.trust_pack import build_trust_pack
     try:
         context["trust_pack"] = build_trust_pack(
+
             workspace_owner,
             project_record.project_id,
             project_code=project_record.project_code,
@@ -1512,6 +1610,39 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context["overview"] = build_overview_projection(
         _rr, runtime_freshness.is_stale, pis,
         active_scenario_name=ws.active_scenario_name or "")
+
+    # UX Foundation: compact workspace header + persistent left navigation.
+    # Presentation projections only — identity comes from the same pis the
+    # overview uses; state comes from the canonical freshness authority.
+    context["assumption_register_view"] = _build_assumption_register_view(pis)
+
+    from app.v2.workspace_shell_projection import (
+        build_workspace_header_projection,
+        workspace_nav_groups,
+    )
+    context["header"] = build_workspace_header_projection(
+        project_name=project_record.project_name or project,
+        technology=context.get("project_type", ""),
+        country_iso=getattr(context.get("overview"), "country_iso", ""),
+        capacity_mw=getattr(context.get("overview"), "capacity_mw", None),
+        project_editable=context.get("project_editable", True),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        last_runtime_at_display=context.get("last_runtime_at", "") or "",
+        active_scenario_name=context.get("active_scenario_name", "") or "",
+    )
+    context["ws_nav_groups"] = workspace_nav_groups()
+
+    # UX Foundation Phase C: contextual Smart Panel (availability +
+    # navigation over existing authorities; never an engine call).
+    from app.v2.smart_panel_projection import build_smart_panel_projection
+    context["smart_panel"] = build_smart_panel_projection(
+        trust_pack=context.get("trust_pack"),
+        runtime_state=runtime_freshness.state.value,
+        has_runtime=bool(context.get("has_runtime")),
+        project_key=str(getattr(pis, "template_source", "") or ""),
+        assumption_register_view=context.get("assumption_register_view"),
+    )
 
     # UI-3B: inject scenario presentations for the Scenarios tab.
     # GF-F05: pass runtime_freshness.is_stale so the GET path and OOB path

@@ -748,17 +748,12 @@ class TestXlsxReconciliation:
 class TestFrozenNamespaces:
     def test_financial_engine_not_modified(self):
         """RUN_CERTIFICATE_FROZEN_NAMESPACES_ZERO_DIFF: financial_engine namespace is ZERO DIFF."""
-        import subprocess, pathlib
-        result = subprocess.run(
-            ["git", "diff", "origin/main", "HEAD", "--name-only", "--",
-             "financial_engine/", "finco_core/", "finco_radar/"],
-            capture_output=True, text=True,
-            cwd=str(_REPO_ROOT),
-        )
+        # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
         # Opus Finance Integrity governance: allow-listed engine modules only.
         from finance_integrity_governance import (
-            strictly_frozen_changes, unapproved_engine_changes)
-        listed = result.stdout.strip().splitlines()
+            changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+        listed = [p for p in changed_paths_vs_main()
+                  if p.startswith(("financial_engine/", "finco_core/", "finco_radar/"))]
         changed = unapproved_engine_changes(listed) + strictly_frozen_changes(listed)
         assert changed == [], (
             f"Frozen namespaces must have ZERO DIFF. Changed: {changed}"

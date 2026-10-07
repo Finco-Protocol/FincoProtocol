@@ -753,6 +753,12 @@ def test_f01_scenario_select_oob_replaces_returns_fragment():
             clean.assert_not_called()
             project_runner.assert_not_called()
     finally:
+        # Run History V1: the canonical V2 run committed above appended an
+        # immutable model_run_history row (FK -> projects). Ephemeral TEST
+        # cleanup must remove this test owner's ledger rows before the
+        # project row; the product ledger itself stays append-only (no
+        # delete API, no cascade).
+        conn.execute("DELETE FROM model_run_history WHERE user_id=?", (owner,))
         conn.execute("DELETE FROM scenarios WHERE user_id=?", (owner,))
         conn.execute("DELETE FROM workspace_states WHERE user_id=?", (owner,))
         conn.execute("DELETE FROM projects WHERE user_id=?", (owner,))

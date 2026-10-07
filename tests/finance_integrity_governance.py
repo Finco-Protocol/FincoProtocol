@@ -39,19 +39,41 @@ STRICTLY_FROZEN_PREFIXES = ("finco_core/", "finco_radar/")
 
 
 def changed_paths_vs_main() -> list[str]:
+    # CI parallel-stream correction: compare against the merge-base of
+    # origin/main and HEAD, so unrelated changes that landed only on main
+    # after this branch diverged are never reported as branch-side changes.
+    # Fails closed (returns no paths) only when git itself is unavailable;
+    # an unresolvable merge-base raises via check=True.
+    base = subprocess.run(
+        ["git", "merge-base", "origin/main", "HEAD"],
+        capture_output=True, text=True, cwd=str(REPO), check=True,
+    ).stdout.strip()
     result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True, cwd=str(REPO),
+        ["git", "diff", base, "--name-only"],
+        capture_output=True, text=True, cwd=str(REPO), check=True,
     )
-    return [line for line in result.stdout.strip().splitlines() if line.strip()]
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def unapproved_engine_changes(changed: list[str] | None = None) -> list[str]:
-    """financial_engine files changed vs main that are not on the allow-list."""
+    """financial_engine files changed vs main that are not on the allow-list.
+
+    Narrow Model V2 reconciliation: while the ACTIVE Model V2 epic scope
+    (tests/model_v2_governance.py / docs/model_v2/ACTIVE_EPIC_SCOPE.json) is
+    present, its explicitly reviewed engine files are governed by the Model V2
+    scope contract and do not falsely reject here. Every other engine module
+    stays protected by this allow-list exactly as before, and the Model V2
+    scope itself never approves finco_core/** or finco_radar/**, so
+    strictly_frozen_changes() is unaffected.
+    """
+    from model_v2_governance import approved_by_active_model_v2_scope
+
     changed = changed_paths_vs_main() if changed is None else changed
     return sorted(
         f for f in changed
-        if f.startswith("financial_engine/") and f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+        if f.startswith("financial_engine/")
+        and f not in APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS
+        and not approved_by_active_model_v2_scope(f)
     )
 
 

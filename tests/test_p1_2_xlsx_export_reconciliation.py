@@ -767,16 +767,11 @@ def test_trust_pack_solar_excel_reconciliation_pass():
 
 def test_xlsx_frozen_namespace_no_financial_engine_changes():
     """XLSX_NO_PARALLEL_CALCULATION_ENGINE — financial_engine/** zero diff on this branch."""
-    import subprocess
-    result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True,
-        text=True,
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
-    changed = result.stdout.strip().splitlines()
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    changed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(changed) + strictly_frozen_changes(changed)
     assert frozen == [], f"Frozen namespace files changed: {frozen}"
 
@@ -859,15 +854,11 @@ def test_finco_pr98_correction_a_true_xlsx_reconciliation_complete():
     assert "TRUST_PACK_SOLAR_EXCEL_RECONCILIATION = PASS" in open(tpl).read()
 
     # 9. Frozen namespaces untouched.
-    import subprocess
-    result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True,
-        cwd=root,
-    )
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    _listed = result.stdout.strip().splitlines()
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    _listed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
@@ -1326,15 +1317,11 @@ def test_finco_pr98_correction_b_persisted_xlsx_authority_complete():
     assert str(ri_tampered["Project ID"]) != str(pr.project_id)
 
     # Gate 10: Frozen namespaces untouched.
-    import subprocess
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True, cwd=root,
-    )
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    _listed = result.stdout.strip().splitlines()
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    _listed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"
 
@@ -2021,13 +2008,10 @@ def test_finco_pr98_correction_c_final_xlsx_lineage_complete():
     )
 
     # Gate 10: Frozen namespaces.
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    git_result = subprocess.run(
-        ["git", "diff", "origin/main", "--name-only"],
-        capture_output=True, text=True, cwd=root,
-    )
+    # Branch-owned changes only (merge-base boundary), never raw `git diff origin/main`.
     # Opus Finance Integrity governance: allow-listed engine modules only.
-    from finance_integrity_governance import strictly_frozen_changes, unapproved_engine_changes
-    _listed = git_result.stdout.strip().splitlines()
+    from finance_integrity_governance import (
+        changed_paths_vs_main, strictly_frozen_changes, unapproved_engine_changes)
+    _listed = changed_paths_vs_main()
     frozen = unapproved_engine_changes(_listed) + strictly_frozen_changes(_listed)
     assert frozen == [], f"Frozen namespace changed: {frozen}"

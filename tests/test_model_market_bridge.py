@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from model_v2_governance import merge_base_ref
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -669,7 +670,7 @@ class TestFrozenAuthorities:
         import subprocess
 
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", frozen],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", frozen],
             cwd=REPO, capture_output=True, text=True,
         )
         if out.returncode != 0:
@@ -677,5 +678,12 @@ class TestFrozenAuthorities:
         # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
         # every other path in this namespace stays frozen.
         allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
-        changed = [p for p in out.stdout.split() if p not in allowed]
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard
+        # keeps protecting every other frozen path.
+        from model_v2_governance import approved_by_active_model_v2_scope
+        changed = [
+            p for p in out.stdout.split()
+            if p not in allowed and not approved_by_active_model_v2_scope(p)
+        ]
         assert changed == [], changed

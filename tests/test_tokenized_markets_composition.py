@@ -44,6 +44,7 @@ from finco_radar.venues.observations import (
 )
 from finco_radar.venues.registry import VenueRegistry, parse_underlying
 from finco_radar.venues.store import VenueMarketStore
+from model_v2_governance import merge_base_ref
 
 NOW = datetime(2026, 10, 2, 12, 0, 0, tzinfo=timezone.utc)
 ROBINHOOD_NVDA = "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec"
@@ -339,8 +340,16 @@ class TestFrozen:
     @pytest.mark.parametrize("namespace", ["financial_engine", "finco_core"])
     def test_zero_diff(self, namespace):
         out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main..HEAD", "--", namespace],
+            ["git", "diff", "--name-only", f"{merge_base_ref()}..HEAD", "--", namespace],
             cwd=REPO, capture_output=True, text=True)
         if out.returncode != 0:
             pytest.skip("git unavailable")
-        assert out.stdout.strip() == "", out.stdout
+        # Explicitly authorized Model V2 epic engine files are governed by the
+        # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
+        # protecting every other frozen path.
+        from model_v2_governance import approved_by_active_model_v2_scope
+        changed = [
+            p for p in out.stdout.splitlines()
+            if p.strip() and not approved_by_active_model_v2_scope(p.strip())
+        ]
+        assert changed == [], changed

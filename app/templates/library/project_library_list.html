@@ -1,31 +1,42 @@
-{# Working projects are paged independently; canonical references stay on every page. #}
-<section aria-label="Working Projects">
+{#
+  Model Home list region. Ownership: UX-1 MODEL HOME
+  (docs/model_v2/UX_FOUNDATION_CONTRACT.md).
+
+  Hierarchy: populated Recent Projects first; when there are no working
+  projects the empty Recent block collapses into onboarding and Reference
+  Models become the primary content. Reference cards show persisted
+  canonical Last Run evidence only (unavailable is omitted, never zero);
+  no engine execution happens anywhere on Model Home.
+#}
+{% if projects %}
+<section aria-label="Recent Projects">
   <div class="fo-library-section-heading">
-    <h2 class="fo-library-section-title">Recent / Working Projects</h2>
-    <span class="fo-library-results-meta">{{ total }} {{ 'project' if total == 1 else 'projects' }}{% if total_pages > 1 %} · page {{ page }} of {{ total_pages }}{% endif %}</span>
+    <h2 class="fo-library-section-title">Recent Projects</h2>
+    <span class="fo-library-results-meta">{{ total }} {{ 'project' if total == 1 else 'project' }}{% if total_pages > 1 %} · page {{ page }} of {{ total_pages }}{% endif %}</span>
   </div>
-  {% if projects %}
   <div class="fo-library-table-wrapper">
-    <table class="fo-library-table">
-      <thead><tr><th>Project</th><th>Technology</th><th>Role</th><th>Updated</th><th>Action</th></tr></thead>
+    <table class="fo-library-table fo-library-table--recent">
+      <thead><tr><th>Project</th><th>Technology</th><th>Role</th><th>Last Run</th><th>Updated</th><th class="fo-library-col-action">Action</th></tr></thead>
       <tbody>
-        {% for proj in projects %}
-        <tr data-testid="library-row-{{ proj.project_code }}"{% if proj.project_code == selected_project %} data-selected="true"{% endif %}>
-          <td><span class="fo-library-row-name">{{ proj.project_name }}</span></td>
-          <td>{{ proj.project_type or '—' }}</td>
-          <td>{% if proj.project_role == 'working_copy' %}<span class="fo-library-badge fo-library-badge--working-copy" data-testid="badge-working-copy-{{ proj.project_code }}">Working copy</span>{% else %}My project{% endif %}</td>
-          <td class="fo-library-date">{{ proj.updated_at.strftime('%Y-%m-%d') if proj.updated_at else '—' }}</td>
-          <td><a href="{{ workbook_destination_fn(proj.project_code) }}" data-testid="open-{{ proj.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-open">Open</a></td>
+        {% for row in recent_rows %}
+        <tr data-testid="library-row-{{ row.project_code }}"{% if row.project_code == selected_project %} data-selected="true"{% endif %}>
+          <td><span class="fo-library-row-name">{{ row.project_name }}</span></td>
+          <td>{{ row.project_type or '—' }}</td>
+          <td>{% if row.is_working_copy %}<span class="fo-library-badge fo-library-badge--working-copy" data-testid="badge-working-copy-{{ row.project_code }}">Working copy</span>{% else %}My project{% endif %}</td>
+          <td class="fo-library-cell-lastrun">
+            {% if row.has_last_run %}
+              <span class="fo-library-lastrun" data-testid="last-run-{{ row.project_code }}">Last run · {{ row.last_run_at_display }}</span>
+            {% else %}
+              <span class="fo-library-lastrun fo-library-lastrun--none" data-testid="last-run-none-{{ row.project_code }}">Not run</span>
+            {% endif %}
+          </td>
+          <td class="fo-library-date">{{ row.updated_display or '—' }}</td>
+          <td><a href="{{ workbook_destination_fn(row.project_code) }}" data-testid="open-{{ row.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-open">Open</a></td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  {% else %}
-  <div class="fo-library-empty fo-library-empty--compact">
-    {% if search or role_filter %}No working projects match these filters.{% else %}No working projects yet. Start with a reference below or <a href="/projects/new">create a new project</a>.{% endif %}
-  </div>
-  {% endif %}
   {% if total_pages > 1 %}
   <nav class="fo-library-pagination" aria-label="Working projects pages">
     <span class="fo-library-pagination__info">Showing {{ ((page-1)*page_size)+1 }}–{{ [page*page_size, total]|min }} of {{ total }}</span>
@@ -38,25 +49,60 @@
   </nav>
   {% endif %}
 </section>
+{% else %}
+{#
+  Empty state: the empty Recent Projects block collapses to one onboarding
+  line — Reference Models below are the primary content and New Project
+  (hero) is the primary action. No giant empty-state illustration.
+#}
+<section aria-label="Recent Projects" class="fo-library-empty-section">
+  {% if search or role_filter %}
+  <div class="fo-library-empty fo-library-empty--compact">No projects match these filters.</div>
+  {% else %}
+  <div class="fo-library-empty fo-library-empty--compact fo-library-empty--onboarding">
+    <span data-testid="library-onboarding">No working projects yet — create a new project above, or start from a reference model below.</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if references %}
-<section class="fo-library-reference-section" aria-label="Reference Templates">
+<section class="fo-library-reference-section" aria-label="Reference Models">
   <div class="fo-library-section-heading">
-    <h2 class="fo-library-section-title">Reference Templates</h2>
-    <span class="fo-library-results-meta">Protected starting points for an editable working copy</span>
+    <h2 class="fo-library-section-title">Reference Models</h2>
+    <span class="fo-library-results-meta">Inspectable canonical models — open one, or create a working copy</span>
   </div>
   <div class="fo-library-reference-grid">
-    {% for proj in references %}
-    <article class="fo-library-reference-card" data-testid="library-row-{{ proj.project_code }}">
-      <span class="fo-library-reference-technology">{{ proj.project_type or 'Reference' }}</span>
-      <h3>{{ proj.project_name }}</h3>
-      <p>Explore the {{ proj.project_type or 'project' }} reference model, then create your own working copy.</p>
+    {% for card in reference_cards %}
+    <article class="fo-library-reference-card" data-testid="library-row-{{ card.project_code }}">
+      <div class="fo-library-reference-topline">
+        <span class="fo-library-reference-technology">{{ card.project_type or 'Reference' }}</span>
+        {% if card.preview %}
+        <span class="fo-library-badge fo-library-badge--preview" data-testid="preview-state-{{ card.project_code }}">PREVIEW</span>
+        {% endif %}
+      </div>
+      <h3>{{ card.project_name }}</h3>
+      {% if card.preview %}
+      <p class="fo-library-reference-preview-note">Reference model available. Editable runtime not yet supported.</p>
+      {% endif %}
+      {% if card.kpis %}
+      <dl class="fo-library-reference-kpis" data-testid="reference-kpis-{{ card.project_code }}">
+        {% for key, label, display in card.kpis %}
+        <div class="fo-library-reference-kpi">
+          <dt>{{ label }}</dt>
+          <dd>{{ display }}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% endif %}
+      <p>Explore the {{ card.project_type or 'project' }} reference model, then create your own working copy.</p>
       <div class="fo-library-reference-actions">
-        <a href="{{ workbook_destination_fn(proj.project_code) }}" data-testid="open-{{ proj.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-link">View Reference</a>
-        {% if proj.project_type and proj.project_type.lower() == 'storage' %}
-        <span data-testid="clone-unavailable-{{ proj.project_code }}" class="fo-library-btn-clone-unavailable">Working-copy runtime coming soon</span>
+        <a href="{{ workbook_destination_fn(card.project_code) }}" data-testid="open-{{ card.project_code }}" data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}" class="fo-library-link">Open model</a>
+        {% if card.preview %}
+        <span data-testid="clone-unavailable-{{ card.project_code }}" class="fo-library-btn-clone-unavailable">Editable runtime not yet supported</span>
         {% else %}
-        <form method="POST" action="/library/clone/{{ proj.project_id }}" hx-post="/library/clone/{{ proj.project_id }}" hx-target="#library-clone-error" hx-swap="innerHTML" hx-disabled-elt="find button">
-          <button type="submit" data-testid="clone-{{ proj.project_code }}" class="fo-library-btn-clone">Create working copy</button>
+        <form method="POST" action="/library/clone/{{ card.project_id }}" hx-post="/library/clone/{{ card.project_id }}" hx-target="#library-clone-error" hx-swap="innerHTML" hx-disabled-elt="find button">
+          <button type="submit" data-testid="clone-{{ card.project_code }}" class="fo-library-btn-clone">Create working copy</button>
         </form>
         {% endif %}
       </div>

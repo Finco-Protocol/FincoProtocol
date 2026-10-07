@@ -80,10 +80,13 @@ def test_library_has_no_project_commands_or_global_kpis(client_with_references):
     response = client_with_references.get("/library", cookies=cookies)
     assert response.status_code == 200
     html = response.text
-    assert "Model Workspace" in html and "Reference Templates" in html
+    # UX Foundation renames the surface copy: library-first "FINCO MODEL"
+    # hero and "Reference Models" product semantics.
+    assert "FINCO MODEL" in html and "Reference Models" in html
     # Solar + Wind + Data Center + EV Charging are cloneable (Storage is not yet).
     assert html.count("Create working copy") == 4
-    assert "Working-copy runtime coming soon" in html
+    # UX Foundation: Storage preview uses the explicit product state copy.
+    assert "Editable runtime not yet supported" in html
     assert 'id="fo-kpi-strip"' not in html
     assert 'id="fo-btn-run"' not in html
     assert 'id="project-sidebar"' not in html

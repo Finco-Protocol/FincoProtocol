@@ -407,14 +407,16 @@ class TestBehaviorUnchanged:
         if sha is None:
             pytest.skip("no main ref available in this checkout")
         _ensure_base_history(sha)
-        out = subprocess.run(
-            ["git", "diff", "--name-only", f"{sha}..HEAD", "--", frozen_path],
-            cwd=REPO, capture_output=True, text=True, check=True,
+        # CI parallel-stream correction: the shared governance helper derives
+        # the MERGE-BASE of current main and HEAD (fail-closed) so files
+        # introduced only on main after this branch diverged are never
+        # reported as branch-side frozen-path changes; allowed-path rules
+        # and the Model V2 scope exemptions still apply.
+        from model_v2_governance import parallel_stream_frozen_changes
+        changed = parallel_stream_frozen_changes(
+            frozen_path, main_ref=sha, allowed={
+                "finco_radar/venues/registry.py", "finco_radar/venues/models.py"},
         )
-        # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
-        # every other path in this namespace stays frozen.
-        allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
-        changed = [p for p in out.stdout.split() if p not in allowed]
         assert changed == [], changed
 
     def test_branch_contains_current_origin_main(self):

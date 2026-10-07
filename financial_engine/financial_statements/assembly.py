@@ -209,8 +209,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         "operating", op.period_indices, op.revenue_keur, contract.full_axis)
     _axis_checked(
         "tax", tax.period_indices, tax.taxable_profit_keur, contract.full_axis)
-    _axis_checked(
-        "shl", shl.period_indices, shl.shl_gross_interest_keur, contract.full_axis)
+    # EQUITY_ONLY projects carry no shareholder loan: model.shareholder_loan is
+    # None and there are no SHL vectors to validate. Absent SHL is economically
+    # zero downstream (position-map misses), never invented principal/interest.
+    if shl is not None:
+        _axis_checked(
+            "shl", shl.period_indices, shl.shl_gross_interest_keur, contract.full_axis)
     # Correction D: remove self-authorization fallback.  The only valid
     # source for senior_expected is the independently-derived axis contract
     # (PR-F1 authority).  Falling back to tuple(senior.period_indices) would
@@ -237,10 +241,15 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             [pr.closing_balance_keur for pr in dsra.period_results],
             contract.full_axis)
 
-    # Position maps for O(1) access (validated above).
+    # Position maps for O(1) access (validated above). An absent SHL yields an
+    # empty position map so per-period lookups resolve to zero, not a crash.
     op_pos = {i: pos for pos, i in enumerate(op.period_indices)}
     tax_pos = {i: pos for pos, i in enumerate(tax.period_indices)}
-    shl_pos = {i: pos for pos, i in enumerate(shl.period_indices)}
+    shl_pos = (
+        {i: pos for pos, i in enumerate(shl.period_indices)}
+        if shl is not None
+        else {}
+    )
     senior_pos = {i: pos for pos, i in enumerate(senior.period_indices)}
     dsra_pos: dict[int, int] = {}
     if dsra is not None:
@@ -250,11 +259,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         ("senior.principal", senior.senior_principal_keur),
         ("senior.ds", senior.senior_debt_service_keur),
         ("senior.closing", senior.senior_debt_closing_keur),
-        ("shl.principal", shl.shl_principal_keur),
-        ("shl.closing", shl.shl_closing_keur),
+        ("shl.principal", None if shl is None else shl.shl_principal_keur),
+        ("shl.closing", None if shl is None else shl.shl_closing_keur),
         ("tax.cit_accrual", tax.tax_keur),
         ("tax.cash", tax.corporate_tax_cash_keur),
     ):
+        if vec is None:
+            continue
         _axis_checked(
             label,
             senior.period_indices if label.startswith("senior") else (
@@ -384,14 +395,19 @@ def _assemble_statements_checked(g2c_result, project_inputs):
 
     # I.12: initial equity includes construction funding equity draws so the
     # BS is not missing pre-COD share capital/premium from period 1 onward.
+    # EQUITY_ONLY residual funding is additional equity — a distinct equity
+    # account, never folded into share capital or SHL.
     _construction_sc_total = sum(r.share_capital_draw_keur for r in construction_rows)
     _construction_sp_total = sum(r.share_premium_draw_keur for r in construction_rows)
+    _construction_ae_total = sum(r.additional_equity_draw_keur for r in construction_rows)
     _nc_fc_sc = float(getattr(non_construction_fc_row, "share_capital_draw_keur", 0.0) or 0.0) if non_construction_fc_row else 0.0
     _nc_fc_sp = float(getattr(non_construction_fc_row, "share_premium_draw_keur", 0.0) or 0.0) if non_construction_fc_row else 0.0
+    _nc_fc_ae = float(getattr(non_construction_fc_row, "additional_equity_draw_keur", 0.0) or 0.0) if non_construction_fc_row else 0.0
 
     cumulative_book_dep = 0.0
     cumulative_share_capital = _construction_sc_total + _nc_fc_sc
     cumulative_share_premium = _construction_sp_total + _nc_fc_sp
+    cumulative_additional_equity = _construction_ae_total + _nc_fc_ae
     non_finite = False
     # I.2/I.3: CIT accrual vs cash timing roll-forward.
     # Opening = 0 (explicit greenfield causal policy: no pre-project tax liability).
@@ -798,6 +814,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
             cumulative_share_premium += float(
                 getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
+            cumulative_additional_equity += float(
+                getattr(wp, "additional_equity_contribution_keur", 0.0) or 0.0)
         dsra_close = (
             float(dpr.closing_balance_keur) if dpr is not None else None
         )
@@ -827,6 +845,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             accumulated_book_depreciation_keur=cumulative_book_dep,
             share_capital_keur=cumulative_share_capital,
             share_premium_keur=cumulative_share_premium,
+            additional_equity_keur=cumulative_additional_equity,
             retained_earnings_keur=None,   # filled post-loop
             balance_check_keur=None,        # filled post-loop
         ))
@@ -939,6 +958,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             and _bsp_orig.shl_balance_keur is not None
             and _bsp_orig.share_capital_keur is not None
             and _bsp_orig.share_premium_keur is not None
+            and _bsp_orig.additional_equity_keur is not None
             and _net_cit is not None
         ):
             _total_assets = (
@@ -952,6 +972,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 + (_bsp_orig.shl_balance_keur or 0.0)
                 + (_bsp_orig.share_capital_keur or 0.0)
                 + (_bsp_orig.share_premium_keur or 0.0)
+                + (_bsp_orig.additional_equity_keur or 0.0)
                 + _lr_close_bsp
                 + _re_close_val
             )
@@ -969,6 +990,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             accumulated_book_depreciation_keur=_bsp_orig.accumulated_book_depreciation_keur,
             share_capital_keur=_bsp_orig.share_capital_keur,
             share_premium_keur=_bsp_orig.share_premium_keur,
+            additional_equity_keur=_bsp_orig.additional_equity_keur,
             net_cit_payable_keur=_net_cit,
             legal_reserve_keur=_lr_close_bsp,
             retained_earnings_keur=_re_close_val,

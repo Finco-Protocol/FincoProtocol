@@ -10,7 +10,10 @@ from domain.revenue.revenue_config import (
 from domain.debt.debt_config import (
     SeniorDebtParams, MezzanineParams, SHLParams, EBLParams, DebtConfig,
 )
-from domain.tax.tax_params import TaxParams, DTTRate, get_dtt_rate
+# TaxParams only: domain.tax.tax_params is a shim over finco_core.tax.tax_params,
+# which has never exported DTTRate/get_dtt_rate. Importing those dead names made
+# this barrel module unimportable.
+from domain.tax.tax_params import TaxParams
 from domain.regulatory.regulatory_params import RegulatoryParams
 from domain.capex.capex_breakdown import (
     SolarCapexBreakdown, WindCapexBreakdown, BESSCapexBreakdown,
@@ -45,8 +48,6 @@ __all__ = [
     "DebtConfig",
     # Tax
     "TaxParams",
-    "DTTRate",
-    "get_dtt_rate",
     # Regulatory
     "RegulatoryParams",
     # CAPEX

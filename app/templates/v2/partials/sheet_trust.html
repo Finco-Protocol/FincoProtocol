@@ -12,7 +12,7 @@
 {% from "partials/field_editor.html" import render_field %}
 
 <style>
-  .v2-trust-section { border: 1px solid var(--border, #e3e6ea); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+  .v2-trust-section { border: 1px solid var(--border, #e3e6ea); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; max-width: 100%; overflow-x: auto; }
   .v2-trust-title { font-weight: 650; font-size: 0.95rem; letter-spacing: 0.02em; }
   .v2-trust-title small { font-weight: 400; color: #5b6470; margin-left: 8px; }
   .v2-trust-grid { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 4px 16px; margin-top: 8px; }
@@ -308,5 +308,59 @@
       </tbody>
     </table>
     <div class="v2-trust-note">Authority: {{ trust_pack.methodology.authority }}.</div>
+  </div>
+
+  {# ── G. Assumption Register (UX Correction A4) ────────────────────── #}
+  {# Read-only Workflow 04 register built from the current Working Copy
+     inputs (pure function, no engine execution).  Typed UNAVAILABLE on
+     any construction failure — never a fabricated register. #}
+  <div class="v2-trust-section" id="assumption-register"
+       data-testid="trust-assumption-register">
+    <div class="v2-trust-title">G. Assumption Register
+      <small>Workflow 04 · Working Copy context</small>
+    </div>
+    {% if assumption_register_view.available %}
+    <div class="v2-trust-note" style="margin-top:4px;">
+      {{ assumption_register_view.entry_count }} exposed input authorities ·
+      fingerprint <code>{{ assumption_register_view.fingerprint[:19] }}…</code>.
+      The register never mixes Working Copy and Last Run.
+    </div>
+    <table class="v2-trust-kpis">
+      <thead><tr><th>Section</th><th>Assumption</th><th>Value</th><th>Source</th></tr></thead>
+      <tbody>
+        {% for row in assumption_register_view.rows %}
+        <tr data-assumption-section="{{ row.section }}">
+          <td>{{ row.section }}</td>
+          <td>{{ row.label }}</td>
+          <td>{{ row.value }}{% if row.unit %} {{ row.unit }}{% endif %}</td>
+          <td>{{ row.source }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="v2-trust-note" style="margin-top:4px;">
+      Assumption Register unavailable for the current Working Copy state.
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── H. Calculation Trace (UX Correction A4) ───────────────────────── #}
+  {# Typed availability: a full Calculation Trace requires the clean
+     production run object, which is not persisted after a run; loading it
+     on demand would execute the engine.  Honest UNAVAILABLE — never a
+     second derivation surface. #}
+  <div class="v2-trust-section" id="calculation-trace"
+       data-testid="trust-calculation-trace">
+    <div class="v2-trust-title">H. Calculation Trace
+      <small>Workflow 04 · run-bound</small>
+    </div>
+    <div class="v2-trust-note" style="margin-top:4px;">
+      UNAVAILABLE — the trace is bound to the clean production run object,
+      which is not persisted after a run, and rendering must never execute
+      the engine. Traceable derivation evidence appears where the canonical
+      outputs already expose their lineage (Trust Pack KPIs, Run
+      Certificate).
+    </div>
   </div>
 </div>
