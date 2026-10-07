@@ -39,6 +39,9 @@ APPROVED_FINANCE_INTEGRITY_ENGINE_PATHS = frozenset({
     # geometry, incremental SHL chain, run-scoped exact-key memo); every output is verified
     # bit-identical to the previous implementation (tests/test_perf_model_runtime_equivalence.py).
     # orchestrator.py and shareholder_waterfall/model.py are already approved above.
+    # Runtime V4 semantic-preserving shared CFADS authority: one scalar formula is consumed
+    # by both typed canonical CFADS assembly and the solver numeric tax/CFADS path.
+    "financial_engine/cfads.py",
     "financial_engine/tax/engine.py",
     "financial_engine/tax/tax_year.py",
     "financial_engine/tax/loss_ledger.py",
