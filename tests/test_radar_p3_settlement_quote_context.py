@@ -694,6 +694,9 @@ def test_p3_27_frozen_settlement_contract_untouched():
         p for p in changed
         if p.startswith("finco_radar/")
         and not p.startswith("finco_radar/equity/")
+        # PR #183 (Tokenized Relative Value V1): the reviewed core module
+        # itself; every other finco_radar/ path stays frozen.
+        and p != "finco_radar/venues/relative_value.py"
     ]
     assert not violations, (
         "Non-equity finco_radar paths modified (frozen): " + str(violations)

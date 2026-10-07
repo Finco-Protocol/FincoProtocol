@@ -1013,6 +1013,9 @@ class TestB15FrozenP3Gate:
     _PERMITTED_FINCO_RADAR_PREFIXES = (
         "finco_radar/equity/",
         "finco_radar/tokenization_premium/",
+        # PR #183 (Tokenized Relative Value V1): the reviewed core module
+        # itself — exact file, the rest of finco_radar/venues stays frozen.
+        "finco_radar/venues/relative_value.py",
     )
 
     def _is_violation(self, path: str) -> bool:

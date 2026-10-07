@@ -233,7 +233,9 @@ def test_frozen_namespaces_zero_diff(namespace):
         pytest.skip("git unavailable")
     # Authorised by the exact-identity correction (registry collapse of same-identity source rows);
     # every other path in this namespace stays frozen.
-    allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py"}
+    allowed = {"finco_radar/venues/registry.py", "finco_radar/venues/models.py",
+                 # PR #183 (Tokenized Relative Value V1) reviewed core module:
+                 "finco_radar/venues/relative_value.py"}
     # Explicitly authorized Model V2 epic engine files are governed by the
     # Model V2 scope contract (tests/model_v2_governance.py); this guard keeps
     # protecting every other frozen path.
