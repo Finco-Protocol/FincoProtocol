@@ -1,0 +1,233 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.13.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests\test_model_decision_support_v1.py F                                [100%]
+
+================================== FAILURES ===================================
+_________ TestCrossProject.test_compare_get_is_persistence_read_only __________
+
+self = <test_model_decision_support_v1.TestCrossProject object at 0x0000024907B08BC0>
+seeded_db = None
+
+    def test_compare_get_is_persistence_read_only(self, seeded_db):
+        """DS §7 strengthened: a Compare GET performs ZERO database writes —
+        row counts stable across projects/workspaces/scenarios/references,
+        and known bootstrap/mutation authorities raise if invoked."""
+        from unittest import mock
+    
+        import sqlite3
+    
+        client, cookies, record = _client_for("ds-ro-user")
+        other = _client_for("ds-ro-user", "generic_wind_reference",
+                            48.0, "DS Wind")[2]
+        codes = f"{record.project_code},{other.project_code}"
+        # seed one canonical run so the "runnable" path is exercised too
+        assert _run_once(client, cookies, record.project_code).status_code == 200
+    
+        from app.persistence import db as _db
+    
+        def _counts():
+            con = sqlite3.connect(_db.DB_PATH)
+            try:
+                tables = ("projects", "workspace_states", "scenarios",
+                          "model_run_history")
+                return {t: con.execute(
+                    f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                    for t in tables}
+            finally:
+                con.close()
+    
+        before = _counts()
+        import app.services.project_library_service as _lib
+        import app.persistence.projects_repository as _repo
+        with mock.patch.object(
+                _lib, "ensure_reference_models",
+                side_effect=AssertionError("bootstrap ran during compare")),              mock.patch.object(
+                 _repo, "save_project",
+                 side_effect=AssertionError("project write during compare")),              mock.patch.object(
+                 _repo, "save_project",
+                 side_effect=AssertionError("project write during compare 2")):
+            resp = client.get(f"/v2/compare-projects?projects={codes}",
+                              cookies=cookies)
+>       assert resp.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_model_decision_support_v1.py:382: AssertionError
+---------------------------- Captured stdout call -----------------------------
+WARNING: FINCO_SECRET_KEY not set. Using insecure default.
+2026-10-08T00:38:09 finco.requests INFO request_id=c973c11b method=GET path=/v2/workbook status=200
+2026-10-08T00:38:09 finco.requests WARNING request_id=c973c11b method=GET path=/v2/workbook status=200 duration_ms=1040 SLOW
+2026-10-08T00:38:13 finco.model_execution INFO model_execution completed duration_s=3.7
+2026-10-08T00:38:13 finco.run_stages INFO run_stages outcome=ok project_type=Solar origin=v2_workbook_run scoped_by_user=1 request_received=0ms project_workspace_resolved=47ms model_entered=93ms model_completed=3719ms persistence_completed=46ms response_generated=422ms total=4329ms
+2026-10-08T00:38:13 finco.requests INFO request_id=7bc95302 method=POST path=/v2/workbook/run status=200
+2026-10-08T00:38:13 finco.requests WARNING request_id=7bc95302 method=POST path=/v2/workbook/run status=200 duration_ms=4329 SLOW
+2026-10-08T00:38:14 finco.requests ERROR request_id=40d39c9d method=GET path=/v2/compare-projects duration_ms=42.1 error=unhandled
+2026-10-08T00:38:14 finco.exceptions ERROR request_id=40d39c9d path=/v2/compare-projects exception_type=NameError exception=name 'record' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\exception_handler.py", line 21, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\request_logging.py", line 50, in __call__
+    await self.app(scope, receive, logging_send)
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\security_headers.py", line 86, in __call__
+    await self.app(scope, receive, security_send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 680, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 134, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 120, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\v2\router.py", line 3774, in compare_projects_page
+    _base = getattr(record, "baseline_snapshot", None) or {}
+                    ^^^^^^
+NameError: name 'record' is not defined
+
+2026-10-08T00:38:14 finco.observability WARNING http_error
+---------------------------- Captured stderr call -----------------------------
+2026-10-08 00:38:06.002 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-10-08 00:38:06.002 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-10-08 00:38:06.006 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-10-08 00:38:06.006 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-10-08 00:38:06.006 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+------------------------------ Captured log call ------------------------------
+INFO     finco.requests:request_logging.py:43 request_id=c973c11b method=GET path=/v2/workbook status=200
+WARNING  finco.requests:request_logging.py:61 request_id=c973c11b method=GET path=/v2/workbook status=200 duration_ms=1040 SLOW
+INFO     finco.model_execution:model_execution.py:239 model_execution completed duration_s=3.7
+INFO     finco.run_stages:run_stage_timing.py:102 run_stages outcome=ok project_type=Solar origin=v2_workbook_run scoped_by_user=1 request_received=0ms project_workspace_resolved=47ms model_entered=93ms model_completed=3719ms persistence_completed=46ms response_generated=422ms total=4329ms
+INFO     finco.requests:request_logging.py:43 request_id=7bc95302 method=POST path=/v2/workbook/run status=200
+WARNING  finco.requests:request_logging.py:61 request_id=7bc95302 method=POST path=/v2/workbook/run status=200 duration_ms=4329 SLOW
+ERROR    finco.requests:request_logging.py:53 request_id=40d39c9d method=GET path=/v2/compare-projects duration_ms=42.1 error=unhandled
+ERROR    finco.exceptions:exception_handler.py:30 request_id=40d39c9d path=/v2/compare-projects exception_type=NameError exception=name 'record' is not defined
+Traceback (most recent call last):
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\exception_handler.py", line 21, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\request_logging.py", line 50, in __call__
+    await self.app(scope, receive, logging_send)
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\middleware\security_headers.py", line 86, in __call__
+    await self.app(scope, receive, security_send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 680, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 134, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 120, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\v2\router.py", line 3774, in compare_projects_page
+    _base = getattr(record, "baseline_snapshot", None) or {}
+                    ^^^^^^
+NameError: name 'record' is not defined
+
+WARNING  finco.observability:observability.py:26 http_error
+============================== warnings summary ===============================
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\main_web.py:242: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\fastapi\applications.py:4598: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\main_web.py:263: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\main_web.py:285: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\main_web.py:318: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\.zcode\workspace\default\finco-ds-v1\app\api\v1_1\run_certificate_public_router.py:70: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class VerifyResultEnvelope(BaseModel):
+
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+  C:\Users\Ivan\AppData\Local\Programs\Python\Python312\Lib\site-packages\starlette\testclient.py:445: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_model_decision_support_v1.py::TestCrossProject::test_compare_get_is_persistence_read_only
+======================= 1 failed, 12 warnings in 10.01s =======================
