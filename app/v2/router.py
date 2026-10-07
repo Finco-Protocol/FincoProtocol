@@ -406,14 +406,64 @@ def _get_inputs_summary(project_record, pis, ws) -> dict:
     return build_inputs_summary(project_record, pis, ws)
 
 
+def _format_assumption_display(value):
+    """UX Correction B1: presentation-only assumption value formatting.
+
+    The canonical ``AssumptionEntry.value`` is NEVER touched — this renders
+    the display string only (no parse-format-reparse, no rounding of stored
+    values, no financial calculation):
+
+    - ``None``           → em dash (missing is never zero)
+    - ``bool``           → Yes / No (truthful display)
+    - ``str`` / ``int``  → verbatim
+    - ``float``          → institutional finite display (max 4 decimals,
+      thousands separators, trailing zeros trimmed); non-finite → em dash
+    - ``list`` / ``dict`` → recursive: numeric leaves formatted the same
+      way, so raw long float reprs never reach the UI
+    """
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return "—"
+        rounded = round(value, 4)
+        if rounded == 0:
+            return "0"
+        text = f"{rounded:,.4f}"
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_assumption_display(v) for v in value)
+    if isinstance(value, dict):
+        return ", ".join(
+            f"{k}: {_format_assumption_display(v)}"
+            for k, v in value.items())
+    return str(value)
+
+
 def _build_assumption_register_view(pis):
-    """UX Correction A4: read-only Workflow 04 Assumption Register view.
+    """UX Correction A4/B1/B2: read-only Workflow 04 Assumption Register view.
 
     Pure construction over the working-copy ProjectInputs
     (``build_assumption_register`` — no I/O, no engine execution).  Used by
     the Trust sheet section (#assumption-register).  Fail closed: any
     construction failure renders a typed UNAVAILABLE view — never a
     fabricated register.
+
+    B1: values render through the presentation formatter — raw float
+    precision never reaches the UI and stored/canonical values stay
+    byte-identical.  B2: on EV workbooks the register rows pass through the
+    existing EV presentation authority (``app.v2.ev_labels``) — charging
+    terminology for the internal compatibility price fields, and
+    compatibility-only generation/PPA rows omitted (canonical identities
+    unchanged).
     """
     try:
         from app.model_v2.assumption_register import (
@@ -433,11 +483,15 @@ def _build_assumption_register_view(pis):
         for e in register.entries:
             rows.append({
                 "section": e.section,
+                "path": e.canonical_path,
                 "label": e.label,
-                "value": "—" if e.value is None else str(e.value),
+                "value": _format_assumption_display(e.value),
                 "unit": e.unit or "",
                 "source": e.source_ref or e.source_kind.value,
             })
+        from app.v2.ev_labels import is_ev_pis, apply_ev_register_presentation
+        if is_ev_pis(pis):
+            rows = apply_ev_register_presentation(rows)
         return {
             "available": True,
             "entry_count": len(rows),
