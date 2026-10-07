@@ -138,6 +138,7 @@
   "tests/test_tokenized_access_wiring.py",
   "tests/test_tokenized_live_intelligence_v1.py",
   "tests/test_tokenized_markets_composition.py",
+  "tests/test_u2_2_returns_surface.py",
   "tests/test_yield_alerts_core.py"
  ]
 }
