@@ -50,7 +50,7 @@ from financial_engine.policies.tax import (
     TaxPolicy,
 )
 from financial_engine.tax.atad import calculate_annual_atad, allocate_atad_to_periods
-from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+from financial_engine.tax.loss_ledger import run_annual_fifo_ledger, taxable_income_after_lcf_series
 from financial_engine.tax.models import (
     PeriodCashTaxResult,
     PeriodTaxYearAllocation,
@@ -638,17 +638,16 @@ def calculate_cfads_and_cash_tax(
                 ) > 0.0
             )
 
-    lcf_entries = run_annual_fifo_ledger(
+    taxable_after_lcf = taxable_income_after_lcf_series(
         taxable_income_before_lcf=tuple(taxable_before_lcf),
         tax_year_indices=tuple(year_keys),
         opening_inputs=tax_input.opening_loss_vintages,
         loss_carryforward_years=policy.loss_carryforward_years,
         loss_use_allowed=tuple(loss_use_allowed_list) if loss_gate else None,
     )
-    liabilities: list[float] = []
-    for lcf in lcf_entries:
-        ti_after = lcf.taxable_income_after_lcf_keur
-        liabilities.append(policy.corporate_rate * max(0.0, ti_after))
+    liabilities: list[float] = [
+        policy.corporate_rate * max(0.0, ti_after) for ti_after in taxable_after_lcf
+    ]
 
     # ── Step 4: allocate cash tax to periods ─────────────────────────────────────
     all_period_indices = sorted(all_idx)
