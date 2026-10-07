@@ -1010,3 +1010,9 @@ def calculate_cfads_and_cash_tax(
         reintegration_by_row=reintegration,
         financing_income_by_row=financing_income,
     )
+
+
+# Patch-safety sentinel: solver fast paths are enabled only while the public
+# lean evaluator remains the authentic module function. Tests/integrations
+# that monkeypatch it continue to observe the patched callable.
+_AUTHENTIC_CALCULATE_CFADS_AND_CASH_TAX = calculate_cfads_and_cash_tax
