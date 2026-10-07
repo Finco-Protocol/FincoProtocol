@@ -128,8 +128,30 @@ def _zero_interest(pi):
     )
 
 
+def _alternative_tax_rate(pi):
+    # Generic policy path: corporate_rate itself is the explicit authority.
+    return replace(
+        pi,
+        tax=replace(
+            pi.tax,
+            country_tax_policy_id=None,
+            corporate_rate_override=None,
+            corporate_rate=0.19,
+        ),
+    )
+
+
 def _negative_taxable(pi):
-    return replace(pi, tax=replace(pi.tax, tax_deductible_book_dep_pct=5.0))
+    # Non-cash depreciation stress: shorten the largest asset's explicit life.
+    # This can drive taxable income below zero without manufacturing negative
+    # operating cash flow or weakening the debt solver.
+    return replace(
+        pi,
+        capex=replace(
+            pi.capex,
+            production_units=replace(pi.capex.production_units, useful_life_override=1),
+        ),
+    )
 
 
 # 16 established Runtime scenarios (V2 matrix excluding its generic atad_on),
@@ -146,7 +168,7 @@ SCENARIOS = {
     "shl_deductible": (v2._wind, v2._shl_deductible, "wind"),
     "shl_non_deductible": (v2._wind, v2._shl_non_deductible, "wind"),
     "opening_tax_losses": (v2._solar, v2._loss_carryforward, "solar"),
-    "alternative_tax_rate": (v2._solar, v2._alt_tax_rate, "solar"),
+    "alternative_tax_rate": (v2._solar, _alternative_tax_rate, "solar"),
     "low_gearing": (v2._wind, v2._gearing_low, "wind"),
     "high_gearing": (v2._wind, v2._gearing_high, "wind"),
     "distribution_lockup": (v2._solar, v2._lockup, "solar"),
