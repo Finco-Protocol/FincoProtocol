@@ -6,6 +6,7 @@
   <title>{{ project_name }} — Workbook</title>
   <script src="/static/vendor/htmx.min.js"></script>
   <link rel="stylesheet" href="/static/css/workbook_v2.css">
+  <link rel="stylesheet" href="/static/css/model_v2_run_history.css">
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on load without re-run #}
@@ -118,6 +119,8 @@
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-returns"         id="tab-returns">Returns</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-trust"           id="tab-trust">Trust Pack</button>
+    {# Run Intelligence V1: read-only run history + historical compare #}
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-run-history"      id="tab-run-history">Run History</button>
   </nav>
 
   {# ── Status banner — OOB-swappable ────────────────────────────────── #}
@@ -225,6 +228,12 @@
     <div class="v2-sheet-panel" role="tabpanel" id="panel-trust" aria-labelledby="tab-trust" hidden>
       <div class="v2-sheet-body">
         {% include "partials/sheet_trust.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-run-history" aria-labelledby="tab-run-history" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_run_history.html" %}
       </div>
     </div>
 
