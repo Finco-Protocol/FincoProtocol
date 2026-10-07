@@ -2,7 +2,7 @@
 
 Boots the real app (lifespan included, so startup prewarm runs), then times:
   first  POST /v2/workbook/run   — first user Run after application startup
-  second POST /v2/workbook/run   — immediate re-run (same inputs, memo hit path)
+  second POST /v2/workbook/run   — after one persisted OPEX field edit
 
 Usage:
     python tools/bench_first_request.py [--no-prewarm]
@@ -78,10 +78,31 @@ def main() -> None:
         page = client.get(f"/v2/workbook?project={record.project_code}",
                           cookies=cookies)
         h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
+        v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.update_service import WorkbookUpdateService
+        ws = get_workspace_state(user_id="perf-first-request", project_id=record.project_id)
+        assert ws is not None
+        WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id="opex.lines.technical_management",
+            raw_value="777.777",
+            content_hash=h,
+            workbook_version=v,
+            project_record=record,
+        )
+
+        page = client.get(f"/v2/workbook?project={record.project_code}",
+                          cookies=cookies)
+        edited_h = re.search(r'name="content_hash" value="([^"]+)"', page.text).group(1)
+        v = re.search(r'name="workbook_version" value="([^"]+)"', page.text).group(1)
+        assert edited_h != h
+
         t2 = time.perf_counter()
         r2 = client.post("/v2/workbook/run",
                          data={"project": record.project_code,
-                               "content_hash": h, "workbook_version": v},
+                               "content_hash": edited_h, "workbook_version": v},
                          cookies=cookies, headers={"HX-Request": "true"})
         second_s = time.perf_counter() - t2
         assert r2.status_code == 200
@@ -90,7 +111,7 @@ def main() -> None:
     print(f"[{mode}]")
     print(f"  startup (incl. prewarm when on): {startup_s:.2f}s")
     print(f"  first  POST /v2/workbook/run:    {first_s:.2f}s")
-    print(f"  second POST /v2/workbook/run:    {second_s:.2f}s")
+    print(f"  second POST after OPEX edit:      {second_s:.2f}s")
 
 
 if __name__ == "__main__":
