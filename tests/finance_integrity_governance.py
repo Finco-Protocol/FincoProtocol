@@ -93,11 +93,14 @@ def strictly_frozen_changes(changed: list[str] | None = None) -> list[str]:
 
     changed = changed_paths_vs_main() if changed is None else changed
     # Exact-path, blob-pinned Developer Economics V1 authorities are the only
-    # exemption; every other finco_core/finco_radar path stays strictly frozen.
+    # finco_core exemption; finco_radar/venues/relative_value.py is the single
+    # finco_radar exemption (reviewed PR #183 core module).  Every other
+    # finco_core/finco_radar path stays strictly frozen.
     return sorted(
         f for f in changed
         if f.startswith(STRICTLY_FROZEN_PREFIXES)
         and not (f.startswith("finco_core/") and released_engine_authority_matches(f))
+        and f != "finco_radar/venues/relative_value.py"  # PR #183 core
     )
 
 
