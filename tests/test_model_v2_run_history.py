@@ -64,7 +64,11 @@ NOW = datetime.datetime.now(datetime.timezone.utc)
 def _plan(merchant_price=65.0):
     ppa = PPAParams(ppa_enabled=True, ppa_base_price_eur_mwh=57.0,
                     ppa_term_years=15, ppa_volume_share=0.7,
-                    ppa_price_index=0.02)
+                    ppa_price_index=0.02,
+                    balancing_cost_pct=0.0,
+                    imbalance_penalty_pct=0.0,
+                    ppa_price_floor=0.0,
+                    ppa_price_cap=0.0)
     mkt = MerchantParams(merchant_enabled=True,
                          base_price_eur_mwh=merchant_price,
                          price_escalation_annual=0.02)
