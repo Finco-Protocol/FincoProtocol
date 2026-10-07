@@ -380,10 +380,21 @@ class TestStaticAssetContracts:
         assert "pointer-events: none" not in block
 
     def test_classifier_never_reads_the_message_or_parses_strings(self):
-        body = JS.split("function classify(input, row)", 1)[1].split("function _classifySubmitted", 1)[0]
+        body = JS.split("function classify(input, row)", 1)[1].split("var SERVER_CLASSES", 1)[0]
         assert "message" not in body
         assert not re.search(r"\.(indexOf|match|test|includes|search|startsWith)\(", body)
         assert "validity" in body
+
+    def test_server_class_resolution_contract(self):
+        """Server verdict first; unknown values fail safe; message is never read."""
+        resolve = JS.split("function _resolveClass(info, row, value)", 1)[1].split("function _classifySubmitted", 1)[0]
+        assert re.search(r"SERVER_CLASSES = \{ REQUIRED_MISSING: true, INVALID: true, OUT_OF_BOUNDS: true \};", JS)
+        assert "Object.prototype.hasOwnProperty.call(SERVER_CLASSES, c)" in resolve
+        assert "'SAVE_REJECTED'" in resolve and "message" not in resolve
+        assert resolve.index("info.untyped") < resolve.index("info.hasServerClass") < resolve.index("_classifySubmitted")
+        handler = JS.split("document.addEventListener('workbook-field-error', function (e) {", 1)[1].split("}\n", 1)[0]
+        assert "error_class" in handler and "hasServerClass" in handler
+        assert "untyped: true" in JS                                  # transport failure
 
     def test_new_module_reuses_existing_transport_and_adds_none(self):
         module = JS.split("Workspace productivity v1: field validation UX", 1)[1]

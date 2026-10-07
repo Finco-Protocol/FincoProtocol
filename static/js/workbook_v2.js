@@ -286,7 +286,8 @@
       var failedIdEl = form.querySelector('input[name="field_id"]');
       if (failedIdEl && window.v2FieldValidationUx) {
         window.v2FieldValidationUx.registerIfAbsent(failedIdEl.value, {
-          message: 'The save could not be completed. Check your connection and try again.'
+          message: 'The save could not be completed. Check your connection and try again.',
+          untyped: true   // transport failure: no value verdict exists from anyone
         });
       }
       if (_runQueued) {
@@ -315,7 +316,12 @@
   document.addEventListener('workbook-field-error', function (e) {
     var detail = (e && e.detail) || {};
     if (detail.field_id && window.v2FieldValidationUx) {
-      window.v2FieldValidationUx.register(detail.field_id, { message: detail.message });
+      window.v2FieldValidationUx.register(detail.field_id, {
+        message: detail.message,
+        // `error_class` present (even null) means the server spoke: it is the only authority.
+        hasServerClass: Object.prototype.hasOwnProperty.call(detail, 'error_class'),
+        errorClass: detail.error_class
+      });
     }
     if (_runQueued) {
       _runQueued = false;
@@ -587,13 +593,18 @@ document.addEventListener('htmx:afterSettle', function (e) {
 
 // ── Workspace productivity v1: field validation UX + jump-to-field ────────
 // Presentation only.  Reuses the existing `workbook-field-error` /
-// `workbook-field-saved` HX-Trigger events (no second transport).  The error
-// CLASS is derived from the field's own typed constraints through the
-// browser's constraint-validation API (required / min / max / badInput) —
-// never by parsing the human-readable message, which is display text only.
-// A failure the client cannot type (stale draft, protected project, server
-// side semantic validators, authority gates) stays SAVE_REJECTED instead of
-// being mislabelled as invalid input.
+// `workbook-field-saved` HX-Trigger events (no second transport).
+//
+// Authority chain: FieldValidationError.error_class (server) -> HX event
+// `error_class` -> row state -> Smart Panel summary.  When the event carries
+// the key, the server is the ONLY authority: a canonical class is used as-is,
+// `null` (stale draft, protected project, non-editable field, authority gate)
+// and any unrecognised value become SAVE_REJECTED — never a guessed input
+// class and never an arbitrary string in a CSS/data attribute.  Only when NO
+// server authority exists (transport failure, an emitter without the key) does
+// the field's own constraints (browser constraint validation: required / min /
+// max / badInput) serve as a fallback; a transport failure is SAVE_REJECTED.  The human-readable message is display
+// text and is never parsed.
 (function () {
   'use strict';
   if (window.v2FieldValidationUx) return;
@@ -636,6 +647,19 @@ document.addEventListener('htmx:afterSettle', function (e) {
       if (v.stepMismatch && INTEGER_TYPES[t]) return 'INVALID';
     }
     return 'SAVE_REJECTED';
+  }
+
+  var SERVER_CLASSES = { REQUIRED_MISSING: true, INVALID: true, OUT_OF_BOUNDS: true };
+
+  // The server's typed class wins; only an absent server verdict falls back.
+  function _resolveClass(info, row, value) {
+    if (info && info.untyped) return 'SAVE_REJECTED';
+    if (info && info.hasServerClass) {
+      var c = info.errorClass;
+      return (typeof c === 'string' && Object.prototype.hasOwnProperty.call(SERVER_CLASSES, c))
+        ? c : 'SAVE_REJECTED';
+    }
+    return _classifySubmitted(row, value);
   }
 
   function _classifySubmitted(row, value) {
@@ -788,7 +812,7 @@ document.addEventListener('htmx:afterSettle', function (e) {
       fieldId: fieldId,
       message: (info && info.message) || '',
       value: value,
-      errorClass: _classifySubmitted(row, value),
+      errorClass: _resolveClass(info, row, value),
       reannounce: true
     };
     _decorate(_errors[fieldId], true);

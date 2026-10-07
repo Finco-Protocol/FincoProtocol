@@ -94,6 +94,7 @@ from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
 from app.workbook.workbook_identity import assemble_consistent_for_get, assemble_for_workspace
 from app.workbook.update_service import (
+    FieldErrorClass,
     FieldValidationError,
     NonEditableFieldError,
     ProtectedReferenceError,
@@ -173,10 +174,26 @@ def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -
     return resp
 
 
-def _add_field_error_trigger(resp: HTMLResponse, field_id: str, message: str) -> HTMLResponse:
+def _add_field_error_trigger(
+    resp: HTMLResponse, field_id: str, message: str,
+    error_class: Optional[FieldErrorClass] = None,
+) -> HTMLResponse:
+    """Attach the field-error HX event.
+
+    ``error_class`` is the canonical server classification
+    (``FieldValidationError.error_class``) and is the ONLY typed authority the
+    browser may use.  It is JSON ``null`` for every rejection that is not a typed
+    field-value validation outcome (stale draft, protected project, non-editable
+    field, authority gate) — never fabricated.  Only a real ``FieldErrorClass``
+    is serialised, so nothing else can reach the browser as a class.
+    """
     import json as _json
     resp.headers["HX-Trigger"] = _json.dumps({
-        "workbook-field-error": {"field_id": field_id, "message": message}
+        "workbook-field-error": {
+            "field_id": field_id,
+            "message": message,
+            "error_class": error_class.value if isinstance(error_class, FieldErrorClass) else None,
+        }
     })
     return resp
 
@@ -1746,7 +1763,10 @@ async def v2_inputs_slice1_update(
         resp.status_code = status_code
         return resp
 
-    def _render_field_error(message: str, status_code: int, *, preserve_submitted: bool = False) -> HTMLResponse:
+    def _render_field_error(
+        message: str, status_code: int, *, preserve_submitted: bool = False,
+        error_class: Optional[FieldErrorClass] = None,
+    ) -> HTMLResponse:
         pis_for_render = _build_pis_with_composite_identity(
             ws, project_record, workspace_owner
         )
@@ -1756,7 +1776,7 @@ async def v2_inputs_slice1_update(
             preserve_submitted=preserve_submitted,
             pis_for_render=pis_for_render,
         )
-        return _add_field_error_trigger(resp, field_id, message)
+        return _add_field_error_trigger(resp, field_id, message, error_class)
 
     field_classification = classify_slice1_field_id(field_id)
     if field_classification != KNOWN_SLICE1_EDITABLE:
@@ -1799,7 +1819,8 @@ async def v2_inputs_slice1_update(
         )
     except FieldValidationError as exc:
         return (
-            _render_field_error(str(exc), 422, preserve_submitted=True)
+            _render_field_error(
+                str(exc), 422, preserve_submitted=True, error_class=exc.error_class)
             if is_htmx else _json_error(str(exc), 422)
         )
 
@@ -1965,7 +1986,7 @@ async def v2_workbook_update(
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
-            return _add_field_error_trigger(resp, field_id, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc), exc.error_class)
         return _redirect_with_error(str(exc))
 
     # Success path — reload workspace and assemble composite identity consistently

@@ -645,3 +645,209 @@ class TestJumpToField:
         assert page.evaluate("document.querySelectorAll('.v2-field-editable').length") == editable_before
         assert page.evaluate("window.__req") == 0
         assert page.network == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Correction A: the SERVER typed class is authoritative end to end
+# ═══════════════════════════════════════════════════════════════════════════
+
+ABSENT = object()
+CANONICAL = ("REQUIRED_MISSING", "INVALID", "OUT_OF_BOUNDS")
+INPUT_CLASSES = CANONICAL + ("SAVE_REJECTED",)
+
+
+def server_event(page, field_id, message="Rejected by the server.", error_class=ABSENT, *, swap=True):
+    """Dispatch the HX `workbook-field-error` event exactly as the router emits it.
+
+    ``error_class=ABSENT`` omits the key entirely (an emitter with no server
+    verdict); ``None`` is the router's explicit JSON null for untyped rejections.
+    """
+    page.evaluate(
+        """([fid, message, hasClass, errorClass]) => {
+            const detail = {field_id: fid, message: message};
+            if (hasClass) detail.error_class = errorClass;
+            document.dispatchEvent(new CustomEvent('workbook-field-error', {detail}));
+        }""",
+        [field_id, message, error_class is not ABSENT, None if error_class is ABSENT else error_class])
+    if swap:
+        _swap(page, SHEET_OF[field_id])
+
+
+def visible_classes(page):
+    return [k for k in INPUT_CLASSES if page.is_visible(summary_li(page, k))]
+
+
+class TestServerClassIsAuthoritative:
+    @pytest.mark.parametrize("field_id,raw,server_class", [
+        (NAME, "", "REQUIRED_MISSING"),                    # A
+        (MONTHS, "1.5", "INVALID"),                        # B  type coercion
+        (CAPACITY, "0", "OUT_OF_BOUNDS"),                  # D
+        (INDEX, "101", "OUT_OF_BOUNDS"),
+    ])
+    def test_canonical_server_class_reaches_row_and_summary(self, page_under_test, field_id, raw, server_class):
+        page = page_under_test
+        type_and_submit(page, field_id, raw)
+        server_event(page, field_id, "server text", server_class)
+        assert state(page)[0]["errorClass"] == server_class
+        assert page.get_attribute(row(field_id), "data-error-class") == server_class
+        assert visible_classes(page) == [server_class]
+        assert page.inner_text(f'{summary_li(page, server_class)} [data-summary-count]') == "1"
+        jumps = page.eval_on_selector_all(
+            f'{summary_li(page, server_class)} [data-jump-field]',
+            "els => els.map(e => e.getAttribute('data-jump-field'))")
+        assert jumps == [field_id]
+
+    def test_server_only_semantic_invalid_is_invalid_not_save_rejected(self, page_under_test):
+        """C: the value is natively valid, so the browser alone could never say INVALID."""
+        page = page_under_test
+        type_and_submit(page, NAME, "Alpha")
+        server_event(page, NAME, "Name violates a server-only rule.", "INVALID")
+        assert state(page)[0]["errorClass"] == "INVALID"
+        assert visible_classes(page) == ["INVALID"]
+        # the same submission with no server verdict can only fall back to SAVE_REJECTED
+        page.evaluate("fid => v2FieldValidationUx.clear(fid)", NAME)
+        type_and_submit(page, NAME, "Alpha")
+        server_event(page, NAME, "same text")                 # key absent: no server authority
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+
+    def test_server_class_overrides_a_contradicting_client_constraint(self, page_under_test):
+        """One authority: browser constraints say OUT_OF_BOUNDS, the server says INVALID."""
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY, "server verdict", "INVALID")
+        assert state(page)[0]["errorClass"] == "INVALID"
+        assert visible_classes(page) == ["INVALID"]
+
+    def test_stale_content_rejection_gets_no_value_class(self, page_under_test):
+        """E: null from the server is final even though the value breaks a client constraint."""
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY,
+                     "Draft changed since page loaded - values refreshed. Please try your edit again.", None)
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+        assert page.get_attribute(row(CAPACITY), "data-error-class") == "SAVE_REJECTED"
+        assert visible_classes(page) == ["SAVE_REJECTED"]
+
+    def test_protected_reference_rejection_is_never_invalid(self, page_under_test, make_page):
+        """F: ProtectedReferenceError travels as null; protected pages cannot be decorated at all."""
+        page = page_under_test
+        type_and_submit(page, MONTHS, "1.5")                  # natively non-integer
+        server_event(page, MONTHS, "Project is a protected reference. Create a working copy.", None)
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+        assert "INVALID" not in visible_classes(page)
+        protected = make_page(project_editable=False)
+        server_event(protected, MONTHS, "protected", "INVALID", swap=False)
+        assert state(protected) == []
+        assert protected.query_selector(".v2-field-error") is None
+
+    @pytest.mark.parametrize("bogus", [
+        "BOGUS_CLASS", "invalid", "Out_Of_Bounds", " INVALID", "INVALID ", "__proto__", "constructor",
+        "toString", "hasOwnProperty", "", 7, True, ["INVALID"], {"INVALID": True},
+    ])
+    def test_unknown_error_class_fails_safe_and_is_never_injected(self, page_under_test, bogus):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "50")
+        server_event(page, CAPACITY, "message", bogus)
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+        assert page.get_attribute(row(CAPACITY), "data-error-class") == "SAVE_REJECTED"
+        assert visible_classes(page) == ["SAVE_REJECTED"]
+        if isinstance(bogus, str) and bogus.strip():
+            html = page.evaluate("document.documentElement.outerHTML")
+            assert f'data-error-class="{bogus}"' not in html
+            assert f'data-summary-class="{bogus}"' not in html
+            assert f"v2-field-{bogus}" not in html
+
+    @pytest.mark.parametrize("server_class", CANONICAL)
+    def test_successful_correction_clears_a_server_typed_error(self, page_under_test, server_class):
+        """H"""
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY, "typed", server_class)
+        assert visible_classes(page) == [server_class]
+        type_and_submit(page, CAPACITY, "50")
+        server_accepts(page, CAPACITY)
+        assert state(page) == []
+        assert "v2-field-error" not in page.get_attribute(row(CAPACITY), "class")
+        assert page.query_selector(f'{row(CAPACITY)} [data-error-class]') is None
+        assert visible_classes(page) == []
+        assert page.is_visible('#model-smart-panel [data-summary-empty]')
+
+    def test_a_new_server_verdict_replaces_the_previous_class(self, page_under_test):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY, "first", "OUT_OF_BOUNDS")
+        type_and_submit(page, CAPACITY, "abc")
+        server_event(page, CAPACITY, "second", "INVALID")
+        assert [e["errorClass"] for e in state(page)] == ["INVALID"]
+        assert visible_classes(page) == ["INVALID"]
+
+    def test_client_fallback_is_used_only_when_the_server_sent_no_verdict(self, page_under_test):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY, "emitter without the key")       # key absent
+        assert state(page)[0]["errorClass"] == "OUT_OF_BOUNDS"        # existing fallback intact
+
+    def test_transport_failure_is_save_rejected_even_for_an_out_of_range_value(self, page_under_test):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        page.evaluate(f"""() => document.dispatchEvent(new CustomEvent('htmx:afterRequest',
+            {{detail: {{elt: document.querySelector('{row(CAPACITY)} form'), successful: false,
+                       xhr: {{responseURL: '/v2/workbook/update'}}}}}}))""")
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+
+    def test_a_server_event_is_never_overwritten_by_the_transport_fallback(self, page_under_test):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "0")
+        server_event(page, CAPACITY, "server said so", "OUT_OF_BOUNDS")
+        page.evaluate(f"""() => document.dispatchEvent(new CustomEvent('htmx:afterRequest',
+            {{detail: {{elt: document.querySelector('{row(CAPACITY)} form'), successful: false,
+                       xhr: {{responseURL: '/v2/workbook/update'}}}}}}))""")
+        assert [(e["errorClass"], e["message"]) for e in state(page)] == [("OUT_OF_BOUNDS", "server said so")]
+
+    def test_classifier_and_resolution_never_read_the_message(self, page_under_test):
+        page = page_under_test
+        type_and_submit(page, CAPACITY, "50")
+        server_event(page, CAPACITY, "REQUIRED_MISSING INVALID OUT_OF_BOUNDS all in the text", None)
+        assert state(page)[0]["errorClass"] == "SAVE_REJECTED"
+        type_and_submit(page, MONTHS, "1.5")
+        server_event(page, MONTHS, "completely unrelated wording", "INVALID")
+        assert {e["fieldId"]: e["errorClass"] for e in state(page)}[MONTHS] == "INVALID"
+
+
+class TestEndToEndChainWithTheRealServer:
+    """FieldValidationError.error_class -> real router helper -> HX event -> row -> summary."""
+
+    PROBES = [
+        (NAME, ""), (NAME, "   "), (MONTHS, ""), (MONTHS, "0"), (MONTHS, "121"), (MONTHS, "1.5"),
+        (CAPACITY, "0"), (CAPACITY, "-5"), (P50, "0.5"), (INDEX, "101"),
+    ]
+
+    @staticmethod
+    def _server_event_detail(field_id, raw):
+        import json
+        from fastapi.responses import HTMLResponse
+        from app.v2.router import _add_field_error_trigger
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.registry import WORKBOOK
+        from app.workbook.update_service import FieldValidationError, WorkbookUpdateService
+        validation = WorkbookUpdateService.validate_field_update(field_id, raw)
+        assert not validation.is_valid
+        pis = ProjectInputSet.from_snapshot({}, workbook=WORKBOOK)
+        with pytest.raises(FieldValidationError) as caught:
+            WorkbookUpdateService.apply_field_to_pis(pis, validation)
+        exc = caught.value
+        resp = _add_field_error_trigger(HTMLResponse("x"), field_id, str(exc), exc.error_class)
+        return exc, json.loads(resp.headers["HX-Trigger"])["workbook-field-error"]
+
+    @pytest.mark.parametrize("field_id,raw", PROBES)
+    def test_summary_class_equals_the_server_exception_class(self, page_under_test, field_id, raw):
+        exc, detail = self._server_event_detail(field_id, raw)
+        page = page_under_test
+        page.evaluate("""([fid, raw]) => {
+            document.querySelector('.v2-field-row[data-field-id="' + fid + '"] .v2-field-input').value = raw;
+        }""", [field_id, raw])
+        begin_save(page, field_id)
+        server_event(page, detail["field_id"], detail["message"], detail["error_class"])
+        assert detail["error_class"] == exc.error_class.value
+        assert state(page)[0]["errorClass"] == exc.error_class.value
+        assert visible_classes(page) == [exc.error_class.value]
