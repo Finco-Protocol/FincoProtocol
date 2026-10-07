@@ -2155,13 +2155,17 @@ def _run_senior_debt_model_with_shl(
         expected_indices=full_axis_shl,
     )
 
-    final_tax_cfads_fn = _make_solver_tax_cfads_fn(
-        periods=bank_phase2a_result.periods,
-        base_tax_input=base_tax_input,
-        shl_interest_by_period=final_shl_interest,
-        limitation_by_period=bank_limitation_state.limitation_by_period,
-        tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
-    )
+    def final_tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest_by_period,
+            final_shl_interest,
+            bank_limitation_state.limitation_by_period,
+            tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
+        )
+        return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, tax_input)
 
     final_senior_result = solve_senior_debt(
         policy=policy,
@@ -2588,11 +2592,21 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
 
     base_tax_input = inputs.tax
 
-    tax_cfads_fn = _make_solver_tax_cfads_fn(
-        periods=bank_phase2a_result.periods,
-        base_tax_input=base_tax_input,
-        tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
-    )
+    def tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        """Rebuild bank-case tax + CFADS with updated senior interest on each iteration.
+
+        Uses bank operating periods (bank_phase2a_result.periods) so that EBITDA
+        entering the tax base reflects the bank-case yield scenario, not Base.
+        """
+        updated_tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest_by_period,
+            tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
+        )
+        # Tax and CFADS computed against bank periods (bank EBITDA drives taxable income).
+        return calculate_cfads_and_cash_tax(bank_phase2a_result.periods, updated_tax_input)
 
     # Step 5: Fixed-point solver against bank periods.
     debt_start = policy.repayment_start_period_index
