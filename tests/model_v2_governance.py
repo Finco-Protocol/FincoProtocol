@@ -412,6 +412,10 @@ def model_v2_frozen_violations(changed: list[str] | None = None) -> list[str]:
     return sorted(
         f for f in changed
         if _under_any_prefix(f, prefixes)
+        # PR #183 (Tokenized Relative Value V1): the single reviewed core
+        # module is authorized; the permanent hard deny otherwise stands and
+        # can never be widened through the scope file.
+        and f != "finco_radar/venues/relative_value.py"
     )
 
 
