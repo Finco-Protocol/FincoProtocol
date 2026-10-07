@@ -14,13 +14,27 @@ authorities and never computes financial values:
                 Trust Pack sheet (the register itself stays THE authority).
 - TRACE       — availability + navigation to the Calculation Trace surface
                 (needs a persisted run; otherwise typed unavailable).
+- VALIDATION  — a typed summary that keeps invalid / missing-required /
+                out-of-bounds input, rejected saves, read-only fields,
+                unavailable authorities and STALE Last Run as DISTINCT
+                classes.  Field-level classes are "live": the browser fills
+                them from the rows the sheets actually rendered and rejected
+                (jump-to-field targets the existing semantic field); this
+                module never validates, never edits and never computes values.
+
+Assumption breakdowns count the register view's own ``section``/``source``
+labels — no values are shown, so the panel is not a second assumption
+authority.  A failed-execution state is NOT available to this surface (the
+runtime authority only emits NOT_RUN / CURRENT / STALE), so none is invented.
 
 NO engine execution happens in any code path of this module.
 """
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Optional
+from enum import Enum
+from typing import Any, Iterable, Optional
 
 from app.validation_status import TIER_LABELS, TIER_TONE, get_validation_status
 
@@ -28,6 +42,24 @@ from app.validation_status import TIER_LABELS, TIER_TONE, get_validation_status
 _TONE_ORDER = {"fail": 0, "warn": 1, "pass": 2, "": 3}
 
 TRUST_TAB_ID = "tab-trust"
+
+_BREAKDOWN_CAP = 8
+
+
+class SummaryClass(str, Enum):
+    """Distinct validation-summary classes (never collapsed into one warning).
+
+    The first three values are identical to ``FieldErrorClass`` in
+    ``app.workbook.update_service`` — the typed server classification.
+    """
+    REQUIRED_MISSING = "REQUIRED_MISSING"
+    INVALID = "INVALID"
+    OUT_OF_BOUNDS = "OUT_OF_BOUNDS"
+    SAVE_REJECTED = "SAVE_REJECTED"          # refused, but not a typed value check
+    NON_EDITABLE = "NON_EDITABLE"            # locked / calculated / protected rows
+    AUTHORITY_UNAVAILABLE = "AUTHORITY_UNAVAILABLE"
+    STALE_LAST_RUN = "STALE_LAST_RUN"
+    NOT_RUN = "NOT_RUN"
 
 
 @dataclass(frozen=True)
@@ -49,6 +81,12 @@ class SmartPanelLink:
 
 
 @dataclass(frozen=True)
+class SmartPanelBreakdown:
+    title: str
+    rows: tuple[SmartPanelRow, ...]
+
+
+@dataclass(frozen=True)
 class SmartPanelSection:
     key: str
     title: str
@@ -56,6 +94,17 @@ class SmartPanelSection:
     rows: tuple[SmartPanelRow, ...]
     empty_text: str = ""
     link: Optional[SmartPanelLink] = None
+    breakdowns: tuple[SmartPanelBreakdown, ...] = ()
+
+
+@dataclass(frozen=True)
+class SmartPanelSummaryItem:
+    key: SummaryClass
+    label: str
+    live: bool = False      # True: count + field list are filled by the browser
+    value: str = ""         # static value for server-composed items
+    tone: str = ""          # repository tone vocabulary
+    detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,6 +112,7 @@ class SmartPanelProjection:
     stale_note: str                     # runtime-state note ("" when none)
     run_state: str                      # NOT_RUN | CURRENT | STALE
     sections: tuple[SmartPanelSection, ...]
+    validation_summary: tuple[SmartPanelSummaryItem, ...] = ()
 
     @property
     def ordered_rows(self) -> tuple[SmartPanelRow, ...]:
@@ -85,8 +135,105 @@ def _validation_row(project_key: str) -> SmartPanelRow:
         label="Validation tier",
         value=TIER_LABELS.get(tier, str(tier)),
         tone=TIER_TONE.get(tier, ""),
-        detail="Reference regression evidence loads on demand in the Trust Pack.",
+        detail=status.tier_description,
     )
+
+
+def _top_counts(rows: Iterable[dict[str, Any]], key: str) -> tuple[SmartPanelRow, ...]:
+    """Count the register view's own labels; no values, no recomputation."""
+    counts = Counter(str(r.get(key) or "Unspecified") for r in rows if isinstance(r, dict))
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    shown = ordered[:_BREAKDOWN_CAP]
+    out = [SmartPanelRow(label=name, value=str(n)) for name, n in shown]
+    rest = ordered[_BREAKDOWN_CAP:]
+    if rest:
+        out.append(SmartPanelRow(
+            label=f"{len(rest)} more", value=str(sum(n for _, n in rest))))
+    return tuple(out)
+
+
+def _integrity_row(integrity: Any) -> Optional[SmartPanelRow]:
+    """Run Integrity (H-4b) overall + typed reason codes, as composed."""
+    if not isinstance(integrity, dict) or not integrity:
+        return None
+    if str(integrity.get("state", "")).upper() != "AVAILABLE":
+        return SmartPanelRow(
+            label="Run integrity", value="UNAVAILABLE", tone="warn",
+            detail="Internal-consistency checks need a committed Last Run.")
+    overall = str(integrity.get("overall") or "").upper()
+    tone = {"PASS": "pass", "FAIL": "fail", "INCOMPLETE": "warn"}.get(overall, "warn")
+    counts = integrity.get("counts") or {}
+    parts = [f"{short} {counts[key]}" for key, short in (
+        ("PASS", "PASS"), ("FAIL", "FAIL"),
+        ("NOT_APPLICABLE", "N/A"), ("UNAVAILABLE", "UNAVAILABLE"))
+        if isinstance(counts, dict) and key in counts]
+    codes = sorted({
+        str(c.get("reason_code")) for c in (integrity.get("checks") or [])
+        if isinstance(c, dict) and c.get("reason_code")
+        and str(c.get("status", "")).upper() in ("FAIL", "UNAVAILABLE")
+    })[:4]
+    if codes:
+        parts.append("Reason codes: " + ", ".join(codes))
+    return SmartPanelRow(
+        label="Run integrity", value=overall or "UNAVAILABLE", tone=tone,
+        detail=" · ".join(parts))
+
+
+def _validation_summary(
+    *, run_state: str, trust_pack: Optional[dict[str, Any]], register_ok: bool,
+) -> tuple[SmartPanelSummaryItem, ...]:
+    S = SummaryClass
+    items: list[SmartPanelSummaryItem] = [
+        SmartPanelSummaryItem(
+            S.REQUIRED_MISSING, "Missing required input", live=True, tone="fail",
+            detail="A required field was saved empty."),
+        SmartPanelSummaryItem(
+            S.INVALID, "Invalid input", live=True, tone="fail",
+            detail="The value is not a valid number, date or option."),
+        SmartPanelSummaryItem(
+            S.OUT_OF_BOUNDS, "Out-of-bounds input", live=True, tone="fail",
+            detail="The value is outside the allowed range for the field."),
+        SmartPanelSummaryItem(
+            S.SAVE_REJECTED, "Save rejected", live=True, tone="warn",
+            detail=("Declined for a reason other than a value check, e.g. the "
+                    "draft changed since the page loaded or the project is "
+                    "protected. Not an input error.")),
+        SmartPanelSummaryItem(
+            S.NON_EDITABLE, "Read-only fields", live=True,
+            detail="Locked by the template, calculated, or protected — not validation errors."),
+    ]
+    if run_state == "STALE":
+        items.append(SmartPanelSummaryItem(
+            S.STALE_LAST_RUN, "Last Run", value="STALE", tone="warn",
+            detail=("Working Copy changed since the last run, so Last Run "
+                    "values are stale. This is not an input error.")))
+    elif run_state == "NOT_RUN":
+        items.append(SmartPanelSummaryItem(
+            S.NOT_RUN, "Last Run", value="Not run",
+            detail="No Last Run exists yet; no output values are shown."))
+
+    unavailable: list[str] = []
+    if not register_ok:
+        unavailable.append("Assumption Register")
+    pack = trust_pack or {}
+    last_run = pack.get("last_run")
+    if isinstance(last_run, dict) and last_run \
+            and str(last_run.get("state", "")).upper() != "AVAILABLE":
+        unavailable.append("Last Run identity")
+    validation = pack.get("validation")
+    if isinstance(validation, dict) and validation \
+            and str(validation.get("state", "")).upper() not in ("AVAILABLE", "DEFERRED"):
+        unavailable.append("Reference regression")
+    integrity = pack.get("integrity")
+    if isinstance(integrity, dict) and integrity \
+            and str(integrity.get("state", "")).upper() != "AVAILABLE":
+        unavailable.append("Run integrity")
+    if unavailable:
+        items.append(SmartPanelSummaryItem(
+            S.AUTHORITY_UNAVAILABLE, "Authority unavailable",
+            value=str(len(unavailable)), tone="warn",
+            detail=", ".join(unavailable) + ". Unavailable is not a validation error."))
+    return tuple(items)
 
 
 def build_smart_panel_projection(
@@ -143,6 +290,9 @@ def build_smart_panel_projection(
             value="AVAILABLE" if state_lr == "AVAILABLE" else "UNAVAILABLE",
             tone="" if state_lr == "AVAILABLE" else "warn",
         ))
+    integrity_row = _integrity_row((trust_pack or {}).get("integrity"))
+    if integrity_row is not None:
+        check_rows.append(integrity_row)
     if not check_rows:
         check_rows.append(SmartPanelRow(
             label="Checks", value="No checks available yet.", tone=""))
@@ -159,6 +309,13 @@ def build_smart_panel_projection(
     register_ok = bool(assumption_register_view
                        and assumption_register_view.get("available"))
     if register_ok:
+        register_rows = assumption_register_view.get("rows") or []
+        breakdowns: tuple[SmartPanelBreakdown, ...] = ()
+        if register_rows:
+            breakdowns = (
+                SmartPanelBreakdown("By section", _top_counts(register_rows, "section")),
+                SmartPanelBreakdown("By source", _top_counts(register_rows, "source")),
+            )
         sections.append(SmartPanelSection(
             key="assumptions", title="Assumptions", available=True,
             rows=(SmartPanelRow(
@@ -170,6 +327,7 @@ def build_smart_panel_projection(
             empty_text="Assumptions unavailable.",
             link=SmartPanelLink("Review assumptions", TRUST_TAB_ID,
                                 anchor="#assumption-register"),
+            breakdowns=breakdowns,
         ))
     else:
         sections.append(SmartPanelSection(
@@ -195,17 +353,23 @@ def build_smart_panel_projection(
         link=None,
     ))
 
+    run_state = state if state in ("NOT_RUN", "CURRENT", "STALE") else "NOT_RUN"
     return SmartPanelProjection(
         stale_note=stale_note,
-        run_state=state if state in ("NOT_RUN", "CURRENT", "STALE") else "NOT_RUN",
+        run_state=run_state,
         sections=tuple(sections),
+        validation_summary=_validation_summary(
+            run_state=run_state, trust_pack=trust_pack, register_ok=register_ok),
     )
 
 
 __all__ = [
+    "SmartPanelBreakdown",
     "SmartPanelLink",
     "SmartPanelProjection",
     "SmartPanelRow",
     "SmartPanelSection",
+    "SmartPanelSummaryItem",
+    "SummaryClass",
     "build_smart_panel_projection",
 ]
